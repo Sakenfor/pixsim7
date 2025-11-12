@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import { useNavigate } from 'react-router-dom';
 import { useControlCenterStore } from '../../../stores/controlCenterStore';
 import { PromptInput } from '../../primitives/PromptInput';
 import { resolvePromptLimit } from '../../../utils/prompt/limits';
@@ -14,7 +13,6 @@ const PRESET_OPTIONS = [
 ];
 
 export function QuickGenerateModule() {
-  const navigate = useNavigate();
   const {
     providerId,
     presetId,
@@ -57,14 +55,10 @@ export function QuickGenerateModule() {
       // Clear prompt on success
       setPrompt('');
 
-      // Navigate to asset if available, otherwise show success message
-      if (result.asset_id) {
-        navigate(`/assets/${result.asset_id}`);
-      } else {
-        // Show toast or message - for now just log
-        // eslint-disable-next-line no-console
-        console.log('Generation queued:', result);
-      }
+      // We don't get asset_id immediately from /jobs create; just log and optionally
+      // redirect users later when job completes (WS/notifications to be wired).
+      // eslint-disable-next-line no-console
+      console.log('Generation job created:', result);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
     } finally {

@@ -10,7 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/# Limit Python build artifacts at repo root; don't ignore nested frontend/src/lib
+/lib/
 lib64/
 parts/
 sdist/
