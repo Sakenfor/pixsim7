@@ -1,24 +1,21 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore } from '../../../stores/controlCenterStore';
 import { PromptInput } from '../../primitives/PromptInput';
 import { resolvePromptLimit } from '../../../utils/prompt/limits';
 import { useProviders } from '../../../hooks/useProviders';
+import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
 import { generateAsset } from '../../../lib/api/controlCenter';
-
-const PRESET_OPTIONS = [
-  { id: 'default', name: 'Default' },
-  { id: 'fast', name: 'Fast' },
-  { id: 'quality', name: 'High Quality' },
-];
+import { DynamicParamForm, type ParamSpec } from '../DynamicParamForm';
+import { ArrayFieldInput } from '../ArrayFieldInput';
 
 export function QuickGenerateModule() {
   const {
     operationType,
     providerId,
     presetId,
+    presetParams,
     setProvider,
-    setPreset,
     setOperationType,
     generating,
     setGenerating,
@@ -28,60 +25,116 @@ export function QuickGenerateModule() {
     operationType: s.operationType,
     providerId: s.providerId,
     presetId: s.presetId,
+    presetParams: s.presetParams,
     setProvider: s.setProvider,
-    setPreset: s.setPreset,
     setOperationType: s.setOperationType,
     generating: s.generating,
     setGenerating: s.setGenerating,
     pushPrompt: s.pushPrompt,
     recentPrompts: s.recentPrompts,
   }));
-  const presetParams = useControlCenterStore(s => s.presetParams);
 
   const { providers } = useProviders();
+  const { specs } = useProviderSpecs(providerId);
+
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<number | null>(null);
 
-  // Extra fields per operation (minimal scaffolding)
-  const [imageUrl, setImageUrl] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
-  const [providerVideoId, setProviderVideoId] = useState('');
-  const [imageUrlsText, setImageUrlsText] = useState('');
-  const [promptsText, setPromptsText] = useState('');
+  // Dynamic params from operation_specs
+  const [dynamicParams, setDynamicParams] = useState<Record<string, any>>({});
+
+  // Operation-specific array fields for video_transition
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [prompts, setPrompts] = useState<string[]>([]);
+
+  // Get parameter specs for current operation
+  const paramSpecs = useMemo<ParamSpec[]>(() => {
+    if (!specs?.operation_specs) return [];
+    const opSpec = specs.operation_specs[operationType];
+    if (!opSpec?.parameters) return [];
+
+    // Filter out prompt and operation-specific array fields we handle separately
+    return opSpec.parameters.filter((p: any) =>
+      p.name !== 'prompt' &&
+      p.name !== 'image_urls' &&
+      p.name !== 'prompts'
+    );
+  }, [specs, operationType]);
+
+  // Check if operation requires special array fields
+  const needsArrayFields = operationType === 'video_transition';
+
+  function handleDynamicParamChange(name: string, value: any) {
+    setDynamicParams(prev => ({ ...prev, [name]: value }));
+  }
 
   async function onGenerate() {
     const p = prompt.trim();
-    if (operationType === 'text_to_video' && !p) return;
+
+    // Validation
+    if (operationType === 'text_to_video' && !p) {
+      setError('Prompt is required for text-to-video');
+      return;
+    }
+
+    if (operationType === 'image_to_video' && !dynamicParams.image_url) {
+      setError('Image URL is required for image-to-video');
+      return;
+    }
+
+    if (operationType === 'video_extend') {
+      if (!dynamicParams.video_url && !dynamicParams.original_video_id) {
+        setError('Either video URL or provider video ID is required');
+        return;
+      }
+    }
+
+    if (operationType === 'video_transition') {
+      const validImages = imageUrls.filter(s => s.trim());
+      const validPrompts = prompts.filter(s => s.trim());
+      if (!validImages.length || !validPrompts.length) {
+        setError('Both image URLs and prompts are required for video transition');
+        return;
+      }
+      if (validImages.length !== validPrompts.length) {
+        setError('Number of image URLs must match number of prompts');
+        return;
+      }
+    }
 
     setError(null);
-    pushPrompt(p);
+    if (p) pushPrompt(p);
     setGenerating(true);
+    setJobId(null);
 
     try {
-      // Build params
-      const params: Record<string, any> = { prompt: p };
-      if (operationType === 'image_to_video') {
-        if (!imageUrl.trim()) throw new Error('image_url is required');
-        params.image_url = imageUrl.trim();
-      } else if (operationType === 'video_extend') {
-        if (!videoUrl.trim() && !providerVideoId.trim()) throw new Error('Provide video_url or provider video id');
-        if (videoUrl.trim()) params.video_url = videoUrl.trim();
-        if (providerVideoId.trim()) params.original_video_id = providerVideoId.trim();
-      } else if (operationType === 'video_transition') {
-        const imgs = imageUrlsText.split(/\r?\n|,/) .map(s => s.trim()).filter(Boolean);
-        const pr = promptsText.split(/\r?\n|\|/) .map(s => s.trim()).filter(Boolean);
-        if (!imgs.length || !pr.length || imgs.length !== pr.length) throw new Error('Provide equal count image_urls and prompts');
-        params.image_urls = imgs;
-        params.prompts = pr;
+      // Build params - merge preset params, dynamic params, and operation-specific params
+      const params: Record<string, any> = {
+        prompt: p,
+        ...presetParams,
+        ...dynamicParams,
+      };
+
+      // Add array fields for video_transition
+      if (operationType === 'video_transition') {
+        params.image_urls = imageUrls.filter(s => s.trim());
+        params.prompts = prompts.filter(s => s.trim());
       }
 
-  const result = await generateAsset({ prompt: p, providerId, presetId, operationType, extraParams: params, presetParams });
+      const result = await generateAsset({
+        prompt: p,
+        providerId,
+        presetId,
+        operationType,
+        extraParams: params,
+        presetParams,
+      });
 
-      // Clear prompt on success
+      // Clear prompt and show job ID
       setPrompt('');
+      setJobId(result.job_id);
 
-      // We don't get asset_id immediately from /jobs create; just log and optionally
-      // redirect users later when job completes (WS/notifications to be wired).
       // eslint-disable-next-line no-console
       console.log('Generation job created:', result);
     } catch (err: any) {
@@ -96,19 +149,24 @@ export function QuickGenerateModule() {
   }
 
   const maxChars = resolvePromptLimit(providerId);
+  const canGenerate = operationType === 'text_to_video'
+    ? prompt.trim().length > 0
+    : true; // Other operations may not strictly require prompt
 
   return (
-    <div className="flex flex-col gap-3 h-full">
-      {/* Main content area */}
-      <div className="flex gap-3 items-start flex-1">
-        <div className="flex-1 flex flex-col gap-2">
-          <div className="flex gap-2 items-center text-xs">
-            <label className="text-neutral-500">Operation</label>
+    <div className="flex flex-col gap-3 h-full overflow-y-auto">
+      {/* Top controls */}
+      <div className="flex gap-3 items-start flex-shrink-0">
+        {/* Left column - Prompt and dynamic fields */}
+        <div className="flex-1 flex flex-col gap-3">
+          {/* Operation selector */}
+          <div className="flex gap-2 items-center">
+            <label className="text-xs text-neutral-500 font-medium">Operation</label>
             <select
               value={operationType}
               onChange={(e) => setOperationType(e.target.value as any)}
               disabled={generating}
-              className="p-1 border rounded bg-white dark:bg-neutral-900 text-xs"
+              className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50"
             >
               <option value="text_to_video">Text to Video</option>
               <option value="image_to_video">Image to Video</option>
@@ -117,98 +175,105 @@ export function QuickGenerateModule() {
               <option value="fusion">Fusion</option>
             </select>
           </div>
+
+          {/* Prompt input - canonical */}
           <PromptInput
             value={prompt}
             onChange={setPrompt}
             maxChars={maxChars}
             disabled={generating}
             variant="compact"
+            placeholder={`Describe what you want to generate (${operationType})…`}
           />
-          {operationType === 'image_to_video' && (
-            <input
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="image_url"
-              className="p-2 border rounded bg-white dark:bg-neutral-900 text-sm"
-              disabled={generating}
-            />
-          )}
-          {operationType === 'video_extend' && (
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="video_url (optional if provider id given)"
-                className="p-2 border rounded bg-white dark:bg-neutral-900 text-sm"
+
+          {/* Array fields for video_transition */}
+          {needsArrayFields && (
+            <div className="grid grid-cols-2 gap-3">
+              <ArrayFieldInput
+                value={imageUrls}
+                onChange={setImageUrls}
+                placeholder="Image URL"
+                label="Image URLs"
                 disabled={generating}
+                minItems={2}
               />
-              <input
-                value={providerVideoId}
-                onChange={(e) => setProviderVideoId(e.target.value)}
-                placeholder="provider original_video_id"
-                className="p-2 border rounded bg-white dark:bg-neutral-900 text-sm"
+              <ArrayFieldInput
+                value={prompts}
+                onChange={setPrompts}
+                placeholder="Prompt"
+                label="Prompts"
                 disabled={generating}
+                minItems={2}
               />
             </div>
           )}
-          {operationType === 'video_transition' && (
-            <div className="grid grid-cols-2 gap-2">
-              <textarea
-                value={imageUrlsText}
-                onChange={(e) => setImageUrlsText(e.target.value)}
-                placeholder="image_urls (one per line or comma-separated)"
-                className="p-2 border rounded bg-white dark:bg-neutral-900 text-sm min-h-[80px]"
+
+          {/* Dynamic parameter form based on operation_specs */}
+          {paramSpecs.length > 0 && (
+            <div className="border-t pt-3">
+              <DynamicParamForm
+                specs={paramSpecs}
+                values={dynamicParams}
+                onChange={handleDynamicParamChange}
                 disabled={generating}
-              />
-              <textarea
-                value={promptsText}
-                onChange={(e) => setPromptsText(e.target.value)}
-                placeholder="prompts (one per line, count must match images)"
-                className="p-2 border rounded bg-white dark:bg-neutral-900 text-sm min-h-[80px]"
-                disabled={generating}
+                operationType={operationType}
               />
             </div>
           )}
+
+          {/* Error display */}
           {error && (
             <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
               {error}
             </div>
           )}
+
+          {/* Job success */}
+          {jobId && (
+            <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded">
+              ✓ Job #{jobId} created successfully
+            </div>
+          )}
         </div>
 
-        <div className="w-64 flex flex-col gap-2">
-          <label className="text-xs text-neutral-500">Provider</label>
-          <select
-            value={providerId ?? ''}
-            onChange={(e) => setProvider(e.target.value || undefined)}
-            disabled={generating}
-            className="p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-          >
-            <option value="">Auto</option>
-            {providers.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+        {/* Right column - Provider and controls */}
+        <div className="w-64 flex-shrink-0 flex flex-col gap-3">
+          <div>
+            <label className="text-xs text-neutral-500 font-medium block mb-1">Provider</label>
+            <select
+              value={providerId ?? ''}
+              onChange={(e) => setProvider(e.target.value || undefined)}
+              disabled={generating}
+              className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
+            >
+              <option value="">Auto</option>
+              {providers.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
 
-          <label className="text-xs text-neutral-500">Preset</label>
-          <select
-            value={presetId ?? 'default'}
-            onChange={(e) => setPreset(e.target.value || undefined)}
-            disabled={generating}
-            className="p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-          >
-            {PRESET_OPTIONS.map(opt => (
-              <option key={opt.id} value={opt.id}>{opt.name}</option>
-            ))}
-          </select>
+          {/* Active preset display */}
+          {presetId && (
+            <div className="text-xs p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded">
+              <div className="font-medium text-blue-700 dark:text-blue-300">Preset: {presetId}</div>
+              {Object.keys(presetParams).length > 0 && (
+                <div className="mt-1 text-neutral-600 dark:text-neutral-400">
+                  {Object.entries(presetParams).map(([k, v]) => (
+                    <div key={k}>{k}: {String(v)}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={onGenerate}
-            disabled={generating || !prompt.trim()}
+            disabled={generating || !canGenerate}
             className={clsx(
-              'mt-2 py-2 px-4 rounded text-sm font-medium text-white transition-colors',
+              'py-2.5 px-4 rounded text-sm font-medium text-white transition-colors',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              generating || !prompt.trim()
+              generating || !canGenerate
                 ? 'bg-neutral-400'
                 : 'bg-blue-600 hover:bg-blue-700'
             )}
@@ -220,9 +285,9 @@ export function QuickGenerateModule() {
 
       {/* Recent prompts */}
       {recentPrompts.length > 0 && (
-        <div className="border-t pt-2">
-          <div className="text-xs text-neutral-500 mb-1">Recent prompts:</div>
-          <div className="flex gap-1 flex-wrap max-h-12 overflow-y-auto">
+        <div className="border-t pt-3 flex-shrink-0">
+          <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
+          <div className="flex gap-1 flex-wrap">
             {recentPrompts.slice(0, 5).map((p, i) => (
               <button
                 key={i}
