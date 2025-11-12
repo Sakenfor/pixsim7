@@ -42,7 +42,9 @@
       "Bash(cmd /c \"scripts\\manage.bat status\")",
       "Bash(export PYTHONPATH=/g/code/pixsim7)",
       "Bash(alembic upgrade:*)",
-      "Bash(alembic current:*)"
+      "Bash(alembic current:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
