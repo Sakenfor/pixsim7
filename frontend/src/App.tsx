@@ -10,6 +10,7 @@ import { AssetsRoute } from './routes/Assets';
 import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
+import { ControlCenterDock } from './components/control/ControlCenterDock';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -40,6 +41,8 @@ function App() {
   <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* Global bottom dock */}
+      <ControlCenterDock />
     </BrowserRouter>
   );
 }
