@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { PromptInput } from '../primitives/PromptInput';
 import { useProviders } from '../../hooks/useProviders';
 
 const PRESET_OPTIONS = [
@@ -129,14 +130,9 @@ export function ControlCenterDock() {
           >{pinned ? 'Pinned' : 'Pin'}</button>
         </div>
 
-        {/* Content: Quick Generate */}
+        {/* Content: Quick Generate (reuses canonical PromptInput) */}
         <div className="p-3 flex gap-3 items-start">
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Describe the video you want to generate…"
-            className="flex-1 min-h-[100px] p-2 border rounded bg-white dark:bg-neutral-900"
-          />
+          <PromptInput value={prompt} onChange={setPrompt} />
           <div className="w-64 flex flex-col gap-2">
             <label className="text-xs text-neutral-500">Provider</label>
             <select
