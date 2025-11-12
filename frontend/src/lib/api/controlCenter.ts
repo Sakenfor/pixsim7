@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { devValidateParams, devLogParams } from '../validation/devValidation';
 
 export interface GenerateAssetRequest {
   prompt: string;
@@ -22,16 +23,26 @@ export interface GenerateAssetResponse {
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
   // Align with backend /api/v1/jobs CreateJobRequest
+  const params = {
+    prompt: req.prompt,
+    preset_id: req.presetId,
+    ...(req.presetParams || {}),
+    ...(req.extraParams || {}),
+  };
+
   const body = {
     operation_type: req.operationType || 'text_to_video',
     provider_id: req.providerId || 'pixverse',
-    params: {
-      prompt: req.prompt,
-      preset_id: req.presetId,
-      ...(req.presetParams || {}),
-      ...(req.extraParams || {}),
-    },
+    params,
   };
+
+  // Optional dev validation (warnings only, doesn't block)
+  devValidateParams(
+    { kind: req.operationType || 'text_to_video', ...params },
+    'generateAsset'
+  );
+  devLogParams(params, `generateAsset(${req.operationType})`);
+
   const response = await apiClient.post<any>('/jobs', body);
   const job = response.data; // JobResponse
   return {

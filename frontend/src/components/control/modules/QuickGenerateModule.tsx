@@ -8,31 +8,23 @@ import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
 import { generateAsset } from '../../../lib/api/controlCenter';
 import { DynamicParamForm, type ParamSpec } from '../DynamicParamForm';
 import { ArrayFieldInput } from '../ArrayFieldInput';
+import { useJobsStore } from '../../../stores/jobsStore';
+import { JobStatusIndicator } from './JobStatusIndicator';
+import { ccSelectors } from '../../../stores/selectors';
 
 export function QuickGenerateModule() {
-  const {
-    operationType,
-    providerId,
-    presetId,
-    presetParams,
-    setProvider,
-    setOperationType,
-    generating,
-    setGenerating,
-    pushPrompt,
-    recentPrompts,
-  } = useControlCenterStore(s => ({
-    operationType: s.operationType,
-    providerId: s.providerId,
-    presetId: s.presetId,
-    presetParams: s.presetParams,
-    setProvider: s.setProvider,
-    setOperationType: s.setOperationType,
-    generating: s.generating,
-    setGenerating: s.setGenerating,
-    pushPrompt: s.pushPrompt,
-    recentPrompts: s.recentPrompts,
-  }));
+  // Use stable selectors to reduce re-renders
+  const operationType = useControlCenterStore(ccSelectors.operationType);
+  const providerId = useControlCenterStore(ccSelectors.providerId);
+  const presetId = useControlCenterStore(ccSelectors.presetId);
+  const presetParams = useControlCenterStore(ccSelectors.presetParams);
+  const generating = useControlCenterStore(ccSelectors.generating);
+  const recentPrompts = useControlCenterStore(ccSelectors.recentPrompts);
+
+  const setProvider = useControlCenterStore(s => s.setProvider);
+  const setOperationType = useControlCenterStore(s => s.setOperationType);
+  const setGenerating = useControlCenterStore(s => s.setGenerating);
+  const pushPrompt = useControlCenterStore(s => s.pushPrompt);
 
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
@@ -40,6 +32,8 @@ export function QuickGenerateModule() {
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<number | null>(null);
+  const setLastCreatedJob = useJobsStore(s => s.setLastCreatedJob);
+  const addOrUpdateJob = useJobsStore(s => s.addOrUpdateJob);
 
   // Dynamic params from operation_specs
   const [dynamicParams, setDynamicParams] = useState<Record<string, any>>({});
@@ -134,6 +128,27 @@ export function QuickGenerateModule() {
       // Clear prompt and show job ID
       setPrompt('');
       setJobId(result.job_id);
+      setLastCreatedJob(result.job_id);
+
+      // Seed store with initial job status (queued/pending)
+      // Pass originalParams for retry capability
+      addOrUpdateJob({
+        id: result.job_id,
+        user_id: 0, // unknown client-side until fetched
+        workspace_id: null,
+        operation_type: operationType,
+        provider_id: providerId || 'pixverse',
+        params: params,
+        status: result.status,
+        error_message: null,
+        retry_count: 0,
+        priority: 0,
+        parent_job_id: null,
+        scheduled_at: null,
+        created_at: new Date().toISOString(),
+        started_at: null,
+        completed_at: null,
+      } as any, params); // Pass params as originalParams
 
       // eslint-disable-next-line no-console
       console.log('Generation job created:', result);
@@ -228,10 +243,10 @@ export function QuickGenerateModule() {
             </div>
           )}
 
-          {/* Job success */}
+          {/* Job status indicator */}
           {jobId && (
-            <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded">
-              ✓ Job #{jobId} created successfully
+            <div>
+              <JobStatusIndicator jobId={jobId} />
             </div>
           )}
         </div>

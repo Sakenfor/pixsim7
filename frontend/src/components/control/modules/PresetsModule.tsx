@@ -2,6 +2,7 @@ import { useControlCenterStore } from '../../../stores/controlCenterStore';
 import clsx from 'clsx';
 import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
 import { useMemo } from 'react';
+import { ccSelectors } from '../../../stores/selectors';
 
 type PresetItem = {
   id: string;
@@ -146,21 +147,14 @@ const FALLBACK_PRESETS: PresetItem[] = [
 ];
 
 export function PresetsModule() {
-  const {
-    providerId,
-    operationType,
-    presetId,
-    setPreset,
-    setPresetParams,
-    setActiveModule,
-  } = useControlCenterStore(s => ({
-    providerId: s.providerId,
-    operationType: s.operationType,
-    presetId: s.presetId,
-    setPreset: s.setPreset,
-    setPresetParams: s.setPresetParams,
-    setActiveModule: s.setActiveModule,
-  }));
+  // Use stable selectors to reduce re-renders
+  const providerId = useControlCenterStore(ccSelectors.providerId);
+  const operationType = useControlCenterStore(ccSelectors.operationType);
+  const presetId = useControlCenterStore(ccSelectors.presetId);
+
+  const setPreset = useControlCenterStore(s => s.setPreset);
+  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
+  const setActiveModule = useControlCenterStore(s => s.setActiveModule);
 
   const { specs, loading, error } = useProviderSpecs(providerId);
 
