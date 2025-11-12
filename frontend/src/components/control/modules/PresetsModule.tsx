@@ -1,57 +1,74 @@
 import { useControlCenterStore } from '../../../stores/controlCenterStore';
 import clsx from 'clsx';
+import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
 
-// TODO: Replace with dynamic presets from provider operation_specs
-const STUB_PRESETS = [
-  {
-    id: 'cinematic',
-    name: 'Cinematic',
-    description: 'High quality, dramatic lighting, professional look',
-    providerId: 'pixverse',
-  },
-  {
-    id: 'fast-draft',
-    name: 'Fast Draft',
-    description: 'Quick generation for previews',
-    providerId: 'pixverse',
-  },
-  {
-    id: 'anime-style',
-    name: 'Anime Style',
-    description: 'Anime aesthetic and character design',
-    providerId: 'pixverse',
-  },
-  {
-    id: 'realistic',
-    name: 'Photorealistic',
-    description: 'Natural, lifelike rendering',
-    providerId: 'pixverse',
-  },
-];
+type PresetItem = { id: string; name: string; description?: string; params: Record<string, any> };
+
+function buildDynamicPresets(specs: any, operationType: string): PresetItem[] {
+  const op = specs?.operation_specs?.[operationType];
+  if (!op || !Array.isArray(op.parameters)) return [];
+  const params = op.parameters as Array<any>;
+  const getEnum = (name: string) => params.find(p => p.name === name && Array.isArray(p.enum))?.enum as string[] | undefined;
+  const qualities = getEnum('quality') || [];
+  const aspects = getEnum('aspect_ratio') || [];
+  const motions = getEnum('motion_mode') || [];
+
+  const presets: PresetItem[] = [];
+  const qPick = qualities.slice(0, 2).length ? qualities.slice(0, 2) : ['720p'];
+  const aPick = aspects.slice(0, 2).length ? aspects.slice(0, 2) : ['16:9'];
+  const mPick = motions.slice(0, 1).length ? motions.slice(0, 1) : [];
+
+  let idx = 0;
+  for (const q of qPick) {
+    for (const a of aPick) {
+      if (mPick.length) {
+        for (const m of mPick) {
+          presets.push({ id: `p_${idx++}`, name: `${q} • ${a} • ${m}`, params: { quality: q, aspect_ratio: a, motion_mode: m } });
+        }
+      } else {
+        presets.push({ id: `p_${idx++}`, name: `${q} • ${a}`, params: { quality: q, aspect_ratio: a } });
+      }
+    }
+  }
+  return presets;
+}
 
 export function PresetsModule() {
-  const { presetId, setPreset, setActiveModule } = useControlCenterStore(s => ({
+  const { providerId, operationType, presetId, setPreset, setPresetParams, setActiveModule } = useControlCenterStore(s => ({
+    providerId: s.providerId,
+    operationType: s.operationType,
     presetId: s.presetId,
     setPreset: s.setPreset,
+    setPresetParams: s.setPresetParams,
     setActiveModule: s.setActiveModule,
   }));
 
-  function selectPreset(id: string) {
-    setPreset(id);
-    // Switch back to quick generate module after selection
+  const { specs, loading, error } = useProviderSpecs(providerId);
+
+  const dynamicPresets = specs ? buildDynamicPresets(specs, operationType) : [];
+  const presets: PresetItem[] = dynamicPresets.length ? dynamicPresets : [
+    { id: 'fast-draft', name: 'Fast Draft', params: { quality: '360p' }, description: 'Quick preview' },
+    { id: 'cinematic', name: 'Cinematic', params: { quality: '1080p', aspect_ratio: '16:9' }, description: 'High quality cinematic' },
+  ];
+
+  function selectPreset(p: PresetItem) {
+    setPreset(p.id);
+    setPresetParams(p.params);
     setTimeout(() => setActiveModule('quickGenerate'), 200);
   }
 
   return (
     <div className="p-4">
       <div className="mb-3 text-sm text-neutral-600 dark:text-neutral-400">
-        Select a preset to configure your generation settings
+        {providerId ? 'Select a preset to configure your generation settings' : 'Select a provider in Generate tab to see presets'}
       </div>
+      {loading && <div className="text-xs text-neutral-500">Loading presets…</div>}
+      {error && <div className="text-xs text-red-600">{error}</div>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {STUB_PRESETS.map(preset => (
+        {presets.map(preset => (
           <button
             key={preset.id}
-            onClick={() => selectPreset(preset.id)}
+            onClick={() => selectPreset(preset)}
             className={clsx(
               'flex flex-col items-start gap-1 p-3 rounded-lg text-left',
               'border',
@@ -70,17 +87,20 @@ export function PresetsModule() {
                 <span className="text-xs text-blue-600 dark:text-blue-400">✓ Selected</span>
               )}
             </div>
-            <span className="text-xs text-neutral-600 dark:text-neutral-400">
-              {preset.description}
-            </span>
+            {preset.description && (
+              <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                {preset.description}
+              </span>
+            )}
             <span className="text-xs text-neutral-500 dark:text-neutral-500">
-              Provider: {preset.providerId}
+              {/* Show params preview */}
+              {Object.entries(preset.params).map(([k, v]) => `${k}: ${v}`).join(', ')}
             </span>
           </button>
         ))}
       </div>
       <div className="mt-3 text-xs text-neutral-500">
-        TODO: Load presets dynamically from provider operation_specs
+        {dynamicPresets.length ? 'Presets derived from provider operation_specs.' : 'Using fallback presets. Operation specs unavailable.'}
       </div>
     </div>
   );

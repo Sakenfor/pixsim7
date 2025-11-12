@@ -4,6 +4,9 @@ export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
   presetId?: string;
+  operationType?: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
+  extraParams?: Record<string, any>;
+  presetParams?: Record<string, any>;
 }
 
 export interface GenerateAssetResponse {
@@ -20,11 +23,13 @@ export interface GenerateAssetResponse {
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
   // Align with backend /api/v1/jobs CreateJobRequest
   const body = {
-    operation_type: 'text_to_video',
+    operation_type: req.operationType || 'text_to_video',
     provider_id: req.providerId || 'pixverse',
     params: {
       prompt: req.prompt,
       preset_id: req.presetId,
+      ...(req.presetParams || {}),
+      ...(req.extraParams || {}),
     },
   };
   const response = await apiClient.post<any>('/jobs', body);

@@ -53,6 +53,19 @@ What to build/improve:
    - Render a compact recent prompts history with click-to-restore. Keep last 20.
 
 9) Testing & docs
+
+10) Dynamic presets (wired)
+   - Implemented a basic dynamic preset derivation using provider `operation_specs` enums (quality, aspect_ratio, motion_mode).
+   - Selecting a preset stores `presetId` and `presetParams` in the control center store.
+   - Fallback presets used if specs are unavailable.
+
+11) Multi-operation scaffolding (Pixverse)
+   - Operation selector added to Quick Generate (text_to_video, image_to_video, video_extend, video_transition, fusion).
+   - Minimal additional fields:
+     - image_to_video: image_url
+     - video_extend: video_url and/or original_video_id
+     - video_transition: image_urls and prompts (one per line)
+   - These fields are passed to /jobs params; Claude should polish the UI, validation, and alignment with operation_specs param groups.
    - Add Storybook stories for ControlCenterDock with different states (open/pinned/loading).
    - Update README or a short usage guide if needed.
 
