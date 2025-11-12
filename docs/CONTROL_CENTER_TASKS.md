@@ -41,14 +41,18 @@ What to build/improve:
      - Show loading state; disable inputs while generating.
    - Add basic validation and error handling (toast or inline message).
 
-6) Resizing & layout
+6) Provider-specific prompt limits
+   - The dock now uses `resolvePromptLimit(providerId)` with a hardcoded map (Pixverse=2048) and default from `config/prompt.ts`.
+   - TODO: Replace with dynamic values derived from provider `operation_specs` once exposed on the backend.
+
+7) Resizing & layout
    - Improve resize handle hit area and add keyboard resizing (e.g., alt+arrow).
    - Ensure min/max heights feel good and don’t interfere with route content on small screens.
 
-7) Persistence & recent prompts
+8) Persistence & recent prompts
    - Render a compact recent prompts history with click-to-restore. Keep last 20.
 
-8) Testing & docs
+9) Testing & docs
    - Add Storybook stories for ControlCenterDock with different states (open/pinned/loading).
    - Update README or a short usage guide if needed.
 
