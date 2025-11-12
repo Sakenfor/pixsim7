@@ -1,0 +1,8 @@
+# Keep data directory structure
+
+# Subdirectories:
+# - postgres/   - PostgreSQL database files
+# - redis/      - Redis persistence files
+# - storage/    - User uploads and generated videos
+# - logs/       - Application logs (JSON format)
+# - cache/      - Temporary cache files

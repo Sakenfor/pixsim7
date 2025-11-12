@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    #image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
+    container_name: pixsim7-db
+    environment:
+      POSTGRES_DB: pixsim7
+      POSTGRES_USER: pixsim
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pixsim123}
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"  # Configurable, default 5434
+    volumes:
+      # All PostgreSQL data in ./data/postgres
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixsim -d pixsim7"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis (Cache + Queue)
+  redis:
+    image: redis:7-alpine
+    container_name: pixsim7-redis
+    ports:
+      - "${REDIS_PORT:-6380}:6379"  # Configurable, default 6380
+    volumes:
+      # All Redis data in ./data/redis
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./pixsim7_backend
+      dockerfile: Dockerfile
+    container_name: pixsim7-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      DEBUG: ${DEBUG:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${BACKEND_INTERNAL_PORT:-8000}
+      PYTHONPATH: /app
+      ZEROTIER_NETWORK: ${ZEROTIER_NETWORK:-10.243.0.0/16}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    ports:
+      - "${BACKEND_PORT:-8001}:${BACKEND_INTERNAL_PORT:-8000}"  # Configurable, default 8001:8000
+    volumes:
+      # Code for hot-reload
+      - ./pixsim7_backend:/app/pixsim7_backend
+      # All application data in ./data
+      - ./data/storage:/app/storage  # User uploads, generated videos
+      - ./data/logs:/app/logs        # Application logs
+      - ./data/cache:/app/cache      # Any cache files
+    command: uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ARQ Worker (Background Jobs)
+  worker:
+    build:
+      context: ./pixsim7_backend
+      dockerfile: Dockerfile
+    container_name: pixsim7-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://pixsim:${DB_PASSWORD:-pixsim123}@postgres:5432/pixsim7
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
+      ARQ_MAX_JOBS: ${ARQ_MAX_JOBS:-10}
+      ARQ_JOB_TIMEOUT: ${ARQ_JOB_TIMEOUT:-3600}
+      ARQ_MAX_TRIES: ${ARQ_MAX_TRIES:-3}
+    volumes:
+      # Code for hot-reload
+      - ./pixsim7_backend:/app/pixsim7_backend
+      # All application data in ./data (shared with backend)
+      - ./data/storage:/app/storage  # User uploads, generated videos
+      - ./data/logs:/app/logs        # Application logs
+      - ./data/cache:/app/cache      # Any cache files
+    command: arq pixsim7_backend.workers.arq_worker.WorkerSettings
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Admin Panel (Web UI)
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: pixsim7-admin
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8001/api/v1}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8001/ws}
+    ports:
+      - "${ADMIN_PORT:-8002}:5173"  # Configurable, default 8002
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,188 @@
+"""
+Application configuration using Pydantic Settings
+
+Clean configuration for PixSim7 - simplified from PixSim6
+"""
+from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator
+import os
+
+
+class Settings(BaseSettings):
+    """
+    Application settings with environment variable support
+
+    Usage:
+        from shared.config import settings
+        print(settings.database_url)
+
+    Environment variables:
+        DATABASE_URL, REDIS_URL, SECRET_KEY, etc.
+    """
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra='allow'  # Allow extra fields from .env
+    )
+
+    # ===== DATABASE =====
+    database_url: str = Field(
+        default="postgresql://pixsim:pixsim123@localhost:5434/pixsim7",
+        description="PostgreSQL connection URL"
+    )
+
+    # ===== REDIS =====
+    redis_url: str = Field(
+        default="redis://localhost:6380/0",
+        description="Redis connection URL (cache + queue)"
+    )
+
+    # ===== SECURITY =====
+    secret_key: str = Field(
+        default="change-this-in-production",
+        description="Secret key for JWT and signed URLs"
+    )
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_days: int = 30
+    
+    # Session policy: strict requires DB session record, stateless accepts any valid JWT
+    jwt_require_session: bool = Field(
+        default=True,
+        description="If True, verify_token requires a session record in DB (strict mode). If False, any valid JWT is accepted (stateless mode)."
+    )
+
+    # ===== CORS =====
+    cors_origins: str | List[str] = Field(
+        default=[
+            "http://localhost:5173",  # SvelteKit default
+            "http://localhost:5174",
+            "http://localhost:8001",  # Backend API docs
+            "http://localhost:8002",  # Admin panel
+        ],
+        description="Allowed CORS origins"
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """
+        Parse CORS_ORIGINS from environment variable
+
+        Examples:
+            CORS_ORIGINS="*"  # Allow all (dev only!)
+            CORS_ORIGINS="http://localhost:3000,https://app.example.com"
+
+        ZeroTier network (10.243.*.*) is automatically added
+        """
+        # Handle string input (from env var or direct)
+        if isinstance(v, str):
+            if v == "*":
+                origins = ["*"]
+            else:
+                origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            origins = v
+        else:
+            origins = []
+
+        # Add ZeroTier network origins
+        zerotier_network = os.getenv("ZEROTIER_NETWORK", "10.243.0.0/16")
+        if zerotier_network:
+            # Parse CIDR to get network prefix
+            network_prefix = zerotier_network.split("/")[0].rsplit(".", 1)[0]  # e.g., "10.243.0"
+
+            # Add common ZeroTier origins
+            # Users can override with specific IPs via CORS_ORIGINS
+            zerotier_origins = [
+                f"http://{network_prefix}.48.125:8001",  # Your server
+                f"http://{network_prefix}.48.125:8002",  # Admin panel
+            ]
+            origins.extend(zerotier_origins)
+
+        return origins
+
+    # ===== APP =====
+    debug: bool = Field(
+        default=True,
+        description="Debug mode (disable in production!)"
+    )
+    api_title: str = "PixSim7 API"
+    api_version: str = "0.1.0"
+
+    # ===== NETWORK =====
+    host: str = Field(
+        default="0.0.0.0",
+        description="Host to bind to (0.0.0.0 for all interfaces)"
+    )
+    port: int = Field(
+        default=8001,
+        description="Port to bind to"
+    )
+    zerotier_network: str = Field(
+        default="10.243.0.0/16",
+        description="ZeroTier network CIDR (for CORS/access control)"
+    )
+
+    # ===== LIMITS =====
+    max_jobs_per_user: int = Field(
+        default=10,
+        description="Max concurrent jobs per user"
+    )
+    max_accounts_per_user: int = Field(
+        default=5,
+        description="Max provider accounts per user"
+    )
+
+    # ===== WORKER (ARQ) =====
+    arq_max_jobs: int = Field(
+        default=10,
+        description="Max concurrent jobs per worker"
+    )
+    arq_job_timeout: int = Field(
+        default=3600,
+        description="Job timeout in seconds (1 hour)"
+    )
+    arq_max_tries: int = Field(
+        default=3,
+        description="Max retry attempts"
+    )
+
+    # ===== STORAGE =====
+    storage_base_path: str = Field(
+        default="./storage",
+        description="Base path for local file storage"
+    )
+    max_file_size_mb: int = Field(
+        default=500,
+        description="Max file size for uploads (MB)"
+    )
+
+    # ===== PROVIDERS =====
+    pixverse_timeout: int = Field(
+        default=300,
+        description="Pixverse API timeout (seconds)"
+    )
+    provider_poll_interval: int = Field(
+        default=10,
+        description="Status polling interval (seconds)"
+    )
+
+    # ===== LOGGING =====
+    log_level: str = Field(
+        default="INFO",
+        description="Logging level: DEBUG, INFO, WARNING, ERROR"
+    )
+
+    @property
+    def async_database_url(self) -> str:
+        """Convert sync database URL to async (asyncpg)"""
+        return self.database_url.replace(
+            "postgresql://",
+            "postgresql+asyncpg://"
+        )
+
+
+# Global settings instance
+settings = Settings()

@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+# Images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.mov binary
+
+# Lock files should keep LF/CRLF as is
+package-lock.json -text
+pnpm-lock.yaml -text
+yarn.lock -text

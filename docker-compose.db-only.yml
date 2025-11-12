@@ -1,0 +1,40 @@
+# Docker only for databases - run backend/worker manually
+# All data stored in ./data folder
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: pixsim7-db
+    environment:
+      POSTGRES_DB: pixsim7
+      POSTGRES_USER: pixsim
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pixsim123}
+    ports:
+      - "${POSTGRES_PORT:-5435}:5432"
+    volumes:
+      # Store PostgreSQL data in /data/postgres
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixsim -d pixsim7"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis (Cache + Queue)
+  redis:
+    image: redis:7-alpine
+    container_name: pixsim7-redis
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      # Store Redis data in /data/redis
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

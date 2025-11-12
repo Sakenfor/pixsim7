@@ -1,0 +1,88 @@
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { authService } from '../lib/auth/authService';
+import { useAuthStore } from '../stores/authStore';
+
+export function Login() {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const navigate = useNavigate();
+  const setUser = useAuthStore((state) => state.setUser);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await authService.login({ username, password });
+      setUser(response.user);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '400px', margin: '100px auto', padding: '20px' }}>
+      <h1>Login to PixSim7</h1>
+
+      {error && (
+        <div style={{ padding: '10px', background: '#fee', color: '#c00', marginBottom: '20px', borderRadius: '4px' }}>
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            style={{ width: '100%', padding: '8px', fontSize: '14px' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: '15px' }}>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={{ width: '100%', padding: '8px', fontSize: '14px' }}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: '16px',
+          }}
+        >
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
+
+      <p style={{ marginTop: '20px', textAlign: 'center' }}>
+        Don't have an account? <Link to="/register">Register</Link>
+      </p>
+    </div>
+  );
+}
