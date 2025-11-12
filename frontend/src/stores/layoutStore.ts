@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export type PanelType = 'gallery' | 'scene' | 'graph' | 'player' | 'console';
 
@@ -76,7 +77,9 @@ const presets: Record<string, { panels: PanelInstance[]; root: SplitNode }> = {
   }
 };
 
-export const useLayoutStore = create<LayoutState & LayoutActions>((set, get) => ({
+export const useLayoutStore = create<LayoutState & LayoutActions>()(
+  persist(
+  (set) => ({
   panels: {},
   root: null,
   activePanelId: undefined,
@@ -94,20 +97,9 @@ export const useLayoutStore = create<LayoutState & LayoutActions>((set, get) => 
   },
   setActive: (panelId) => set({ activePanelId: panelId }),
 
-  load: () => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed.panels && parsed.root) {
-        set({ panels: parsed.panels, root: parsed.root, activePanelId: parsed.activePanelId });
-      }
-    } catch {}
-  },
-  save: () => {
-    const s = get();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ panels: s.panels, root: s.root, activePanelId: s.activePanelId }));
-  },
+  // With persist, load/save are effectively no-ops kept for API compatibility
+  load: () => {},
+  save: () => {},
   reset: () => set({ panels: {}, root: null, activePanelId: undefined }),
   applyPreset: (name) => {
     const p = presets[name];
@@ -116,4 +108,11 @@ export const useLayoutStore = create<LayoutState & LayoutActions>((set, get) => 
     p.panels.forEach((pn) => { map[pn.id] = pn; });
     set({ panels: map, root: p.root, activePanelId: p.panels[0]?.id });
   },
-}));
+    }),
+    {
+      name: STORAGE_KEY,
+      partialize: (s) => ({ panels: s.panels, root: s.root, activePanelId: s.activePanelId }),
+      version: 1,
+    }
+  )
+);

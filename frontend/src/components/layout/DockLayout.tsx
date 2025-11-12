@@ -15,8 +15,10 @@ function renderPanel(panelId: string) {
   return <div className="p-3 text-sm text-neutral-500">Unknown panel {panelId}</div>;
 }
 
-function NodeRenderer({ node }: { node: SplitNode }) {
+function NodeRenderer({ node, path }: { node: SplitNode; path: number[] }) {
   const layout = useLayoutStore();
+  const setRoot = useLayoutStore(s => s.setRoot);
+  const save = useLayoutStore(s => s.save);
   if (node.kind === 'panel') {
     const p = layout.panels[node.panelId];
     return (
@@ -25,10 +27,24 @@ function NodeRenderer({ node }: { node: SplitNode }) {
       </PanelChrome>
     );
   }
+  function updateSizes(next: number[]) {
+    // Clone tree and apply new sizes at current path
+    const cloned = structuredClone(layout.root);
+    if (!cloned) return;
+    let cursor: any = cloned;
+    for (const idx of path) {
+      cursor = cursor.children[idx];
+    }
+    if (cursor && cursor.kind === 'split') {
+      cursor.sizes = next;
+      setRoot(cloned as any);
+      save();
+    }
+  }
   return (
-    <ResizableSplit direction={node.direction} sizes={node.sizes}>
+    <ResizableSplit direction={node.direction} sizes={node.sizes} onSizesChange={updateSizes}>
       {node.children.map((child, i) => (
-        <NodeRenderer key={i} node={child} />
+        <NodeRenderer key={i} node={child} path={[...path, i]} />
       ))}
     </ResizableSplit>
   );
@@ -37,5 +53,5 @@ function NodeRenderer({ node }: { node: SplitNode }) {
 export function DockLayout() {
   const root = useLayoutStore(s => s.root);
   if (!root) return <div className="p-4 text-sm text-neutral-500">No layout. Choose a preset.</div>;
-  return <NodeRenderer node={root} />;
+  return <NodeRenderer node={root} path={[]} />;
 }
