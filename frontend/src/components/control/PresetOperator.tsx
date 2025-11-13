@@ -10,11 +10,19 @@ import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 
 export type AssetType = 'image' | 'video';
 export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
+export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
 
 export interface TimelineAsset {
   id: string;
   type: AssetType;
-  url: string;
+
+  // Source can be URL, existing asset, or paused frame
+  sourceType: AssetSourceType;
+  url?: string;                    // When sourceType === 'url'
+  assetId?: number;                // When sourceType === 'asset' or 'paused_frame'
+  pauseTimestamp?: number;         // When sourceType === 'paused_frame'
+  frameNumber?: number;            // Optional frame number for paused frames
+
   prompt?: string;
   duration?: number; // For timeline positioning (in seconds)
   thumbnail?: string;
@@ -100,9 +108,23 @@ function AssetCard({
         </button>
       </div>
 
+      {/* Source type selector */}
+      <div className="mb-3">
+        <label className="text-xs text-neutral-500 font-medium block mb-1">Source</label>
+        <select
+          value={asset.sourceType}
+          onChange={(e) => onChange({ ...asset, sourceType: e.target.value as AssetSourceType })}
+          className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+        >
+          <option value="url">URL</option>
+          <option value="asset">Existing Asset</option>
+          <option value="paused_frame">Paused Video Frame</option>
+        </select>
+      </div>
+
       {/* Type selector */}
       <div className="mb-3">
-        <label className="text-xs text-neutral-500 font-medium block mb-1">Type</label>
+        <label className="text-xs text-neutral-500 font-medium block mb-1">Media Type</label>
         <select
           value={asset.type}
           onChange={(e) => onChange({ ...asset, type: e.target.value as AssetType })}
@@ -128,17 +150,77 @@ function AssetCard({
         </div>
       )}
 
-      {/* URL input */}
-      <div className="mb-3">
-        <label className="text-xs text-neutral-500 font-medium block mb-1">URL</label>
-        <input
-          type="text"
-          value={asset.url}
-          onChange={(e) => onChange({ ...asset, url: e.target.value })}
-          placeholder="https://example.com/asset.jpg"
-          className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
-        />
-      </div>
+      {/* URL input (when sourceType === 'url') */}
+      {asset.sourceType === 'url' && (
+        <div className="mb-3">
+          <label className="text-xs text-neutral-500 font-medium block mb-1">URL</label>
+          <input
+            type="text"
+            value={asset.url || ''}
+            onChange={(e) => onChange({ ...asset, url: e.target.value })}
+            placeholder="https://example.com/asset.jpg"
+            className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+          />
+        </div>
+      )}
+
+      {/* Asset ID input (when sourceType === 'asset') */}
+      {asset.sourceType === 'asset' && (
+        <div className="mb-3">
+          <label className="text-xs text-neutral-500 font-medium block mb-1">Asset ID</label>
+          <input
+            type="number"
+            value={asset.assetId || ''}
+            onChange={(e) => onChange({ ...asset, assetId: parseInt(e.target.value) || undefined })}
+            placeholder="123"
+            className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+          />
+          <span className="text-xs text-neutral-500 mt-1 block">
+            Enter an existing asset ID from your library
+          </span>
+        </div>
+      )}
+
+      {/* Paused frame inputs (when sourceType === 'paused_frame') */}
+      {asset.sourceType === 'paused_frame' && (
+        <>
+          <div className="mb-3">
+            <label className="text-xs text-neutral-500 font-medium block mb-1">Video Asset ID</label>
+            <input
+              type="number"
+              value={asset.assetId || ''}
+              onChange={(e) => onChange({ ...asset, assetId: parseInt(e.target.value) || undefined })}
+              placeholder="123"
+              className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+            />
+          </div>
+          <div className="mb-3">
+            <label className="text-xs text-neutral-500 font-medium block mb-1">Timestamp (seconds)</label>
+            <input
+              type="number"
+              value={asset.pauseTimestamp || ''}
+              onChange={(e) => onChange({ ...asset, pauseTimestamp: parseFloat(e.target.value) || undefined })}
+              placeholder="10.5"
+              step="0.1"
+              min="0"
+              className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+            />
+            <span className="text-xs text-neutral-500 mt-1 block">
+              Frame will be extracted at this timestamp
+            </span>
+          </div>
+          <div className="mb-3">
+            <label className="text-xs text-neutral-500 font-medium block mb-1">Frame Number (optional)</label>
+            <input
+              type="number"
+              value={asset.frameNumber || ''}
+              onChange={(e) => onChange({ ...asset, frameNumber: parseInt(e.target.value) || undefined })}
+              placeholder="315"
+              className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+            />
+          </div>
+        </>
+      )}
 
       {/* Name input (optional) */}
       <div className="mb-3">
@@ -183,7 +265,7 @@ function AssetCard({
       )}
 
       {/* Thumbnail preview (if URL is set) */}
-      {asset.url && asset.type === 'image' && (
+      {asset.sourceType === 'url' && asset.url && asset.type === 'image' && (
         <div className="mt-3 border rounded overflow-hidden">
           <img
             src={asset.url}
@@ -194,6 +276,18 @@ function AssetCard({
               e.currentTarget.className = 'w-full h-24 bg-neutral-100 dark:bg-neutral-800';
             }}
           />
+        </div>
+      )}
+
+      {/* Asset/Frame indicator */}
+      {asset.sourceType === 'asset' && asset.assetId && (
+        <div className="mt-3 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 p-2 rounded">
+          Using asset #{asset.assetId}
+        </div>
+      )}
+      {asset.sourceType === 'paused_frame' && asset.assetId && asset.pauseTimestamp !== undefined && (
+        <div className="mt-3 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 p-2 rounded">
+          Frame from video #{asset.assetId} at {asset.pauseTimestamp.toFixed(2)}s
         </div>
       )}
     </div>
@@ -333,14 +427,16 @@ export function PresetOperator({
         (_, i) => ({
           id: `asset-${Date.now()}-${i}`,
           type: 'image',
+          sourceType: 'url' as AssetSourceType,
           url: '',
           prompt: '',
           duration: operationConfig.supportsTimeline ? 5 : undefined,
+          fusionType: operationConfig.isFusion ? 'character' : undefined,
         })
       );
       setAssets(initialAssets);
     }
-  }, [assets.length, operationConfig.minAssets, operationConfig.supportsTimeline]);
+  }, [assets.length, operationConfig.minAssets, operationConfig.supportsTimeline, operationConfig.isFusion]);
 
   // Reset params when preset changes
   useEffect(() => {
@@ -356,6 +452,7 @@ export function PresetOperator({
     const newAsset: TimelineAsset = {
       id: `asset-${Date.now()}`,
       type: 'image',
+      sourceType: 'url' as AssetSourceType,
       url: '',
       prompt: '',
       duration: operationConfig.supportsTimeline ? 5 : undefined,

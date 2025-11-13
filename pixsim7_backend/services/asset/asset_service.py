@@ -679,3 +679,180 @@ class AssetService:
         await self.db.refresh(asset)
 
         return asset
+
+    # ===== HASH-BASED DEDUPLICATION =====
+
+    async def find_asset_by_hash(
+        self,
+        sha256: str,
+        user_id: int
+    ) -> Optional[Asset]:
+        """
+        Find asset by SHA256 hash (for deduplication).
+
+        Args:
+            sha256: SHA256 hash to search for
+            user_id: User ID (scoped to user's assets)
+
+        Returns:
+            Existing asset if found, None otherwise
+
+        Example:
+            >>> existing = await asset_service.find_asset_by_hash(sha256, user.id)
+            >>> if existing:
+            >>>     # Reuse existing asset, update last_accessed_at
+            >>>     existing.last_accessed_at = datetime.utcnow()
+        """
+        result = await self.db.execute(
+            select(Asset).where(
+                Asset.sha256 == sha256,
+                Asset.user_id == user_id
+            )
+        )
+        asset = result.scalar_one_or_none()
+
+        if asset:
+            # Update last accessed time for LRU tracking
+            asset.last_accessed_at = datetime.utcnow()
+            await self.db.commit()
+
+        return asset
+
+    # ===== PAUSED FRAME EXTRACTION =====
+
+    async def create_asset_from_paused_frame(
+        self,
+        video_asset_id: int,
+        user: User,
+        timestamp: float,
+        frame_number: Optional[int] = None
+    ) -> Asset:
+        """
+        Extract a frame from video and create image asset with deduplication.
+
+        Workflow:
+        1. Get video asset and authorize access
+        2. Download video locally if needed
+        3. Extract frame at timestamp using ffmpeg
+        4. Compute SHA256 hash
+        5. Check for existing asset with same hash (deduplication!)
+        6. If exists: return existing, update usage tracking
+        7. If new: create asset + lineage link to parent video
+
+        Args:
+            video_asset_id: Source video asset ID
+            user: Requesting user
+            timestamp: Time in seconds to extract frame
+            frame_number: Optional frame number for metadata
+
+        Returns:
+            Image asset (either existing or newly created)
+
+        Raises:
+            ResourceNotFoundError: Video asset not found
+            InvalidOperationError: Not authorized or extraction failed
+
+        Example:
+            >>> # User pauses video #123 at 10.5 seconds
+            >>> frame_asset = await asset_service.create_asset_from_paused_frame(
+            >>>     video_asset_id=123,
+            >>>     user=current_user,
+            >>>     timestamp=10.5,
+            >>>     frame_number=315
+            >>> )
+            >>> # Returns existing asset if frame was previously extracted
+        """
+        from pixsim7_backend.services.asset.frame_extractor import extract_frame_with_metadata
+        from pixsim7_backend.domain.asset_lineage import AssetLineage
+        from pixsim7_backend.domain.relation_types import PAUSED_FRAME
+
+        # Get video asset with authorization
+        video_asset = await self.get_asset_for_user(video_asset_id, user)
+
+        if video_asset.media_type != MediaType.VIDEO:
+            raise InvalidOperationError("Source asset must be a video")
+
+        # Ensure video is downloaded locally
+        if not video_asset.local_path or not os.path.exists(video_asset.local_path):
+            # Download video
+            video_asset = await self.sync_asset(video_asset_id, user, include_embedded=False)
+
+        # Extract frame with metadata
+        frame_path, sha256, width, height = extract_frame_with_metadata(
+            video_asset.local_path,
+            timestamp,
+            frame_number
+        )
+
+        try:
+            # Check for existing asset with same hash (deduplication)
+            existing = await self.find_asset_by_hash(sha256, user.id)
+
+            if existing:
+                # Asset already exists - return it, cleanup temp frame
+                os.remove(frame_path)
+                return existing
+
+            # Create new image asset
+            file_size = os.path.getsize(frame_path)
+
+            # Determine storage path
+            storage_root = os.path.join("data", "storage", "user", str(user.id), "assets")
+            os.makedirs(storage_root, exist_ok=True)
+
+            # Move frame to permanent storage
+            frame_filename = f"frame_{video_asset_id}_{timestamp:.2f}s.jpg"
+            permanent_path = os.path.join(storage_root, frame_filename)
+
+            # Move file (or copy if cross-device)
+            import shutil
+            shutil.move(frame_path, permanent_path)
+
+            # Create asset record
+            asset = Asset(
+                user_id=user.id,
+                media_type=MediaType.IMAGE,
+                provider_id=video_asset.provider_id,  # Inherit from parent
+                provider_asset_id=f"{video_asset.provider_asset_id}_frame_{timestamp:.2f}",
+                provider_account_id=video_asset.provider_account_id,
+                remote_url=f"file://{permanent_path}",  # Local file URL
+                local_path=permanent_path,
+                sha256=sha256,
+                width=width,
+                height=height,
+                file_size_bytes=file_size,
+                mime_type="image/jpeg",
+                sync_status=SyncStatus.DOWNLOADED,  # Already local
+                description=f"Frame from video at {timestamp:.2f}s",
+                created_at=datetime.utcnow(),
+            )
+
+            self.db.add(asset)
+            await self.db.commit()
+            await self.db.refresh(asset)
+
+            # Create lineage link: child=frame_asset, parent=video_asset
+            lineage = AssetLineage(
+                child_asset_id=asset.id,
+                parent_asset_id=video_asset.id,
+                relation_type=PAUSED_FRAME,
+                operation_type=OperationType.IMAGE_TO_VIDEO,  # Reverse direction for UI
+                parent_start_time=timestamp,
+                parent_frame=frame_number,
+                sequence_order=0,
+            )
+
+            self.db.add(lineage)
+            await self.db.commit()
+
+            # Update user storage
+            storage_gb = file_size / (1024 ** 3)
+            await self.users.increment_storage(user, storage_gb)
+
+            return asset
+
+        except Exception as e:
+            # Cleanup on error
+            if os.path.exists(frame_path):
+                os.remove(frame_path)
+            raise InvalidOperationError(f"Failed to create asset from paused frame: {e}")

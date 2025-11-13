@@ -12,7 +12,8 @@ from pixsim7_backend.shared.schemas.asset_schemas import (
 from pixsim7_backend.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7_backend.shared.errors import ResourceNotFoundError
 import os, tempfile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional
 from pixsim7_backend.services.asset.asset_factory import add_asset
 
 router = APIRouter()
@@ -233,3 +234,71 @@ async def upload_asset_to_provider(
             os.unlink(tmp_path)
         except Exception:
             pass
+
+
+# ===== FRAME EXTRACTION =====
+
+class ExtractFrameRequest(BaseModel):
+    """Request to extract frame from video"""
+    video_asset_id: int = Field(description="Source video asset ID")
+    timestamp: float = Field(description="Time in seconds to extract frame", ge=0)
+    frame_number: Optional[int] = Field(None, description="Optional frame number for metadata")
+
+
+@router.post("/assets/extract-frame", response_model=AssetResponse)
+async def extract_frame(
+    request: ExtractFrameRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Extract frame from video at specific timestamp
+
+    Creates a new image asset with automatic deduplication:
+    - If frame was previously extracted (same SHA256), returns existing asset
+    - Otherwise creates new asset and links to parent video via lineage
+
+    The extracted frame will have:
+    - media_type: IMAGE
+    - lineage link to parent video with PAUSED_FRAME relation
+    - SHA256 hash for deduplication
+    - Local storage (already downloaded)
+
+    Example request:
+    ```json
+    {
+      "video_asset_id": 123,
+      "timestamp": 10.5,
+      "frame_number": 315
+    }
+    ```
+
+    Returns:
+    - Image asset (either existing or newly created)
+    - Asset includes lineage link to parent video via AssetLineage
+    """
+    try:
+        frame_asset = await asset_service.create_asset_from_paused_frame(
+            video_asset_id=request.video_asset_id,
+            user=user,
+            timestamp=request.timestamp,
+            frame_number=request.frame_number
+        )
+
+        return AssetResponse.model_validate(frame_asset)
+
+    except ResourceNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video asset {request.video_asset_id} not found"
+        )
+    except InvalidOperationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to extract frame: {str(e)}"
+        )

@@ -4,16 +4,24 @@ import { persist } from 'zustand/middleware';
 export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'none';
 
 export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
+export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
 
 export type TimelineAsset = {
   id: string;
   type: 'image' | 'video';
-  url: string;
+
+  // Source can be URL, existing asset, or paused frame
+  sourceType: AssetSourceType;
+  url?: string;                    // When sourceType === 'url'
+  assetId?: number;                // When sourceType === 'asset' or 'paused_frame'
+  pauseTimestamp?: number;         // When sourceType === 'paused_frame'
+  frameNumber?: number;            // Optional frame number for paused frames
+
   prompt?: string;
   duration?: number;
   thumbnail?: string;
   name?: string;
-  fusionType?: FusionAssetType; // For fusion operations
+  fusionType?: FusionAssetType;    // For fusion operations
 };
 
 export interface ControlCenterState {
