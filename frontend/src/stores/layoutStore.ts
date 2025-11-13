@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type PanelType = 'gallery' | 'scene' | 'graph' | 'player' | 'console';
+export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game';
 
 export type PanelInstance = {
   id: string;
@@ -29,7 +29,7 @@ export type LayoutActions = {
   load: () => void;
   save: () => void;
   reset: () => void;
-  applyPreset: (name: 'galleryLeft' | 'galleryRight' | 'fullscreenGallery' | 'sceneBelow') => void;
+  applyPreset: (name: 'galleryLeft' | 'galleryRight' | 'fullscreenGallery' | 'sceneBelow' | 'workspace') => void;
 }
 
 const STORAGE_KEY = 'workspace_layout_v1';
@@ -39,11 +39,15 @@ const presets: Record<string, { panels: PanelInstance[]; root: SplitNode }> = {
     panels: [
       { id: 'p_gallery', type: 'gallery', title: 'Gallery' },
       { id: 'p_scene', type: 'scene', title: 'Scene Builder' },
+      { id: 'p_game', type: 'game', title: 'Game' },
+      { id: 'p_graph', type: 'graph', title: 'Graph' },
     ],
     root: {
-      kind: 'split', direction: 'row', sizes: [35, 65], children: [
+      kind: 'split', direction: 'row', sizes: [20, 40, 25, 15], children: [
         { kind: 'panel', panelId: 'p_gallery' },
         { kind: 'panel', panelId: 'p_scene' },
+        { kind: 'panel', panelId: 'p_game' },
+        { kind: 'panel', panelId: 'p_graph' },
       ]
     }
   },
@@ -51,11 +55,15 @@ const presets: Record<string, { panels: PanelInstance[]; root: SplitNode }> = {
     panels: [
       { id: 'p_scene', type: 'scene', title: 'Scene Builder' },
       { id: 'p_gallery', type: 'gallery', title: 'Gallery' },
+      { id: 'p_game', type: 'game', title: 'Game' },
+      { id: 'p_graph', type: 'graph', title: 'Graph' },
     ],
     root: {
-      kind: 'split', direction: 'row', sizes: [65, 35], children: [
+      kind: 'split', direction: 'row', sizes: [35, 20, 25, 20], children: [
         { kind: 'panel', panelId: 'p_scene' },
         { kind: 'panel', panelId: 'p_gallery' },
+        { kind: 'panel', panelId: 'p_game' },
+        { kind: 'panel', panelId: 'p_graph' },
       ]
     }
   },
@@ -67,11 +75,35 @@ const presets: Record<string, { panels: PanelInstance[]; root: SplitNode }> = {
     panels: [
       { id: 'p_gallery', type: 'gallery', title: 'Gallery' },
       { id: 'p_scene', type: 'scene', title: 'Scene Builder' },
+      { id: 'p_game', type: 'game', title: 'Game' },
+      { id: 'p_graph', type: 'graph', title: 'Graph' },
     ],
     root: {
-      kind: 'split', direction: 'col', sizes: [55, 45], children: [
+      kind: 'split', direction: 'col', sizes: [50, 50], children: [
         { kind: 'panel', panelId: 'p_gallery' },
-        { kind: 'panel', panelId: 'p_scene' },
+        { kind: 'split', direction: 'row', sizes: [45, 35, 20], children: [
+          { kind: 'panel', panelId: 'p_scene' },
+          { kind: 'panel', panelId: 'p_game' },
+          { kind: 'panel', panelId: 'p_graph' },
+        ] }
+      ]
+    }
+  },
+  workspace: {
+    panels: [
+      { id: 'p_gallery', type: 'gallery', title: 'Gallery' },
+      { id: 'p_graph', type: 'graph', title: 'Graph' },
+      { id: 'p_inspector', type: 'inspector', title: 'Inspector' },
+      { id: 'p_health', type: 'health', title: 'Health' },
+      { id: 'p_game', type: 'game', title: 'Game' },
+    ],
+    root: {
+      kind: 'split', direction: 'row', sizes: [15, 35, 18, 12, 20], children: [
+        { kind: 'panel', panelId: 'p_gallery' },
+        { kind: 'panel', panelId: 'p_graph' },
+        { kind: 'panel', panelId: 'p_inspector' },
+        { kind: 'panel', panelId: 'p_health' },
+        { kind: 'panel', panelId: 'p_game' },
       ]
     }
   }
