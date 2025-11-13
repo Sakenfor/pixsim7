@@ -6,12 +6,13 @@ Minimal endpoints to manage devices and execution loops.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from typing import List, Dict, Any
 
 from pixsim7_backend.infrastructure.database.session import get_db
 from pixsim7_backend.domain.automation import AndroidDevice, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution
 from pixsim7_backend.services.automation import ExecutionLoopService
 from pixsim7_backend.services.automation.device_sync_service import DeviceSyncService
+from pixsim7_backend.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
@@ -69,10 +70,14 @@ async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_db)):
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
     svc = ExecutionLoopService(db)
-    execution = await svc.process_loop(loop, bypass_status=True)
-    if not execution:
+    executions = await svc.process_loop(loop, bypass_status=True)
+    if not executions:
         return {"status": "skipped"}
-    return {"status": "queued", "execution_id": execution.id, "task_id": execution.task_id}
+    return {
+        "status": "queued",
+        "executions_created": len(executions),
+        "executions": [{"id": e.id, "task_id": e.task_id, "account_id": e.account_id} for e in executions]
+    }
 
 
 # ----- Presets -----
@@ -113,3 +118,48 @@ async def get_execution(execution_id: int, db: AsyncSession = Depends(get_db)):
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
     return execution
+
+
+# ----- Action Schemas -----
+
+@router.get("/action-schemas")
+async def list_action_schemas() -> Dict[str, Any]:
+    """
+    Get all available action schemas for building action presets.
+
+    Returns schemas with metadata including:
+    - Action types and display names
+    - Parameter definitions with types and validation
+    - Categories for organizing actions
+    - Examples for each action type
+    - Nesting support indicators
+
+    This endpoint enables dynamic UI generation for drag-and-drop action builders.
+    """
+    schemas = get_action_schemas()
+    return {
+        "schemas": [schema.model_dump() for schema in schemas],
+        "total": len(schemas)
+    }
+
+
+@router.get("/action-schemas/by-category")
+async def get_action_schemas_categorized() -> Dict[str, Any]:
+    """
+    Get action schemas grouped by category for organized UI display.
+
+    Categories include:
+    - basic: Fundamental actions (launch app, screenshot)
+    - interaction: User interactions (click, type, swipe)
+    - element: UI element-based actions (find, click element)
+    - control_flow: Conditional logic and loops (if, repeat)
+    - timing: Wait and delay actions
+    - advanced: Complex automation actions
+    """
+    by_category = get_action_schemas_by_category()
+    return {
+        "categories": {
+            category: [schema.model_dump() for schema in schemas]
+            for category, schemas in by_category.items()
+        }
+    }

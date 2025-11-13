@@ -45,6 +45,7 @@ class ExecutionLoop(SQLModel, table=True):
     # Shared list mode
     shared_preset_ids: TypeList[int] = Field(default_factory=list, sa_column=Column(JSON))
     current_preset_index: int = Field(default=0)
+    current_account_id: Optional[int] = Field(default=None)  # Track which account is currently executing presets
 
     # Per-account configuration
     account_preset_config: Dict[int, TypeList[int]] = Field(default_factory=dict, sa_column=Column(JSON))
@@ -122,9 +123,17 @@ class ExecutionLoop(SQLModel, table=True):
     def advance_preset_index(self, account_id: int) -> None:
         if self.preset_execution_mode == PresetExecutionMode.SHARED_LIST:
             if self.shared_preset_ids:
-                self.current_preset_index = (self.current_preset_index + 1) % len(self.shared_preset_ids)
+                self.current_preset_index += 1
+                # If we've completed all presets for this account, reset for next account
+                if self.current_preset_index >= len(self.shared_preset_ids):
+                    self.current_preset_index = 0
+                    self.current_account_id = None  # Signal to move to next account
         elif self.preset_execution_mode == PresetExecutionMode.PER_ACCOUNT:
-            account_presets = self.account_preset_config.get(account_id, self.default_preset_ids)
+            account_presets = (
+                self.account_preset_config.get(account_id)
+                or self.account_preset_config.get(str(account_id))
+                or self.default_preset_ids
+            )
             if not account_presets:
                 return
             key = str(account_id)
@@ -133,6 +142,7 @@ class ExecutionLoop(SQLModel, table=True):
             if state["current_index"] >= len(account_presets):
                 state["current_index"] = 0
                 state["completed_cycles"] += 1
+                self.current_account_id = None  # Signal to move to next account
             self.account_execution_state[key] = state
             self.account_execution_state = dict(self.account_execution_state)
 

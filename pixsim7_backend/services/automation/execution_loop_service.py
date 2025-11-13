@@ -17,6 +17,8 @@ from pixsim7_backend.domain.automation import (
     AutomationExecution,
     AutomationStatus,
     AppActionPreset,
+    AndroidDevice,
+    DeviceStatus,
 )
 from pixsim7_backend.domain import ProviderAccount, AccountStatus
 from pixsim7_backend.infrastructure.queue import queue_task
@@ -52,12 +54,39 @@ class ExecutionLoopService:
 
         return True, None
 
-    async def _eligible_accounts_query(self, loop: ExecutionLoop) -> List[ProviderAccount]:
+    async def _get_accounts_with_active_executions(self) -> set[int]:
+        """Get set of account IDs that currently have PENDING or RUNNING executions"""
+        result = await self.db.execute(
+            select(AutomationExecution.account_id).where(
+                AutomationExecution.status.in_([AutomationStatus.PENDING, AutomationStatus.RUNNING])
+            ).distinct()
+        )
+        return set(result.scalars().all())
+
+    async def _count_available_devices(self, loop: ExecutionLoop) -> int:
+        """Count devices that are ONLINE and not BUSY"""
+        query = select(AndroidDevice).where(
+            AndroidDevice.status == DeviceStatus.ONLINE,
+            AndroidDevice.is_enabled == True
+        )
+
+        # If loop has preferred device, only count that one if available
+        if loop.preferred_device_id:
+            query = query.where(AndroidDevice.id == loop.preferred_device_id)
+
+        result = await self.db.execute(query)
+        return len(result.scalars().all())
+
+    async def _eligible_accounts_query(self, loop: ExecutionLoop, exclude_account_ids: set[int] = None) -> List[ProviderAccount]:
         query = select(ProviderAccount).where(ProviderAccount.status == AccountStatus.ACTIVE)
 
         # Filter by specific account IDs
         if loop.selection_mode == LoopSelectionMode.SPECIFIC_ACCOUNTS and loop.account_ids:
             query = query.where(ProviderAccount.id.in_(loop.account_ids))
+
+        # Exclude accounts with active executions
+        if exclude_account_ids:
+            query = query.where(~ProviderAccount.id.in_(exclude_account_ids))
 
         # Credit filters: use total credits across types
         # This is enforced after fetch because credits are a relationship
@@ -77,10 +106,38 @@ class ExecutionLoopService:
             filtered.append(acct)
         return filtered
 
-    async def select_next_account(self, loop: ExecutionLoop) -> Optional[ProviderAccount]:
-        accounts = await self._eligible_accounts_query(loop)
+    async def select_next_account(self, loop: ExecutionLoop, exclude_account_ids: set[int] = None) -> Optional[ProviderAccount]:
+        accounts = await self._eligible_accounts_query(loop, exclude_account_ids=exclude_account_ids)
         if not accounts:
             return None
+
+        # SHARED_LIST mode: stick with current account until all presets are completed
+        if loop.preset_execution_mode == PresetExecutionMode.SHARED_LIST and loop.current_account_id:
+            current_account = next((a for a in accounts if a.id == loop.current_account_id), None)
+            if current_account:
+                # Check if we still have presets to execute for this account
+                if loop.shared_preset_ids and loop.current_preset_index < len(loop.shared_preset_ids):
+                    return current_account
+                # All presets completed for this account, will select next account below
+
+        # PER_ACCOUNT mode: stick with current account until all its presets are completed
+        if loop.preset_execution_mode == PresetExecutionMode.PER_ACCOUNT and loop.current_account_id:
+            current_account = next((a for a in accounts if a.id == loop.current_account_id), None)
+            if current_account:
+                # Get account's preset configuration
+                account_presets = (
+                    loop.account_preset_config.get(current_account.id)
+                    or loop.account_preset_config.get(str(current_account.id))
+                    or loop.default_preset_ids
+                )
+                if account_presets:
+                    key = str(current_account.id)
+                    state = loop.account_execution_state.get(key) or {"current_index": 0, "completed_cycles": 0}
+                    current_index = int(state.get("current_index", 0))
+                    # If we haven't completed all presets for this account, continue with it
+                    if current_index < len(account_presets):
+                        return current_account
+                # All presets completed for this account, will select next account below
 
         if loop.selection_mode == LoopSelectionMode.ROUND_ROBIN:
             accounts_sorted = sorted(accounts, key=lambda a: a.id or 0)
@@ -126,39 +183,84 @@ class ExecutionLoopService:
         loop.executions_today += 1
         loop.last_execution_at = datetime.utcnow()
         loop.last_account_id = account.id
+
+        # For SHARED_LIST mode, set current account when starting a new account's preset cycle
+        if loop.preset_execution_mode == PresetExecutionMode.SHARED_LIST:
+            if loop.current_account_id != account.id:
+                loop.current_account_id = account.id
+                loop.current_preset_index = 0  # Reset to first preset for new account
+
+        # For PER_ACCOUNT mode, track current account
+        if loop.preset_execution_mode == PresetExecutionMode.PER_ACCOUNT:
+            if loop.current_account_id != account.id:
+                loop.current_account_id = account.id
+
         loop.advance_preset_index(account.id)
         await self.db.commit()
 
         return execution
 
-    async def process_loop(self, loop: ExecutionLoop, bypass_status: bool = False) -> Optional[AutomationExecution]:
+    async def process_loop(self, loop: ExecutionLoop, bypass_status: bool = False, max_parallel: int = None) -> List[AutomationExecution]:
+        """
+        Process loop and create executions. Can create multiple executions in parallel if devices are available.
+
+        Args:
+            loop: The execution loop to process
+            bypass_status: Whether to bypass status checks
+            max_parallel: Maximum number of parallel executions to create (defaults to available devices)
+
+        Returns:
+            List of created executions (empty if none created)
+        """
         can, reason = await self.can_loop_execute(loop, bypass_status=bypass_status)
         if not can:
             logger.debug(f"Loop {loop.id} cannot execute: {reason}")
-            return None
+            return []
 
-        account = await self.select_next_account(loop)
-        if not account:
-            loop.consecutive_failures += 1
-            loop.last_error = "No suitable account found"
-            await self.db.commit()
-            return None
+        # Get accounts with active executions to exclude them
+        active_account_ids = await self._get_accounts_with_active_executions()
 
-        # Create execution and enqueue processing task
-        try:
-            execution = await self.create_execution_from_loop(loop, account)
-            task_id = await queue_task("process_automation", execution.id)
-            execution.task_id = task_id
-            await self.db.commit()
+        # Count available devices
+        available_devices = await self._count_available_devices(loop)
+        if available_devices == 0:
+            logger.debug(f"Loop {loop.id}: No devices available")
+            return []
 
-            loop.consecutive_failures = 0
-            loop.last_error = None
-            await self.db.commit()
+        # Determine how many executions to create
+        num_to_create = min(available_devices, max_parallel) if max_parallel else available_devices
 
-            return execution
-        except Exception as e:
-            logger.exception(f"Failed to create or queue execution for loop {loop.id}: {e}")
-            loop.consecutive_failures += 1
-            loop.last_error = str(e)[:500]
-            await self.db.commit()
-            return None
+        created_executions = []
+        excluded_ids = active_account_ids.copy()
+
+        for i in range(num_to_create):
+            account = await self.select_next_account(loop, exclude_account_ids=excluded_ids)
+            if not account:
+                if i == 0:
+                    # No accounts available on first iteration
+                    loop.consecutive_failures += 1
+                    loop.last_error = "No suitable account found"
+                    await self.db.commit()
+                break
+
+            # Create execution and enqueue processing task
+            try:
+                execution = await self.create_execution_from_loop(loop, account)
+                task_id = await queue_task("process_automation", execution.id)
+                execution.task_id = task_id
+                await self.db.commit()
+
+                created_executions.append(execution)
+                excluded_ids.add(account.id)  # Don't select this account again in this iteration
+
+                loop.consecutive_failures = 0
+                loop.last_error = None
+                await self.db.commit()
+
+            except Exception as e:
+                logger.exception(f"Failed to create or queue execution for loop {loop.id}, account {account.id}: {e}")
+                loop.consecutive_failures += 1
+                loop.last_error = str(e)[:500]
+                await self.db.commit()
+                # Continue trying other accounts
+
+        return created_executions

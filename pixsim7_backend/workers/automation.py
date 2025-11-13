@@ -119,9 +119,8 @@ async def run_automation_loops() -> dict:
             svc = ExecutionLoopService(db)
             for loop in loops:
                 processed += 1
-                exec_obj = await svc.process_loop(loop)
-                if exec_obj:
-                    created += 1
+                executions = await svc.process_loop(loop)
+                created += len(executions)
             return {"status": "ok", "loops_processed": processed, "executions_created": created}
         finally:
             await db.close()

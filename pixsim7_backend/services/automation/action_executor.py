@@ -44,57 +44,6 @@ class ActionExecutor:
                 return value
         return value
 
-    async def execute(self, preset: AppActionPreset, ctx: ExecutionContext) -> None:
-        actions = preset.actions or []
-        for idx, action in enumerate(actions):
-            a_type = action.get("type") or action.get("action")
-            params = action.get("params", {})
-            # Substitute variables in params recursively
-            params = {k: self._subst(v, ctx) for k, v in params.items()}
-
-            if a_type == "wait":
-                seconds = float(params.get("seconds", 1))
-                await asyncio.sleep(seconds)
-
-            elif a_type == "launch_app":
-                package = params.get("package") or preset.app_package
-                await self.adb.launch_app(ctx.serial, package)
-
-            elif a_type == "click_coords":
-                x = int(params["x"])
-                y = int(params["y"])
-                await self.adb.input_tap(ctx.serial, x, y)
-
-            elif a_type == "type_text":
-                text = str(params.get("text", ""))
-                await self.adb.input_text(ctx.serial, text)
-
-            elif a_type == "press_back":
-                await self.adb.keyevent(ctx.serial, 4)
-
-            elif a_type == "press_home":
-                await self.adb.keyevent(ctx.serial, 3)
-
-            elif a_type == "swipe":
-                await self.adb.swipe(
-                    ctx.serial,
-                    int(params.get("x1", 100)),
-                    int(params.get("y1", 100)),
-                    int(params.get("x2", 100)),
-                    int(params.get("y2", 100)),
-                    int(params.get("duration_ms", 300)),
-                )
-
-            elif a_type == "screenshot":
-                ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
-                filename = f"shot-{ts}.png"
-                dest = ctx.screenshots_dir / filename
-                await self.adb.screenshot(ctx.serial, dest)
-
-            else:
-                # Unsupported action: skip silently for now
-                continue
-
     # ----- Element-based helpers via UI dump -----
     async def _load_ui(self, serial: str) -> ET.Element | None:
         xml_text = await self.adb.dump_ui_xml(serial)
@@ -153,97 +102,123 @@ class ActionExecutor:
         await self.adb.input_tap(serial, cx, cy)
         return True
 
+    async def execute_action(self, action: Dict[str, Any], ctx: ExecutionContext, preset: AppActionPreset) -> None:
+        """Execute a single action (supports nesting)"""
+        a_type = action.get("type") or action.get("action")
+        params = {k: self._subst(v, ctx) for k, v in (action.get("params", {}) or {}).items()}
+
+        if a_type == "wait":
+            await asyncio.sleep(float(params.get("seconds", 1)))
+
+        elif a_type == "launch_app":
+            await self.adb.launch_app(ctx.serial, params.get("package") or preset.app_package)
+
+        elif a_type == "click_coords":
+            await self.adb.input_tap(ctx.serial, int(params["x"]), int(params["y"]))
+
+        elif a_type == "type_text":
+            await self.adb.input_text(ctx.serial, str(params.get("text", "")))
+
+        elif a_type == "press_back":
+            await self.adb.keyevent(ctx.serial, 4)
+
+        elif a_type == "emulator_back":
+            # Soft back button (not physical/swipe) - navigates back in app
+            await self.adb.keyevent(ctx.serial, 4)
+
+        elif a_type == "press_home":
+            await self.adb.keyevent(ctx.serial, 3)
+
+        elif a_type == "swipe":
+            await self.adb.swipe(
+                ctx.serial,
+                int(params.get("x1", 100)),
+                int(params.get("y1", 100)),
+                int(params.get("x2", 100)),
+                int(params.get("y2", 100)),
+                int(params.get("duration_ms", 300)),
+            )
+
+        elif a_type == "screenshot":
+            ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+            dest = ctx.screenshots_dir / f"shot-{ts}.png"
+            await self.adb.screenshot(ctx.serial, dest)
+
+        elif a_type == "wait_for_element":
+            ok = await self.wait_for_element(
+                ctx.serial,
+                resource_id=params.get("resource_id"),
+                text=params.get("text"),
+                content_desc=params.get("content_desc"),
+                timeout=float(params.get("timeout", 10.0)),
+                interval=float(params.get("interval", 0.5)),
+            )
+            if not ok and not params.get("continue_on_timeout", False):
+                raise RuntimeError("wait_for_element timed out")
+
+        elif a_type == "click_element":
+            ok = await self.click_element(
+                ctx.serial,
+                resource_id=params.get("resource_id"),
+                text=params.get("text"),
+                content_desc=params.get("content_desc"),
+            )
+            if not ok:
+                raise RuntimeError("click_element failed: element not found")
+
+        elif a_type == "if_element_exists":
+            root = await self._load_ui(ctx.serial)
+            exists = False
+            if root is not None:
+                exists = self._find_element(
+                    root,
+                    resource_id=params.get("resource_id"),
+                    text=params.get("text"),
+                    content_desc=params.get("content_desc"),
+                ) is not None
+            if exists:
+                # Execute nested actions recursively (fully nested support)
+                nested_actions = params.get("actions", []) or []
+                for nested_action in nested_actions:
+                    await self.execute_action(nested_action, ctx, preset)
+
+        elif a_type == "if_element_not_exists":
+            root = await self._load_ui(ctx.serial)
+            not_exists = True
+            if root is not None:
+                not_exists = self._find_element(
+                    root,
+                    resource_id=params.get("resource_id"),
+                    text=params.get("text"),
+                    content_desc=params.get("content_desc"),
+                ) is None
+            if not_exists:
+                # Execute nested actions recursively
+                nested_actions = params.get("actions", []) or []
+                for nested_action in nested_actions:
+                    await self.execute_action(nested_action, ctx, preset)
+
+        elif a_type == "repeat":
+            # Repeat nested actions N times or while condition is met
+            count = int(params.get("count", 1))
+            max_iterations = int(params.get("max_iterations", 100))  # Safety limit
+            nested_actions = params.get("actions", []) or []
+
+            iterations = 0
+            for i in range(min(count, max_iterations)):
+                iterations += 1
+                for nested_action in nested_actions:
+                    await self.execute_action(nested_action, ctx, preset)
+                # Optional: add delay between iterations
+                if "delay_between" in params:
+                    await asyncio.sleep(float(params["delay_between"]))
+
+        else:
+            # Unsupported action types are best-effort no-ops for now
+            pass
+
     async def execute(self, preset: AppActionPreset, ctx: ExecutionContext) -> None:  # type: ignore[override]
-        # Re-define to handle element actions and conditionals
+        """Execute all actions in a preset"""
         actions = preset.actions or []
-        for idx, action in enumerate(actions):
-            a_type = action.get("type") or action.get("action")
-            params = {k: self._subst(v, ctx) for k, v in (action.get("params", {}) or {}).items()}
-
-            if a_type == "wait":
-                await asyncio.sleep(float(params.get("seconds", 1)))
-
-            elif a_type == "launch_app":
-                await self.adb.launch_app(ctx.serial, params.get("package") or preset.app_package)
-
-            elif a_type == "click_coords":
-                await self.adb.input_tap(ctx.serial, int(params["x"]), int(params["y"]))
-
-            elif a_type == "type_text":
-                await self.adb.input_text(ctx.serial, str(params.get("text", "")))
-
-            elif a_type == "press_back":
-                await self.adb.keyevent(ctx.serial, 4)
-
-            elif a_type == "press_home":
-                await self.adb.keyevent(ctx.serial, 3)
-
-            elif a_type == "swipe":
-                await self.adb.swipe(
-                    ctx.serial,
-                    int(params.get("x1", 100)),
-                    int(params.get("y1", 100)),
-                    int(params.get("x2", 100)),
-                    int(params.get("y2", 100)),
-                    int(params.get("duration_ms", 300)),
-                )
-
-            elif a_type == "screenshot":
-                ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
-                dest = ctx.screenshots_dir / f"shot-{ts}.png"
-                await self.adb.screenshot(ctx.serial, dest)
-
-            elif a_type == "wait_for_element":
-                ok = await self.wait_for_element(
-                    ctx.serial,
-                    resource_id=params.get("resource_id"),
-                    text=params.get("text"),
-                    content_desc=params.get("content_desc"),
-                    timeout=float(params.get("timeout", 10.0)),
-                    interval=float(params.get("interval", 0.5)),
-                )
-                if not ok and not params.get("continue_on_timeout", False):
-                    raise RuntimeError("wait_for_element timed out")
-
-            elif a_type == "click_element":
-                ok = await self.click_element(
-                    ctx.serial,
-                    resource_id=params.get("resource_id"),
-                    text=params.get("text"),
-                    content_desc=params.get("content_desc"),
-                )
-                if not ok:
-                    raise RuntimeError("click_element failed: element not found")
-
-            elif a_type == "if_element_exists":
-                root = await self._load_ui(ctx.serial)
-                exists = False
-                if root is not None:
-                    exists = self._find_element(
-                        root,
-                        resource_id=params.get("resource_id"),
-                        text=params.get("text"),
-                        content_desc=params.get("content_desc"),
-                    ) is not None
-                if exists:
-                    for sub in params.get("actions", []) or []:
-                        # Execute nested actions recursively (shallow for now)
-                        await self.execute(AppActionPreset(actions=[sub], name=preset.name, description=preset.description), ctx)  # type: ignore[arg-type]
-
-            elif a_type == "if_element_not_exists":
-                root = await self._load_ui(ctx.serial)
-                not_exists = True
-                if root is not None:
-                    not_exists = self._find_element(
-                        root,
-                        resource_id=params.get("resource_id"),
-                        text=params.get("text"),
-                        content_desc=params.get("content_desc"),
-                    ) is None
-                if not_exists:
-                    for sub in params.get("actions", []) or []:
-                        await self.execute(AppActionPreset(actions=[sub], name=preset.name, description=preset.description), ctx)  # type: ignore[arg-type]
-
-            else:
-                # Unsupported action types are best-effort no-ops for now
-                continue
+        for action in actions:
+            await self.execute_action(action, ctx, preset)
