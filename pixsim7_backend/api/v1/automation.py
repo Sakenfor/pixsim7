@@ -69,10 +69,14 @@ async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_db)):
     if not loop:
         raise HTTPException(status_code=404, detail="Loop not found")
     svc = ExecutionLoopService(db)
-    execution = await svc.process_loop(loop, bypass_status=True)
-    if not execution:
+    executions = await svc.process_loop(loop, bypass_status=True)
+    if not executions:
         return {"status": "skipped"}
-    return {"status": "queued", "execution_id": execution.id, "task_id": execution.task_id}
+    return {
+        "status": "queued",
+        "executions_created": len(executions),
+        "executions": [{"id": e.id, "task_id": e.task_id, "account_id": e.account_id} for e in executions]
+    }
 
 
 # ----- Presets -----
