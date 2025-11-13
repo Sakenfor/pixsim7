@@ -62,7 +62,9 @@
       "Bash(else echo \"PID file does not exist\")",
       "Bash(fi)",
       "Bash(git remote add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git merge:*)"
     ],
     "deny": [],
     "ask": []

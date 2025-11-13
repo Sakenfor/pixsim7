@@ -1,0 +1,97 @@
+{
+  "$id": "https://pixsim7.dev/schema/graph.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PixSim Graph",
+  "description": "Canonical schema for scene + simulation graphs (foundation draft).",
+  "type": "object",
+  "required": ["schemaVersion", "name", "entry", "nodes"],
+  "properties": {
+    "schemaVersion": {"type": "string", "pattern": "^1\\.0\\.0$"},
+    "name": {"type": "string", "minLength": 1},
+    "entry": {"type": "string", "description": "Node id to start execution"},
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/definitions/GraphNode"}
+    },
+    "metadata": {"type": "object", "additionalProperties": true}
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "GraphNode": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"type": "string", "enum": [
+          "Decision", "Condition", "Action", "Choice", "Video", "Random", "Timer", "SceneCall", "Subgraph"
+        ]},
+        "edges": {"type": "array", "items": {"type": "string"}},
+        "conditions": {"type": "array", "items": {"$ref": "#/definitions/Condition"}},
+        "effect": {"$ref": "#/definitions/EffectDescriptor"},
+        "selection": {"$ref": "#/definitions/SelectionStrategy"},
+        "durationTicks": {"type": "integer", "minimum": 1},
+        "sceneRef": {"type": "string", "description": "sceneId@version for SceneCall"},
+        "subgraph": {"type": "string", "description": "name of referenced subgraph"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "cooldownTicks": {"type": "integer", "minimum": 1},
+        "video": {"$ref": "#/definitions/VideoDescriptor"}
+      },
+      "additionalProperties": false
+    },
+    "Condition": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {"type": "string", "enum": [
+          "weekday", "timeBetween", "hungerLt", "energyLt", "hasFlag", "notFlag", "randomChance"
+        ]},
+        "value": {},
+        "range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "flag": {"type": "string"},
+        "probability": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "EffectDescriptor": {
+      "type": "object",
+      "properties": {
+        "needs": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "money": {"type": "string", "description": "Relative change e.g. '+wage' or '-meal'"},
+        "flagsAdd": {"type": "array", "items": {"type": "string"}},
+        "flagsRemove": {"type": "array", "items": {"type": "string"}},
+        "moveTo": {"type": "string"},
+        "activity": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "SelectionStrategy": {
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string", "enum": ["ordered", "random", "pool"]},
+        "segmentIds": {"type": "array", "items": {"type": "string"}},
+        "tags": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "VideoDescriptor": {
+      "type": "object",
+      "properties": {
+        "segments": {"type": "array", "items": {"$ref": "#/definitions/VideoSegment"}},
+        "loop": {"type": "boolean"},
+        "loopWindow": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+      },
+      "additionalProperties": false
+    },
+    "VideoSegment": {
+      "type": "object",
+      "required": ["id", "start", "end"],
+      "properties": {
+        "id": {"type": "string"},
+        "start": {"type": "number", "minimum": 0},
+        "end": {"type": "number", "minimum": 0},
+        "tags": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    }
+  }
+}
