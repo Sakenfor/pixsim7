@@ -1,0 +1,93 @@
+--- launcher.py.original
++++ launcher.py.modified
+
+# Add to imports at line ~10
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
+    QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
+    QScrollArea, QFrame, QGridLayout, QTabWidget  # <-- ADD THIS
+)
+
+# Add to imports at line ~24 (in try block)
+    from .database_log_viewer import DatabaseLogViewer  # <-- ADD THIS
+
+# And at line ~35 (in except block)
+    from database_log_viewer import DatabaseLogViewer  # <-- ADD THIS
+
+# Replace lines 698-750 (the log section) with:
+
+        # Right panel: log tabs
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(8, 8, 8, 8)
+        splitter.addWidget(right)
+
+        # Create tab widget
+        self.log_tabs = QTabWidget()
+        right_layout.addWidget(self.log_tabs)
+
+        # === FILE LOGS TAB (existing) ===
+        file_log_tab = QWidget()
+        file_log_layout = QVBoxLayout(file_log_tab)
+
+        # Log header
+        log_header_layout = QHBoxLayout()
+        log_header_label = QLabel("Logs")
+        log_header_font = QFont()
+        log_header_font.setPointSize(13)
+        log_header_font.setBold(True)
+        log_header_label.setFont(log_header_font)
+        log_header_layout.addWidget(log_header_label)
+
+        self.log_service_label = QLabel()
+        log_service_font = QFont()
+        log_service_font.setPointSize(10)
+        self.log_service_label.setFont(log_service_font)
+        self.log_service_label.setStyleSheet("color: #666; padding-left: 10px;")
+        log_header_layout.addWidget(self.log_service_label)
+        log_header_layout.addStretch()
+        file_log_layout.addLayout(log_header_layout)
+
+        # Log filter
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel('Filter:'))
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText('substring to filter logs...')
+        self.filter_input.textChanged.connect(self._on_filter_changed)
+        filter_layout.addWidget(self.filter_input)
+        file_log_layout.addLayout(filter_layout)
+
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 9pt;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+        """)
+        file_log_layout.addWidget(self.log_view)
+
+        log_btn_row = QHBoxLayout()
+        self.btn_refresh_logs = QPushButton('Refresh')
+        self.btn_clear_logs = QPushButton('Clear Display')
+        self.btn_open_log_dir = QPushButton('Open in Explorer')
+        self.autoscroll_checkbox = QCheckBox('Auto-scroll')
+        self.autoscroll_checkbox.setChecked(True)
+        self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
+        log_btn_row.addWidget(self.btn_refresh_logs)
+        log_btn_row.addWidget(self.btn_clear_logs)
+        log_btn_row.addWidget(self.btn_open_log_dir)
+        log_btn_row.addWidget(self.autoscroll_checkbox)
+        file_log_layout.addLayout(log_btn_row)
+
+        self.log_tabs.addTab(file_log_tab, "File Logs")
+
+        # === DATABASE LOGS TAB (new) ===
+        self.db_log_viewer = DatabaseLogViewer()
+        self.log_tabs.addTab(self.db_log_viewer, "Database Logs")
+
+        # Rest of connections stay the same...

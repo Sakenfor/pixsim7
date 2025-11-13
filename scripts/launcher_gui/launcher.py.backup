@@ -1,0 +1,1194 @@
+import sys
+import webbrowser
+import subprocess
+import os
+from typing import Dict, Optional
+from enum import Enum
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
+    QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
+    QScrollArea, QFrame, QGridLayout
+)
+from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread
+from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette
+
+try:
+    from .services import build_services, ServiceDef
+    from .logging_utils import append_log, LOG_DIR
+    from .config import (
+        service_env, read_env_ports, write_env_ports, Ports,
+        check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
+        read_env_file, write_env_file
+    )
+    from .git_tools import GROUPS, dry_run as git_dry_run, commit_groups as git_commit_groups, count_changes as git_count_changes
+    from .migration_tools import get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head
+except ImportError:
+    # Fallback for running directly
+    from services import build_services, ServiceDef
+    from logging_utils import append_log, LOG_DIR
+    from config import (
+        service_env, read_env_ports, write_env_ports, Ports,
+        check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
+        read_env_file, write_env_file
+    )
+    from git_tools import GROUPS, dry_run as git_dry_run, commit_groups as git_commit_groups, count_changes as git_count_changes
+    from migration_tools import get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head
+
+
+class HealthStatus(Enum):
+    UNKNOWN = 'unknown'
+    HEALTHY = 'healthy'
+    UNHEALTHY = 'unhealthy'
+    STARTING = 'starting'
+    STOPPED = 'stopped'
+
+
+STATUS_COLORS = {
+    HealthStatus.UNKNOWN: '#888888',
+    HealthStatus.HEALTHY: '#00CC00',
+    HealthStatus.UNHEALTHY: '#CC0000',
+    HealthStatus.STARTING: '#FFAA00',
+    HealthStatus.STOPPED: '#666666',
+}
+
+STATUS_TEXT = {
+    HealthStatus.UNKNOWN: 'Unknown',
+    HealthStatus.HEALTHY: 'Healthy',
+    HealthStatus.UNHEALTHY: 'Unhealthy',
+    HealthStatus.STARTING: 'Starting...',
+    HealthStatus.STOPPED: 'Stopped',
+}
+
+
+class ServiceCard(QFrame):
+    """A card widget displaying service information."""
+
+    clicked = Signal(str)  # Emits service key when clicked
+
+    def __init__(self, service_def: 'ServiceDef', service_process: 'ServiceProcess'):
+        super().__init__()
+        self.service_def = service_def
+        self.service_process = service_process
+        self.is_selected = False
+
+        # Card styling
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShadow(QFrame.Raised)
+        self.setLineWidth(2)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(100)
+
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+
+        # Status indicator (colored circle)
+        self.status_indicator = QLabel()
+        self.status_indicator.setFixedSize(16, 16)
+        self.status_indicator.setStyleSheet(f"""
+            background-color: {STATUS_COLORS[self.service_process.health_status]};
+            border-radius: 8px;
+            border: 2px solid #333;
+        """)
+        layout.addWidget(self.status_indicator)
+
+        # Service info (left side)
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(4)
+
+        # Title
+        self.title_label = QLabel(service_def.title)
+        title_font = QFont()
+        title_font.setPointSize(11)
+        title_font.setBold(True)
+        self.title_label.setFont(title_font)
+        self.title_label.setStyleSheet("color: #1a1a1a;")
+        info_layout.addWidget(self.title_label)
+
+        # Status text + additional info
+        status_info = STATUS_TEXT[self.service_process.health_status]
+        if not self.service_process.tool_available:
+            status_info = f"⚠ {self.service_process.tool_check_message}"
+        elif service_def.url:
+            # Extract port from URL if available
+            try:
+                port = service_def.url.split(':')[-1].split('/')[0]
+                status_info += f" • Port {port}"
+            except:
+                pass
+
+        self.status_label = QLabel(status_info)
+        status_font = QFont()
+        status_font.setPointSize(9)
+        self.status_label.setFont(status_font)
+        self.status_label.setStyleSheet("color: #555;")
+        info_layout.addWidget(self.status_label)
+
+        layout.addLayout(info_layout, stretch=1)
+
+        # Action buttons (right side)
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(6)
+
+        self.start_btn = QPushButton("Start")
+        self.start_btn.setFixedSize(60, 28)
+        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
+        btn_layout.addWidget(self.start_btn)
+
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.setFixedSize(60, 28)
+        self.stop_btn.setEnabled(self.service_process.running)
+        btn_layout.addWidget(self.stop_btn)
+
+        if service_def.url:
+            self.open_btn = QPushButton("Open")
+            self.open_btn.setFixedSize(60, 28)
+            btn_layout.addWidget(self.open_btn)
+        else:
+            self.open_btn = None
+
+        layout.addLayout(btn_layout)
+
+        self._update_style()
+
+    def mousePressEvent(self, event):
+        """Handle card click to select."""
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.service_def.key)
+        super().mousePressEvent(event)
+
+    def set_selected(self, selected: bool):
+        """Update selection state."""
+        self.is_selected = selected
+        self._update_style()
+
+    def update_status(self, status: HealthStatus):
+        """Update the card's status display."""
+        self.service_process.health_status = status
+
+        # Update status indicator color
+        self.status_indicator.setStyleSheet(f"""
+            background-color: {STATUS_COLORS[status]};
+            border-radius: 8px;
+            border: 2px solid #333;
+        """)
+
+        # Update status text
+        status_info = STATUS_TEXT[status]
+        if not self.service_process.tool_available:
+            status_info = f"⚠ {self.service_process.tool_check_message}"
+        elif self.service_def.url:
+            try:
+                port = self.service_def.url.split(':')[-1].split('/')[0]
+                status_info += f" • Port {port}"
+            except:
+                pass
+        if status == HealthStatus.UNHEALTHY and getattr(self.service_process, 'last_error_line', ''):
+            err = self.service_process.last_error_line
+            if len(err) > 80:
+                err = err[:77] + '...'
+            status_info += f" • {err}"
+        self.status_label.setText(status_info)
+
+        # Update button states
+        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
+        self.stop_btn.setEnabled(self.service_process.running)
+
+    def _update_style(self):
+        """Update card styling based on selection state."""
+        if self.is_selected:
+            self.setStyleSheet("""
+                ServiceCard {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #e3f2fd, stop:1 #bbdefb);
+                    border: 2px solid #1976D2;
+                    border-radius: 8px;
+                }
+                QLabel {
+                    background: transparent;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                ServiceCard {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #ffffff, stop:1 #f0f0f0);
+                    border: 2px solid #ccc;
+                    border-radius: 8px;
+                }
+                ServiceCard:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #f8f8f8, stop:1 #e8e8e8);
+                    border: 2px solid #999;
+                }
+                QLabel {
+                    background: transparent;
+                }
+            """)
+
+
+class ServiceProcess:
+    def __init__(self, defn: ServiceDef):
+        self.defn = defn
+        self.proc: QProcess | None = None
+        self.running = False
+        self.health_status = HealthStatus.STOPPED
+        self.tool_available = True
+        self.tool_check_message = ''
+        self.last_error_line: str = ''  # last stderr line for diagnostics
+
+    def check_tool_availability(self) -> bool:
+        """Check if required tool is available."""
+        if not self.defn.required_tool:
+            self.tool_available = True
+            self.tool_check_message = ''
+            return True
+
+        available = check_tool_available(self.defn.required_tool)
+        self.tool_available = available
+        if not available:
+            self.tool_check_message = f"Missing tool: {self.defn.required_tool}"
+            append_log('launcher.log', f"WARN: {self.defn.key} requires {self.defn.required_tool} which is not in PATH")
+        return available
+
+    def start(self):
+        if self.running:
+            return
+
+        if not self.check_tool_availability():
+            return False
+
+        self.proc = QProcess()
+        env = service_env()
+        if self.defn.env_overrides:
+            env.update(self.defn.env_overrides)
+        qenv = self.proc.processEnvironment()
+        for k, v in env.items():
+            qenv.insert(k, v)
+        self.proc.setProcessEnvironment(qenv)
+        self.proc.setProgram(self.defn.program)
+        self.proc.setArguments(self.defn.args)
+        self.proc.setWorkingDirectory(self.defn.cwd)
+        self.proc.readyReadStandardOutput.connect(lambda: self._capture(False))
+        self.proc.readyReadStandardError.connect(lambda: self._capture(True))
+        self.proc.finished.connect(self._finished)
+        append_log('launcher.log', f"START {self.defn.key} {' '.join(self.defn.args)}")
+        self.proc.start()
+        self.running = True
+        self.health_status = HealthStatus.STARTING
+        self.last_error_line = ''  # reset on fresh start
+        return True
+
+    def stop(self, graceful=True):
+        if not self.running or not self.proc:
+            return
+
+        append_log('launcher.log', f"STOP {self.defn.key} (graceful={graceful})")
+
+        if graceful and self.defn.key == 'backend':
+            # Try graceful shutdown first
+            self.proc.terminate()
+            # Will wait for timeout in _finish_stop
+            QTimer.singleShot(5000, lambda: self._finish_stop())
+        else:
+            self.proc.kill()
+            self.proc = None
+            self.running = False
+            self.health_status = HealthStatus.STOPPED
+
+    def _finish_stop(self):
+        """Called after timeout to force kill if still running."""
+        if self.proc and self.proc.state() == QProcess.Running:
+            append_log('launcher.log', f"FORCE KILL {self.defn.key} after timeout")
+            self.proc.kill()
+        if self.proc:
+            exit_code = self.proc.exitCode()
+            append_log('launcher.log', f"EXIT {self.defn.key} code={exit_code}")
+        self.proc = None
+        self.running = False
+        self.health_status = HealthStatus.STOPPED
+
+    def _capture(self, is_err: bool):
+        if not self.proc:
+            return
+        data = self.proc.readAllStandardError() if is_err else self.proc.readAllStandardOutput()
+        text = bytes(data).decode('utf-8', errors='ignore')
+        for line in text.splitlines():
+            append_log(f"{self.defn.key}.log", line)
+            if is_err and line.strip():
+                self.last_error_line = line.strip()
+
+    def _finished(self, exit_code, exit_status):
+        self.running = False
+        self.health_status = HealthStatus.STOPPED
+        append_log('launcher.log', f"EXIT {self.defn.key} code={exit_code}")
+
+class HealthWorker(QThread):
+    """Background thread performing health checks to avoid blocking UI."""
+    health_update = Signal(str, HealthStatus)
+
+    def __init__(self, processes: Dict[str, ServiceProcess], interval_sec: float = 3.0, parent=None):
+        super().__init__(parent)
+        self.processes = processes
+        self.interval = interval_sec
+        self._stop = False
+        self.failure_counts: Dict[str, int] = {}
+        self.failure_threshold = 5
+
+    def stop(self):
+        self._stop = True
+
+    def run(self):  # type: ignore
+        import time, subprocess, os, urllib.request
+        while not self._stop:
+            start_loop = time.time()
+            for key, sp in list(self.processes.items()):
+                try:
+                    if not sp.running:
+                        if sp.health_status != HealthStatus.STOPPED:
+                            self.health_update.emit(key, HealthStatus.STOPPED)
+                        continue
+                    if key == 'db':
+                        try:
+                            result = subprocess.run(
+                                ['docker-compose', '-f', os.path.join(ROOT, 'docker-compose.db-only.yml'), 'ps'],
+                                capture_output=True, text=True, timeout=2
+                            )
+                            if 'Up' in result.stdout:
+                                self.health_update.emit(key, HealthStatus.HEALTHY)
+                                self.failure_counts[key] = 0
+                            else:
+                                self.health_update.emit(key, HealthStatus.STARTING)
+                                self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                        except Exception:
+                            self.health_update.emit(key, HealthStatus.UNHEALTHY)
+                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                        continue
+                    if sp.defn.health_url:
+                        try:
+                            req = urllib.request.Request(sp.defn.health_url, method='GET')
+                            with urllib.request.urlopen(req, timeout=2) as response:
+                                if response.status == 200:
+                                    self.health_update.emit(key, HealthStatus.HEALTHY)
+                                    self.failure_counts[key] = 0
+                                else:
+                                    self.health_update.emit(key, HealthStatus.UNHEALTHY)
+                                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                        except Exception:
+                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                            if sp.health_status in (HealthStatus.STARTING, HealthStatus.UNKNOWN) and self.failure_counts[key] < self.failure_threshold:
+                                self.health_update.emit(key, HealthStatus.STARTING)
+                            else:
+                                self.health_update.emit(key, HealthStatus.UNHEALTHY)
+                    else:
+                        self.health_update.emit(key, HealthStatus.HEALTHY)
+                        self.failure_counts[key] = 0
+                except Exception:
+                    self.health_update.emit(key, HealthStatus.UNHEALTHY)
+                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+            elapsed = time.time() - start_loop
+            remaining = self.interval - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+
+
+class PortsDialog(QDialog):
+    """Dialog to edit port configuration."""
+
+    def __init__(self, parent, current_ports: Ports):
+        super().__init__(parent)
+        self.setWindowTitle('Edit Ports')
+        self.setModal(True)
+        self.result_ports = current_ports
+
+        layout = QFormLayout(self)
+
+        self.backend_input = QLineEdit(str(current_ports.backend))
+        self.admin_input = QLineEdit(str(current_ports.admin))
+        self.frontend_input = QLineEdit(str(current_ports.frontend))
+        self.game_frontend_input = QLineEdit(str(current_ports.game_frontend))
+
+        layout.addRow('Backend Port:', self.backend_input)
+        layout.addRow('Admin Port:', self.admin_input)
+        layout.addRow('Frontend Port:', self.frontend_input)
+        layout.addRow('Game Frontend Port:', self.game_frontend_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+    def _save(self):
+        try:
+            self.result_ports = Ports(
+                backend=int(self.backend_input.text()),
+                admin=int(self.admin_input.text()),
+                frontend=int(self.frontend_input.text()),
+                game_frontend=int(self.game_frontend_input.text()),
+            )
+            self.accept()
+        except ValueError:
+            QMessageBox.warning(self, 'Invalid Input', 'All ports must be valid integers.')
+
+
+class EnvEditorDialog(QDialog):
+    """Dialog to edit environment variables."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle('Edit Environment Variables')
+        self.setModal(True)
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+
+        # Load current environment
+        self.env_vars = read_env_file()
+        self.result_env = {}
+
+        layout = QVBoxLayout(self)
+
+        # Info label
+        info = QLabel('Edit environment variables in .env file:')
+        info.setStyleSheet("color: #666; padding: 5px;")
+        layout.addWidget(info)
+
+        # Scroll area for env vars
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.StyledPanel)
+
+        scroll_widget = QWidget()
+        self.form_layout = QFormLayout(scroll_widget)
+        self.form_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
+
+        self.inputs = {}
+
+        # Common environment variables to show (even if not set)
+        common_vars = [
+            'BACKEND_PORT', 'ADMIN_PORT', 'FRONTEND_PORT', 'GAME_FRONTEND_PORT',
+            'DATABASE_URL', 'REDIS_URL', 'SECRET_KEY', 'DEBUG',
+            'PIXVERSE_API_KEY', 'OPENAI_API_KEY'
+        ]
+
+        # Add inputs for all variables
+        all_vars = sorted(set(list(self.env_vars.keys()) + common_vars))
+        for var in all_vars:
+            input_field = QLineEdit(self.env_vars.get(var, ''))
+            input_field.setPlaceholderText('(not set)' if var not in self.env_vars else '')
+            self.inputs[var] = input_field
+            self.form_layout.addRow(f'{var}:', input_field)
+
+        scroll.setWidget(scroll_widget)
+        layout.addWidget(scroll)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        add_btn = QPushButton('Add New Variable')
+        add_btn.clicked.connect(self._add_variable)
+        button_layout.addWidget(add_btn)
+
+        button_layout.addStretch()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._save)
+        buttons.rejected.connect(self.reject)
+        button_layout.addWidget(buttons)
+
+        layout.addLayout(button_layout)
+
+    def _add_variable(self):
+        """Add a new environment variable."""
+        from PySide6.QtWidgets import QInputDialog
+
+        var_name, ok = QInputDialog.getText(self, 'Add Variable', 'Variable name:')
+        if ok and var_name:
+            var_name = var_name.strip().upper()
+            if var_name in self.inputs:
+                QMessageBox.warning(self, 'Variable Exists', f'{var_name} already exists.')
+                return
+
+            input_field = QLineEdit('')
+            self.inputs[var_name] = input_field
+            self.form_layout.addRow(f'{var_name}:', input_field)
+
+    def _save(self):
+        """Save environment variables."""
+        self.result_env = {}
+        for var, input_field in self.inputs.items():
+            value = input_field.text().strip()
+            if value:  # Only save non-empty values
+                self.result_env[var] = value
+        self.accept()
+
+
+class LauncherWindow(QWidget):
+    health_check_signal = Signal(str, HealthStatus)
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('PixSim7 Launcher')
+
+        # Set window styling
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #f9f9f9;
+            }
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+                min-height: 28px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #0D47A1;
+            }
+            QPushButton:disabled {
+                background-color: #ccc;
+                color: #888;
+            }
+            QLineEdit {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 6px;
+                background-color: white;
+            }
+            QLineEdit:focus {
+                border: 1px solid #2196F3;
+            }
+            QLabel {
+                color: #333;
+            }
+        """)
+
+        # Load UI state
+        self.ui_state = load_ui_state()
+        if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
+            self.resize(self.ui_state.window_width, self.ui_state.window_height)
+        else:
+            self.resize(1200, 750)
+
+        if self.ui_state.window_x >= 0 and self.ui_state.window_y >= 0:
+            self.move(self.ui_state.window_x, self.ui_state.window_y)
+
+        self.services = build_services()
+        self.processes: Dict[str, ServiceProcess] = {s.key: ServiceProcess(s) for s in self.services}
+        self.cards: Dict[str, ServiceCard] = {}
+        self.selected_service_key: Optional[str] = None
+
+        # Check tool availability
+        for sp in self.processes.values():
+            sp.check_tool_availability()
+
+        self._init_ui()
+
+        # Restore selected service
+        if self.ui_state.selected_service and self.ui_state.selected_service in self.cards:
+            self._select_service(self.ui_state.selected_service)
+        elif self.services:
+            # Select first service by default
+            self._select_service(self.services[0].key)
+
+        # Background health worker replaces direct timer to avoid UI freeze
+        self.health_worker = HealthWorker(self.processes, interval_sec=3.0, parent=self)
+        self.health_worker.health_update.connect(self._update_service_health)
+        self.health_worker.start()
+
+        # Log refresh timer (every 2 seconds) – separate from health checks
+        self.log_timer = QTimer(self)
+        self.log_timer.timeout.connect(self._auto_refresh_logs)
+        self.log_timer.start(2000)
+
+        # Connect health check signal (for any manual triggers if added later)
+        self.health_check_signal.connect(self._update_service_health)
+
+        self.autoscroll_enabled = True
+        self.log_filter = ''
+
+        self.update_ports_label()
+
+    def _init_ui(self):
+        root = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Horizontal)
+        root.addWidget(splitter)
+
+        # Left panel: service cards & controls
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(8, 8, 8, 8)
+        splitter.addWidget(left)
+
+        # Header
+        header = QLabel("Services")
+        header_font = QFont()
+        header_font.setPointSize(13)
+        header_font.setBold(True)
+        header.setFont(header_font)
+        left_layout.addWidget(header)
+
+        # Scroll area for service cards
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        # Container for cards
+        cards_container = QWidget()
+        cards_layout = QVBoxLayout(cards_container)
+        cards_layout.setSpacing(8)
+        cards_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create cards for each service
+        for s in self.services:
+            sp = self.processes[s.key]
+            card = ServiceCard(s, sp)
+            self.cards[s.key] = card
+
+            # Connect card signals
+            card.clicked.connect(self._select_service)
+            card.start_btn.clicked.connect(lambda checked, k=s.key: self._start_service(k))
+            card.stop_btn.clicked.connect(lambda checked, k=s.key: self._stop_service(k))
+            if card.open_btn:
+                card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
+
+            cards_layout.addWidget(card)
+
+        cards_layout.addStretch()
+        scroll_area.setWidget(cards_container)
+        left_layout.addWidget(scroll_area, stretch=1)
+
+        # Global control buttons
+        btn_row1 = QHBoxLayout()
+        self.btn_all = QPushButton('Start All')
+        self.btn_kill_all = QPushButton('Stop All')
+        btn_row1.addWidget(self.btn_all)
+        btn_row1.addWidget(self.btn_kill_all)
+        left_layout.addLayout(btn_row1)
+
+        btn_row2 = QHBoxLayout()
+        self.btn_ports = QPushButton('Edit Ports')
+        self.btn_env = QPushButton('Edit Environment')
+        self.btn_db_down = QPushButton('Stop Databases')
+        self.btn_git_tools = QPushButton('Dev Git Tools')
+        self.btn_migrations = QPushButton('DB Migrations')
+        btn_row2.addWidget(self.btn_ports)
+        btn_row2.addWidget(self.btn_env)
+        btn_row2.addWidget(self.btn_db_down)
+        btn_row2.addWidget(self.btn_git_tools)
+        btn_row2.addWidget(self.btn_migrations)
+        left_layout.addLayout(btn_row2)
+
+        self.status_label = QLabel('Ports: loading...')
+        left_layout.addWidget(self.status_label)
+
+        # Right panel: log tail
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(8, 8, 8, 8)
+        splitter.addWidget(right)
+
+        # Log header
+        log_header_layout = QHBoxLayout()
+        log_header_label = QLabel("Logs")
+        log_header_font = QFont()
+        log_header_font.setPointSize(13)
+        log_header_font.setBold(True)
+        log_header_label.setFont(log_header_font)
+        log_header_layout.addWidget(log_header_label)
+
+        self.log_service_label = QLabel()
+        log_service_font = QFont()
+        log_service_font.setPointSize(10)
+        self.log_service_label.setFont(log_service_font)
+        self.log_service_label.setStyleSheet("color: #666; padding-left: 10px;")
+        log_header_layout.addWidget(self.log_service_label)
+        log_header_layout.addStretch()
+        right_layout.addLayout(log_header_layout)
+
+        # Log filter
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel('Filter:'))
+        self.filter_input = QLineEdit()
+        self.filter_input.setPlaceholderText('substring to filter logs...')
+        self.filter_input.textChanged.connect(self._on_filter_changed)
+        filter_layout.addWidget(self.filter_input)
+        right_layout.addLayout(filter_layout)
+
+        self.log_view = QTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 9pt;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+        """)
+        right_layout.addWidget(self.log_view)
+
+        log_btn_row = QHBoxLayout()
+        self.btn_refresh_logs = QPushButton('Refresh')
+        self.btn_clear_logs = QPushButton('Clear Display')
+        self.btn_open_log_dir = QPushButton('Open in Explorer')
+        self.autoscroll_checkbox = QCheckBox('Auto-scroll')
+        self.autoscroll_checkbox.setChecked(True)
+        self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
+        log_btn_row.addWidget(self.btn_refresh_logs)
+        log_btn_row.addWidget(self.btn_clear_logs)
+        log_btn_row.addWidget(self.btn_open_log_dir)
+        log_btn_row.addWidget(self.autoscroll_checkbox)
+        right_layout.addLayout(log_btn_row)
+
+        # Connections
+        self.btn_all.clicked.connect(self.start_all)
+        self.btn_kill_all.clicked.connect(self.stop_all)
+        self.btn_ports.clicked.connect(self.edit_ports)
+        self.btn_env.clicked.connect(self.edit_env)
+        self.btn_db_down.clicked.connect(self.stop_databases)
+        self.btn_refresh_logs.clicked.connect(self.refresh_logs)
+        self.btn_clear_logs.clicked.connect(self._clear_log_display)
+        self.btn_open_log_dir.clicked.connect(self._open_log_directory)
+        self.btn_git_tools.clicked.connect(self.open_git_tools_dialog)
+        self.btn_migrations.clicked.connect(self.open_migrations_dialog)
+
+    def _select_service(self, key: str):
+        """Select a service and refresh logs."""
+        # Deselect previous card
+        if self.selected_service_key and self.selected_service_key in self.cards:
+            self.cards[self.selected_service_key].set_selected(False)
+
+        # Select new card
+        self.selected_service_key = key
+        if key in self.cards:
+            self.cards[key].set_selected(True)
+            self.refresh_logs()
+
+    def _start_service(self, key: str):
+        """Start a specific service."""
+        sp = self.processes.get(key)
+        if not sp:
+            return
+        if not sp.tool_available:
+            QMessageBox.warning(self, 'Tool Not Available', sp.tool_check_message)
+            append_log('launcher.log', f"BLOCKED: Cannot start {key}: {sp.tool_check_message}")
+            return
+        if sp.start():
+            self.refresh_logs()
+
+    def _stop_service(self, key: str):
+        """Stop a specific service."""
+        sp = self.processes.get(key)
+        if sp:
+            sp.stop(graceful=True)
+            self.refresh_logs()
+
+    def _open_service_url(self, key: str):
+        """Open a service's URL in the browser."""
+        s = next((x for x in self.services if x.key == key), None)
+        if s and s.url:
+            webbrowser.open(s.url)
+
+    # _check_health removed; handled by HealthWorker
+
+    def _update_service_health(self, key: str, status: HealthStatus):
+        """Update the health status for a service (called from signal)."""
+        sp = self.processes.get(key)
+        if not sp:
+            return
+
+        old_status = sp.health_status
+
+        # Log status changes
+        if old_status != status:
+            append_log('launcher.log', f"HEALTH {key}: {status.value}")
+
+        # Update card display
+        card = self.cards.get(key)
+        if card:
+            card.update_status(status)
+
+    def update_ports_label(self):
+        p = read_env_ports()
+        self.status_label.setText(
+            f"Ports: backend={p.backend} admin={p.admin} front={p.frontend} game={p.game_frontend}"
+        )
+
+    def selected_key(self) -> str | None:
+        """Return the currently selected service key."""
+        return self.selected_service_key
+
+    def start_all(self):
+        for key, sp in self.processes.items():
+            if not sp.tool_available:
+                append_log('launcher.log', f"SKIP: {key} - {sp.tool_check_message}")
+                continue
+            sp.start()
+        self.refresh_logs()
+
+    def stop_all(self):
+        for sp in self.processes.values():
+            sp.stop(graceful=True)
+        self.refresh_logs()
+
+    def stop_databases(self):
+        """Stop databases using docker-compose down."""
+        try:
+            append_log('launcher.log', 'STOP DATABASES: running docker-compose down')
+            result = subprocess.run(
+                ['docker-compose', '-f', os.path.join(ROOT, 'docker-compose.db-only.yml'), 'down'],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0:
+                append_log('launcher.log', 'STOP DATABASES: success')
+                QMessageBox.information(self, 'Database Stopped', 'Databases have been stopped.')
+                # Update DB process status
+                if 'db' in self.processes:
+                    self.processes['db'].running = False
+                    self.processes['db'].health_status = HealthStatus.STOPPED
+            else:
+                append_log('launcher.log', f'STOP DATABASES: failed - {result.stderr}')
+                QMessageBox.warning(self, 'Error', f'Failed to stop databases:\n{result.stderr}')
+        except Exception as e:
+            append_log('launcher.log', f'STOP DATABASES: exception - {e}')
+            QMessageBox.warning(self, 'Error', f'Failed to stop databases: {e}')
+
+    def edit_ports(self):
+        """Open ports editor dialog."""
+        current = read_env_ports()
+        dialog = PortsDialog(self, current)
+        if dialog.exec() == QDialog.Accepted:
+            try:
+                write_env_ports(dialog.result_ports)
+                self.update_ports_label()
+                append_log('launcher.log', f'PORTS UPDATED: {dialog.result_ports}')
+
+                # Ask if user wants to restart affected services
+                reply = QMessageBox.question(
+                    self, 'Restart Services?',
+                    'Port configuration saved. Restart running services to apply changes?',
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    # Rebuild services and restart running ones
+                    running_keys = [k for k, sp in self.processes.items() if sp.running]
+                    self.stop_all()
+                    QTimer.singleShot(2000, lambda: self._restart_services(running_keys))
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to save ports: {e}')
+                append_log('launcher.log', f'PORTS UPDATE FAILED: {e}')
+
+    def edit_env(self):
+        """Open environment editor dialog."""
+        dialog = EnvEditorDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            try:
+                write_env_file(dialog.result_env)
+                self.update_ports_label()
+                append_log('launcher.log', f'ENVIRONMENT UPDATED: {len(dialog.result_env)} variables saved')
+
+                # Ask if user wants to restart affected services
+                reply = QMessageBox.question(
+                    self, 'Restart Services?',
+                    'Environment configuration saved. Restart running services to apply changes?',
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.Yes:
+                    # Rebuild services and restart running ones
+                    running_keys = [k for k, sp in self.processes.items() if sp.running]
+                    self.stop_all()
+                    QTimer.singleShot(2000, lambda: self._restart_services(running_keys))
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to save environment: {e}')
+                append_log('launcher.log', f'ENVIRONMENT UPDATE FAILED: {e}')
+
+    def _restart_services(self, keys):
+        """Restart specified services after config update."""
+        self.services = build_services()
+        self.processes = {s.key: ServiceProcess(s) for s in self.services}
+        for key in keys:
+            if key in self.processes:
+                self.processes[key].start()
+        # Update health worker's process mapping so it monitors new dict
+        if hasattr(self, 'health_worker'):
+            self.health_worker.processes = self.processes
+
+    def _auto_refresh_logs(self):
+        """Auto-refresh logs if autoscroll is enabled."""
+        if self.autoscroll_enabled:
+            self.refresh_logs()
+
+    def _on_autoscroll_changed(self, state):
+        self.autoscroll_enabled = (state == Qt.Checked)
+
+    def _on_filter_changed(self, text):
+        self.log_filter = text.lower()
+        self.refresh_logs()
+
+    def _clear_log_display(self):
+        """Clear the log display (not the log file)."""
+        self.log_view.setPlainText('')
+
+    def _open_log_directory(self):
+        """Open the log directory in Windows Explorer or file manager."""
+        key = self.selected_key()
+        if key:
+            log_path = os.path.join(LOG_DIR, f'{key}.log')
+        else:
+            log_path = LOG_DIR
+
+        try:
+            if os.name == 'nt':  # Windows
+                if os.path.isfile(log_path):
+                    subprocess.run(['explorer', '/select,', log_path])
+                else:
+                    subprocess.run(['explorer', log_path])
+            else:  # Linux/Mac
+                subprocess.run(['xdg-open', os.path.dirname(log_path)])
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f'Failed to open directory: {e}')
+
+    def open_git_tools_dialog(self):
+        """Modal dialog to perform dry-run or grouped commits using predefined commit groups.
+        Does not push to any remote. Safe for local workflow.
+        """
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Git Commit Groups')
+        layout = QVBoxLayout(dlg)
+        info = QLabel('Structured commit helper. Select groups, Dry Run to preview, Commit to apply. No remote push.')
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        listw = QListWidget()
+        listw.setSelectionMode(QListWidget.MultiSelection)
+        for g in GROUPS:
+            item = QListWidgetItem(f"{g.key} | {g.message}")
+            item.setData(Qt.UserRole, g.key)
+            listw.addItem(item)
+        layout.addWidget(listw)
+
+        # Controls row: show unchanged toggle, safeguard threshold, override message
+        ctrl_row = QHBoxLayout()
+        show_unchanged_cb = QCheckBox('Show unchanged')
+        show_unchanged_cb.setChecked(True)
+        ctrl_row.addWidget(show_unchanged_cb)
+
+        from PySide6.QtWidgets import QSpinBox
+        threshold_label = QLabel('Warn if files ≥')
+        threshold_spin = QSpinBox()
+        threshold_spin.setRange(1, 5000)
+        threshold_spin.setValue(50)
+        ctrl_row.addWidget(threshold_label)
+        ctrl_row.addWidget(threshold_spin)
+        ctrl_row.addStretch()
+        layout.addLayout(ctrl_row)
+
+        # Override message (only when single group selected)
+        override_row = QHBoxLayout()
+        override_label = QLabel('Override message (single group):')
+        override_edit = QLineEdit()
+        override_edit.setPlaceholderText('Leave empty to use default group message')
+        override_edit.setEnabled(False)
+        override_row.addWidget(override_label)
+        override_row.addWidget(override_edit)
+        layout.addLayout(override_row)
+
+        output = QTextEdit()
+        output.setReadOnly(True)
+        output.setMinimumHeight(240)
+        layout.addWidget(output)
+
+        btn_row = QHBoxLayout()
+        btn_dry = QPushButton('Dry Run')
+        btn_commit = QPushButton('Commit')
+        btn_close = QPushButton('Close')
+        btn_row.addWidget(btn_dry)
+        btn_row.addWidget(btn_commit)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_close)
+        layout.addLayout(btn_row)
+
+        def update_override_enabled():
+            keys = [listw.item(i).data(Qt.UserRole) for i in range(listw.count()) if listw.item(i).isSelected()]
+            override_edit.setEnabled(len(keys) == 1)
+
+        listw.itemSelectionChanged.connect(update_override_enabled)
+
+        def selected_keys():
+            return [listw.item(i).data(Qt.UserRole) for i in range(listw.count()) if listw.item(i).isSelected()]
+
+        def do_dry():
+            keys = selected_keys()
+            text = git_dry_run(keys, show_unchanged_cb.isChecked())
+            output.setPlainText(text if text else '(no changes)')
+
+        def do_commit():
+            keys = selected_keys()
+            # Safeguard: warn if too many files
+            total = git_count_changes(keys)
+            if total >= threshold_spin.value():
+                reply = QMessageBox.question(
+                    dlg,
+                    'Confirm Commit',
+                    f'This will commit approximately {total} changed files across selected groups. Continue?',
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply != QMessageBox.Yes:
+                    output.setPlainText('(cancelled)')
+                    return
+
+            override_map = None
+            if len(keys) == 1 and override_edit.text().strip():
+                override_map = {keys[0]: override_edit.text().strip()}
+
+            res = git_commit_groups(keys, message_override=override_map)
+            lines = [f"{k}: {msg}" for k, msg in res]
+            output.setPlainText('\n'.join(lines) if lines else '(no actions)')
+            append_log('launcher.log', f"GIT_COMMIT_GROUPS {lines}")
+
+        btn_dry.clicked.connect(do_dry)
+        btn_commit.clicked.connect(do_commit)
+        btn_close.clicked.connect(dlg.accept)
+        dlg.exec()
+
+    def open_migrations_dialog(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Alembic Migrations')
+        layout = QVBoxLayout(dlg)
+        info = QLabel('Database migration operations (local). Use with caution on shared DB.')
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        status_box = QTextEdit(); status_box.setReadOnly(True); status_box.setMinimumHeight(180)
+        layout.addWidget(status_box)
+
+        btn_row1 = QHBoxLayout()
+        btn_refresh = QPushButton('Refresh Status')
+        btn_history = QPushButton('Show History')
+        btn_row1.addWidget(btn_refresh)
+        btn_row1.addWidget(btn_history)
+        btn_row1.addStretch()
+        layout.addLayout(btn_row1)
+
+        btn_row2 = QHBoxLayout()
+        btn_upgrade = QPushButton('Upgrade Head')
+        btn_downgrade = QPushButton('Downgrade -1')
+        btn_stamp = QPushButton('Stamp Head')
+        btn_row2.addWidget(btn_upgrade)
+        btn_row2.addWidget(btn_downgrade)
+        btn_row2.addWidget(btn_stamp)
+        btn_row2.addStretch()
+        layout.addLayout(btn_row2)
+
+        btn_close = QPushButton('Close')
+        layout.addWidget(btn_close)
+
+        def refresh():
+            current = get_current_revision()
+            heads = get_heads()
+            status_box.setPlainText(f"Current Revision:\n{current}\n\nHeads:\n{heads}")
+
+        def show_history():
+            hist = get_history()
+            status_box.setPlainText(f"History (latest):\n{hist}")
+
+        def do_upgrade():
+            res = upgrade_head(); status_box.append(f"\n{res}")
+            refresh()
+
+        def do_downgrade():
+            reply = QMessageBox.question(dlg, 'Confirm Downgrade', 'Downgrade -1? This may remove latest schema changes.', QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                res = downgrade_one(); status_box.append(f"\n{res}")
+                refresh()
+
+        def do_stamp():
+            reply = QMessageBox.question(dlg, 'Confirm Stamp', 'Stamp head sets DB revision without migration. Proceed?', QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                res = stamp_head(); status_box.append(f"\n{res}")
+                refresh()
+
+        btn_refresh.clicked.connect(refresh)
+        btn_history.clicked.connect(show_history)
+        btn_upgrade.clicked.connect(do_upgrade)
+        btn_downgrade.clicked.connect(do_downgrade)
+        btn_stamp.clicked.connect(do_stamp)
+        btn_close.clicked.connect(dlg.accept)
+        refresh()
+        dlg.exec()
+
+    def refresh_logs(self):
+        key = self.selected_key()
+        if not key:
+            self.log_service_label.setText('')
+            self.log_view.setPlainText('Select a service to view logs.')
+            return
+
+        # Update log service label
+        service = next((s for s in self.services if s.key == key), None)
+        if service:
+            self.log_service_label.setText(f"→ {service.title}")
+
+        path = os.path.join(LOG_DIR, f'{key}.log')
+        if not os.path.exists(path):
+            self.log_view.setPlainText('(no log yet)')
+            return
+
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()[-20000:]  # tail last ~20KB
+
+            # Apply filter if set
+            if self.log_filter:
+                lines = content.splitlines()
+                filtered = [line for line in lines if self.log_filter in line.lower()]
+                content = '\n'.join(filtered)
+
+            self.log_view.setPlainText(content)
+
+            # Auto-scroll to bottom if enabled
+            if self.autoscroll_enabled:
+                cursor = self.log_view.textCursor()
+                cursor.movePosition(QTextCursor.End)
+                self.log_view.setTextCursor(cursor)
+        except Exception:
+            self.log_view.setPlainText('(error reading log)')
+
+    def closeEvent(self, event):
+        """Save UI state on close."""
+        self.ui_state.window_x = self.x()
+        self.ui_state.window_y = self.y()
+        self.ui_state.window_width = self.width()
+        self.ui_state.window_height = self.height()
+        selected = self.selected_key()
+        if selected:
+            self.ui_state.selected_service = selected
+        save_ui_state(self.ui_state)
+        # Stop background health worker thread cleanly
+        if hasattr(self, 'health_worker'):
+            try:
+                self.health_worker.stop()
+                self.health_worker.wait(2000)
+            except Exception:
+                pass
+        event.accept()
+
+
+def main():
+    app = QApplication(sys.argv)
+    w = LauncherWindow()
+    w.show()
+    sys.exit(app.exec())
+
+
+if __name__ == '__main__':
+    main()
