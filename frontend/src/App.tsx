@@ -13,10 +13,14 @@ import { WorkspaceRoute } from './routes/Workspace';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
+import { useTheme } from '@pixsim7/ui';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  // Initialize theme (applies saved theme or system preference)
+  useTheme();
 
   useEffect(() => {
     // Initialize modules

@@ -46,6 +46,7 @@ except ImportError:
     from dialogs.env_editor_dialog import show_env_editor
     from database_log_viewer import DatabaseLogViewer
     from dialogs.settings_dialog import show_settings_dialog
+    from dialogs.log_management_dialog import show_log_management_dialog
 
 # Structured logging for the launcher
 try:
@@ -87,41 +88,53 @@ class LauncherWindow(QWidget):
         super().__init__()
         self.setWindowTitle('PixSim7 Launcher')
 
-        # Set window styling
+        # Set dark theme styling
         self.setStyleSheet("""
             QWidget {
-                background-color: #f9f9f9;
+                background-color: #2b2b2b;
+                color: #e0e0e0;
             }
             QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                border: 1px solid #555;
                 border-radius: 4px;
                 padding: 8px 16px;
                 font-weight: bold;
                 min-height: 28px;
             }
             QPushButton:hover {
-                background-color: #1976D2;
+                background-color: #4d4d4d;
+                border: 1px solid #666;
             }
             QPushButton:pressed {
-                background-color: #0D47A1;
+                background-color: #2d2d2d;
             }
             QPushButton:disabled {
-                background-color: #ccc;
-                color: #888;
+                background-color: #333;
+                color: #666;
+                border: 1px solid #444;
             }
             QLineEdit {
-                border: 1px solid #ccc;
+                border: 1px solid #555;
                 border-radius: 4px;
                 padding: 6px;
-                background-color: white;
+                background-color: #3d3d3d;
+                color: #e0e0e0;
             }
             QLineEdit:focus {
-                border: 1px solid #2196F3;
+                border: 1px solid #5a9fd4;
             }
             QLabel {
-                color: #1a1a1a;
+                color: #e0e0e0;
+                background-color: transparent;
+            }
+            QScrollArea {
+                background-color: #2b2b2b;
+                border: none;
+            }
+            QFrame {
+                background-color: transparent;
             }
         """)
 
@@ -232,6 +245,7 @@ class LauncherWindow(QWidget):
             card.clicked.connect(self._select_service)
             card.start_btn.clicked.connect(lambda checked, k=s.key: self._start_service(k))
             card.stop_btn.clicked.connect(lambda checked, k=s.key: self._stop_service(k))
+            card.restart_requested.connect(self._restart_service)
             if card.open_btn:
                 card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
 
@@ -243,26 +257,56 @@ class LauncherWindow(QWidget):
 
         # Global control buttons
         btn_row1 = QHBoxLayout()
-        self.btn_all = QPushButton('Start All')
-        self.btn_kill_all = QPushButton('Stop All')
+        self.btn_all = QPushButton('▶ Start All')
+        self.btn_all.setToolTip("Start all services")
+        self.btn_kill_all = QPushButton('■ Stop All')
+        self.btn_kill_all.setToolTip("Stop all services")
+        self.btn_restart_all = QPushButton('↻ Restart All')
+        self.btn_restart_all.setToolTip("Restart all running services")
         btn_row1.addWidget(self.btn_all)
         btn_row1.addWidget(self.btn_kill_all)
+        btn_row1.addWidget(self.btn_restart_all)
         left_layout.addLayout(btn_row1)
 
         btn_row2 = QHBoxLayout()
-        self.btn_ports = QPushButton('Edit Ports')
-        self.btn_env = QPushButton('Edit Environment')
-        self.btn_db_down = QPushButton('Stop Databases')
-        self.btn_git_tools = QPushButton('Dev Git Tools')
-        self.btn_migrations = QPushButton('DB Migrations')
+        self.btn_ports = QPushButton('⚙ Ports')
+        self.btn_ports.setToolTip("Edit service ports")
+        self.btn_env = QPushButton('🔧 Environment')
+        self.btn_env.setToolTip("Edit environment variables")
+        self.btn_db_down = QPushButton('🗄 Stop DBs')
+        self.btn_db_down.setToolTip("Stop database containers")
         btn_row2.addWidget(self.btn_ports)
         btn_row2.addWidget(self.btn_env)
         btn_row2.addWidget(self.btn_db_down)
-        btn_row2.addWidget(self.btn_git_tools)
-        btn_row2.addWidget(self.btn_migrations)
+        btn_row2.addStretch()
         left_layout.addLayout(btn_row2)
 
+        btn_row3 = QHBoxLayout()
+        self.btn_git_tools = QPushButton('🔀 Git Tools')
+        self.btn_git_tools.setToolTip("Structured commit helper")
+        self.btn_migrations = QPushButton('🗃 Migrations')
+        self.btn_migrations.setToolTip("Database migration manager")
+        self.btn_log_management = QPushButton('📋 Log Management')
+        self.btn_log_management.setToolTip("Manage, archive, and export console logs")
+        btn_row3.addWidget(self.btn_git_tools)
+        btn_row3.addWidget(self.btn_migrations)
+        btn_row3.addWidget(self.btn_log_management)
+        btn_row3.addStretch()
+        left_layout.addLayout(btn_row3)
+
+        # Status bar with dark theme
         self.status_label = QLabel('Ports: loading...')
+        self.status_label.setStyleSheet("""
+            QLabel {
+                background-color: #1e1e1e;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 9pt;
+                font-weight: 500;
+                color: #a0a0a0;
+            }
+        """)
         left_layout.addWidget(self.status_label)
 
         # Right panel: log tabs
@@ -271,32 +315,34 @@ class LauncherWindow(QWidget):
         right_layout.setContentsMargins(8, 8, 8, 8)
         splitter.addWidget(right)
 
-        # Create tab widget
+        # Create tab widget with dark theme
         self.log_tabs = QTabWidget()
         self.log_tabs.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #ccc;
+                border: 1px solid #555;
                 border-radius: 4px;
-                background: white;
+                background: #2b2b2b;
             }
             QTabBar::tab {
-                background: #e0e0e0;
-                color: #1a1a1a;
+                background: #3d3d3d;
+                color: #e0e0e0;
                 padding: 8px 16px;
                 margin-right: 2px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
                 font-weight: 500;
+                border: 1px solid #555;
+                border-bottom: none;
             }
             QTabBar::tab:selected {
-                background: #2196F3;
-                color: white;
+                background: #5a9fd4;
+                color: #ffffff;
             }
             QTabBar::tab:hover {
-                background: #d0d0d0;
+                background: #4d4d4d;
             }
             QTabBar::tab:selected:hover {
-                background: #1976D2;
+                background: #4a8fc4;
             }
         """)
 
@@ -322,15 +368,18 @@ class LauncherWindow(QWidget):
         console_header_layout.addStretch()
         console_layout.addLayout(console_header_layout)
 
-        self.log_view = QTextEdit()
+        # Use QTextBrowser for clickable URLs
+        from PySide6.QtWidgets import QTextBrowser
+        self.log_view = QTextBrowser()
         self.log_view.setReadOnly(True)
+        self.log_view.setOpenExternalLinks(True)  # Open URLs in browser
         self.log_view.setStyleSheet("""
-            QTextEdit {
+            QTextBrowser {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 9pt;
-                border: 1px solid #ccc;
+                border: 1px solid #555;
                 border-radius: 4px;
             }
         """)
@@ -339,8 +388,8 @@ class LauncherWindow(QWidget):
         log_btn_row = QHBoxLayout()
         self.btn_refresh_logs = QPushButton('🔄 Refresh')
         self.btn_refresh_logs.setToolTip("Refresh console logs (F5)")
-        self.btn_clear_logs = QPushButton('🗑 Clear Display')
-        self.btn_clear_logs.setToolTip("Clear console display (Ctrl+L)")
+        self.btn_clear_logs = QPushButton('🗑 Clear All')
+        self.btn_clear_logs.setToolTip("Clear console logs and persisted file (Ctrl+L)")
         self.autoscroll_checkbox = QCheckBox('Auto-scroll')
         self.autoscroll_checkbox.setChecked(True)
         self.autoscroll_checkbox.setToolTip("Automatically scroll to bottom when new logs arrive")
@@ -371,7 +420,8 @@ class LauncherWindow(QWidget):
 
         # Connections
         self.btn_all.clicked.connect(self.start_all)
-        self.btn_kill_all.clicked.connect(self.stop_all)
+        self.btn_kill_all.clicked.connect(self._stop_all_with_confirmation)
+        self.btn_restart_all.clicked.connect(self._restart_all)
         self.btn_ports.clicked.connect(self.edit_ports)
         self.btn_env.clicked.connect(self.edit_env)
         self.btn_db_down.clicked.connect(self.stop_databases)
@@ -380,6 +430,7 @@ class LauncherWindow(QWidget):
         self.btn_clear_logs.clicked.connect(self._clear_console_display)
         self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
         self.btn_migrations.clicked.connect(lambda: show_migrations_dialog(self))
+        self.btn_log_management.clicked.connect(lambda: show_log_management_dialog(self, self.processes))
         self.btn_settings.clicked.connect(self._open_settings)
 
         # Auto-refresh timer for console
@@ -423,6 +474,32 @@ class LauncherWindow(QWidget):
             sp.stop(graceful=True)
             self._refresh_console_logs()
 
+    def _restart_service(self, key: str):
+        """Restart a specific service."""
+        sp = self.processes.get(key)
+        if not sp or not sp.running:
+            return
+
+        service_title = next((s.title for s in self.services if s.key == key), key)
+        if _launcher_logger:
+            try:
+                _launcher_logger.info("service_restart", service_key=key)
+            except Exception:
+                pass
+
+        # Stop the service
+        sp.stop(graceful=True)
+
+        # Wait a moment before restarting
+        QTimer.singleShot(1500, lambda: self._delayed_restart(key))
+
+    def _delayed_restart(self, key: str):
+        """Restart service after a short delay."""
+        sp = self.processes.get(key)
+        if sp and sp.tool_available:
+            sp.start()
+            self._refresh_console_logs()
+
     def _open_service_url(self, key: str):
         """Open a service's URL in the browser."""
         s = next((x for x in self.services if x.key == key), None)
@@ -458,8 +535,15 @@ class LauncherWindow(QWidget):
 
     def update_ports_label(self):
         p = read_env_ports()
+        # Count running services
+        running_count = sum(1 for sp in self.processes.values() if sp.running)
+        healthy_count = sum(1 for sp in self.processes.values() if sp.health_status == HealthStatus.HEALTHY)
+
+        status_emoji = "✓" if healthy_count == running_count and running_count > 0 else "●"
         self.status_label.setText(
-            f"Ports: backend={p.backend} admin={p.admin} front={p.frontend} game_frontend={p.game_frontend} game_service={p.game_service}"
+            f"{status_emoji} {running_count}/{len(self.processes)} running "
+            f"({healthy_count} healthy) • "
+            f"Backend:{p.backend} Admin:{p.admin} Frontend:{p.frontend}"
         )
 
     def selected_key(self) -> str | None:
@@ -481,6 +565,55 @@ class LauncherWindow(QWidget):
     def stop_all(self):
         for sp in self.processes.values():
             sp.stop(graceful=True)
+        self._refresh_console_logs()
+
+    def _stop_all_with_confirmation(self):
+        """Stop all services with confirmation dialog."""
+        # Count running services
+        running_count = sum(1 for sp in self.processes.values() if sp.running)
+        if running_count == 0:
+            return
+
+        reply = QMessageBox.question(
+            self, 'Confirm Stop All',
+            f'Stop all {running_count} running service{"s" if running_count != 1 else ""}?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self.stop_all()
+
+    def _restart_all(self):
+        """Restart all currently running services."""
+        running_keys = [k for k, sp in self.processes.items() if sp.running]
+        if not running_keys:
+            return
+
+        reply = QMessageBox.question(
+            self, 'Confirm Restart All',
+            f'Restart all {len(running_keys)} running service{"s" if len(running_keys) != 1 else ""}?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info("restart_all", count=len(running_keys))
+                except Exception:
+                    pass
+
+            # Stop all running services
+            self.stop_all()
+
+            # Wait before restarting
+            QTimer.singleShot(2000, lambda: self._delayed_restart_all(running_keys))
+
+    def _delayed_restart_all(self, keys):
+        """Restart services after delay."""
+        for key in keys:
+            sp = self.processes.get(key)
+            if sp and sp.tool_available:
+                sp.start()
         self._refresh_console_logs()
 
     def stop_databases(self):
@@ -643,6 +776,48 @@ class LauncherWindow(QWidget):
         # No-op; file log filter removed
         pass
 
+    def _format_console_log_html(self, log_lines):
+        """Format console logs with syntax highlighting and clickable URLs."""
+        import re
+        html_lines = ['<pre style="margin: 0; padding: 0; line-height: 1.4;">']
+
+        for line in log_lines:
+            # Parse timestamp and tag
+            timestamp_match = re.match(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)', line)
+            if timestamp_match:
+                time, tag, content = timestamp_match.groups()
+
+                # Color code the tag
+                tag_color = '#f44336' if tag == 'ERR' else '#4CAF50'
+
+                # Make URLs clickable
+                content = re.sub(
+                    r'(https?://[^\s]+)',
+                    r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
+                    content
+                )
+
+                # Highlight special keywords
+                content = re.sub(r'\b(VITE|ready|Local|Network|running|started|listening)\b',
+                                r'<span style="color: #81C784; font-weight: bold;">\1</span>', content)
+                content = re.sub(r'\b(ERROR|error|failed|Error|FAILED)\b',
+                                r'<span style="color: #EF5350; font-weight: bold;">\1</span>', content)
+                content = re.sub(r'\b(WARNING|warning|WARN|warn)\b',
+                                r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', content)
+
+                # Format line with muted timestamp
+                html_lines.append(
+                    f'<span style="color: #666;">[{time}]</span> '
+                    f'<span style="color: {tag_color}; font-weight: bold;">[{tag}]</span> '
+                    f'{content}'
+                )
+            else:
+                # Line without timestamp (shouldn't happen, but handle it)
+                html_lines.append(line)
+
+        html_lines.append('</pre>')
+        return '\n'.join(html_lines)
+
     def _refresh_console_logs(self):
         """Refresh the console log display with service output (only when changed)."""
         if not self.selected_service_key:
@@ -676,8 +851,9 @@ class LauncherWindow(QWidget):
 
             # Get logs from buffer
             if sp.log_buffer:
-                log_text = '\n'.join(sp.log_buffer)
-                self.log_view.setPlainText(log_text)
+                # Format as HTML with syntax highlighting
+                log_html = self._format_console_log_html(sp.log_buffer)
+                self.log_view.setHtml(log_html)
 
                 # Scroll behavior based on auto-scroll setting
                 if self.autoscroll_enabled or was_at_bottom:
@@ -701,11 +877,11 @@ class LauncherWindow(QWidget):
                 if sp.running:
                     # Check health status to provide more context
                     if sp.health_status == HealthStatus.HEALTHY:
-                        self.log_view.setPlainText(f"Service {service_title} is running (detected from previous session).\n\nNote: Console output is only captured when services are started from this launcher.\nThe service was likely started externally or in a previous session.")
+                        self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is running (detected from previous session).<br><br>Note: Console output is only captured when services are started from this launcher.<br>The service was likely started externally or in a previous session.</div>')
                     else:
-                        self.log_view.setPlainText(f"Service {service_title} is starting up...\nWaiting for output...")
+                        self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is starting up...<br>Waiting for output...</div>')
                 else:
-                    self.log_view.setPlainText(f"Service {service_title} is not running.\n\nClick 'Start' to launch this service.")
+                    self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is not running.<br><br>Click <strong>Start</strong> to launch this service.</div>')
         finally:
             self.log_view.blockSignals(False)
 
@@ -794,10 +970,41 @@ class LauncherWindow(QWidget):
 
 
 def main():
+    # Check for existing launcher instance
+    try:
+        from .pid_file import ensure_single_instance, remove_pid_file
+    except ImportError:
+        from pid_file import ensure_single_instance, remove_pid_file
+
+    can_proceed, existing_pid = ensure_single_instance()
+    if not can_proceed:
+        from PySide6.QtWidgets import QMessageBox
+        app = QApplication(sys.argv)
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Warning)
+        msg.setWindowTitle("Launcher Already Running")
+        msg.setText("PixSim7 Launcher is already running.")
+        msg.setInformativeText(
+            f"Another instance is running with PID {existing_pid}.\n\n"
+            "Please close the existing launcher first, or use that window."
+        )
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec()
+        sys.exit(1)
+
+    # Register cleanup on exit
+    import atexit
+    atexit.register(remove_pid_file)
+
     app = QApplication(sys.argv)
     w = LauncherWindow()
     w.show()
-    sys.exit(app.exec())
+
+    exit_code = app.exec()
+
+    # Clean up PID file
+    remove_pid_file()
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':

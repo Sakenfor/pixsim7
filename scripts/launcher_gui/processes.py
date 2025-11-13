@@ -1,6 +1,8 @@
 import os
 import signal
-from typing import Optional
+import subprocess
+import threading
+from typing import Optional, Union
 from PySide6.QtCore import QProcess, QTimer
 
 try:
@@ -26,7 +28,7 @@ except ImportError:
 class ServiceProcess:
     def __init__(self, defn: ServiceDef):
         self.defn = defn
-        self.proc: Optional[QProcess] = None
+        self.proc: Optional[Union[QProcess, subprocess.Popen]] = None
         self.running = False
         self.health_status = HealthStatus.STOPPED
         self.tool_available = True
@@ -35,11 +37,16 @@ class ServiceProcess:
         self.log_buffer: list[str] = []  # In-memory log buffer
         self.max_log_lines = MAX_LOG_LINES
         self.detected_pid: Optional[int] = None  # PID of externally running process
+        self.started_pid: Optional[int] = None  # PID of process we started (for detached processes)
 
         # Console log file persistence
         self.log_file_path = os.path.join(ROOT, 'data', 'logs', 'console', f'{defn.key}.log')
         self._ensure_log_dir()
         self._load_persisted_logs()
+
+        # Log file monitoring for detached processes
+        self._log_file_position = 0  # Track position in log file for incremental reading
+        self._log_monitor_timer: Optional[QTimer] = None
 
     def _ensure_log_dir(self):
         """Ensure console log directory exists."""
@@ -77,9 +84,64 @@ class ServiceProcess:
             # Silently fail - don't interrupt logging if file write fails
             pass
 
+    def _read_new_log_lines(self):
+        """Read new lines from log file (for detached processes)."""
+        try:
+            if not os.path.exists(self.log_file_path):
+                return
+
+            with open(self.log_file_path, 'r', encoding='utf-8', errors='replace') as f:
+                # Seek to last known position
+                f.seek(self._log_file_position)
+                new_lines = f.readlines()
+                self._log_file_position = f.tell()
+
+                # Add new lines to buffer
+                for line in new_lines:
+                    line = line.rstrip()
+                    if line:
+                        self.log_buffer.append(line)
+                        # Check for errors
+                        if '[ERR]' in line or '[ERROR]' in line:
+                            # Extract the actual error message
+                            parts = line.split('] ', 2)
+                            if len(parts) >= 3:
+                                self.last_error_line = parts[2]
+
+                # Trim buffer if too large
+                if len(self.log_buffer) > self.max_log_lines:
+                    self.log_buffer = self.log_buffer[-self.max_log_lines:]
+
+        except Exception as e:
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "log_read_failed",
+                        service_key=self.defn.key,
+                        error=str(e)
+                    )
+                except Exception:
+                    pass
+
+    def _start_log_monitor(self):
+        """Start monitoring log file for detached processes."""
+        if self._log_monitor_timer:
+            self._log_monitor_timer.stop()
+
+        self._log_monitor_timer = QTimer()
+        self._log_monitor_timer.timeout.connect(self._read_new_log_lines)
+        self._log_monitor_timer.start(500)  # Check every 500ms
+
+    def _stop_log_monitor(self):
+        """Stop monitoring log file."""
+        if self._log_monitor_timer:
+            self._log_monitor_timer.stop()
+            self._log_monitor_timer = None
+
     def clear_logs(self):
         """Clear both in-memory buffer and persisted log file."""
         self.log_buffer.clear()
+        self._log_file_position = 0  # Reset file position
         try:
             # Truncate the log file
             with open(self.log_file_path, 'w', encoding='utf-8') as f:
@@ -136,21 +198,11 @@ class ServiceProcess:
                 self.health_status = HealthStatus.UNHEALTHY
                 return False
 
-        self.proc = QProcess()
+        # Use subprocess with process group detachment for true independence
         env = service_env()
         if self.defn.env_overrides:
             env.update(self.defn.env_overrides)
-        qenv = self.proc.processEnvironment()
-        for k, v in env.items():
-            qenv.insert(k, v)
-        self.proc.setProcessEnvironment(qenv)
-        self.proc.setProgram(self.defn.program)
-        self.proc.setArguments(self.defn.args)
-        self.proc.setWorkingDirectory(self.defn.cwd)
-        self.proc.readyReadStandardOutput.connect(lambda: self._capture(False))
-        self.proc.readyReadStandardError.connect(lambda: self._capture(True))
-        self.proc.finished.connect(self._finished)
-        self.proc.errorOccurred.connect(self._error_occurred)
+
         if _launcher_logger:
             try:
                 _launcher_logger.info(
@@ -162,12 +214,90 @@ class ServiceProcess:
                 )
             except Exception:
                 pass
-        self.proc.start()
-        self.running = True
-        self.health_status = HealthStatus.STARTING
-        self.last_error_line = ''
-        self.detected_pid = None  # Clear any detected PID since we're starting fresh
-        return True
+
+        try:
+            # Open log file for writing (append mode)
+            log_file = open(self.log_file_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
+
+            # Prepare subprocess arguments
+            cmd = [self.defn.program] + self.defn.args
+
+            # Platform-specific process group creation
+            if os.name == 'nt':
+                # Windows: CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
+                # These flags make the process independent of the parent
+                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+                try:
+                    creation_flags |= subprocess.CREATE_BREAKAWAY_FROM_JOB
+                except AttributeError:
+                    # CREATE_BREAKAWAY_FROM_JOB not available in all Python versions
+                    pass
+
+                # Add CREATE_NO_WINDOW to avoid console windows
+                if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+                    creation_flags |= subprocess.CREATE_NO_WINDOW
+
+                self.proc = subprocess.Popen(
+                    cmd,
+                    cwd=self.defn.cwd,
+                    env=env,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,  # Merge stderr into stdout
+                    creationflags=creation_flags
+                )
+            else:
+                # Unix: use start_new_session to create new process group
+                self.proc = subprocess.Popen(
+                    cmd,
+                    cwd=self.defn.cwd,
+                    env=env,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True  # Creates new process group on Unix
+                )
+
+            # Store PID and track process
+            self.started_pid = self.proc.pid
+            self.running = True
+            self.health_status = HealthStatus.STARTING
+            self.last_error_line = ''
+            self.detected_pid = None  # Clear any detected PID since we're starting fresh
+
+            # Initialize log file position to current end
+            try:
+                self._log_file_position = os.path.getsize(self.log_file_path)
+            except Exception:
+                self._log_file_position = 0
+
+            # Start monitoring log file for updates
+            self._start_log_monitor()
+
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info(
+                        "service_started_detached",
+                        service_key=self.defn.key,
+                        pid=self.started_pid
+                    )
+                except Exception:
+                    pass
+
+            return True
+
+        except Exception as e:
+            self.last_error_line = f"Failed to start: {str(e)}"
+            self.running = False
+            self.health_status = HealthStatus.UNHEALTHY
+            if _launcher_logger:
+                try:
+                    _launcher_logger.error(
+                        "service_start_failed",
+                        service_key=self.defn.key,
+                        error=str(e)
+                    )
+                except Exception:
+                    pass
+            return False
 
     def stop(self, graceful=True):
         if not self.running:
@@ -196,6 +326,40 @@ class ServiceProcess:
                 self.running = False
                 self.health_status = HealthStatus.UNHEALTHY
                 return
+
+        # Handle subprocess.Popen (detached process)
+        if isinstance(self.proc, subprocess.Popen):
+            self._stop_log_monitor()
+
+            # Use started_pid (our process) or detected_pid (external process)
+            target_pid = self.started_pid or self.detected_pid
+
+            if target_pid:
+                try:
+                    from .process_utils import kill_process_by_pid
+                except ImportError:
+                    from process_utils import kill_process_by_pid
+
+                force = not graceful
+                success = kill_process_by_pid(target_pid, force=force)
+
+                if _launcher_logger:
+                    try:
+                        _launcher_logger.info(
+                            "detached_process_kill",
+                            service_key=self.defn.key,
+                            pid=target_pid,
+                            force=force,
+                            success=success
+                        )
+                    except Exception:
+                        pass
+
+            self.proc = None
+            self.started_pid = None
+            self.running = False
+            self.health_status = HealthStatus.STOPPED
+            return
 
         # Handle detected process (not started by launcher)
         if self.proc is None and self.detected_pid:
@@ -405,6 +569,27 @@ class ServiceProcess:
             self.health_status = HealthStatus.STOPPED
 
     def _finish_stop(self):
+        # Handle subprocess.Popen
+        if isinstance(self.proc, subprocess.Popen):
+            try:
+                # Check if still running
+                if self.proc.poll() is None:
+                    if _launcher_logger:
+                        try:
+                            _launcher_logger.warning("service_force_kill", service_key=self.defn.key)
+                        except Exception:
+                            pass
+                    self._kill_process_tree()
+            except Exception:
+                pass
+            self._stop_log_monitor()
+            self.proc = None
+            self.started_pid = None
+            self.running = False
+            self.health_status = HealthStatus.STOPPED
+            return
+
+        # Handle QProcess
         if self.proc and self.proc.state() == QProcess.Running:
             if _launcher_logger:
                 try:
@@ -425,6 +610,13 @@ class ServiceProcess:
         self.running = False
         self.health_status = HealthStatus.STOPPED
 
+    def _strip_ansi_codes(self, text: str) -> str:
+        """Remove ANSI escape sequences (color codes) from text."""
+        import re
+        # Pattern matches ANSI escape sequences
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', text)
+
     def _capture(self, is_err: bool):
         if not self.proc:
             return
@@ -432,11 +624,14 @@ class ServiceProcess:
         text = bytes(data).decode('utf-8', errors='replace')  # Show � for invalid chars instead of dropping them
         for line in text.splitlines():
             if line.strip():
+                # Strip ANSI color codes for cleaner console display
+                clean_line = self._strip_ansi_codes(line.strip())
+
                 # Add to in-memory buffer
                 from datetime import datetime
                 timestamp = datetime.now().strftime('%H:%M:%S')
                 stream_tag = 'ERR' if is_err else 'OUT'
-                log_line = f"[{timestamp}] [{stream_tag}] {line.strip()}"
+                log_line = f"[{timestamp}] [{stream_tag}] {clean_line}"
                 self.log_buffer.append(log_line)
                 # Persist to file
                 self._persist_log_line(log_line)
@@ -445,14 +640,14 @@ class ServiceProcess:
                     self.log_buffer = self.log_buffer[-self.max_log_lines:]
 
             if is_err and line.strip():
-                self.last_error_line = line.strip()
+                self.last_error_line = self._strip_ansi_codes(line.strip())
             if _launcher_logger and line.strip():
                 try:
                     _launcher_logger.debug(
                         "service_output",
                         service_key=self.defn.key,
                         stream="stderr" if is_err else "stdout",
-                        line=line.strip(),
+                        line=self._strip_ansi_codes(line.strip()),
                     )
                 except Exception:
                     pass
@@ -558,9 +753,14 @@ class ServiceProcess:
         if not self.proc:
             return
 
-        # Get PID
+        # Get PID (handle both QProcess and subprocess.Popen)
+        pid = None
         try:
-            pid = int(self.proc.processId())  # type: ignore[attr-defined]
+            if isinstance(self.proc, subprocess.Popen):
+                pid = self.proc.pid or self.started_pid
+            else:
+                # QProcess
+                pid = int(self.proc.processId())  # type: ignore[attr-defined]
         except Exception as e:
             if _launcher_logger:
                 try:
@@ -571,9 +771,12 @@ class ServiceProcess:
                     )
                 except Exception:
                     pass
-            # Fallback: try QProcess.kill()
+            # Fallback: try kill() method
             try:
-                self.proc.kill()
+                if isinstance(self.proc, subprocess.Popen):
+                    self.proc.kill()
+                else:
+                    self.proc.kill()  # QProcess
             except Exception as kill_err:
                 if _launcher_logger:
                     try:
@@ -584,6 +787,9 @@ class ServiceProcess:
                         )
                     except Exception:
                         pass
+            return
+
+        if not pid:
             return
 
         # Kill process tree

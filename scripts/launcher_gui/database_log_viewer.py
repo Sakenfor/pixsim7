@@ -131,6 +131,18 @@ class DatabaseLogViewer(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText('Search...')
         self.search_input.setMinimumWidth(150)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #5a9fd4;
+            }
+        """)
         filter_bar.addWidget(self.search_input)
 
         filter_bar.addStretch()
@@ -161,14 +173,16 @@ class DatabaseLogViewer(QWidget):
         self.reset_btn.setToolTip("Reset all filters to default values (Ctrl+R)")
         self.reset_btn.setStyleSheet("""
             QPushButton {
-                background-color: #757575;
-                color: white;
+                background-color: #555;
+                color: #e0e0e0;
+                border: 1px solid #666;
             }
             QPushButton:hover {
-                background-color: #616161;
+                background-color: #666;
+                border: 1px solid #777;
             }
             QPushButton:pressed {
-                background-color: #424242;
+                background-color: #444;
             }
         """)
         btn_row.addWidget(self.reset_btn)
@@ -190,7 +204,7 @@ class DatabaseLogViewer(QWidget):
 
         # Status label
         self.status_label = QLabel('Ready - Select service and click Refresh')
-        self.status_label.setStyleSheet("color: #333; font-size: 9pt; font-weight: 500;")
+        self.status_label.setStyleSheet("color: #a0a0a0; font-size: 9pt; font-weight: 500;")
         btn_row.addWidget(self.status_label)
 
         layout.addLayout(btn_row)
@@ -200,6 +214,7 @@ class DatabaseLogViewer(QWidget):
         self.log_display.setReadOnly(True)
         self.log_display.setOpenLinks(False)  # Handle clicks manually
         self.log_display.anchorClicked.connect(self._on_log_link_clicked)
+        self._expanded_rows = set()  # Track which rows are expanded
         self.log_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.log_display.customContextMenuRequested.connect(self._show_context_menu)
         self.log_display.setStyleSheet("""
@@ -241,6 +256,7 @@ class DatabaseLogViewer(QWidget):
     def clear_display(self):
         """Clear the log display."""
         self.log_display.clear()
+        self._expanded_rows.clear()  # Reset expansion state
         self.status_label.setText('Display cleared - Ready to load logs')
 
     def _reset_filters(self):
@@ -256,6 +272,7 @@ class DatabaseLogViewer(QWidget):
             widget.clear()
 
         self.log_display.clear()
+        self._expanded_rows.clear()  # Reset expansion state
         self.status_label.setText('Filters reset - Click Refresh to load logs')
 
     def refresh_logs(self):
@@ -428,18 +445,18 @@ class DatabaseLogViewer(QWidget):
         widget.setMaximumWidth(110)
 
         # Different border color for contextual fields when visible
-        border_color = '#bbb' if is_primary else '#4CAF50'
+        border_color = '#555' if is_primary else '#4CAF50'
         widget.setStyleSheet(f"""
             QLineEdit {{
-                background-color: white;
-                color: #1a1a1a;
+                background-color: #3d3d3d;
+                color: #e0e0e0;
                 border: 1px solid {border_color};
                 border-radius: 3px;
                 padding: 3px 6px;
                 font-size: 9pt;
             }}
             QLineEdit:focus {{
-                border: 1px solid #2196F3;
+                border: 1px solid #5a9fd4;
             }}
         """)
         return widget
@@ -477,10 +494,15 @@ class DatabaseLogViewer(QWidget):
                 widget.setVisible(should_show)
 
     def _on_log_link_clicked(self, url: QUrl):
-        """Handle clicks on log links to filter."""
-        scheme = url.scheme()  # e.g., "service", "filter"
+        """Handle clicks on log links to filter or expand rows."""
+        scheme = url.scheme()  # e.g., "service", "filter", "expand"
 
-        if scheme == "service":
+        if scheme == "expand":
+            # Handle row expansion toggle
+            row_idx = url.host()
+            self._toggle_row_expansion(row_idx)
+
+        elif scheme == "service":
             filter_value = url.host()
             idx = self.service_combo.findText(filter_value)
             if idx >= 0:
@@ -512,6 +534,23 @@ class DatabaseLogViewer(QWidget):
                 # Try to infer service and select it first
                 pass
 
+    def _toggle_row_expansion(self, row_idx):
+        """Toggle expansion state of a log row and re-render."""
+        # Debug: print to console to verify clicks are being received
+        print(f"[DEBUG] Toggle row {row_idx}, currently expanded: {row_idx in self._expanded_rows}")
+
+        if row_idx in self._expanded_rows:
+            self._expanded_rows.remove(row_idx)
+        else:
+            self._expanded_rows.add(row_idx)
+
+        # Re-render with current expansion state
+        # We need to store the last fetched logs to re-render
+        if hasattr(self, '_last_logs_data'):
+            self._render_logs(self._last_logs_data)
+        else:
+            print("[DEBUG] No _last_logs_data to re-render")
+
     def _show_context_menu(self, position):
         """Show context menu on right-click with smart actions based on selection."""
         cursor = self.log_display.cursorForPosition(position)
@@ -525,13 +564,13 @@ class DatabaseLogViewer(QWidget):
         has_selection = self.log_display.textCursor().hasSelection()
         if has_selection:
             selection = self.log_display.textCursor().selectedText()
-            copy_selection_action = QAction("📋 Copy Selection", self)
+            copy_selection_action = QAction("Copy Selection", self)
             copy_selection_action.triggered.connect(lambda: self._copy_to_clipboard(selection))
             menu.addAction(copy_selection_action)
             menu.addSeparator()
 
         # Always offer: Copy entire log line
-        copy_line_action = QAction("📄 Copy Entire Log Line", self)
+        copy_line_action = QAction("Copy Entire Log Line", self)
         copy_line_action.triggered.connect(lambda: self._copy_to_clipboard(selected_text))
         menu.addAction(copy_line_action)
 
@@ -562,11 +601,11 @@ class DatabaseLogViewer(QWidget):
                 # Truncate long IDs for display
                 display_value = id_value if len(id_value) <= 12 else f"{id_value[:12]}..."
 
-                filter_action = QAction(f"🔍 Filter by {display_name}: {display_value}", self)
+                filter_action = QAction(f"Filter by {display_name}: {display_value}", self)
                 filter_action.triggered.connect(lambda checked, f=field_name, v=id_value: self._filter_by_field(f, v))
                 menu.addAction(filter_action)
 
-                copy_action = QAction(f"📋 Copy {display_name} ({id_value})", self)
+                copy_action = QAction(f"Copy {display_name} ({id_value})", self)
                 copy_action.triggered.connect(lambda checked, v=id_value: self._copy_to_clipboard(v))
                 menu.addAction(copy_action)
 
@@ -574,7 +613,7 @@ class DatabaseLogViewer(QWidget):
             if len(found_ids) > 1:
                 menu.addSeparator()
                 all_ids_text = ' | '.join([f"{name}: {val}" for val, name in found_ids.values()])
-                copy_all_action = QAction(f"📋 Copy All IDs", self)
+                copy_all_action = QAction("Copy All IDs", self)
                 copy_all_action.triggered.connect(lambda: self._copy_to_clipboard(all_ids_text))
                 menu.addAction(copy_all_action)
 
@@ -583,7 +622,7 @@ class DatabaseLogViewer(QWidget):
         if ts_match:
             timestamp = ts_match.group(1)
             menu.addSeparator()
-            copy_ts_action = QAction(f"🕐 Copy Timestamp ({timestamp})", self)
+            copy_ts_action = QAction(f"Copy Timestamp ({timestamp})", self)
             copy_ts_action.triggered.connect(lambda: self._copy_to_clipboard(timestamp))
             menu.addAction(copy_ts_action)
 
@@ -602,7 +641,7 @@ class DatabaseLogViewer(QWidget):
                     error_msg = error_match.group(1).strip()
                     if len(error_msg) > 100:
                         error_msg = error_msg[:100] + '...'
-                    copy_error_action = QAction("⚠️ Copy Error Message", self)
+                    copy_error_action = QAction("Copy Error Message", self)
                     copy_error_action.triggered.connect(lambda checked, msg=error_match.group(1).strip(): self._copy_to_clipboard(msg))
                     menu.addAction(copy_error_action)
                     break
@@ -612,7 +651,7 @@ class DatabaseLogViewer(QWidget):
         if op_match:
             op_type = op_match.group(1)
             menu.addSeparator()
-            filter_op_action = QAction(f"🔧 Filter by Operation: {op_type}", self)
+            filter_op_action = QAction(f"Filter by Operation: {op_type}", self)
             filter_op_action.triggered.connect(lambda: self._filter_by_field('operation_type', op_type))
             menu.addAction(filter_op_action)
 
@@ -645,17 +684,27 @@ class DatabaseLogViewer(QWidget):
         if generation != self._worker_generation:
             return
 
+        # Store for re-rendering when toggling expansion
+        self._last_logs_data = data
+        self._render_logs(data)
+
+    def _render_logs(self, data):
+        """Render logs with current expansion state."""
         logs = data.get('logs', [])
         if not logs:
             self.log_display.setHtml('<div style="color: #888; padding: 20px; text-align: center;">No logs found matching your filters.<br><br>Try adjusting the time range or removing some filters.</div>')
             self.status_label.setText('No results found')
             return
 
+        # Import here to avoid circular dependency
+        from .log_formatter import format_log_line_html
+
         # Build HTML with styles and log rows
         html_parts = [LOG_ROW_STYLES]
 
         for idx, log in enumerate(reversed(logs)):  # Newest first
-            line = format_log_line_html(log, idx)
+            is_expanded = str(idx) in self._expanded_rows
+            line = format_log_line_html(log, idx, is_expanded)
             html_parts.append(line)
 
         self.log_display.setHtml('\n'.join(html_parts))
@@ -745,25 +794,25 @@ class DatabaseLogViewer(QWidget):
         cb.setMinimumWidth(110)
         cb.setStyleSheet("""
             QComboBox {
-                background-color: white;
-                color: #1a1a1a;
+                background-color: #3d3d3d;
+                color: #e0e0e0;
                 padding: 4px 8px;
-                border: 1px solid #ccc;
+                border: 1px solid #555;
                 border-radius: 4px;
             }
             QComboBox:hover {
-                border: 1px solid #2196F3;
+                border: 1px solid #5a9fd4;
             }
             QComboBox::drop-down {
                 border: none;
                 width: 20px;
             }
             QComboBox QAbstractItemView {
-                background-color: white;
-                color: #1a1a1a;
-                selection-background-color: #2196F3;
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                selection-background-color: #5a9fd4;
                 selection-color: white;
-                border: 1px solid #ccc;
+                border: 1px solid #555;
             }
         """)
         return cb

@@ -44,6 +44,109 @@ body {
   padding-bottom: 240px;
 }
 
+/* React Mosaic theme customization */
+.mosaic-blueprint-theme {
+  --mosaic-border-color: rgb(229 231 235);
+  --mosaic-toolbar-bg: rgb(249 250 251);
+  --mosaic-toolbar-text: rgb(31 41 55);
+}
+
+.dark .mosaic-blueprint-theme {
+  --mosaic-border-color: rgb(64 64 64);
+  --mosaic-toolbar-bg: rgb(38 38 38);
+  --mosaic-toolbar-text: rgb(229 231 235);
+}
+
+/* Override Mosaic default styles */
+.mosaic-window {
+  box-shadow: none !important;
+}
+
+.mosaic-window-toolbar {
+  background-color: var(--mosaic-toolbar-bg) !important;
+  color: var(--mosaic-toolbar-text) !important;
+  height: 32px !important;
+  border-bottom: 1px solid var(--mosaic-border-color) !important;
+  cursor: default !important;
+}
+
+/* Remove drag cursor from titlebar except the actual draggable area */
+.mosaic-window-toolbar.draggable {
+  cursor: grab !important;
+}
+
+.mosaic-window-toolbar.draggable:active {
+  cursor: grabbing !important;
+}
+
+.mosaic-window-title {
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  color: var(--mosaic-toolbar-text) !important;
+  cursor: grab !important;
+}
+
+.mosaic-window-title:active {
+  cursor: grabbing !important;
+}
+
+.mosaic-window-body {
+  background-color: transparent !important;
+}
+
+.mosaic-split {
+  background-color: var(--mosaic-border-color) !important;
+}
+
+.mosaic-split:hover {
+  background-color: rgb(59 130 246) !important;
+}
+
+.mosaic-preview {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+  border: 2px solid rgb(59 130 246) !important;
+}
+
+/* Mosaic buttons - default controls */
+.mosaic-window-controls {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+}
+
+.mosaic-window-controls .mosaic-default-control,
+.mosaic-window-controls button {
+  color: var(--mosaic-toolbar-text) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 4px 6px !important;
+  border-radius: 3px !important;
+  cursor: pointer !important;
+  opacity: 0.7;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.15s ease !important;
+}
+
+.mosaic-window-controls .mosaic-default-control:hover,
+.mosaic-window-controls button:hover {
+  opacity: 1 !important;
+  background-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+.dark .mosaic-window-controls .mosaic-default-control:hover,
+.dark .mosaic-window-controls button:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Hide the toolbar drag handle that causes the whole bar to be draggable */
+.mosaic-window-toolbar .mosaic-window-additional-actions-bar {
+  cursor: default !important;
+}
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;

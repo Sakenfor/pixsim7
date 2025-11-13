@@ -26,6 +26,11 @@ def build_services() -> List[ServiceDef]:
     ports = read_env_ports()
     python_exe = find_python_executable()
 
+    # On Windows, QProcess needs .cmd extension for npm/pnpm
+    import sys
+    pnpm_exe = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
+    npm_exe = "npm.cmd" if sys.platform == "win32" else "npm"
+
     return [
         ServiceDef(
             key="db",
@@ -71,7 +76,7 @@ def build_services() -> List[ServiceDef]:
         ServiceDef(
             key="admin",
             title="Admin (SvelteKit)",
-            program="npm",
+            program=npm_exe,
             args=["run", "dev"],
             cwd=os.path.join(ROOT, "admin"),
             env_overrides={
@@ -86,8 +91,8 @@ def build_services() -> List[ServiceDef]:
         ServiceDef(
             key="frontend",
             title="Frontend (React)",
-            program="pnpm",
-            args=["dev", "--", "--port", str(ports.frontend)],
+            program=pnpm_exe,
+            args=["dev", "--port", str(ports.frontend)],
             cwd=os.path.join(ROOT, "frontend"),
             env_overrides={
                 "VITE_GAME_URL": f"http://localhost:{ports.game_frontend}",
@@ -101,8 +106,8 @@ def build_services() -> List[ServiceDef]:
         ServiceDef(
             key="game_frontend",
             title="Game Frontend (React)",
-            program="pnpm",
-            args=["dev", "--", "--port", str(ports.game_frontend)],
+            program=pnpm_exe,
+            args=["dev", "--port", str(ports.game_frontend)],
             cwd=os.path.join(ROOT, "game-frontend"),
             env_overrides={
                 "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",

@@ -151,16 +151,108 @@ def format_error(error_msg):
     return f'<br/><span style="color: {COMPONENT_COLORS["error"]}; margin-left: 20px;"{error_tooltip}>ERROR: {escape_html(error_display)}</span>'
 
 
-def format_log_line_html(log, idx=0):
+def format_extra_fields(extra, exclude_fields=None):
+    """Format extra fields for display in expanded view."""
+    if not isinstance(extra, dict):
+        return ''
+
+    exclude = exclude_fields or {'method', 'path', 'status_code', 'event', 'service_key', 'pid', 'port'}
+    parts = []
+
+    for key, value in extra.items():
+        if key in exclude or value is None:
+            continue
+
+        # Format based on type
+        if isinstance(value, bool):
+            val_str = 'true' if value else 'false'
+            color = '#4CAF50' if value else '#f44336'
+        elif isinstance(value, (int, float)):
+            val_str = str(value)
+            color = '#FFB74D'
+        else:
+            val_str = str(value)
+            color = '#a0a0a0'
+
+        parts.append(f'<span style="color: #888;">{key}=</span><span style="color: {color};">{escape_html(val_str)}</span>')
+
+    return ' | '.join(parts) if parts else ''
+
+
+def build_expandable_details(log, extra):
+    """Build HTML for expandable details section."""
+    details_parts = []
+
+    # Show all extra fields that weren't shown in main row
+    all_fields = {**log, **(extra if isinstance(extra, dict) else {})}
+    skip_fields = {'id', 'timestamp', 'level', 'service', 'msg', 'event', 'created_at', 'extra'}
+
+    field_groups = []
+
+    # Group 1: IDs
+    id_fields = []
+    for field in ['job_id', 'request_id', 'user_id', 'provider_id', 'asset_id', 'artifact_id']:
+        if field in all_fields and all_fields[field]:
+            id_fields.append(f'<span style="color: #888;">{field}:</span> <span style="color: #FFB74D;">{all_fields[field]}</span>')
+    if id_fields:
+        field_groups.append(('IDs', id_fields))
+
+    # Group 2: Service/Process Info
+    service_fields = []
+    for field in ['service_key', 'pid', 'port', 'running', 'status', 'health_status']:
+        if field in all_fields and all_fields[field] is not None:
+            value = all_fields[field]
+            if isinstance(value, bool):
+                val_str = 'true' if value else 'false'
+                color = '#4CAF50' if value else '#f44336'
+            else:
+                val_str = str(value)
+                color = '#a0a0a0'
+            service_fields.append(f'<span style="color: #888;">{field}:</span> <span style="color: {color};">{val_str}</span>')
+    if service_fields:
+        field_groups.append(('Service', service_fields))
+
+    # Group 3: Timing
+    timing_fields = []
+    for field in ['duration_ms', 'attempt', 'stage', 'retry_count']:
+        if field in all_fields and all_fields[field] is not None:
+            timing_fields.append(f'<span style="color: #888;">{field}:</span> <span style="color: #FFB74D;">{all_fields[field]}</span>')
+    if timing_fields:
+        field_groups.append(('Timing', timing_fields))
+
+    # Group 4: Other fields
+    other_fields = []
+    for field, value in all_fields.items():
+        if field not in skip_fields and value is not None:
+            # Skip if already shown
+            if any(field in group_fields for _, group_fields in field_groups for f in group_fields if field in f):
+                continue
+
+            val_display = str(value)[:100] if len(str(value)) > 100 else str(value)
+            other_fields.append(f'<span style="color: #888;">{field}:</span> <span style="color: #a0a0a0;">{escape_html(val_display)}</span>')
+    if other_fields:
+        field_groups.append(('Other', other_fields))
+
+    # Build HTML
+    for group_name, fields in field_groups:
+        details_parts.append(f'<div style="margin-top: 8px;"><strong style="color: #5a9fd4;">{group_name}:</strong></div>')
+        for field in fields:
+            details_parts.append(f'<div style="margin-left: 20px; padding: 2px 0;">{field}</div>')
+
+    return '\n'.join(details_parts) if details_parts else '<div style="color: #888; font-style: italic;">No additional details</div>'
+
+
+def format_log_line_html(log, idx=0, is_expanded=False):
     """
-    Format a single log entry as colored HTML with hover, tooltips, and copy functionality.
+    Format a single log entry as colored HTML with expandable details.
 
     Args:
         log: Log dictionary from API
         idx: Row index for unique ID
+        is_expanded: Whether this row is currently expanded
 
     Returns:
-        HTML string for the log row
+        HTML string for the log row (main + expandable details)
     """
     # Timestamp
     ts_html, _ = format_timestamp(log.get('timestamp', ''))
@@ -187,21 +279,33 @@ def format_log_line_html(log, idx=0):
     request_id = log.get('request_id') or (extra.get('request_id') if isinstance(extra, dict) else None)
     user_id = log.get('user_id') or (extra.get('user_id') if isinstance(extra, dict) else None)
 
-    # HTTP request details
-    if isinstance(extra, dict) and extra.get('method'):
-        line_content += format_http_request(
-            extra['method'],
-            extra.get('path', '?'),
-            extra.get('status_code')
-        )
-
-        # Service/operation details
+    # Show inline extra details (important fields)
+    inline_extras = []
+    if isinstance(extra, dict):
+        # Service/process info
         if extra.get('service_key'):
-            line_content += f' | <span style="color: {COMPONENT_COLORS["service_key"]};">svc:{extra["service_key"]}</span>'
+            inline_extras.append(f'<span style="color: {COMPONENT_COLORS["service_key"]};">svc:{extra["service_key"]}</span>')
+        if extra.get('running') is not None:
+            running_color = '#4CAF50' if extra['running'] else '#f44336'
+            inline_extras.append(f'<span style="color: {running_color};">{"running" if extra["running"] else "stopped"}</span>')
+        if extra.get('status'):
+            inline_extras.append(f'<span style="color: #a0a0a0;">status:{extra["status"]}</span>')
         if extra.get('pid'):
-            line_content += f' | <span style="color: {COMPONENT_COLORS["pid"]};">pid:{extra["pid"]}</span>'
+            inline_extras.append(f'<span style="color: {COMPONENT_COLORS["pid"]};">pid:{extra["pid"]}</span>')
         if extra.get('port'):
-            line_content += f' | <span style="color: {COMPONENT_COLORS["port"]};">port:{extra["port"]}</span>'
+            inline_extras.append(f'<span style="color: {COMPONENT_COLORS["port"]};">port:{extra["port"]}</span>')
+
+        # HTTP request details
+        if extra.get('method'):
+            line_content += format_http_request(
+                extra['method'],
+                extra.get('path', '?'),
+                extra.get('status_code')
+            )
+
+    # Add inline extras
+    if inline_extras:
+        line_content += ' | ' + ' | '.join(inline_extras)
 
     # Clickable IDs
     if job_id:
@@ -220,7 +324,10 @@ def format_log_line_html(log, idx=0):
     # Error
     error_extra = format_error(log.get('error'))
 
-    # Build full log row (store data for context menu access)
+    # Build expandable details section
+    details_html = build_expandable_details(log, extra)
+
+    # Build full log row with collapse/expand
     plain_text = re.sub('<[^<]+?>', '', line_content + error_extra)
     plain_text = (plain_text
                   .replace('&nbsp;', ' ')
@@ -239,6 +346,18 @@ def format_log_line_html(log, idx=0):
     if user_id:
         data_attrs += f' data-user-id="{user_id}"'
 
-    row = f'<div class="log-row" id="log-{idx}" {data_attrs}>\n    {line_content}{error_extra}\n</div>'
+    # Expandable icon and structure (using clickable link)
+    expand_arrow = '▼' if is_expanded else '▶'
+    expand_icon = f'<a href="expand://{idx}" class="expand-icon" style="color: #888; text-decoration: none; margin-right: 8px;">{expand_arrow}</a>'
+
+    row_class = "log-row expanded" if is_expanded else "log-row"
+    details_display = "block" if is_expanded else "none"
+
+    row = f'''<div class="{row_class}" id="log-{idx}" {data_attrs}>
+    {expand_icon}{line_content}{error_extra}
+</div>
+<div class="log-details" id="details-{idx}" style="display: {details_display}; margin-left: 40px; padding: 8px; background-color: #1e1e1e; border-left: 3px solid #5a9fd4; margin-top: 4px; margin-bottom: 8px;">
+    {details_html}
+</div>'''
 
     return row

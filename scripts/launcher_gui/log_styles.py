@@ -9,7 +9,7 @@ LOG_ROW_STYLES = '''
         padding: 4px 8px;
         margin: 1px 0;
         border-radius: 3px;
-        cursor: default;
+        cursor: pointer;
         position: relative;
         font-family: 'Consolas', 'Courier New', monospace;
         font-size: 9pt;
@@ -19,9 +19,35 @@ LOG_ROW_STYLES = '''
         background-color: rgba(255, 255, 255, 0.08);
         outline: 1px solid rgba(100, 181, 246, 0.3);
     }
+    .log-row.expanded {
+        background-color: rgba(90, 159, 212, 0.1);
+        border-left: 3px solid #5a9fd4;
+        padding-left: 5px;
+    }
     .log-row.selected {
         background-color: rgba(100, 181, 246, 0.15);
         outline: 1px solid rgba(100, 181, 246, 0.5);
+    }
+    .log-details {
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 8pt;
+        line-height: 1.6;
+    }
+    .expand-icon {
+        display: inline-block;
+        font-size: 11pt;
+        cursor: pointer;
+        font-weight: bold;
+        padding: 2px 4px;
+        border-radius: 3px;
+        transition: all 0.2s;
+    }
+    .expand-icon:hover {
+        color: #5a9fd4 !important;
+        background-color: rgba(90, 159, 212, 0.2);
+    }
+    .expand-icon:active {
+        background-color: rgba(90, 159, 212, 0.4);
     }
     .clickable-id {
         cursor: pointer;
@@ -30,6 +56,12 @@ LOG_ROW_STYLES = '''
     .clickable-id:hover {
         text-decoration: underline solid;
         opacity: 0.8;
+    }
+    a {
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
     }
 </style>
 '''
