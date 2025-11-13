@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLayoutStore } from '../stores/layoutStore';
 import { DockLayout } from '../components/layout/DockLayout';
 
@@ -6,10 +7,22 @@ export function WorkspaceRoute() {
   const reset = useLayoutStore(s => s.reset);
   const hasRoot = useLayoutStore(s => Boolean(s.root));
 
+  // Auto-apply default preset if no layout exists
+  useEffect(() => {
+    if (!hasRoot) {
+      console.log('[Workspace] No layout found, applying default "workspace" preset');
+      applyPreset('workspace');
+    }
+  }, [hasRoot, applyPreset]);
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-screen flex flex-col pb-60 bg-neutral-100 dark:bg-neutral-950">
       <div className="border-b px-3 py-2 flex gap-2 items-center bg-neutral-50 dark:bg-neutral-800">
         <span className="text-xs font-semibold">Workspace</span>
+        <button
+          className="text-xs px-2 py-1 border rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
+          onClick={() => applyPreset('workspace')}
+        >Editor</button>
         <button
           className="text-xs px-2 py-1 border rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
           onClick={() => applyPreset('galleryLeft')}

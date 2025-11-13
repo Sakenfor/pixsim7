@@ -5,7 +5,7 @@ import { authService } from '../lib/auth/authService';
 import { useAuthStore } from '../stores/authStore';
 
 export function Login() {
-  const [username, setUsername] = useState('');
+  const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,17 +13,33 @@ export function Login() {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
 
+  function formatError(err: any): string {
+    // Axios error shape: err.response?.data?.detail may be string or array
+    const detail = err?.response?.data?.detail ?? err?.message ?? err;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      // FastAPI validation errors
+      return detail.map((d) => d.msg || JSON.stringify(d)).join('\n');
+    }
+    try { return JSON.stringify(detail); } catch { return 'Request failed'; }
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      const response = await authService.login({ username, password });
+      const identifier = login.trim();
+      const payload = { email: identifier, username: identifier, password };
+      const response = await authService.login(payload);
+      if (!response?.access_token) {
+        throw new Error('Invalid credentials');
+      }
       setUser(response.user);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      setError(formatError(err) || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -41,11 +57,11 @@ export function Login() {
 
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Username</label>
+          <label style={{ display: 'block', marginBottom: '5px' }}>Email or Username</label>
           <input
             type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
             required
             style={{ width: '100%', padding: '8px', fontSize: '14px' }}
           />

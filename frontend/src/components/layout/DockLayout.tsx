@@ -2,6 +2,35 @@ import { useLayoutStore, type SplitNode } from '../../stores/layoutStore';
 import { ResizableSplit } from './ResizableSplit';
 import { PanelChrome } from './PanelChrome';
 import { AssetsRoute } from '../../routes/Assets';
+import { SceneBuilderPanel } from '../SceneBuilderPanel';
+import { GraphPanelWithProvider } from '../GraphPanel';
+import { InspectorPanel } from '../inspector/InspectorPanel';
+import { HealthPanel } from '../health/HealthPanel';
+import { useEffect, useRef } from 'react';
+import { previewBridge } from '../../lib/preview-bridge';
+
+// Game iframe with preview bridge connection
+function GameIframePanel() {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const url = (import.meta as any).env.VITE_GAME_URL || 'http://localhost:5174';
+
+  useEffect(() => {
+    if (iframeRef.current) {
+      previewBridge.setIframe(iframeRef.current);
+    }
+  }, []);
+
+  return (
+    <div className="w-full h-full">
+      <iframe
+        ref={iframeRef}
+        src={url}
+        className="w-full h-full border-0"
+        title="Game Frontend"
+      />
+    </div>
+  );
+}
 
 function renderPanel(panelId: string) {
   // Simple registry mapping panel types to render functions
@@ -10,7 +39,19 @@ function renderPanel(panelId: string) {
     return <AssetsRoute />;
   }
   if (panelId === 'p_scene') {
-    return <div className="p-3 text-sm text-neutral-500">Scene Builder (placeholder)</div>;
+    return <SceneBuilderPanel />;
+  }
+  if (panelId === 'p_graph') {
+    return <GraphPanelWithProvider />;
+  }
+  if (panelId === 'p_inspector') {
+    return <InspectorPanel />;
+  }
+  if (panelId === 'p_health') {
+    return <HealthPanel />;
+  }
+  if (panelId === 'p_game') {
+    return <GameIframePanel />;
   }
   return <div className="p-3 text-sm text-neutral-500">Unknown panel {panelId}</div>;
 }
