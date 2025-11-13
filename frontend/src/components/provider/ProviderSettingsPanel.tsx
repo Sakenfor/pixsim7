@@ -2,11 +2,165 @@ import { useState } from 'react';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
+import { deleteAccount, toggleAccountStatus, updateAccountNickname } from '../../lib/api/accounts';
 
-function AccountRow({ account }: { account: ProviderAccount }) {
+interface EditNicknameModalProps {
+  account: ProviderAccount;
+  onClose: () => void;
+  onSave: (accountId: number, nickname: string) => Promise<void>;
+}
+
+function EditNicknameModal({ account, onClose, onSave }: EditNicknameModalProps) {
+  const [nickname, setNickname] = useState(account.nickname || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(account.id, nickname);
+      onClose();
+    } catch (error) {
+      console.error('Failed to update nickname:', error);
+      alert('Failed to update nickname');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200 mb-4">
+          Edit Nickname
+        </h3>
+
+        <div className="mb-4">
+          <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
+            Email
+          </label>
+          <div className="text-sm text-neutral-800 dark:text-neutral-200 font-mono">
+            {account.email}
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
+            Nickname
+          </label>
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="Enter nickname (optional)"
+            className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm border rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+            disabled={saving}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface DeleteConfirmModalProps {
+  account: ProviderAccount;
+  onClose: () => void;
+  onConfirm: (accountId: number) => Promise<void>;
+}
+
+function DeleteConfirmModal({ account, onClose, onConfirm }: DeleteConfirmModalProps) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await onConfirm(account.id);
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      alert('Failed to delete account');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-4">
+          Delete Account
+        </h3>
+
+        <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-4">
+          Are you sure you want to delete this account?
+        </p>
+
+        <div className="mb-6 p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
+          <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+            {account.nickname || account.email}
+          </div>
+          {account.nickname && (
+            <div className="text-xs text-neutral-500">{account.email}</div>
+          )}
+        </div>
+
+        <p className="text-xs text-red-600 dark:text-red-400 mb-6">
+          This action cannot be undone.
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm border rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+            disabled={deleting}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface AccountRowProps {
+  account: ProviderAccount;
+  onEditNickname: (account: ProviderAccount) => void;
+  onToggleStatus: (account: ProviderAccount) => void;
+  onDelete: (account: ProviderAccount) => void;
+}
+
+function AccountRow({ account, onEditNickname, onToggleStatus, onDelete }: AccountRowProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
-  const hasCredits = account.total_credits > 0;
 
   const statusColor = {
     ACTIVE: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400',
@@ -76,14 +230,66 @@ function AccountRow({ account }: { account: ProviderAccount }) {
           Generated: {account.total_videos_generated}
         </div>
       </td>
+      <td className="px-3 py-2">
+        <div className="flex gap-1">
+          <button
+            onClick={() => onEditNickname(account)}
+            className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            title="Edit nickname"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onToggleStatus(account)}
+            className={`px-2 py-1 text-xs rounded transition-colors ${
+              isActive
+                ? 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
+            title={isActive ? 'Disable account' : 'Enable account'}
+          >
+            {isActive ? 'Disable' : 'Enable'}
+          </button>
+          <button
+            onClick={() => onDelete(account)}
+            className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            title="Delete account"
+          >
+            Delete
+          </button>
+        </div>
+      </td>
     </tr>
   );
 }
 
 export function ProviderSettingsPanel() {
   const { providers } = useProviders();
-  const { capacity, loading, error } = useProviderCapacity();
+  const { capacity, loading, error, accounts } = useProviderCapacity();
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
+  const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleSaveNickname = async (accountId: number, nickname: string) => {
+    await updateAccountNickname(accountId, nickname);
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleToggleStatus = async (account: ProviderAccount) => {
+    try {
+      await toggleAccountStatus(account.id, account.status);
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to toggle status:', error);
+      alert('Failed to update account status');
+    }
+  };
+
+  const handleDeleteAccount = async (accountId: number) => {
+    await deleteAccount(accountId);
+    setRefreshKey(prev => prev + 1);
+  };
 
   if (loading) {
     return (
@@ -115,20 +321,41 @@ export function ProviderSettingsPanel() {
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
+      {/* Modals */}
+      {editingAccount && (
+        <EditNicknameModal
+          account={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onSave={handleSaveNickname}
+        />
+      )}
+      {deletingAccount && (
+        <DeleteConfirmModal
+          account={deletingAccount}
+          onClose={() => setDeletingAccount(null)}
+          onConfirm={handleDeleteAccount}
+        />
+      )}
+
       {/* Header */}
       <div className="p-4 border-b dark:border-neutral-700">
-        <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200 mb-3">
-          Provider Settings
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            Provider Settings
+          </h2>
+          <button
+            onClick={() => setRefreshKey(prev => prev + 1)}
+            className="px-3 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
 
         {/* Provider tabs */}
         {capacity.length > 0 && (
           <div className="flex gap-2 overflow-x-auto">
             {capacity.map((cap) => {
               const isActive = activeProvider === cap.provider_id;
-              const utilizationPercent = cap.max_jobs > 0
-                ? Math.round((cap.current_jobs / cap.max_jobs) * 100)
-                : 0;
 
               return (
                 <button
@@ -154,7 +381,7 @@ export function ProviderSettingsPanel() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" key={refreshKey}>
         {capacity.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <div className="text-sm text-neutral-500 mb-4">
@@ -239,11 +466,20 @@ export function ProviderSettingsPanel() {
                     <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
                       Stats
                     </th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {providerData.accounts.map((account) => (
-                    <AccountRow key={account.id} account={account} />
+                    <AccountRow
+                      key={account.id}
+                      account={account}
+                      onEditNickname={setEditingAccount}
+                      onToggleStatus={handleToggleStatus}
+                      onDelete={setDeletingAccount}
+                    />
                   ))}
                 </tbody>
               </table>
