@@ -377,3 +377,128 @@ curl http://localhost:8000/health
 ---
 
 **Status:** Ready for service layer implementation!
+
+---
+
+## 🔄 Media Uploads (Images & Future Videos)
+
+### Upload Pipeline Overview
+
+```
+MediaCard Badge Click
+        ↓
+POST /api/v1/assets/upload (file + provider_id)
+        ↓
+UploadService.upload()
+        • Select Pixverse account (prefer OpenAPI api_key/api_key_paid)  
+        • Acceptance prep (images only for now)  
+        • Delegate to provider adapter upload_asset()  
+        • Persist Asset (tag: user_upload)  
+        ↓
+Response { external_url | provider_asset_id, note }
+        ↓
+Badge State (blue=success, red=error)
+```
+
+### Pixverse Image Acceptance Rules (Implemented)
+
+| Rule | Limit | Behavior |
+|------|-------|----------|
+| Max dimension | 4096px (largest side) | Auto downscale (Lanczos) |
+| Max size | 20MB | Recompress JPEG/WEBP quality=85 if needed; else reject |
+| Format | Any readable by Pillow | Recommend JPEG/WEBP for large images |
+
+Notes: When downscaled or recompressed, `note` field includes details (e.g., `Downscaled to <=4096; Recompressed`).
+
+### OpenAPI vs Web API Preference
+
+UploadService will automatically prefer an account with `api_key` or `api_key_paid` (Pixverse OpenAPI) when uploading images. The badge's successful upload may include a note like `Uploaded via OpenAPI`.
+
+Fallback path: If no OpenAPI-capable account exists, a regular Web API account is selected via `AccountService.select_account()`.
+
+### Badge UX (Frontend)
+
+| State | Color | Description |
+|-------|-------|-------------|
+| Idle | Gray outline | Not uploaded yet |
+| Uploading | Spinner/“UP…” | Request in-flight |
+| Success | Blue | Provider accepted; persisted as Asset |
+| Error | Red | Rejected (e.g., size > 20MB after recompress) |
+
+### Future Video Acceptance (Placeholder)
+
+Currently videos pass through unchanged; provider handles rejection. Planned rules:
+1. Probe container & codec (H.264 / H.265 / VP9) using ffprobe.
+2. Enforce max duration & resolution (e.g., 30s / 1920x1080).
+3. Transcode oversized or unsupported codec (ffmpeg) before upload.
+4. Surface preflight errors early with actionable suggestions.
+
+Implementation TODO placed in `UploadService._prepare_file_for_provider()`.
+
+### Error Surfaces
+
+| Scenario | Error Type | HTTP Status | Frontend Badge |
+|----------|------------|-------------|----------------|
+| Over 20MB after recompress | InvalidOperationError | 400 | Red |
+| Unsupported content type | HTTPException | 400 | Red (detail) |
+| Provider internal failure | HTTPException | 502 | Red (detail) |
+
+### Extensibility Pattern
+
+Add new provider acceptance by extending `_prepare_file_for_provider` with a branch: validate dimensions, size, format; mutate file if possible; raise `InvalidOperationError` with user-friendly guidance if still invalid.
+
+---
+
+## Configuration Checklist for Uploads
+
+1. Create at least one Pixverse account row with valid `jwt_token` (Web API) OR `api_key` / `api_key_paid` (OpenAPI).
+2. Ensure Pillow installed (`pillow==10.x`).
+3. Frontend sets `provider_id="pixverse"` in form data when calling upload endpoint.
+4. Optional: Multiple accounts allowed; highest priority OpenAPI account auto-selected.
+5. Logs: Backend logs downscale/recompress actions under `UploadService`.
+
+---
+
+## Quick Curl Example
+
+```bash
+curl -X POST \
+    -F "file=@./sample.jpg" \
+    -F "provider_id=pixverse" \
+    http://localhost:8000/api/v1/assets/upload
+```
+
+Response example:
+
+```json
+{
+    "provider_id": "pixverse",
+    "media_type": "IMAGE",
+    "external_url": "https://cdn.pixverse.ai/media/abc123.jpg",
+    "provider_asset_id": null,
+    "note": "Downscaled to <=4096; Recompressed"
+}
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| 400 Pixverse upload rejected | Image >20MB after recompress | Convert to JPEG/WebP or reduce dimensions manually |
+| Badge stays gray | No request fired | Check that `onUploadClick` is wired and form data includes provider_id |
+| Always Web API path | No account with api_key/api_key_paid | Add OpenAPI key to an active Pixverse account |
+| Provider returns ID only | SDK missing URL field | Use provider_asset_id to later resolve URL or update SDK |
+
+---
+
+## Roadmap (Uploads)
+
+1. ffprobe integration for video metadata
+2. Smart format conversion (PNG→WEBP for large opaque images)
+3. Multi-provider acceptance matrix & fallback logic
+4. Preflight UI warnings before user clicks upload
+5. Background workers to enrich metadata post-upload
+
+---

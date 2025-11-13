@@ -7,7 +7,7 @@ Runs periodically to:
 3. Create assets when completed
 4. Update job status
 """
-import logging
+from pixsim_logging import configure_logging
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from pixsim7_backend.domain import Job, ProviderSubmission, ProviderAccount
@@ -19,7 +19,7 @@ from pixsim7_backend.services.user import UserService
 from pixsim7_backend.infrastructure.database.session import get_db
 from pixsim7_backend.shared.errors import ProviderError
 
-logger = logging.getLogger(__name__)
+logger = configure_logging("worker")
 
 
 async def poll_job_statuses() -> dict:
@@ -32,7 +32,7 @@ async def poll_job_statuses() -> dict:
     Returns:
         dict with poll statistics
     """
-    logger.info("Polling job statuses")
+    logger.info("poll_start", msg="Polling job statuses")
 
     checked = 0
     completed = 0
@@ -55,7 +55,7 @@ async def poll_job_statuses() -> dict:
             )
             processing_jobs = list(result.scalars().all())
 
-            logger.info(f"Found {len(processing_jobs)} jobs to check")
+            logger.info("poll_found_jobs", count=len(processing_jobs))
 
             # Check for timed-out jobs (processing > 2 hours)
             from datetime import timedelta
@@ -65,7 +65,7 @@ async def poll_job_statuses() -> dict:
             for job in processing_jobs:
                 # Check timeout first
                 if job.started_at and job.started_at < timeout_threshold:
-                    logger.warning(f"Job {job.id} timed out (started at {job.started_at})")
+                    logger.warning("job_timeout", job_id=job.id, started_at=str(job.started_at))
                     
                     # Get submission and account to decrement counter
                     submission_result = await db.execute(
@@ -97,7 +97,7 @@ async def poll_job_statuses() -> dict:
                     submission = submission_result.scalar_one_or_none()
 
                     if not submission:
-                        logger.warning(f"No submission found for job {job.id}")
+                        logger.warning("no_submission", job_id=job.id)
                         await job_service.mark_failed(
                             job.id,
                             "No provider submission found"
@@ -108,7 +108,7 @@ async def poll_job_statuses() -> dict:
                     # Get account
                     account = await db.get(ProviderAccount, submission.account_id)
                     if not account:
-                        logger.error(f"Account {submission.account_id} not found")
+                        logger.error("account_not_found", account_id=submission.account_id)
                         await job_service.mark_failed(job.id, "Account not found")
                         failed += 1
                         continue
@@ -120,10 +120,7 @@ async def poll_job_statuses() -> dict:
                             account=account
                         )
 
-                        logger.debug(
-                            f"Job {job.id} status: {status_result.status} "
-                            f"({status_result.progress}%)"
-                        )
+                        logger.debug("job_status", job_id=job.id, status=str(status_result.status), progress=status_result.progress)
 
                         # Handle status
                         if status_result.status == VideoStatus.COMPLETED:
@@ -132,10 +129,7 @@ async def poll_job_statuses() -> dict:
                                 submission=submission,
                                 job=job
                             )
-                            logger.info(
-                                f"Job {job.id} completed! "
-                                f"Created asset {asset.id}"
-                            )
+                            logger.info("job_completed", job_id=job.id, asset_id=asset.id)
 
                             # Mark job as completed
                             await job_service.mark_completed(job.id, asset.id)
@@ -147,10 +141,7 @@ async def poll_job_statuses() -> dict:
                             completed += 1
 
                         elif status_result.status == VideoStatus.FAILED:
-                            logger.warning(
-                                f"Job {job.id} failed on provider: "
-                                f"{status_result.error_message}"
-                            )
+                            logger.warning("job_failed_provider", job_id=job.id, error=status_result.error_message)
                             await job_service.mark_failed(
                                 job.id,
                                 status_result.error_message or "Provider reported failure"
@@ -166,21 +157,16 @@ async def poll_job_statuses() -> dict:
                             still_processing += 1
 
                         else:
-                            logger.debug(f"Job {job.id} still pending")
+                            logger.debug("job_pending", job_id=job.id)
                             still_processing += 1
 
                     except ProviderError as e:
-                        logger.error(
-                            f"Provider error checking job {job.id}: {e}"
-                        )
+                        logger.error("provider_check_error", job_id=job.id, error=str(e))
                         # Don't fail the job yet - might be temporary
                         # Let it retry on next poll
 
                 except Exception as e:
-                    logger.error(
-                        f"Error polling job {job.id}: {e}",
-                        exc_info=True
-                    )
+                    logger.error("poll_job_error", job_id=job.id, error=str(e), exc_info=True)
                     # Continue with next job
 
             # Commit all changes
@@ -194,16 +180,12 @@ async def poll_job_statuses() -> dict:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            logger.info(
-                f"Poll complete: {checked} checked, "
-                f"{completed} completed, {failed} failed, "
-                f"{still_processing} still processing"
-            )
+            logger.info("poll_complete", checked=checked, completed=completed, failed=failed, still_processing=still_processing)
 
             return stats
 
         except Exception as e:
-            logger.error(f"Error in poll_job_statuses: {e}", exc_info=True)
+            logger.error("poll_error", error=str(e), exc_info=True)
             raise
 
         finally:
@@ -212,12 +194,12 @@ async def poll_job_statuses() -> dict:
 
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
-    logger.info("Status poller worker started")
+    logger.info("status_poller_started")
 
 
 async def on_shutdown(ctx: dict) -> None:
     """ARQ worker shutdown"""
-    logger.info("Status poller worker shutting down")
+    logger.info("status_poller_shutdown")
 
 
 # ARQ task configuration
