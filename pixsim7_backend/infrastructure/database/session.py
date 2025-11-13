@@ -17,7 +17,7 @@ from pixsim7_backend.shared.config import settings
 logger = logging.getLogger(__name__)
 
 
-# ===== ASYNC ENGINE (Primary) =====
+# ===== ASYNC ENGINE (Primary - Application Data) =====
 # For FastAPI async routes
 async_engine = create_async_engine(
     settings.async_database_url,
@@ -31,6 +31,27 @@ async_engine = create_async_engine(
 # Async session factory
 AsyncSessionLocal = async_sessionmaker(
     async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
+)
+
+
+# ===== ASYNC ENGINE (Logs - TimescaleDB) =====
+# Separate database for log storage
+async_log_engine = create_async_engine(
+    settings.async_log_database_url,
+    echo=settings.debug,
+    pool_size=10,  # Smaller pool for logs
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+)
+
+# Async log session factory
+AsyncLogSessionLocal = async_sessionmaker(
+    async_log_engine,
     class_=AsyncSession,
     expire_on_commit=False,
     autocommit=False,
@@ -120,6 +141,42 @@ def get_sync_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+# ===== LOG DATABASE SESSIONS =====
+
+async def get_log_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    FastAPI dependency for log database sessions
+
+    Usage:
+        @app.post("/logs/ingest")
+        async def ingest_log(db: AsyncSession = Depends(get_log_db)):
+            # This uses the separate logs database
+            ...
+    """
+    async with AsyncLogSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+@asynccontextmanager
+async def get_async_log_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Context manager for async log database sessions
+
+    Usage:
+        async with get_async_log_session() as db:
+            result = await db.execute(select(LogEntry))
+            logs = result.scalars().all()
+    """
+    async with AsyncLogSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
 
 # ===== LIFECYCLE =====
@@ -215,5 +272,6 @@ async def close_database():
             await close_database()
     """
     await async_engine.dispose()
+    await async_log_engine.dispose()
     sync_engine.dispose()
     logger.info("✅ Database connections closed")

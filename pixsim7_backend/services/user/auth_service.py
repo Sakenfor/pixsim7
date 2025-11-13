@@ -6,7 +6,7 @@ Clean service for login, logout, and JWT token management
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from pixsim7_backend.domain import User, UserSession
 from pixsim7_backend.shared.auth import (
@@ -21,6 +21,9 @@ from pixsim7_backend.shared.errors import (
     ResourceNotFoundError,
 )
 from pixsim7_backend.services.user.user_service import UserService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -42,7 +45,7 @@ class AuthService:
 
     async def login(
         self,
-        email: str,
+        email_or_username: str,
         password: str,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
@@ -51,7 +54,7 @@ class AuthService:
         Authenticate user and create session
 
         Args:
-            email: User email
+            email_or_username: Email or username
             password: Plain text password
             ip_address: Client IP address (for logging)
             user_agent: Client user agent (for logging)
@@ -62,14 +65,41 @@ class AuthService:
         Raises:
             AuthenticationError: Invalid credentials or inactive account
         """
-        # Get user by email
-        user = await self.users.get_user_by_email(email)
+        # Get user by email or username
+        identifier = (email_or_username or "").strip()
+        by_email = "@" in identifier
+
+        # Primary lookup (case-sensitive)
+        user = await (
+            self.users.get_user_by_email(identifier)
+            if by_email else
+            self.users.get_user_by_username(identifier)
+        )
+
+        # Fallback: case-insensitive lookup
         if not user:
-            raise AuthenticationError("Invalid email or password")
+            lowered = identifier.lower()
+            if by_email:
+                result = await self.db.execute(
+                    select(User).where(func.lower(User.email) == lowered)
+                )
+            else:
+                result = await self.db.execute(
+                    select(User).where(func.lower(User.username) == lowered)
+                )
+            user = result.scalar_one_or_none()
+        logger.debug(
+            "Auth login lookup: ident=%s, by_email=%s, found=%s",
+            email_or_username,
+            by_email,
+            bool(user),
+        )
+        if not user:
+            raise AuthenticationError("Invalid credentials")
 
         # Verify password
-        if not verify_password(password, user.password_hash):
-            raise AuthenticationError("Invalid email or password")
+        if not await verify_password(password, user.password_hash):
+            raise AuthenticationError("Invalid credentials")
 
         # Check if user is active
         if not user.is_active:

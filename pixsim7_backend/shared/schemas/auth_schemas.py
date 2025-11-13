@@ -16,8 +16,10 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    """User login request"""
-    email: EmailStr
+    """User login request supporting email or username"""
+    # Accept plain string to avoid strict email validation 422; service decides
+    email: str | None = None
+    username: str | None = None
     password: str
 
 
@@ -28,11 +30,12 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
-    display_name: str | None
+    display_name: str | None = None
     role: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
+    last_login_at: datetime | None = None
 
     class Config:
         from_attributes = True  # For SQLModel compatibility

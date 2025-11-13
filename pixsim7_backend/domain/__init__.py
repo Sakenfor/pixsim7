@@ -27,6 +27,7 @@ from .workspace import Workspace
 from .asset import Asset, AssetVariant
 from .job import Job
 from .provider_submission import ProviderSubmission
+from .generation_artifact import GenerationArtifact
 from .account import ProviderAccount
 from .provider_credit import ProviderCredit
 
@@ -49,6 +50,9 @@ from .asset_lineage import (
 # Scene models (Phase 2)
 from .scene import Scene, SceneAsset, SceneConnection
 
+# Logging models (Phase 6)
+from .log_entry import LogEntry
+
 __all__ = [
     # Enums
     "MediaType",
@@ -68,6 +72,7 @@ __all__ = [
     "AssetVariant",
     "Job",
     "ProviderSubmission",
+    "GenerationArtifact",
     "ProviderAccount",
     "ProviderCredit",
     # Asset metadata
@@ -84,4 +89,6 @@ __all__ = [
     "Scene",
     "SceneAsset",
     "SceneConnection",
+    # Logging models
+    "LogEntry",
 ]

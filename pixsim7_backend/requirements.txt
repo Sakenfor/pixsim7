@@ -13,6 +13,8 @@ asyncpg==0.29.0  # Async PostgreSQL driver
 alembic==1.13.1  # Database migrations
 psycopg2-binary==2.9.9  # Sync PostgreSQL driver (for Alembic)
 pgvector==0.2.4  # PostgreSQL vector extension for similarity search
+aiosqlite==0.19.0  # Async SQLite driver (tests, in-memory DB)
+structlog==23.2.0  # Structured logging framework
 
 # ===== Cache & Queue =====
 redis==5.0.1

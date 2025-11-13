@@ -29,8 +29,13 @@ class Settings(BaseSettings):
 
     # ===== DATABASE =====
     database_url: str = Field(
-        default="postgresql://pixsim:pixsim123@localhost:5434/pixsim7",
-        description="PostgreSQL connection URL"
+        default="postgresql://pixsim:pixsim123@localhost:5435/pixsim7",
+        description="PostgreSQL connection URL for application data"
+    )
+
+    log_database_url: str | None = Field(
+        default=None,
+        description="Separate database URL for logs (TimescaleDB). Falls back to database_url if not set."
     )
 
     # ===== REDIS =====
@@ -175,6 +180,16 @@ class Settings(BaseSettings):
         description="Logging level: DEBUG, INFO, WARNING, ERROR"
     )
 
+    # ===== AUTOMATION / ANDROID =====
+    adb_path: str = Field(
+        default="adb",
+        description="Path to ADB executable (or 'adb' if in PATH)"
+    )
+    automation_screenshots_dir: str = Field(
+        default="automation_screenshots",
+        description="Relative folder under storage_base_path for screenshots"
+    )
+
     @property
     def async_database_url(self) -> str:
         """Convert sync database URL to async (asyncpg)"""
@@ -182,6 +197,24 @@ class Settings(BaseSettings):
             "postgresql://",
             "postgresql+asyncpg://"
         )
+
+    @property
+    def async_log_database_url(self) -> str:
+        """
+        Get async log database URL.
+        Falls back to main database if log_database_url is not set.
+        """
+        if self.log_database_url:
+            return self.log_database_url.replace(
+                "postgresql://",
+                "postgresql+asyncpg://"
+            )
+        return self.async_database_url
+
+    @property
+    def log_database_url_resolved(self) -> str:
+        """Get sync log database URL (for migrations)."""
+        return self.log_database_url or self.database_url
 
 
 # Global settings instance

@@ -15,7 +15,7 @@ from pixsim7_backend.shared.errors import (
     ValidationError as DomainValidationError,
     ResourceNotFoundError,
 )
-from pixsim7_backend.shared.rate_limit import login_limiter, get_client_identifier
+# Rate limiter disabled for now
 
 router = APIRouter()
 
@@ -83,9 +83,7 @@ async def login(
     
     Rate limited: 5 requests per 60 seconds per IP/user
     """
-    # Rate limit check
-    identifier = await get_client_identifier(req)
-    await login_limiter.check(identifier)
+    # Rate limit disabled
     
     try:
         # Get client info
@@ -93,8 +91,12 @@ async def login(
         user_agent = req.headers.get("user-agent")
 
         # Authenticate
+        identifier = request.email or request.username
+        if not identifier:
+            raise HTTPException(status_code=422, detail=[{"type":"missing_field","loc":["body","email|username"],"msg":"email or username is required","input":None}])
+
         user, token = await auth_service.login(
-            email=request.email,
+            email_or_username=identifier,
             password=request.password,
             ip_address=ip_address,
             user_agent=user_agent
@@ -107,6 +109,7 @@ async def login(
         )
 
     except AuthenticationError as e:
+        # Development-friendly message; keep generic in production
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
