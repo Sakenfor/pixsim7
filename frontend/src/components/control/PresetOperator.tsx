@@ -9,6 +9,7 @@ import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type AssetType = 'image' | 'video';
+export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
 
 export interface TimelineAsset {
   id: string;
@@ -18,6 +19,7 @@ export interface TimelineAsset {
   duration?: number; // For timeline positioning (in seconds)
   thumbnail?: string;
   name?: string;
+  fusionType?: FusionAssetType; // For fusion operations (character/background)
 }
 
 export interface PresetOperatorProps {
@@ -44,6 +46,7 @@ interface AssetCardProps {
   onMoveDown: () => void;
   requiresPrompt: boolean;
   supportsTimeline: boolean;
+  isFusion: boolean;
 }
 
 function AssetCard({
@@ -56,6 +59,7 @@ function AssetCard({
   onMoveDown,
   requiresPrompt,
   supportsTimeline,
+  isFusion,
 }: AssetCardProps) {
   const Icon = asset.type === 'image' ? Image : Video;
 
@@ -108,6 +112,21 @@ function AssetCard({
           <option value="video">Video</option>
         </select>
       </div>
+
+      {/* Fusion type selector (for fusion operations) */}
+      {isFusion && (
+        <div className="mb-3">
+          <label className="text-xs text-neutral-500 font-medium block mb-1">Fusion Role</label>
+          <select
+            value={asset.fusionType || 'character'}
+            onChange={(e) => onChange({ ...asset, fusionType: e.target.value as FusionAssetType })}
+            className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900"
+          >
+            <option value="character">Character</option>
+            <option value="background">Background</option>
+          </select>
+        </div>
+      )}
 
       {/* URL input */}
       <div className="mb-3">
@@ -275,9 +294,23 @@ export function PresetOperator({
     const requiresPrompt = ['video_transition', 'fusion'].includes(operationType);
     const supportsTimeline = ['video_transition', 'fusion', 'sora'].includes(operationType) ||
                              providerId === 'sora';
-    const minAssets = operationType === 'video_transition' ? 2 : 1;
+    const isFusion = operationType === 'fusion';
 
-    return { requiresPrompt, supportsTimeline, minAssets };
+    // Min/max asset constraints
+    let minAssets = 1;
+    let maxAssets = 100; // Default high limit
+
+    if (operationType === 'video_transition') {
+      minAssets = 2;
+      // Pixverse has max 7 inputs for transitions
+      if (providerId === 'pixverse') {
+        maxAssets = 7;
+      }
+    } else if (operationType === 'fusion') {
+      minAssets = 1; // At least one character or background
+    }
+
+    return { requiresPrompt, supportsTimeline, minAssets, maxAssets, isFusion };
   }, [operationType, providerId]);
 
   // Get parameter specs for the current operation
@@ -315,12 +348,18 @@ export function PresetOperator({
   }, [presetParams]);
 
   function addAsset() {
+    // Check max limit
+    if (assets.length >= operationConfig.maxAssets) {
+      return; // Don't allow adding more than max
+    }
+
     const newAsset: TimelineAsset = {
       id: `asset-${Date.now()}`,
       type: 'image',
       url: '',
       prompt: '',
       duration: operationConfig.supportsTimeline ? 5 : undefined,
+      fusionType: operationConfig.isFusion ? 'character' : undefined,
     };
     setAssets([...assets, newAsset]);
   }
@@ -363,6 +402,37 @@ export function PresetOperator({
 
   if (!isOpen) return null;
 
+  // Provider is required for operator
+  if (!providerId) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl w-full max-w-md p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+              Provider Required
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+            Please select a provider in the Generate tab before using the operator.
+            The operator needs to know which provider's constraints and features to use.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full px-4 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
@@ -373,7 +443,7 @@ export function PresetOperator({
               Preset Operator
             </h2>
             <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-              {providerId || 'Auto'} • {operationType}
+              {providerId} • {operationType}
               {presetId && ` • ${presetId}`}
             </p>
           </div>
@@ -399,10 +469,16 @@ export function PresetOperator({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                 Input Assets
+                {operationConfig.maxAssets < 100 && (
+                  <span className="ml-2 text-xs font-normal text-neutral-500">
+                    ({assets.length}/{operationConfig.maxAssets} max)
+                  </span>
+                )}
               </h3>
               <button
                 onClick={addAsset}
-                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                disabled={assets.length >= operationConfig.maxAssets}
+                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
                 Add Asset
@@ -422,13 +498,21 @@ export function PresetOperator({
                   onMoveDown={() => moveAsset(asset.id, 'down')}
                   requiresPrompt={operationConfig.requiresPrompt}
                   supportsTimeline={operationConfig.supportsTimeline}
+                  isFusion={operationConfig.isFusion}
                 />
               ))}
             </div>
 
+            {/* Validation messages */}
             {assets.length < operationConfig.minAssets && (
               <div className="mt-3 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
                 This operation requires at least {operationConfig.minAssets} asset(s)
+              </div>
+            )}
+
+            {assets.length >= operationConfig.maxAssets && operationConfig.maxAssets < 100 && (
+              <div className="mt-3 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 p-2 rounded">
+                Maximum of {operationConfig.maxAssets} assets reached for {providerId} {operationType}
               </div>
             )}
           </div>

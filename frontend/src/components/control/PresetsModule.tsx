@@ -199,8 +199,10 @@ export function PresetsModule() {
   }
 
   // Determine if operation supports multi-input operator
-  const supportsOperator = ['video_transition', 'fusion', 'image_to_video'].includes(operationType) ||
-                           providerId === 'sora';
+  // Provider must be selected for operator to work (needs provider-specific constraints)
+  const supportsOperator = providerId &&
+                           (['video_transition', 'fusion', 'image_to_video'].includes(operationType) ||
+                            providerId === 'sora');
 
   return (
     <div className="p-4">

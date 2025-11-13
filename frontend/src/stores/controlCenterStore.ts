@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 
 export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'none';
 
+export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
+
 export type TimelineAsset = {
   id: string;
   type: 'image' | 'video';
@@ -11,6 +13,7 @@ export type TimelineAsset = {
   duration?: number;
   thumbnail?: string;
   name?: string;
+  fusionType?: FusionAssetType; // For fusion operations
 };
 
 export interface ControlCenterState {
