@@ -21,6 +21,20 @@ export function Home() {
       </header>
 
       <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Quick Access</h2>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <Panel className="space-y-2">
+            <h3 className="font-medium">🤖 Automation</h3>
+            <p className="text-xs text-neutral-500">Manage Android devices and automation loops</p>
+            <p className="text-xs text-neutral-400">Status: ✓ Ready</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/automation', '_self')}>Open Automation</Button>
+            </div>
+          </Panel>
+        </div>
+      </section>
+
+      <section className="space-y-4">
         <h2 className="text-xl font-semibold">Available Modules</h2>
         <p className="text-neutral-500 dark:text-neutral-400 text-sm">These modules are registered but not yet implemented. They will be developed incrementally.</p>
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">

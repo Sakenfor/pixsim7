@@ -87,6 +87,29 @@ const defaultPresets: WorkspacePreset[] = [
 
 const STORAGE_KEY = 'workspace_v2';
 
+// Helper to get all leaf IDs from a layout tree
+const getAllLeaves = (node: MosaicNode<PanelId> | null): PanelId[] => {
+  if (!node) return [];
+  if (typeof node === 'string') return [node];
+  return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
+};
+
+// Helper to validate and fix duplicate IDs in a layout
+const validateAndFixLayout = (layout: MosaicNode<PanelId> | null): MosaicNode<PanelId> | null => {
+  if (!layout) return null;
+
+  const leaves = getAllLeaves(layout);
+  const uniqueLeaves = Array.from(new Set(leaves));
+
+  // If no duplicates, return original layout
+  if (leaves.length === uniqueLeaves.length) {
+    return layout;
+  }
+
+  console.warn('Detected duplicate IDs in layout, resetting to default');
+  return defaultPresets[0].layout;
+};
+
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
@@ -98,7 +121,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       setLayout: (layout) => {
         if (get().isLocked) return;
-        set({ currentLayout: layout });
+        const validatedLayout = validateAndFixLayout(layout);
+        set({ currentLayout: validatedLayout });
       },
 
       closePanel: (panelId) => {
@@ -113,12 +137,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
 
         // Check if panel already exists in current layout
-        const getAllLeaves = (node: MosaicNode<PanelId> | null): PanelId[] => {
-          if (!node) return [];
-          if (typeof node === 'string') return [node];
-          return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
-        };
-
         const existingLeaves = getAllLeaves(current);
         if (existingLeaves.includes(panelId)) {
           // Panel already exists, just clear from closed list
@@ -136,7 +154,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
             }
           : panelId;
 
-        set({ currentLayout: newLayout, closedPanels });
+        const validatedLayout = validateAndFixLayout(newLayout);
+        set({ currentLayout: validatedLayout, closedPanels });
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),
@@ -179,6 +198,19 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       version: 1,
+      onRehydrateStorage: () => (state) => {
+        // Validate and fix the layout after loading from storage
+        if (state?.currentLayout) {
+          state.currentLayout = validateAndFixLayout(state.currentLayout);
+        }
+        // Validate all preset layouts
+        if (state?.presets) {
+          state.presets = state.presets.map((preset) => ({
+            ...preset,
+            layout: validateAndFixLayout(preset.layout),
+          }));
+        }
+      },
     }
   )
 );

@@ -37,14 +37,14 @@ function GameIframePanel() {
   );
 }
 
-// Panel registry
-const PANEL_MAP: Record<PanelId, { title: string; component: React.ReactNode }> = {
-  gallery: { title: 'Gallery', component: <AssetsRoute /> },
-  scene: { title: 'Scene Builder', component: <SceneBuilderPanel /> },
-  graph: { title: 'Graph', component: <GraphPanelWithProvider /> },
-  inspector: { title: 'Inspector', component: <InspectorPanel /> },
-  health: { title: 'Health', component: <HealthPanel /> },
-  game: { title: 'Game', component: <GameIframePanel /> },
+// Panel registry - store component types, not instances
+const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType }> = {
+  gallery: { title: 'Gallery', Component: AssetsRoute },
+  scene: { title: 'Scene Builder', Component: SceneBuilderPanel },
+  graph: { title: 'Graph', Component: GraphPanelWithProvider },
+  inspector: { title: 'Inspector', Component: InspectorPanel },
+  health: { title: 'Health', Component: HealthPanel },
+  game: { title: 'Game', Component: GameIframePanel },
 };
 
 export function MosaicWorkspace() {
@@ -57,6 +57,7 @@ export function MosaicWorkspace() {
 
   const renderTile = (id: PanelId, path: MosaicBranch[]) => {
     const panel = PANEL_MAP[id];
+    const { Component } = panel;
 
     // Handle fullscreen mode
     if (fullscreenPanel && fullscreenPanel !== id) {
@@ -70,20 +71,19 @@ export function MosaicWorkspace() {
         path={path}
         title={panel.title}
         createNode={() => 'gallery'}
-        toolbarControls={
-          <>
-            <button
-              className="mosaic-default-control"
-              onClick={() => setFullscreen(isFullscreen ? null : id)}
-              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-            >
-              {isFullscreen ? '⊡' : '□'}
-            </button>
-          </>
-        }
+        additionalControls={[
+          <button
+            key="fullscreen"
+            className="mosaic-default-control"
+            onClick={() => setFullscreen(isFullscreen ? null : id)}
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? '⊡' : '□'}
+          </button>
+        ]}
       >
         <div className="h-full overflow-auto bg-white dark:bg-neutral-900">
-          {panel.component}
+          <Component />
         </div>
       </MosaicWindow>
     );

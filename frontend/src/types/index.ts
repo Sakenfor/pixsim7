@@ -53,3 +53,6 @@ export interface ApiError {
   detail: string;
   [key: string]: any;
 }
+
+// Re-export automation types
+export * from './automation';

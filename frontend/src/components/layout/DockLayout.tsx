@@ -32,26 +32,20 @@ function GameIframePanel() {
   );
 }
 
+// Panel component registry
+const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
+  p_gallery: AssetsRoute,
+  p_scene: SceneBuilderPanel,
+  p_graph: GraphPanelWithProvider,
+  p_inspector: InspectorPanel,
+  p_health: HealthPanel,
+  p_game: GameIframePanel,
+};
+
 function renderPanel(panelId: string) {
-  // Simple registry mapping panel types to render functions
-  // In the future, import actual panels: GalleryPanel, ScenePanel, etc.
-  if (panelId === 'p_gallery') {
-    return <AssetsRoute />;
-  }
-  if (panelId === 'p_scene') {
-    return <SceneBuilderPanel />;
-  }
-  if (panelId === 'p_graph') {
-    return <GraphPanelWithProvider />;
-  }
-  if (panelId === 'p_inspector') {
-    return <InspectorPanel />;
-  }
-  if (panelId === 'p_health') {
-    return <HealthPanel />;
-  }
-  if (panelId === 'p_game') {
-    return <GameIframePanel />;
+  const Component = PANEL_COMPONENTS[panelId];
+  if (Component) {
+    return <Component />;
   }
   return <div className="p-3 text-sm text-neutral-500">Unknown panel {panelId}</div>;
 }

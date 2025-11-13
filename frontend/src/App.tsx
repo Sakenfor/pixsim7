@@ -10,6 +10,7 @@ import { AssetsRoute } from './routes/Assets';
 import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
+import { AutomationRoute } from './routes/Automation';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -47,6 +48,7 @@ function App() {
           <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
           <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
           <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
+          <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
