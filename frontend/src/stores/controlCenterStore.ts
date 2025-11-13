@@ -3,6 +3,16 @@ import { persist } from 'zustand/middleware';
 
 export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'none';
 
+export type TimelineAsset = {
+  id: string;
+  type: 'image' | 'video';
+  url: string;
+  prompt?: string;
+  duration?: number;
+  thumbnail?: string;
+  name?: string;
+};
+
 export interface ControlCenterState {
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
@@ -13,6 +23,7 @@ export interface ControlCenterState {
   providerId?: string;      // selected provider
   presetId?: string;        // selected preset
   presetParams: Record<string, any>; // resolved params from selected preset
+  assets: TimelineAsset[];  // assets from operator popup
   generating: boolean;
 }
 
@@ -27,6 +38,7 @@ export interface ControlCenterActions {
   setProvider: (id?: string) => void;
   setPreset: (id?: string) => void;
   setPresetParams: (params: Record<string, any>) => void;
+  setAssets: (assets: TimelineAsset[]) => void;
   setGenerating: (v: boolean) => void;
   reset: () => void;
 }
@@ -45,6 +57,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       providerId: undefined,
       presetId: undefined,
       presetParams: {},
+      assets: [],
       generating: false,
       toggleOpen: () => set((s) => ({ open: !s.open })),
       setOpen: (v) => {
@@ -78,15 +91,16 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         set({ presetId: id });
       },
       setPresetParams: (params) => set({ presetParams: params }),
+      setAssets: (assets) => set({ assets }),
       setGenerating: (v) => {
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ open: false, pinned: false, height: 220, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, generating: false })
+      reset: () => set({ open: false, pinned: false, height: 220, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
     }),
     {
       name: STORAGE_KEY,
-      partialize: (s) => ({ open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams }),
+      partialize: (s) => ({ open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
       version: 2,
     }
   )

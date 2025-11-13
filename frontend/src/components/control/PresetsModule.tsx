@@ -1,8 +1,10 @@
 import { useControlCenterStore } from '../../stores/controlCenterStore';
 import clsx from 'clsx';
 import { useProviderSpecs } from '../../hooks/useProviderSpecs';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { ccSelectors } from '../../stores/selectors';
+import { Settings2 } from 'lucide-react';
+import { PresetOperator, type TimelineAsset } from './PresetOperator';
 
 type PresetItem = {
   id: string;
@@ -151,12 +153,18 @@ export function PresetsModule() {
   const providerId = useControlCenterStore(ccSelectors.providerId);
   const operationType = useControlCenterStore(ccSelectors.operationType);
   const presetId = useControlCenterStore(ccSelectors.presetId);
+  const presetParams = useControlCenterStore(ccSelectors.presetParams);
 
   const setPreset = useControlCenterStore(s => s.setPreset);
   const setPresetParams = useControlCenterStore(s => s.setPresetParams);
+  const setAssets = useControlCenterStore(s => s.setAssets);
   const setActiveModule = useControlCenterStore(s => s.setActiveModule);
 
   const { specs, loading, error } = useProviderSpecs(providerId);
+
+  // Operator popup state
+  const [operatorOpen, setOperatorOpen] = useState(false);
+  const [selectedPresetForOperator, setSelectedPresetForOperator] = useState<PresetItem | null>(null);
 
   const presets = useMemo<PresetItem[]>(() => {
     if (!providerId || !specs) return FALLBACK_PRESETS;
@@ -172,6 +180,27 @@ export function PresetsModule() {
     // Switch back to quick generate after short delay
     setTimeout(() => setActiveModule('quickGenerate'), 200);
   }
+
+  function openOperator(p: PresetItem) {
+    setSelectedPresetForOperator(p);
+    setOperatorOpen(true);
+  }
+
+  function handleOperatorApply(assets: TimelineAsset[], params: Record<string, any>) {
+    // Update preset params with operator-configured values
+    setPresetParams({
+      ...presetParams,
+      ...params,
+    });
+    // Store assets separately
+    setAssets(assets);
+    // Switch back to quick generate
+    setActiveModule('quickGenerate');
+  }
+
+  // Determine if operation supports multi-input operator
+  const supportsOperator = ['video_transition', 'fusion', 'image_to_video'].includes(operationType) ||
+                           providerId === 'sora';
 
   return (
     <div className="p-4">
@@ -195,16 +224,14 @@ export function PresetsModule() {
         {presets.map(preset => {
           const isSelected = preset.id === presetId;
           return (
-            <button
+            <div
               key={preset.id}
-              onClick={() => selectPreset(preset)}
               className={clsx(
-                'flex flex-col items-start gap-2 p-3 rounded-lg text-left',
+                'flex flex-col gap-2 p-3 rounded-lg',
                 'border transition-all duration-150',
-                'focus:outline-none focus:ring-2 focus:ring-blue-500',
                 isSelected
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
-                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900'
               )}
             >
               <div className="flex items-center justify-between w-full">
@@ -230,10 +257,50 @@ export function PresetsModule() {
                   .map(([k, v]) => `${k}: ${v}`)
                   .join(', ')}
               </div>
-            </button>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => selectPreset(preset)}
+                  className={clsx(
+                    'flex-1 py-1.5 px-3 text-xs rounded transition-colors',
+                    'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                    isSelected
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+                  )}
+                >
+                  {isSelected ? 'Selected' : 'Quick Select'}
+                </button>
+
+                {supportsOperator && (
+                  <button
+                    onClick={() => openOperator(preset)}
+                    className="py-1.5 px-3 text-xs rounded bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    title="Open advanced operator"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    Operator
+                  </button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
+
+      {/* Operator Popup */}
+      {selectedPresetForOperator && (
+        <PresetOperator
+          isOpen={operatorOpen}
+          onClose={() => setOperatorOpen(false)}
+          providerId={providerId}
+          operationType={operationType}
+          presetId={selectedPresetForOperator.id}
+          presetParams={selectedPresetForOperator.params}
+          onApply={handleOperatorApply}
+        />
+      )}
 
       <div className="mt-4 text-xs text-neutral-500">
         {isDynamic ? (

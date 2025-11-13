@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from pixsim7_backend.api.dependencies import CurrentUser
 from pixsim7_backend.services.provider.registry import registry
+from pixsim7_backend.services.provider.base import Provider
 
 router = APIRouter()
 
