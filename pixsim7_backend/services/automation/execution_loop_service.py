@@ -82,6 +82,34 @@ class ExecutionLoopService:
         if not accounts:
             return None
 
+        # SHARED_LIST mode: stick with current account until all presets are completed
+        if loop.preset_execution_mode == PresetExecutionMode.SHARED_LIST and loop.current_account_id:
+            current_account = next((a for a in accounts if a.id == loop.current_account_id), None)
+            if current_account:
+                # Check if we still have presets to execute for this account
+                if loop.shared_preset_ids and loop.current_preset_index < len(loop.shared_preset_ids):
+                    return current_account
+                # All presets completed for this account, will select next account below
+
+        # PER_ACCOUNT mode: stick with current account until all its presets are completed
+        if loop.preset_execution_mode == PresetExecutionMode.PER_ACCOUNT and loop.current_account_id:
+            current_account = next((a for a in accounts if a.id == loop.current_account_id), None)
+            if current_account:
+                # Get account's preset configuration
+                account_presets = (
+                    loop.account_preset_config.get(current_account.id)
+                    or loop.account_preset_config.get(str(current_account.id))
+                    or loop.default_preset_ids
+                )
+                if account_presets:
+                    key = str(current_account.id)
+                    state = loop.account_execution_state.get(key) or {"current_index": 0, "completed_cycles": 0}
+                    current_index = int(state.get("current_index", 0))
+                    # If we haven't completed all presets for this account, continue with it
+                    if current_index < len(account_presets):
+                        return current_account
+                # All presets completed for this account, will select next account below
+
         if loop.selection_mode == LoopSelectionMode.ROUND_ROBIN:
             accounts_sorted = sorted(accounts, key=lambda a: a.id or 0)
             if loop.last_account_id and any(a.id == loop.last_account_id for a in accounts_sorted):
@@ -126,6 +154,18 @@ class ExecutionLoopService:
         loop.executions_today += 1
         loop.last_execution_at = datetime.utcnow()
         loop.last_account_id = account.id
+
+        # For SHARED_LIST mode, set current account when starting a new account's preset cycle
+        if loop.preset_execution_mode == PresetExecutionMode.SHARED_LIST:
+            if loop.current_account_id != account.id:
+                loop.current_account_id = account.id
+                loop.current_preset_index = 0  # Reset to first preset for new account
+
+        # For PER_ACCOUNT mode, track current account
+        if loop.preset_execution_mode == PresetExecutionMode.PER_ACCOUNT:
+            if loop.current_account_id != account.id:
+                loop.current_account_id = account.id
+
         loop.advance_preset_index(account.id)
         await self.db.commit()
 
