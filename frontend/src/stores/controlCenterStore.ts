@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'none';
+export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'providers' | 'panels' | 'none';
 
 export interface ControlCenterState {
   open: boolean;            // whether dock is expanded

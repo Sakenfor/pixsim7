@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MosaicNode } from 'react-mosaic-component';
 
-export type PanelId = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'game';
+export type PanelId = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'game' | 'providers';
 
 export interface WorkspacePreset {
   id: string;

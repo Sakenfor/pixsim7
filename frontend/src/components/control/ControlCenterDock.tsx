@@ -4,11 +4,15 @@ import { useControlCenterStore, type ControlModule } from '../../stores/controlC
 import { QuickGenerateModule } from './QuickGenerateModule';
 import { ShortcutsModule } from './ShortcutsModule';
 import { PresetsModule } from './PresetsModule';
+import { ProviderOverviewModule } from './ProviderOverviewModule';
+import { PanelLauncherModule } from './PanelLauncherModule';
 
 const MODULES: { id: ControlModule; label: string }[] = [
   { id: 'quickGenerate', label: 'Generate' },
   { id: 'shortcuts', label: 'Shortcuts' },
   { id: 'presets', label: 'Presets' },
+  { id: 'providers', label: 'Providers' },
+  { id: 'panels', label: 'Panels' },
 ];
 
 export function ControlCenterDock() {
@@ -104,6 +108,10 @@ export function ControlCenterDock() {
         return <ShortcutsModule />;
       case 'presets':
         return <PresetsModule />;
+      case 'providers':
+        return <ProviderOverviewModule />;
+      case 'panels':
+        return <PanelLauncherModule />;
       default:
         return null;
     }
