@@ -4,8 +4,9 @@ import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
 import { Tabs } from '../components/navigation/Tabs';
-import { Badge } from '../components/primitives/Badge';
+import { Badge } from '@pixsim7/ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
+import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -76,82 +77,99 @@ export function AssetsRoute() {
   };
 
   const currentTab = SCOPE_TABS.find(t => t.id === scope);
+  // View toggle between remote assets and local folders panel
+  const [view, setView] = useState<'remote' | 'local'>('remote');
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4 content-with-dock min-h-screen">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Assets</h1>
-        <div className="text-xs text-neutral-500">
-          Jobs WS: {jobsSocket.connected ? 'connected' : 'disconnected'}
-        </div>
-      </div>
-
-      <Tabs tabs={SCOPE_TABS} value={scope} onChange={handleScopeChange} />
-
-      {currentTab && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-neutral-600">Viewing:</span>
-          <Badge color="blue">{currentTab.label}</Badge>
-        </div>
-      )}
-      {error && <div className="text-red-600 text-sm">{error}</div>}
-      {/* Temporary inline filter controls (will move to FiltersBar.tsx) */}
-      <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
-        <div className="flex flex-wrap gap-2 items-center">
-          <input
-            placeholder="Search..."
-            className="px-2 py-1 text-sm border rounded"
-            value={filters.q}
-            onChange={(e) => setAndPersist({ q: e.target.value })}
-          />
-          <select
-            className="px-2 py-1 text-sm border rounded"
-            value={filters.provider_id || ''}
-            onChange={(e) => setAndPersist({ provider_id: e.target.value || undefined })}
-          >
-            <option value="">All Providers</option>
-            {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <select
-            className="px-2 py-1 text-sm border rounded"
-            value={filters.sort}
-            onChange={(e) => setAndPersist({ sort: e.target.value as any })}
-          >
-            <option value="new">Newest</option>
-            <option value="old">Oldest</option>
-            <option value="alpha">A–Z</option>
-          </select>
-        </div>
-      </div>
-      <MasonryGrid
-        items={items.map(a => (
-          <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
-            <MediaCard
-              id={a.id}
-              mediaType={a.media_type}
-              providerId={a.provider_id}
-              providerAssetId={a.provider_asset_id}
-              thumbUrl={a.thumbnail_url}
-              remoteUrl={a.remote_url}
-              width={a.width}
-              height={a.height}
-              durationSec={a.duration_sec}
-              tags={a.tags}
-              description={a.description}
-              createdAt={a.created_at}
-              status={a.sync_status}
-            />
+        <div className="flex items-center gap-4">
+          <div className="flex gap-1 text-xs">
+            <button
+              className={`px-2 py-1 rounded ${view==='remote' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+              onClick={() => setView('remote')}
+            >Remote</button>
+            <button
+              className={`px-2 py-1 rounded ${view==='local' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+              onClick={() => setView('local')}
+            >Local</button>
           </div>
-        ))}
-      />
-      <div className="pt-4">
-        {hasMore && (
-          <button disabled={loading} onClick={loadMore} className="border px-4 py-2 rounded">
-            {loading ? 'Loading...' : 'Load More'}
-          </button>
-        )}
-        {!hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
+          <div className="text-xs text-neutral-500">
+            Jobs WS: {jobsSocket.connected ? 'connected' : 'disconnected'}
+          </div>
+        </div>
       </div>
+
+      {view === 'remote' && (
+        <>
+          <Tabs tabs={SCOPE_TABS} value={scope} onChange={handleScopeChange} />
+          {currentTab && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-neutral-600">Viewing:</span>
+              <Badge color="blue">{currentTab.label}</Badge>
+            </div>
+          )}
+          {error && <div className="text-red-600 text-sm">{error}</div>}
+          <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
+            <div className="flex flex-wrap gap-2 items-center">
+              <input
+                placeholder="Search..."
+                className="px-2 py-1 text-sm border rounded"
+                value={filters.q}
+                onChange={(e) => setAndPersist({ q: e.target.value })}
+              />
+              <select
+                className="px-2 py-1 text-sm border rounded"
+                value={filters.provider_id || ''}
+                onChange={(e) => setAndPersist({ provider_id: e.target.value || undefined })}
+              >
+                <option value="">All Providers</option>
+                {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <select
+                className="px-2 py-1 text-sm border rounded"
+                value={filters.sort}
+                onChange={(e) => setAndPersist({ sort: e.target.value as any })}
+              >
+                <option value="new">Newest</option>
+                <option value="old">Oldest</option>
+                <option value="alpha">A–Z</option>
+              </select>
+            </div>
+          </div>
+          <MasonryGrid
+            items={items.map(a => (
+              <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
+                <MediaCard
+                  id={a.id}
+                  mediaType={a.media_type}
+                  providerId={a.provider_id}
+                  providerAssetId={a.provider_asset_id}
+                  thumbUrl={a.thumbnail_url}
+                  remoteUrl={a.remote_url}
+                  width={a.width}
+                  height={a.height}
+                  durationSec={a.duration_sec}
+                  tags={a.tags}
+                  description={a.description}
+                  createdAt={a.created_at}
+                  status={a.sync_status}
+                />
+              </div>
+            ))}
+          />
+          <div className="pt-4">
+            {hasMore && (
+              <button disabled={loading} onClick={loadMore} className="border px-4 py-2 rounded">
+                {loading ? 'Loading...' : 'Load More'}
+              </button>
+            )}
+            {!hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
+          </div>
+        </>
+      )}
+      {view === 'local' && <LocalFoldersPanel />}
     </div>
   );
 }

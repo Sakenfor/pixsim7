@@ -6,7 +6,7 @@ Listens for "job:created" events and processes jobs:
 2. Submit job to provider
 3. Update job status
 """
-import logging
+import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7_backend.domain import Job, ProviderAccount
 from pixsim7_backend.services.job import JobService
@@ -19,8 +19,22 @@ from pixsim7_backend.shared.errors import (
     AccountCooldownError,
     ProviderError,
 )
+from pixsim7_backend.services.submission.pipeline import JobSubmissionPipeline, is_enabled as pipeline_enabled
 
-logger = logging.getLogger(__name__)
+# Configure structured logging using pixsim_logging
+from pixsim_logging import configure_logging, get_logger, bind_job_context
+
+# Initialize logger at module level
+_base_logger = None
+
+def _get_worker_logger():
+    """Get or initialize worker logger."""
+    global _base_logger
+    if _base_logger is None:
+        _base_logger = configure_logging("worker")
+    return _base_logger
+
+logger = _get_worker_logger()
 
 
 async def process_job(job_id: int) -> dict:
@@ -35,9 +49,37 @@ async def process_job(job_id: int) -> dict:
     Returns:
         dict with status and message
     """
-    logger.info(f"Processing job {job_id}")
+    # Bind job context for all logs in this function
+    job_logger = bind_job_context(logger, job_id=job_id)
+    job_logger.info("pipeline:start", msg="job_processing_started")
 
     async for db in get_db():
+        # If feature flag enabled, delegate to pipeline
+        if pipeline_enabled():
+            try:
+                pipeline = JobSubmissionPipeline(db)
+                job_service = pipeline.job_service
+                job = await job_service.get_job(job_id)
+                result = await pipeline.run(job)
+                return {
+                    "status": result.status,
+                    "provider_job_id": result.provider_job_id,
+                    "account_id": result.account_id,
+                    "error": result.error,
+                }
+            except Exception as e:
+                job_logger.error("pipeline_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+                # Attempt to mark failed
+                try:
+                    await JobService(db, UserService(db)).mark_failed(job_id, str(e))
+                except Exception:
+                    pass
+                raise
+            finally:
+                await db.close()
+            return
+
+        # Legacy path (pre-pipeline)
         try:
             # Initialize services
             user_service = UserService(db)
@@ -49,13 +91,13 @@ async def process_job(job_id: int) -> dict:
             job = await job_service.get_job(job_id)
 
             if job.status != "pending":
-                logger.warning(f"Job {job_id} is not pending (status: {job.status})")
+                job_logger.warning("job_not_pending", status=job.status)
                 return {"status": "skipped", "reason": f"Job status is {job.status}"}
 
             # Check if scheduled for later
             from datetime import datetime
             if job.scheduled_at and job.scheduled_at > datetime.utcnow():
-                logger.info(f"Job {job_id} scheduled for later: {job.scheduled_at}")
+                job_logger.info("job_scheduled", scheduled_at=str(job.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(job.scheduled_at)}
 
             # Select account
@@ -64,15 +106,15 @@ async def process_job(job_id: int) -> dict:
                     provider_id=job.provider_id,
                     user_id=job.user_id
                 )
-                logger.info(f"Selected account {account.id} for job {job_id}")
+                job_logger.info("account_selected", account_id=account.id, provider_id=job.provider_id)
             except (NoAccountAvailableError, AccountCooldownError) as e:
-                logger.warning(f"No account available for job {job_id}: {e}")
+                job_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
                 # Requeue job for later (ARQ will retry)
                 raise
 
             # Mark job as started
             await job_service.mark_started(job_id)
-            logger.info(f"Job {job_id} marked as started")
+            job_logger.info("job_started")
 
             # Execute job via provider
             try:
@@ -81,14 +123,16 @@ async def process_job(job_id: int) -> dict:
                     account=account,
                     params=job.params
                 )
-                
+
                 # Increment account's concurrent job count
                 account.current_processing_jobs += 1
                 await db.commit()
-                
-                logger.info(
-                    f"Job {job_id} submitted to provider. "
-                    f"Provider job ID: {submission.provider_job_id}"
+
+                job_logger.info(
+                    "provider:submit",
+                    provider_job_id=submission.provider_job_id,
+                    account_id=account.id,
+                    msg="job_submitted_to_provider"
                 )
 
                 return {
@@ -97,18 +141,18 @@ async def process_job(job_id: int) -> dict:
                 }
 
             except ProviderError as e:
-                logger.error(f"Provider error for job {job_id}: {e}")
+                job_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
                 await job_service.mark_failed(job_id, str(e))
                 raise
 
         except Exception as e:
-            logger.error(f"Error processing job {job_id}: {e}", exc_info=True)
+            job_logger.error("job_processing_failed", error=str(e), error_type=e.__class__.__name__, exc_info=True)
 
             # Try to mark job as failed
             try:
                 await job_service.mark_failed(job_id, str(e))
             except Exception as mark_error:
-                logger.error(f"Failed to mark job as failed: {mark_error}")
+                job_logger.error("mark_failed_error", error=str(mark_error))
 
             raise
 
@@ -119,12 +163,12 @@ async def process_job(job_id: int) -> dict:
 
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
-    logger.info("Job processor worker started")
+    logger.info("worker_started", component="job_processor")
 
 
 async def on_shutdown(ctx: dict) -> None:
     """ARQ worker shutdown"""
-    logger.info("Job processor worker shutting down")
+    logger.info("worker_shutdown", component="job_processor")
 
 
 # ARQ task configuration

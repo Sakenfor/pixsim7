@@ -2,7 +2,7 @@
 # All data stored in ./data folder
 
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (Application Data)
   postgres:
     image: postgres:15-alpine
     container_name: pixsim7-db
@@ -17,6 +17,28 @@ services:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pixsim -d pixsim7"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # TimescaleDB (Log Storage - optimized for time-series data)
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: pixsim7-logs-db
+    environment:
+      POSTGRES_DB: pixsim7_logs
+      POSTGRES_USER: pixsim
+      POSTGRES_PASSWORD: ${LOG_DB_PASSWORD:-pixsim123}
+    ports:
+      - "${TIMESCALE_PORT:-5436}:5432"
+    volumes:
+      # Store TimescaleDB data in /data/timescaledb
+      - ./data/timescaledb:/var/lib/postgresql/data
+      # Initialization scripts
+      - ./scripts/timescaledb-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pixsim -d pixsim7_logs"]
       interval: 5s
       timeout: 5s
       retries: 5

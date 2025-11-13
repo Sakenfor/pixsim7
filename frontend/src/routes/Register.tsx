@@ -14,6 +14,13 @@ export function Register() {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
 
+  function formatError(err: any): string {
+    const detail = err?.response?.data?.detail ?? err?.message ?? err;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) return detail.map((d) => d.msg || JSON.stringify(d)).join('\n');
+    try { return JSON.stringify(detail); } catch { return 'Request failed'; }
+  }
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -24,7 +31,7 @@ export function Register() {
       setUser(response.user);
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed. Please try again.');
+      setError(formatError(err) || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }

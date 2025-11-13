@@ -9,9 +9,14 @@ import { ProtectedRoute } from './routes/ProtectedRoute';
 import { AssetsRoute } from './routes/Assets';
 import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
+import { WorkspaceRoute } from './routes/Workspace';
+import { ControlCenterDock } from './components/control/ControlCenterDock';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ToastContainer } from './components/common/ToastContainer';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
     // Initialize modules
@@ -29,15 +34,26 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/assets" element={<ProtectedRoute><AssetsRoute /></ProtectedRoute>} />
-        <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
-        <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <div className="min-h-screen flex flex-col">
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/assets" element={<ProtectedRoute><AssetsRoute /></ProtectedRoute>} />
+          <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
+          <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
+          <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+      {/* Global bottom dock (only when authenticated) */}
+      {isAuthenticated && (
+        <ErrorBoundary>
+          <ControlCenterDock />
+        </ErrorBoundary>
+      )}
+      {/* Global toast notifications */}
+      <ToastContainer />
     </BrowserRouter>
   );
 }

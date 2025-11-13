@@ -5,7 +5,6 @@ Clean adapter that uses pixverse-py SDK
 """
 from typing import Dict, Any
 from datetime import datetime, timedelta
-import logging
 import asyncio
 
 # Import pixverse-py SDK
@@ -35,7 +34,10 @@ from pixsim7_backend.services.provider.base import (
     JobNotFoundError,
 )
 
-logger = logging.getLogger(__name__)
+# Use structured logging from pixsim_logging
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 
 def infer_video_dimensions(quality: str, aspect_ratio: str | None = None) -> tuple[int, int]:
@@ -179,7 +181,13 @@ class PixverseProvider(Provider):
             )
             return build_embedded_from_pixverse_metadata(provider_video_id, extra_metadata)
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning(f"extract_embedded_assets failed for {provider_video_id}: {e}")
+            logger.warning(
+                "extract_embedded_assets_failed",
+                provider_id="pixverse",
+                provider_video_id=provider_video_id,
+                error=str(e),
+                error_type=e.__class__.__name__
+            )
             return []
 
     def map_parameters(
@@ -410,7 +418,15 @@ class PixverseProvider(Provider):
             )
 
         except Exception as e:
-            logger.error(f"Pixverse API error: {e}", exc_info=True)
+            logger.error(
+                "provider:error",
+                msg="pixverse_api_error",
+                provider_id="pixverse",
+                operation_type=operation_type.value,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True
+            )
             self._handle_error(e)
 
     async def _generate_text_to_video(
@@ -579,8 +595,78 @@ class PixverseProvider(Provider):
             )
 
         except Exception as e:
-            logger.error(f"Failed to check status for {provider_job_id}: {e}")
+            logger.error(
+                "provider:status",
+                msg="status_check_failed",
+                provider_id="pixverse",
+                provider_job_id=provider_job_id,
+                error=str(e),
+                error_type=e.__class__.__name__
+            )
             self._handle_error(e)
+
+    async def upload_asset(
+        self,
+        account: ProviderAccount,
+        file_path: str
+    ) -> str:
+        """
+        Upload asset (image/video) to Pixverse using OpenAPI when available.
+
+        Strategy:
+        - Prefer OpenAPI method when account has api_key/api_key_paid
+        - Fallback to any available client upload method
+        - Return a reusable URL if provided by API; otherwise return provider media ID
+
+        Note: Requires pixverse-py to expose a media upload endpoint. We try common
+        method shapes; if not found, raise a clear ProviderError for implementation.
+        """
+        # Choose 'open-api' if any API key present; else default method
+        use_method = 'open-api' if (getattr(account, 'api_key_paid', None) or getattr(account, 'api_key', None)) else None
+        client = self._create_client(account, use_method=use_method)
+
+        try:
+            # Try common method shapes on the SDK
+            response = None
+            if hasattr(client, 'api') and hasattr(client.api, 'upload_media'):
+                response = await asyncio.to_thread(client.api.upload_media, file_path=file_path)
+            elif hasattr(client, 'upload_media'):
+                response = await asyncio.to_thread(client.upload_media, file_path=file_path)
+            elif hasattr(client, 'upload'):
+                response = await asyncio.to_thread(client.upload, file_path)
+            else:
+                raise ProviderError(
+                    "Pixverse upload not available in SDK. Please update pixverse-py to a version with media upload support."
+                )
+
+            # Normalize response to either a URL or media ID
+            if isinstance(response, dict):
+                url = response.get('url') or response.get('media_url') or response.get('download_url')
+                if url:
+                    return url
+                media_id = response.get('id') or response.get('media_id')
+                if media_id:
+                    return str(media_id)
+                # Unknown shape
+                raise ProviderError(f"Unexpected Pixverse upload response shape: {response}")
+            elif isinstance(response, str):
+                # Could be URL or ID; return as-is
+                return response
+            else:
+                raise ProviderError(f"Unexpected Pixverse upload response type: {type(response)}")
+
+        except ProviderError:
+            raise
+        except Exception as e:
+            logger.error(
+                "upload_asset_failed",
+                provider_id="pixverse",
+                file_path=file_path,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True
+            )
+            raise ProviderError(f"Pixverse upload failed: {e}")
 
     def _handle_error(self, error: Exception) -> None:
         """

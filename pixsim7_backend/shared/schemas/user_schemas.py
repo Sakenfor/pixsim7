@@ -20,12 +20,12 @@ class UserResponse(BaseModel):
     id: int
     email: str
     username: str
-    full_name: str | None
+    full_name: str | None = None
     role: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    last_login_at: datetime | None
+    last_login_at: datetime | None = None
 
     class Config:
         from_attributes = True

@@ -30,7 +30,7 @@ VITE_ADMIN_PORT=8002
 ```
 
 Notes:
-- `VITE_BACKEND_URL` points to the FastAPI backend root (no trailing slash, no /api/v1 prefix). All API helper calls build endpoints relative to this.
+- `VITE_BACKEND_URL` points to the FastAPI backend root (no trailing slash, no /api/v1 prefix). The admin app appends `/api/v1` automatically.
 - `VITE_ADMIN_PORT` sets the dev server port; defaults to 5173 if omitted.
 
 ### 3. Start Dev Server
@@ -63,7 +63,7 @@ All 6 pages are complete and functional!
 
 | Component | Default Port | Env Variable |
 |-----------|--------------|--------------|
-| FastAPI Backend | 8001 | (configured via backend run script) |
+| FastAPI Backend | 8001 | `VITE_BACKEND_URL` (host+port) |
 | Admin Dev UI | 8002 | `VITE_ADMIN_PORT` |
 
 If ports change, update `VITE_BACKEND_URL` accordingly (e.g. `http://localhost:9000`).

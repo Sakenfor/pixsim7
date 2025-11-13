@@ -7,12 +7,13 @@
 
 import { moduleRegistry } from './types';
 import { galleryModule } from './gallery';
-import { sceneBuilderModule } from './scene-builder';
 
 // Register all modules
 export function registerModules() {
   moduleRegistry.register(galleryModule);
-  moduleRegistry.register(sceneBuilderModule);
+
+  // Note: sceneBuilderModule removed - now uses graphStore (Zustand) for state management
+  // scene-builder module now only exports types
 
   // Future modules:
   // moduleRegistry.register(playbackModule);
@@ -25,4 +26,3 @@ export { moduleRegistry };
 
 // Export module instances for direct access
 export { galleryModule } from './gallery';
-export { sceneBuilderModule } from './scene-builder';

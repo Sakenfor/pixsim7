@@ -1,0 +1,1 @@
+export const DEFAULT_PROMPT_MAX_CHARS = 800;

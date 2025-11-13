@@ -1,12 +1,20 @@
 # PixSim7 Logging Structure
 
-Clean logging architecture with separate logs per component.
+Unified, structured logging across API, workers, scripts, and (future) frontend.
+
+This document now covers:
+1. Field Catalog (shared spec)
+2. Stage Taxonomy
+3. Root Logging Package Usage (`pixsim_logging`)
+4. Legacy File-Based Logs (transition plan)
+5. Security & Redaction
+6. Sampling & Performance
+7. Examples
 
 ---
 
 ## 📁 Log Files
-
-All logs are stored in `data/logs/`:
+Legacy file targets (still supported during transition) stored in `data/logs/`:
 
 ### **1. backend.log**
 **What:** API server logs (FastAPI/uvicorn)
@@ -119,7 +127,7 @@ Logs to: `data/logs/worker.log` + `data/logs/errors.log`
 
 ## 📊 Log Format
 
-### JSON Format (for production/admin panel)
+### JSON Format (production / ingestion)
 
 ```json
 {
@@ -135,7 +143,7 @@ Logs to: `data/logs/worker.log` + `data/logs/errors.log`
 }
 ```
 
-### Plain Format (for development/console)
+### Human Format (development / console)
 
 ```
 2025-11-11 22:30:45 - job_processor - INFO - Processing job #123
@@ -144,6 +152,144 @@ Logs to: `data/logs/worker.log` + `data/logs/errors.log`
 ---
 
 ## 📈 Log Levels
+## 🧱 Field Catalog (Spec)
+
+| Field | Purpose | Notes |
+|-------|---------|-------|
+| timestamp | Event time (UTC ISO) | Added by structlog TimeStamper |
+| level | Severity | DEBUG / INFO / WARN / ERROR / CRITICAL |
+| msg | Short event message | Avoid concatenated strings; use context fields |
+| service | Component emitting | api / worker / script-launcher / game-service / frontend |
+| env | Deployment environment | dev / staging / prod |
+| request_id | HTTP request correlation | Added by FastAPI middleware (future) |
+| job_id | Job lifecycle correlation | Bound at pipeline start |
+| submission_id | ProviderSubmission ID | After provider submit |
+| artifact_id | GenerationArtifact ID | After artifact creation |
+| provider_job_id | Provider internal job ID | From provider response |
+| provider_id | Provider identifier | pixverse / sora / etc. |
+| operation_type | Generation operation | text_to_video, image_to_video... |
+| stage | Lifecycle stage | See taxonomy below |
+| attempt | Retry attempt number | 0 initial, increment on retry |
+| duration_ms | Duration of stage when available | Calculated post completion |
+| error | Human-readable error | Only on failures |
+| error_type | Exception class / category | Enables grouping |
+| user_id | Originating user (optional) | Avoid email / PII |
+
+### Optional / Future Fields
+| Field | Purpose |
+| reproducible_hash | Canonical artifact hash |
+| account_id | Provider account used |
+| retry_policy | Policy applied (exponential/backoff) |
+| content_flags | Safety classification summary |
+
+## 🌀 Stage Taxonomy
+
+| Stage | Description |
+|-------|-------------|
+| pipeline:start | Pipeline run invoked for job |
+| pipeline:artifact | Canonical params + artifact created |
+| provider:map_params | Provider-specific mapping performed |
+| provider:submit | Submission sent to provider |
+| provider:status | Status poll (sampled) |
+| provider:complete | Provider signaled completion |
+| provider:error | Provider returned error |
+| retry:decision | Retry strategy evaluated |
+
+## 🧩 Root Logging Package
+
+Usage (Python):
+```python
+from pixsim_logging import configure_logging, get_logger
+logger = configure_logging("api")
+logger.info("pipeline:start", job_id=123, operation_type="text_to_video")
+```
+
+Environment overrides:
+```
+PIXSIM_LOG_FORMAT=human        # human console output
+PIXSIM_LOG_LEVEL=DEBUG         # log level threshold
+PIXSIM_LOG_SAMPLING_PROVIDER_STATUS=5  # sample provider:status 1 in 5
+```
+
+### Binding Helpers
+```python
+from pixsim_logging import bind_job_context
+logger = bind_job_context(logger, job_id=123, operation_type="text_to_video")
+logger.info("pipeline:artifact", artifact_id=999)
+```
+
+## 🔐 Security & Redaction
+Sensitive keys automatically redacted: `api_key`, `jwt_token`, `authorization`, `password`, `secret`.
+Never log full credentials, prompts containing PII, or unfiltered user-supplied headers.
+
+## 🔁 Sampling & Performance
+`provider:status` events can be high volume. Sampling controlled by `PIXSIM_LOG_SAMPLING_PROVIDER_STATUS` (default 1 = no sampling).
+Log large payloads as references (IDs) rather than entire JSON blocks.
+
+## 🧪 Examples
+### Artifact Creation
+```json
+{
+    "timestamp":"2025-11-12T12:34:56.789Z",
+    "level":"INFO",
+    "service":"worker",
+    "stage":"pipeline:artifact",
+    "job_id":123,
+    "artifact_id":456,
+    "operation_type":"text_to_video",
+    "msg":"artifact_created"
+}
+```
+
+### Provider Submission
+```json
+{
+    "timestamp":"2025-11-12T12:34:57.010Z",
+    "level":"INFO",
+    "service":"worker",
+    "stage":"provider:submit",
+    "job_id":123,
+    "submission_id":321,
+    "provider_id":"pixverse",
+    "provider_job_id":"pv_job_abc",
+    "operation_type":"text_to_video",
+    "msg":"submitted"
+}
+```
+
+### Provider Error
+```json
+{
+    "timestamp":"2025-11-12T12:35:04.444Z",
+    "level":"ERROR",
+    "service":"worker",
+    "stage":"provider:error",
+    "job_id":123,
+    "submission_id":321,
+    "provider_id":"pixverse",
+    "error":"timeout",
+    "error_type":"TimeoutError",
+    "attempt":0,
+    "msg":"provider_submission_failed"
+}
+```
+
+## 🔄 Transition Plan
+1. Introduce `pixsim_logging` (Phase 2)
+2. Migrate worker & pipeline first
+3. Migrate API startup & middleware
+4. Deprecate direct file handlers; keep errors.log until ingestion added
+5. Introduce client (frontend) structured emitter
+
+## 🧭 Contributor Guide (Initial)
+1. Import and configure logger once at entrypoint.
+2. Bind context early (job_id, operation_type).
+3. Use stage strings from taxonomy.
+4. Add new stage? Update STAGES in `spec.py` and this doc.
+5. Avoid logging entire provider payload—log IDs.
+6. For retries, increment attempt and log `retry:decision` with reason.
+
+---
 
 | Level | Usage | Example |
 |-------|-------|---------|
@@ -312,6 +458,156 @@ grep "duration" data/logs/backend.log | grep -E "[0-9]{3,}"
 
 ---
 
+---
+
+## ✅ Implementation Status
+
+**Last Updated:** 2025-11-12
+
+### Completed Components
+
+**Phase 1: Entrypoint Integration**
+- ✅ `pixsim7_backend/main.py` (FastAPI) - Uses `pixsim_logging.configure_logging("api")`
+- ✅ `pixsim7_backend/workers/job_processor.py` - Uses `pixsim_logging.get_logger()`
+- ✅ Configured service names: "api" and "worker"
+
+**Phase 2: Request ID Middleware**
+- ✅ `pixsim7_backend/api/middleware.py` - Updated to use `structlog.contextvars`
+- ✅ Request IDs automatically bind to all logs within a request context
+- ✅ `pixsim_logging/config.py` - Added `structlog.contextvars.merge_contextvars` processor
+
+**Phase 3: Pipeline Logging**
+- ✅ `pixsim7_backend/services/submission/pipeline.py`
+  - Uses structured logging with proper stages: `pipeline:start`, `pipeline:artifact`, `provider:submit`, `provider:error`
+  - Uses `bind_job_context()` and `bind_artifact_context()` helpers
+  - All context (job_id, operation_type, provider_id, artifact_id, submission_id) flows through logs
+
+**Phase 4: Provider Adapter Logging**
+- ✅ `pixsim7_backend/services/provider/adapters/pixverse.py`
+  - Structured logging in `execute()`, `check_status()`, `upload_asset()`, `extract_embedded_assets()`
+  - Stage taxonomy: `provider:status`, `provider:error`
+  - All logs include provider_id, operation_type, and error context
+
+### Test Results
+
+**Test Script:** `tests/test_structured_logging.py`
+
+Successfully verified:
+1. ✅ Logger initializes with service name and environment
+2. ✅ Logs emit in JSON format when `PIXSIM_LOG_FORMAT=json`
+3. ✅ Job context binding (`job_id`, `operation_type`, `provider_id`)
+4. ✅ Artifact context binding (`artifact_id`, `submission_id`)
+5. ✅ Stages emit correctly: `pipeline:start`, `pipeline:artifact`, `provider:submit`, `provider:status`, `provider:complete`
+6. ✅ Error handling with `provider:error` stage
+7. ✅ Sensitive data redaction (`api_key`, `password`, `jwt_token` → `***redacted***`)
+8. ✅ Sampling support via `PIXSIM_LOG_SAMPLING_PROVIDER_STATUS`
+
+### Usage in Code
+
+**In Services:**
+```python
+from pixsim_logging import get_logger, bind_job_context
+
+logger = get_logger()
+
+async def process_job(job_id: int):
+    job_logger = bind_job_context(logger, job_id=job_id, operation_type="text_to_video")
+    job_logger.info("pipeline:start", msg="processing_started")
+    # ... processing logic ...
+    job_logger.info("provider:submit", provider_job_id="pv_123", msg="submitted")
+```
+
+**In Entrypoints:**
+```python
+from pixsim_logging import configure_logging
+
+# At application startup
+logger = configure_logging("api")  # or "worker", "script-launcher", etc.
+```
+
+**In Middleware (Already Implemented):**
+```python
+import structlog
+
+# In FastAPI middleware
+structlog.contextvars.bind_contextvars(request_id=request_id)
+```
+
+### Example Output
+
+**JSON Format (Production):**
+```json
+{
+  "timestamp": "2025-11-12T22:53:59.696742Z",
+  "level": "info",
+  "service": "worker",
+  "env": "dev",
+  "job_id": 123,
+  "operation_type": "text_to_video",
+  "provider_id": "pixverse",
+  "stage": "pipeline:start",
+  "msg": "job_processing_started"
+}
+```
+
+```json
+{
+  "timestamp": "2025-11-12T22:53:59.696897Z",
+  "level": "error",
+  "service": "worker",
+  "env": "dev",
+  "job_id": 999,
+  "operation_type": "image_to_video",
+  "provider_id": "pixverse",
+  "stage": "provider:error",
+  "error": "Simulated provider error",
+  "error_type": "ValueError",
+  "attempt": 0,
+  "msg": "provider_submission_failed"
+}
+```
+
+### Migration Status
+
+**Completed:**
+- [x] Core logging package (`pixsim_logging/`)
+- [x] API entrypoint integration
+- [x] Worker entrypoint integration
+- [x] Request ID middleware
+- [x] Pipeline structured logging
+- [x] Provider adapter logging (Pixverse)
+- [x] Test suite
+
+**Future (Not Required Yet):**
+- [ ] Log ingestion endpoint for centralized collection
+- [ ] Frontend structured logger
+- [ ] Deprecate legacy file handlers (keep during transition)
+- [ ] Implement `provider:map_params` stage
+- [ ] Add `duration_ms` calculation
+- [ ] Expand sampling to other high-volume events
+
+### Testing
+
+```bash
+# JSON format (production)
+PIXSIM_LOG_FORMAT=json python tests/test_structured_logging.py
+
+# Human format (development)
+PIXSIM_LOG_FORMAT=human python tests/test_structured_logging.py
+
+# With sampling enabled
+PIXSIM_LOG_SAMPLING_PROVIDER_STATUS=5 python tests/test_structured_logging.py
+```
+
+### Next Steps
+
+1. **Enable Pipeline in Production** - Set `PIXSIM7_USE_PIPELINE=1` in environment
+2. **Monitor Logs** - Verify all required fields are present in JSON format
+3. **Performance Tuning** - Adjust `PIXSIM_LOG_SAMPLING_PROVIDER_STATUS` if needed
+4. **Future Enhancements** - Build log ingestion endpoint, add duration tracking
+
+---
+
 ## 🎉 Summary
 
 **3 log files, 3 purposes:**
@@ -319,11 +615,20 @@ grep "duration" data/logs/backend.log | grep -E "[0-9]{3,}"
 2. **worker.log** - Background job processing
 3. **errors.log** - All errors across components
 
+**Structured logging features:**
+- Unified field catalog across all services
+- Stage taxonomy for pipeline tracing
+- Context propagation (job_id, request_id, etc.)
+- Automatic sensitive data redaction
+- Configurable sampling for high-volume events
+- JSON output for ingestion or human-readable for development
+
 **Easy to:**
 - Debug specific components
 - Monitor system health
 - Find errors quickly
 - Analyze performance
 - Track user activity
+- Trace job lifecycle end-to-end
 
 **View in admin panel:** http://localhost:5173/logs 🎨

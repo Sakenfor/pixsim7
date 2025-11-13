@@ -1,0 +1,16 @@
+{
+  "name": "@pixsim7/workspace",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "frontend",
+    "game-frontend",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "lint": "echo 'add lint script per package'"
+  }
+}

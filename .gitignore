@@ -10,7 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/# Limit Python build artifacts at repo root; don't ignore nested frontend/src/lib
+/lib/
 lib64/
 parts/
 sdist/
@@ -76,3 +77,17 @@ npm-debug.log*
 
 # Windows reserved name accidentally present
 nul
+# Launcher GUI runtime state (not source)
+scripts/launcher_gui/launcher.json
+
+# Claude Code settings
+.claude/settings.local.json
+
+# TimescaleDB data
+data/timescaledb/
+
+# Local development scripts
+kill-backend-now.bat
+kill_backend.bat
+stop-backend-force.bat
+stop-backend.bat

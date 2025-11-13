@@ -10,18 +10,21 @@ Usage:
     # Or with custom Redis URL
     ARQ_REDIS_URL=redis://localhost:6379/0 arq pixsim7_backend.workers.arq_worker.WorkerSettings
 """
-import logging
 import os
+
+# Load .env file BEFORE any other imports that need env vars
+from dotenv import load_dotenv
+load_dotenv()
+
 from arq import cron
 from arq.connections import RedisSettings
 from pixsim7_backend.workers.job_processor import process_job
+from pixsim7_backend.workers.automation import process_automation, run_automation_loops
 from pixsim7_backend.workers.status_poller import poll_job_statuses
-from pixsim7_backend.workers.worker_logging import setup_worker_logging
+from pixsim_logging import configure_logging
 
-# Setup worker-specific logging
-setup_worker_logging(log_level=os.getenv("LOG_LEVEL", "INFO"))
-
-logger = logging.getLogger(__name__)
+# Configure structured logging and optional ingestion via env
+logger = configure_logging("worker")
 
 
 async def startup(ctx: dict) -> None:
@@ -31,12 +34,11 @@ async def startup(ctx: dict) -> None:
     Called once when the worker starts.
     Initialize any shared resources here.
     """
-    logger.info("=" * 60)
-    logger.info("🚀 PixSim7 ARQ Worker Starting")
-    logger.info("=" * 60)
-    logger.info("✅ Job processor registered: process_job")
-    logger.info("✅ Status poller registered: poll_job_statuses (every 10s)")
-    logger.info("=" * 60)
+    logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
+    logger.info("worker_component_registered", component="process_job")
+    logger.info("worker_component_registered", component="process_automation")
+    logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
+    logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
 
 
 async def shutdown(ctx: dict) -> None:
@@ -46,9 +48,7 @@ async def shutdown(ctx: dict) -> None:
     Called once when the worker stops.
     Clean up any resources here.
     """
-    logger.info("=" * 60)
-    logger.info("👋 PixSim7 ARQ Worker Shutting Down")
-    logger.info("=" * 60)
+    logger.info("worker_shutdown", msg="PixSim7 ARQ Worker Shutting Down")
 
 
 class WorkerSettings:
@@ -71,7 +71,9 @@ class WorkerSettings:
     # Task functions that can be queued
     functions = [
         process_job,
+        process_automation,
         poll_job_statuses,
+        run_automation_loops,
     ]
 
     # Cron jobs (periodic tasks)
@@ -81,6 +83,12 @@ class WorkerSettings:
             poll_job_statuses,
             second={0, 10, 20, 30, 40, 50},  # Every 10 seconds
             run_at_startup=True,  # Run immediately on startup
+        ),
+        # Run automation loops every 30 seconds
+        cron(
+            run_automation_loops,
+            second={0, 30},
+            run_at_startup=True,
         )
     ]
 

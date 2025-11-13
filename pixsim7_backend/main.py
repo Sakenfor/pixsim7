@@ -6,36 +6,52 @@ Clean architecture entry point
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from pathlib import Path
+
+# Load .env file BEFORE any other imports that need env vars
+from dotenv import load_dotenv
+load_dotenv()
 
 from pixsim7_backend.shared.config import settings
 from pixsim7_backend.infrastructure.database.session import (
     init_database,
     close_database
 )
-from pixsim7_backend.infrastructure.logging import setup_logging, get_logger
 from pixsim7_backend.infrastructure.redis import close_redis
 from pixsim7_backend.api.middleware import RequestIdMiddleware
 
-# Configure structured logging
-log_file = os.getenv("LOG_FILE", "data/logs/backend.log")
-json_logs = os.getenv("JSON_LOGS", "false").lower() == "true"
+# Configure structured logging using pixsim_logging
+from pixsim_logging import configure_logging
 
-setup_logging(
-    log_level=settings.log_level,
-    log_file=log_file,
-    json_logs=json_logs
-)
+logger = configure_logging("api")
 
-logger = get_logger(__name__)
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        from time import time as _time
+        start = _time()
+        response = await call_next(request)
+        duration_ms = int((_time() - start) * 1000)
+        try:
+            logger.info(
+                "http_request",
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            pass
+        return response
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
-    logger.info("🚀 Starting PixSim7...")
+    logger.info("Starting PixSim7...")
     
     # Assert secret_key in production
     if not settings.debug and settings.secret_key == "change-this-in-production":
@@ -56,42 +72,51 @@ async def lifespan(app: FastAPI):
         Scene,
         SceneAsset,
         SceneConnection,
+        LogEntry,
+    )
+    # Register automation domain models
+    from pixsim7_backend.domain.automation import (
+        AndroidDevice,
+        AppActionPreset,
+        AutomationExecution,
+        ExecutionLoop,
+        ExecutionLoopHistory,
     )
 
     # Initialize database
     await init_database()
-    logger.info("✅ Database initialized")
+    logger.info("Database initialized")
 
     # Initialize Redis
     try:
         from pixsim7_backend.infrastructure.redis import get_redis, check_redis_connection
         redis_available = await check_redis_connection()
         if redis_available:
-            logger.info("✅ Redis connected")
+            logger.info("Redis connected")
         else:
-            logger.warning("⚠️ Redis not available - background jobs will not work")
+            logger.warning("Redis not available - background jobs will not work")
     except Exception as e:
-        logger.warning(f"⚠️ Redis initialization failed: {e}")
-        logger.warning("⚠️ Background jobs will not work without Redis")
+        logger.warning(f"Redis initialization failed: {e}")
+        logger.warning("Background jobs will not work without Redis")
 
     # Register providers
     from pixsim7_backend.services.provider import register_default_providers
     register_default_providers()
-    logger.info("✅ Providers registered")
+    logger.info("Providers registered")
 
     # TODO: Initialize event handlers
     # from pixsim7_backend.infrastructure.events.handlers import register_handlers
     # register_handlers()
 
-    logger.info("✅ PixSim7 ready!")
+    logger.info("PixSim7 ready!")
 
     yield
 
     # Shutdown
-    logger.info("👋 Shutting down PixSim7...")
+    logger.info("Shutting down PixSim7...")
     await close_redis()
     await close_database()
-    logger.info("✅ Cleanup complete")
+    logger.info("Cleanup complete")
 
 
 # Create FastAPI app
@@ -105,6 +130,7 @@ app = FastAPI(
 
 # Add request ID middleware for log tracing
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS middleware
 app.add_middleware(
@@ -157,7 +183,7 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage
+from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation
 from pixsim7_backend.api.admin import database_router, migrations_router
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
@@ -166,8 +192,10 @@ app.include_router(assets.router, prefix="/api/v1", tags=["assets"])
 app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 app.include_router(services.router, prefix="/api/v1", tags=["services"])
 app.include_router(accounts.router, prefix="/api/v1", tags=["accounts"])
+app.include_router(automation.router, prefix="/api/v1", tags=["automation"])
 app.include_router(providers.router, prefix="/api/v1", tags=["providers"])
 app.include_router(lineage.router, prefix="/api/v1", tags=["lineage"])
+app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 app.include_router(database_router, prefix="/api", tags=["database"])
 app.include_router(migrations_router, prefix="/api", tags=["migrations"])
 
@@ -184,5 +212,19 @@ if __name__ == "__main__":
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
+        # Limit hot-reload to backend sources and ignore data/logs and build outputs
+        reload_dirs=[str(Path(__file__).parent)],
+        reload_includes=["*.py"],
+        reload_excludes=[
+            "data/*",
+            "data/**",
+            "**/*.log",
+            "**/logs/**",
+            "**/node_modules/**",
+            "**/.svelte-kit/**",
+            "**/dist/**",
+            "**/.venv/**",
+            "**/__pycache__/**",
+        ],
         log_level=settings.log_level.lower()
     )

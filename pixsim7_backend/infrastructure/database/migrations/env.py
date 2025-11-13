@@ -39,6 +39,15 @@ from pixsim7_backend.domain import (
     SceneConnection,
 )
 
+# Import automation models so Alembic sees these tables
+from pixsim7_backend.domain.automation import (
+    AndroidDevice,
+    AppActionPreset,
+    AutomationExecution,
+    ExecutionLoop,
+    ExecutionLoopHistory,
+)
+
 # this is the Alembic Config object
 config = context.config
 

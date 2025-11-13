@@ -1,0 +1,181 @@
+"""
+UploadService - centralize provider media uploads
+
+Responsibilities:
+- Select appropriate provider account for uploads
+- For Pixverse: prefer OpenAPI (api_key/api_key_paid) when available; otherwise use Web API path
+- Perform basic acceptance checks (MIME/sanity) and surface clear errors
+"""
+from __future__ import annotations
+from typing import Optional
+from dataclasses import dataclass
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from pixsim7_backend.domain import ProviderAccount, AccountStatus
+from pixsim7_backend.domain.enums import MediaType
+from pixsim7_backend.services.account.account_service import AccountService
+from pixsim7_backend.services.provider.registry import registry
+from pixsim7_backend.shared.errors import InvalidOperationError
+from pixsim7_backend.shared.image_utils import get_image_info, downscale_image_max_dim
+
+
+@dataclass
+class UploadResult:
+    provider_id: str
+    media_type: MediaType
+    external_url: Optional[str] = None
+    provider_asset_id: Optional[str] = None
+    note: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    mime_type: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+
+
+class UploadService:
+    def __init__(self, db: AsyncSession, account_service: AccountService):
+        self.db = db
+        self.accounts = account_service
+
+    async def upload(
+        self,
+        *,
+        provider_id: str,
+        media_type: MediaType,
+        tmp_path: str,
+    ) -> UploadResult:
+        """
+        Upload file to specified provider. No cross-provider auto-selection.
+
+        Pixverse-specific behavior: prefer OpenAPI if account has api_key/api_key_paid; else use web-api.
+        """
+        # Prepare file for provider (may downscale/compress)
+        prepared_path, meta, prep_note = await self._prepare_file_for_provider(provider_id, media_type, tmp_path)
+
+        # Select account for this provider (shared accounts)
+        # Pixverse: prefer any account with API key (OpenAPI) by default
+        account: ProviderAccount
+        if provider_id == "pixverse":
+            result = await self.db.execute(
+                select(ProviderAccount).where(
+                    ProviderAccount.provider_id == "pixverse",
+                    ProviderAccount.status == AccountStatus.ACTIVE,
+                    (ProviderAccount.api_key.is_not(None)) | (ProviderAccount.api_key_paid.is_not(None))
+                ).limit(1)
+            )
+            preferred = result.scalar_one_or_none()
+            if preferred is not None:
+                account = preferred
+            else:
+                account = await self.accounts.select_account(provider_id)
+        else:
+            account = await self.accounts.select_account(provider_id)
+
+        # Delegate to provider adapter
+        provider = registry.get(provider_id)
+        uploaded = await provider.upload_asset(account, prepared_path)  # type: ignore
+
+        # Heuristic: URL vs ID
+        if isinstance(uploaded, str) and (uploaded.startswith("http://") or uploaded.startswith("https://")):
+            return UploadResult(
+                provider_id=provider_id,
+                media_type=media_type,
+                external_url=uploaded,
+                note=(prep_note or None) or ("Uploaded via OpenAPI" if provider_id == "pixverse" and (account.api_key or account.api_key_paid) else None),
+                width=meta.get('width'),
+                height=meta.get('height'),
+                mime_type=meta.get('mime_type'),
+                file_size_bytes=meta.get('file_size_bytes'),
+            )
+
+        return UploadResult(
+            provider_id=provider_id,
+            media_type=media_type,
+            provider_asset_id=str(uploaded),
+            note=(prep_note or None) or ("Provider returned an ID; use provider API to resolve URL" if provider_id == "pixverse" else None),
+            width=meta.get('width'),
+            height=meta.get('height'),
+            mime_type=meta.get('mime_type'),
+            file_size_bytes=meta.get('file_size_bytes'),
+        )
+
+    async def _prepare_file_for_provider(self, provider_id: str, media_type: MediaType, tmp_path: str):
+        """Validate and prepare temp file; may return a new path and metadata.
+
+        Returns (prepared_path, meta, note)
+        meta: {width,height,mime_type,file_size_bytes}
+        note: optional string (e.g., 'Downscaled to <=4096')
+        """
+        note = None
+        width = height = None
+        mime = None
+        size = None
+
+        if provider_id == "pixverse" and media_type == MediaType.IMAGE:
+            MAX_DIM = 4096
+            MAX_BYTES = 20 * 1024 * 1024
+            w, h, m, s = get_image_info(tmp_path)
+            width, height, mime, size = w, h, m, s
+
+            prepared = tmp_path
+            # Dimension check
+            if width and height and max(width, height) > MAX_DIM:
+                prepared = downscale_image_max_dim(tmp_path, MAX_DIM)
+                note = (note + '; ' if note else '') + f"Downscaled to <= {MAX_DIM}"
+                w, h, m, s = get_image_info(prepared)
+                width, height, mime, size = w, h, m, s
+
+            # Size check: try light recompress for JPEG/WEBP
+            if size and size > MAX_BYTES:
+                # attempt recompress at lower quality when possible
+                try:
+                    from PIL import Image
+                    with Image.open(prepared) as im:
+                        fmt = (im.format or 'PNG').upper()
+                        if fmt in ('JPEG', 'WEBP'):
+                            alt = downscale_image_max_dim(prepared, max(width or MAX_DIM, height or MAX_DIM), quality=85)
+                            w2, h2, m2, s2 = get_image_info(alt)
+                            if s2 and s2 <= MAX_BYTES:
+                                prepared = alt
+                                width, height, mime, size = w2, h2, m2, s2
+                                note = (note + '; ' if note else '') + "Recompressed"
+                        # If still too big or non-recompressible, raise
+                except Exception:
+                    pass
+                # Final guard
+                if size and size > MAX_BYTES:
+                    raise InvalidOperationError("Pixverse upload rejected: image exceeds 20MB after resizing. Try JPEG/WebP or smaller dimensions.")
+
+            return prepared, {
+                'width': width,
+                'height': height,
+                'mime_type': mime,
+                'file_size_bytes': size,
+            }, note
+
+        if provider_id == "pixverse" and media_type == MediaType.VIDEO:
+            # Placeholder for future Pixverse video acceptance rules.
+            # Likely constraints: file size, codecs, duration, and dimensions.
+            # For now, we simply return as-is and let provider enforce.
+            # TODO: Implement ffprobe-based checks when video rules are finalized.
+            try:
+                import os
+                size = os.path.getsize(tmp_path)
+            except Exception:
+                size = None
+            return tmp_path, {
+                'width': None,
+                'height': None,
+                'mime_type': None,
+                'file_size_bytes': size,
+            }, note
+
+        # Default: no special prep
+        return tmp_path, {
+            'width': width,
+            'height': height,
+            'mime_type': mime,
+            'file_size_bytes': size,
+        }, note

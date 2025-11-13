@@ -1,0 +1,127 @@
+"""
+Automation worker tasks
+
+Provides ARQ task to process a single AutomationExecution.
+This is a minimal stub that simulates execution and marks it complete.
+"""
+import asyncio
+from pixsim_logging import configure_logging
+from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from pixsim7_backend.domain.automation import AutomationExecution, AutomationStatus, AppActionPreset, AndroidDevice
+from pixsim7_backend.infrastructure.database.session import get_db
+from pixsim7_backend.services.automation import ExecutionLoopService
+from sqlalchemy import select
+from pathlib import Path
+from pixsim7_backend.shared.config import settings
+from pixsim7_backend.services.automation.action_executor import ActionExecutor, ExecutionContext
+
+logger = configure_logging("worker")
+
+
+async def process_automation(execution_id: int) -> dict:
+    """
+    Process a single automation execution (stub implementation).
+
+    In a full implementation, this would:
+    - Connect to the device via ADB/UIA2
+    - Execute preset actions with context
+    - Capture screenshots and errors
+    - Update execution status and history
+    """
+    logger.info("automation_start", execution_id=execution_id)
+
+    async for db in get_db():
+        try:
+            execution = await db.get(AutomationExecution, execution_id)
+            if not execution:
+                return {"status": "error", "error": "execution_not_found"}
+
+            if execution.status not in {AutomationStatus.PENDING, AutomationStatus.RUNNING}:
+                return {"status": "skipped", "reason": f"status={execution.status}"}
+
+            execution.status = AutomationStatus.RUNNING
+            execution.started_at = datetime.utcnow()
+            await db.commit()
+
+            # Fetch preset and device
+            preset = await db.get(AppActionPreset, execution.preset_id)
+            device = await db.get(AndroidDevice, execution.device_id) if execution.device_id else None
+            if not device:
+                # Pick any device by adb_id from first ONLINE one (optional enhancement: proper selection in loop)
+                from sqlalchemy import select
+                from pixsim7_backend.domain.automation import DeviceStatus
+                result = await db.execute(select(AndroidDevice).where(AndroidDevice.status == DeviceStatus.ONLINE))
+                device = result.scalars().first()
+                if device:
+                    execution.device_id = device.id
+                    await db.commit()
+
+            if not device:
+                raise RuntimeError("No device available for automation execution")
+
+            # Mark device BUSY to avoid concurrent use
+            from pixsim7_backend.domain.automation import DeviceStatus
+            prev_status = device.status
+            try:
+                device.status = DeviceStatus.BUSY
+                await db.commit()
+
+                # Build execution context
+                screenshots_dir = Path(settings.storage_base_path) / settings.automation_screenshots_dir / f"exec-{execution.id}"
+                ctx = ExecutionContext(serial=device.adb_id, variables=execution.execution_context or {}, screenshots_dir=screenshots_dir)
+
+                # Execute actions
+                executor = ActionExecutor()
+                await executor.execute(preset, ctx)
+
+                # Mark completed
+                execution.status = AutomationStatus.COMPLETED
+                execution.completed_at = datetime.utcnow()
+                await db.commit()
+
+                return {"status": "completed"}
+            finally:
+                # Restore device status
+                try:
+                    device = await db.get(AndroidDevice, device.id)
+                    if device:
+                        device.status = prev_status if prev_status != DeviceStatus.ERROR else DeviceStatus.ONLINE
+                        await db.commit()
+                except Exception as e:
+                    logger.error("automation_restore_status_failed", error=str(e), exc_info=True)
+        except Exception as e:
+            logger.error("automation_failed", error=str(e), exc_info=True)
+            try:
+                execution = await db.get(AutomationExecution, execution_id)
+                if execution:
+                    execution.status = AutomationStatus.FAILED
+                    execution.error_message = str(e)
+                    execution.completed_at = datetime.utcnow()
+                    await db.commit()
+            except Exception:
+                pass
+            raise
+        finally:
+            await db.close()
+
+
+async def run_automation_loops() -> dict:
+    """Cron task: process all active automation loops once."""
+    processed = 0
+    created = 0
+    async for db in get_db():
+        try:
+            from pixsim7_backend.domain.automation import ExecutionLoop, LoopStatus
+            result = await db.execute(select(ExecutionLoop).where(ExecutionLoop.is_enabled == True, ExecutionLoop.status == LoopStatus.ACTIVE))
+            loops = result.scalars().all()
+            svc = ExecutionLoopService(db)
+            for loop in loops:
+                processed += 1
+                exec_obj = await svc.process_loop(loop)
+                if exec_obj:
+                    created += 1
+            return {"status": "ok", "loops_processed": processed, "executions_created": created}
+        finally:
+            await db.close()

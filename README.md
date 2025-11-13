@@ -2,6 +2,8 @@
 
 Video generation platform with REST API, background workers, and web admin panel.
 
+**🤖 AI Assistant?** Read **[AI_README.md](./AI_README.md)** first - comprehensive guide to what's implemented, what's not, and what NOT to recreate.
+
 ---
 
 ## Quick Start
@@ -72,29 +74,63 @@ cd /g/code/pixsim7
 
 ---
 
-## Documentation Structure
+## Documentation Index
 
-**📖 Documentation Guidelines:**
+**📖 Getting Started:**
+- `/README.md` - Project overview (this file)
+- `/docs/LAUNCHER.md` - Single-click launcher guide **← Start here!**
+- `/docs/SETUP.md` - Complete manual setup guide
+- `/docs/PORT_CONFIGURATION.md` - Port configuration reference **← For AI assistants!**
 
-**Only create MD files for:**
-1. **Setup instructions** - How to install and run
-2. **Architecture decisions** - Why we built it this way
-3. **User guides** - For complex features (admin panel, API)
+**🏗️ Architecture & Systems:**
+- `/MASTER_STATUS.md` - Comprehensive project status (100% backend complete)
+- `/CROSS_PROVIDER_ASSETS.md` - Asset system architecture (cross-provider uploads, caching, branching)
+- `/LOGGING_STRUCTURE.md` - Unified structured logging spec (fields, stages, implementation status)
+- `/MIGRATION_INSTRUCTIONS.md` - Database migration guide
+- `/docs/PROVIDER_ACCOUNT_STRATEGY.md` - Multi-account pooling & concurrency
 
-**Do NOT create MD files for:**
-- ❌ Every small feature
-- ❌ Code that's self-explanatory
-- ❌ Things better in code comments
-- ❌ Temporary notes (use TODO comments)
+**💻 Frontend Development:**
+- `/frontend/README.md` - Frontend architecture (React, modular service layer)
+- `/docs/FRONTEND_COMPONENT_GUIDE.md` - Component conventions (PromptInput, etc.)
+- `/docs/FRONTEND_CLAUDE_TASKS.md` - Gallery UI tasks (filters, tabs, masonry grid)
 
-**Documentation files:**
-- `/README.md` - This file (project overview)
-- `/docs/LAUNCHER.md` - Single-click launcher guide ← **Start here!**
-- `/docs/SETUP.md` - Complete setup guide
-- `/docs/PORT_CONFIGURATION.md` - Port configuration reference ← **For AI assistants!**
-- `/docs/ADMIN_PANEL.md` - Admin panel usage
-- `/admin/README.md` - Admin panel tech docs
-- API docs: http://localhost:8001/docs (auto-generated)
+**🎮 Game Development:**
+- `/docs/NODE_EDITOR_DEVELOPMENT.md` - Node-based scene editor (phases, tasks, roadmap)
+- `/docs/CLAUDE_UI_TASKS.md` - Scene player and game frontend tasks
+- `/docs/GAME_BACKEND_SIM_SPEC.md` - Game backend simulation spec
+
+**🔧 Backend Development:**
+- `/pixsim7_backend/README.md` - Backend architecture overview
+- `/pixsim7_backend/GETTING_STARTED.md` - Backend setup guide
+- `/pixsim7_backend/HANDOFF_NOTES.md` - Critical patterns and handoff info
+- `/pixsim7_backend/SERVICE_LAYER_COMPLETE.md` - Service layer examples (7 services)
+- `/pixsim7_backend/MULTI_USER_AND_SERVICE_DESIGN.md` - Multi-user architecture
+- `/pixsim7_backend/PIXVERSE_INTEGRATION.md` - Pixverse provider integration
+- `/pixsim7_backend/REDIS_AND_WORKERS_SETUP.md` - Redis and ARQ worker setup
+
+**📊 Admin & Monitoring:**
+- `/docs/ADMIN_PANEL.md` - Admin panel user guide (log viewer, filtering)
+- `/admin/README.md` - Admin panel tech docs (SvelteKit, ports, env vars)
+- `/docs/TIMESCALEDB_SETUP.md` - TimescaleDB configuration for logs
+- `/docs/LOG_VIEWER_FIELD_METADATA_API.md` - Log viewer field metadata API
+
+**🔄 Advanced Topics:**
+- `/docs/DYNAMIC_GENERATION_FOUNDATION.md` - Dynamic parameter generation
+- `/docs/PHASE_3_INSPECTOR_TESTING.md` - Inspector testing phase
+- `/docs/PHASE_6_LOG_INGESTION.md` - Log ingestion pipeline phase
+- `/docs/ARCHITECTURE_AUDIT_CLAUDE_TASKS.md` - Architecture audit and refactor tasks
+- `/docs/MICROFRONTENDS_SETUP.md` - Microfrontend architecture setup
+
+**🌐 Extensions:**
+- `/chrome-extension/README.md` - Extension architecture and features
+- `/chrome-extension/SORA_SUPPORT.md` - Sora support in extension
+
+**📜 Scripts & Tools:**
+- `/scripts/launcher_gui/README.md` - Launcher GUI documentation
+- `/scripts/launcher_gui/INTEGRATION_GUIDE.md` - Launcher GUI integration guide
+
+**🔗 Auto-Generated:**
+- API Docs: `http://localhost:8001/docs` (FastAPI/Swagger)
 
 ---
 
@@ -178,6 +214,37 @@ docker-compose up -d
 - Consistent environment
 - Easy deployment
 - Automatic process management
+
+### Option 3: Conda Environment (Python Only)
+
+Use a single shared conda env for all Python code (API, worker, scripts).
+
+```bash
+cd G:/code/pixsim7
+conda env create -f environment.yml
+conda activate pixsim7
+
+# Install local provider SDKs (if cloned alongside this repo)
+pip install -e G:/code/pixverse-py
+pip install -e G:/code/sora-py  # if available
+
+# Run backend
+uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001
+```
+
+If you see errors like `Could not find a version that satisfies the requirement pixverse-py`, it means the SDK isn't published. Remove it from `environment.yml` (already commented) and install from local path with `pip install -e`.
+
+**Troubleshooting Pillow build errors (Windows):**
+```bash
+conda update -n base -c defaults conda
+pip install --upgrade pip setuptools wheel
+pip install --force-reinstall pillow
+```
+
+**Common Issues:**
+- Missing aiosqlite: ensure environment.yml was applied (contains aiosqlite for async tests).
+- Structlog not found: verify `structlog` line present and recreate env: `conda env remove -n pixsim7; conda env create -f environment.yml`.
+- Local SDK path wrong: check drive letter (`G:/code/pixverse-py`).
 
 ---
 

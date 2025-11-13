@@ -1,7 +1,7 @@
-import { Badge } from '../primitives/Badge';
-import { Button } from '../primitives/Button';
-import { StatusBadge } from '../primitives/StatusBadge';
-import { useRef } from 'react';
+import { Badge } from '@pixsim7/ui';
+import { Button } from '@pixsim7/ui';
+import { StatusBadge } from '@pixsim7/ui';
+import { useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 
 export interface MediaCardProps {
@@ -19,6 +19,10 @@ export interface MediaCardProps {
   createdAt: string;
   onOpen?: (id: number) => void;
   status?: string;
+  // Optional upload badge hook: when provided, shows a top-right clickable badge
+  onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
+  uploadState?: 'idle' | 'uploading' | 'success' | 'error';
+  uploadNote?: string;
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -41,6 +45,29 @@ export function MediaCard(props: MediaCardProps) {
 
   const videoRef = useRef<HTMLVideoElement>(null as unknown as HTMLVideoElement);
   const hover = useHoverScrubVideo(videoRef as React.RefObject<HTMLVideoElement>);
+  const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
+
+  const effectiveState = props.uploadState ?? internalUploadState;
+  const effectiveNote = props.uploadNote ?? internalUploadNote;
+
+  async function handleUploadClick() {
+    if (!props.onUploadClick) return;
+    // Only manage internal state when parent doesn't control it
+    const controlling = props.uploadState !== undefined;
+    if (!controlling) setInternalUploadState('uploading');
+    try {
+      const result = await props.onUploadClick(id);
+      const ok = (result && 'ok' in result) ? !!result.ok : true;
+      const note = (result && 'note' in result) ? (result as any).note : undefined;
+      if (!controlling) {
+        setInternalUploadState(ok ? 'success' : 'error');
+        setInternalUploadNote(note);
+      }
+    } catch {
+      if (!controlling) setInternalUploadState('error');
+    }
+  }
 
   return (
     <div className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition">
@@ -50,6 +77,22 @@ export function MediaCard(props: MediaCardProps) {
         ) : (
           // eslint-disable-next-line jsx-a11y/img-redundant-alt
           <img src={thumbUrl} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
+        )}
+        {props.onUploadClick && (
+          <div className="absolute right-1 top-1">
+            <button
+              onClick={handleUploadClick}
+              disabled={effectiveState==='uploading'}
+              className={`px-2 py-1 text-[10px] rounded shadow ${
+                effectiveState==='success' ? 'bg-blue-600 text-white' :
+                effectiveState==='error' ? 'bg-red-600 text-white' :
+                effectiveState==='uploading' ? 'bg-neutral-400 text-white' : 'bg-neutral-700 text-white'
+              }`}
+              title={effectiveState==='success' ? (effectiveNote || 'Uploaded (accepted)') : effectiveState==='error' ? 'Upload failed / rejected' : 'Upload to provider'}
+            >
+              {effectiveState==='uploading' ? 'UP...' : effectiveState==='success' ? 'UP ✓' : effectiveState==='error' ? 'ERR' : 'UPLOAD'}
+            </button>
+          </div>
         )}
         {status && (
           <div className="absolute left-1 top-1">
