@@ -12,6 +12,7 @@ import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { AutomationRoute } from './routes/Automation';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
+import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
 import { useTheme } from '@pixsim7/ui';
@@ -56,6 +57,12 @@ function App() {
       {isAuthenticated && (
         <ErrorBoundary>
           <ControlCenterDock />
+        </ErrorBoundary>
+      )}
+      {/* Floating panels (only when authenticated) */}
+      {isAuthenticated && (
+        <ErrorBoundary>
+          <FloatingPanelsManager />
         </ErrorBoundary>
       )}
       {/* Global toast notifications */}

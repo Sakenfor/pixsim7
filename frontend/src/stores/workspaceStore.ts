@@ -4,6 +4,15 @@ import type { MosaicNode } from 'react-mosaic-component';
 
 export type PanelId = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'game' | 'providers';
 
+export interface FloatingPanelState {
+  id: PanelId;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zIndex: number;
+}
+
 export interface WorkspacePreset {
   id: string;
   name: string;
@@ -16,6 +25,7 @@ export interface WorkspaceState {
   isLocked: boolean;
   presets: WorkspacePreset[];
   fullscreenPanel: PanelId | null;
+  floatingPanels: FloatingPanelState[];
 }
 
 export interface WorkspaceActions {
@@ -29,6 +39,11 @@ export interface WorkspaceActions {
   loadPreset: (id: string) => void;
   deletePreset: (id: string) => void;
   reset: () => void;
+  openFloatingPanel: (panelId: PanelId) => void;
+  closeFloatingPanel: (panelId: PanelId) => void;
+  updateFloatingPanelPosition: (panelId: PanelId, x: number, y: number) => void;
+  updateFloatingPanelSize: (panelId: PanelId, width: number, height: number) => void;
+  bringFloatingPanelToFront: (panelId: PanelId) => void;
 }
 
 // Default presets
@@ -118,6 +133,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       isLocked: false,
       presets: defaultPresets,
       fullscreenPanel: null,
+      floatingPanels: [],
 
       setLayout: (layout) => {
         if (get().isLocked) return;
@@ -193,7 +209,67 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
+          floatingPanels: [],
         }),
+
+      openFloatingPanel: (panelId) => {
+        const existing = get().floatingPanels.find(p => p.id === panelId);
+        if (existing) {
+          // Panel already floating, bring to front
+          const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+          set({
+            floatingPanels: get().floatingPanels.map(p =>
+              p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p
+            ),
+          });
+          return;
+        }
+
+        // Calculate center position
+        const width = 600;
+        const height = 400;
+        const x = Math.max(0, (window.innerWidth - width) / 2);
+        const y = Math.max(0, (window.innerHeight - height) / 2);
+        const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+
+        set({
+          floatingPanels: [
+            ...get().floatingPanels,
+            { id: panelId, x, y, width, height, zIndex: maxZ + 1 },
+          ],
+        });
+      },
+
+      closeFloatingPanel: (panelId) => {
+        set({
+          floatingPanels: get().floatingPanels.filter(p => p.id !== panelId),
+        });
+      },
+
+      updateFloatingPanelPosition: (panelId, x, y) => {
+        set({
+          floatingPanels: get().floatingPanels.map(p =>
+            p.id === panelId ? { ...p, x, y } : p
+          ),
+        });
+      },
+
+      updateFloatingPanelSize: (panelId, width, height) => {
+        set({
+          floatingPanels: get().floatingPanels.map(p =>
+            p.id === panelId ? { ...p, width, height } : p
+          ),
+        });
+      },
+
+      bringFloatingPanelToFront: (panelId) => {
+        const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
+        set({
+          floatingPanels: get().floatingPanels.map(p =>
+            p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p
+          ),
+        });
+      },
     }),
     {
       name: STORAGE_KEY,

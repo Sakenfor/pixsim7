@@ -64,8 +64,10 @@ export function PanelLauncherModule() {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
 
-  // Get list of currently open panels
+  // Get list of currently open panels (docked)
   const openPanels = new Set<PanelId>();
   const getLeaves = (node: any): PanelId[] => {
     if (!node) return [];
@@ -74,8 +76,15 @@ export function PanelLauncherModule() {
   };
   getLeaves(currentLayout).forEach((id) => openPanels.add(id));
 
+  // Get list of floating panels
+  const floatingPanelIds = new Set(floatingPanels.map(p => p.id));
+
   const handleOpenPanel = (panelId: PanelId) => {
     restorePanel(panelId);
+  };
+
+  const handleOpenFloating = (panelId: PanelId) => {
+    openFloatingPanel(panelId);
   };
 
   // Group panels by category
@@ -116,13 +125,14 @@ export function PanelLauncherModule() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {panels.map((panel) => {
               const isOpen = openPanels.has(panel.id);
+              const isFloating = floatingPanelIds.has(panel.id);
               const isClosed = closedPanels.includes(panel.id);
 
               return (
                 <div
                   key={panel.id}
                   className={`border rounded-lg p-3 transition-colors ${
-                    isOpen
+                    isOpen || isFloating
                       ? 'bg-green-50/50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
                       : 'bg-neutral-50/50 dark:bg-neutral-800/50 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                   }`}
@@ -137,28 +147,42 @@ export function PanelLauncherModule() {
                         </div>
                         {isOpen && (
                           <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">
-                            OPEN
+                            DOCKED
                           </span>
                         )}
-                        {isClosed && !isOpen && (
+                        {isFloating && (
+                          <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                            FLOATING
+                          </span>
+                        )}
+                        {isClosed && !isOpen && !isFloating && (
                           <span className="text-[10px] text-neutral-500 font-medium">
                             CLOSED
                           </span>
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleOpenPanel(panel.id)}
-                      disabled={isOpen}
-                      className={`text-xs px-2 py-1 rounded transition-colors ${
-                        isOpen
-                          ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-500 cursor-not-allowed'
-                          : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
-                      }`}
-                      title={isOpen ? 'Panel is already open' : 'Open panel in workspace'}
-                    >
-                      {isOpen ? 'Opened' : 'Open'}
-                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleOpenPanel(panel.id)}
+                        disabled={isOpen}
+                        className={`text-xs px-2 py-1 rounded transition-colors ${
+                          isOpen
+                            ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-500 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500'
+                        }`}
+                        title={isOpen ? 'Panel is docked' : 'Open panel in workspace (docked)'}
+                      >
+                        {isOpen ? 'Docked' : 'Dock'}
+                      </button>
+                      <button
+                        onClick={() => handleOpenFloating(panel.id)}
+                        className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        title="Open panel as floating window"
+                      >
+                        Float
+                      </button>
+                    </div>
                   </div>
 
                   {/* Panel description */}
@@ -175,7 +199,8 @@ export function PanelLauncherModule() {
       {/* Info message */}
       <div className="pt-2 border-t text-xs text-neutral-500 dark:text-neutral-400">
         <p>
-          Click "Open" to add a panel to your workspace. Panels can be dragged, resized, and rearranged in the workspace above.
+          Click <strong className="text-blue-600 dark:text-blue-400">Dock</strong> to add panels to the workspace (draggable/resizable).{' '}
+          Click <strong className="text-purple-600 dark:text-purple-400">Float</strong> to open panels as floating windows.
         </p>
       </div>
     </div>
