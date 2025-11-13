@@ -1,4 +1,8 @@
-# Cross-Provider Asset Management
+# Cross-Provider Asset System
+
+**Status:** ✅ Complete - All schema changes implemented and migrated
+
+---
 
 ## The Problem
 
@@ -15,6 +19,8 @@ sora.extend_video(video_url=pixverse_video)  # Sora can't access Pixverse URLs
 2. Cross-origin restrictions (CORS)
 3. Authentication required
 4. Provider-specific formats
+
+---
 
 ## The Solution: Asset Normalization Layer
 
@@ -103,14 +109,19 @@ await sora_provider.execute(
 )
 ```
 
-## Asset Model Structure
+---
 
+## Implementation Details
+
+### Database Schema
+
+#### Asset Model (domain/asset.py)
 ```python
 class Asset:
     # Identity
     id: int
     user_id: int
-    media_type: MediaType  # VIDEO, IMAGE
+    media_type: MediaType  # VIDEO, IMAGE, AUDIO, MODEL_3D
 
     # Original provider
     provider_id: str  # "pixverse", "sora", etc.
@@ -127,10 +138,76 @@ class Asset:
     # Metadata
     width, height, duration_sec, fps
     file_size_bytes, mime_type
+    description, tags, style_tags
+
+    # Content classification
+    content_domain: ContentDomain  # GENERAL, ADULT, SPORTS, FASHION, etc.
+    content_category: str  # Indexed subcategory (e.g., "football", "artistic_nude")
+    content_rating: str  # "general", "mature", "adult", "explicit"
+    age_restricted: bool
+    searchable: bool
+
+    # Vector search
+    embedding: Vector(768)  # CLIP embeddings for similarity
 
     # LRU cache management
     last_accessed_at: datetime  # For cache eviction
+
+    # Provenance
+    original_source_url: str
+    upload_method: str  # "extension", "api", "web", "mobile"
 ```
+
+#### Metadata Tables (domain/asset_metadata.py)
+
+**Asset3DMetadata** - 3D model properties:
+- polygon_count, vertex_count, file_format
+- has_textures, has_animations, has_rigging, has_materials
+
+**AssetAudioMetadata** - Audio file properties:
+- sample_rate, channels, bitrate, codec
+- bpm, key, has_lyrics, is_speech, language
+
+**AssetTemporalSegment** - Video keyframes/scenes:
+- segment_type, timestamp_sec, frame_number
+- thumbnail_url, description, objects, actions
+- embedding for frame similarity
+
+**AssetAdultMetadata** - Adult content metadata:
+- intensity_level, tempo, scene_type
+- Precise similarity matching for adult content
+
+#### Lineage & Branching (domain/asset_lineage.py)
+
+**AssetLineage** - Parent→child relationships:
+- Tracks how assets derive from each other
+- Supports multiple parents (transitions, storyboards)
+- Temporal metadata (start_time, end_time, frame)
+
+**AssetBranch** - Branch points in videos:
+- Used for game narratives with multiple paths
+- branch_time, branch_frame, branch_type
+
+**AssetBranchVariant** - Variant options at branches:
+- Multiple endings: "Hero wins", "Hero escapes", etc.
+
+**AssetClip** - Game bookmarks/references:
+- "Boss intro is at 10-15s in cutscene_video"
+
+### Database Infrastructure
+
+**PostgreSQL Setup:**
+- Image: `pgvector/pgvector:pg15` (docker-compose.yml)
+- Port: 5434
+- Extension: pgvector v0.8.1
+- Database: pixsim7
+
+**Migrations Applied:**
+- ✅ `25b67935f5e1` - Audio/3D support and metadata tables
+- ✅ `14b1bebe4be1` - Content category and taxonomy fields
+- ✅ `7425b92ac62e` - Asset lineage and branching tables
+
+---
 
 ## AssetService API
 
@@ -151,25 +228,7 @@ async def get_asset_for_provider(
     """
 ```
 
-**Example:**
-```python
-# Get Pixverse video for use on Sora
-sora_media_id = await asset_service.get_asset_for_provider(
-    asset_id=123,  # Pixverse video
-    target_provider_id="sora"
-)
-# → "media_xyz789"
-
-# Next time (cached):
-sora_media_id = await asset_service.get_asset_for_provider(
-    asset_id=123,
-    target_provider_id="sora"
-)
-# → "media_xyz789" (instant, no download/upload)
-```
-
-### Internal Flow
-
+**Implementation flow:**
 ```python
 get_asset_for_provider(asset_id, target_provider)
     ↓
@@ -186,11 +245,13 @@ Check provider_uploads cache
       Return provider ID
 ```
 
+**Location:** `services/asset/asset_service.py` (lines 338-503)
+
+---
+
 ## Provider Interface
 
-### upload_asset()
-
-All providers must implement (or raise NotImplementedError):
+All providers must implement:
 
 ```python
 async def upload_asset(
@@ -210,7 +271,7 @@ async def upload_asset(
     """
 ```
 
-**Sora Implementation:**
+**Sora Implementation** (services/provider/adapters/sora.py:464-505):
 ```python
 async def upload_asset(self, account, file_path):
     client = self._create_client(account)
@@ -226,31 +287,7 @@ async def upload_asset(self, account, file_path):
     return response["video_id"]  # "video_abc123"
 ```
 
-## Job Processing Changes
-
-### Before (URL-based)
-
-```python
-# ❌ OLD WAY - Won't work cross-provider
-params = {
-    "video_url": "https://pixverse-cdn.com/video123.mp4"
-}
-```
-
-### After (Asset ID-based)
-
-```python
-# ✅ NEW WAY - Works cross-provider
-params = {
-    "video_asset_id": 123  # Our internal asset ID
-}
-
-# Job processor resolves to provider-specific ID
-provider_id = await asset_service.get_asset_for_provider(
-    asset_id=params["video_asset_id"],
-    target_provider_id=job.provider_id
-)
-```
+---
 
 ## Usage Examples
 
@@ -284,45 +321,113 @@ sora_job = await create_job(
 # - Uses for extension
 ```
 
-### Example 2: Runway → Pixverse Transition
+### Example 2: Content Categories & Search
 
 ```python
-# 1. Generate on Runway
-runway_asset_id = 456
-
-# 2. Create transition on Pixverse
-pixverse_job = await create_job(
-    provider_id="pixverse",
-    operation_type=OperationType.VIDEO_TRANSITION,
-    params={
-        "image_asset_ids": [runway_asset_id, 789],
-        "prompts": ["smooth transition", "blend together"]
-    }
+# Create adult content with subcategory
+asset = Asset(
+    media_type=MediaType.VIDEO,
+    content_domain=ContentDomain.ADULT,
+    content_category="artistic_nude",  # Indexed for fast queries
+    content_rating="adult",
+    age_restricted=True
 )
-# AssetService uploads both assets to Pixverse automatically
+
+# Add structured metadata
+metadata = AssetAdultMetadata(
+    asset_id=asset.id,
+    intensity_level="moderate",
+    scene_type="solo",
+    mood="artistic",
+    lighting="dramatic"
+)
+
+# Query: Find artistic nude content with moderate intensity
+results = await db.execute(
+    select(Asset)
+    .join(AssetAdultMetadata)
+    .where(
+        Asset.content_category == "artistic_nude",
+        AssetAdultMetadata.intensity_level == "moderate",
+        AssetAdultMetadata.mood == "artistic"
+    )
+)
+# ⚡⚡⚡ Fast - all indexed fields
 ```
 
-### Example 3: Batch Operations
+### Example 3: Branching for Game Narratives
 
 ```python
-# Generate 10 videos on Pixverse
-pixverse_assets = [101, 102, 103, ..., 110]
+# Create branch point at 10.5 seconds
+branch = AssetBranch(
+    source_asset_id=123,
+    branch_time=10.5,
+    branch_frame=315,
+    branch_name="Fork in the Road",
+    branch_tag="path_choice_01"
+)
 
-# Extend all on Sora
-for asset_id in pixverse_assets:
-    await create_job(
-        provider_id="sora",
-        params={"video_asset_id": asset_id, ...}
+# Add 3 variant paths
+paths = [
+    ("Forest Path", "path_forest"),
+    ("Mountain Path", "path_mountain"),
+    ("Cave Path", "path_cave")
+]
+
+for name, tag in paths:
+    # Create extended video for each path
+    job = create_extend_job(base_video=123, start_time=10.5, prompt=name)
+    # ... job creates variant asset
+
+    variant = AssetBranchVariant(
+        branch_id=branch.id,
+        variant_asset_id=job.result_asset_id,
+        variant_name=name,
+        variant_tag=tag
     )
 
-# First job: Downloads + uploads (slow)
-# Jobs 2-10: Uses cache (fast!)
+# Game runtime: Load branches once at start (zero DB queries during gameplay!)
+branches = await db.execute(
+    select(AssetBranch, AssetBranchVariant, Asset)
+    .join(AssetBranchVariant)
+    .join(Asset, AssetBranchVariant.variant_asset_id == Asset.id)
+    .where(AssetBranch.source_asset_id == 123)
+)
 ```
+
+### Example 4: Sora Storyboard Tracking
+
+```python
+# Sora storyboard with keyframes
+job = Job(
+    operation_type=OperationType.TEXT_TO_VIDEO,
+    params={
+        "keyframes": [
+            {"frame": 48, "image_media_id": "img_001", "action": "zoom_in"},
+            {"frame": 132, "image_media_id": "img_002", "action": "pan_left"}
+        ]
+    }
+)
+# ... creates video asset #789
+
+# Track lineage for each keyframe
+for i, kf in enumerate(job.params["keyframes"]):
+    lineage = AssetLineage(
+        child_asset_id=789,
+        parent_asset_id=get_image_asset(kf["image_media_id"]),
+        parent_role="keyframe",
+        parent_frame=kf["frame"],
+        sequence_order=i,
+        transformation={"action": kf["action"], "frame_position": kf["frame"]}
+    )
+```
+
+---
 
 ## Caching Strategy
 
 ### Cache Key
-```
+```python
 provider_uploads[provider_id] = provider_asset_id
 ```
 
@@ -352,6 +457,8 @@ WHERE sync_status = 'DOWNLOADED'
 ORDER BY last_accessed_at ASC
 LIMIT 100;
 ```
+
+---
 
 ## Storage Considerations
 
@@ -385,31 +492,36 @@ LIMIT 100;
 - Cache hot assets locally
 - Use S3 as fallback
 
-## Migration Path
+---
 
-### Phase 1: Basic (Current)
-✅ Asset model with `provider_uploads`
-✅ `AssetService.get_asset_for_provider()`
-✅ Temporary file downloads
-✅ Provider `upload_asset()` interface
+## Migration Commands
 
-### Phase 2: Caching
-- Local disk cache
-- LRU eviction
-- Cache size monitoring
-- Pre-download popular assets
+```bash
+# Generate migration
+cd pixsim7_backend/infrastructure/database
+PYTHONPATH=G:/code/pixsim7 alembic revision --autogenerate -m "Description"
 
-### Phase 3: Cloud Storage
-- S3 integration
-- Multi-region support
-- CDN integration
-- Automatic tier management
+# Run migration
+PYTHONPATH=G:/code/pixsim7 alembic upgrade head
 
-### Phase 4: Optimization
-- Parallel uploads (upload to multiple providers at once)
-- Predictive pre-upload (ML predicts which providers user will use)
-- Format conversion (optimize for each provider)
-- Deduplication (same asset used multiple times)
+# Rollback
+PYTHONPATH=G:/code/pixsim7 alembic downgrade -1
+```
+
+---
+
+## Future Work
+
+### Not Yet Implemented
+
+1. **User Upload System** - POST /api/v1/assets/upload endpoint
+2. **Vision Model Integration** - Auto-tagging, CLIP embeddings
+3. **LRU Cache Eviction** - Background job for storage management
+4. **Loop Detection** - Analyze assets for self-looping segments
+5. **Dynamic Composition** - Build videos of arbitrary duration from segments
+6. **S3 Integration** - Permanent cloud storage
+
+---
 
 ## Benefits
 
@@ -419,24 +531,9 @@ LIMIT 100;
 ✅ **Cost Efficient** - Download/upload once, cache forever
 ✅ **Future-Proof** - Easy to add new providers
 ✅ **Transparent** - User just references asset ID
-
-## Potential Issues & Solutions
-
-### Issue: Temporary files fill disk
-**Solution:** Cleanup after upload, configurable temp dir
-
-### Issue: Large video uploads slow
-**Solution:** Background upload queue, progress tracking
-
-### Issue: Provider upload fails
-**Solution:** Retry logic, exponential backoff
-
-### Issue: Asset no longer available at source
-**Solution:** Permanent S3 storage, download on creation
-
-### Issue: Different format requirements
-**Solution:** FFmpeg conversion layer, provider-specific optimization
+✅ **Game-Ready** - Branching narratives, temporal segments
+✅ **Content Management** - Structured metadata, vector search
 
 ---
 
-**Bottom Line:** You can now use assets from any provider with any other provider, with automatic caching and zero user configuration. Just reference the asset ID!
+**Bottom Line:** You can now use assets from any provider with any other provider, with automatic caching, zero user configuration, and support for complex game narratives with branching paths. Just reference the asset ID!
