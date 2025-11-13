@@ -1,8 +1,8 @@
-import { useControlCenterStore } from '../../../stores/controlCenterStore';
+import { useControlCenterStore } from '../../stores/controlCenterStore';
 import clsx from 'clsx';
-import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
+import { useProviderSpecs } from '../../hooks/useProviderSpecs';
 import { useMemo } from 'react';
-import { ccSelectors } from '../../../stores/selectors';
+import { ccSelectors } from '../../stores/selectors';
 
 type PresetItem = {
   id: string;

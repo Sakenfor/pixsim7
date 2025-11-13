@@ -35,7 +35,7 @@ const STORAGE_KEY = 'control_center_v1';
 
 export const useControlCenterStore = create<ControlCenterState & ControlCenterActions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       open: false,
       pinned: false,
       height: 220,
@@ -46,17 +46,42 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       presetId: undefined,
       presetParams: {},
       generating: false,
-      toggleOpen: () => set(s => ({ open: !s.open })),
-      setOpen: (v) => set({ open: v }),
-      setPinned: (v) => set({ pinned: v }),
-      setHeight: (px) => set({ height: Math.max(140, Math.min(480, px)) }),
-      setActiveModule: (m) => set({ activeModule: m }),
-      setOperationType: (op) => set({ operationType: op }),
+      toggleOpen: () => set((s) => ({ open: !s.open })),
+      setOpen: (v) => {
+        if (get().open === v) return;
+        set({ open: v });
+      },
+      setPinned: (v) => {
+        if (get().pinned === v) return;
+        set({ pinned: v });
+      },
+      setHeight: (px) => {
+        const next = Math.max(140, Math.min(480, px));
+        if (get().height === next) return;
+        set({ height: next });
+      },
+      setActiveModule: (m) => {
+        if (get().activeModule === m) return;
+        set({ activeModule: m });
+      },
+      setOperationType: (op) => {
+        if (get().operationType === op) return;
+        set({ operationType: op });
+      },
       pushPrompt: (p) => set(s => ({ recentPrompts: [p, ...s.recentPrompts.slice(0, 19)] })),
-      setProvider: (id) => set({ providerId: id }),
-      setPreset: (id) => set({ presetId: id }),
+      setProvider: (id) => {
+        if (get().providerId === id) return;
+        set({ providerId: id });
+      },
+      setPreset: (id) => {
+        if (get().presetId === id) return;
+        set({ presetId: id });
+      },
       setPresetParams: (params) => set({ presetParams: params }),
-      setGenerating: (v) => set({ generating: v }),
+      setGenerating: (v) => {
+        if (get().generating === v) return;
+        set({ generating: v });
+      },
       reset: () => set({ open: false, pinned: false, height: 220, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, generating: false })
     }),
     {

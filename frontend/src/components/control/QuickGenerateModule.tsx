@@ -1,16 +1,16 @@
 import { useState, useMemo } from 'react';
 import clsx from 'clsx';
-import { useControlCenterStore } from '../../../stores/controlCenterStore';
-import { PromptInput } from '../../primitives/PromptInput';
-import { resolvePromptLimit } from '../../../utils/prompt/limits';
-import { useProviders } from '../../../hooks/useProviders';
-import { useProviderSpecs } from '../../../hooks/useProviderSpecs';
-import { generateAsset } from '../../../lib/api/controlCenter';
-import { DynamicParamForm, type ParamSpec } from '../DynamicParamForm';
-import { ArrayFieldInput } from '../ArrayFieldInput';
-import { useJobsStore } from '../../../stores/jobsStore';
+import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { PromptInput } from '@pixsim7/ui';
+import { resolvePromptLimit } from '../../utils/prompt/limits';
+import { useProviders } from '../../hooks/useProviders';
+import { useProviderSpecs } from '../../hooks/useProviderSpecs';
+import { generateAsset } from '../../lib/api/controlCenter';
+import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
+import { ArrayFieldInput } from './ArrayFieldInput';
+import { useJobsStore } from '../../stores/jobsStore';
 import { JobStatusIndicator } from './JobStatusIndicator';
-import { ccSelectors } from '../../../stores/selectors';
+import { ccSelectors } from '../../stores/selectors';
 
 export function QuickGenerateModule() {
   // Use stable selectors to reduce re-renders

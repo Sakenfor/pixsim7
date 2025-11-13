@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
-import { QuickGenerateModule } from './modules/QuickGenerateModule';
-import { ShortcutsModule } from './modules/ShortcutsModule';
-import { PresetsModule } from './modules/PresetsModule';
+import { QuickGenerateModule } from './QuickGenerateModule';
+import { ShortcutsModule } from './ShortcutsModule';
+import { PresetsModule } from './PresetsModule';
 
 const MODULES: { id: ControlModule; label: string }[] = [
   { id: 'quickGenerate', label: 'Generate' },
@@ -12,28 +12,27 @@ const MODULES: { id: ControlModule; label: string }[] = [
 ];
 
 export function ControlCenterDock() {
-  const {
-    open,
-    pinned,
-    height,
-    activeModule,
-    setOpen,
-    setPinned,
-    setHeight,
-    setActiveModule,
-  } = useControlCenterStore(s => ({
-    open: s.open,
-    pinned: s.pinned,
-    height: s.height,
-    activeModule: s.activeModule,
-    setOpen: s.setOpen,
-    setPinned: s.setPinned,
-    setHeight: s.setHeight,
-    setActiveModule: s.setActiveModule,
-  }));
+  // Use separate selectors to avoid creating new objects on every render
+  const open = useControlCenterStore(s => s.open);
+  const pinned = useControlCenterStore(s => s.pinned);
+  const height = useControlCenterStore(s => s.height);
+  const activeModule = useControlCenterStore(s => s.activeModule);
+  const setOpen = useControlCenterStore(s => s.setOpen);
+  const setPinned = useControlCenterStore(s => s.setPinned);
+  const setHeight = useControlCenterStore(s => s.setHeight);
+  const setActiveModule = useControlCenterStore(s => s.setActiveModule);
 
   const dockRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+
+  // Use refs to avoid re-creating event listeners on every state change
+  const openRef = useRef(open);
+  const heightRef = useRef(height);
+
+  useEffect(() => {
+    openRef.current = open;
+    heightRef.current = height;
+  }, [open, height]);
 
   // Auto-hide when mouse leaves if not pinned
   useEffect(() => {
@@ -54,13 +53,14 @@ export function ControlCenterDock() {
   useEffect(() => {
     function onMove(e: MouseEvent) {
       const winH = window.innerHeight;
-      if (!open && e.clientY >= winH - 6) {
+      // Check ref to avoid re-creating listener
+      if (!openRef.current && e.clientY >= winH - 6) {
         setOpen(true);
       }
     }
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [open, setOpen]);
+  }, [setOpen]);
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
@@ -83,16 +83,18 @@ export function ControlCenterDock() {
   // Keyboard resize support
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (!open) return;
+      // Check ref to avoid re-creating listener
+      if (!openRef.current) return;
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         const delta = e.key === 'ArrowUp' ? 20 : -20;
-        setHeight(height + delta);
+        // Use ref to get current height
+        setHeight(heightRef.current + delta);
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, height, setHeight]);
+  }, [setHeight]);
 
   function renderModule() {
     switch (activeModule) {

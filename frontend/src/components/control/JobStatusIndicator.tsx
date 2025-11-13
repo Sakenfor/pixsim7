@@ -1,12 +1,12 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { useJobStatus } from '../../../hooks/useJobStatus';
-import { useJobsStore, isJobTerminal, type JobRecordExtended } from '../../../stores/jobsStore';
-import { cancelJob as apiCancelJob, retryJob as apiRetryJob } from '../../../lib/api/jobs';
-import { useToast } from '../../../stores/toastStore';
-import { formatRelativeTime } from '../../../lib/time/formatDuration';
-import { ccSelectors } from '../../../stores/selectors';
-import { useControlCenterStore } from '../../../stores/controlCenterStore';
+import { useJobStatus } from '../../hooks/useJobStatus';
+import { useJobsStore, isJobTerminal, type JobRecordExtended } from '../../stores/jobsStore';
+import { cancelJob as apiCancelJob, retryJob as apiRetryJob } from '../../lib/api/jobs';
+import { useToast } from '../../stores/toastStore';
+import { formatRelativeTime } from '../../lib/time/formatDuration';
+import { ccSelectors } from '../../stores/selectors';
+import { useControlCenterStore } from '../../stores/controlCenterStore';
 
 export interface JobStatusIndicatorProps {
   jobId: number;
