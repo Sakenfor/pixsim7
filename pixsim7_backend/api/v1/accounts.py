@@ -177,6 +177,7 @@ async def update_account(
         account = await account_service.update_account(
             account_id=account_id,
             user_id=user.id,
+            nickname=request.nickname,
             jwt_token=request.jwt_token,
             api_key=request.api_key,
             openapi_key=request.api_key_paid,

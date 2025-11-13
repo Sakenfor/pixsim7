@@ -11,6 +11,7 @@ import { SceneBuilderPanel } from '../SceneBuilderPanel';
 import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
+import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 
@@ -45,6 +46,7 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   inspector: { title: 'Inspector', Component: InspectorPanel },
   health: { title: 'Health', Component: HealthPanel },
   game: { title: 'Game', Component: GameIframePanel },
+  providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
 };
 
 export function MosaicWorkspace() {
