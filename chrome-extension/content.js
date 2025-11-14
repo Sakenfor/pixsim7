@@ -78,28 +78,11 @@ let capturedBearerToken = null;
  */
 function injectBearerTokenCapture() {
   const script = document.createElement('script');
-  script.textContent = `
-    (function() {
-      const originalFetch = window.fetch;
-      window.fetch = function(...args) {
-        const [url, options] = args;
-
-        // Capture Authorization header
-        if (options && options.headers) {
-          const headers = new Headers(options.headers);
-          const auth = headers.get('Authorization');
-          if (auth && auth.startsWith('Bearer ')) {
-            // Store in a global variable accessible to content script
-            window.__pixsim7_bearer_token = auth.substring(7); // Remove "Bearer "
-          }
-        }
-
-        return originalFetch.apply(this, args);
-      };
-    })();
-  `;
+  script.src = chrome.runtime.getURL('injected-bearer-capture.js');
+  script.onload = function() {
+    this.remove();
+  };
   (document.head || document.documentElement).appendChild(script);
-  script.remove();
 }
 
 /**
@@ -249,26 +232,20 @@ function showNotification(title, message) {
 
 // Monitor login state and import cookies
 let wasLoggedIn = false;
-let lastImportAttempt = 0;
-const IMPORT_COOLDOWN_MS = 10000; // Don't retry import more than once per 10 seconds
+let hasImportedThisSession = false;
 
 async function checkAndImport() {
   const auth = await checkAuth();
   const isLoggedIn = !!auth;
 
-  // Import on login transition OR if we're logged in and haven't imported recently
-  if (isLoggedIn) {
-    const now = Date.now();
-    const shouldImport = !wasLoggedIn || (now - lastImportAttempt > IMPORT_COOLDOWN_MS);
-
-    if (shouldImport) {
-      console.log('[PixSim7 Content] *** LOGIN DETECTED OR RETRY ***');
-      lastImportAttempt = now;
-      // Wait a bit for bearer token to be captured
-      setTimeout(() => {
-        importCookies(auth.providerId, {});
-      }, 1000);
-    }
+  // Only import on actual login transition (from logged out to logged in)
+  if (isLoggedIn && !wasLoggedIn) {
+    console.log('[PixSim7 Content] *** LOGIN DETECTED ***');
+    hasImportedThisSession = true;
+    // Wait a bit for bearer token to be captured
+    setTimeout(() => {
+      importCookies(auth.providerId, {});
+    }, 1000);
   }
 
   wasLoggedIn = isLoggedIn;

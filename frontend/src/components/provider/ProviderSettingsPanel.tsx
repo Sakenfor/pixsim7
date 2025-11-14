@@ -2,26 +2,48 @@ import { useState } from 'react';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
-import { deleteAccount, toggleAccountStatus, updateAccountNickname } from '../../lib/api/accounts';
+import { deleteAccount, toggleAccountStatus, updateAccount } from '../../lib/api/accounts';
 
-interface EditNicknameModalProps {
+interface EditAccountModalProps {
   account: ProviderAccount;
   onClose: () => void;
-  onSave: (accountId: number, nickname: string) => Promise<void>;
+  onSave: (accountId: number, data: {
+    email?: string;
+    nickname?: string;
+    api_key?: string;
+    api_key_paid?: string;
+  }) => Promise<void>;
 }
 
-function EditNicknameModal({ account, onClose, onSave }: EditNicknameModalProps) {
+function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
+  const [email, setEmail] = useState(account.email || '');
   const [nickname, setNickname] = useState(account.nickname || '');
+  const [apiKey, setApiKey] = useState('');
+  const [apiKeyPaid, setApiKeyPaid] = useState('');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave(account.id, nickname);
+      const updates: any = {};
+      if (email !== account.email) updates.email = email;
+      if (nickname !== account.nickname) updates.nickname = nickname;
+      if (apiKey) updates.api_key = apiKey;
+      if (apiKeyPaid) updates.api_key_paid = apiKeyPaid;
+      
+      console.log('Saving account updates:', updates);
+      
+      if (Object.keys(updates).length === 0) {
+        console.log('No changes to save');
+        onClose();
+        return;
+      }
+      
+      await onSave(account.id, updates);
       onClose();
     } catch (error) {
-      console.error('Failed to update nickname:', error);
-      alert('Failed to update nickname');
+      console.error('Failed to update account:', error);
+      alert(`Failed to update account: ${error}`);
     } finally {
       setSaving(false);
     }
@@ -30,37 +52,98 @@ function EditNicknameModal({ account, onClose, onSave }: EditNicknameModalProps)
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div
-        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md w-full mx-4"
+        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200 mb-4">
-          Edit Nickname
+          Edit Account
         </h3>
 
-        <div className="mb-4">
-          <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
-            Email
-          </label>
-          <div className="text-sm text-neutral-800 dark:text-neutral-200 font-mono">
-            {account.email}
+        <div className="space-y-4">
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="account@example.com"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Nickname */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              Nickname
+              <span className="text-xs text-neutral-500 ml-2">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              placeholder="My Account"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* API Key (Free/WebAPI) */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              API Key / JWT Token
+              <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter new API key or JWT token"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            />
+            {account.has_jwt && (
+              <p className="text-xs text-neutral-500 mt-1">
+                Currently has JWT token
+              </p>
+            )}
+          </div>
+
+          {/* OpenAPI Key (Paid) */}
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              OpenAPI Key (Pro/Paid)
+              <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
+            </label>
+            <input
+              type="password"
+              value={apiKeyPaid}
+              onChange={(e) => setApiKeyPaid(e.target.value)}
+              placeholder="Enter OpenAPI key for paid tier"
+              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            />
+            {account.has_api_key_paid && (
+              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                ✓ Currently has OpenAPI key (Pro tier active)
+              </p>
+            )}
+            <p className="text-xs text-neutral-500 mt-1">
+              For Pixverse: This is the OpenAPI key for paid accounts with higher limits
+            </p>
+          </div>
+
+          {/* Account Status Info */}
+          <div className="p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
+              <div><strong>Provider:</strong> {account.provider_id}</div>
+              <div><strong>Status:</strong> {account.status}</div>
+              {account.has_cookies && <div>✓ Has cookies</div>}
+              {account.jwt_expired && <div className="text-red-500">⚠ JWT expired</div>}
+            </div>
           </div>
         </div>
 
-        <div className="mb-6">
-          <label className="block text-sm text-neutral-600 dark:text-neutral-400 mb-2">
-            Nickname
-          </label>
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            placeholder="Enter nickname (optional)"
-            className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            autoFocus
-          />
-        </div>
-
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-2 mt-6">
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm border rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
@@ -73,7 +156,7 @@ function EditNicknameModal({ account, onClose, onSave }: EditNicknameModalProps)
             disabled={saving}
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -265,15 +348,27 @@ function AccountRow({ account, onEditNickname, onToggleStatus, onDelete }: Accou
 
 export function ProviderSettingsPanel() {
   const { providers } = useProviders();
-  const { capacity, loading, error, accounts } = useProviderCapacity();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
-  const handleSaveNickname = async (accountId: number, nickname: string) => {
-    await updateAccountNickname(accountId, nickname);
-    setRefreshKey(prev => prev + 1);
+  const handleSaveAccount = async (accountId: number, data: {
+    email?: string;
+    nickname?: string;
+    api_key?: string;
+    api_key_paid?: string;
+  }) => {
+    try {
+      console.log('handleSaveAccount called with:', accountId, data);
+      await updateAccount(accountId, data);
+      console.log('Account updated successfully, refreshing...');
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Error in handleSaveAccount:', error);
+      throw error; // Re-throw so modal can catch it
+    }
   };
 
   const handleToggleStatus = async (account: ProviderAccount) => {
@@ -323,10 +418,10 @@ export function ProviderSettingsPanel() {
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
       {/* Modals */}
       {editingAccount && (
-        <EditNicknameModal
+        <EditAccountModal
           account={editingAccount}
           onClose={() => setEditingAccount(null)}
-          onSave={handleSaveNickname}
+          onSave={handleSaveAccount}
         />
       )}
       {deletingAccount && (

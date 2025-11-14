@@ -44,6 +44,9 @@ class AndroidDevice(SQLModel, table=True):
     # Optional physical device identification and primary record linking
     device_serial: Optional[str] = Field(default=None, max_length=100, index=True)
     primary_device_id: Optional[int] = Field(default=None, foreign_key="android_devices.id", index=True)
+    
+    # Remote agent (if device is from remote agent, not local)
+    agent_id: Optional[int] = Field(default=None, foreign_key="device_agents.id", index=True)
 
     # Emulator details
     instance_name: Optional[str] = Field(default=None, max_length=100)

@@ -3,6 +3,7 @@ Automation domain package for PixSim7
 
 Models:
 - AndroidDevice
+- DeviceAgent
 - AppActionPreset
 - AutomationExecution
 - ExecutionLoop
@@ -15,6 +16,7 @@ Enums:
 """
 
 from .device import AndroidDevice, DeviceType, ConnectionMethod, DeviceStatus
+from .agent import DeviceAgent
 from .preset import AppActionPreset, ActionType
 from .execution import AutomationExecution, AutomationStatus
 from .execution_loop import (
@@ -27,6 +29,7 @@ from .execution_loop import (
 
 __all__ = [
     "AndroidDevice",
+    "DeviceAgent",
     "DeviceType",
     "ConnectionMethod",
     "DeviceStatus",

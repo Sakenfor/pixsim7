@@ -33,6 +33,7 @@ class AccountCreate(BaseModel):
 
 class AccountUpdate(BaseModel):
     """Update provider account"""
+    email: Optional[str] = None
     nickname: Optional[str] = None
     jwt_token: Optional[str] = None
     api_key: Optional[str] = None

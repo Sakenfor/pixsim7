@@ -142,13 +142,15 @@ app = FastAPI(
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 
-# CORS middleware
+# CORS middleware - must be added last (first in execution chain)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
@@ -193,7 +195,7 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation
+from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents
 from pixsim7_backend.api.admin import database_router, migrations_router
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
@@ -203,6 +205,7 @@ app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 app.include_router(services.router, prefix="/api/v1", tags=["services"])
 app.include_router(accounts.router, prefix="/api/v1", tags=["accounts"])
 app.include_router(automation.router, prefix="/api/v1", tags=["automation"])
+app.include_router(device_agents.router, prefix="/api/v1", tags=["device-agents"])
 app.include_router(providers.router, prefix="/api/v1", tags=["providers"])
 app.include_router(lineage.router, prefix="/api/v1", tags=["lineage"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])

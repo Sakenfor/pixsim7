@@ -11,6 +11,7 @@ from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt
 from PySide6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor, QAction, QClipboard, QShortcut, QKeySequence
 import requests
 from datetime import datetime, timedelta
+import hashlib
 
 # Import formatting and metadata modules
 try:
@@ -511,6 +512,31 @@ class DatabaseLogViewer(QWidget):
                 should_show = field_name in fields_to_show
                 widget.setVisible(should_show)
 
+    def _build_row_key(self, log):
+        """Create a stable key for expansion toggles using the DB id when present."""
+        if not isinstance(log, dict):
+            return f"row-{id(log)}"
+
+        log_id = log.get('id')
+        if log_id is not None:
+            return f"id-{log_id}"
+
+        # Fallback: hash the most stable fields we have so refreshed data keeps the same key
+        parts = [
+            str(log.get('timestamp') or ''),
+            str(log.get('service') or ''),
+            str(log.get('stage') or ''),
+            str(log.get('msg') or log.get('event') or ''),
+            str(log.get('job_id') or ''),
+            str(log.get('request_id') or ''),
+        ]
+        extra = log.get('extra')
+        if isinstance(extra, dict):
+            parts.append(str(extra.get('provider_job_id') or extra.get('artifact_id') or ''))
+
+        digest = hashlib.sha1("|".join(parts).encode('utf-8', 'ignore')).hexdigest()
+        return f"hash-{digest}"
+
     def _on_log_link_clicked(self, url: QUrl):
         """Handle clicks on log links to filter or expand rows."""
         scheme = url.scheme()  # e.g., "service", "filter", "expand"
@@ -721,13 +747,16 @@ class DatabaseLogViewer(QWidget):
 
         # Build HTML with styles and log rows
         html_parts = [LOG_ROW_STYLES]
-        valid_indices = {str(i) for i in range(len(logs))}
-        self._expanded_rows.intersection_update(valid_indices)
+        row_keys = []
 
         for idx, log in enumerate(reversed(logs)):  # Newest first
-            is_expanded = str(idx) in self._expanded_rows
-            line = format_log_line_html(log, idx, is_expanded)
+            row_key = self._build_row_key(log)
+            row_keys.append(row_key)
+            is_expanded = row_key in self._expanded_rows
+            line = format_log_line_html(log, idx, is_expanded, row_key=row_key)
             html_parts.append(line)
+
+        self._expanded_rows.intersection_update(set(row_keys))
 
         self.log_display.setHtml('\n'.join(html_parts))
 

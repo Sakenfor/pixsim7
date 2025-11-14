@@ -74,7 +74,8 @@
       "Bash(conda env:*)",
       "Bash(conda activate:*)",
       "Bash(G:/code/conda_envs/pixsim7/python.exe:*)",
-      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe list:*)"
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe list:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,6 +6,7 @@ and manage credentials, credits, and sharing settings.
 """
 from typing import Optional, Dict
 from datetime import datetime
+import logging
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from pixsim7_backend.api.dependencies import CurrentUser, AccountSvc, DatabaseSession
@@ -21,6 +22,7 @@ from pixsim7_backend.domain import ProviderAccount, AccountStatus
 from pixsim7_backend.shared.errors import ResourceNotFoundError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _to_response(account: ProviderAccount, current_user_id: int) -> AccountResponse:
@@ -291,10 +293,12 @@ async def update_account(
     - jwt_token: Update WebAPI credentials
     - api_key_paid: Update OpenAPI credentials
     """
+    logger.info(f"[PATCH /accounts/{account_id}] User {user.id} updating account. Request data: email={request.email}, nickname={request.nickname}, has_api_key={request.api_key is not None}, has_api_key_paid={request.api_key_paid is not None}")
     try:
         account = await account_service.update_account(
             account_id=account_id,
             user_id=user.id,
+            email=request.email,
             nickname=request.nickname,
             jwt_token=request.jwt_token,
             api_key=request.api_key,
@@ -305,6 +309,7 @@ async def update_account(
         )
         await db.commit()
         await db.refresh(account)
+        logger.info(f"[PATCH /accounts/{account_id}] Account updated successfully. New email: {account.email}, nickname: {account.nickname}")
         return _to_response(account, user.id)
     except ResourceNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")

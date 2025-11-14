@@ -242,7 +242,7 @@ def build_expandable_details(log, extra):
     return '\n'.join(details_parts) if details_parts else '<div style="color: #888; font-style: italic;">No additional details</div>'
 
 
-def format_log_line_html(log, idx=0, is_expanded=False):
+def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
     """
     Format a single log entry as colored HTML with expandable details.
 
@@ -347,16 +347,17 @@ def format_log_line_html(log, idx=0, is_expanded=False):
         data_attrs += f' data-user-id="{user_id}"'
 
     # Expandable icon and structure (using clickable link)
+    row_identifier = row_key or str(idx)
     expand_arrow = '▼' if is_expanded else '▶'
-    expand_icon = f'<a href="expand://{idx}" class="expand-icon" style="color: #888; text-decoration: none; margin-right: 8px;">{expand_arrow}</a>'
+    expand_icon = f'<a href="expand://{row_identifier}" class="expand-icon" style="color: #888; text-decoration: none; margin-right: 8px;">{expand_arrow}</a>'
 
     row_class = "log-row expanded" if is_expanded else "log-row"
     details_display = "block" if is_expanded else "none"
 
-    row = f'''<div class="{row_class}" id="log-{idx}" {data_attrs}>
+    row = f'''<div class="{row_class}" id="log-{row_identifier}" {data_attrs}>
     {expand_icon}{line_content}{error_extra}
 </div>
-<div class="log-details" id="details-{idx}" style="display: {details_display}; margin-left: 40px; padding: 8px; background-color: #1e1e1e; border-left: 3px solid #5a9fd4; margin-top: 4px; margin-bottom: 8px;">
+<div class="log-details" id="details-{row_identifier}" style="display: {details_display}; margin-left: 40px; padding: 8px; background-color: #1e1e1e; border-left: 3px solid #5a9fd4; margin-top: 4px; margin-bottom: 8px;">
     {details_html}
 </div>'''
 

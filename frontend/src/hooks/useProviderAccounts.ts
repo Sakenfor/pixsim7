@@ -52,7 +52,7 @@ export interface ProviderCapacity {
   accounts: ProviderAccount[];
 }
 
-export function useProviderAccounts(providerId?: string) {
+export function useProviderAccounts(providerId?: string, refreshKey?: number) {
   const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,13 +88,13 @@ export function useProviderAccounts(providerId?: string) {
     return () => {
       cancelled = true;
     };
-  }, [providerId]);
+  }, [providerId, refreshKey]);
 
   return { accounts, loading, error };
 }
 
-export function useProviderCapacity() {
-  const { accounts, loading, error } = useProviderAccounts();
+export function useProviderCapacity(refreshKey?: number) {
+  const { accounts, loading, error } = useProviderAccounts(undefined, refreshKey);
   const [capacity, setCapacity] = useState<ProviderCapacity[]>([]);
 
   useEffect(() => {

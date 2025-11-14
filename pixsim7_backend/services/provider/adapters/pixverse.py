@@ -6,6 +6,7 @@ Clean adapter that uses pixverse-py SDK
 from typing import Dict, Any
 from datetime import datetime, timedelta
 import asyncio
+import uuid
 
 # Import pixverse-py SDK
 # NOTE: pixverse-py SDK imports are optional; guard for environments where
@@ -126,6 +127,7 @@ class PixverseProvider(Provider):
         session = {
             "jwt_token": account.jwt_token,
             "api_key": account.api_key,
+            "openapi_key": account.api_key_paid or account.api_key,
             "cookies": account.cookies or {},
         }
 
@@ -635,9 +637,18 @@ class PixverseProvider(Provider):
             elif hasattr(client, 'upload'):
                 response = await asyncio.to_thread(client.upload, file_path)
             else:
-                raise ProviderError(
-                    "Pixverse upload not available in SDK. Please update pixverse-py to a version with media upload support."
-                )
+                # Fall back to direct OpenAPI upload when an API key is available
+                if self._has_openapi_credentials(account):
+                    response = await asyncio.to_thread(
+                        self._upload_via_openapi,
+                        client,
+                        account,
+                        file_path
+                    )
+                else:
+                    raise ProviderError(
+                        "Pixverse upload not available in SDK and no OpenAPI key is configured."
+                    )
 
             # Normalize response to either a URL or media ID
             if isinstance(response, dict):
@@ -655,18 +666,88 @@ class PixverseProvider(Provider):
             else:
                 raise ProviderError(f"Unexpected Pixverse upload response type: {type(response)}")
 
-        except ProviderError:
-            raise
-        except Exception as e:
-            logger.error(
-                "upload_asset_failed",
-                provider_id="pixverse",
-                file_path=file_path,
-                error=str(e),
-                error_type=e.__class__.__name__,
-                exc_info=True
-            )
-            raise ProviderError(f"Pixverse upload failed: {e}")
+            except ProviderError:
+                raise
+            except Exception as e:
+                logger.error(
+                    "upload_asset_failed",
+                    provider_id="pixverse",
+                    file_path=file_path,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    exc_info=True
+                )
+                raise ProviderError(f"Pixverse upload failed: {e}")
+
+    def _has_openapi_credentials(self, account: ProviderAccount) -> bool:
+        """
+        Return True if the account has any OpenAPI-style API key available.
+        """
+        return bool(account.api_key_paid or account.api_key)
+
+    def _get_openapi_key(self, account: ProviderAccount) -> str | None:
+        """
+        Prefer the dedicated paid OpenAPI key but fall back to the generic API key if needed.
+        """
+        return account.api_key_paid or account.api_key
+
+    def _upload_via_openapi(
+        self,
+        client: Any,
+        account: ProviderAccount,
+        file_path: str
+    ) -> dict[str, str]:
+        """
+        Upload an asset via the Pixverse OpenAPI image upload endpoint.
+
+        Returns:
+            Dict containing at least an "id" (img_id) and optionally a URL.
+        """
+        openapi_key = self._get_openapi_key(account)
+        if not openapi_key:
+            raise ProviderError("Pixverse OpenAPI key is missing.")
+
+        pix_api = getattr(client, "api", None)
+        if not pix_api or not hasattr(pix_api, "session"):
+            raise ProviderError("Pixverse SDK API client missing HTTP session.")
+
+        base_url = getattr(pix_api, "base_url", "https://app-api.pixverse.ai").rstrip("/")
+        upload_url = f"{base_url}/openapi/v2/image/upload"
+        headers = {
+            "API-KEY": openapi_key,
+            "Ai-trace-id": str(uuid.uuid4()),
+        }
+
+        try:
+            with open(file_path, "rb") as file_obj:
+                resp = pix_api.session.post(
+                    upload_url,
+                    headers=headers,
+                    files={"image": file_obj},
+                    timeout=60
+                )
+        except Exception as exc:
+            raise ProviderError(f"Pixverse OpenAPI upload request failed: {exc}")
+
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise ProviderError(f"Pixverse OpenAPI upload returned invalid JSON: {exc}")
+
+        if resp.status_code != 200 or payload.get("ErrCode", 0) != 0:
+            err_msg = payload.get("ErrMsg") or resp.text
+            raise ProviderError(f"Pixverse OpenAPI upload failed: {err_msg}")
+
+        resp_data = payload.get("Resp", {})
+        media_id = resp_data.get("img_id") or resp_data.get("id")
+        if not media_id:
+            raise ProviderError(f"Pixverse OpenAPI upload missing media ID: {payload}")
+
+        result: dict[str, str] = {"id": str(media_id)}
+        if url := resp_data.get("url") or resp_data.get("media_url") or resp_data.get("download_url"):
+            result["url"] = url
+
+        return result
 
     def _handle_error(self, error: Exception) -> None:
         """

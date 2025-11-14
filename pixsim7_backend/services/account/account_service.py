@@ -479,6 +479,7 @@ class AccountService:
         account_id: int,
         user_id: int,
         *,
+        email: Optional[str] = None,
         jwt_token: Optional[str] = None,
         api_key: Optional[str] = None,
         openapi_key: Optional[str] = None,
@@ -493,6 +494,7 @@ class AccountService:
         Args:
             account_id: Account ID
             user_id: Current user ID (for permission check)
+            email: Optional new email
             jwt_token: Optional new JWT token (for WebAPI)
             api_key: Optional new API key
             openapi_key: Optional new OpenAPI key (for paid API)
@@ -516,6 +518,9 @@ class AccountService:
             raise ValueError("Not your account")
 
         # Apply updates
+        if email is not None:
+            account.email = email
+
         if jwt_token is not None:
             account.jwt_token = jwt_token
 
