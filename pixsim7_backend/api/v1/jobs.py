@@ -1,8 +1,8 @@
 """
 Job management API endpoints
 """
-from fastapi import APIRouter, HTTPException, Query, Request
-from pixsim7_backend.api.dependencies import CurrentUser, JobSvc
+from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from pixsim7_backend.api.dependencies import CurrentUser, JobSvc, get_auth_service, get_database
 from pixsim7_backend.shared.schemas.job_schemas import (
     CreateJobRequest,
     JobResponse,
@@ -15,7 +15,10 @@ from pixsim7_backend.shared.errors import (
     QuotaExceededError,
 )
 from pixsim7_backend.shared.rate_limit import job_create_limiter, get_client_identifier
+import asyncio
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -178,3 +181,182 @@ async def cancel_job(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to cancel job: {str(e)}")
+
+
+# ===== WEBSOCKET - JOB EVENTS =====
+
+@router.websocket("/ws/jobs")
+async def job_events_websocket(websocket: WebSocket, token: str | None = Query(None)):
+    """
+    WebSocket endpoint for real-time job events
+
+    Connect to this endpoint to receive job status updates in real-time.
+    Authentication is required via token query parameter.
+
+    Usage:
+        ws://localhost:8001/api/v1/ws/jobs?token=<your_jwt_token>
+
+    Events sent to client:
+        - job:created - New job created
+        - job:started - Job started processing
+        - job:completed - Job completed successfully
+        - job:failed - Job failed
+        - job:cancelled - Job cancelled
+        - job:progress - Job progress update
+    """
+    from pixsim7_backend.infrastructure.events.bus import event_bus, Event
+
+    # Authenticate user
+    if not token:
+        await websocket.close(code=1008, reason="Missing authentication token")
+        return
+
+    try:
+        # Get auth service and verify token
+        from pixsim7_backend.services.user import UserService, AuthService
+
+        async for db in get_database():
+            user_service = UserService(db)
+            auth_service = AuthService(db, user_service)
+            user = await auth_service.verify_token(token)
+            break
+    except Exception as e:
+        logger.warning(f"WebSocket authentication failed: {e}")
+        await websocket.close(code=1008, reason="Invalid authentication token")
+        return
+
+    # Accept the connection
+    await websocket.accept()
+
+    # Send connection success message
+    await websocket.send_json({
+        "type": "connected",
+        "user_id": user.id,
+        "message": "Connected to job events stream"
+    })
+
+    logger.info(f"WebSocket connected for user {user.id}")
+
+    # Create a queue for this connection
+    event_queue: asyncio.Queue = asyncio.Queue()
+
+    # Event handler that filters by user_id and queues events
+    async def handle_job_event(event: Event):
+        """Handle job events and send to this user if they own the job"""
+        try:
+            # Get job_id from event data
+            job_id = event.data.get("job_id")
+            if not job_id:
+                return
+
+            # Check if this job belongs to the connected user
+            # For performance, we'll trust the event data's user_id if present
+            event_user_id = event.data.get("user_id")
+            if event_user_id and event_user_id != user.id:
+                return  # Not this user's job
+
+            # If no user_id in event, we need to query the job
+            if not event_user_id:
+                async for db in get_database():
+                    from pixsim7_backend.domain.job import Job
+                    from sqlalchemy import select
+
+                    result = await db.execute(select(Job).where(Job.id == job_id))
+                    job = result.scalar_one_or_none()
+
+                    if not job or job.user_id != user.id:
+                        return  # Not this user's job
+                    break
+
+            # Queue the event for sending
+            await event_queue.put(event)
+
+        except Exception as e:
+            logger.error(f"Error handling job event: {e}", exc_info=True)
+
+    # Subscribe to all job events
+    event_bus.subscribe("job:created", handle_job_event)
+    event_bus.subscribe("job:started", handle_job_event)
+    event_bus.subscribe("job:completed", handle_job_event)
+    event_bus.subscribe("job:failed", handle_job_event)
+    event_bus.subscribe("job:cancelled", handle_job_event)
+    event_bus.subscribe("job:progress", handle_job_event)
+
+    try:
+        # Main loop - send events and handle client messages
+        while True:
+            # Use select to handle both queue events and WebSocket messages
+            receive_task = asyncio.create_task(websocket.receive_text())
+            queue_task = asyncio.create_task(event_queue.get())
+
+            done, pending = await asyncio.wait(
+                [receive_task, queue_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+            # Handle completed task
+            if receive_task in done:
+                # Client sent a message
+                try:
+                    message = await receive_task
+
+                    # Handle ping
+                    if message == "ping":
+                        await websocket.send_json({"type": "pong"})
+
+                except WebSocketDisconnect:
+                    logger.info(f"WebSocket disconnected for user {user.id}")
+                    break
+                except Exception as e:
+                    logger.error(f"WebSocket receive error: {e}")
+                    break
+
+            if queue_task in done:
+                # New event to send
+                try:
+                    event = await queue_task
+
+                    # Send event to client
+                    await websocket.send_json({
+                        "type": event.event_type,
+                        "job_id": event.data.get("job_id"),
+                        "asset_id": event.data.get("asset_id"),
+                        "status": event.data.get("status"),
+                        "progress_percent": event.data.get("progress_percent"),
+                        "stage": event.data.get("stage"),
+                        "error": event.data.get("error"),
+                        "data": event.data,
+                    })
+
+                except Exception as e:
+                    logger.error(f"WebSocket send error: {e}")
+                    break
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for user {user.id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user.id}: {e}", exc_info=True)
+    finally:
+        # Unsubscribe from events
+        event_bus.unsubscribe("job:created", handle_job_event)
+        event_bus.unsubscribe("job:started", handle_job_event)
+        event_bus.unsubscribe("job:completed", handle_job_event)
+        event_bus.unsubscribe("job:failed", handle_job_event)
+        event_bus.unsubscribe("job:cancelled", handle_job_event)
+        event_bus.unsubscribe("job:progress", handle_job_event)
+
+        # Close connection
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+        logger.info(f"WebSocket closed for user {user.id}")
