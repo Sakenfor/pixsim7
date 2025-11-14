@@ -2,9 +2,12 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
-import { useControlCubeStore, CubeFace, CubeType } from '../../stores/controlCubeStore';
+import { CubeConnectionsOverlay } from './CubeConnectionsOverlay';
+import { useControlCubeStore } from '../../stores/controlCubeStore';
+import type { CubeFace, CubeType } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
-import { panelActionRegistry, PanelActionsConfig } from '../../lib/panelActions';
+import { panelActionRegistry } from '../../lib/panelActions';
+import type { PanelActionsConfig } from '../../lib/panelActions';
 import { clsx } from 'clsx';
 
 export interface ControlCubeManagerProps {
@@ -22,6 +25,8 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const summoned = useControlCubeStore((s) => s.summoned);
   const activeCubeId = useControlCubeStore((s) => s.activeCubeId);
   const combinedCubeIds = useControlCubeStore((s) => s.combinedCubeIds);
+  const linkingMode = useControlCubeStore((s) => s.linkingMode);
+  const linkingFromCube = useControlCubeStore((s) => s.linkingFromCube);
 
   const addCube = useControlCubeStore((s) => s.addCube);
   const summonCubes = useControlCubeStore((s) => s.summonCubes);
@@ -31,6 +36,10 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const combineCubes = useControlCubeStore((s) => s.combineCubes);
   const separateCubes = useControlCubeStore((s) => s.separateCubes);
   const dockCubeToPanel = useControlCubeStore((s) => s.dockCubeToPanel);
+  const startLinking = useControlCubeStore((s) => s.startLinking);
+  const completeLinking = useControlCubeStore((s) => s.completeLinking);
+  const cancelLinking = useControlCubeStore((s) => s.cancelLinking);
+  const clearAllConnections = useControlCubeStore((s) => s.clearAllConnections);
 
   // Get panel rectangles for docking
   const panelRects = usePanelRects();
@@ -119,11 +128,34 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
           });
         }
       }
+
+      // L: Start linking mode from active cube's front face
+      if (e.code === 'KeyL' && activeCubeId && !e.ctrlKey && !linkingMode) {
+        e.preventDefault();
+        const cube = cubes[activeCubeId];
+        if (cube) {
+          startLinking(activeCubeId, cube.activeFace);
+        }
+      }
+
+      // Escape: Cancel linking mode
+      if (e.code === 'Escape' && linkingMode) {
+        e.preventDefault();
+        cancelLinking();
+      }
+
+      // Ctrl+Shift+X: Clear all connections
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyX') {
+        e.preventDefault();
+        if (confirm('Clear all cube connections?')) {
+          clearAllConnections();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [summoned, activeCubeId, cubes]);
+  }, [summoned, activeCubeId, cubes, linkingMode]);
 
   // Check for cube proximity (for combining)
   const checkCubeProximity = useCallback(() => {
@@ -168,6 +200,13 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   }, [checkCubeProximity, checkDocking]);
 
   const handleFaceClick = (cubeId: string, face: CubeFace) => {
+    // If in linking mode, complete the connection
+    if (linkingMode && linkingFromCube) {
+      completeLinking(cubeId, face);
+      return;
+    }
+
+    // Otherwise, rotate to that face
     rotateCubeFace(cubeId, face);
     console.log(`Cube ${cubeId} face ${face} clicked`);
   };
@@ -180,6 +219,9 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
 
   return (
     <>
+      {/* Connection lines overlay */}
+      {summoned && <CubeConnectionsOverlay />}
+
       {/* Cube container */}
       <div
         ref={managerRef}
@@ -211,8 +253,10 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Arrow Keys</kbd> Rotate Active Cube</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">R</kbd> Auto-Rotate</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">E</kbd> Expand/Collapse</div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">L</kbd> Link Cube Face</div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Esc</kbd> Cancel Linking</div>
             <div className="pt-2 text-white/60 text-[10px]">
-              💡 Drag cubes close together to combine them
+              💡 Press L, then click another cube face to connect
             </div>
             <button
               onClick={() => setEditorOpen(true)}

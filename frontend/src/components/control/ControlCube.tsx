@@ -1,5 +1,7 @@
-import { ReactNode, useEffect, useRef } from 'react';
-import { useControlCubeStore, CubeType, CubeFace } from '../../stores/controlCubeStore';
+import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
+import { useControlCubeStore } from '../../stores/controlCubeStore';
+import type { CubeType, CubeFace } from '../../stores/controlCubeStore';
 import { clsx } from 'clsx';
 
 export interface CubeFaceContent {
@@ -78,6 +80,7 @@ export function ControlCube({
   const isExpanded = cube.mode === 'expanded';
   const isCombined = cube.mode === 'combined';
   const isDocked = cube.mode === 'docked';
+  const isLinking = cube.mode === 'linking';
 
   const cubeScale = cube.scale * (isExpanded ? 1.5 : 1) * (isCombined ? 1.2 : 1);
 
@@ -116,6 +119,7 @@ export function ControlCube({
       className={clsx(
         'relative transition-all duration-300',
         isDocked && 'opacity-80',
+        isLinking && 'ring-4 ring-yellow-400 ring-opacity-50 animate-pulse',
         className
       )}
       style={{
@@ -183,6 +187,13 @@ export function ControlCube({
       {isCombined && (
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-purple-300 whitespace-nowrap">
           🔗 Combined
+        </div>
+      )}
+
+      {/* Linking mode indicator */}
+      {isLinking && (
+        <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-yellow-300 whitespace-nowrap animate-pulse">
+          🔗 Linking... (click target)
         </div>
       )}
     </div>

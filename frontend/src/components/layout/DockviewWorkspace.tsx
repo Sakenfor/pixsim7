@@ -1,9 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
-import {
-  DockviewReact,
-  DockviewReadyEvent,
-  IDockviewPanelProps,
-} from 'dockview';
+import { DockviewReact } from 'dockview';
+import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview';
 import 'dockview/dist/styles.css';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../SceneBuilderPanel';
@@ -114,7 +111,7 @@ export function DockviewWorkspace() {
 
   const createDefaultLayout = (api: DockviewReadyEvent['api']) => {
     // Create default layout similar to mosaic default
-    const galleryPanel = api.addPanel({
+    api.addPanel({
       id: 'gallery-panel',
       component: 'panel',
       params: { panelId: 'gallery' as PanelId },

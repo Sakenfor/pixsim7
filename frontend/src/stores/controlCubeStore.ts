@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked';
+export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked' | 'linking';
 
 export type CubeFace = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 
@@ -11,6 +11,25 @@ export type CubeType =
   | 'preset'       // Preset management
   | 'panel'        // Panel controls
   | 'settings';    // Settings/options
+
+export interface CubeConnection {
+  id: string;
+  fromCubeId: string;
+  fromFace: CubeFace;
+  toCubeId: string;
+  toFace: CubeFace;
+  type?: string;  // Optional: data type being passed (e.g., 'image', 'params', 'command')
+  color?: string; // Optional: connection color
+}
+
+export interface CubeMessage {
+  id: string;
+  fromCubeId: string;
+  toCubeId: string;
+  timestamp: number;
+  data: any;
+  type?: string;
+}
 
 export interface CubePosition {
   x: number;
@@ -41,6 +60,10 @@ export interface ControlCubeStoreState {
   activeCubeId?: string;
   combinedCubeIds: string[];  // Cubes currently combined into one
   summoned: boolean;          // Whether cube system is summoned (visible)
+  connections: Record<string, CubeConnection>;  // Cube-to-cube connections
+  messages: CubeMessage[];    // Message queue
+  linkingMode: boolean;       // Whether in connection-creation mode
+  linkingFromCube?: { cubeId: string; face: CubeFace };  // Source for new connection
 }
 
 export interface ControlCubeActions {
@@ -71,6 +94,21 @@ export interface ControlCubeActions {
   summonCubes: () => void;
   dismissCubes: () => void;
 
+  // Connections
+  addConnection: (fromCubeId: string, fromFace: CubeFace, toCubeId: string, toFace: CubeFace, type?: string) => string;
+  removeConnection: (connectionId: string) => void;
+  getConnectionsForCube: (cubeId: string) => CubeConnection[];
+  clearAllConnections: () => void;
+
+  // Messages
+  sendMessage: (fromCubeId: string, toCubeId: string, data: any, type?: string) => void;
+  clearMessages: () => void;
+
+  // Linking mode
+  startLinking: (cubeId: string, face: CubeFace) => void;
+  completeLinking: (toCubeId: string, toFace: CubeFace) => void;
+  cancelLinking: () => void;
+
   // Utility
   reset: () => void;
 }
@@ -88,6 +126,8 @@ const FACE_ROTATIONS: Record<CubeFace, CubeRotation> = {
 const STORAGE_KEY = 'control_cubes_v1';
 
 let cubeIdCounter = 0;
+let connectionIdCounter = 0;
+let messageIdCounter = 0;
 
 export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeActions>()(
   persist(
@@ -96,6 +136,10 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       activeCubeId: undefined,
       combinedCubeIds: [],
       summoned: false,
+      connections: {},
+      messages: [],
+      linkingMode: false,
+      linkingFromCube: undefined,
 
       addCube: (type, position = { x: window.innerWidth / 2 - 50, y: window.innerHeight / 2 - 50 }) => {
         const id = `cube-${type}-${cubeIdCounter++}`;
@@ -235,12 +279,133 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
         });
       },
 
+      // Connection management
+      addConnection: (fromCubeId, fromFace, toCubeId, toFace, type) => {
+        const connectionId = `conn-${connectionIdCounter++}`;
+        const connection: CubeConnection = {
+          id: connectionId,
+          fromCubeId,
+          fromFace,
+          toCubeId,
+          toFace,
+          type,
+          color: type === 'image' ? '#3b82f6' : type === 'params' ? '#10b981' : '#8b5cf6',
+        };
+
+        set((state) => ({
+          connections: {
+            ...state.connections,
+            [connectionId]: connection,
+          },
+        }));
+
+        return connectionId;
+      },
+
+      removeConnection: (connectionId) => {
+        set((state) => {
+          const { [connectionId]: removed, ...rest } = state.connections;
+          return { connections: rest };
+        });
+      },
+
+      getConnectionsForCube: (cubeId) => {
+        const connections = Object.values(get().connections);
+        return connections.filter(
+          (conn) => conn.fromCubeId === cubeId || conn.toCubeId === cubeId
+        );
+      },
+
+      clearAllConnections: () => {
+        set({ connections: {} });
+      },
+
+      // Message passing
+      sendMessage: (fromCubeId, toCubeId, data, type) => {
+        const message: CubeMessage = {
+          id: `msg-${messageIdCounter++}`,
+          fromCubeId,
+          toCubeId,
+          timestamp: Date.now(),
+          data,
+          type,
+        };
+
+        set((state) => ({
+          messages: [...state.messages, message],
+        }));
+
+        // Auto-clear old messages after 5 seconds
+        setTimeout(() => {
+          set((state) => ({
+            messages: state.messages.filter((m) => m.id !== message.id),
+          }));
+        }, 5000);
+      },
+
+      clearMessages: () => {
+        set({ messages: [] });
+      },
+
+      // Linking mode
+      startLinking: (cubeId, face) => {
+        set({
+          linkingMode: true,
+          linkingFromCube: { cubeId, face },
+        });
+
+        // Set cube to linking mode
+        get().updateCube(cubeId, { mode: 'linking' });
+      },
+
+      completeLinking: (toCubeId, toFace) => {
+        const { linkingFromCube } = get();
+        if (!linkingFromCube) return;
+
+        // Don't allow self-connections
+        if (linkingFromCube.cubeId === toCubeId) {
+          get().cancelLinking();
+          return;
+        }
+
+        // Create connection
+        get().addConnection(
+          linkingFromCube.cubeId,
+          linkingFromCube.face,
+          toCubeId,
+          toFace
+        );
+
+        // Reset linking state
+        get().updateCube(linkingFromCube.cubeId, { mode: 'idle' });
+        set({
+          linkingMode: false,
+          linkingFromCube: undefined,
+        });
+      },
+
+      cancelLinking: () => {
+        const { linkingFromCube } = get();
+        if (linkingFromCube) {
+          get().updateCube(linkingFromCube.cubeId, { mode: 'idle' });
+        }
+
+        set({
+          linkingMode: false,
+          linkingFromCube: undefined,
+        });
+      },
+
       reset: () => {
         set({
           cubes: {},
           activeCubeId: undefined,
           combinedCubeIds: [],
           summoned: false,
+          connections: {},
+          messages: [],
+          linkingMode: false,
+          linkingFromCube: undefined,
         });
       },
     }),
@@ -249,6 +414,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       partialize: (state) => ({
         cubes: state.cubes,
         summoned: state.summoned,
+        connections: state.connections,  // Persist connections
       }),
       version: 1,
     }
