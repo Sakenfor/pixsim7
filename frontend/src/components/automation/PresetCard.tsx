@@ -1,4 +1,4 @@
-import { AppActionPreset } from '../../types/automation';
+import { type AppActionPreset } from '../../types/automation';
 import { Button, Panel, Badge } from '@pixsim7/ui';
 
 interface PresetCardProps {

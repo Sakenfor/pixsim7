@@ -120,6 +120,13 @@ class DatabaseLogViewer(QWidget):
         self.time_combo.setMinimumWidth(110)
         filter_bar.addWidget(self.time_combo)
 
+        # Stage quick-filter
+        filter_bar.addWidget(QLabel('Stage:'))
+        self.stage_combo = self._styled_combo(['All', 'pipeline:*', 'provider:*', 'pipeline:start', 'pipeline:artifact', 'provider:submit', 'provider:status', 'provider:complete', 'provider:error'])
+        self.stage_combo.setCurrentText('All')
+        self.stage_combo.setMinimumWidth(130)
+        filter_bar.addWidget(self.stage_combo)
+
         # Limit
         filter_bar.addWidget(QLabel('Limit:'))
         self.limit_combo = self._styled_combo(['50', '100', '200', '500', '1000'])
@@ -213,6 +220,7 @@ class DatabaseLogViewer(QWidget):
         self.log_display = QTextBrowser()
         self.log_display.setReadOnly(True)
         self.log_display.setOpenLinks(False)  # Handle clicks manually
+        self.log_display.setOpenExternalLinks(False)
         self.log_display.anchorClicked.connect(self._on_log_link_clicked)
         self._expanded_rows = set()  # Track which rows are expanded
         self.log_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -263,6 +271,7 @@ class DatabaseLogViewer(QWidget):
         """Reset all filters to default values."""
         self.service_combo.setCurrentText('All')
         self.level_combo.setCurrentText('All')
+        self.stage_combo.setCurrentText('All')
         self.time_combo.setCurrentText('Last hour')
         self.limit_combo.setCurrentText('100')
         self.search_input.clear()
@@ -292,6 +301,15 @@ class DatabaseLogViewer(QWidget):
             service = self.service_combo.currentText()
             if service != 'All':
                 params['service'] = service.lower()
+
+            # Stage quick-filter
+            stage_selection = self.stage_combo.currentText()
+            if stage_selection and stage_selection != 'All':
+                if stage_selection.endswith(':*'):
+                    # Use backend-supported stage_prefix filter, e.g. provider:* → stage_prefix=provider
+                    params['stage_prefix'] = stage_selection[:-2]
+                else:
+                    params['stage'] = stage_selection
 
             # Level filter
             level = self.level_combo.currentText()
@@ -500,7 +518,10 @@ class DatabaseLogViewer(QWidget):
         if scheme == "expand":
             # Handle row expansion toggle
             row_idx = url.host()
-            self._toggle_row_expansion(row_idx)
+            if not row_idx:
+                row_idx = url.path().lstrip("/")
+            if row_idx:
+                self._toggle_row_expansion(row_idx)
 
         elif scheme == "service":
             filter_value = url.host()
@@ -536,9 +557,8 @@ class DatabaseLogViewer(QWidget):
 
     def _toggle_row_expansion(self, row_idx):
         """Toggle expansion state of a log row and re-render."""
-        # Debug: print to console to verify clicks are being received
-        print(f"[DEBUG] Toggle row {row_idx}, currently expanded: {row_idx in self._expanded_rows}")
-
+        if not row_idx:
+            return
         if row_idx in self._expanded_rows:
             self._expanded_rows.remove(row_idx)
         else:
@@ -549,7 +569,7 @@ class DatabaseLogViewer(QWidget):
         if hasattr(self, '_last_logs_data'):
             self._render_logs(self._last_logs_data)
         else:
-            print("[DEBUG] No _last_logs_data to re-render")
+            return
 
     def _show_context_menu(self, position):
         """Show context menu on right-click with smart actions based on selection."""
@@ -701,6 +721,8 @@ class DatabaseLogViewer(QWidget):
 
         # Build HTML with styles and log rows
         html_parts = [LOG_ROW_STYLES]
+        valid_indices = {str(i) for i in range(len(logs))}
+        self._expanded_rows.intersection_update(valid_indices)
 
         for idx, log in enumerate(reversed(logs)):  # Newest first
             is_expanded = str(idx) in self._expanded_rows

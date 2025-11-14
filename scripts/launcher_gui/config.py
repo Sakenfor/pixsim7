@@ -95,10 +95,24 @@ def write_env_ports(ports: Ports, env_path: Optional[str] = None) -> None:
 
 
 def find_python_executable() -> str:
-    """Prefer project venv python if present, else fallback to system 'python'."""
+    """
+    Find Python executable for backend services.
+    Priority:
+    1. Project .venv if present
+    2. pixsim7 conda environment
+    3. System 'python'
+    """
+    # Try .venv first
     venv_py = os.path.join(ROOT, '.venv', 'Scripts', 'python.exe') if os.name == 'nt' else os.path.join(ROOT, '.venv', 'bin', 'python')
     if os.path.exists(venv_py):
         return venv_py
+
+    # Try pixsim7 conda env (recommended for pixsim7)
+    conda_env_py = 'G:/code/conda_envs/pixsim7/python.exe' if os.name == 'nt' else 'G:/code/conda_envs/pixsim7/bin/python'
+    if os.path.exists(conda_env_py):
+        return conda_env_py
+
+    # Fallback to system python
     return 'python'
 
 

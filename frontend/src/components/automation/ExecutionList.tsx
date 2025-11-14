@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AutomationExecution, AutomationStatus } from '../../types/automation';
+import { type AutomationExecution, AutomationStatus } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
 import { Button, Panel } from '@pixsim7/ui';
 import { ExecutionCard } from './ExecutionCard';

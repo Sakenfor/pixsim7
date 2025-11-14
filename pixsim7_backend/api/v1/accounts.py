@@ -71,6 +71,124 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
     )
 
 
+# ===== EXPORT COOKIES (FOR EXTENSION LOGIN) =====
+
+class AccountCookiesResponse(BaseModel):
+    provider_id: str
+    email: str
+    cookies: Dict[str, str]
+
+
+@router.get("/accounts/{account_id}/cookies", response_model=AccountCookiesResponse)
+async def export_account_cookies(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc
+):
+    """Export cookies for an account to enable logged-in browser tabs.
+
+    Security: Only the owner of the account or admin can export cookies.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+        # Ownership or admin required (system accounts user_id=None are not exportable)
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot export cookies for system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to export this account's cookies")
+
+        cookies = account.cookies or {}
+        if not isinstance(cookies, dict):
+            cookies = {}
+
+        return AccountCookiesResponse(
+            provider_id=account.provider_id,
+            email=account.email,
+            cookies=cookies
+        )
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+
+# ===== SYNC CREDITS =====
+
+class SyncCreditsResponse(BaseModel):
+    """Response from credit sync"""
+    success: bool
+    credits: Dict[str, int]
+    message: str
+
+
+@router.post("/accounts/{account_id}/sync-credits", response_model=SyncCreditsResponse)
+async def sync_account_credits(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession
+):
+    """Sync credits from provider API (via getUserInfo or equivalent).
+
+    Fetches current credits from the provider and updates the account.
+    Useful after login or when credits need to be refreshed.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+        # Ownership or admin required
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot sync credits for system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to sync this account's credits")
+
+        # Get provider and call dedicated credit fetch function
+        from pixsim7_backend.services.provider import registry
+        provider = registry.get(account.provider_id)
+
+        # Use provider's get_credits method if available
+        credits_data = None
+        if hasattr(provider, 'get_credits'):
+            try:
+                credits_data = provider.get_credits(account)
+            except Exception as e:
+                print(f"Provider get_credits failed: {e}, falling back to extract_account_data")
+        
+        # Fallback: extract from account data
+        if not credits_data:
+            raw_data = {'cookies': account.cookies or {}}
+            extracted = await provider.extract_account_data(raw_data)
+            credits_data = extracted.get('credits')
+
+        # Update credits if available
+        updated_credits = {}
+        if credits_data and isinstance(credits_data, dict):
+            for credit_type, amount in credits_data.items():
+                try:
+                    await account_service.set_credit(account.id, credit_type, amount)
+                    updated_credits[credit_type] = amount
+                except Exception as e:
+                    print(f"Failed to update credits {credit_type}: {e}")
+
+            await db.commit()
+            await db.refresh(account)
+            return SyncCreditsResponse(
+                success=True,
+                credits=updated_credits,
+                message=f"Synced {len(updated_credits)} credit types"
+            )
+        else:
+            return SyncCreditsResponse(
+                success=False,
+                credits={},
+                message="No credits data available from provider"
+            )
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+    except Exception as e:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to sync credits: {str(e)}", "code": "sync_error"}
+        )
+
+
 # ===== LIST ACCOUNTS =====
 
 @router.get("/accounts", response_model=list[AccountResponse])
@@ -435,6 +553,25 @@ async def import_cookies(
             await db.commit()
             await db.refresh(existing)
 
+            # Trigger credit sync in background (best-effort)
+            try:
+                from pixsim7_backend.services.provider import registry
+                provider = registry.get(request.provider_id)
+                fresh_extracted = await provider.extract_account_data(raw_data)
+                fresh_credits = fresh_extracted.get('credits')
+                if fresh_credits:
+                    for credit_type, amount in fresh_credits.items():
+                        try:
+                            await account_service.set_credit(existing.id, credit_type, amount)
+                            if "credits" not in updated_fields:
+                                updated_fields.append("credits")
+                        except Exception:
+                            pass
+                    await db.commit()
+                    await db.refresh(existing)
+            except Exception:
+                pass  # non-fatal
+
             return CookieImportResponse(
                 success=True,
                 message=f"Updated account {email}",
@@ -478,6 +615,7 @@ async def import_cookies(
                     await db.commit()
                     await db.refresh(account)
 
+            # Final credit sync (fresh extraction already done above, but ensure it's reflected)
             return CookieImportResponse(
                 success=True,
                 message=f"Created new account {email}" + (f" with credits: {', '.join(credits_imported)}" if credits_imported else ""),
@@ -489,8 +627,21 @@ async def import_cookies(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        # Provider adapter couldn't extract a real email (e.g., missing pixverse-py)
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": f"Failed to import cookies: {str(e)}",
+                "code": "email_missing",
+                "hint": "Install pixverse-py on backend to enable getUserInfo, or ensure JWT includes an email claim.",
+            }
+        )
     except Exception as e:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
-            f"Failed to import cookies: {str(e)}"
+            detail={
+                "message": f"Failed to import cookies: {str(e)}",
+                "code": "import_error"
+            }
         )

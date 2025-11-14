@@ -19,10 +19,12 @@ COMMON_FIELDS = [
     "provider_id",
     "operation_type",
     "stage",
+    "user_id",
     "attempt",
     "duration_ms",
     "error",
     "error_type",
+    "created_at",
 ]
 
 # Stage taxonomy (pipeline + provider lifecycle)
@@ -36,6 +38,8 @@ STAGES = [
     "provider:error",
     "retry:decision",
 ]
+
+STAGES_SET = set(STAGES)
 
 SENSITIVE_KEYS = {"api_key", "jwt_token", "authorization", "password", "secret"}
 
@@ -66,3 +70,14 @@ def bind_artifact_context(logger, artifact_id: int | None = None, submission_id:
     if submission_id is not None:
         ctx["submission_id"] = submission_id
     return logger.bind(**ctx)
+
+
+def ensure_valid_stage(stage: str) -> str:
+    """Return a valid stage string, passing through unknown stages.
+
+    This is intentionally lenient: it allows ad-hoc stages, but provides a
+    single place for callers to normalize or validate against the known
+    taxonomy (STAGES). Callers can choose to assert membership if they want.
+    """
+    # Example hook for future normalization, e.g. lowering, mapping aliases, etc.
+    return stage

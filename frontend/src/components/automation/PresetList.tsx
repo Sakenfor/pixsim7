@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AppActionPreset } from '../../types/automation';
+import { type AppActionPreset } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
 import { Button, Panel } from '@pixsim7/ui';
 import { PresetCard } from './PresetCard';

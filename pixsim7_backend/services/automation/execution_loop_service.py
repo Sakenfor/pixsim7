@@ -14,6 +14,7 @@ from pixsim7_backend.domain.automation import (
     ExecutionLoop,
     LoopStatus,
     LoopSelectionMode,
+    PresetExecutionMode,
     AutomationExecution,
     AutomationStatus,
     AppActionPreset,

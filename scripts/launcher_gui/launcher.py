@@ -3,6 +3,8 @@ import webbrowser
 import subprocess
 import os
 import signal
+import re
+from html import escape
 from typing import Dict, Optional
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
@@ -31,6 +33,7 @@ try:
     from .dialogs.env_editor_dialog import show_env_editor
     from .database_log_viewer import DatabaseLogViewer
     from .dialogs.settings_dialog import show_settings_dialog
+    from .dialogs.log_management_dialog import show_log_management_dialog
 except ImportError:
     # Fallback for running directly
     from services import build_services, ServiceDef
@@ -79,6 +82,23 @@ except Exception:
 
 
 # Ports and Env editor dialogs moved to dialogs/* modules
+
+
+CONSOLE_LEVEL_PATTERNS = {
+    "ERROR": re.compile(r"(?:\[(?:ERR|ERROR)\])|\b(?:ERR|ERROR)\b", re.IGNORECASE),
+    "WARNING": re.compile(r"(?:\[(?:WARN|WARNING)\])|\b(?:WARN|WARNING)\b", re.IGNORECASE),
+    "DEBUG": re.compile(r"(?:\[(?:DEBUG)\])|\bDEBUG\b", re.IGNORECASE),
+    "INFO": re.compile(r"(?:\[(?:INFO)\])|\bINFO\b", re.IGNORECASE),
+    "CRITICAL": re.compile(r"(?:\[(?:CRITICAL)\])|\bCRITICAL\b", re.IGNORECASE),
+}
+
+CONSOLE_LEVEL_STYLES = {
+    "DEBUG": {"accent": "#64B5F6", "bg": "rgba(100,181,246,0.08)"},
+    "INFO": {"accent": "#81C784", "bg": "rgba(129,199,132,0.08)"},
+    "WARNING": {"accent": "#FFB74D", "bg": "rgba(255,183,77,0.12)"},
+    "ERROR": {"accent": "#EF5350", "bg": "rgba(239,83,80,0.12)"},
+    "CRITICAL": {"accent": "#FF1744", "bg": "rgba(255,23,68,0.18)"},
+}
 
 
 class LauncherWindow(QWidget):
@@ -159,6 +179,7 @@ class LauncherWindow(QWidget):
 
         # Initialize attributes before _init_ui
         self.autoscroll_enabled = True
+        self.console_style_enhanced = True
         self.log_filter = ''
         self.log_timer = QTimer(self)
 
@@ -263,36 +284,13 @@ class LauncherWindow(QWidget):
         self.btn_kill_all.setToolTip("Stop all services")
         self.btn_restart_all = QPushButton('↻ Restart All')
         self.btn_restart_all.setToolTip("Restart all running services")
+        self.btn_db_down = QPushButton('🗄 Stop DBs')
+        self.btn_db_down.setToolTip("Stop database containers")
         btn_row1.addWidget(self.btn_all)
         btn_row1.addWidget(self.btn_kill_all)
         btn_row1.addWidget(self.btn_restart_all)
+        btn_row1.addWidget(self.btn_db_down)
         left_layout.addLayout(btn_row1)
-
-        btn_row2 = QHBoxLayout()
-        self.btn_ports = QPushButton('⚙ Ports')
-        self.btn_ports.setToolTip("Edit service ports")
-        self.btn_env = QPushButton('🔧 Environment')
-        self.btn_env.setToolTip("Edit environment variables")
-        self.btn_db_down = QPushButton('🗄 Stop DBs')
-        self.btn_db_down.setToolTip("Stop database containers")
-        btn_row2.addWidget(self.btn_ports)
-        btn_row2.addWidget(self.btn_env)
-        btn_row2.addWidget(self.btn_db_down)
-        btn_row2.addStretch()
-        left_layout.addLayout(btn_row2)
-
-        btn_row3 = QHBoxLayout()
-        self.btn_git_tools = QPushButton('🔀 Git Tools')
-        self.btn_git_tools.setToolTip("Structured commit helper")
-        self.btn_migrations = QPushButton('🗃 Migrations')
-        self.btn_migrations.setToolTip("Database migration manager")
-        self.btn_log_management = QPushButton('📋 Log Management')
-        self.btn_log_management.setToolTip("Manage, archive, and export console logs")
-        btn_row3.addWidget(self.btn_git_tools)
-        btn_row3.addWidget(self.btn_migrations)
-        btn_row3.addWidget(self.btn_log_management)
-        btn_row3.addStretch()
-        left_layout.addLayout(btn_row3)
 
         # Status bar with dark theme
         self.status_label = QLabel('Ports: loading...')
@@ -309,15 +307,15 @@ class LauncherWindow(QWidget):
         """)
         left_layout.addWidget(self.status_label)
 
-        # Right panel: log tabs
+        # Right panel: main tab widget for all tools
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(8, 8, 8, 8)
         splitter.addWidget(right)
 
-        # Create tab widget with dark theme
-        self.log_tabs = QTabWidget()
-        self.log_tabs.setStyleSheet("""
+        # Create main tab widget with dark theme
+        self.main_tabs = QTabWidget()
+        self.main_tabs.setStyleSheet("""
             QTabWidget::pane {
                 border: 1px solid #555;
                 border-radius: 4px;
@@ -345,8 +343,29 @@ class LauncherWindow(QWidget):
                 background: #4a8fc4;
             }
         """)
+        right_layout.addWidget(self.main_tabs)
 
-        # Service Console tab - shows live stdout/stderr from selected service
+        # === TAB 1: CONSOLE LOGS ===
+        console_tab = self._create_console_tab()
+        self.main_tabs.addTab(console_tab, "📊 Console")
+
+        # === TAB 2: DATABASE LOGS ===
+        db_logs_tab = self._create_db_logs_tab()
+        self.main_tabs.addTab(db_logs_tab, "🗄 Database Logs")
+
+        # === TAB 3: TOOLS ===
+        tools_tab = self._create_tools_tab()
+        self.main_tabs.addTab(tools_tab, "🔧 Tools")
+
+        # === TAB 4: SETTINGS ===
+        settings_tab = self._create_settings_tab()
+        self.main_tabs.addTab(settings_tab, "⚙ Settings")
+
+        # Setup all connections
+        self._setup_connections()
+
+    def _create_console_tab(self):
+        """Create the console logs tab"""
         console_tab = QWidget()
         console_layout = QVBoxLayout(console_tab)
 
@@ -365,8 +384,101 @@ class LauncherWindow(QWidget):
         self.log_service_label.setFont(log_service_font)
         self.log_service_label.setStyleSheet("color: #555; padding-left: 10px; font-weight: 500;")
         console_header_layout.addWidget(self.log_service_label)
+
+        # Quick navigation into DB logs for the same service
+        self.btn_open_db_logs = QPushButton("Open DB Logs ▶")
+        self.btn_open_db_logs.setToolTip("Switch to Database Logs tab for this service")
+        self.btn_open_db_logs.setStyleSheet("""
+            QPushButton {
+                background-color: #555;
+                color: #e0e0e0;
+                border: 1px solid #666;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #666;
+                border: 1px solid #777;
+            }
+            QPushButton:pressed {
+                background-color: #444;
+            }
+        """)
+        console_header_layout.addWidget(self.btn_open_db_logs)
+
         console_header_layout.addStretch()
         console_layout.addLayout(console_header_layout)
+
+        # Compact toolbar with filters and actions
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+
+        # Filter section
+        from PySide6.QtWidgets import QComboBox
+        self.console_level_combo = QComboBox()
+        for lvl in ["All", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
+            self.console_level_combo.addItem(lvl)
+        self.console_level_combo.setCurrentText("All")
+        self.console_level_combo.setFixedWidth(80)
+        self.console_level_combo.setToolTip("Filter by log level")
+        self.console_level_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                padding: 3px 6px;
+                border: 1px solid #555;
+                border-radius: 4px;
+                font-size: 9pt;
+            }
+            QComboBox:hover { border: 1px solid #5a9fd4; }
+        """)
+        self.console_level_combo.currentTextChanged.connect(lambda _: self._on_console_filter_changed())
+        toolbar.addWidget(self.console_level_combo)
+
+        self.console_search_input = QLineEdit()
+        self.console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")
+        self.console_search_input.setFixedWidth(200)
+        self.console_search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #3d3d3d;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 3px 8px;
+                font-size: 9pt;
+            }
+            QLineEdit:focus { border: 1px solid #5a9fd4; }
+        """)
+        self.console_search_input.textChanged.connect(lambda _: self._on_console_filter_changed())
+        toolbar.addWidget(self.console_search_input)
+
+        self.console_style_checkbox = QCheckBox("Readable view")
+        self.console_style_checkbox.setChecked(True)
+        self.console_style_checkbox.setToolTip("Toggle enhanced console row layout")
+        self.console_style_checkbox.toggled.connect(self._on_console_style_changed)
+        toolbar.addWidget(self.console_style_checkbox)
+
+        # Action buttons (compact)
+        self.btn_refresh_logs = QPushButton('🔄')
+        self.btn_refresh_logs.setToolTip("Refresh console logs (F5)")
+        self.btn_refresh_logs.setFixedSize(32, 28)
+        toolbar.addWidget(self.btn_refresh_logs)
+        
+        self.btn_clear_logs = QPushButton('🗑')
+        self.btn_clear_logs.setToolTip("Clear console logs (Ctrl+L)")
+        self.btn_clear_logs.setFixedSize(32, 28)
+        toolbar.addWidget(self.btn_clear_logs)
+        
+        self.autoscroll_checkbox = QCheckBox('Auto-scroll')
+        self.autoscroll_checkbox.setChecked(True)
+        self.autoscroll_checkbox.setToolTip("Automatically scroll to bottom")
+        self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
+        self.autoscroll_checkbox.setStyleSheet("font-size: 9pt;")
+        toolbar.addWidget(self.autoscroll_checkbox)
+
+        toolbar.addStretch()
+        console_layout.addLayout(toolbar)
 
         # Use QTextBrowser for clickable URLs
         from PySide6.QtWidgets import QTextBrowser
@@ -385,59 +497,216 @@ class LauncherWindow(QWidget):
         """)
         console_layout.addWidget(self.log_view)
 
-        log_btn_row = QHBoxLayout()
-        self.btn_refresh_logs = QPushButton('🔄 Refresh')
-        self.btn_refresh_logs.setToolTip("Refresh console logs (F5)")
-        self.btn_clear_logs = QPushButton('🗑 Clear All')
-        self.btn_clear_logs.setToolTip("Clear console logs and persisted file (Ctrl+L)")
-        self.autoscroll_checkbox = QCheckBox('Auto-scroll')
-        self.autoscroll_checkbox.setChecked(True)
-        self.autoscroll_checkbox.setToolTip("Automatically scroll to bottom when new logs arrive")
-        self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
-        log_btn_row.addWidget(self.btn_refresh_logs)
-        log_btn_row.addWidget(self.btn_clear_logs)
-        log_btn_row.addWidget(self.autoscroll_checkbox)
-        log_btn_row.addStretch()
-        console_layout.addLayout(log_btn_row)
-
         # Add keyboard shortcuts for console
         self.console_refresh_shortcut = QShortcut(QKeySequence('F5'), console_tab)
-        self.console_refresh_shortcut.activated.connect(self._refresh_console_logs)
+        self.console_refresh_shortcut.activated.connect(lambda: self._refresh_console_logs(force=True))
         self.console_clear_shortcut = QShortcut(QKeySequence('Ctrl+L'), console_tab)
         self.console_clear_shortcut.activated.connect(self._clear_console_display)
 
-        # Add console tab first
-        self.log_tabs.addTab(console_tab, "Console")
+        # Quick focus on console search
+        self.console_search_shortcut = QShortcut(QKeySequence('Ctrl+F'), console_tab)
+        self.console_search_shortcut.activated.connect(lambda: self.console_search_input.setFocus())
 
-        # Add database logs tab as secondary source (pixsim_logging-backed)
+        return console_tab
+
+    def _create_db_logs_tab(self):
+        """Create the database logs tab"""
         from .config import read_env_ports
         p = read_env_ports()
         self.db_log_viewer = DatabaseLogViewer(api_url=f"http://localhost:{p.backend}")
-        self.log_tabs.addTab(self.db_log_viewer, "Database Logs")
+        return self.db_log_viewer
 
-        # Add tabs to right layout
-        right_layout.addWidget(self.log_tabs)
+    def _create_tools_tab(self):
+        """Create the tools tab with organized sections"""
+        tools_tab = QWidget()
+        tools_layout = QVBoxLayout(tools_tab)
+        tools_layout.setContentsMargins(16, 16, 16, 16)
+        tools_layout.setSpacing(20)
 
-        # Connections
+        # Database Tools Section
+        db_group = QFrame()
+        db_group.setFrameShape(QFrame.Shape.StyledPanel)
+        db_group.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border: 1px solid #555;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        db_layout = QVBoxLayout(db_group)
+        
+        db_title = QLabel("🗄 Database Tools")
+        db_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        db_layout.addWidget(db_title)
+        
+        self.btn_migrations = QPushButton('🗃 Migrations')
+        self.btn_migrations.setToolTip("Database migration manager")
+        self.btn_migrations.setMinimumHeight(40)
+        self.btn_migrations.clicked.connect(lambda: show_migrations_dialog(self))
+        db_layout.addWidget(self.btn_migrations)
+        
+        self.btn_db_browser = QPushButton('📊 Database Browser')
+        self.btn_db_browser.setToolTip("Browse accounts, copy passwords, export to CSV")
+        self.btn_db_browser.setMinimumHeight(40)
+        self.btn_db_browser.clicked.connect(self._open_db_browser)
+        db_layout.addWidget(self.btn_db_browser)
+        
+        self.btn_import_accounts = QPushButton('📥 Import Accounts from PixSim6')
+        self.btn_import_accounts.setToolTip("Import provider accounts from PixSim6 database")
+        self.btn_import_accounts.setMinimumHeight(40)
+        self.btn_import_accounts.clicked.connect(self._open_import_accounts_dialog)
+        db_layout.addWidget(self.btn_import_accounts)
+        
+        tools_layout.addWidget(db_group)
+
+        # Development Tools Section  
+        dev_group = QFrame()
+        dev_group.setFrameShape(QFrame.Shape.StyledPanel)
+        dev_group.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border: 1px solid #555;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        dev_layout = QVBoxLayout(dev_group)
+        
+        dev_title = QLabel("🔀 Development Tools")
+        dev_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        dev_layout.addWidget(dev_title)
+        
+        self.btn_git_tools = QPushButton('🔀 Git Tools')
+        self.btn_git_tools.setToolTip("Structured commit helper")
+        self.btn_git_tools.setMinimumHeight(40)
+        self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
+        dev_layout.addWidget(self.btn_git_tools)
+        
+        self.btn_log_management = QPushButton('📋 Log Management')
+        self.btn_log_management.setToolTip("Manage, archive, and export console logs")
+        self.btn_log_management.setMinimumHeight(40)
+        self.btn_log_management.clicked.connect(lambda: show_log_management_dialog(self, self.processes))
+        dev_layout.addWidget(self.btn_log_management)
+        
+        tools_layout.addWidget(dev_group)
+        
+        tools_layout.addStretch()
+        return tools_tab
+
+    def _create_settings_tab(self):
+        """Create the settings tab"""
+        settings_tab = QWidget()
+        settings_layout = QVBoxLayout(settings_tab)
+        settings_layout.setContentsMargins(16, 16, 16, 16)
+        settings_layout.setSpacing(20)
+
+        # Configuration Section
+        config_group = QFrame()
+        config_group.setFrameShape(QFrame.Shape.StyledPanel)
+        config_group.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border: 1px solid #555;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        config_layout = QVBoxLayout(config_group)
+        
+        config_title = QLabel("⚙ Configuration")
+        config_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        config_layout.addWidget(config_title)
+        
+        self.btn_ports = QPushButton('🔌 Edit Ports')
+        self.btn_ports.setToolTip("Edit service ports")
+        self.btn_ports.setMinimumHeight(40)
+        self.btn_ports.clicked.connect(self.edit_ports)
+        config_layout.addWidget(self.btn_ports)
+        
+        self.btn_env = QPushButton('🔧 Edit Environment Variables')
+        self.btn_env.setToolTip("Edit environment variables")
+        self.btn_env.setMinimumHeight(40)
+        self.btn_env.clicked.connect(self.edit_env)
+        config_layout.addWidget(self.btn_env)
+        
+        settings_layout.addWidget(config_group)
+
+        # Application Settings Section
+        app_group = QFrame()
+        app_group.setFrameShape(QFrame.Shape.StyledPanel)
+        app_group.setStyleSheet("""
+            QFrame {
+                background-color: #333;
+                border: 1px solid #555;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        app_layout = QVBoxLayout(app_group)
+        
+        app_title = QLabel("🎨 Application Settings")
+        app_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        app_layout.addWidget(app_title)
+        
+        self.btn_settings = QPushButton('⚙ General Settings')
+        self.btn_settings.setToolTip("Configure launcher preferences")
+        self.btn_settings.setMinimumHeight(40)
+        self.btn_settings.clicked.connect(self._open_settings)
+        app_layout.addWidget(self.btn_settings)
+        
+        settings_layout.addWidget(app_group)
+        
+        settings_layout.addStretch()
+        return settings_tab
+
+    def _setup_connections(self):
+        """Setup all button connections"""
+        # Main control buttons
         self.btn_all.clicked.connect(self.start_all)
         self.btn_kill_all.clicked.connect(self._stop_all_with_confirmation)
         self.btn_restart_all.clicked.connect(self._restart_all)
-        self.btn_ports.clicked.connect(self.edit_ports)
-        self.btn_env.clicked.connect(self.edit_env)
         self.btn_db_down.clicked.connect(self.stop_databases)
-        # Console log refresh
-        self.btn_refresh_logs.clicked.connect(self._refresh_console_logs)
+        
+        # Console log controls
+        self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
         self.btn_clear_logs.clicked.connect(self._clear_console_display)
-        self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
-        self.btn_migrations.clicked.connect(lambda: show_migrations_dialog(self))
-        self.btn_log_management.clicked.connect(lambda: show_log_management_dialog(self, self.processes))
-        self.btn_settings.clicked.connect(self._open_settings)
+        self.btn_open_db_logs.clicked.connect(self._open_db_logs_for_current_service)
 
         # Auto-refresh timer for console
         self.console_refresh_timer = QTimer(self)
         self.console_refresh_timer.timeout.connect(self._refresh_console_logs)
         self.last_log_hash = {}  # Track log buffer hashes to avoid unnecessary UI updates
         self.console_refresh_timer.start(1000)  # Refresh every second
+
+    def _open_db_logs_for_current_service(self):
+        """Switch to Database Logs tab and apply current service filter."""
+        if not hasattr(self, 'db_log_viewer') or not self.db_log_viewer:
+            return
+
+        # Ensure selected service is reflected in DB viewer
+        if self.selected_service_key:
+            svc_name = self.selected_service_key
+            idx = self.db_log_viewer.service_combo.findText(svc_name)
+            if idx < 0:
+                idx = self.db_log_viewer.service_combo.findText(svc_name.lower())
+            if idx < 0:
+                idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
+            if idx >= 0:
+                self.db_log_viewer.service_combo.setCurrentIndex(idx)
+
+        # Switch to the Database Logs tab
+        if hasattr(self, 'main_tabs') and self.main_tabs:
+            for i in range(self.main_tabs.count()):
+                if "Database" in self.main_tabs.tabText(i):
+                    self.main_tabs.setCurrentIndex(i)
+                    break
+
+        # Trigger an immediate refresh in the DB viewer
+        try:
+            self.db_log_viewer.refresh_logs()
+        except Exception:
+            pass
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
@@ -450,6 +719,18 @@ class LauncherWindow(QWidget):
         if key in self.cards:
             self.cards[key].set_selected(True)
             self._refresh_console_logs()
+
+        # Keep database log viewer in sync with selected service for quick pivots
+        if hasattr(self, 'db_log_viewer') and self.db_log_viewer:
+            svc_name = key
+            idx = self.db_log_viewer.service_combo.findText(svc_name)
+            if idx < 0:
+                # Also try lowercase/uppercase variants for robustness
+                idx = self.db_log_viewer.service_combo.findText(svc_name.lower())
+            if idx < 0:
+                idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
+            if idx >= 0:
+                self.db_log_viewer.service_combo.setCurrentIndex(idx)
 
     def _start_service(self, key: str):
         """Start a specific service."""
@@ -778,47 +1059,125 @@ class LauncherWindow(QWidget):
 
     def _format_console_log_html(self, log_lines):
         """Format console logs with syntax highlighting and clickable URLs."""
-        import re
-        html_lines = ['<pre style="margin: 0; padding: 0; line-height: 1.4;">']
+        if getattr(self, "console_style_enhanced", True):
+            return self._format_console_log_html_enhanced(log_lines)
+        return self._format_console_log_html_classic(log_lines)
 
-        for line in log_lines:
-            # Parse timestamp and tag
+    def _format_console_log_html_classic(self, log_lines):
+        html_lines = ['<div style="margin:0; padding:0; line-height:1.4; font-family: \'Consolas\', \'Courier New\', monospace; font-size:9pt;">']
+        for raw_line in log_lines:
+            line = str(raw_line)
             timestamp_match = re.match(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)', line)
             if timestamp_match:
                 time, tag, content = timestamp_match.groups()
-
-                # Color code the tag
                 tag_color = '#f44336' if tag == 'ERR' else '#4CAF50'
-
-                # Make URLs clickable
-                content = re.sub(
-                    r'(https?://[^\s]+)',
-                    r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
-                    content
+                content_html = self._decorate_console_message(content)
+                formatted = (
+                    f'<span style="color:#666;">[{time}]</span> '
+                    f'<span style="color:{tag_color}; font-weight:bold;">[{tag}]</span> '
+                    f'{content_html}'
                 )
-
-                # Highlight special keywords
-                content = re.sub(r'\b(VITE|ready|Local|Network|running|started|listening)\b',
-                                r'<span style="color: #81C784; font-weight: bold;">\1</span>', content)
-                content = re.sub(r'\b(ERROR|error|failed|Error|FAILED)\b',
-                                r'<span style="color: #EF5350; font-weight: bold;">\1</span>', content)
-                content = re.sub(r'\b(WARNING|warning|WARN|warn)\b',
-                                r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', content)
-
-                # Format line with muted timestamp
-                html_lines.append(
-                    f'<span style="color: #666;">[{time}]</span> '
-                    f'<span style="color: {tag_color}; font-weight: bold;">[{tag}]</span> '
-                    f'{content}'
-                )
+                html_lines.append(f'<div style="margin-bottom:2px;">{formatted}</div>')
             else:
-                # Line without timestamp (shouldn't happen, but handle it)
-                html_lines.append(line)
-
-        html_lines.append('</pre>')
+                html_lines.append(f'<div style="margin-bottom:2px;">{self._decorate_console_message(line)}</div>')
+        html_lines.append('</div>')
         return '\n'.join(html_lines)
 
-    def _refresh_console_logs(self):
+    def _format_console_log_html_enhanced(self, log_lines):
+        html_lines = ['<div style="margin: 0; padding: 0; line-height: 1.45; font-family: \'Consolas\', \'Courier New\', monospace; font-size: 9pt;">']
+
+        for raw_line in log_lines:
+            line = str(raw_line)
+            line_level = self._detect_console_level(line)
+            style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
+            border_color = style_def.get("accent", "#555")
+            bg_color = style_def.get("bg", "")
+            wrapper_style = (
+                f"border-left: 3px solid {border_color}; padding: 4px 8px;"
+                "margin: 0 0 4px; border-radius: 4px;"
+            )
+            if bg_color:
+                wrapper_style += f" background-color: {bg_color};"
+
+            timestamp_match = re.match(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)', line)
+            if timestamp_match:
+                time, tag, content = timestamp_match.groups()
+            else:
+                iso_match = re.match(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(.*)', line)
+                if iso_match:
+                    time = iso_match.group(2)
+                    tag = None
+                    remainder = iso_match.group(3).strip()
+                    content = remainder or line[iso_match.start(3):].strip() or line
+                else:
+                    prefix_match = re.match(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', line, re.IGNORECASE)
+                    if prefix_match:
+                        possible_level = prefix_match.group(1).upper()
+                        if not line_level:
+                            line_level = "WARNING" if possible_level == "WARN" else possible_level
+                        time = None
+                        tag = None
+                        content = prefix_match.group(2) or line
+                    else:
+                        time, tag, content = None, None, line
+
+            tag_color = '#f44336' if (tag or '').upper() == 'ERR' else '#4CAF50'
+            time_display = time or '--:--:--'
+            tag_display = tag or 'LOG'
+
+            content_html = self._decorate_console_message(content or "")
+
+            level_badge = ""
+            if line_level:
+                badge_color = style_def.get("accent", "#888")
+                level_badge = (
+                    f'<span style="color: {badge_color}; border: 1px solid {badge_color};'
+                    'border-radius: 4px; padding: 0 6px; font-size: 8pt; font-weight: bold;'
+                    'min-width: 58px; text-align: center;">'
+                    f'{line_level}'
+                    '</span>'
+                )
+            level_html = level_badge or '<span style="display:inline-block; width: 60px;"></span>'
+
+            time_html = (
+                f'<span style="color: #888; display: inline-block; width: 80px;">[{time_display}]</span>'
+            )
+            tag_html = (
+                f'<span style="color: {tag_color}; font-weight: bold; display: inline-block; width: 60px; text-align: center;">'
+                f'[{tag_display}]'
+                '</span>'
+            )
+            text_html = (
+                f'<span style="color: #dcdcdc; white-space: pre-wrap;">{content_html}</span>'
+            )
+
+            html_lines.append(
+                f'<div style="{wrapper_style}">{time_html}&nbsp;'
+                f'{tag_html}&nbsp;'
+                f'{level_html}&nbsp;'
+                f'{text_html}</div>'
+            )
+
+        html_lines.append('</div>')
+        return '\n'.join(html_lines)
+
+    def _decorate_console_message(self, content: str) -> str:
+        """Escape and highlight console content."""
+        text = escape(content)
+        text = re.sub(
+            r'(https?://[^\s]+)',
+            r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
+            text
+        )
+        text = re.sub(r'\b(VITE|ready|Local|Network|running|started|listening)\b',
+                      r'<span style="color: #81C784; font-weight: bold;">\1</span>', text)
+        text = re.sub(r'\b(ERROR|error|failed|Error|FAILED)\b',
+                      r'<span style="color: #EF5350; font-weight: bold;">\1</span>', text)
+        text = re.sub(r'\b(WARNING|warning|WARN|warn)\b',
+                      r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text)
+        return text
+
+    def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         if not self.selected_service_key:
             return
@@ -832,10 +1191,15 @@ class LauncherWindow(QWidget):
         self.log_service_label.setText(f"({service_title})")
 
         # Calculate hash of current log buffer to detect changes
-        current_hash = hash(tuple(sp.log_buffer)) if sp.log_buffer else hash((sp.running, sp.health_status.value if sp.health_status else None))
+        if sp.log_buffer:
+            buffer_signature = hash(tuple(sp.log_buffer))
+        else:
+            buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
+        filter_signature = self._console_filter_signature()
+        current_hash = (buffer_signature, filter_signature)
 
         # Only update UI if logs changed
-        if self.last_log_hash.get(self.selected_service_key) == current_hash:
+        if not force and self.last_log_hash.get(self.selected_service_key) == current_hash:
             return
 
         self.last_log_hash[self.selected_service_key] = current_hash
@@ -851,8 +1215,11 @@ class LauncherWindow(QWidget):
 
             # Get logs from buffer
             if sp.log_buffer:
+                # Apply in-memory filtering based on console filter controls
+                filtered_buffer = self._filter_console_buffer(sp.log_buffer)
+
                 # Format as HTML with syntax highlighting
-                log_html = self._format_console_log_html(sp.log_buffer)
+                log_html = self._format_console_log_html(filtered_buffer)
                 self.log_view.setHtml(log_html)
 
                 # Scroll behavior based on auto-scroll setting
@@ -863,16 +1230,10 @@ class LauncherWindow(QWidget):
                     self.log_view.setTextCursor(cursor)
                     scrollbar.setValue(scrollbar.maximum())
                 else:
-                    # Restore previous scroll position
-                    # Try to maintain relative position if content changed
+                    # Restore previous scroll position (cap at new max to prevent jumps)
                     new_max = scrollbar.maximum()
-                    if old_scroll_max > 0 and new_max > 0:
-                        # Maintain relative position
-                        relative_pos = old_scroll_value / old_scroll_max
-                        new_value = int(relative_pos * new_max)
-                        scrollbar.setValue(new_value)
-                    else:
-                        scrollbar.setValue(old_scroll_value)
+                    target_value = min(old_scroll_value, new_max)
+                    scrollbar.setValue(target_value)
             else:
                 if sp.running:
                     # Check health status to provide more context
@@ -884,6 +1245,77 @@ class LauncherWindow(QWidget):
                     self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is not running.<br><br>Click <strong>Start</strong> to launch this service.</div>')
         finally:
             self.log_view.blockSignals(False)
+
+    def _filter_console_buffer(self, buffer):
+        """Filter raw console lines by level and search text.
+
+        This operates purely on the in-memory buffer and does not affect
+        persisted logs. Level detection is heuristic: it looks for standard
+        level tokens (INFO, ERROR, etc.) in the line.
+        """
+        if not buffer:
+            return buffer
+
+        # Determine active filters
+        level_filter = None
+        if hasattr(self, 'console_level_combo'):
+            lvl = self.console_level_combo.currentText()
+            if lvl and lvl != "All":
+                level_filter = lvl.upper()
+
+        search_filter = None
+        if hasattr(self, 'console_search_input'):
+            text = self.console_search_input.text().strip()
+            if text:
+                search_filter = text.lower()
+
+        # Fast path: no filters
+        if not level_filter and not search_filter:
+            return buffer
+
+        filtered = []
+        for line in buffer:
+            line_str = str(line)
+
+            if level_filter:
+                detected_level = self._detect_console_level(line_str)
+                if not detected_level or detected_level != level_filter:
+                    continue
+
+            if search_filter and search_filter not in line_str.lower():
+                continue
+
+            filtered.append(line)
+
+        return filtered
+
+    def _console_filter_signature(self):
+        """Return current console filter settings as a comparable tuple."""
+        level = self.console_level_combo.currentText() if hasattr(self, 'console_level_combo') else "All"
+        search = self.console_search_input.text().strip().lower() if hasattr(self, 'console_search_input') else ""
+        return (level, search)
+
+    def _on_console_filter_changed(self):
+        """React immediately to console filter changes."""
+        self._refresh_console_logs(force=True)
+
+    def _on_console_style_changed(self, checked: bool):
+        """Swap between classic and enhanced console layouts."""
+        self.console_style_enhanced = bool(checked)
+        self._refresh_console_logs(force=True)
+
+    def _detect_console_level(self, line: str) -> str | None:
+        """Best-effort detection of log level tokens inside console lines."""
+        upper_line = line.upper()
+        for level, pattern in CONSOLE_LEVEL_PATTERNS.items():
+            if pattern.search(upper_line):
+                # Treat WARN/WARNING synonyms as WARNING internally
+                if level == "WARNING":
+                    return "WARNING"
+                if level == "ERROR":
+                    return "ERROR"
+                return level
+        return None
 
     def _clear_console_display(self):
         """Clear the console log display and persisted logs."""
@@ -912,6 +1344,79 @@ class LauncherWindow(QWidget):
                     self.db_log_viewer.auto_refresh_checkbox.setChecked(False)
                 except Exception:
                     pass
+
+    def _open_db_browser(self):
+        """Open database browser window"""
+        try:
+            import subprocess
+            import sys
+            script_path = os.path.join(ROOT, "data", "launcher", "db_browser_widget.py")
+            if os.path.exists(script_path):
+                subprocess.Popen([sys.executable, script_path])
+            else:
+                QMessageBox.warning(self, "Not Found", f"Database browser not found at:\n{script_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open database browser:\n{e}")
+
+    def _open_import_accounts_dialog(self):
+        """Open import accounts dialog"""
+        from PySide6.QtWidgets import QInputDialog
+        
+        username, ok = QInputDialog.getText(
+            self, 
+            "Import Accounts",
+            "Enter your username to import accounts to:",
+            QLineEdit.EchoMode.Normal,
+            "sakenfor"
+        )
+        
+        if not ok or not username:
+            return
+        
+        # Show confirmation
+        reply = QMessageBox.question(
+            self,
+            "Import Accounts",
+            f"Import all accounts from PixSim6 to user '{username}'?\n\n"
+            "This will:\n"
+            "• Import credentials (JWT, API keys, cookies)\n"
+            "• Import credits and usage stats\n"
+            "• Skip duplicates automatically\n\n"
+            "Both databases must be running.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Run import script
+        try:
+            import subprocess
+            import sys
+            script_path = os.path.join(ROOT, "scripts", "import_accounts_from_pixsim6.py")
+            
+            # Run with output capture
+            result = subprocess.run(
+                [sys.executable, script_path, "--username", username],
+                capture_output=True,
+                text=True,
+                cwd=ROOT
+            )
+            
+            if result.returncode == 0:
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    f"Successfully imported accounts!\n\n{result.stdout}"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Import Failed",
+                    f"Import failed:\n\n{result.stderr or result.stdout}"
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to run import:\n{e}")
 
     # Removed inline dialog implementations; they are now in dialogs/* modules
 

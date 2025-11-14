@@ -17,6 +17,7 @@ from .base import (
 )
 from .registry import registry, register_default_providers
 from .adapters import PixverseProvider
+from .provider_service import ProviderService
 
 __all__ = [
     # Base classes
@@ -36,4 +37,6 @@ __all__ = [
     "register_default_providers",
     # Providers
     "PixverseProvider",
+    # High-level services
+    "ProviderService",
 ]

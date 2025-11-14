@@ -12,6 +12,7 @@ console.log('[Popup] Loaded');
 // State
 let currentProvider = null;
 let currentUser = null;
+let automationOptions = { presets: [], loops: [] };
 
 // ===== INIT =====
 
@@ -35,6 +36,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load last import info
   await loadLastImport();
+
+  // If popup regains focus, refresh accounts to reflect recent imports
+  window.addEventListener('focus', () => {
+    if (currentUser) {
+      loadAccounts();
+    }
+  });
+
+  // Preload automation options for Accounts tab
+  await loadAutomationOptions();
 });
 
 // ===== EVENT LISTENERS =====
@@ -68,6 +79,24 @@ function setupEventListeners() {
 
   // Connection indicator click - retry connection
   document.getElementById('connectionIndicator').addEventListener('click', checkBackendConnection);
+
+  // Listen for updates from content/background to refresh accounts/credits
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message && message.action === 'accountsUpdated') {
+      if (currentUser) {
+        loadAccounts();
+        if (message.email) {
+          showLastImport(`Updated ${message.email}`);
+        }
+      }
+    }
+  });
+
+  // Automation toolbar refresh
+  const presetRefreshBtn = document.getElementById('presetRefreshBtn');
+  const loopRefreshBtn = document.getElementById('loopRefreshBtn');
+  if (presetRefreshBtn) presetRefreshBtn.addEventListener('click', loadAutomationOptions);
+  if (loopRefreshBtn) loopRefreshBtn.addEventListener('click', loadAutomationOptions);
 }
 
 // ===== TAB MANAGEMENT =====
@@ -85,6 +114,8 @@ function switchTab(tabId) {
 
   // Load accounts when switching to Accounts tab
   if (tabId === 'accounts' && currentUser) {
+    showAutomationToolbar(true);
+    loadAutomationOptions();
     loadAccounts();
   }
 }
@@ -97,6 +128,19 @@ async function checkLogin() {
   if (result.pixsim7Token && result.currentUser) {
     currentUser = result.currentUser;
     showLoggedIn();
+  } else if (result.pixsim7Token && !result.currentUser) {
+    // Token exists but user not cached (e.g., after extension restart)
+    try {
+      const me = await chrome.runtime.sendMessage({ action: 'getMe' });
+      if (me && me.success) {
+        currentUser = me.data;
+        showLoggedIn();
+      } else {
+        showLogin();
+      }
+    } catch (e) {
+      showLogin();
+    }
   } else {
     showLogin();
   }
@@ -185,6 +229,7 @@ async function detectProviderFromTab() {
 
       // Reload accounts if logged in
       if (currentUser) {
+        await loadAutomationOptions();
         await loadAccounts();
       }
     } else {
@@ -271,57 +316,269 @@ function createAccountCard(account) {
   card.className = 'account-card';
 
   const statusClass = `status-${account.status}`;
-  const creditsInfo = formatCredits(account.credits);
+  const creditsInfo = formatCredits(account.credits, account.total_credits);
+  const displayName = account.nickname || account.email;
+  const successRate = account.success_rate ? `${Math.round(account.success_rate)}%` : 'N/A';
+  const videosGenerated = account.total_videos_generated || 0;
 
   card.innerHTML = `
-    <div class="account-email">${account.email}</div>
-    <div class="account-meta">
-      <span class="account-status ${statusClass}">${account.status}</span>
-      <span>${account.provider_id}</span>
-    </div>
-    <div class="credits-info">${creditsInfo}</div>
-    ${account.has_cookies || account.has_jwt ? `
-      <button class="account-btn" data-account-id="${account.id}">
-        🌐 Login with this account
-      </button>
-    ` : `
-      <div style="text-align: center; font-size: 11px; color: #6b7280;">
-        No credentials available
+    <div class="account-header">
+      <div class="account-title">
+        <div class="account-name">${displayName}</div>
+        ${account.nickname ? `<div class="account-email-sub">${account.email}</div>` : ''}
       </div>
-    `}
+      <span class="account-status ${statusClass}">${account.status}</span>
+    </div>
+    
+    <div class="account-stats">
+      <div class="stat-item">
+        <span class="stat-label">Success</span>
+        <span class="stat-value">${successRate}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Videos</span>
+        <span class="stat-value">${videosGenerated}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Today</span>
+        <span class="stat-value">${account.videos_today || 0}</span>
+      </div>
+    </div>
+
+    <div class="credits-section">
+      <div class="credits-label">Credits</div>
+      <div class="credits-breakdown">${creditsInfo}</div>
+    </div>
+    
+    <div class="actions-row">
+      ${(account.has_cookies || account.has_jwt) ? `
+        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}">🌐 Login</button>
+      ` : `
+        <button class="account-btn btn-tiny" disabled title="No credentials">🌐 Login</button>
+      `}
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}">▶ Preset</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}">▶ Loop</button>
+    </div>
   `;
 
   // Add click handler for login button
-  const btn = card.querySelector('.account-btn');
-  if (btn) {
-    btn.addEventListener('click', () => handleAccountLogin(account));
-  }
+  const actionButtons = card.querySelectorAll('.account-btn');
+  actionButtons.forEach((btn) => {
+    const action = btn.getAttribute('data-action');
+    if (action === 'login') {
+      btn.addEventListener('click', () => handleAccountLogin(account));
+    } else if (action === 'run-preset') {
+      btn.addEventListener('click', () => executePresetForAccount(account));
+    } else if (action === 'run-loop') {
+      btn.addEventListener('click', () => executeLoopForAccount(account));
+    }
+  });
 
   return card;
 }
 
-function formatCredits(credits) {
+// ===== AUTOMATION (Presets/Loops) =====
+
+function showAutomationToolbar(show) {
+  const el = document.getElementById('automationToolbar');
+  if (!el) return;
+  el.classList.toggle('hidden', !show);
+}
+
+async function loadAutomationOptions() {
+  try {
+    const [presetsRes, loopsRes] = await Promise.all([
+      chrome.runtime.sendMessage({ action: 'getPresets' }),
+      chrome.runtime.sendMessage({ action: 'getLoops' }),
+    ]);
+
+    if (presetsRes.success) automationOptions.presets = filterPresetsByProvider(presetsRes.data || []);
+    if (loopsRes.success) automationOptions.loops = filterLoopsByProvider(loopsRes.data || [], automationOptions.presets);
+
+    populateAutomationSelects();
+  } catch (e) {
+    console.error('[Popup] Failed to load automation options', e);
+  }
+}
+
+function providerKey() {
+  // Map backend provider_id to preset.app_package/keywords
+  // Fallback to generic if unknown
+  const id = currentProvider?.provider_id || '';
+  if (!id) return null;
+  return id.toLowerCase();
+}
+
+function filterPresetsByProvider(presets) {
+  const key = providerKey();
+  if (!key) return presets; // no provider detected → show all
+  const checks = {
+    pixverse: (p) => (p.app_package || '').toLowerCase().includes('pixverse') || (p.tags||[]).includes('pixverse'),
+    runway:   (p) => (p.app_package || '').toLowerCase().includes('runway')   || (p.tags||[]).includes('runway'),
+    pika:     (p) => (p.app_package || '').toLowerCase().includes('pika')     || (p.tags||[]).includes('pika'),
+    sora:     (p) => (p.app_package || '').toLowerCase().includes('sora')     || (p.tags||[]).includes('sora'),
+  };
+  const check = checks[key];
+  if (!check) return presets;
+  const filtered = presets.filter(check);
+  return filtered.length ? filtered : presets; // fallback to all if none match
+}
+
+function filterLoopsByProvider(loops, filteredPresets) {
+  const key = providerKey();
+  if (!key) return loops;
+  const presetById = new Map(filteredPresets.map(p => [p.id, p]));
+  const matchesLoop = (loop) => {
+    if (loop.preset_id && presetById.has(loop.preset_id)) return true;
+    const lists = [];
+    if (Array.isArray(loop.shared_preset_ids)) lists.push(loop.shared_preset_ids);
+    if (Array.isArray(loop.default_preset_ids)) lists.push(loop.default_preset_ids);
+    if (loop.account_preset_config && typeof loop.account_preset_config === 'object') {
+      Object.values(loop.account_preset_config).forEach(arr => Array.isArray(arr) && lists.push(arr));
+    }
+    return lists.some(arr => arr.some(pid => presetById.has(pid)));
+  };
+  const filtered = loops.filter(matchesLoop);
+  return filtered.length ? filtered : loops;
+}
+
+function populateAutomationSelects() {
+  const presetSelect = document.getElementById('presetSelect');
+  const loopSelect = document.getElementById('loopSelect');
+  if (!presetSelect || !loopSelect) return;
+
+  // Preserve selection
+  const prevPreset = presetSelect.value;
+  const prevLoop = loopSelect.value;
+
+  presetSelect.innerHTML = '';
+  loopSelect.innerHTML = '';
+
+  automationOptions.presets.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = String(p.id);
+    opt.textContent = p.name || `Preset #${p.id}`;
+    presetSelect.appendChild(opt);
+  });
+
+  automationOptions.loops.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = String(l.id);
+    opt.textContent = l.name || `Loop #${l.id}`;
+    loopSelect.appendChild(opt);
+  });
+
+  if (prevPreset) presetSelect.value = prevPreset;
+  if (prevLoop) loopSelect.value = prevLoop;
+}
+
+async function executePresetForAccount(account) {
+  const presetSelect = document.getElementById('presetSelect');
+  const presetId = presetSelect && presetSelect.value ? parseInt(presetSelect.value, 10) : null;
+  if (!presetId) {
+    return showError('Select a preset in the toolbar');
+  }
+  try {
+    const res = await chrome.runtime.sendMessage({
+      action: 'executePreset',
+      presetId,
+      accountId: account.id,
+    });
+    if (res.success) {
+      showLastImport(`Queued preset '${res.data.preset_name}' for ${account.email}`);
+      showToast('success', `Preset queued for ${account.email}`);
+    } else {
+      showError(res.error || 'Failed to queue preset');
+    }
+  } catch (e) {
+    showError(`Error: ${e.message}`);
+  }
+}
+
+async function executeLoopForAccount(account) {
+  const loopSelect = document.getElementById('loopSelect');
+  const loopId = loopSelect && loopSelect.value ? parseInt(loopSelect.value, 10) : null;
+  if (!loopId) {
+    return showError('Select a loop in the toolbar');
+  }
+  try {
+    const res = await chrome.runtime.sendMessage({
+      action: 'executeLoopForAccount',
+      loopId,
+      accountId: account.id,
+    });
+    if (res.success) {
+      showLastImport(`Queued loop preset '${res.data.preset_name}' for ${account.email}`);
+      showToast('success', `Loop queued for ${account.email}`);
+    } else {
+      showError(res.error || 'Failed to queue loop execution');
+    }
+  } catch (e) {
+    showError(`Error: ${e.message}`);
+  }
+}
+
+// ===== Toasts =====
+
+function showToast(type, message, timeoutMs = 2500) {
+  try {
+    const container = document.getElementById('toastContainer');
+    if (!container) return alert(message);
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = message;
+    container.appendChild(el);
+    setTimeout(() => { el.remove(); }, timeoutMs);
+  } catch (e) {
+    // Fallback
+    alert(message);
+  }
+}
+
+function formatCredits(credits, totalCredits) {
   if (!credits || Object.keys(credits).length === 0) {
-    return 'No credits';
+    return '<span class="credits-none">No credits</span>';
   }
 
-  const parts = [];
-  for (const [type, amount] of Object.entries(credits)) {
-    parts.push(`${type}: ${amount}`);
+  // Order: daily, monthly, package, then others
+  const order = ['daily', 'monthly', 'package'];
+  const ordered = [];
+  
+  order.forEach(type => {
+    if (credits[type] !== undefined) {
+      ordered.push({ type, amount: credits[type] });
+    }
+  });
+  
+  // Add any remaining types not in order
+  Object.entries(credits).forEach(([type, amount]) => {
+    if (!order.includes(type)) {
+      ordered.push({ type, amount });
+    }
+  });
+
+  const parts = ordered.map(({ type, amount }) => 
+    `<span class="credit-item"><span class="credit-type">${type}</span>: <span class="credit-amount">${amount}</span></span>`
+  );
+
+  // Show total if available and different from single credit
+  if (totalCredits !== undefined && ordered.length > 1) {
+    parts.push(`<span class="credit-item credit-total"><span class="credit-type">total</span>: <span class="credit-amount">${totalCredits}</span></span>`);
   }
 
-  return parts.join(' | ');
+  return parts.join('');
 }
 
 async function handleAccountLogin(account) {
   console.log('[Popup] Login with account:', account.email);
-
-  // TODO: Implement cookie injection
-  // 1. Get cookies from backend for this account
-  // 2. Inject cookies via background script
-  // 3. Open provider site in new tab
-
-  showError('Account login not yet implemented. Coming soon!');
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'loginWithAccount', accountId: account.id });
+    if (!res || !res.success) {
+      showError(res?.error || 'Failed to open logged-in tab');
+    }
+  } catch (e) {
+    showError(e.message);
+  }
 }
 
 function showAccountsError(message) {
@@ -336,15 +593,21 @@ async function loadSettings() {
   const result = await chrome.storage.local.get({
     backendUrl: 'http://10.243.48.125:8001',
     autoImport: false,
+    defaultUploadProvider: 'pixverse',
   });
 
   document.getElementById('backendUrl').value = result.backendUrl;
   document.getElementById('autoImport').checked = result.autoImport;
+  const dup = document.getElementById('defaultUploadProvider');
+  if (dup) {
+    await populateProvidersInSettings(result.defaultUploadProvider || 'pixverse');
+  }
 }
 
 async function saveSettings() {
   const backendUrl = document.getElementById('backendUrl').value.trim();
   const autoImport = document.getElementById('autoImport').checked;
+  const defaultUploadProvider = document.getElementById('defaultUploadProvider')?.value || 'pixverse';
 
   if (!backendUrl) {
     showError('Backend URL cannot be empty');
@@ -354,6 +617,7 @@ async function saveSettings() {
   await chrome.storage.local.set({
     backendUrl,
     autoImport,
+    defaultUploadProvider,
   });
 
   const btn = document.getElementById('saveSettingsBtn');
@@ -374,12 +638,14 @@ async function resetSettings() {
   await chrome.storage.local.set({
     backendUrl: defaultUrl,
     autoImport: false,
+    defaultUploadProvider: 'pixverse',
   });
 
   // Update UI
   document.getElementById('backendUrl').value = defaultUrl;
   document.getElementById('autoImport').checked = false;
-
+  const dup = document.getElementById('defaultUploadProvider');
+  if (dup) await populateProvidersInSettings('pixverse');
   const btn = document.getElementById('resetSettingsBtn');
   const originalText = btn.textContent;
   btn.textContent = '✓ Reset!';
@@ -390,6 +656,30 @@ async function resetSettings() {
   setTimeout(() => {
     btn.textContent = originalText;
   }, 2000);
+}
+
+async function populateProvidersInSettings(selectedId) {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'getProviders' });
+    const dup = document.getElementById('defaultUploadProvider');
+    if (!dup) return;
+    dup.innerHTML = '';
+    const providers = (res && res.success && Array.isArray(res.data)) ? res.data : [{ provider_id: 'pixverse', name: 'Pixverse' }];
+    providers.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.provider_id;
+      opt.textContent = p.name || p.provider_id;
+      dup.appendChild(opt);
+    });
+    dup.value = selectedId || providers[0].provider_id;
+  } catch (e) {
+    // Fallback options if API fails
+    const dup = document.getElementById('defaultUploadProvider');
+    if (dup) {
+      dup.innerHTML = '<option value="pixverse">Pixverse</option>';
+      dup.value = 'pixverse';
+    }
+  }
 }
 
 // ===== COOKIE IMPORT =====
@@ -525,6 +815,5 @@ async function checkBackendConnection() {
 // ===== UTILITIES =====
 
 function showError(message) {
-  // Simple alert for now
-  alert(message);
+  showToast('error', message);
 }

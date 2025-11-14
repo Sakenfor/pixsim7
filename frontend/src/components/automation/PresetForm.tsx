@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AppActionPreset, ActionDefinition } from '../../types/automation';
+import { type AppActionPreset, type ActionDefinition } from '../../types/automation';
 import { Button, Panel } from '@pixsim7/ui';
 import { ActionBuilder } from './ActionBuilder';
 

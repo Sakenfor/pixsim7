@@ -7,38 +7,7 @@
 
 console.log('[PixSim7 Content] Loaded on:', window.location.href);
 
-// Provider-specific detection logic
-// Content script only detects login and extracts RAW data
-// Backend provider adapter parses provider-specific formats
-const PROVIDER_DETECTORS = {
-  pixverse: {
-    domains: ['pixverse.ai', 'app.pixverse.ai'],
-    detectAuth: () => {
-      // Check for _ai_token cookie (pixsim6 approach)
-      return !!getCookie('_ai_token');
-    }
-  },
-  sora: {
-    domains: ['sora.chatgpt.com', 'chatgpt.com'],
-    detectAuth: () => {
-      // Check for OpenAI session cookies
-      return !!(getCookie('__Secure-next-auth.session-token') || getCookie('oai-device-id'));
-    },
-    needsBearerToken: true  // Flag to indicate we need to capture bearer token
-  },
-  runway: {
-    domains: ['runwayml.com', 'app.runwayml.com'],
-    detectAuth: () => {
-      return !!(getCookie('auth_token') || getCookie('session'));
-    }
-  },
-  pika: {
-    domains: ['pika.art', 'app.pika.art'],
-    detectAuth: () => {
-      return !!getCookie('token');
-    }
-  }
-};
+// Provider detection is delegated to backend via background API
 
 /**
  * Get cookie by name
@@ -55,53 +24,49 @@ function getCookie(name) {
 /**
  * Get all cookies as object
  */
-function getAllCookies() {
+async function getAllCookiesSecure() {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'extractCookiesForUrl', url: window.location.href });
+    if (res && res.success && res.cookies) return res.cookies;
+  } catch (e) {
+    console.warn('[PixSim7 Content] Secure cookie extraction failed, falling back to document.cookie');
+  }
   const cookies = {};
-  document.cookie.split(';').forEach(cookie => {
-    const [name, value] = cookie.trim().split('=');
-    if (name && value) {
-      cookies[name] = value;
-    }
-  });
+  try {
+    document.cookie.split(';').forEach(cookie => {
+      const [name, value] = cookie.trim().split('=');
+      if (name && value) {
+        cookies[name] = value;
+      }
+    });
+  } catch {}
   return cookies;
 }
 
-/**
- * Detect which provider this site is
- */
-function detectProvider() {
-  const hostname = window.location.hostname;
-
-  for (const [providerId, config] of Object.entries(PROVIDER_DETECTORS)) {
-    for (const domain of config.domains) {
-      if (hostname === domain || hostname.endsWith('.' + domain)) {
-        return { providerId, config };
-      }
+async function detectProviderFromBackend() {
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'detectProvider', url: window.location.href });
+    if (res && res.success && res.data && res.data.detected && res.data.provider) {
+      return { providerId: res.data.provider.provider_id };
     }
+  } catch (e) {
+    console.warn('[PixSim7 Content] Provider detection failed:', e);
   }
-
   return null;
 }
 
 /**
  * Check if user is authenticated
  */
-function checkAuth() {
-  const provider = detectProvider();
+async function checkAuth() {
+  // We let backend confirm provider; we optimistically attempt import when detected
+  const provider = await detectProviderFromBackend();
   if (!provider) {
-    console.log('[PixSim7 Content] Not a provider site');
+    console.log('[PixSim7 Content] Provider not detected for this URL');
     return null;
   }
-
-  const { providerId, config } = provider;
-
-  if (!config.detectAuth()) {
-    console.log(`[PixSim7 Content] Not logged into ${providerId}`);
-    return null;
-  }
-
-  console.log(`[PixSim7 Content] Logged into ${providerId}!`);
-  return { providerId, config };
+  console.log(`[PixSim7 Content] Provider detected: ${provider.providerId}`);
+  return { providerId: provider.providerId };
 }
 
 // Global storage for captured bearer token (for Sora)
@@ -149,9 +114,9 @@ function getBearerToken() {
  * Extract all raw data from page (provider-agnostic)
  * Like pixsim6: only sends cookies, backend parses JWT
  */
-function extractRawData(providerId, config) {
+async function extractRawData(providerId, config) {
   const data = {
-    cookies: getAllCookies()
+    cookies: await getAllCookiesSecure()
     // Note: No localStorage - not reliable
     // Credits will be synced via provider API calls, not browser
   };
@@ -189,7 +154,7 @@ async function importCookies(providerId, config) {
     }
 
     // Extract RAW data (no parsing, backend will handle it)
-    const rawData = extractRawData(providerId, config);
+    const rawData = await extractRawData(providerId, config);
 
     console.log('[PixSim7 Content] Extracted raw data:', {
       cookies: Object.keys(rawData.cookies).length,
@@ -207,11 +172,24 @@ async function importCookies(providerId, config) {
     if (importResponse.success) {
       console.log(`[PixSim7 Content] ✓ Cookies imported successfully:`, importResponse.data);
 
-      // Show notification
-      showNotification(
-        importResponse.data.created ? 'Account Created' : 'Account Updated',
-        `${importResponse.data.email} - Cookies imported successfully`
-      );
+      // Only notify on first-time creation to avoid update spam
+      if (importResponse.data.created) {
+        showNotification(
+          'Account Created',
+          `${importResponse.data.email} - Cookies imported successfully`
+        );
+      }
+
+      // Let the extension UI know accounts/credits may have changed
+      try {
+        chrome.runtime.sendMessage({
+          action: 'accountsUpdated',
+          email: importResponse.data.email,
+          providerId
+        });
+      } catch (e) {
+        console.warn('[PixSim7 Content] Could not notify popup about update:', e);
+      }
     } else {
       console.error('[PixSim7 Content] Failed to import cookies:', importResponse.error);
     }
@@ -262,42 +240,48 @@ function showNotification(title, message) {
 
 // ===== INITIALIZATION =====
 
-// Inject bearer token capture for providers that need it
+// Inject bearer token capture (safe no-op if not used)
 (function() {
-  const provider = detectProvider();
-  if (provider && provider.config.needsBearerToken) {
-    console.log(`[PixSim7 Content] Injecting bearer token capture for ${provider.providerId}`);
+  try {
     injectBearerTokenCapture();
-  }
+  } catch {}
 })();
 
-// Monitor login state like pixsim6 (simpler approach)
+// Monitor login state and import cookies
 let wasLoggedIn = false;
+let lastImportAttempt = 0;
+const IMPORT_COOLDOWN_MS = 10000; // Don't retry import more than once per 10 seconds
 
-function checkAndImport() {
-  const auth = checkAuth();
+async function checkAndImport() {
+  const auth = await checkAuth();
   const isLoggedIn = !!auth;
 
-  // Only import on login transition or initial logged-in state
-  if (isLoggedIn && !wasLoggedIn) {
-    console.log('[PixSim7 Content] *** LOGIN DETECTED ***');
-    // Wait a bit for bearer token to be captured
-    setTimeout(() => {
-      importCookies(auth.providerId, auth.config);
-    }, 1000);
+  // Import on login transition OR if we're logged in and haven't imported recently
+  if (isLoggedIn) {
+    const now = Date.now();
+    const shouldImport = !wasLoggedIn || (now - lastImportAttempt > IMPORT_COOLDOWN_MS);
+
+    if (shouldImport) {
+      console.log('[PixSim7 Content] *** LOGIN DETECTED OR RETRY ***');
+      lastImportAttempt = now;
+      // Wait a bit for bearer token to be captured
+      setTimeout(() => {
+        importCookies(auth.providerId, {});
+      }, 1000);
+    }
   }
 
   wasLoggedIn = isLoggedIn;
 }
 
-// Initial check after page load
+// Initial check after page load - longer delay to ensure page is fully loaded
 setTimeout(() => {
   console.log('[PixSim7 Content] Initial check...');
   checkAndImport();
-}, 2000);
+}, 3000);
 
-// Check every 2 seconds for login state changes (like pixsim6)
-setInterval(checkAndImport, 2000);
+// Check every 5 seconds for login state changes
+setInterval(checkAndImport, 5000);
 
 // Listen for manual import requests from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

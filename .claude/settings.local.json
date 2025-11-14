@@ -64,7 +64,17 @@
       "Bash(git remote add:*)",
       "Bash(git push:*)",
       "Bash(git fetch:*)",
-      "Bash(git merge:*)"
+      "Bash(git merge:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git log:*)",
+      "Bash(pnpm install:*)",
+      "Bash(readlink:*)",
+      "Bash(pnpm list:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(conda env:*)",
+      "Bash(conda activate:*)",
+      "Bash(G:/code/conda_envs/pixsim7/python.exe:*)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe list:*)"
     ],
     "deny": [],
     "ask": []

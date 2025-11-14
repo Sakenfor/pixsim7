@@ -87,6 +87,16 @@ async def lifespan(app: FastAPI):
     await init_database()
     logger.info("Database initialized")
 
+    # Seed default presets
+    try:
+        from pixsim7_backend.seeds.default_presets import seed_default_presets
+        from pixsim7_backend.infrastructure.database.session import get_async_session
+        async with get_async_session() as db:
+            await seed_default_presets(db)
+        logger.info("Default presets seeded")
+    except Exception as e:
+        logger.warning(f"Failed to seed default presets: {e}")
+
     # Initialize Redis
     try:
         from pixsim7_backend.infrastructure.redis import get_redis, check_redis_connection

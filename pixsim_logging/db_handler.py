@@ -13,6 +13,7 @@ Environment:
 from __future__ import annotations
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 from queue import Queue
 from threading import Thread, Event
@@ -36,6 +37,9 @@ class DBLogHandler:
         self.db_url = db_url
         self.batch_size = batch_size
         self.flush_interval = flush_interval
+        # Simple counters for very lightweight, best-effort diagnostics.
+        self._dropped_logs = 0
+        self._worker_errors = 0
 
         # Engine + lightweight table definition (no ORM dependency)
         self.engine = create_engine(
@@ -75,9 +79,10 @@ class DBLogHandler:
         # Auto-create table if missing. Safe due to extend_existing and guarded by try/except.
         try:
             self.meta.create_all(self.engine, tables=[self.table])
-        except Exception:
-            # Silently ignore to avoid blocking application startup.
-            pass
+        except Exception as exc:
+            # Avoid blocking application startup, but emit a one-line hint so
+            # operators can discover that DB ingestion is not actually working.
+            print(f"[DBLogHandler] Failed to ensure log table exists: {exc}", flush=True)
 
         self.queue: Queue = Queue(maxsize=1000)
         self.shutdown_event = Event()
@@ -89,7 +94,14 @@ class DBLogHandler:
         try:
             self.queue.put_nowait(event_dict.copy())
         except Exception:
-            pass
+            # Queue is full or otherwise unusable; drop the log but increment
+            # a counter and occasionally emit a diagnostic to stderr.
+            self._dropped_logs += 1
+            if self._dropped_logs in {1, 10, 100} or self._dropped_logs % 1000 == 0:
+                print(
+                    f"[DBLogHandler] Dropped logs due to full queue; total dropped={self._dropped_logs}",
+                    flush=True,
+                )
         return event_dict
 
     def _worker(self):
@@ -108,9 +120,15 @@ class DBLogHandler:
                     self._flush(batch)
                     batch = []
                     last_flush = time.time()
-            except Exception:
-                # Never raise from worker
-                pass
+            except Exception as exc:
+                # Never raise from worker, but record that an error occurred
+                # and emit a sparse diagnostic for observability.
+                self._worker_errors += 1
+                if self._worker_errors in {1, 10, 100} or self._worker_errors % 1000 == 0:
+                    print(
+                        f"[DBLogHandler] Worker loop error (count={self._worker_errors}): {exc}",
+                        flush=True,
+                    )
 
         if batch:
             self._flush(batch)
@@ -125,9 +143,10 @@ class DBLogHandler:
         try:
             with self.engine.begin() as conn:
                 conn.execute(self.table.insert(), rows)
-        except Exception:
-            # Drop on error to avoid blocking application
-            pass
+        except Exception as exc:
+            # Drop on error to avoid blocking application, but emit a terse
+            # message so that ingestion failures do not go unnoticed.
+            print(f"[DBLogHandler] Failed to flush {len(rows)} log rows: {exc}", flush=True)
 
     def _map_event(self, ev: dict[str, Any]) -> dict[str, Any]:
         """Map structlog event to DB row, collecting unknown keys into 'extra'."""
@@ -155,18 +174,32 @@ class DBLogHandler:
                 extra.pop("message", None)
         if extra:
             row["extra"] = extra
-        # Default env
+        # Default env/service/level values so DB constraints hold even if upstream binding is missing.
         row.setdefault("env", os.getenv("PIXSIM_ENV", "dev"))
-        # Ensure level standardized
-        if "level" in row and isinstance(row["level"], str):
-            row["level"] = row["level"].upper()
-        # Parse ISO timestamp string to datetime if needed
-        try:
-            from datetime import datetime
-            if isinstance(row.get("timestamp"), str):
-                row["timestamp"] = datetime.fromisoformat(row["timestamp"].replace('Z', '+00:00'))
-        except Exception:
-            pass
+        default_service = os.getenv("PIXSIM_SERVICE_NAME") or os.getenv("PIXSIM_SERVICE") or os.getenv("SERVICE_NAME")
+        row.setdefault("service", default_service or "unknown")
+        level_value = row.get("level")
+        if isinstance(level_value, str):
+            row["level"] = level_value.upper()
+        else:
+            row["level"] = "INFO"
+
+        # Parse ISO timestamp string to datetime if needed and ensure UTC naive datetimes for DB.
+        timestamp_value = row.get("timestamp")
+        if isinstance(timestamp_value, str):
+            try:
+                parsed = datetime.fromisoformat(timestamp_value.replace("Z", "+00:00"))
+            except Exception:
+                parsed = None
+            if parsed is not None:
+                if parsed.tzinfo is not None:
+                    parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+                row["timestamp"] = parsed
+            else:
+                row.pop("timestamp", None)
+        if not row.get("timestamp"):
+            row["timestamp"] = datetime.utcnow()
+        row.setdefault("created_at", row["timestamp"])
         return row
 
     def shutdown(self):

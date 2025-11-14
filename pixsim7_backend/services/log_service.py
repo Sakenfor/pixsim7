@@ -110,6 +110,7 @@ class LogService:
         job_id: Optional[int] = None,
         request_id: Optional[str] = None,
         stage: Optional[str] = None,
+        stage_prefix: Optional[str] = None,
         provider_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -125,7 +126,8 @@ class LogService:
             level: Filter by log level
             job_id: Filter by job ID
             request_id: Filter by request ID
-            stage: Filter by pipeline stage
+            stage: Filter by pipeline stage (exact match)
+            stage_prefix: Filter by pipeline stage prefix (e.g. 'provider')
             provider_id: Filter by provider
             start_time: Logs after this time
             end_time: Logs before this time
@@ -149,6 +151,9 @@ class LogService:
             filters.append(LogEntry.request_id == request_id)
         if stage:
             filters.append(LogEntry.stage == stage)
+        elif stage_prefix:
+            # Prefix filter: matches stages like 'provider:submit', 'provider:status', etc.
+            filters.append(col(LogEntry.stage).like(f"{stage_prefix}:%"))
         if provider_id:
             filters.append(LogEntry.provider_id == provider_id)
         if start_time:

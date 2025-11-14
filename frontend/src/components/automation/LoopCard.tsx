@@ -1,4 +1,4 @@
-import { ExecutionLoop, ExecutionLoopStatus } from '../../types/automation';
+import { type ExecutionLoop, ExecutionLoopStatus } from '../../types/automation';
 import { Button, Panel, Badge } from '@pixsim7/ui';
 
 interface LoopCardProps {

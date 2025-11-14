@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ExecutionLoop,
+  type ExecutionLoop,
   ExecutionLoopStatus,
   PresetExecutionMode,
   AccountSelectionMode,

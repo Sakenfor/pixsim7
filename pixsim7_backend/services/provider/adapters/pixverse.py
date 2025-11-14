@@ -746,22 +746,21 @@ class PixverseProvider(Provider):
                 logger.warning(f"PixverseAPI get_user_info failed: {e}")
                 user_info_data = {}
 
-        # Extract user details
-        resp = user_info_data.get("Resp", {})
-        email = resp.get("Mail")  # Real email like "user@hotmail.com"
-        username = resp.get("Username")  # Username like "user1024"
-        nickname = resp.get("Nickname") or username
-        acc_id = resp.get("AccId") or resp.get("AccountId")
+        # Extract user details from the flat response (no "Resp" wrapper)
+        email = user_info_data.get("Mail")  # Real email like "holyfruit19@hotmail.com"
+        username = user_info_data.get("Username")  # Username like "holyfruit19"
+        nickname = user_info_data.get("Nickname") or username
+        acc_id = user_info_data.get("AccId") or user_info_data.get("AccountId")
 
         if not email:
-            raise Exception("Email not found in getUserInfo response")
+            raise Exception("Email not found in getUserInfo response (Mail field missing)")
 
-        # Extract credits from getUserInfo
+        # Extract credits from getUserInfo response
         credits = {}
-        fast_quota = resp.get("FastQuota", 0)
-        used_fast = resp.get("UsedFastQuota", 0)
-        bonus_quota = resp.get("FastBonusQuota", 0)
-        used_bonus = resp.get("UsedFastBonusQuota", 0)
+        fast_quota = user_info_data.get("FastQuota", 0)
+        used_fast = user_info_data.get("UsedFastQuota", 0)
+        bonus_quota = user_info_data.get("FastBonusQuota", 0)
+        used_bonus = user_info_data.get("UsedFastBonusQuota", 0)
 
         # Calculate available credits
         available_fast = max(0, fast_quota - used_fast)
@@ -780,6 +779,61 @@ class PixverseProvider(Provider):
             'raw_data': user_info_data,  # Save entire response
             'credits': credits if credits else None
         }
+
+    def get_credits(self, account: ProviderAccount) -> dict:
+        """Fetch current credits using SDK's get_credits() function.
+
+        Uses pixverse-py library's get_credits endpoint.
+
+        Args:
+            account: Provider account with credentials
+
+        Returns:
+            {'webapi': int, 'daily': int, 'monthly': int, 'package': int, 'total': int}
+
+        Raises:
+            Exception: If SDK credit function fails
+        """
+        try:
+            from pixverse import Account  # type: ignore
+        except ImportError:  # pragma: no cover
+            Account = None  # type: ignore
+        try:
+            from pixverse.api.client import PixverseAPI  # type: ignore
+        except ImportError:  # pragma: no cover
+            PixverseAPI = None  # type: ignore
+
+        if not Account or not PixverseAPI:
+            raise Exception("pixverse-py not installed; cannot fetch credits")
+
+        # Create temporary account for API call
+        temp_account = Account(
+            email=account.email,
+            session={"jwt_token": account.jwt_token, "cookies": account.cookies or {}}
+        )
+
+        api = PixverseAPI()
+        # Call SDK's get_credits() function
+        try:
+            credit_data = api.get_credits(temp_account)
+        except Exception as e:
+            logger.warning(f"PixverseAPI get_credits failed: {e}")
+            raise
+
+        # SDK returns: {'total_credits', 'credit_daily', 'credit_monthly', 'credit_package'}
+        # Map to our credit types
+        credits = {}
+        
+        if credit_data.get("credit_daily", 0) > 0:
+            credits['daily'] = credit_data["credit_daily"]
+        if credit_data.get("credit_monthly", 0) > 0:
+            credits['monthly'] = credit_data["credit_monthly"]
+        if credit_data.get("credit_package", 0) > 0:
+            credits['package'] = credit_data["credit_package"]
+        if credit_data.get("total_credits", 0) > 0:
+            credits['total'] = credit_data["total_credits"]
+
+        return credits
 
     async def extract_account_data(self, raw_data: dict) -> dict:
         """
@@ -831,9 +885,9 @@ class PixverseProvider(Provider):
             )
 
         except Exception as e:
-            logger.warning(f"[Pixverse] getUserInfo failed, falling back to JWT parsing: {e}")
+            logger.warning(f"[Pixverse] getUserInfo failed, falling back to JWT parsing (no placeholders): {e}")
 
-            # Fallback: Parse JWT to extract email
+            # Fallback: Parse JWT to extract username/account_id and generate pseudo-email
             try:
                 parts = ai_token.split('.')
                 if len(parts) == 3:
@@ -851,16 +905,29 @@ class PixverseProvider(Provider):
                     # Extract username and account ID
                     jwt_username = payload.get('Username') or payload.get('username')
                     jwt_account_id = payload.get('AccountId') or payload.get('account_id')
+                    jwt_email = payload.get('Mail') or payload.get('email') or payload.get('Email')
 
-                    # JWT doesn't contain email - this should not be used
-                    # getUserInfo API should always work
-                    logger.error("[Pixverse] JWT doesn't contain email, getUserInfo should be used")
+                    # Prefer email claim from JWT if present
+                    if jwt_email:
+                        email = jwt_email
+                        logger.info(f"[Pixverse] Found email in JWT: {email}")
+                    # Do NOT fabricate placeholder emails; keep username/account_id only
+                    else:
+                        logger.info("[Pixverse] JWT has no email; will not fabricate placeholder email")
+
+                    # Also populate username/account_id if we didn't have them from API
+                    if not username:
+                        username = jwt_username
+                    if not account_id:
+                        account_id = str(jwt_account_id) if jwt_account_id else None
 
             except Exception as jwt_error:
                 logger.error(f"[Pixverse] JWT parsing also failed: {jwt_error}", exc_info=True)
 
         if not email:
-            raise ValueError("Pixverse: Could not extract email from getUserInfo or JWT")
+            raise ValueError(
+                "Pixverse: Could not extract email. Ensure pixverse-py is installed on backend for getUserInfo, or JWT includes 'Mail'/'email'."
+            )
 
         return {
             'email': email,

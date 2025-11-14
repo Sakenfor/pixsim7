@@ -9,10 +9,14 @@ from sqlalchemy import select
 from typing import List, Dict, Any
 
 from pixsim7_backend.infrastructure.database.session import get_db
-from pixsim7_backend.domain.automation import AndroidDevice, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution
+from pixsim7_backend.domain.automation import AndroidDevice, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
+from pixsim7_backend.domain import ProviderAccount
 from pixsim7_backend.services.automation import ExecutionLoopService
 from pixsim7_backend.services.automation.device_sync_service import DeviceSyncService
 from pixsim7_backend.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category
+from pixsim7_backend.infrastructure.queue import queue_task
+from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
@@ -162,4 +166,142 @@ async def get_action_schemas_categorized() -> Dict[str, Any]:
             category: [schema.model_dump() for schema in schemas]
             for category, schemas in by_category.items()
         }
+    }
+
+
+# ----- Execute preset/loop for specific account -----
+
+class ExecutePresetRequest(BaseModel):
+    """Request to execute a single preset for a specific account"""
+    preset_id: int
+    account_id: int
+    priority: int = 1
+
+
+@router.post("/execute-preset")
+async def execute_preset_for_account(
+    request: ExecutePresetRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Execute a single preset for a specific account.
+
+    Creates an automation execution and queues it for processing.
+    """
+    # Validate preset exists
+    preset = await db.get(AppActionPreset, request.preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    # Validate account exists
+    account = await db.get(ProviderAccount, request.account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Create execution
+    total_actions = len(preset.actions) if preset.actions else 0
+    execution = AutomationExecution(
+        user_id=account.user_id,
+        preset_id=request.preset_id,
+        account_id=request.account_id,
+        status=AutomationStatus.PENDING,
+        priority=request.priority,
+        total_actions=total_actions,
+        created_at=datetime.utcnow(),
+        source="manual",
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Queue task
+    task_id = await queue_task("process_automation", execution.id)
+    execution.task_id = task_id
+    await db.commit()
+
+    return {
+        "status": "queued",
+        "execution_id": execution.id,
+        "task_id": task_id,
+        "account_id": request.account_id,
+        "preset_id": request.preset_id,
+        "preset_name": preset.name
+    }
+
+
+class ExecuteLoopForAccountRequest(BaseModel):
+    """Request to execute a loop's next preset for a specific account"""
+    loop_id: int
+    account_id: int
+
+
+@router.post("/loops/execute-for-account")
+async def execute_loop_for_account(
+    request: ExecuteLoopForAccountRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Execute the next preset from a loop for a specific account.
+
+    Uses the loop's preset execution mode to determine which preset to run:
+    - SINGLE: Uses loop.preset_id
+    - SHARED_LIST: Uses the next preset in the shared list
+    - PER_ACCOUNT: Uses the next preset in the account's specific list
+    """
+    # Validate loop exists
+    loop = await db.get(ExecutionLoop, request.loop_id)
+    if not loop:
+        raise HTTPException(status_code=404, detail="Loop not found")
+
+    # Validate account exists
+    account = await db.get(ProviderAccount, request.account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Get next preset for this account from the loop
+    preset_id = loop.get_next_preset_for_account(request.account_id)
+    if not preset_id:
+        raise HTTPException(status_code=400, detail="No preset configured for this account in the loop")
+
+    preset = await db.get(AppActionPreset, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Preset {preset_id} not found")
+
+    # Create execution
+    total_actions = len(preset.actions) if preset.actions else 0
+    execution = AutomationExecution(
+        user_id=account.user_id,
+        preset_id=preset_id,
+        account_id=request.account_id,
+        status=AutomationStatus.PENDING,
+        priority=1,
+        total_actions=total_actions,
+        created_at=datetime.utcnow(),
+        source="manual_loop",
+        loop_id=loop.id,
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Update loop stats and advance preset index
+    loop.total_executions += 1
+    loop.last_execution_at = datetime.utcnow()
+    loop.last_account_id = request.account_id
+    loop.advance_preset_index(request.account_id)
+    await db.commit()
+
+    # Queue task
+    task_id = await queue_task("process_automation", execution.id)
+    execution.task_id = task_id
+    await db.commit()
+
+    return {
+        "status": "queued",
+        "execution_id": execution.id,
+        "task_id": task_id,
+        "account_id": request.account_id,
+        "preset_id": preset_id,
+        "preset_name": preset.name,
+        "loop_mode": loop.preset_execution_mode
     }

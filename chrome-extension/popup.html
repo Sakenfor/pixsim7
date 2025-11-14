@@ -189,68 +189,153 @@
     }
 
     /* Accounts */
-    .accounts-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
+    .accounts-list { display: flex; flex-direction: column; gap: 8px; }
 
     .account-card {
       background: #f9fafb;
       border: 1px solid #e5e7eb;
-      border-radius: 8px;
+      border-radius: 6px;
       padding: 12px;
+      margin-bottom: 8px;
       transition: all 0.2s;
     }
-
     .account-card:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
       border-color: #667eea;
-      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
     }
-
-    .account-email {
-      font-size: 13px;
-      font-weight: 600;
-      color: #111827;
-      margin-bottom: 8px;
-    }
-
-    .account-meta {
+    
+    /* Account header with name and status */
+    .account-header {
       display: flex;
       justify-content: space-between;
-      font-size: 11px;
-      color: #6b7280;
-      margin-bottom: 8px;
+      align-items: flex-start;
+      margin-bottom: 10px;
     }
-
-    .account-status {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
+    .account-title {
+      flex: 1;
+      min-width: 0;
     }
-
-    .status-active { background: #d1fae5; color: #065f46; }
-    .status-exhausted { background: #fee2e2; color: #991b1b; }
-    .status-disabled { background: #e5e7eb; color: #6b7280; }
-
-    .credits-info {
-      font-size: 11px;
-      color: #667eea;
+    .account-name {
+      font-size: 13px;
       font-weight: 600;
-      margin-bottom: 8px;
+      color: #1f2937;
+      margin-bottom: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-
-    .account-btn {
-      width: 100%;
+    .account-email-sub {
+      font-size: 10px;
+      color: #6b7280;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    /* Stats row */
+    .account-stats {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
       padding: 8px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      font-size: 12px;
-      border-radius: 6px;
+      background: #ffffff;
+      border-radius: 4px;
     }
+    .stat-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .stat-label {
+      font-size: 9px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .stat-value {
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+    }
+    
+    /* Credits section */
+    .credits-section {
+      margin-bottom: 10px;
+      padding: 8px;
+      background: #f3f4f6;
+      border-radius: 4px;
+    }
+    .credits-label {
+      font-size: 9px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 6px;
+    }
+    .credits-breakdown {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .credit-item {
+      font-size: 11px;
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+    }
+    .credit-type {
+      color: #6b7280;
+      font-weight: 500;
+    }
+    .credit-amount {
+      color: #667eea;
+      font-weight: 700;
+    }
+    .credit-total {
+      border-left: 1px solid #d1d5db;
+      padding-left: 8px;
+    }
+    .credits-none {
+      font-size: 11px;
+      color: #9ca3af;
+      font-style: italic;
+    }
+    
+    /* Status badges */
+    .account-status {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+    .status-active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    .status-exhausted {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    .status-disabled {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+    .status-error {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    
+    /* Actions row and buttons */
+    .actions-row { display:flex; gap:6px; }
+
+    .account-btn { flex:1; padding:8px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; font-size:12px; border-radius:6px; }
+    .account-btn.btn-ghost { background:#eef2ff; color:#3730a3; }
+    .btn-tiny { padding:6px; font-size:11px; }
 
     .account-btn:hover:not(:disabled) {
       transform: translateY(-1px);
@@ -338,6 +423,12 @@
     .btn-row button {
       flex: 1;
     }
+
+    /* Toasts */
+    #toastContainer { position: fixed; bottom: 12px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+    .toast { pointer-events: auto; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #111827; background:#f3f4f6; border:1px solid #e5e7eb; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .toast.success { background:#ecfdf5; border-color:#a7f3d0; color:#065f46; }
+    .toast.error { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
   </style>
 </head>
 <body>
@@ -428,6 +519,20 @@
           Please login on the Info tab first
         </div>
 
+        <!-- Compact Automation Toolbar -->
+        <div id="automationToolbar" class="hidden" style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+          <div style="display:flex; gap:6px; align-items:center;">
+            <label for="presetSelect" style="margin:0; font-size:11px;">Preset</label>
+            <select id="presetSelect" style="font-size:11px; padding:4px 6px;"></select>
+            <button id="presetRefreshBtn" class="btn-secondary" style="padding:6px 8px; font-size:11px; width:auto;">↻</button>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <label for="loopSelect" style="margin:0; font-size:11px;">Loop</label>
+            <select id="loopSelect" style="font-size:11px; padding:4px 6px;"></select>
+            <button id="loopRefreshBtn" class="btn-secondary" style="padding:6px 8px; font-size:11px; width:auto;">↻</button>
+          </div>
+        </div>
+
         <div id="accountsLoading" class="loading hidden">Loading accounts...</div>
         <div id="accountsError" class="error-box hidden"></div>
         <div id="accountsList" class="accounts-list"></div>
@@ -450,6 +555,17 @@
           <button id="resetSettingsBtn" class="btn-secondary">🔄 Reset to Default</button>
         </div>
 
+        <label style="margin-top: 12px;">Default Upload Provider</label>
+        <select id="defaultUploadProvider" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:6px; font-size:12px;">
+          <option value="pixverse">Pixverse (OpenAPI)</option>
+          <option value="runway">Runway</option>
+          <option value="pika">Pika</option>
+          <option value="sora">Sora</option>
+        </select>
+        <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+          Used by image badges and context menu uploads.
+        </div>
+
         <label style="margin-top: 16px;">
           <input type="checkbox" id="autoImport">
           Auto-import cookies when visiting provider sites
@@ -466,6 +582,7 @@
     </div>
   </div>
 
+  <div id="toastContainer"></div>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -247,15 +247,28 @@ curl "http://localhost:8001/api/v1/logs/query?stage=pipeline:artifact&limit=100"
 ### Environment Variables
 
 ```bash
-# Enable automatic log forwarding
+# Core logging behavior (structlog via pixsim_logging)
+PIXSIM_LOG_FORMAT=human|json                 # human (pretty) or json (default)
+PIXSIM_LOG_LEVEL=DEBUG|INFO|WARNING|ERROR|CRITICAL
+
+# Enable automatic HTTP log forwarding from any Python service using pixsim_logging
 PIXSIM_LOG_INGESTION_URL=http://localhost:8001/api/v1/logs/ingest/batch
+PIXSIM_LOG_ENABLE_HTTP=true|false            # optional, default true when URL set
+PIXSIM_LOG_INGESTION_BATCH_SIZE=10          # logs per HTTP batch
+PIXSIM_LOG_INGESTION_FLUSH_INTERVAL=5.0     # seconds between flushes
 
-# Batching configuration
-PIXSIM_LOG_INGESTION_BATCH_SIZE=10          # Logs per batch
-PIXSIM_LOG_INGESTION_FLUSH_INTERVAL=5.0     # Seconds between flushes
-
-# Database connection (standard SQLAlchemy)
+# Direct DB ingestion (DBLogHandler in pixsim_logging)
+PIXSIM_LOG_DB_URL=postgresql://user:pass@localhost/pixsim7
+# or fallback environment names used elsewhere in the backend
+LOG_DATABASE_URL=postgresql://user:pass@localhost/pixsim7
 DATABASE_URL=postgresql://user:pass@localhost/pixsim7
+
+# HTTP request log filtering and sampling
+PIXSIM_LOG_EXCLUDE_PATHS=/health,/metrics    # comma-separated paths to drop (default: /health only)
+PIXSIM_LOG_SAMPLE_PATHS=/status:50           # path:rate pairs (1 in N logs)
+
+# Provider status sampling (non-HTTP events)
+PIXSIM_LOG_SAMPLING_PROVIDER_STATUS=1        # 1 in N provider:status events (1 = no sampling)
 ```
 
 ### Performance Tuning

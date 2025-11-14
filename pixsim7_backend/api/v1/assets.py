@@ -236,6 +236,145 @@ async def upload_asset_to_provider(
             pass
 
 
+# ===== UPLOAD FROM URL (backend fetches the image) =====
+
+class UploadFromUrlRequest(BaseModel):
+    url: str = Field(description="Publicly accessible URL to image/video")
+    provider_id: str = Field(description="Target provider ID, e.g., pixverse")
+
+
+@router.post("/assets/upload-from-url", response_model=UploadAssetResponse)
+async def upload_asset_from_url(
+    request: UploadFromUrlRequest,
+    user: CurrentUser,
+    db: DatabaseSession,
+    account_service: AccountSvc,
+):
+    """
+    Backend-side fetch of a remote URL and upload to the chosen provider.
+
+    - Fetches bytes via HTTP(S)
+    - Infers media type from Content-Type or URL suffix
+    - Preps temp file and delegates to UploadService
+    """
+    import httpx
+    import mimetypes
+
+    url = request.url
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(status_code=400, detail="URL must be http(s)")
+
+    # Fetch remote content
+    try:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={
+            "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)"
+        }) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            content = resp.content
+            content_type = resp.headers.get("content-type", "")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}")
+
+    # Infer media type
+    media_type: MediaType | None = None
+    if content_type.startswith("image/"):
+        media_type = MediaType.IMAGE
+    elif content_type.startswith("video/"):
+        media_type = MediaType.VIDEO
+    else:
+        # Fallback by extension
+        guess, _ = mimetypes.guess_type(url)
+        if guess and guess.startswith("image/"):
+            media_type = MediaType.IMAGE
+        elif guess and guess.startswith("video/"):
+            media_type = MediaType.VIDEO
+
+    if media_type is None:
+        raise HTTPException(status_code=400, detail=f"Unsupported content type: {content_type or 'unknown'}")
+
+    # Save to temp
+    try:
+        suffix = mimetypes.guess_extension(content_type) or mimetypes.guess_extension(mimetypes.guess_type(url)[0] or "") or ".bin"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save temp file: {e}")
+
+    # Validate video duration if it's a video (5-30 seconds)
+    if media_type == MediaType.VIDEO:
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tmp_path],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                duration = float(result.stdout.strip())
+                if duration < 5 or duration > 30:
+                    os.unlink(tmp_path)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Video duration must be between 5-30 seconds (got {duration:.1f}s)"
+                    )
+        except subprocess.TimeoutExpired:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=500, detail="Video validation timeout")
+        except FileNotFoundError:
+            # ffprobe not available, skip validation
+            pass
+        except ValueError:
+            # Invalid duration output, skip validation
+            pass
+
+    # Delegate to UploadService
+    from pixsim7_backend.services.upload.upload_service import UploadService
+    upload_service = UploadService(db, account_service)
+    try:
+        result = await upload_service.upload(provider_id=request.provider_id, media_type=media_type, tmp_path=tmp_path)
+        # Persist Asset best-effort
+        provider_asset_id = result.provider_asset_id or (result.external_url or "")
+        remote_url = result.external_url or (f"{request.provider_id}:{provider_asset_id}")
+        try:
+            await add_asset(
+                db,
+                user_id=user.id,
+                media_type=media_type,
+                provider_id=request.provider_id,
+                provider_asset_id=str(provider_asset_id),
+                remote_url=remote_url,
+                thumbnail_url=result.external_url,
+                width=result.width,
+                height=result.height,
+                duration_sec=None,
+                mime_type=result.mime_type or content_type,
+                file_size_bytes=result.file_size_bytes,
+                tags=["user_upload", "from_url"],
+            )
+        except Exception:
+            pass
+
+        return UploadAssetResponse(
+            provider_id=result.provider_id,
+            media_type=result.media_type,
+            external_url=result.external_url,
+            provider_asset_id=result.provider_asset_id,
+            note=result.note,
+        )
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Provider upload failed: {e}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+
 # ===== FRAME EXTRACTION =====
 
 class ExtractFrameRequest(BaseModel):
