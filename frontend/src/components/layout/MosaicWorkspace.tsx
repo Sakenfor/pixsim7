@@ -166,7 +166,10 @@ export function MosaicWorkspace() {
           </button>
         ]}
       >
-        <div className="h-full overflow-auto bg-white dark:bg-neutral-900">
+        <div
+          className="h-full overflow-auto bg-white dark:bg-neutral-900"
+          data-panel-id={id}
+        >
           <Component />
         </div>
       </MosaicWindow>
