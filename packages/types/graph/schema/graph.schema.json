@@ -2,19 +2,28 @@
   "$id": "https://pixsim7.dev/schema/graph.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PixSim Graph",
-  "description": "Canonical schema for scene + simulation graphs (foundation draft).",
+  "description": "Canonical schema for scene + simulation graphs. Single unified system for all node-based execution.",
   "type": "object",
   "required": ["schemaVersion", "name", "entry", "nodes"],
   "properties": {
     "schemaVersion": {"type": "string", "pattern": "^1\\.0\\.0$"},
-    "name": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1, "description": "Unique identifier for this graph"},
     "entry": {"type": "string", "description": "Node id to start execution"},
     "nodes": {
       "type": "object",
       "minProperties": 1,
       "additionalProperties": {"$ref": "#/definitions/GraphNode"}
     },
-    "metadata": {"type": "object", "additionalProperties": true}
+    "edges": {
+      "type": "object",
+      "description": "Optional explicit edge definitions with metadata",
+      "additionalProperties": {"$ref": "#/definitions/EdgeDefinition"}
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Graph-level metadata (author, version, description, etc.)",
+      "additionalProperties": true
+    }
   },
   "additionalProperties": false,
   "definitions": {
@@ -25,16 +34,62 @@
         "type": {"type": "string", "enum": [
           "Decision", "Condition", "Action", "Choice", "Video", "Random", "Timer", "SceneCall", "Subgraph"
         ]},
-        "edges": {"type": "array", "items": {"type": "string"}},
-        "conditions": {"type": "array", "items": {"$ref": "#/definitions/Condition"}},
+        "id": {"type": "string", "description": "Optional explicit node id (defaults to key in nodes object)"},
+        "label": {"type": "string", "description": "Human-readable label for editors"},
+        "description": {"type": "string", "description": "Documentation/tooltip text"},
+        "edges": {"type": "array", "items": {"type": "string"}, "description": "Target node ids"},
+        "conditions": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Condition"},
+          "description": "Conditions that must pass for node to execute"
+        },
         "effect": {"$ref": "#/definitions/EffectDescriptor"},
+        "effects": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/EffectDescriptor"},
+          "description": "Multiple effects (alternative to single effect)"
+        },
+        "decisionStrategy": {
+          "type": "string",
+          "enum": ["first", "maxWeight", "maxPriority", "random"],
+          "description": "How Decision node selects among edges"
+        },
+        "weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Edge weights for weighted selection (edgeId -> weight)"
+        },
         "selection": {"$ref": "#/definitions/SelectionStrategy"},
         "durationTicks": {"type": "integer", "minimum": 1},
         "sceneRef": {"type": "string", "description": "sceneId@version for SceneCall"},
         "subgraph": {"type": "string", "description": "name of referenced subgraph"},
+        "returnPath": {"type": "string", "description": "Node id to return to after subgraph completion"},
         "tags": {"type": "array", "items": {"type": "string"}},
         "cooldownTicks": {"type": "integer", "minimum": 1},
-        "video": {"$ref": "#/definitions/VideoDescriptor"}
+        "video": {"$ref": "#/definitions/VideoDescriptor"},
+        "choiceTimeout": {"type": "integer", "minimum": 1, "description": "Ticks before auto-selecting default choice"},
+        "choiceDefault": {"type": "string", "description": "Default edge if choice times out"}
+      },
+      "additionalProperties": false
+    },
+    "EdgeDefinition": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "id": {"type": "string", "description": "Unique edge identifier"},
+        "from": {"type": "string", "description": "Source node id"},
+        "to": {"type": "string", "description": "Target node id"},
+        "label": {"type": "string", "description": "Label for edge (e.g., 'yes', 'no', 'success')"},
+        "weight": {"type": "number", "description": "Weight for weighted selection"},
+        "priority": {"type": "integer", "description": "Priority for ordered evaluation"},
+        "conditions": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Condition"},
+          "description": "Guards that must pass for edge to be traversable"
+        },
+        "cooldownTicks": {"type": "integer", "minimum": 1},
+        "isDefault": {"type": "boolean", "description": "Whether this is the default/fallback edge"},
+        "tags": {"type": "array", "items": {"type": "string"}}
       },
       "additionalProperties": false
     },
@@ -43,33 +98,86 @@
       "required": ["kind"],
       "properties": {
         "kind": {"type": "string", "enum": [
-          "weekday", "timeBetween", "hungerLt", "energyLt", "hasFlag", "notFlag", "randomChance"
+          "weekday", "weekend", "timeBetween", "timeAfter", "timeBefore",
+          "needLt", "needGt", "needBetween",
+          "hasFlag", "notFlag", "anyFlag", "allFlags",
+          "locationIs", "locationNot",
+          "moneyGt", "moneyLt",
+          "relationshipGt", "relationshipLt",
+          "randomChance",
+          "tickMod",
+          "activityIs", "activityNot",
+          "and", "or", "not"
         ]},
-        "value": {},
-        "range": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "value": {"description": "Generic value (type depends on kind)"},
+        "range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
         "flag": {"type": "string"},
-        "probability": {"type": "number", "minimum": 0, "maximum": 1}
+        "flags": {"type": "array", "items": {"type": "string"}},
+        "need": {"type": "string", "description": "Need name (hunger, energy, etc.)"},
+        "location": {"type": "string"},
+        "activity": {"type": "string"},
+        "target": {"type": "string", "description": "Target entity (e.g., NPC id for relationship)"},
+        "probability": {"type": "number", "minimum": 0, "maximum": 1},
+        "divisor": {"type": "integer", "minimum": 1, "description": "For tickMod: tick % divisor == 0"},
+        "conditions": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Condition"},
+          "description": "Nested conditions for and/or/not"
+        }
       },
       "additionalProperties": false
     },
     "EffectDescriptor": {
       "type": "object",
       "properties": {
-        "needs": {"type": "object", "additionalProperties": {"type": "integer"}},
-        "money": {"type": "string", "description": "Relative change e.g. '+wage' or '-meal'"},
+        "needs": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Need deltas (can be negative)"
+        },
+        "money": {"type": "string", "description": "Relative change e.g. '+wage' or '-meal' or absolute '=1000'"},
+        "moneyDelta": {"type": "number", "description": "Numeric money change (alternative to string)"},
         "flagsAdd": {"type": "array", "items": {"type": "string"}},
         "flagsRemove": {"type": "array", "items": {"type": "string"}},
-        "moveTo": {"type": "string"},
-        "activity": {"type": "string"}
+        "flagsToggle": {"type": "array", "items": {"type": "string"}},
+        "moveTo": {"type": "string", "description": "Location id to move to"},
+        "activity": {"type": "string", "description": "Activity label to set"},
+        "activityDuration": {"type": "integer", "minimum": 1, "description": "Duration in ticks"},
+        "relationships": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Relationship deltas (targetId -> delta)"
+        },
+        "spawnEvent": {
+          "type": "object",
+          "properties": {
+            "type": {"type": "string"},
+            "data": {"type": "object", "additionalProperties": true}
+          },
+          "description": "Event to emit"
+        },
+        "log": {"type": "string", "description": "Message to log"},
+        "variables": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Set/update variables (variable name -> value or expression)"
+        }
       },
       "additionalProperties": false
     },
     "SelectionStrategy": {
       "type": "object",
+      "required": ["kind"],
       "properties": {
-        "kind": {"type": "string", "enum": ["ordered", "random", "pool"]},
+        "kind": {"type": "string", "enum": ["ordered", "random", "weighted", "pool", "first"]},
         "segmentIds": {"type": "array", "items": {"type": "string"}},
-        "tags": {"type": "array", "items": {"type": "string"}}
+        "weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Segment weights for weighted selection"
+        },
+        "tags": {"type": "array", "items": {"type": "string"}, "description": "Filter segments by tags"},
+        "shuffle": {"type": "boolean", "description": "Shuffle before selection"}
       },
       "additionalProperties": false
     },
@@ -78,7 +186,14 @@
       "properties": {
         "segments": {"type": "array", "items": {"$ref": "#/definitions/VideoSegment"}},
         "loop": {"type": "boolean"},
-        "loopWindow": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}
+        "loopWindow": {
+          "type": "array",
+          "items": {"type": "number"},
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[start, end] in seconds for loop region"
+        },
+        "autoplay": {"type": "boolean", "default": true}
       },
       "additionalProperties": false
     },
@@ -87,9 +202,11 @@
       "required": ["id", "start", "end"],
       "properties": {
         "id": {"type": "string"},
-        "start": {"type": "number", "minimum": 0},
-        "end": {"type": "number", "minimum": 0},
-        "tags": {"type": "array", "items": {"type": "string"}}
+        "start": {"type": "number", "minimum": 0, "description": "Start time in seconds"},
+        "end": {"type": "number", "minimum": 0, "description": "End time in seconds"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "weight": {"type": "number", "description": "Weight for weighted selection"},
+        "label": {"type": "string"}
       },
       "additionalProperties": false
     }
