@@ -1,8 +1,14 @@
 import { CubeType, CubeFace } from '../../stores/controlCubeStore';
 import { CubeFaceContent } from './ControlCube';
+import { panelActionRegistry } from '../../lib/panelActions';
 
 /**
  * Contextual face content based on cube type and docked panel
+ *
+ * This component generates face content dynamically:
+ * 1. If docked to a panel with registered actions, use those
+ * 2. Otherwise, use static defaults based on panel ID
+ * 3. Finally, fall back to generic cube type defaults
  */
 
 // Control Cube - Main actions
@@ -102,8 +108,22 @@ export const SettingsCubeFaces = (dockedPanelId?: string): CubeFaceContent => {
 
 /**
  * Get appropriate face content based on cube type and context
+ *
+ * Priority:
+ * 1. Dynamic panel actions (if panel has registered actions)
+ * 2. Static panel-specific faces (hardcoded for known panels)
+ * 3. Generic cube type defaults
  */
 export function getCubeFaceContent(type: CubeType, dockedPanelId?: string): CubeFaceContent {
+  // If docked to a panel, try to get dynamic actions first
+  if (dockedPanelId) {
+    const dynamicFaces = getDynamicPanelFaces(dockedPanelId);
+    if (dynamicFaces) {
+      return dynamicFaces;
+    }
+  }
+
+  // Fall back to static faces based on cube type
   switch (type) {
     case 'control':
       return ControlCubeFaces(dockedPanelId);
@@ -118,4 +138,46 @@ export function getCubeFaceContent(type: CubeType, dockedPanelId?: string): Cube
     default:
       return ControlCubeFaces(dockedPanelId);
   }
+}
+
+/**
+ * Generate dynamic face content from panel's registered actions
+ */
+function getDynamicPanelFaces(panelId: string): CubeFaceContent | null {
+  const faceMappings = panelActionRegistry.getFaceMappings(panelId);
+
+  // Check if panel has any registered actions
+  const hasActions = Object.values(faceMappings).some((action) => action !== null);
+  if (!hasActions) {
+    return null;
+  }
+
+  // Generate face content from actions
+  const faces: CubeFaceContent = {};
+  const faceOrder: CubeFace[] = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+
+  faceOrder.forEach((face) => {
+    const action = faceMappings[face];
+    if (action) {
+      // Create face content with icon, label, and click handler
+      faces[face] = (
+        <div
+          className="text-sm flex flex-col items-center gap-1 cursor-pointer hover:scale-110 transition-transform"
+          onClick={(e) => {
+            e.stopPropagation();
+            action.execute();
+          }}
+          title={action.description || action.label}
+        >
+          <div className="text-2xl">{action.icon}</div>
+          <div className="text-xs text-white/90 font-medium">{action.label}</div>
+          {action.shortcut && (
+            <div className="text-[10px] text-white/60">{action.shortcut}</div>
+          )}
+        </div>
+      );
+    }
+  });
+
+  return faces;
 }

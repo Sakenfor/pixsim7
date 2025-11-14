@@ -2,7 +2,9 @@
 
 ## Overview
 
-Control Cubes are a 3D CSS-based interface system that provides an innovative way to interact with the application. Each cube can be dragged around, rotated, expanded, combined with other cubes, and docked to panels for contextual controls.
+Control Cubes (3D Cube Widgets) are a spatial interface system that provides an innovative way to interact with the application. Each cube can be dragged around, rotated, expanded, combined with other cubes, and docked to panels for contextual controls.
+
+**Key Innovation:** Cubes dynamically adapt to show panel-specific actions. When a cube docks to a panel, its faces automatically expose the actions that panel has registered, creating a truly contextual interface.
 
 ## Features
 
@@ -56,33 +58,28 @@ Control Cubes are a 3D CSS-based interface system that provides an innovative wa
 - Face content changes to show panel-specific controls
 - Docked cubes show a 📌 indicator
 
-### 🎨 Contextual Controls
+### 🎨 Dynamic Contextual Controls
 
-When docked to specific panels, cubes adapt their face content:
+**How it works:**
+1. Panels register their available actions using `useRegisterPanelActions()`
+2. When a cube docks to a panel, it queries the panel action registry
+3. Cube faces automatically populate with the panel's actions
+4. Each face becomes clickable and executes the associated action
 
-#### Gallery Panel
-- 🖼️ Gallery view
-- 🎨 Filter assets
-- 📁 Folder navigation
-- 🗑️ Delete items
-- ⬆️ Upload
-- ⬇️ Download
+**Example:** Gallery Panel Actions
+- 🖼️ Grid View (front face)
+- 🎨 Filter (left face)
+- 📁 Organize (back face)
+- 🗑️ Delete (right face)
+- ⬆️ Upload (top face)
+- ⬇️ Download (bottom face)
 
-#### Scene Builder
-- 🎬 Scene controls
-- 🎭 Layer management
-- 🎨 Paint tools
-- 🔧 Tool selection
-- ➕ Add elements
-- 🎯 Select mode
-
-#### Graph Panel
-- 📊 Graph view
-- 🔗 Connection tools
-- ➕ Add nodes
-- ✂️ Cut/disconnect
-- 📋 Copy nodes
-- 🗑️ Delete nodes
+**Actions can:**
+- Have keyboard shortcuts
+- Be dynamically enabled/disabled
+- Show tooltips with descriptions
+- Execute sync or async operations
+- Access panel state and methods
 
 ## Architecture
 
@@ -91,15 +88,29 @@ When docked to specific panels, cubes adapt their face content:
 ```
 frontend/src/
 ├── components/control/
-│   ├── ControlCube.tsx           # Base 3D cube component
-│   ├── DraggableCube.tsx         # Draggable wrapper
-│   ├── ControlCubeManager.tsx    # Multi-cube manager
-│   └── CubeFaceContent.tsx       # Contextual face content
+│   ├── ControlCube.tsx                  # Base 3D cube component
+│   ├── DraggableCube.tsx                # Draggable wrapper
+│   ├── ControlCubeManager.tsx           # Multi-cube manager
+│   └── CubeFaceContent.tsx              # Dynamic face content generator
 ├── stores/
-│   └── controlCubeStore.ts       # Zustand state management
-└── hooks/
-    └── useCubeDocking.ts         # Panel docking logic
+│   └── controlCubeStore.ts              # Zustand state management
+├── hooks/
+│   ├── useCubeDocking.ts                # Panel docking logic
+│   └── useRegisterPanelActions.ts       # Hook for panels to register actions
+├── lib/
+│   └── panelActions.ts                  # Panel action registry system
+└── examples/
+    └── GalleryPanelActionsExample.tsx   # Example integrations
 ```
+
+### Dynamic Action System
+
+The cube system uses a **Panel Action Registry** that enables true dynamic behavior:
+
+1. **Panels register actions** at mount time
+2. **Cubes query the registry** when docked
+3. **Faces auto-generate** from registered actions
+4. **Actions execute** when face is clicked
 
 ### State Management
 
@@ -151,6 +162,63 @@ Custom Tailwind animations defined in `tailwind.config.ts`:
 
 The cube system is automatically initialized when authenticated. Click the 🎲 button in the bottom-right or press `Ctrl+Space` to summon cubes.
 
+### Registering Panel Actions (For Panel Developers)
+
+To make your panel's actions available to cubes:
+
+```tsx
+import { useRegisterPanelActions } from '@/hooks/useRegisterPanelActions';
+
+function MyPanel() {
+  // Register panel actions
+  useRegisterPanelActions({
+    panelId: 'my-panel',  // Must match data-panel-id attribute
+    panelName: 'My Panel',
+    actions: [
+      {
+        id: 'create',
+        label: 'Create',
+        icon: '➕',
+        description: 'Create new item',
+        face: 'front',  // Preferred face placement
+        shortcut: 'Ctrl+N',
+        execute: () => handleCreate(),
+        enabled: () => canCreate(), // Optional: dynamic enable/disable
+      },
+      {
+        id: 'delete',
+        label: 'Delete',
+        icon: '🗑️',
+        description: 'Delete selected items',
+        face: 'right',
+        execute: async () => {
+          await handleDelete();
+        },
+      },
+      // ... more actions (up to 6 faces)
+    ],
+    defaultFaces: {
+      front: 'create',
+      right: 'delete',
+      // ... map actions to specific faces
+    },
+  });
+
+  return (
+    <div data-panel-id="my-panel">
+      {/* Panel content */}
+    </div>
+  );
+}
+```
+
+### Action Priority System
+
+When a cube is docked, face content is determined by:
+1. **Dynamic actions** from panel registry (highest priority)
+2. **Static panel faces** (hardcoded for specific panels)
+3. **Generic cube faces** (fallback based on cube type)
+
 ### Adding Cubes Programmatically
 
 ```typescript
@@ -177,14 +245,36 @@ const faceContent = getCubeFaceContent('control', 'gallery');
 // Returns contextual content for control cube docked to gallery panel
 ```
 
-### Docking to Panels
+### Panel Integration Checklist
 
-Panels need a `data-panel-id` attribute for docking to work:
+For a panel to work with cube widgets:
+
+1. ✅ Add `data-panel-id` attribute to panel container
+2. ✅ Call `useRegisterPanelActions()` hook
+3. ✅ Define 1-6 actions with icons, labels, and execute functions
+4. ✅ (Optional) Specify preferred face placement
+5. ✅ (Optional) Add keyboard shortcuts
+6. ✅ (Optional) Add dynamic enable/disable logic
+
+**Minimal Example:**
 
 ```tsx
-<div data-panel-id="my-panel" className="...">
-  {/* Panel content */}
-</div>
+function SimplePanel() {
+  useRegisterPanelActions({
+    panelId: 'simple',
+    panelName: 'Simple Panel',
+    actions: [
+      {
+        id: 'action1',
+        label: 'Action',
+        icon: '⚡',
+        execute: () => console.log('Action executed'),
+      },
+    ],
+  });
+
+  return <div data-panel-id="simple">Content</div>;
+}
 ```
 
 ## Future Enhancements
