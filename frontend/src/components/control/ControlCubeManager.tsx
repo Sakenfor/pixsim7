@@ -21,6 +21,7 @@ const COMBINE_DISTANCE = 120; // pixels to start combining
 export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const managerRef = useRef<HTMLDivElement>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [formationType, setFormationType] = useState<'line' | 'circle' | 'grid' | 'star'>('line');
 
   const cubes = useControlCubeStore((s) => s.cubes);
   const summoned = useControlCubeStore((s) => s.summoned);
@@ -41,6 +42,12 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const completeLinking = useControlCubeStore((s) => s.completeLinking);
   const cancelLinking = useControlCubeStore((s) => s.cancelLinking);
   const clearAllConnections = useControlCubeStore((s) => s.clearAllConnections);
+
+  // Formation and position actions
+  const savePosition = useControlCubeStore((s) => s.savePosition);
+  const shufflePositions = useControlCubeStore((s) => s.shufflePositions);
+  const arrangeInFormation = useControlCubeStore((s) => s.arrangeInFormation);
+  const saveFormation = useControlCubeStore((s) => s.saveFormation);
 
   // Get panel rectangles for docking
   const panelRects = usePanelRects();
@@ -160,6 +167,52 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
         e.preventDefault();
         if (confirm('Clear all cube connections?')) {
           clearAllConnections();
+        }
+      }
+
+      // F: Arrange visible cubes in formation (cycles types)
+      if (e.code === 'KeyF' && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        const visibleCubes = Object.values(cubes)
+          .filter((c) => c.visible && c.mode !== 'docked')
+          .map((c) => c.id);
+
+        if (visibleCubes.length >= 2) {
+          arrangeInFormation(visibleCubes, formationType);
+
+          // Cycle to next formation type
+          const types: Array<'line' | 'circle' | 'grid' | 'star'> = ['line', 'circle', 'grid', 'star'];
+          const currentIndex = types.indexOf(formationType);
+          const nextType = types[(currentIndex + 1) % types.length];
+          setFormationType(nextType);
+        }
+      }
+
+      // S: Save current position for active cube
+      if (e.code === 'KeyS' && !e.ctrlKey && !e.shiftKey && activeCubeId) {
+        e.preventDefault();
+        const positionName = `pos-${Date.now()}`;
+        savePosition(activeCubeId, positionName);
+        console.log(`💾 Saved position "${positionName}" for cube ${activeCubeId}`);
+      }
+
+      // Shift+S: Shuffle positions for active cube
+      if (e.code === 'KeyS' && e.shiftKey && !e.ctrlKey && activeCubeId) {
+        e.preventDefault();
+        shufflePositions(activeCubeId);
+      }
+
+      // Ctrl+Shift+F: Save current formation
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyF') {
+        e.preventDefault();
+        const visibleCubes = Object.values(cubes)
+          .filter((c) => c.visible)
+          .map((c) => c.id);
+
+        if (visibleCubes.length >= 2) {
+          const formationName = `formation-${Date.now()}`;
+          saveFormation(formationName, visibleCubes, formationType);
+          console.log(`💾 Saved formation "${formationName}" with ${visibleCubes.length} cubes`);
         }
       }
     };
@@ -328,6 +381,11 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">E</kbd> Expand/Collapse</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">L</kbd> Link Cube Face</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Esc</kbd> Cancel Linking</div>
+            <div className="border-t border-white/20 my-2" />
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">F</kbd> Auto-Arrange Formation <span className="text-white/40">({formationType})</span></div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">S</kbd> Save Position</div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Shift+S</kbd> Shuffle Positions</div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Ctrl+Shift+F</kbd> Save Formation</div>
             <div className="pt-2 text-white/60 text-[10px]">
               💡 Press L, then click another cube face to connect
             </div>
