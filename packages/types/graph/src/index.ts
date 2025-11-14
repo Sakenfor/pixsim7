@@ -1,174 +1,396 @@
-/* AUTO-GENERATED STUB (manual draft) - foundation for graph kernel types
-   Schema: graph.schema.json (version 1.0.0)
-   NOTE: Replace manual definitions with codegen output later.
-*/
+/**
+ * @pixsim7/graph - Canonical graph kernel
+ *
+ * Execution engine for scene + simulation graphs.
+ * Deterministic, pure evaluation with explicit side-effect declarations.
+ */
 
-export type Graph = {
-  schemaVersion: string; // e.g. '1.0.0'
-  name: string;
-  entry: string;
-  nodes: Record<string, GraphNode>;
-  metadata?: Record<string, unknown>;
-};
+// Re-export generated types and schemas (will be available after generation)
+export type * from './generated.js';
+export * from './generated.js';
 
-export type NodeType =
-  | 'Decision'
-  | 'Condition'
-  | 'Action'
-  | 'Choice'
-  | 'Video'
-  | 'Random'
-  | 'Timer'
-  | 'SceneCall'
-  | 'Subgraph';
-
-export interface BaseNode {
-  type: NodeType;
-  edges?: string[]; // candidate next node ids
-  conditions?: Condition[]; // gating conditions evaluated before node logic
-  tags?: string[];
-  cooldownTicks?: number;
+// Runtime types
+export interface EvalContext {
+  /** Current world/simulation tick */
+  tick: number;
+  /** Current time of day in minutes (0-1439) */
+  timeOfDay: number;
+  /** Day of week (0=Sunday, 6=Saturday) */
+  dayOfWeek: number;
+  /** Entity state (NPC, location, etc.) */
+  state: EntityState;
+  /** Seeded RNG function */
+  rng: () => number;
+  /** Lookup function for subgraphs */
+  getSubgraph?: (name: string) => any; // Graph type from generated
+  /** Variables/context data */
+  variables?: Record<string, unknown>;
 }
 
-export interface DecisionNode extends BaseNode {
-  type: 'Decision';
-  // future: decisionStrategy: 'maxWeight' | 'priority'
-}
-export interface ConditionNode extends BaseNode { type: 'Condition'; }
-export interface ActionNode extends BaseNode { type: 'Action'; effect?: EffectDescriptor; }
-export interface ChoiceNode extends BaseNode { type: 'Choice'; }
-export interface VideoNode extends BaseNode { type: 'Video'; video?: VideoDescriptor; selection?: SelectionStrategy; }
-export interface RandomNode extends BaseNode { type: 'Random'; }
-export interface TimerNode extends BaseNode { type: 'Timer'; durationTicks?: number; }
-export interface SceneCallNode extends BaseNode { type: 'SceneCall'; sceneRef?: string; }
-export interface SubgraphNode extends BaseNode { type: 'Subgraph'; subgraph?: string; }
-
-export type GraphNode =
-  | DecisionNode
-  | ConditionNode
-  | ActionNode
-  | ChoiceNode
-  | VideoNode
-  | RandomNode
-  | TimerNode
-  | SceneCallNode
-  | SubgraphNode;
-
-export interface Condition {
-  kind: 'weekday' | 'timeBetween' | 'hungerLt' | 'energyLt' | 'hasFlag' | 'notFlag' | 'randomChance';
-  value?: unknown; // generic value (e.g., weekday boolean)
-  range?: [number, number];
-  flag?: string;
-  probability?: number; // for randomChance 0..1
-}
-
-export interface EffectDescriptor {
-  needs?: Record<string, number>; // deltas
-  money?: string; // '+wage' '-meal'
-  flagsAdd?: string[];
-  flagsRemove?: string[];
-  moveTo?: string; // location id
-  activity?: string; // activity label
-}
-
-export interface SelectionStrategy {
-  kind: 'ordered' | 'random' | 'pool';
-  segmentIds?: string[];
-  tags?: string[]; // pool filtering tags
-}
-
-export interface VideoDescriptor {
-  segments?: VideoSegment[];
-  loop?: boolean;
-  loopWindow?: [number, number]; // start,end seconds for loop
-}
-
-export interface VideoSegment {
+export interface EntityState {
   id: string;
-  start: number;
-  end: number;
-  tags?: string[];
+  needs?: Record<string, number>;
+  money?: number;
+  flags?: Set<string>;
+  location?: string;
+  activity?: string;
+  activityEndsAt?: number; // tick
+  relationships?: Record<string, number>;
+  cooldowns?: Map<string, number>; // nodeId/edgeId -> tick when available
 }
-
-// Basic runtime instruction types for integration layer (draft)
-export type Instruction =
-  | { kind: 'PlaySegment'; segmentId: string; loop?: boolean; loopWindow?: [number, number] }
-  | { kind: 'AwaitChoice'; nodeId: string; edgeIds: string[] }
-  | { kind: 'Wait'; ticks: number }
-  | { kind: 'InvokeScene'; sceneRef: string }
-  | { kind: 'Log'; message: string };
 
 export interface EvalResult {
-  effects: EffectDescriptor[];
+  /** Effects to apply (declarative) */
+  effects: any[]; // EffectDescriptor[] from generated
+  /** Instructions for integration layer */
   instructions: Instruction[];
-  nextNodes: string[]; // candidates for next step (engine will resolve)
+  /** Candidate next node ids */
+  nextNodes: string[];
+  /** Whether execution is blocked (waiting for choice, timer, scene) */
+  blocked?: boolean;
+  /** Error if node evaluation failed */
+  error?: string;
 }
 
-// Simple pure evaluator placeholder (Decision only picks first available for now)
-export function evaluateNode(node: GraphNode, rng: () => number): EvalResult {
-  const instructions: Instruction[] = [];
-  const effects: EffectDescriptor[] = [];
-  let nextNodes: string[] = [];
+export type Instruction =
+  | { kind: 'PlaySegment'; segmentId: string; loop?: boolean; loopWindow?: [number, number] }
+  | { kind: 'AwaitChoice'; nodeId: string; edgeIds: string[]; timeout?: number; defaultEdge?: string }
+  | { kind: 'Wait'; ticks: number; resumeAt: number }
+  | { kind: 'InvokeScene'; sceneRef: string }
+  | { kind: 'Log'; level: 'debug' | 'info' | 'warn' | 'error'; message: string }
+  | { kind: 'SpawnEvent'; eventType: string; data: Record<string, unknown> };
 
-  switch (node.type) {
-    case 'Action':
-      if (node.effect) effects.push(node.effect);
-      nextNodes = node.edges ?? [];
-      break;
-    case 'Decision':
-      nextNodes = node.edges ? [node.edges[0]] : []; // placeholder strategy
-      break;
-    case 'Video':
-      const seg = node.video?.segments?.[0];
-      if (seg) {
-        instructions.push({
-          kind: 'PlaySegment',
-          segmentId: seg.id,
-          loop: node.video?.loop,
-          loopWindow: node.video?.loopWindow
-        });
-      }
-      nextNodes = node.edges ?? [];
-      break;
-    case 'Choice':
-      if (node.edges && node.edges.length) {
-        instructions.push({ kind: 'AwaitChoice', nodeId: 'choice', edgeIds: node.edges });
-      }
-      break;
-    case 'Random':
-      if (node.edges && node.edges.length) {
-        const pick = Math.floor(rng() * node.edges.length);
-        nextNodes = [node.edges[pick]];
-      }
-      break;
-    case 'Timer':
-      if (node.durationTicks) instructions.push({ kind: 'Wait', ticks: node.durationTicks });
-      nextNodes = node.edges ?? [];
-      break;
-    case 'SceneCall':
-      if (node.sceneRef) instructions.push({ kind: 'InvokeScene', sceneRef: node.sceneRef });
-      break;
-    case 'Subgraph':
-      instructions.push({ kind: 'Log', message: `Subgraph call: ${node.subgraph}` });
-      nextNodes = node.edges ?? [];
-      break;
-    case 'Condition':
-      nextNodes = node.edges ?? [];
-      break;
-    default:
-      break;
-  }
-
-  return { effects, instructions, nextNodes };
-}
-
-// Simple RNG factory (seeded xorshift32)
+/**
+ * Deterministic RNG using xorshift32
+ */
 export function makeRng(seed: number): () => number {
   let x = seed >>> 0;
+  if (x === 0) x = 1; // Avoid zero seed
   return () => {
     x ^= x << 13;
     x ^= x >>> 17;
     x ^= x << 5;
-    return ((x >>> 0) / 0xffffffff);
+    return (x >>> 0) / 0x100000000;
   };
+}
+
+/**
+ * Split RNG for entity-specific streams
+ */
+export function splitRng(rng: () => number, entityId: string): () => number {
+  const hash = hashString(entityId);
+  return makeRng(Math.floor(rng() * 0xffffffff) ^ hash);
+}
+
+function hashString(s: string): number {
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Evaluate a condition against context
+ */
+export function evaluateCondition(condition: any, ctx: EvalContext): boolean {
+  const { kind } = condition;
+
+  switch (kind) {
+    case 'weekday':
+      return ctx.dayOfWeek >= 1 && ctx.dayOfWeek <= 5;
+    case 'weekend':
+      return ctx.dayOfWeek === 0 || ctx.dayOfWeek === 6;
+
+    case 'timeBetween':
+      if (!condition.range) return false;
+      return ctx.timeOfDay >= condition.range[0] && ctx.timeOfDay <= condition.range[1];
+    case 'timeAfter':
+      return ctx.timeOfDay >= (condition.value as number);
+    case 'timeBefore':
+      return ctx.timeOfDay <= (condition.value as number);
+
+    case 'needLt':
+      if (!condition.need) return false;
+      return (ctx.state.needs?.[condition.need] ?? 0) < (condition.value as number);
+    case 'needGt':
+      if (!condition.need) return false;
+      return (ctx.state.needs?.[condition.need] ?? 0) > (condition.value as number);
+    case 'needBetween':
+      if (!condition.need || !condition.range) return false;
+      const needVal = ctx.state.needs?.[condition.need] ?? 0;
+      return needVal >= condition.range[0] && needVal <= condition.range[1];
+
+    case 'hasFlag':
+      return condition.flag ? ctx.state.flags?.has(condition.flag) ?? false : false;
+    case 'notFlag':
+      return condition.flag ? !(ctx.state.flags?.has(condition.flag) ?? false) : true;
+    case 'anyFlag':
+      return condition.flags?.some(f => ctx.state.flags?.has(f)) ?? false;
+    case 'allFlags':
+      return condition.flags?.every(f => ctx.state.flags?.has(f)) ?? false;
+
+    case 'locationIs':
+      return ctx.state.location === condition.location;
+    case 'locationNot':
+      return ctx.state.location !== condition.location;
+
+    case 'moneyGt':
+      return (ctx.state.money ?? 0) > (condition.value as number);
+    case 'moneyLt':
+      return (ctx.state.money ?? 0) < (condition.value as number);
+
+    case 'relationshipGt':
+      if (!condition.target) return false;
+      return (ctx.state.relationships?.[condition.target] ?? 0) > (condition.value as number);
+    case 'relationshipLt':
+      if (!condition.target) return false;
+      return (ctx.state.relationships?.[condition.target] ?? 0) < (condition.value as number);
+
+    case 'randomChance':
+      return ctx.rng() < (condition.probability ?? 0.5);
+
+    case 'tickMod':
+      return condition.divisor ? ctx.tick % condition.divisor === 0 : false;
+
+    case 'activityIs':
+      return ctx.state.activity === condition.activity;
+    case 'activityNot':
+      return ctx.state.activity !== condition.activity;
+
+    case 'and':
+      return condition.conditions?.every((c: any) => evaluateCondition(c, ctx)) ?? true;
+    case 'or':
+      return condition.conditions?.some((c: any) => evaluateCondition(c, ctx)) ?? false;
+    case 'not':
+      return condition.conditions?.[0] ? !evaluateCondition(condition.conditions[0], ctx) : false;
+
+    default:
+      console.warn(`Unknown condition kind: ${kind}`);
+      return false;
+  }
+}
+
+/**
+ * Check if node can execute (conditions + cooldowns)
+ */
+export function canExecuteNode(nodeId: string, node: any, ctx: EvalContext): boolean {
+  // Check cooldown
+  const cooldownEnd = ctx.state.cooldowns?.get(nodeId);
+  if (cooldownEnd !== undefined && ctx.tick < cooldownEnd) {
+    return false;
+  }
+
+  // Check node conditions
+  if (node.conditions) {
+    return node.conditions.every((c: any) => evaluateCondition(c, ctx));
+  }
+
+  return true;
+}
+
+/**
+ * Evaluate a single node
+ */
+export function evaluateNode(nodeId: string, node: any, ctx: EvalContext): EvalResult {
+  const result: EvalResult = {
+    effects: [],
+    instructions: [],
+    nextNodes: [],
+  };
+
+  if (!canExecuteNode(nodeId, node, ctx)) {
+    return result; // Node cannot execute
+  }
+
+  const { type } = node;
+
+  switch (type) {
+    case 'Action': {
+      // Collect effects
+      if (node.effect) result.effects.push(node.effect);
+      if (node.effects) result.effects.push(...node.effects);
+
+      // Continue to next nodes
+      result.nextNodes = node.edges ?? [];
+
+      // Apply cooldown if specified
+      if (node.cooldownTicks) {
+        // Note: cooldown application happens in integration layer
+      }
+      break;
+    }
+
+    case 'Decision': {
+      const strategy = node.decisionStrategy ?? 'first';
+      const edges = node.edges ?? [];
+
+      if (edges.length === 0) break;
+
+      if (strategy === 'first') {
+        // Return first edge (or evaluate edge conditions if available)
+        result.nextNodes = [edges[0]];
+      } else if (strategy === 'random') {
+        const idx = Math.floor(ctx.rng() * edges.length);
+        result.nextNodes = [edges[idx]];
+      } else if (strategy === 'maxWeight') {
+        // Use weights if available
+        if (node.weights) {
+          let maxWeight = -Infinity;
+          let bestEdge = edges[0];
+          for (const edge of edges) {
+            const weight = node.weights[edge] ?? 0;
+            if (weight > maxWeight) {
+              maxWeight = weight;
+              bestEdge = edge;
+            }
+          }
+          result.nextNodes = [bestEdge];
+        } else {
+          result.nextNodes = [edges[0]];
+        }
+      } else {
+        result.nextNodes = [edges[0]];
+      }
+      break;
+    }
+
+    case 'Condition': {
+      // Conditions are already checked in canExecuteNode
+      // If we're here, conditions passed, so continue
+      result.nextNodes = node.edges ?? [];
+      break;
+    }
+
+    case 'Choice': {
+      // Block execution and wait for user choice
+      result.blocked = true;
+      result.instructions.push({
+        kind: 'AwaitChoice',
+        nodeId,
+        edgeIds: node.edges ?? [],
+        timeout: node.choiceTimeout,
+        defaultEdge: node.choiceDefault,
+      });
+      break;
+    }
+
+    case 'Video': {
+      // Select segment
+      const segments = node.video?.segments ?? [];
+      if (segments.length > 0) {
+        const selection = node.selection ?? { kind: 'first' };
+        let selectedSegment = segments[0];
+
+        if (selection.kind === 'random') {
+          const idx = Math.floor(ctx.rng() * segments.length);
+          selectedSegment = segments[idx];
+        } else if (selection.kind === 'weighted' && selection.weights) {
+          // Weighted selection
+          const totalWeight = segments.reduce((sum, seg) =>
+            sum + (selection.weights?.[seg.id] ?? seg.weight ?? 1), 0);
+          let rand = ctx.rng() * totalWeight;
+          for (const seg of segments) {
+            const weight = selection.weights[seg.id] ?? seg.weight ?? 1;
+            rand -= weight;
+            if (rand <= 0) {
+              selectedSegment = seg;
+              break;
+            }
+          }
+        } else if (selection.kind === 'pool' && selection.tags) {
+          // Filter by tags
+          const filtered = segments.filter(seg =>
+            selection.tags?.some(tag => seg.tags?.includes(tag)));
+          if (filtered.length > 0) {
+            const idx = Math.floor(ctx.rng() * filtered.length);
+            selectedSegment = filtered[idx];
+          }
+        }
+
+        result.instructions.push({
+          kind: 'PlaySegment',
+          segmentId: selectedSegment.id,
+          loop: node.video?.loop,
+          loopWindow: node.video?.loopWindow,
+        });
+      }
+
+      result.nextNodes = node.edges ?? [];
+      break;
+    }
+
+    case 'Random': {
+      const edges = node.edges ?? [];
+      if (edges.length > 0) {
+        const idx = Math.floor(ctx.rng() * edges.length);
+        result.nextNodes = [edges[idx]];
+      }
+      break;
+    }
+
+    case 'Timer': {
+      const duration = node.durationTicks ?? 1;
+      result.blocked = true;
+      result.instructions.push({
+        kind: 'Wait',
+        ticks: duration,
+        resumeAt: ctx.tick + duration,
+      });
+      result.nextNodes = node.edges ?? [];
+      break;
+    }
+
+    case 'SceneCall': {
+      if (node.sceneRef) {
+        result.blocked = true;
+        result.instructions.push({
+          kind: 'InvokeScene',
+          sceneRef: node.sceneRef,
+        });
+      }
+      result.nextNodes = node.edges ?? [];
+      break;
+    }
+
+    case 'Subgraph': {
+      if (node.subgraph && ctx.getSubgraph) {
+        result.instructions.push({
+          kind: 'Log',
+          level: 'debug',
+          message: `Invoking subgraph: ${node.subgraph}`,
+        });
+        // Integration layer handles subgraph invocation
+      }
+      result.nextNodes = node.edges ?? [];
+      break;
+    }
+
+    default:
+      result.error = `Unknown node type: ${type}`;
+  }
+
+  return result;
+}
+
+/**
+ * Simple graph executor (single step)
+ */
+export function executeGraphStep(
+  graph: any, // Graph from generated
+  currentNodeId: string,
+  ctx: EvalContext
+): EvalResult {
+  const node = graph.nodes[currentNodeId];
+  if (!node) {
+    return {
+      effects: [],
+      instructions: [],
+      nextNodes: [],
+      error: `Node not found: ${currentNodeId}`,
+    };
+  }
+
+  return evaluateNode(currentNodeId, node, ctx);
 }

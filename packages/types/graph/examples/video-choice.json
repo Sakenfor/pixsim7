@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "scene-greeting",
+  "entry": "intro_video",
+  "metadata": {
+    "description": "Scene graph with video and choice",
+    "author": "system"
+  },
+  "nodes": {
+    "intro_video": {
+      "type": "Video",
+      "label": "Greeting Video",
+      "video": {
+        "segments": [
+          {
+            "id": "greeting_happy",
+            "start": 0,
+            "end": 3.5,
+            "tags": ["positive", "daytime"],
+            "weight": 2
+          },
+          {
+            "id": "greeting_tired",
+            "start": 3.5,
+            "end": 7,
+            "tags": ["negative", "tired"],
+            "weight": 1
+          },
+          {
+            "id": "greeting_neutral",
+            "start": 7,
+            "end": 10,
+            "tags": ["neutral"],
+            "weight": 2
+          }
+        ]
+      },
+      "selection": {
+        "kind": "weighted",
+        "weights": {
+          "greeting_happy": 3,
+          "greeting_tired": 1,
+          "greeting_neutral": 2
+        }
+      },
+      "edges": ["ask_question"]
+    },
+    "ask_question": {
+      "type": "Choice",
+      "label": "What would you like to do?",
+      "edges": ["choice_work", "choice_relax", "choice_explore"],
+      "choiceTimeout": 300,
+      "choiceDefault": "choice_relax"
+    },
+    "choice_work": {
+      "type": "Action",
+      "label": "Go to Work",
+      "effect": {
+        "activity": "work",
+        "moveTo": "workplace",
+        "flagsAdd": ["chose_work"]
+      },
+      "edges": []
+    },
+    "choice_relax": {
+      "type": "Action",
+      "label": "Relax at Home",
+      "effect": {
+        "activity": "relaxing",
+        "moveTo": "home",
+        "needs": {
+          "energy": 20
+        },
+        "flagsAdd": ["chose_relax"]
+      },
+      "edges": []
+    },
+    "choice_explore": {
+      "type": "Action",
+      "label": "Explore City",
+      "effect": {
+        "activity": "exploring",
+        "moveTo": "downtown",
+        "flagsAdd": ["chose_explore"]
+      },
+      "edges": []
+    }
+  }
+}

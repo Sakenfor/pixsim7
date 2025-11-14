@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "random-encounter",
+  "entry": "start_patrol",
+  "metadata": {
+    "description": "Random events with loop and timer",
+    "author": "system"
+  },
+  "nodes": {
+    "start_patrol": {
+      "type": "Action",
+      "label": "Start Patrol",
+      "effect": {
+        "activity": "patrolling",
+        "flagsAdd": ["on_patrol"]
+      },
+      "edges": ["wait_tick"]
+    },
+    "wait_tick": {
+      "type": "Timer",
+      "label": "Wait for Event",
+      "durationTicks": 10,
+      "edges": ["random_event"]
+    },
+    "random_event": {
+      "type": "Random",
+      "label": "Random Event",
+      "edges": ["event_none", "event_friendly", "event_danger", "event_discovery"]
+    },
+    "event_none": {
+      "type": "Action",
+      "label": "Nothing Happens",
+      "effect": {
+        "log": "Quiet patrol, nothing unusual"
+      },
+      "edges": ["continue_patrol"]
+    },
+    "event_friendly": {
+      "type": "Action",
+      "label": "Meet Friendly NPC",
+      "effect": {
+        "log": "Met a friendly person",
+        "relationships": {
+          "random_npc": 10
+        },
+        "flagsAdd": ["met_someone"]
+      },
+      "edges": ["continue_patrol"]
+    },
+    "event_danger": {
+      "type": "Action",
+      "label": "Dangerous Encounter",
+      "effect": {
+        "log": "Encountered something dangerous!",
+        "needs": {
+          "energy": -20
+        },
+        "flagsAdd": ["had_danger"]
+      },
+      "edges": ["end_patrol"]
+    },
+    "event_discovery": {
+      "type": "Action",
+      "label": "Found Something",
+      "effect": {
+        "log": "Discovered something interesting",
+        "moneyDelta": 50,
+        "flagsAdd": ["found_treasure"]
+      },
+      "edges": ["continue_patrol"]
+    },
+    "continue_patrol": {
+      "type": "Condition",
+      "label": "Continue Patrolling?",
+      "conditions": [
+        {
+          "kind": "needGt",
+          "need": "energy",
+          "value": 20
+        },
+        {
+          "kind": "randomChance",
+          "probability": 0.7
+        }
+      ],
+      "edges": ["wait_tick", "end_patrol"]
+    },
+    "end_patrol": {
+      "type": "Action",
+      "label": "End Patrol",
+      "effect": {
+        "activity": "idle",
+        "flagsRemove": ["on_patrol"]
+      },
+      "edges": []
+    }
+  }
+}

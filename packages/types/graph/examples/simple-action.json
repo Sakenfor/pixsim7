@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "simple-action",
+  "entry": "start",
+  "metadata": {
+    "description": "Simple linear action sequence",
+    "author": "system"
+  },
+  "nodes": {
+    "start": {
+      "type": "Action",
+      "label": "Morning Wake Up",
+      "effect": {
+        "needs": {
+          "energy": -10,
+          "hunger": -5
+        },
+        "activity": "waking_up",
+        "flagsAdd": ["awake"]
+      },
+      "edges": ["eat_breakfast"]
+    },
+    "eat_breakfast": {
+      "type": "Action",
+      "label": "Eat Breakfast",
+      "effect": {
+        "needs": {
+          "hunger": 30,
+          "energy": 10
+        },
+        "activity": "eating",
+        "moneyDelta": -5
+      },
+      "edges": ["go_work"]
+    },
+    "go_work": {
+      "type": "Action",
+      "label": "Go to Work",
+      "effect": {
+        "moveTo": "workplace",
+        "activity": "traveling"
+      },
+      "edges": []
+    }
+  }
+}

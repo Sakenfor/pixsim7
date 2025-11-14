@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "npc-behavior-worker",
+  "entry": "decide_activity",
+  "metadata": {
+    "description": "NPC worker behavior with decision tree",
+    "author": "system"
+  },
+  "nodes": {
+    "decide_activity": {
+      "type": "Decision",
+      "label": "Decide Next Activity",
+      "decisionStrategy": "first",
+      "edges": ["check_work", "check_hunger", "default_idle"]
+    },
+    "check_work": {
+      "type": "Condition",
+      "label": "Check Work Hours",
+      "conditions": [
+        {
+          "kind": "weekday",
+          "value": true
+        },
+        {
+          "kind": "timeBetween",
+          "range": [540, 1020]
+        },
+        {
+          "kind": "needGt",
+          "need": "energy",
+          "value": 30
+        }
+      ],
+      "edges": ["do_work"]
+    },
+    "check_hunger": {
+      "type": "Condition",
+      "label": "Check if Hungry",
+      "conditions": [
+        {
+          "kind": "needLt",
+          "need": "hunger",
+          "value": 40
+        }
+      ],
+      "edges": ["eat_meal"]
+    },
+    "default_idle": {
+      "type": "Action",
+      "label": "Idle/Rest",
+      "effect": {
+        "activity": "idle",
+        "needs": {
+          "energy": 5
+        }
+      },
+      "edges": []
+    },
+    "do_work": {
+      "type": "Action",
+      "label": "Work",
+      "effect": {
+        "moveTo": "workplace",
+        "activity": "working",
+        "activityDuration": 480,
+        "needs": {
+          "energy": -30,
+          "hunger": -20
+        },
+        "moneyDelta": 100,
+        "flagsAdd": ["worked_today"]
+      },
+      "cooldownTicks": 480,
+      "edges": []
+    },
+    "eat_meal": {
+      "type": "Action",
+      "label": "Eat Meal",
+      "effect": {
+        "moveTo": "cafe",
+        "activity": "eating",
+        "activityDuration": 30,
+        "needs": {
+          "hunger": 40,
+          "energy": 10
+        },
+        "moneyDelta": -15
+      },
+      "edges": []
+    }
+  }
+}
