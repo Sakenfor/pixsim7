@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import {
   Mosaic,
   MosaicWindow,
@@ -49,6 +49,60 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
 };
 
+// Panel switcher dropdown component
+function PanelSwitcher({
+  currentId,
+  onSwitch
+}: {
+  currentId: PanelId;
+  onSwitch: (newId: PanelId) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        className="mosaic-default-control panel-switcher-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
+        title="Switch panel type"
+      >
+        ⇄
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-10"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute right-0 top-full mt-1 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded shadow-lg z-20 min-w-[160px]">
+            {(Object.keys(PANEL_MAP) as PanelId[]).map((panelId) => (
+              <button
+                key={panelId}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors ${
+                  panelId === currentId
+                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-semibold'
+                    : 'text-neutral-700 dark:text-neutral-300'
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSwitch(panelId);
+                  setIsOpen(false);
+                }}
+              >
+                {PANEL_MAP[panelId].title}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function MosaicWorkspace() {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
   const setLayout = useWorkspaceStore((s) => s.setLayout);
@@ -56,6 +110,29 @@ export function MosaicWorkspace() {
   const fullscreenPanel = useWorkspaceStore((s) => s.fullscreenPanel);
   const setFullscreen = useWorkspaceStore((s) => s.setFullscreen);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
+
+  // Function to replace a panel in the layout tree
+  const replacePanelInLayout = (
+    node: MosaicNode<PanelId> | null,
+    oldId: PanelId,
+    newId: PanelId
+  ): MosaicNode<PanelId> | null => {
+    if (!node) return null;
+    if (typeof node === 'string') {
+      return node === oldId ? newId : node;
+    }
+    return {
+      ...node,
+      first: replacePanelInLayout(node.first, oldId, newId),
+      second: replacePanelInLayout(node.second, oldId, newId),
+    };
+  };
+
+  const handlePanelSwitch = (currentId: PanelId, newId: PanelId) => {
+    if (currentId === newId || isLocked) return;
+    const newLayout = replacePanelInLayout(currentLayout, currentId, newId);
+    setLayout(newLayout);
+  };
 
   const renderTile = (id: PanelId, path: MosaicBranch[]) => {
     const panel = PANEL_MAP[id];
@@ -74,9 +151,14 @@ export function MosaicWorkspace() {
         title={panel.title}
         createNode={() => 'gallery'}
         additionalControls={[
+          <PanelSwitcher
+            key="switcher"
+            currentId={id}
+            onSwitch={(newId) => handlePanelSwitch(id, newId)}
+          />,
           <button
             key="fullscreen"
-            className="mosaic-default-control"
+            className="mosaic-default-control fullscreen-btn"
             onClick={() => setFullscreen(isFullscreen ? null : id)}
             title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           >
