@@ -96,7 +96,8 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
               <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
             </label>
             <input
-              type="password"
+              type="text"
+              autoComplete="off"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter new API key or JWT token"
@@ -116,7 +117,8 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
               <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
             </label>
             <input
-              type="password"
+              type="text"
+              autoComplete="off"
               value={apiKeyPaid}
               onChange={(e) => setApiKeyPaid(e.target.value)}
               placeholder="Enter OpenAPI key for paid tier"
