@@ -5,6 +5,11 @@ export enum DeviceType {
   ADB = 'ADB',
 }
 
+export enum ConnectionMethod {
+  ADB = 'adb',
+  SCRCPY = 'scrcpy',
+}
+
 export enum DeviceStatus {
   ONLINE = 'ONLINE',
   OFFLINE = 'OFFLINE',
@@ -14,17 +19,22 @@ export enum DeviceStatus {
 
 export interface AndroidDevice {
   id: number;
+  name: string;
   adb_id: string;
   device_type: DeviceType;
+  connection_method: ConnectionMethod;
   status: DeviceStatus;
+  is_enabled: boolean;
   device_serial?: string;
   instance_name?: string;
   instance_port?: number;
   assigned_account_id?: number;
+  assigned_at?: string;
   primary_device_id?: number;
+  error_message?: string;
   created_at: string;
   updated_at: string;
-  last_seen_at?: string;
+  last_seen?: string;
 }
 
 export enum AutomationStatus {
@@ -43,6 +53,7 @@ export enum ActionType {
   CLICK_COORDS = 'click_coords',
   TYPE_TEXT = 'type_text',
   PRESS_BACK = 'press_back',
+  EMULATOR_BACK = 'emulator_back',
   PRESS_HOME = 'press_home',
   SWIPE = 'swipe',
   SCREENSHOT = 'screenshot',
@@ -142,6 +153,7 @@ export interface ExecutionLoop {
   skip_accounts_already_ran_today: boolean;
   skip_google_jwt_accounts: boolean;
   last_execution_at?: string;
+  last_account_id?: number;
   total_executions: number;
   successful_executions: number;
   failed_executions: number;
@@ -151,10 +163,11 @@ export interface ExecutionLoop {
   updated_at: string;
   // Mode-specific data
   shared_preset_ids?: number[];
+  current_preset_index?: number;
+  current_account_id?: number;
   account_preset_config?: Record<string, number[]>;
   default_preset_ids?: number[];
   account_ids?: number[];
-  current_preset_index?: number;
   account_execution_state?: Record<string, any>;
 }
 
@@ -163,4 +176,52 @@ export interface DeviceScanResult {
   added: number;
   updated: number;
   offline: number;
+}
+
+// Action Schema types for dynamic UI generation
+export type ActionParameterType = 'string' | 'integer' | 'float' | 'boolean' | 'nested_actions';
+
+export type ActionCategory = 'basic' | 'interaction' | 'element' | 'control_flow' | 'timing' | 'advanced';
+
+export interface ActionParameter {
+  name: string;
+  type: ActionParameterType;
+  required: boolean;
+  default?: any;
+  description: string;
+  min?: number;
+  max?: number;
+  options?: string[];
+  placeholder?: string;
+}
+
+export interface ActionSchema {
+  type: string;
+  display_name: string;
+  description: string;
+  category: ActionCategory;
+  icon?: string;
+  parameters: ActionParameter[];
+  supports_nesting: boolean;
+  examples: ActionDefinition[];
+}
+
+export interface ActionSchemasResponse {
+  schemas: ActionSchema[];
+  total: number;
+}
+
+export interface ActionSchemasByCategoryResponse {
+  categories: Record<ActionCategory, ActionSchema[]>;
+}
+
+// Loop run response with multiple executions
+export interface LoopRunResponse {
+  status: 'queued' | 'skipped';
+  executions_created?: number;
+  executions?: Array<{
+    id: number;
+    task_id: string;
+    account_id: number;
+  }>;
 }
