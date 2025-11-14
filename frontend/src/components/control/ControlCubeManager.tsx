@@ -1,8 +1,10 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
+import { PanelActionEditor } from './PanelActionEditor';
 import { useControlCubeStore, CubeFace, CubeType } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
+import { panelActionRegistry, PanelActionsConfig } from '../../lib/panelActions';
 import { clsx } from 'clsx';
 
 export interface ControlCubeManagerProps {
@@ -14,6 +16,7 @@ const COMBINE_DISTANCE = 120; // pixels to start combining
 
 export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const managerRef = useRef<HTMLDivElement>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const cubes = useControlCubeStore((s) => s.cubes);
   const summoned = useControlCubeStore((s) => s.summoned);
@@ -169,6 +172,12 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
     console.log(`Cube ${cubeId} face ${face} clicked`);
   };
 
+  const handleSaveConfig = useCallback((config: PanelActionsConfig) => {
+    panelActionRegistry.register(config);
+    setEditorOpen(false);
+    alert(`Panel actions saved for ${config.panelName}!`);
+  }, []);
+
   return (
     <>
       {/* Cube container */}
@@ -205,6 +214,12 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             <div className="pt-2 text-white/60 text-[10px]">
               💡 Drag cubes close together to combine them
             </div>
+            <button
+              onClick={() => setEditorOpen(true)}
+              className="mt-3 w-full px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+            >
+              🎨 Open Action Editor
+            </button>
           </div>
         )}
       </div>
@@ -224,6 +239,14 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
         >
           🎲
         </button>
+      )}
+
+      {/* Panel Action Editor */}
+      {editorOpen && (
+        <PanelActionEditor
+          onSave={handleSaveConfig}
+          onClose={() => setEditorOpen(false)}
+        />
       )}
     </>
   );
