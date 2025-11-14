@@ -12,6 +12,7 @@ import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { AutomationRoute } from './routes/Automation';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
+import { ControlCubeManager } from './components/control/ControlCubeManager';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -63,6 +64,12 @@ function App() {
       {isAuthenticated && (
         <ErrorBoundary>
           <FloatingPanelsManager />
+        </ErrorBoundary>
+      )}
+      {/* Control Cubes (3D interface, only when authenticated) */}
+      {isAuthenticated && (
+        <ErrorBoundary>
+          <ControlCubeManager />
         </ErrorBoundary>
       )}
       {/* Global toast notifications */}
