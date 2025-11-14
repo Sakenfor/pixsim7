@@ -21,7 +21,7 @@ from pixsim7_backend.shared.errors import (
     InvalidOperationError,
     QuotaError,
 )
-from pixsim7_backend.infrastructure.events.bus import event_bus, JOB_CREATED, JOB_STARTED, JOB_COMPLETED, JOB_FAILED
+from pixsim7_backend.infrastructure.events.bus import event_bus, JOB_CREATED, JOB_STARTED, JOB_COMPLETED, JOB_FAILED, JOB_CANCELLED
 from pixsim7_backend.services.user.user_service import UserService
 
 logger = logging.getLogger(__name__)
@@ -207,13 +207,15 @@ class JobService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        # Emit status change events
+        # Emit status change events (include user_id for WebSocket filtering)
         if status == JobStatus.PROCESSING:
-            await event_bus.publish(JOB_STARTED, {"job_id": job_id})
+            await event_bus.publish(JOB_STARTED, {"job_id": job_id, "user_id": job.user_id, "status": status.value})
         elif status == JobStatus.COMPLETED:
-            await event_bus.publish(JOB_COMPLETED, {"job_id": job_id})
+            await event_bus.publish(JOB_COMPLETED, {"job_id": job_id, "user_id": job.user_id, "status": status.value})
         elif status == JobStatus.FAILED:
-            await event_bus.publish(JOB_FAILED, {"job_id": job_id, "error": error_message})
+            await event_bus.publish(JOB_FAILED, {"job_id": job_id, "user_id": job.user_id, "status": status.value, "error": error_message})
+        elif status == JobStatus.CANCELLED:
+            await event_bus.publish(JOB_CANCELLED, {"job_id": job_id, "user_id": job.user_id, "status": status.value})
 
         return job
 
