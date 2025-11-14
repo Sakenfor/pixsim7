@@ -20,7 +20,8 @@ export interface WorkspacePreset {
 }
 
 export interface WorkspaceState {
-  currentLayout: MosaicNode<PanelId> | null;
+  currentLayout: MosaicNode<PanelId> | null; // Legacy mosaic layout
+  dockviewLayout: any | null; // Dockview serialized layout
   closedPanels: PanelId[];
   isLocked: boolean;
   presets: WorkspacePreset[];
@@ -30,6 +31,7 @@ export interface WorkspaceState {
 
 export interface WorkspaceActions {
   setLayout: (layout: MosaicNode<PanelId> | null) => void;
+  setDockviewLayout: (layout: any) => void;
   closePanel: (panelId: PanelId) => void;
   restorePanel: (panelId: PanelId) => void;
   clearClosedPanels: () => void;
@@ -129,6 +131,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
       currentLayout: defaultPresets[0].layout,
+      dockviewLayout: null,
       closedPanels: [],
       isLocked: false,
       presets: defaultPresets,
@@ -139,6 +142,11 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         if (get().isLocked) return;
         const validatedLayout = validateAndFixLayout(layout);
         set({ currentLayout: validatedLayout });
+      },
+
+      setDockviewLayout: (layout) => {
+        if (get().isLocked) return;
+        set({ dockviewLayout: layout });
       },
 
       closePanel: (panelId) => {
@@ -206,6 +214,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       reset: () =>
         set({
           currentLayout: defaultPresets[0].layout,
+          dockviewLayout: null,
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
