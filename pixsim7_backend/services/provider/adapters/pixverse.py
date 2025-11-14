@@ -666,18 +666,18 @@ class PixverseProvider(Provider):
             else:
                 raise ProviderError(f"Unexpected Pixverse upload response type: {type(response)}")
 
-            except ProviderError:
-                raise
-            except Exception as e:
-                logger.error(
-                    "upload_asset_failed",
-                    provider_id="pixverse",
-                    file_path=file_path,
-                    error=str(e),
-                    error_type=e.__class__.__name__,
-                    exc_info=True
-                )
-                raise ProviderError(f"Pixverse upload failed: {e}")
+        except ProviderError:
+            raise
+        except Exception as e:
+            logger.error(
+                "upload_asset_failed",
+                provider_id="pixverse",
+                file_path=file_path,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True
+            )
+            raise ProviderError(f"Pixverse upload failed: {e}")
 
     def _has_openapi_credentials(self, account: ProviderAccount) -> bool:
         """

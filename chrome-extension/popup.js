@@ -97,6 +97,10 @@ function setupEventListeners() {
   const loopRefreshBtn = document.getElementById('loopRefreshBtn');
   if (presetRefreshBtn) presetRefreshBtn.addEventListener('click', loadAutomationOptions);
   if (loopRefreshBtn) loopRefreshBtn.addEventListener('click', loadAutomationOptions);
+
+  // Copy token button
+  const copyTokenBtn = document.getElementById('copyTokenBtn');
+  if (copyTokenBtn) copyTokenBtn.addEventListener('click', handleCopyToken);
 }
 
 // ===== TAB MANAGEMENT =====
@@ -117,6 +121,11 @@ function switchTab(tabId) {
     showAutomationToolbar(true);
     loadAutomationOptions();
     loadAccounts();
+  }
+
+  // Update devices tab UI when switching to it
+  if (tabId === 'devices') {
+    updateDevicesTab();
   }
 }
 
@@ -162,6 +171,11 @@ function showLoggedIn() {
   if (document.getElementById('tab-accounts').classList.contains('active')) {
     loadAccounts();
   }
+
+  // Update devices tab if it's active
+  if (document.getElementById('tab-devices').classList.contains('active')) {
+    updateDevicesTab();
+  }
 }
 
 async function handleLogin() {
@@ -203,6 +217,11 @@ async function handleLogout() {
   currentUser = null;
   currentProvider = null;
   showLogin();
+
+  // Update devices tab if it's active
+  if (document.getElementById('tab-devices').classList.contains('active')) {
+    updateDevicesTab();
+  }
 }
 
 // ===== PROVIDER DETECTION =====
@@ -760,6 +779,40 @@ function getTimeAgo(date) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// ===== DEVICES TAB =====
+
+async function updateDevicesTab() {
+  const result = await chrome.storage.local.get(['pixsim7Token']);
+  const tokenCopySection = document.getElementById('tokenCopySection');
+  const loginRequiredMessage = document.getElementById('loginRequiredMessage');
+
+  if (result.pixsim7Token) {
+    // Show token copy section, hide login message
+    tokenCopySection.classList.remove('hidden');
+    loginRequiredMessage.classList.add('hidden');
+  } else {
+    // Hide token copy section, show login message
+    tokenCopySection.classList.add('hidden');
+    loginRequiredMessage.classList.remove('hidden');
+  }
+}
+
+async function handleCopyToken() {
+  try {
+    const result = await chrome.storage.local.get(['pixsim7Token']);
+
+    if (result.pixsim7Token) {
+      await navigator.clipboard.writeText(result.pixsim7Token);
+      showToast('success', 'Auth token copied to clipboard!');
+    } else {
+      showToast('error', 'No auth token found. Please login first.');
+    }
+  } catch (error) {
+    console.error('[Devices] Failed to copy token:', error);
+    showToast('error', 'Failed to copy token: ' + error.message);
+  }
 }
 
 // ===== CONNECTION CHECK =====

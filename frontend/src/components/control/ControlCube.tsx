@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef } from 'react';
-import { useControlCubeStore, CubeType, CubeFace } from '../../stores/controlCubeStore';
+import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
 import { clsx } from 'clsx';
 
 export interface CubeFaceContent {

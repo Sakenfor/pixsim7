@@ -25,6 +25,9 @@ importers:
       dockview:
         specifier: ^4.11.0
         version: 4.11.0(react@19.2.0)
+      dockview-core:
+        specifier: ^4.11.0
+        version: 4.11.0
       lucide-react:
         specifier: ^0.553.0
         version: 0.553.0(react@19.2.0)

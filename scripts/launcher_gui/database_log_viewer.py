@@ -736,6 +736,9 @@ class DatabaseLogViewer(QWidget):
 
     def _render_logs(self, data):
         """Render logs with current expansion state."""
+        scrollbar = self.log_display.verticalScrollBar()
+        scroll_value = scrollbar.value() if scrollbar is not None else 0
+
         logs = data.get('logs', [])
         if not logs:
             self.log_display.setHtml('<div style="color: #888; padding: 20px; text-align: center;">No logs found matching your filters.<br><br>Try adjusting the time range or removing some filters.</div>')
@@ -759,6 +762,8 @@ class DatabaseLogViewer(QWidget):
         self._expanded_rows.intersection_update(set(row_keys))
 
         self.log_display.setHtml('\n'.join(html_parts))
+        if scrollbar is not None:
+            scrollbar.setValue(min(scroll_value, scrollbar.maximum()))
 
         # Build informative status message
         total = data.get('total', 0)

@@ -630,20 +630,43 @@
           Device management is handled via standalone Python service running on each device.
         </div>
 
+        <!-- Quick Token Copy -->
+        <div id="tokenCopySection" class="hidden" style="margin-bottom: 16px; padding: 12px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">Your Auth Token</div>
+              <div style="font-size: 11px; opacity: 0.8;">Use this token to run device_agent.py</div>
+            </div>
+            <button id="copyTokenBtn" class="btn-primary" style="font-size: 12px; padding: 6px 12px;">
+              📋 Copy Token
+            </button>
+          </div>
+        </div>
+
+        <div id="loginRequiredMessage" class="hidden" style="margin-bottom: 16px; padding: 12px; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 6px; font-size: 13px;">
+          <div style="font-weight: 600; margin-bottom: 4px;">⚠️ Login Required</div>
+          Please login first to get your auth token.
+        </div>
+
         <div style="padding: 16px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 13px; line-height: 1.8;">
           <div style="font-weight: 600; margin-bottom: 12px;">Setup Instructions:</div>
           <ol style="opacity: 0.9;">
-            <li>Install ZeroTier on each device</li>
-            <li>Join your ZeroTier network</li>
+            <li>Install ZeroTier and join your network</li>
             <li>Install ADB (Android Debug Bridge)</li>
+            <li>Click "📋 Copy Token" button above to get your auth token</li>
             <li>Run the device agent from PixSim7 root:<br>
-              <code style="background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; margin-top: 4px; display: inline-block;">python scripts/device_agent.py --server http://your-backend:8001 --token YOUR_TOKEN</code>
+              <code style="background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 4px; margin-top: 6px; display: block; overflow-x: auto; white-space: nowrap; font-size: 11px;">python scripts/device_agent.py --server http://your-zerotier-ip:8001 --token YOUR_JWT_TOKEN</code>
             </li>
           </ol>
 
           <div style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 12px;">
-            <div style="font-weight: 600; margin-bottom: 4px;">ℹ️ Note</div>
-            The agent auto-discovers ADB devices and registers them with the backend.
+            <div style="font-weight: 600; margin-bottom: 6px;">ℹ️ How it works</div>
+            <ul style="margin-left: 16px; line-height: 1.6; opacity: 0.9;">
+              <li>Agent auto-discovers local ADB devices</li>
+              <li>Registers with backend using your auth token</li>
+              <li>Devices appear in web dashboard</li>
+              <li>Server can execute automation tasks on your devices</li>
+            </ul>
           </div>
         </div>
       </div>

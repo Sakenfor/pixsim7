@@ -1,10 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
-import {
-  DockviewReact,
-  DockviewReadyEvent,
-  IDockviewPanelProps,
-} from 'dockview';
-import 'dockview/dist/styles.css';
+import { DockviewReact } from 'dockview';
+import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
+import 'dockview/dist/styles/dockview.css';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../SceneBuilderPanel';
 import { GraphPanelWithProvider } from '../GraphPanel';
