@@ -10,7 +10,8 @@ export type CubeType =
   | 'provider'     // Provider controls
   | 'preset'       // Preset management
   | 'panel'        // Panel controls
-  | 'settings';    // Settings/options
+  | 'settings'     // Settings/options
+  | 'gallery';     // Gallery asset picker
 
 export interface CubeConnection {
   id: string;
@@ -53,6 +54,7 @@ export interface CubeState {
   activeFace: CubeFace;
   dockedToPanelId?: string;  // If docked to a panel
   zIndex: number;
+  pinnedAssets?: Partial<Record<CubeFace, string>>;  // Asset IDs pinned to faces (for gallery cubes)
 }
 
 export interface ControlCubeStoreState {
@@ -108,6 +110,11 @@ export interface ControlCubeActions {
   startLinking: (cubeId: string, face: CubeFace) => void;
   completeLinking: (toCubeId: string, toFace: CubeFace) => void;
   cancelLinking: () => void;
+
+  // Asset pinning (for gallery cubes)
+  pinAssetToFace: (cubeId: string, face: CubeFace, assetId: string) => void;
+  unpinAssetFromFace: (cubeId: string, face: CubeFace) => void;
+  getPinnedAsset: (cubeId: string, face: CubeFace) => string | undefined;
 
   // Utility
   reset: () => void;
@@ -394,6 +401,28 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
           linkingMode: false,
           linkingFromCube: undefined,
         });
+      },
+
+      // Asset pinning
+      pinAssetToFace: (cubeId, face, assetId) => {
+        const cube = get().cubes[cubeId];
+        if (!cube) return;
+
+        const pinnedAssets = { ...cube.pinnedAssets, [face]: assetId };
+        get().updateCube(cubeId, { pinnedAssets });
+      },
+
+      unpinAssetFromFace: (cubeId, face) => {
+        const cube = get().cubes[cubeId];
+        if (!cube || !cube.pinnedAssets) return;
+
+        const { [face]: removed, ...rest } = cube.pinnedAssets;
+        get().updateCube(cubeId, { pinnedAssets: rest });
+      },
+
+      getPinnedAsset: (cubeId, face) => {
+        const cube = get().cubes[cubeId];
+        return cube?.pinnedAssets?.[face];
       },
 
       reset: () => {

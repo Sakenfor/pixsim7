@@ -27,6 +27,7 @@ const CUBE_TYPE_COLORS: Record<CubeType, string> = {
   preset: 'bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-400/50',
   panel: 'bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border-cyan-400/50',
   settings: 'bg-gradient-to-br from-gray-500/20 to-slate-500/20 border-gray-400/50',
+  gallery: 'bg-gradient-to-br from-pink-500/20 to-rose-500/20 border-pink-400/50',
 };
 
 const CUBE_TYPE_GLOW: Record<CubeType, string> = {
@@ -35,6 +36,7 @@ const CUBE_TYPE_GLOW: Record<CubeType, string> = {
   preset: 'shadow-orange-500/50',
   panel: 'shadow-cyan-500/50',
   settings: 'shadow-gray-500/50',
+  gallery: 'shadow-pink-500/50',
 };
 
 const DEFAULT_FACE_CONTENT: CubeFaceContent = {
@@ -241,5 +243,13 @@ export const CUBE_CONFIGS = {
     right: <div className="text-neutral-300">📝</div>,
     top: <div className="text-gray-400">🔑</div>,
     bottom: <div className="text-slate-400">💡</div>,
+  },
+  gallery: {
+    front: <div className="text-pink-300">🖼️</div>,
+    back: <div className="text-rose-300">🎨</div>,
+    left: <div className="text-fuchsia-300">◀️</div>,
+    right: <div className="text-pink-400">▶️</div>,
+    top: <div className="text-rose-400">⬆️</div>,
+    bottom: <div className="text-pink-500">📥</div>,
   },
 } satisfies Record<CubeType, CubeFaceContent>;

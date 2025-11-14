@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { DraggableCube } from './DraggableCube';
+import { DraggableGalleryCube } from './DraggableGalleryCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
 import { CubeConnectionsOverlay } from './CubeConnectionsOverlay';
@@ -87,6 +88,16 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
           y: Math.random() * (window.innerHeight - 200) + 100,
         };
         addCube('provider', pos);
+      }
+
+      // Ctrl+Shift+G: Add gallery cube
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyG') {
+        e.preventDefault();
+        const pos = {
+          x: Math.random() * (window.innerWidth - 200) + 100,
+          y: Math.random() * (window.innerHeight - 200) + 100,
+        };
+        addCube('gallery', pos);
       }
 
       // Arrow keys: Rotate active cube
@@ -206,9 +217,54 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
       return;
     }
 
+    const cube = cubes[cubeId];
+
+    // Special handling for gallery cubes
+    if (cube?.type === 'gallery') {
+      handleGalleryCubeFaceClick(cubeId, face);
+      return;
+    }
+
     // Otherwise, rotate to that face
     rotateCubeFace(cubeId, face);
     console.log(`Cube ${cubeId} face ${face} clicked`);
+  };
+
+  const handleGalleryCubeFaceClick = (cubeId: string, face: CubeFace) => {
+    const cube = cubes[cubeId];
+    if (!cube) return;
+
+    // Get asset ID from face (either pinned or from recent assets)
+    const pinnedAssetId = cube.pinnedAssets?.[face];
+
+    // TODO: Actually load asset into scene builder or preview
+    // For now, just log and potentially send message to connected cubes
+    console.log(`🖼️ Gallery cube ${cubeId} face ${face} clicked`, {
+      pinnedAssetId,
+      face,
+    });
+
+    // If there's a pinned asset, send it through connections
+    if (pinnedAssetId) {
+      const connections = Object.values(useControlCubeStore.getState().connections);
+      const outgoingConns = connections.filter(
+        (conn) => conn.fromCubeId === cubeId && conn.fromFace === face
+      );
+
+      // Send asset data through connections
+      outgoingConns.forEach((conn) => {
+        useControlCubeStore.getState().sendMessage(
+          cubeId,
+          conn.toCubeId,
+          { assetId: pinnedAssetId, action: 'loadAsset' },
+          'asset'
+        );
+        console.log(`📤 Sent asset ${pinnedAssetId} to cube ${conn.toCubeId}`);
+      });
+    }
+
+    // Rotate to show the face
+    rotateCubeFace(cubeId, face);
   };
 
   const handleSaveConfig = useCallback((config: PanelActionsConfig) => {
@@ -232,16 +288,32 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
           className
         )}
       >
-        {Object.entries(cubes).map(([id, cube]) => (
-          <DraggableCube
-            key={id}
-            cubeId={id}
-            size={100}
-            faceContent={getCubeFaceContent(cube.type, cube.dockedToPanelId)}
-            onDragStop={handleDragStop}
-            onFaceClick={(face) => handleFaceClick(id, face)}
-          />
-        ))}
+        {Object.entries(cubes).map(([id, cube]) => {
+          // Use special gallery cube for gallery type
+          if (cube.type === 'gallery') {
+            return (
+              <DraggableGalleryCube
+                key={id}
+                cubeId={id}
+                size={100}
+                onDragStop={handleDragStop}
+                onFaceClick={(face) => handleFaceClick(id, face)}
+              />
+            );
+          }
+
+          // Default cube for other types
+          return (
+            <DraggableCube
+              key={id}
+              cubeId={id}
+              size={100}
+              faceContent={getCubeFaceContent(cube.type, cube.dockedToPanelId)}
+              onDragStop={handleDragStop}
+              onFaceClick={(face) => handleFaceClick(id, face)}
+            />
+          );
+        })}
 
         {/* Help overlay */}
         {summoned && (
@@ -250,6 +322,7 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Ctrl+Space</kbd> Toggle Cubes</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Ctrl+Shift+C</kbd> Add Control Cube</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Ctrl+Shift+P</kbd> Add Provider Cube</div>
+            <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Ctrl+Shift+G</kbd> Add Gallery Cube</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">Arrow Keys</kbd> Rotate Active Cube</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">R</kbd> Auto-Rotate</div>
             <div><kbd className="px-1 py-0.5 bg-white/20 rounded">E</kbd> Expand/Collapse</div>
