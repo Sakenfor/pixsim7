@@ -233,19 +233,72 @@ function showNotification(title, message) {
 // Monitor login state and import cookies
 let wasLoggedIn = false;
 let hasImportedThisSession = false;
+let lastCookieSnapshot = null;
+let lastImportTimestamp = 0;
+const IMPORT_DEBOUNCE_MS = 10000;
+
+function scheduleImport(providerId) {
+  const now = Date.now();
+  if (now - lastImportTimestamp < IMPORT_DEBOUNCE_MS) {
+    console.log('[PixSim7 Content] Import skipped (debounced)');
+    return;
+  }
+  lastImportTimestamp = now;
+  // Wait a bit for bearer token to be captured
+  setTimeout(() => {
+    importCookies(providerId, {});
+  }, 1000);
+}
+
+function hashCookies(cookies) {
+  try {
+    const entries = Object.entries(cookies || {}).sort(([a], [b]) => a.localeCompare(b));
+    const json = JSON.stringify(entries);
+    let hash = 0;
+    for (let i = 0; i < json.length; i++) {
+      hash = ((hash << 5) - hash) + json.charCodeAt(i);
+      hash |= 0;
+    }
+    return hash;
+  } catch {
+    return null;
+  }
+}
 
 async function checkAndImport() {
   const auth = await checkAuth();
   const isLoggedIn = !!auth;
 
-  // Only import on actual login transition (from logged out to logged in)
-  if (isLoggedIn && !wasLoggedIn) {
-    console.log('[PixSim7 Content] *** LOGIN DETECTED ***');
+  // When provider is detected, also watch for cookie changes.
+  // This catches SPA-style logins where cookies update without a full reload.
+  if (isLoggedIn) {
+    try {
+      const cookies = await getAllCookiesSecure();
+      const currentHash = hashCookies(cookies);
+      if (currentHash !== null) {
+        if (lastCookieSnapshot === null) {
+          lastCookieSnapshot = currentHash;
+        } else if (currentHash !== lastCookieSnapshot) {
+          console.log('[PixSim7 Content] *** COOKIE CHANGE DETECTED - treating as login/update ***');
+          lastCookieSnapshot = currentHash;
+          hasImportedThisSession = true;
+          scheduleImport(auth.providerId);
+        }
+      }
+    } catch (e) {
+      console.warn('[PixSim7 Content] Cookie change detection failed:', e);
+    }
+  }
+
+  // Still keep a basic login transition guard so we don't spam imports
+  if (isLoggedIn && !wasLoggedIn && !hasImportedThisSession) {
+    console.log('[PixSim7 Content] *** LOGIN DETECTED (initial) ***');
     hasImportedThisSession = true;
-    // Wait a bit for bearer token to be captured
-    setTimeout(() => {
-      importCookies(auth.providerId, {});
-    }, 1000);
+    scheduleImport(auth.providerId);
+  } else if (!isLoggedIn) {
+    // Reset tracking when logged out / provider not detected
+    lastCookieSnapshot = null;
+    hasImportedThisSession = false;
   }
 
   wasLoggedIn = isLoggedIn;

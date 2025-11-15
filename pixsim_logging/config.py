@@ -83,10 +83,16 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
     # Optional: Add HTTP ingestion handler (secondary path). This is useful for
     # services that cannot reach the DB directly but can hit a central ingest
     # API. Controlled via PIXSIM_LOG_INGESTION_URL and PIXSIM_LOG_ENABLE_HTTP.
+    # When a DB handler is active, HTTP is disabled by default to avoid
+    # duplicate writes unless explicitly forced via PIXSIM_LOG_ENABLE_HTTP=force.
     http_handler = None
     http_url = os.getenv("PIXSIM_LOG_INGESTION_URL")
     http_enabled_env = os.getenv("PIXSIM_LOG_ENABLE_HTTP", "true").lower()
-    http_enabled = http_url is not None and http_enabled_env not in {"0", "false", "no"}
+    # If a DB handler is configured, treat HTTP as opt-in via 'force'.
+    if db_handler and http_enabled_env not in {"force"}:
+        http_enabled = False
+    else:
+        http_enabled = http_url is not None and http_enabled_env not in {"0", "false", "no"}
     http_disabled_reason = None if http_enabled else "missing_or_disabled"
 
     if http_enabled and http_url:

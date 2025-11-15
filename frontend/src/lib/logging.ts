@@ -1,8 +1,10 @@
 // Simple web logger posting to backend ingestion API
 // Usage: import { initWebLogger, logEvent } from '@/lib/logging'; initWebLogger('frontend');
 
+import { API_BASE_URL } from './api/client';
+
 const getBackendUrl = (): string | undefined => {
-  return import.meta.env.VITE_API_URL;
+  return API_BASE_URL;
 };
 
 let serviceName = 'web';
@@ -25,7 +27,7 @@ export async function logEvent(
   const base = getBackendUrl();
   if (!base) return;
   try {
-    await fetch(`${base}/api/v1/logs/ingest`, {
+    await fetch(`${base}/logs/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level, service: serviceName || 'frontend', env: 'dev', msg, ...extra }),
