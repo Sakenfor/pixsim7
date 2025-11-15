@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { registerModules, moduleRegistry } from './modules';
+import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -29,6 +30,9 @@ function App() {
     // Initialize modules
     registerModules();
     moduleRegistry.initializeAll();
+
+    // Register cube expansions
+    registerCubeExpansions();
 
     // Initialize auth state
     initialize();

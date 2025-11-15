@@ -1,5 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
+import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
+import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { clsx } from 'clsx';
 
 export interface CubeFaceContent {
@@ -62,6 +64,8 @@ export function ControlCube({
   const [hoverTilt, setHoverTilt] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
   const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
+  const [showExpansion, setShowExpansion] = useState(false);
+  const hoverTimeoutRef = useRef<number | null>(null);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -98,12 +102,34 @@ export function ControlCube({
 
   const handleMouseEnter = () => {
     setIsHovering(true);
+
+    // Check if expansion provider exists
+    const providerId = cube?.minimizedPanel?.panelId || cube?.type;
+    if (!providerId) return;
+
+    const provider = cubeExpansionRegistry.get(providerId);
+    if (!provider || !provider.showOnHover) return;
+
+    // Set timeout to show expansion after delay
+    const delay = provider.hoverDelay || 300;
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      setShowExpansion(true);
+    }, delay);
   };
 
   const handleMouseLeave = () => {
     setIsHovering(false);
     setHoverTilt({ x: 0, y: 0 });
     setHoveredFace(null);
+
+    // Cancel expansion timeout
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+
+    // Hide expansion
+    setShowExpansion(false);
   };
 
   // Click to rotate to hovered face
@@ -132,6 +158,15 @@ export function ControlCube({
       `;
     }
   }, [cube?.rotation, hoverTilt, isHovering]);
+
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (!cube) return null;
 
@@ -254,6 +289,15 @@ export function ControlCube({
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-purple-300 whitespace-nowrap">
           🔗 Combined
         </div>
+      )}
+
+      {/* Expansion overlay */}
+      {showExpansion && containerRef.current && (
+        <CubeExpansionOverlay
+          cube={cube}
+          cubeElement={containerRef.current}
+          onClose={() => setShowExpansion(false)}
+        />
       )}
     </div>
   );
