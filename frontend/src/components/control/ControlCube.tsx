@@ -69,7 +69,7 @@ export function ControlCube({
   const [showExpansion, setShowExpansion] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
   const [hoverAtEdge, setHoverAtEdge] = useState(false);
-  const lastClickTime = useRef<number>(0);
+  const clickTimeoutRef = useRef<number | null>(null);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -220,6 +220,11 @@ export function ControlCube({
   // Handle double-click to expand
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Clear any pending single-click action
+    if (clickTimeoutRef.current !== null) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
     expandToPanel();
   };
 
@@ -227,34 +232,35 @@ export function ControlCube({
   const handleCubeClick = (e: React.MouseEvent) => {
     if (!hoveredFace || !cube) return;
 
-    const now = Date.now();
-    const timeSinceLastClick = now - lastClickTime.current;
-
-    // Check for double-click (within 300ms)
-    if (timeSinceLastClick < 300) {
-      // Double-click handled by handleDoubleClick
-      return;
-    }
-
-    lastClickTime.current = now;
     e.stopPropagation();
 
-    // If clicking the currently active face (the one showing), open the action
-    if (hoveredFace === cube.activeFace) {
-      onFaceClick?.(hoveredFace);
-      return;
+    // Clear any pending click action
+    if (clickTimeoutRef.current !== null) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
     }
 
-    // Only rotate when the hover is truly in the edge band
-    if (!hoverAtEdge) {
-      // Treat non-edge clicks as center clicks: no rotation, optional action
-      onFaceClick?.(cube.activeFace);
-      return;
-    }
+    // Delay single-click action to allow double-click detection
+    clickTimeoutRef.current = setTimeout(() => {
+      clickTimeoutRef.current = null;
 
-    // For non-active faces at the edge, rotate to show that face (no action here)
-    rotateCubeFace(cubeId, hoveredFace);
-    updateCube(cubeId, { activeFace: hoveredFace });
+      // If clicking the currently active face (the one showing), open the action
+      if (hoveredFace === cube.activeFace) {
+        onFaceClick?.(hoveredFace);
+        return;
+      }
+
+      // Only rotate when the hover is truly in the edge band
+      if (!hoverAtEdge) {
+        // Treat non-edge clicks as center clicks: no rotation, optional action
+        onFaceClick?.(cube.activeFace);
+        return;
+      }
+
+      // For non-active faces at the edge, rotate to show that face (no action here)
+      rotateCubeFace(cubeId, hoveredFace);
+      updateCube(cubeId, { activeFace: hoveredFace });
+    }, 250) as unknown as number;
   };
 
   useEffect(() => {
@@ -275,11 +281,14 @@ export function ControlCube({
     }
   }, [cube?.rotation, hoverTilt, isHovering]);
 
-  // Cleanup hover timeout on unmount
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (hoverTimeoutRef.current) {
         clearTimeout(hoverTimeoutRef.current);
+      }
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
       }
     };
   }, []);
