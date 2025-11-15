@@ -168,6 +168,7 @@ export interface ControlCubeActions {
 
   // Utility
   reset: () => void;
+  cleanBrokenConnections: () => void;
 }
 
 // Rotation angles for each face
@@ -250,8 +251,17 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       removeCube: (id) => {
         set((state) => {
           const { [id]: removed, ...rest } = state.cubes;
+
+          // Auto-clean broken connections that reference the removed cube
+          const cleanedConnections = Object.fromEntries(
+            Object.entries(state.connections).filter(
+              ([_, conn]) => conn.fromCubeId !== id && conn.toCubeId !== id
+            )
+          );
+
           return {
             cubes: rest,
+            connections: cleanedConnections,
             activeCubeId: state.activeCubeId === id ? undefined : state.activeCubeId,
             combinedCubeIds: state.combinedCubeIds.filter((cid) => cid !== id),
           };
@@ -699,6 +709,17 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
           activeFormationId: undefined,
         });
       },
+
+      cleanBrokenConnections: () => {
+        set((state) => {
+          const cleanedConnections = Object.fromEntries(
+            Object.entries(state.connections).filter(
+              ([_, conn]) => state.cubes[conn.fromCubeId] && state.cubes[conn.toCubeId]
+            )
+          );
+          return { connections: cleanedConnections };
+        });
+      },
     }),
     {
       name: STORAGE_KEY,
@@ -713,6 +734,17 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       onRehydrateStorage: () => (state) => {
         if (state) {
           syncCountersFromState(state);
+
+          // Clean broken connections during hydration
+          if (state.connections && state.cubes) {
+            const cleanedConnections = Object.fromEntries(
+              Object.entries(state.connections).filter(
+                ([_, conn]) => state.cubes[conn.fromCubeId] && state.cubes[conn.toCubeId]
+              )
+            );
+            state.connections = cleanedConnections;
+          }
+
           // Mark store as hydrated so UI can safely initialize cubes
           (state as any).hydrated = true;
         }
