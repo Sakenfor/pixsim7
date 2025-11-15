@@ -13,16 +13,44 @@ export interface ServiceStatus {
 }
 
 export interface LogEntry {
+  id: number;
   timestamp: string;
   level: string;
-  logger: string;
-  message: string;
+  service: string;
+  env: string;
+  msg: string | null;
+
+  // Legacy fields (for backward compatibility with old logs)
+  logger?: string;
+  message?: string;
   module?: string;
   function?: string;
   line?: number;
-  user_id?: number;
-  job_id?: number;
   exception?: string;
+
+  // Correlation fields
+  request_id?: string | null;
+  job_id?: number | null;
+  submission_id?: number | null;
+  artifact_id?: number | null;
+  provider_job_id?: string | null;
+
+  // Context fields
+  provider_id?: string | null;
+  operation_type?: string | null;
+  stage?: string | null;
+  user_id?: number | null;
+
+  // Error fields
+  error?: string | null;
+  error_type?: string | null;
+
+  // Performance fields
+  duration_ms?: number | null;
+  attempt?: number | null;
+
+  // Extra fields
+  extra?: Record<string, any> | null;
 }
 
 export interface LogQueryResponse {
