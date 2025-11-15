@@ -184,6 +184,12 @@ const FACE_ROTATIONS: Record<CubeFace, CubeRotation> = {
 const STORAGE_KEY = 'control_cubes_v1';
 
 /**
+ * Track active message timeouts for cleanup
+ * Map<messageId, timeoutId>
+ */
+const messageTimeouts = new Map<string, number>();
+
+/**
  * Get default cube position - SSR-safe
  *
  * Returns center of viewport if window is available,
@@ -411,14 +417,23 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
         }));
 
         // Auto-clear old messages after 5 seconds
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           set((state) => ({
             messages: state.messages.filter((m) => m.id !== message.id),
           }));
-        }, 5000);
+          // Clean up timeout tracking
+          messageTimeouts.delete(message.id);
+        }, 5000) as unknown as number;
+
+        // Track timeout for cleanup
+        messageTimeouts.set(message.id, timeoutId);
       },
 
       clearMessages: () => {
+        // Cancel all pending timeouts
+        messageTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        messageTimeouts.clear();
+
         set({ messages: [] });
       },
 
@@ -673,6 +688,10 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       },
 
       reset: () => {
+        // Cancel all pending message timeouts
+        messageTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        messageTimeouts.clear();
+
         set({
           cubes: {},
           activeCubeId: undefined,
