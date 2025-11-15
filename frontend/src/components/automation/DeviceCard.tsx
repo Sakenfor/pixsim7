@@ -89,6 +89,15 @@ export function DeviceCard({ device }: DeviceCardProps) {
           </div>
         )}
       </div>
+
+      {/* Error message */}
+      {device.error_message && (
+        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+            <span className="font-medium">Error:</span> {device.error_message}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
