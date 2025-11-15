@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createBackendStorage } from '../lib/backendStorage';
 import {
   createCubeManagementSlice,
   syncCubeCounter,
@@ -55,6 +56,7 @@ export const useControlCubeStore = create<ControlCubeStore>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createBackendStorage('cubes'),
       partialize: (state) => ({
         cubes: state.cubes,
         summoned: state.summoned,

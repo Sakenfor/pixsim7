@@ -5,7 +5,9 @@ from fastapi import APIRouter, HTTPException
 from pixsim7_backend.api.dependencies import CurrentUser, UserSvc
 from pixsim7_backend.shared.schemas.user_schemas import (
     UpdateUserRequest,
+    UpdateUserPreferencesRequest,
     UserResponse,
+    UserPreferencesResponse,
     UserUsageResponse,
 )
 from pixsim7_backend.shared.errors import (
@@ -89,3 +91,48 @@ async def get_user_usage(
         raise HTTPException(status_code=404, detail="Usage data not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get usage: {str(e)}")
+
+
+# ===== GET USER PREFERENCES =====
+
+@router.get("/users/me/preferences", response_model=UserPreferencesResponse)
+async def get_user_preferences(user: CurrentUser):
+    """
+    Get current user preferences
+
+    Returns the preferences dictionary for the currently authenticated user.
+    Preferences can include theme, notification settings, cube state, etc.
+    """
+    return UserPreferencesResponse(preferences=user.preferences or {})
+
+
+# ===== UPDATE USER PREFERENCES =====
+
+@router.patch("/users/me/preferences", response_model=UserPreferencesResponse)
+async def update_user_preferences(
+    request: UpdateUserPreferencesRequest,
+    user: CurrentUser,
+    user_service: UserSvc
+):
+    """
+    Update current user preferences
+
+    Merges the provided preferences with existing preferences.
+    To delete a preference key, set its value to null in the request.
+    """
+    try:
+        # Merge with existing preferences
+        current_prefs = user.preferences or {}
+        updated_prefs = {**current_prefs, **request.preferences}
+
+        # Remove null values (allows deleting preferences)
+        updated_prefs = {k: v for k, v in updated_prefs.items() if v is not None}
+
+        # Update user
+        updated_user = await user_service.update_user(user.id, preferences=updated_prefs)
+        return UserPreferencesResponse(preferences=updated_user.preferences or {})
+
+    except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update preferences: {str(e)}")

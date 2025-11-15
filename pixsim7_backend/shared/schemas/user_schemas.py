@@ -13,6 +13,11 @@ class UpdateUserRequest(BaseModel):
     full_name: str | None = Field(None, max_length=100)
 
 
+class UpdateUserPreferencesRequest(BaseModel):
+    """Update user preferences request"""
+    preferences: dict = Field(..., description="User preferences dictionary")
+
+
 # ===== RESPONSE SCHEMAS =====
 
 class UserResponse(BaseModel):
@@ -26,6 +31,15 @@ class UserResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None = None
+    preferences: dict = Field(default_factory=dict)
+
+    class Config:
+        from_attributes = True
+
+
+class UserPreferencesResponse(BaseModel):
+    """User preferences response"""
+    preferences: dict = Field(default_factory=dict)
 
     class Config:
         from_attributes = True
