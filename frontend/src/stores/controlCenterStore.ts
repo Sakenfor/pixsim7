@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
+export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
 
 export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
 export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
@@ -27,9 +28,10 @@ export type TimelineAsset = {
 
 export interface ControlCenterState {
   mode: ControlCenterMode;  // 'dock' or 'cubes' mode
+  dockPosition: DockPosition; // where the dock is positioned
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
-  height: number;           // height in px when expanded
+  height: number;           // height/width in px when expanded (used for vertical/horizontal sizing)
   activeModule: ControlModule;
   operationType: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
   recentPrompts: string[];
@@ -43,6 +45,7 @@ export interface ControlCenterState {
 export interface ControlCenterActions {
   setMode: (mode: ControlCenterMode) => void;
   toggleMode: () => void;
+  setDockPosition: (position: DockPosition) => void;
   toggleOpen: () => void;
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
@@ -64,6 +67,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
   persist(
     (set, get) => ({
       mode: 'dock',
+      dockPosition: 'bottom',
       open: false,
       pinned: false,
       height: 180,
@@ -77,18 +81,16 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       generating: false,
       setMode: (mode) => {
         if (get().mode === mode) return;
-        // When switching to cubes mode, ensure it's visible
-        if (mode === 'cubes') {
-          set({ mode, open: true });
-        } else {
-          set({ mode });
-        }
+        set({ mode });
       },
-      toggleMode: () => set((s) => ({
-        mode: s.mode === 'dock' ? 'cubes' : 'dock',
-        // When switching to cubes mode, ensure it's visible
-        open: s.mode === 'dock' ? true : s.open
-      })),
+      toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
+      setDockPosition: (position) => {
+        if (get().dockPosition === position) return;
+        // Adjust default size based on position
+        const isVertical = position === 'left' || position === 'right';
+        const newHeight = isVertical ? 320 : 180;
+        set({ dockPosition: position, height: newHeight });
+      },
       toggleOpen: () => set((s) => ({ open: !s.open })),
       setOpen: (v) => {
         if (get().open === v) return;
@@ -99,7 +101,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         set({ pinned: v });
       },
       setHeight: (px) => {
-        const next = Math.max(120, Math.min(480, px));
+        const pos = get().dockPosition;
+        const isVertical = pos === 'left' || pos === 'right';
+        const min = isVertical ? 200 : 120;
+        const max = isVertical ? 600 : 480;
+        const next = Math.max(min, Math.min(max, px));
         if (get().height === next) return;
         set({ height: next });
       },
@@ -126,12 +132,12 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ mode: 'dock', open: false, pinned: false, height: 180, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
+      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 180, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
     }),
     {
       name: STORAGE_KEY,
-      partialize: (s) => ({ mode: s.mode, open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
-      version: 3,
+      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
+      version: 4,
     }
   )
 );
