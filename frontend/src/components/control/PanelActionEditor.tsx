@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { CubeFace } from '../../stores/controlCubeStore';
 import type { PanelAction, PanelActionsConfig } from '../../lib/panelActions';
+import { useToast } from '../../stores/toastStore';
 import { clsx } from 'clsx';
 
 interface EditingAction extends PanelAction {
@@ -30,6 +31,7 @@ export function PanelActionEditor({
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [selectedFace, setSelectedFace] = useState<CubeFace | null>(null);
   const [previewRotation, setPreviewRotation] = useState({ x: -20, y: 20, z: 0 });
+  const toast = useToast();
 
   const selectedAction = actions.find((a) => a.id === selectedActionId);
 
@@ -38,7 +40,9 @@ export function PanelActionEditor({
       id: `action-${Date.now()}`,
       label: 'New Action',
       icon: '⚡',
-      execute: () => console.log('Action executed'),
+      execute: () => {
+        // Action execution placeholder
+      },
     };
     setActions([...actions, newAction]);
     setSelectedActionId(newAction.id);
@@ -78,7 +82,7 @@ export function PanelActionEditor({
 
   const handleSave = useCallback(() => {
     if (!panelId || !panelName) {
-      alert('Please provide panel ID and name');
+      toast.error('Please provide panel ID and name');
       return;
     }
 
@@ -95,7 +99,7 @@ export function PanelActionEditor({
     };
 
     onSave?.(config);
-  }, [panelId, panelName, actions, onSave]);
+  }, [panelId, panelName, actions, onSave, toast]);
 
   const generateCode = useCallback(() => {
     const actionsCode = actions
@@ -118,8 +122,7 @@ export function PanelActionEditor({
         }
 
         parts.push(`      execute: () => {`);
-        parts.push(`        // TODO: Implement action`);
-        parts.push(`        console.log('${action.label} executed');`);
+        parts.push(`        // TODO: Implement action for ${action.label}`);
         parts.push(`      },`);
         parts.push(`    }`);
 
@@ -149,8 +152,8 @@ ${actionsCode}
   const copyCode = useCallback(() => {
     const code = generateCode();
     navigator.clipboard.writeText(code);
-    alert('Code copied to clipboard!');
-  }, [generateCode]);
+    toast.success('Code copied to clipboard!');
+  }, [generateCode, toast]);
 
   // Generate preview faces
   const previewFaces = actions.reduce((acc, action) => {

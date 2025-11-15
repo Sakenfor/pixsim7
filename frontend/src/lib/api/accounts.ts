@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
+import { logEvent } from '../logging';
 
 export interface UpdateAccountRequest {
   email?: string;
@@ -16,12 +17,22 @@ export async function updateAccount(
   accountId: number,
   updates: UpdateAccountRequest
 ): Promise<ProviderAccount> {
-  console.log(`Updating account ${accountId} with:`, updates);
+  logEvent('DEBUG', 'account_update_requested', {
+    accountId,
+    fields: Object.keys(updates)
+  });
+
   const response = await apiClient.patch<ProviderAccount>(
     `/accounts/${accountId}`,
     updates
   );
-  console.log('Account updated:', response.data);
+
+  logEvent('INFO', 'account_updated', {
+    accountId,
+    email: response.data.email,
+    status: response.data.status
+  });
+
   return response.data;
 }
 

@@ -1,5 +1,6 @@
 import type { Module } from '../types';
 import type { Asset } from '../../types';
+import { logEvent } from '../../lib/logging';
 
 /**
  * Gallery Module
@@ -25,7 +26,7 @@ export const galleryModule: GalleryModule = {
   name: 'Gallery Module',
 
   initialize: async () => {
-    console.log('Gallery module ready (not implemented yet)');
+    logEvent('INFO', 'gallery_module_ready', { status: 'not_implemented' });
   },
 
   isReady: () => true,

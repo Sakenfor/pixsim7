@@ -12,7 +12,7 @@ import { previewBridge } from '../../lib/preview-bridge';
 // Game iframe with preview bridge connection
 function GameIframePanel() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const url = (import.meta as any).env.VITE_GAME_URL || 'http://localhost:5174';
+  const url = import.meta.env.VITE_GAME_URL || 'http://localhost:5174';
 
   useEffect(() => {
     if (iframeRef.current) {

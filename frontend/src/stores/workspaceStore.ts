@@ -125,7 +125,7 @@ const validateAndFixLayout = (layout: MosaicNode<PanelId> | null): MosaicNode<Pa
     return layout;
   }
 
-  console.warn('Detected duplicate IDs in layout, resetting to default');
+  // Detected duplicate IDs in layout, resetting to default
   return defaultPresets[0].layout;
 };
 

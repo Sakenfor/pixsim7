@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { type ExecutionLoop, ExecutionLoopStatus } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
-import { Button, Panel } from '@pixsim7/ui';
+import { Button, Panel, ConfirmModal } from '@pixsim7/ui';
 import { LoopCard } from './LoopCard';
 import { LoopForm } from './LoopForm';
+import { useToast } from '../../stores/toastStore';
+import { useConfirmModal } from '../../hooks/useModal';
 
 type View = 'list' | 'create' | 'edit';
 
@@ -14,6 +16,14 @@ export function LoopList() {
   const [view, setView] = useState<View>('list');
   const [selectedLoop, setSelectedLoop] = useState<ExecutionLoop | null>(null);
   const [filterStatus, setFilterStatus] = useState<ExecutionLoopStatus | 'ALL'>('ALL');
+  const loopsRef = useRef<ExecutionLoop[]>([]);
+  const toast = useToast();
+  const { confirm, isOpen: confirmOpen, options: confirmOptions, handleConfirm, handleCancel } = useConfirmModal();
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    loopsRef.current = loops;
+  }, [loops]);
 
   const loadLoops = async () => {
     try {
@@ -23,7 +33,6 @@ export function LoopList() {
       setLoops(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load loops');
-      console.error('Error loading loops:', err);
     } finally {
       setLoading(false);
     }
@@ -34,21 +43,22 @@ export function LoopList() {
 
     // Auto-refresh every 10 seconds for active loops
     const interval = setInterval(() => {
-      if (loops.some(l => l.status === ExecutionLoopStatus.ACTIVE && l.is_enabled)) {
+      if (loopsRef.current.some(l => l.status === ExecutionLoopStatus.ACTIVE && l.is_enabled)) {
         loadLoops();
       }
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [loops]);
+  }, []);
 
   const handleCreate = async (data: Partial<ExecutionLoop>) => {
     try {
       await automationService.createLoop(data);
       await loadLoops();
       setView('list');
+      toast.success('Loop created successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to create loop');
     }
   };
 
@@ -59,18 +69,28 @@ export function LoopList() {
       await loadLoops();
       setView('list');
       setSelectedLoop(null);
+      toast.success('Loop updated successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to update loop');
     }
   };
 
   const handleDelete = async (loop: ExecutionLoop) => {
-    if (!confirm(`Are you sure you want to delete "${loop.name}"?`)) return;
+    const confirmed = await confirm({
+      title: 'Delete Loop',
+      message: `Are you sure you want to delete "${loop.name}"?`,
+      variant: 'danger',
+      confirmText: 'Delete',
+    });
+
+    if (!confirmed) return;
+
     try {
       await automationService.deleteLoop(loop.id);
       await loadLoops();
+      toast.success('Loop deleted successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete loop');
     }
   };
 
@@ -78,8 +98,9 @@ export function LoopList() {
     try {
       await automationService.startLoop(loop.id);
       await loadLoops();
+      toast.success(`Loop "${loop.name}" started`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to start loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to start loop');
     }
   };
 
@@ -87,19 +108,20 @@ export function LoopList() {
     try {
       await automationService.pauseLoop(loop.id);
       await loadLoops();
+      toast.success(`Loop "${loop.name}" paused`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to pause loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to pause loop');
     }
   };
 
   const handleRunNow = async (loop: ExecutionLoop) => {
     try {
       await automationService.runLoopNow(loop.id);
-      alert(`Loop "${loop.name}" execution triggered!`);
+      toast.success(`Loop "${loop.name}" execution triggered!`);
       // Refresh after a delay to show the new execution
       setTimeout(loadLoops, 2000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to run loop');
+      toast.error(err instanceof Error ? err.message : 'Failed to run loop');
     }
   };
 
@@ -252,6 +274,14 @@ export function LoopList() {
           ))}
         </div>
       )}
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        isOpen={confirmOpen}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+        {...confirmOptions}
+      />
     </div>
   );
 }
