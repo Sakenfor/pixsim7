@@ -26,12 +26,25 @@ export function CubeConnectionsOverlay() {
   } | null>(null);
   const [linkCursor, setLinkCursor] = useState<{ x: number; y: number } | null>(null);
 
+  // Optimized: Cache connections array to avoid repeated Object.values() calls
+  const connectionsArray = useMemo(() => Object.values(connections), [connections]);
+
+  // Optimized: Create connection lookup map for O(1) access by cube IDs
+  const connectionLookup = useMemo(() => {
+    const lookup = new Map<string, CubeConnection>();
+    connectionsArray.forEach((conn) => {
+      const key = `${conn.fromCubeId}->${conn.toCubeId}`;
+      lookup.set(key, conn);
+    });
+    return lookup;
+  }, [connectionsArray]);
+
   const brokenConnectionsCount = useMemo(
     () =>
-      Object.values(connections).filter(
+      connectionsArray.filter(
         (conn) => !cubes[conn.fromCubeId] || !cubes[conn.toCubeId]
       ).length,
-    [connections, cubes]
+    [connectionsArray, cubes]
   );
 
   const getConnectionStatus = useCallback(
@@ -104,7 +117,7 @@ export function CubeConnectionsOverlay() {
 
   // Calculate connection endpoints
   const connectionLines = useMemo(() => {
-    return Object.values(connections).map((conn) => {
+    return connectionsArray.map((conn) => {
       const fromCube = cubes[conn.fromCubeId];
       const toCube = cubes[conn.toCubeId];
 
@@ -140,16 +153,16 @@ export function CubeConnectionsOverlay() {
         controlY,
       };
     }).filter(Boolean);
-  }, [cubes, connections, getConnectionStatus]);
+  }, [cubes, connectionsArray, getConnectionStatus]);
 
   // Calculate message positions on connections
   const messagePositions = useMemo(() => {
     if (messages.length === 0) return [];
 
     return messages.map((msg) => {
-      const conn = Object.values(connections).find(
-        (c) => c.fromCubeId === msg.fromCubeId && c.toCubeId === msg.toCubeId
-      );
+      // Optimized: O(1) lookup instead of O(n) find
+      const key = `${msg.fromCubeId}->${msg.toCubeId}`;
+      const conn = connectionLookup.get(key);
 
       if (!conn) return null;
 
@@ -173,7 +186,7 @@ export function CubeConnectionsOverlay() {
         color: conn.color || '#8b5cf6',
       };
     }).filter(Boolean);
-  }, [messages, connections, cubes, animationTick]);
+  }, [messages, connectionLookup, cubes, animationTick]);
 
   const lastMessageForSelected = useMemo(() => {
     if (!selectedConnection) return null;
