@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
+import { CubeHelpOverlay } from './CubeHelpOverlay';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import type { CubeFace } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
@@ -20,6 +21,7 @@ const COMBINE_DISTANCE = 120; // pixels to start combining
 export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const managerRef = useRef<HTMLDivElement>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const toast = useToast();
 
   const cubes = useControlCubeStore((s) => s.cubes);
@@ -122,6 +124,12 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             mode: cube.mode === 'expanded' ? 'idle' : 'expanded',
           });
         }
+      }
+
+      // ? or H: Toggle help overlay
+      if ((e.key === '?' || e.code === 'KeyH') && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        setShowHelp((prev) => !prev);
       }
     };
 
@@ -256,6 +264,9 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
           onClose={() => setEditorOpen(false)}
         />
       )}
+
+      {/* Help Overlay */}
+      <CubeHelpOverlay show={showHelp} onClose={() => setShowHelp(false)} />
     </>
   );
 }

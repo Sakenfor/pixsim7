@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
 import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
+import { CubeTooltip, useTooltipDismissal } from '../ui/CubeTooltip';
 import { clsx } from 'clsx';
 
 export interface CubeFaceContent {
@@ -86,6 +87,18 @@ export function ControlCube({
   const [hoverAtEdge, setHoverAtEdge] = useState(false);
   const lastClickTime = useRef<number>(0);
 
+  // Tooltip dismissal state
+  const edgeHoverTooltip = useTooltipDismissal(`edge-hover-${cubeId}`);
+  const doubleClickTooltip = useTooltipDismissal(`double-click-${cubeId}`);
+  const linkingTooltip = useTooltipDismissal(`linking-${cubeId}`);
+  const dockedTooltip = useTooltipDismissal(`docked-${cubeId}`);
+  const combinedTooltip = useTooltipDismissal(`combined-${cubeId}`);
+
+  // Store state for context-aware tooltips
+  const linkingMode = useControlCubeStore((s) => s.linkingMode);
+  const linkingFromCube = useControlCubeStore((s) => s.linkingFromCube);
+  const combinedCubeIds = useControlCubeStore((s) => s.combinedCubeIds);
+
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || !cube) return;
@@ -143,44 +156,24 @@ export function ControlCube({
     setHoveredFace(face);
     setHoverAtEdge(atEdge);
 
-    // Apply tilt based on which face is hovered
+    // Apply tilt based on mouse position in SCREEN SPACE (not cube local space)
+    // This ensures the tilt works correctly regardless of the cube's current rotation
     const tiltAmount = 20;
 
-    // Explicit tilt values
     let tiltX = 0;
     let tiltY = 0;
 
-    switch (face) {
-      case 'front':
-      case 'back':
-        // No tilt for center faces
-        tiltX = 0;
-        tiltY = 0;
-        break;
-      case 'left':
-        if (atEdge) {
-          tiltX = 0;
-          tiltY = tiltAmount;
-        }
-        break;
-      case 'right':
-        if (atEdge) {
-          tiltX = 0;
-          tiltY = -tiltAmount;
-        }
-        break;
-      case 'top':
-        if (atEdge) {
-          tiltX = -tiltAmount;
-          tiltY = 0;
-        }
-        break;
-      case 'bottom':
-        if (atEdge) {
-          tiltX = tiltAmount;
-          tiltY = 0;
-        }
-        break;
+    if (atEdge) {
+      // Apply tilt based on screen position, not face name
+      // This makes the cube tilt toward the edge you're hovering over
+      if (absX > absY) {
+        // Horizontal edge - tilt left/right based on mouse X position
+        // Negative because CSS rotateY is counter-clockwise for positive values
+        tiltY = -x * tiltAmount;
+      } else {
+        // Vertical edge - tilt up/down based on mouse Y position
+        tiltX = y * tiltAmount;
+      }
     }
 
     setHoverTilt({ x: tiltX, y: tiltY });
@@ -299,6 +292,101 @@ export function ControlCube({
       }
     };
   }, []);
+
+  // Auto-dismiss edge hover tooltip after user has used it a few times
+  useEffect(() => {
+    if (hoverAtEdge && !edgeHoverTooltip.dismissed) {
+      const count = parseInt(localStorage.getItem(`edge-hover-count-${cubeId}`) || '0');
+      if (count >= 3) {
+        edgeHoverTooltip.dismiss();
+      } else {
+        localStorage.setItem(`edge-hover-count-${cubeId}`, String(count + 1));
+      }
+    }
+  }, [hoverAtEdge, cubeId, edgeHoverTooltip]);
+
+  // Determine which tooltip to show based on context
+  const getTooltipContent = () => {
+    if (!cube) return null;
+
+    // Priority 1: Linking mode (most important)
+    if (linkingMode) {
+      if (linkingFromCube?.cubeId === cubeId) {
+        return {
+          id: 'linking-source',
+          content: 'Click another cube face to connect',
+          variant: 'info' as const,
+          show: !linkingTooltip.dismissed && isHovering,
+          shortcut: 'ESC to cancel',
+        };
+      } else {
+        return {
+          id: 'linking-target',
+          content: 'Click to create connection',
+          variant: 'info' as const,
+          show: !linkingTooltip.dismissed && isHovering,
+        };
+      }
+    }
+
+    // Priority 2: Docked state
+    if (cube.mode === 'docked') {
+      return {
+        id: 'docked',
+        content: 'Docked to panel • Double-click to expand',
+        variant: 'success' as const,
+        show: !dockedTooltip.dismissed && isHovering,
+        shortcut: 'E',
+      };
+    }
+
+    // Priority 3: Combined state
+    if (cube.mode === 'combined' || combinedCubeIds.includes(cubeId)) {
+      return {
+        id: 'combined',
+        content: 'Combined with other cubes • Drag apart to separate',
+        variant: 'warning' as const,
+        show: !combinedTooltip.dismissed && isHovering,
+      };
+    }
+
+    // Priority 4: Edge hover hint (for new users)
+    if (hoverAtEdge && !edgeHoverTooltip.dismissed) {
+      return {
+        id: 'edge-hover',
+        content: 'Click edge to rotate • Click center for action',
+        variant: 'default' as const,
+        show: true,
+      };
+    }
+
+    // Priority 5: Double-click hint (shown on hover if not dismissed)
+    if (isHovering && !doubleClickTooltip.dismissed && !hoverAtEdge) {
+      return {
+        id: 'double-click',
+        content: 'Double-click to expand',
+        variant: 'default' as const,
+        show: true,
+        shortcut: 'E',
+        delay: 1000, // Show after 1s hover
+      };
+    }
+
+    // Priority 6: Gallery-specific tooltips
+    if (cube.type === 'gallery' && isHovering) {
+      if (cube.pinnedAssets && Object.keys(cube.pinnedAssets).length > 0) {
+        return {
+          id: 'gallery-pinned',
+          content: 'Pinned assets on faces • Rotate to view',
+          variant: 'info' as const,
+          show: true,
+          delay: 800,
+        };
+      }
+    }
+
+    return null;
+  };
 
   if (!cube) return null;
 
@@ -429,6 +517,23 @@ export function ControlCube({
           onClose={() => setShowExpansion(false)}
         />
       )}
+
+      {/* Context-aware tooltip */}
+      {(() => {
+        const tooltipData = getTooltipContent();
+        if (!tooltipData) return null;
+
+        return (
+          <CubeTooltip
+            content={tooltipData.content}
+            variant={tooltipData.variant}
+            show={tooltipData.show}
+            shortcut={tooltipData.shortcut}
+            delay={tooltipData.delay ?? 500}
+            position="top"
+          />
+        );
+      })()}
     </div>
   );
 }
