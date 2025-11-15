@@ -1,8 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
 import { useControlCubeStore } from '../stores/controlCubeStore';
-import { BASE_CUBE_SIZE } from '../config/cubeConstants';
-
-const DOCK_SNAP_DISTANCE = 80; // pixels from panel edge to trigger docking
+import { BASE_CUBE_SIZE, DOCK_SNAP_DISTANCE } from '../config/cubeConstants';
 
 export interface PanelRect {
   id: string;
