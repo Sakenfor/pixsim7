@@ -1,5 +1,6 @@
 import type { StateCreator, ImportExportState } from './types';
 import type { DraftScene } from '../../modules/scene-builder';
+import { logEvent } from '../../lib/logging';
 
 /**
  * Import/Export Slice
@@ -68,6 +69,7 @@ export const createImportExportSlice: StateCreator<ImportExportState> = (set, ge
         'importScene'
       );
 
+      logEvent('DEBUG', 'scene_imported', { sceneId: newSceneId, title: importedScene.title });
       return newSceneId;
     } catch (error) {
       console.error('[importExportSlice] Import failed:', error);
@@ -93,6 +95,7 @@ export const createImportExportSlice: StateCreator<ImportExportState> = (set, ge
         'importProject'
       );
 
+      logEvent('DEBUG', 'project_imported', { sceneCount: Object.keys(data.scenes).length });
     } catch (error) {
       console.error('[importExportSlice] Project import failed:', error);
     }

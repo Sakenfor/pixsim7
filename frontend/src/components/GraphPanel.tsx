@@ -16,6 +16,7 @@ import { useGraphStore, type GraphState } from '../stores/graphStore';
 import { toFlowNodes, toFlowEdges, applyNodePositions } from '../modules/scene-builder/graphSync';
 import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { logEvent } from '../lib/logging';
 import { SceneNode } from './nodes/SceneNode';
 import { NodeGroup } from './nodes/NodeGroup';
 import { Breadcrumbs } from './navigation/Breadcrumbs';
@@ -162,6 +163,12 @@ export function GraphPanel() {
       }
 
       try {
+        logEvent('DEBUG', 'graph_connection', {
+          source: connection.source,
+          target: connection.target,
+          sourceHandle,
+          targetHandle,
+        });
         connectNodes(connection.source, connection.target, {
           fromPort: sourceHandle,
           toPort: targetHandle,

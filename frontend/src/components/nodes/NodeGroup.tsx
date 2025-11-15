@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
+import { logEvent } from '../../lib/logging';
 import type { NodeGroupData } from '../../modules/scene-builder';
 
 interface NodeGroupNodeData {
@@ -39,6 +40,7 @@ export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeDa
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     // Zoom into this group
+    logEvent('DEBUG', 'node_group_zoom', { groupId: id });
     zoomIntoGroup(id);
   };
 

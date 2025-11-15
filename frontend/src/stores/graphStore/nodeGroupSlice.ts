@@ -1,5 +1,6 @@
 import type { StateCreator, GraphState } from './types';
 import type { NodeGroupData, DraftSceneNode } from '../../modules/scene-builder';
+import { logEvent } from '../../lib/logging';
 
 /**
  * Node Group Slice
@@ -113,6 +114,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
       'createNodeGroup'
     );
 
+    logEvent('DEBUG', 'node_group_created', { groupId, nodeCount: validNodeIds.length });
     return groupId;
   },
 

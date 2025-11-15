@@ -9,6 +9,7 @@ import { createNodeGroupSlice } from './nodeGroupSlice';
 import { createNavigationSlice } from './navigationSlice';
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
+import { logEvent } from '../../lib/logging';
 
 /**
  * Graph Store - Multi-Scene Architecture (Modular)
@@ -128,6 +129,7 @@ export const useGraphStore = create<GraphState>()(
             const legacyDraft = persistedState.draft;
             const sceneId = legacyDraft.id || `scene_${Date.now()}`;
 
+            logEvent('INFO', 'graph_store_migration', { from: 'v1', to: 'v2', sceneId });
             return {
               scenes: {
                 [sceneId]: legacyDraft,

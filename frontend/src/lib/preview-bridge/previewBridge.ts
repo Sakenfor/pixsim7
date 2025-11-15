@@ -15,6 +15,7 @@ import type {
   SeekToNodeMessage,
 } from './messageTypes';
 import { isGameToEditorMessage } from './messageTypes';
+import { logEvent } from '../logging';
 
 export class PreviewBridge {
   private iframe: HTMLIFrameElement | null = null;
@@ -51,6 +52,7 @@ export class PreviewBridge {
     }
 
     try {
+      logEvent('DEBUG', 'preview_bridge_send', { type: message.type });
       contentWindow.postMessage(message, this.targetOrigin);
       return true;
     } catch (error) {
@@ -71,6 +73,8 @@ export class PreviewBridge {
       if (!isGameToEditorMessage(message)) {
         return; // Not a game message
       }
+
+      logEvent('DEBUG', 'preview_bridge_receive', { type: message.type });
 
       // Notify all handlers for this message type
       const handlers = this.messageHandlers.get(message.type) || [];

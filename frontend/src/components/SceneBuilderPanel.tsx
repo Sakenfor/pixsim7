@@ -5,6 +5,7 @@ import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
 import type { DraftSceneNode } from '../modules/scene-builder';
 import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { logEvent } from '../lib/logging';
 
 export function SceneBuilderPanel() {
   const toast = useToast();
@@ -127,6 +128,10 @@ export function SceneBuilderPanel() {
 
       // TODO: Wire postMessage to game iframe
       // For now, just show a toast
+      logEvent('DEBUG', 'scene_preview_ready', {
+        nodeCount: scene.nodes.length,
+        edgeCount: scene.edges.length,
+      });
       toast.info('Preview feature coming soon - scene structure ready');
     } catch (error) {
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
