@@ -33,9 +33,12 @@ class AssetResponse(BaseModel):
     provider_asset_id: str
 
     # URLs / paths
-    remote_url: str
+    remote_url: Optional[str] = None  # Now optional (may be None if only stored locally)
     thumbnail_url: Optional[str] = None
     local_path: Optional[str] = None
+
+    # Computed field for frontend to use
+    file_url: Optional[str] = None
 
     # Sync
     sync_status: SyncStatus
@@ -58,10 +61,40 @@ class AssetResponse(BaseModel):
         from_attributes = True
 
     @model_validator(mode="after")
-    def ensure_thumbnail(self):
-        """Guarantee thumbnail_url is present by falling back to remote_url."""
-        if getattr(self, "thumbnail_url", None) is None and getattr(self, "remote_url", None):
-            object.__setattr__(self, "thumbnail_url", self.remote_url)
+    def compute_urls(self):
+        """
+        Compute file_url and thumbnail_url with smart fallbacks.
+
+        Priority for file_url:
+        1. Local file endpoint (if local_path exists)
+        2. Remote URL (if valid HTTP(S) URL)
+        3. None
+
+        Priority for thumbnail_url:
+        1. Explicit thumbnail_url (if set)
+        2. file_url (computed above)
+        """
+        asset_id = getattr(self, "id", None)
+        local_path = getattr(self, "local_path", None)
+        remote_url = getattr(self, "remote_url", None)
+
+        # Compute file_url
+        if local_path:
+            # Prefer local file endpoint
+            object.__setattr__(self, "file_url", f"/api/v1/assets/{asset_id}/file")
+        elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
+            # Use remote URL if it's valid
+            object.__setattr__(self, "file_url", remote_url)
+        else:
+            # No valid URL available
+            object.__setattr__(self, "file_url", None)
+
+        # Compute thumbnail_url fallback
+        if getattr(self, "thumbnail_url", None) is None:
+            file_url = getattr(self, "file_url", None)
+            if file_url:
+                object.__setattr__(self, "thumbnail_url", file_url)
+
         return self
 
 

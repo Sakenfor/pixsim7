@@ -71,7 +71,10 @@ class Asset(SQLModel, table=True):
     )
 
     # ===== LOCATION =====
-    remote_url: str = Field(description="Provider URL (original)")
+    remote_url: Optional[str] = Field(
+        default=None,
+        description="Provider URL (original). Optional - assets can be stored locally only."
+    )
     thumbnail_url: Optional[str] = None
     local_path: Optional[str] = Field(
         default=None,

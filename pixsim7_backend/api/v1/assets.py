@@ -3,6 +3,7 @@ Asset management API endpoints
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi import status as http_status
+from fastapi.responses import FileResponse
 from pixsim7_backend.shared.errors import InvalidOperationError
 from pixsim7_backend.api.dependencies import CurrentUser, AssetSvc, AccountSvc, DatabaseSession
 from pixsim7_backend.shared.schemas.asset_schemas import (
@@ -151,6 +152,61 @@ async def delete_asset(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete asset: {str(e)}")
+
+
+# ===== SERVE LOCAL ASSET FILE =====
+
+@router.get("/assets/{asset_id}/file")
+async def serve_asset_file(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Serve locally-stored asset file
+
+    Returns the local file if it exists and the user owns the asset.
+    This allows the frontend to display locally-stored assets even if
+    the remote provider URL is unavailable or invalid.
+    """
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+
+        if not asset.local_path:
+            raise HTTPException(
+                status_code=404,
+                detail="Asset has no local file (sync_status is REMOTE)"
+            )
+
+        if not os.path.exists(asset.local_path):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Local file not found at {asset.local_path}"
+            )
+
+        # Determine media type
+        media_type = asset.mime_type or "application/octet-stream"
+
+        return FileResponse(
+            path=asset.local_path,
+            media_type=media_type,
+            filename=f"asset_{asset.id}{os.path.splitext(asset.local_path)[1]}"
+        )
+
+    except HTTPException:
+        raise
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        logger.error(
+            "serve_asset_file_failed",
+            asset_id=asset_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to serve file: {str(e)}")
 
 
 # ===== UPLOAD MEDIA (Provider-hosted) =====
@@ -348,65 +404,166 @@ async def upload_asset_from_url(
             # Invalid duration output, skip validation
             pass
 
-    # Delegate to UploadService
-    from pixsim7_backend.services.upload.upload_service import UploadService
-    upload_service = UploadService(db, account_service)
-    try:
-        result = await upload_service.upload(provider_id=request.provider_id, media_type=media_type, tmp_path=tmp_path)
-        # Persist Asset best-effort
-        provider_asset_id_raw = result.provider_asset_id or (result.external_url or "")
-        remote_url = result.external_url or (f"{request.provider_id}:{provider_asset_id_raw}")
-        # Ensure provider_asset_id fits DB constraints (max_length=128)
-        if provider_asset_id_raw:
-            provider_asset_id = str(provider_asset_id_raw)
-            if len(provider_asset_id) > 120:
-                digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
-                provider_asset_id = f"upload_{digest}"
-        else:
-            digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
-            provider_asset_id = f"upload_{digest}"
-        try:
-            await add_asset(
-                db,
-                user_id=user.id,
-                media_type=media_type,
-                provider_id=request.provider_id,
-                provider_asset_id=provider_asset_id,
-                remote_url=remote_url,
-                thumbnail_url=result.external_url,
-                width=result.width,
-                height=result.height,
-                duration_sec=None,
-                mime_type=result.mime_type or content_type,
-                file_size_bytes=result.file_size_bytes,
-                tags=["user_upload", "from_url"],
-            )
-        except Exception as e:
-            logger.error(
-                "asset_create_failed",
-                provider_id=request.provider_id,
-                media_type=str(media_type),
-                remote_url=remote_url,
-                error=str(e),
-                exc_info=True,
-            )
+    # NEW WORKFLOW: Save locally FIRST, then optionally upload to provider
+    # This ensures the asset is always accessible even if provider upload fails
 
-        return UploadAssetResponse(
-            provider_id=result.provider_id,
-            media_type=result.media_type,
-            external_url=result.external_url,
-            provider_asset_id=result.provider_asset_id,
-            note=result.note,
-        )
-    except InvalidOperationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    import shutil
+    from PIL import Image
+
+    # Step 1: Prepare local storage path
+    storage_root = os.path.join("data", "storage", "user", str(user.id), "assets")
+    os.makedirs(storage_root, exist_ok=True)
+
+    # Generate temporary asset ID (will be replaced with actual ID after DB insert)
+    temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
+    ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
+    temp_local_path = os.path.join(storage_root, f"temp_{temp_id}{ext}")
+
+    # Step 2: Save to permanent local storage
+    try:
+        shutil.copy2(tmp_path, temp_local_path)
+        file_size_bytes = os.path.getsize(temp_local_path)
+
+        # Compute SHA256 for deduplication
+        sha256_hash = hashlib.sha256()
+        with open(temp_local_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha256_hash.update(chunk)
+        sha256 = sha256_hash.hexdigest()
+
+        # Extract image dimensions if it's an image
+        width = height = None
+        if media_type == MediaType.IMAGE:
+            try:
+                with Image.open(temp_local_path) as img:
+                    width, height = img.size
+            except Exception as e:
+                logger.warning(f"Failed to extract image dimensions: {e}")
+
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Provider upload failed: {e}")
-    finally:
+        # Clean up temp files
         try:
             os.unlink(tmp_path)
+            if os.path.exists(temp_local_path):
+                os.unlink(temp_local_path)
         except Exception:
             pass
+        raise HTTPException(status_code=500, detail=f"Failed to save to local storage: {e}")
+
+    # Step 3: Create asset in database with local storage (sync_status=DOWNLOADED)
+    # Use placeholder provider_asset_id initially
+    placeholder_provider_asset_id = f"local_{sha256[:16]}"
+
+    try:
+        asset = await add_asset(
+            db,
+            user_id=user.id,
+            media_type=media_type,
+            provider_id=request.provider_id,
+            provider_asset_id=placeholder_provider_asset_id,
+            remote_url=None,  # Will be set after provider upload
+            thumbnail_url=None,  # Will use local file
+            local_path=temp_local_path,  # Temporary path, will be renamed
+            sync_status=SyncStatus.DOWNLOADED,  # Already have it locally!
+            width=width,
+            height=height,
+            duration_sec=None,  # TODO: Extract for videos
+            mime_type=content_type,
+            file_size_bytes=file_size_bytes,
+            sha256=sha256,
+            tags=["user_upload", "from_url"],
+        )
+
+        # Rename file to use actual asset ID
+        final_local_path = os.path.join(storage_root, f"{asset.id}{ext}")
+        shutil.move(temp_local_path, final_local_path)
+
+        # Update asset with final local_path
+        asset.local_path = final_local_path
+        await db.commit()
+        await db.refresh(asset)
+
+    except Exception as e:
+        # Clean up on failure
+        try:
+            os.unlink(tmp_path)
+            if os.path.exists(temp_local_path):
+                os.unlink(temp_local_path)
+        except Exception:
+            pass
+        logger.error(
+            "asset_create_failed",
+            provider_id=request.provider_id,
+            media_type=str(media_type),
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to create asset: {e}")
+
+    # Step 4: Try to upload to provider (BEST-EFFORT, non-blocking)
+    # If this fails, the asset is still accessible via local storage
+    provider_upload_result = None
+    provider_upload_note = None
+
+    try:
+        from pixsim7_backend.services.upload.upload_service import UploadService
+        upload_service = UploadService(db, account_service)
+
+        result = await upload_service.upload(
+            provider_id=request.provider_id,
+            media_type=media_type,
+            tmp_path=final_local_path  # Upload from saved file
+        )
+
+        # Update asset with provider information if upload succeeded
+        if result.external_url:
+            # Only set remote_url if it's a valid HTTP(S) URL
+            if result.external_url.startswith("http://") or result.external_url.startswith("https://"):
+                asset.remote_url = result.external_url
+                asset.thumbnail_url = result.external_url
+
+        if result.provider_asset_id:
+            asset.provider_asset_id = result.provider_asset_id
+
+        await db.commit()
+        await db.refresh(asset)
+
+        provider_upload_result = result
+        provider_upload_note = result.note or "Uploaded to provider successfully"
+
+        logger.info(
+            "provider_upload_success",
+            asset_id=asset.id,
+            provider_id=request.provider_id,
+            external_url=result.external_url,
+            provider_asset_id=result.provider_asset_id,
+        )
+
+    except Exception as e:
+        # Provider upload failed, but that's OK - we have local copy
+        logger.warning(
+            "provider_upload_failed_but_asset_saved",
+            asset_id=asset.id,
+            provider_id=request.provider_id,
+            error=str(e),
+            exc_info=True,
+        )
+        provider_upload_note = f"Asset saved locally; provider upload failed: {str(e)}"
+
+    # Clean up temp file
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+
+    # Return response
+    return UploadAssetResponse(
+        provider_id=request.provider_id,
+        media_type=media_type,
+        external_url=asset.remote_url or f"/api/v1/assets/{asset.id}/file",
+        provider_asset_id=asset.provider_asset_id,
+        note=provider_upload_note,
+    )
 
 
 # ===== FRAME EXTRACTION =====
