@@ -3,8 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL Database
   postgres:
-    #image: postgres:15-alpine
-    image: pgvector/pgvector:pg15
+    image: pgvector/pgvector:pg16
     container_name: pixsim7-db
     environment:
       POSTGRES_DB: pixsim7

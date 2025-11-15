@@ -11,10 +11,10 @@ export enum ConnectionMethod {
 }
 
 export enum DeviceStatus {
-  ONLINE = 'ONLINE',
-  OFFLINE = 'OFFLINE',
-  BUSY = 'BUSY',
-  ERROR = 'ERROR',
+  ONLINE = 'online',
+  OFFLINE = 'offline',
+  BUSY = 'busy',
+  ERROR = 'error',
 }
 
 export interface AndroidDevice {
@@ -38,11 +38,11 @@ export interface AndroidDevice {
 }
 
 export enum AutomationStatus {
-  PENDING = 'PENDING',
-  RUNNING = 'RUNNING',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  CANCELLED = 'CANCELLED',
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  CANCELLED = 'cancelled',
 }
 
 export enum ActionType {

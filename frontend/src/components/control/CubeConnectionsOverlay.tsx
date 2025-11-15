@@ -163,9 +163,6 @@ export function CubeConnectionsOverlay() {
 
       if (!fromCube || !toCube) return null;
 
-      // Double-check cubes still exist before calculating positions
-      if (!fromCube || !toCube) return null;
-
       const from = getCubeFaceCenter(fromCube, conn.fromFace);
       const to = getCubeFaceCenter(toCube, conn.toFace);
 

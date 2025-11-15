@@ -48,8 +48,17 @@ class AutomationService {
 
   // ===== Execution Management =====
 
-  async getExecutions(): Promise<AutomationExecution[]> {
-    const response = await apiClient.get<AutomationExecution[]>('/automation/executions');
+  async getExecutions(limit: number = 100, status?: string): Promise<AutomationExecution[]> {
+    const params: Record<string, any> = { limit };
+
+    if (status) {
+      params.status = status;
+    }
+
+    const response = await apiClient.get<AutomationExecution[]>(
+      '/automation/executions',
+      { params },
+    );
     return response.data;
   }
 

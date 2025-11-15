@@ -336,6 +336,69 @@ async def get_fields(
         raise HTTPException(status_code=500, detail=f"Failed to discover fields: {str(e)}")
 
 
+
+@router.get("/files")
+async def list_log_files():
+    """List available log files."""
+    import os
+
+    log_dirs = [
+        "data/logs",
+        "data/logs/console",
+        "data/logs/launcher"
+    ]
+
+    files = []
+    for log_dir in log_dirs:
+        if os.path.exists(log_dir):
+            for file in os.listdir(log_dir):
+                if file.endswith('.log'):
+                    filepath = f"{log_dir}/{file}"
+                    stat = os.stat(filepath)
+                    files.append({
+                        "path": filepath,
+                        "name": file,
+                        "location": log_dir,
+                        "size": stat.st_size,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    })
+
+    # Sort by modification time (newest first)
+    files.sort(key=lambda x: x['modified'], reverse=True)
+    return {"files": files}
+
+
+@router.get("/files/tail")
+async def tail_log_file(
+    path: str = Query(..., description="Log file path (e.g., data/logs/console/backend.log)"),
+    lines: int = Query(100, ge=1, le=10000, description="Number of lines to return")
+):
+    """Get last N lines from a log file (like tail -n)."""
+    import os
+    from collections import deque
+
+    # Security: only allow reading from data/logs directory
+    if not path.startswith("data/logs/"):
+        raise HTTPException(status_code=403, detail="Access denied: can only read from data/logs/")
+
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Log file not found: {path}")
+
+    try:
+        # Efficiently read last N lines
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            last_lines = deque(f, maxlen=lines)
+
+        return {
+            "path": path,
+            "lines": list(last_lines),
+            "count": len(last_lines)
+        }
+    except Exception as e:
+        logger.error("file_tail_error", path=path, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to read log file: {str(e)}")
+
+
 @router.get("/distinct")
 async def get_distinct(
     field: str = Query(..., description="Field name to get distinct values for (column or extra key)"),

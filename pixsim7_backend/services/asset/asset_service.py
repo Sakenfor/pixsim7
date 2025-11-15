@@ -413,12 +413,12 @@ class AssetService:
         await self.db.refresh(asset)
 
         # Prepare storage path
-        storage_root = os.path.join("data", "storage", "user", str(user.id), "assets")
+        storage_root = f"data/storage/user/{user.id}/assets"
         os.makedirs(storage_root, exist_ok=True)
 
         # Determine extension (basic heuristic)
         ext = ".mp4" if asset.media_type == MediaType.VIDEO else ".jpg"
-        local_path = os.path.join(storage_root, f"{asset.id}{ext}")
+        local_path = f"{storage_root}/{asset.id}{ext}"
 
         try:
             # Download
@@ -833,12 +833,12 @@ class AssetService:
             file_size = os.path.getsize(frame_path)
 
             # Determine storage path
-            storage_root = os.path.join("data", "storage", "user", str(user.id), "assets")
+            storage_root = f"data/storage/user/{user.id}/assets"
             os.makedirs(storage_root, exist_ok=True)
 
             # Move frame to permanent storage
             frame_filename = f"frame_{video_asset_id}_{timestamp:.2f}s.jpg"
-            permanent_path = os.path.join(storage_root, frame_filename)
+            permanent_path = f"{storage_root}/{frame_filename}"
 
             # Move file (or copy if cross-device)
             import shutil

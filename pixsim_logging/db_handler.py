@@ -172,8 +172,8 @@ class DBLogHandler:
             elif "message" in ev:
                 row["msg"] = ev.get("message")
                 extra.pop("message", None)
-        if extra:
-            row["extra"] = extra
+        # Always set extra field (None if empty to avoid bind parameter errors)
+        row["extra"] = extra if extra else None
         # Default env/service/level values so DB constraints hold even if upstream binding is missing.
         row.setdefault("env", os.getenv("PIXSIM_ENV", "dev"))
         default_service = os.getenv("PIXSIM_SERVICE_NAME") or os.getenv("PIXSIM_SERVICE") or os.getenv("SERVICE_NAME")
@@ -183,6 +183,21 @@ class DBLogHandler:
             row["level"] = level_value.upper()
         else:
             row["level"] = "INFO"
+
+        # Set defaults for optional nullable fields to avoid bind parameter errors
+        row.setdefault("request_id", None)
+        row.setdefault("job_id", None)
+        row.setdefault("submission_id", None)
+        row.setdefault("artifact_id", None)
+        row.setdefault("provider_job_id", None)
+        row.setdefault("provider_id", None)
+        row.setdefault("operation_type", None)
+        row.setdefault("stage", None)
+        row.setdefault("user_id", None)
+        row.setdefault("error", None)
+        row.setdefault("error_type", None)
+        row.setdefault("duration_ms", None)
+        row.setdefault("attempt", None)
 
         # Parse ISO timestamp string to datetime if needed and ensure UTC naive datetimes for DB.
         timestamp_value = row.get("timestamp")

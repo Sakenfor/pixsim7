@@ -62,10 +62,10 @@ export function DeviceList() {
 
   const deviceCounts = {
     total: devices.length,
-    online: devices.filter(d => d.status === 'ONLINE').length,
-    busy: devices.filter(d => d.status === 'BUSY').length,
-    offline: devices.filter(d => d.status === 'OFFLINE').length,
-    error: devices.filter(d => d.status === 'ERROR').length,
+    online: devices.filter(d => d.status === DeviceStatus.ONLINE).length,
+    busy: devices.filter(d => d.status === DeviceStatus.BUSY).length,
+    offline: devices.filter(d => d.status === DeviceStatus.OFFLINE).length,
+    error: devices.filter(d => d.status === DeviceStatus.ERROR).length,
   };
 
   if (loading && devices.length === 0) {
@@ -160,7 +160,7 @@ export function DeviceList() {
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-600 dark:text-gray-400">Filter:</span>
         <div className="flex gap-2">
-          {(['ALL', 'ONLINE', 'BUSY', 'OFFLINE', 'ERROR'] as const).map((status) => (
+          {(['ALL', DeviceStatus.ONLINE, DeviceStatus.BUSY, DeviceStatus.OFFLINE, DeviceStatus.ERROR] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
@@ -170,7 +170,7 @@ export function DeviceList() {
                   : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
               }`}
             >
-              {status}
+              {status === 'ALL' ? 'ALL' : status.toUpperCase()}
             </button>
           ))}
         </div>

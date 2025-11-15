@@ -81,7 +81,14 @@
       "Bash(psql:*)",
       "Bash(gh pr list:*)",
       "Bash(git pull:*)",
-      "Bash(pnpm --filter @pixsim7/ui build:*)"
+      "Bash(pnpm --filter @pixsim7/ui build:*)",
+      "Bash(git config:*)",
+      "Bash(lsof:*)",
+      "Bash(fuser:*)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe upgrade head)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe history)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe revision:*)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe:*)"
     ],
     "deny": [],
     "ask": []

@@ -111,8 +111,24 @@ async def get_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
 # ----- Executions -----
 
 @router.get("/executions", response_model=List[AutomationExecution])
-async def list_executions(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(AutomationExecution).order_by(AutomationExecution.id.desc()))
+async def list_executions(
+    limit: int = 100,
+    status: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List automation executions with optional filtering and limit.
+
+    - limit: Maximum number of executions to return (default: 100, max: 500)
+    - status: Filter by status (pending, running, completed, failed, cancelled)
+    """
+    query = select(AutomationExecution).order_by(AutomationExecution.id.desc())
+
+    if status:
+        query = query.where(AutomationExecution.status == status)
+
+    query = query.limit(min(limit, 500))
+    result = await db.execute(query)
     return result.scalars().all()
 
 

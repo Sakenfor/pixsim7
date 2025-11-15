@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { type AutomationExecution, AutomationStatus } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
 import { Button, Panel } from '@pixsim7/ui';
@@ -11,29 +11,17 @@ export function ExecutionList() {
   const [filterStatus, setFilterStatus] = useState<AutomationStatus | 'ALL'>('ALL');
   const [selectedExecution, setSelectedExecution] = useState<AutomationExecution | null>(null);
 
-  const executionsRef = useRef<AutomationExecution[]>([]);
-  const loadingRef = useRef(false);
-
-  useEffect(() => {
-    executionsRef.current = executions;
-  }, [executions]);
-
   const loadExecutions = async () => {
-    if (loadingRef.current) return;
-
     try {
-      loadingRef.current = true;
       setLoading(true);
       setError(null);
-      const statusParam = filterStatus === 'ALL' ? undefined : filterStatus;
-      const data = await automationService.getExecutions(100, statusParam);
+      const data = await automationService.getExecutions();
       setExecutions(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load executions');
       console.error('Error loading executions:', err);
     } finally {
       setLoading(false);
-      loadingRef.current = false;
     }
   };
 
@@ -42,15 +30,13 @@ export function ExecutionList() {
 
     // Auto-refresh every 5 seconds for running executions
     const interval = setInterval(() => {
-      if (executionsRef.current.some(e =>
-        e.status === AutomationStatus.RUNNING || e.status === AutomationStatus.PENDING
-      )) {
+      if (executions.some(e => e.status === AutomationStatus.RUNNING || e.status === AutomationStatus.PENDING)) {
         loadExecutions();
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [executions]);
 
   const filteredExecutions = filterStatus === 'ALL'
     ? executions

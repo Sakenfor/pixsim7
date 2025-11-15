@@ -1,5 +1,7 @@
 """
 Asset management API endpoints
+
+Handles asset upload, download, sync, and management operations.
 """
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
 from fastapi import status as http_status
@@ -410,14 +412,15 @@ async def upload_asset_from_url(
     import shutil
     from PIL import Image
 
-    # Step 1: Prepare local storage path
-    storage_root = os.path.join("data", "storage", "user", str(user.id), "assets")
+    # Step 1: Prepare local storage path (use forward slashes for cross-platform compatibility)
+    # Forward slashes work on both Windows and Linux/Docker, backslashes do not
+    storage_root = f"data/storage/user/{user.id}/assets"
     os.makedirs(storage_root, exist_ok=True)
 
     # Generate temporary asset ID (will be replaced with actual ID after DB insert)
     temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
     ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
-    temp_local_path = os.path.join(storage_root, f"temp_{temp_id}{ext}")
+    temp_local_path = f"{storage_root}/temp_{temp_id}{ext}"
 
     # Step 2: Save to permanent local storage
     try:
@@ -475,7 +478,7 @@ async def upload_asset_from_url(
         )
 
         # Rename file to use actual asset ID
-        final_local_path = os.path.join(storage_root, f"{asset.id}{ext}")
+        final_local_path = f"{storage_root}/{asset.id}{ext}"
         shutil.move(temp_local_path, final_local_path)
 
         # Update asset with final local_path
