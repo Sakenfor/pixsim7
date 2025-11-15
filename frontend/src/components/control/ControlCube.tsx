@@ -143,44 +143,24 @@ export function ControlCube({
     setHoveredFace(face);
     setHoverAtEdge(atEdge);
 
-    // Apply tilt based on which face is hovered
+    // Apply tilt based on mouse position in SCREEN SPACE (not cube local space)
+    // This ensures the tilt works correctly regardless of the cube's current rotation
     const tiltAmount = 20;
 
-    // Explicit tilt values
     let tiltX = 0;
     let tiltY = 0;
 
-    switch (face) {
-      case 'front':
-      case 'back':
-        // No tilt for center faces
-        tiltX = 0;
-        tiltY = 0;
-        break;
-      case 'left':
-        if (atEdge) {
-          tiltX = 0;
-          tiltY = tiltAmount;
-        }
-        break;
-      case 'right':
-        if (atEdge) {
-          tiltX = 0;
-          tiltY = -tiltAmount;
-        }
-        break;
-      case 'top':
-        if (atEdge) {
-          tiltX = -tiltAmount;
-          tiltY = 0;
-        }
-        break;
-      case 'bottom':
-        if (atEdge) {
-          tiltX = tiltAmount;
-          tiltY = 0;
-        }
-        break;
+    if (atEdge) {
+      // Apply tilt based on screen position, not face name
+      // This makes the cube tilt toward the edge you're hovering over
+      if (absX > absY) {
+        // Horizontal edge - tilt left/right based on mouse X position
+        // Negative because CSS rotateY is counter-clockwise for positive values
+        tiltY = -x * tiltAmount;
+      } else {
+        // Vertical edge - tilt up/down based on mouse Y position
+        tiltX = y * tiltAmount;
+      }
     }
 
     setHoverTilt({ x: tiltX, y: tiltY });
