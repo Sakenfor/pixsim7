@@ -165,6 +165,34 @@ export function CubeFormationControlCenter() {
     [cubes, restorePanelFromCube, openFloatingPanel]
   );
 
+  // Handle cube expand (Shift+drag from edge)
+  const handleCubeExpand = useCallback(
+    (cubeId: string, position: { x: number; y: number }) => {
+      const cube = cubes[cubeId];
+      if (!cube) return;
+
+      // Map cube type to panel type
+      const CUBE_TO_PANEL_MAP: Record<CubeType, string> = {
+        control: 'scene', // Control cubes could open scene builder
+        provider: 'providers',
+        preset: 'scene', // Presets could also open scene builder
+        panel: 'graph',
+        settings: 'providers',
+        gallery: 'gallery',
+      };
+
+      const panelId = CUBE_TO_PANEL_MAP[cube.type] as any;
+      if (panelId) {
+        // Open floating panel at cube position
+        openFloatingPanel(panelId, position.x, position.y, 600, 400);
+
+        // Optionally remove/hide the cube after expanding
+        // removeCube(cubeId);
+      }
+    },
+    [cubes, openFloatingPanel]
+  );
+
   // Auto-hide when mouse leaves if not pinned
   const handleMouseLeave = useCallback(() => {
     if (!pinned) {
@@ -253,6 +281,7 @@ export function CubeFormationControlCenter() {
                 size={CUBE_SIZE}
                 faceContent={getCubeFaceContent(module.cubeType)}
                 onFaceClick={(face) => handleCubeFaceClick(index, face)}
+                onExpand={handleCubeExpand}
               />
 
               {/* Module label */}
@@ -279,6 +308,7 @@ export function CubeFormationControlCenter() {
               size={100}
               faceContent={getCubeFaceContent(cube.type)}
               onFaceClick={() => handleStandaloneCubeClick(cube.id)}
+              onExpand={handleCubeExpand}
             />
 
             {/* Panel indicator for minimized panels */}
