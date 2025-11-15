@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef } from 'react';
 import Draggable from 'react-draggable';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { ControlCube, type CubeFaceContent } from './ControlCube';
@@ -33,12 +33,8 @@ export function DraggableCube({
   const setActiveCube = useControlCubeStore((s) => s.setActiveCube);
   const updateCube = useControlCubeStore((s) => s.updateCube);
 
-  // Sync position if changed externally
-  useEffect(() => {
-    if (!cube || !nodeRef.current) return;
-    const el = nodeRef.current;
-    el.style.transform = `translate(${cube.position.x}px, ${cube.position.y}px)`;
-  }, [cube?.position]);
+  // Position syncing is handled by react-draggable via controlled position prop
+  // Removed manual DOM manipulation to prevent race conditions with multiple position sources
 
   if (!cube || !cube.visible) return null;
 

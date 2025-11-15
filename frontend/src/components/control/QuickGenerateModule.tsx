@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import clsx from 'clsx';
-import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '../../hooks/useProviders';
@@ -149,7 +149,7 @@ export function QuickGenerateModule() {
         created_at: new Date().toISOString(),
         started_at: null,
         completed_at: null,
-      } as any, params); // Pass params as originalParams
+      }, params); // Pass params as originalParams
 
       logEvent('INFO', 'generation_job_created', {
         jobId: result.job_id,
@@ -184,7 +184,7 @@ export function QuickGenerateModule() {
             <label className="text-xs text-neutral-500 font-medium">Operation</label>
             <select
               value={operationType}
-              onChange={(e) => setOperationType(e.target.value as any)}
+              onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
               disabled={generating}
               className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50"
             >

@@ -29,7 +29,7 @@ export interface CubeMessage {
   fromCubeId: string;
   toCubeId: string;
   timestamp: number;
-  data: any;
+  data: unknown;  // Changed from any for type safety
   type?: string;
 }
 
@@ -188,20 +188,29 @@ let connectionIdCounter = 0;
 let messageIdCounter = 0;
 let formationIdCounter = 0;
 
-const getNextNumericSuffix = (ids: string[]) => {
+const getNextNumericSuffix = (ids: string[], prefix: string) => {
   return ids.reduce((max, id) => {
-    const match = id.match(/-(\d+)$/);
-    if (!match) return max;
-    return Math.max(max, Number.parseInt(match[1], 10));
+    // More robust pattern matching with prefix validation
+    // Handles: "cube-control-123", "conn-456", "msg-789", "formation-012"
+    const pattern = new RegExp(`^${prefix}.*-(\\d+)$`);
+    const match = id.match(pattern);
+
+    if (!match || !match[1]) return max;
+
+    const num = Number.parseInt(match[1], 10);
+    // Validate parsed number is actually a valid positive integer
+    if (Number.isNaN(num) || num < 0) return max;
+
+    return Math.max(max, num);
   }, -1);
 };
 
 const syncCountersFromState = (
   state: Partial<Pick<ControlCubeStoreState, 'cubes' | 'connections' | 'formations'>>
 ) => {
-  const cubeSuffix = getNextNumericSuffix(Object.keys(state.cubes ?? {}));
-  const connectionSuffix = getNextNumericSuffix(Object.keys(state.connections ?? {}));
-  const formationSuffix = getNextNumericSuffix(Object.keys(state.formations ?? {}));
+  const cubeSuffix = getNextNumericSuffix(Object.keys(state.cubes ?? {}), 'cube');
+  const connectionSuffix = getNextNumericSuffix(Object.keys(state.connections ?? {}), 'conn');
+  const formationSuffix = getNextNumericSuffix(Object.keys(state.formations ?? {}), 'formation');
 
   if (cubeSuffix >= cubeIdCounter) {
     cubeIdCounter = cubeSuffix + 1;

@@ -154,7 +154,17 @@ export function createFormationTemplate(
       return createGridFormation(cubeIds, options);
     case 'star':
       return createStarFormation(cubeIds, options);
+    case 'custom':
+      // Custom formations preserve manual positioning
+      // Return center position for each cube as placeholder
+      // Actual positions should be set manually by user or preserved from store
+      return cubeIds.reduce((acc, cubeId) => {
+        const center = options.center || { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        acc[cubeId] = { ...center };
+        return acc;
+      }, {} as Record<string, CubePosition>);
     default:
-      return {};
+      // Fallback to line formation for unknown types
+      return createLineFormation(cubeIds, options);
   }
 }
