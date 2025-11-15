@@ -1211,6 +1211,7 @@ class LauncherWindow(QWidget):
             scrollbar = self.log_view.verticalScrollBar()
             old_scroll_value = scrollbar.value()
             old_scroll_max = scrollbar.maximum()
+            distance_from_bottom = max(0, old_scroll_max - old_scroll_value)
             was_at_bottom = (old_scroll_value >= old_scroll_max - 10) if old_scroll_max > 0 else True
 
             # Get logs from buffer
@@ -1232,7 +1233,7 @@ class LauncherWindow(QWidget):
                 else:
                     # Restore previous scroll position (cap at new max to prevent jumps)
                     new_max = scrollbar.maximum()
-                    target_value = min(old_scroll_value, new_max)
+                    target_value = max(0, new_max - distance_from_bottom)
                     scrollbar.setValue(target_value)
             else:
                 if sp.running:

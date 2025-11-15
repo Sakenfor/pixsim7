@@ -8,7 +8,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
+import sys
 from pathlib import Path
+
+# Fix Windows asyncio subprocess support
+if sys.platform == 'win32':
+    import asyncio
+    # Set ProactorEventLoop policy for Windows to support subprocess operations
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Load .env file BEFORE any other imports that need env vars
 from dotenv import load_dotenv

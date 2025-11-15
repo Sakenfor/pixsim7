@@ -20,6 +20,7 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
   const [nickname, setNickname] = useState(account.nickname || '');
   const [apiKey, setApiKey] = useState('');
   const [apiKeyPaid, setApiKeyPaid] = useState('');
+  const [clearOpenApiKey, setClearOpenApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -29,7 +30,12 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
       if (email !== account.email) updates.email = email;
       if (nickname !== account.nickname) updates.nickname = nickname;
       if (apiKey) updates.api_key = apiKey;
-      if (apiKeyPaid) updates.api_key_paid = apiKeyPaid;
+      if (clearOpenApiKey) {
+        // Use empty string to explicitly clear the stored OpenAPI key
+        updates.api_key_paid = '';
+      } else if (apiKeyPaid) {
+        updates.api_key_paid = apiKeyPaid;
+      }
       
       console.log('Saving account updates:', updates);
       
@@ -128,6 +134,17 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
               <p className="text-xs text-green-600 dark:text-green-400 mt-1">
                 ✓ Currently has OpenAPI key (Pro tier active)
               </p>
+            )}
+            {account.has_api_key_paid && (
+              <label className="mt-1 flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  className="rounded border-neutral-300 dark:border-neutral-600"
+                  checked={clearOpenApiKey}
+                  onChange={(e) => setClearOpenApiKey(e.target.checked)}
+                />
+                <span>Clear stored OpenAPI key on save</span>
+              </label>
             )}
             <p className="text-xs text-neutral-500 mt-1">
               For Pixverse: This is the OpenAPI key for paid accounts with higher limits

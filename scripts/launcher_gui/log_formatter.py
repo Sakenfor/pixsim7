@@ -17,6 +17,16 @@ except ImportError:
     )
 
 
+ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+
+
+def strip_ansi(text: str) -> str:
+    """Strip ANSI color codes from console log text."""
+    if not text:
+        return text
+    return ANSI_ESCAPE_RE.sub('', text)
+
+
 def escape_html(text):
     """Escape HTML special characters."""
     if not text:
@@ -89,8 +99,9 @@ def format_message(msg):
     if not msg:
         return ''
 
-    msg_display = msg if len(msg) <= 100 else msg[:97] + '...'
-    msg_tooltip = f' title="{escape_html(msg)}"' if len(msg) > 100 else ''
+    clean_msg = strip_ansi(msg)
+    msg_display = clean_msg if len(clean_msg) <= 100 else clean_msg[:97] + '...'
+    msg_tooltip = f' title="{escape_html(clean_msg)}"' if len(clean_msg) > 100 else ''
     return f' | <span style="color: {COMPONENT_COLORS["message"]};"{msg_tooltip}>{escape_html(msg_display)}</span>'
 
 
@@ -336,6 +347,7 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
                   .replace('&amp;', '&')
                   .replace('&quot;', '"')
                   .replace('&#39;', "'"))
+    plain_text = strip_ansi(plain_text)
 
     # Store field values as data attributes for context menu
     data_attrs = f'data-text="{escape_html(plain_text)}"'

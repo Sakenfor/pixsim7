@@ -2,6 +2,7 @@
 Minimal ADB utilities (async wrappers)
 """
 import asyncio
+import subprocess
 from typing import List, Tuple, Optional
 from pathlib import Path
 from pixsim7_backend.shared.config import settings
@@ -11,17 +12,18 @@ class ADB:
     def __init__(self, adb_path: Optional[str] = None):
         self.adb_path = adb_path or settings.adb_path
 
-    async def _run(self, args: List[str], capture_output: bool = True) -> Tuple[int, str, str]:
-        proc = await asyncio.create_subprocess_exec(
-            self.adb_path,
-            *args,
-            stdout=asyncio.subprocess.PIPE if capture_output else None,
-            stderr=asyncio.subprocess.PIPE if capture_output else None,
+    def _run_sync(self, args: List[str], capture_output: bool = True) -> Tuple[int, str, str]:
+        """Synchronous subprocess execution (used via asyncio.to_thread)"""
+        result = subprocess.run(
+            [self.adb_path, *args],
+            capture_output=capture_output,
+            text=True
         )
-        stdout, stderr = await proc.communicate()
-        out = stdout.decode() if stdout else ""
-        err = stderr.decode() if stderr else ""
-        return proc.returncode, out, err
+        return result.returncode, result.stdout or "", result.stderr or ""
+
+    async def _run(self, args: List[str], capture_output: bool = True) -> Tuple[int, str, str]:
+        """Run ADB command in thread pool to avoid Windows asyncio subprocess issues"""
+        return await asyncio.to_thread(self._run_sync, args, capture_output)
 
     async def devices(self) -> List[tuple[str, str]]:
         """Return list of (serial, state) from `adb devices`."""
@@ -40,18 +42,17 @@ class ADB:
     async def shell(self, serial: str, *cmd: str) -> Tuple[int, str, str]:
         return await self._run(["-s", serial, "shell", *cmd])
 
-    async def exec_out(self, serial: str, *cmd: str) -> bytes:
-        proc = await asyncio.create_subprocess_exec(
-            self.adb_path,
-            "-s",
-            serial,
-            "exec-out",
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+    def _exec_out_sync(self, serial: str, *cmd: str) -> bytes:
+        """Synchronous exec-out command (used via asyncio.to_thread)"""
+        result = subprocess.run(
+            [self.adb_path, "-s", serial, "exec-out", *cmd],
+            capture_output=True
         )
-        stdout, _ = await proc.communicate()
-        return stdout or b""
+        return result.stdout or b""
+
+    async def exec_out(self, serial: str, *cmd: str) -> bytes:
+        """Run ADB exec-out command in thread pool"""
+        return await asyncio.to_thread(self._exec_out_sync, serial, *cmd)
 
     async def input_tap(self, serial: str, x: int, y: int) -> None:
         await self.shell(serial, "input", "tap", str(x), str(y))
@@ -80,15 +81,5 @@ class ADB:
     async def dump_ui_xml(self, serial: str) -> str:
         # Dump the current UI hierarchy to a known path and read it
         await self.shell(serial, "uiautomator", "dump", "--compressed", "/sdcard/uidump.xml")
-        proc = await asyncio.create_subprocess_exec(
-            self.adb_path,
-            "-s",
-            serial,
-            "exec-out",
-            "cat",
-            "/sdcard/uidump.xml",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        return stdout.decode("utf-8", errors="ignore")
+        data = await self.exec_out(serial, "cat", "/sdcard/uidump.xml")
+        return data.decode("utf-8", errors="ignore")

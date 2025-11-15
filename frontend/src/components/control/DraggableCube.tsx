@@ -1,7 +1,9 @@
 import { useRef, useEffect } from 'react';
 import Draggable, { DraggableData, DraggableEvent } from 'react-draggable';
-import { ControlCube, CubeFaceContent } from './ControlCube';
-import { useControlCubeStore, CubeFace } from '../../stores/controlCubeStore';
+import { ControlCube } from './ControlCube';
+import type { CubeFaceContent } from './ControlCube';
+import type { CubeFace } from '../../stores/controlCubeStore';
+import { useControlCubeStore } from '../../stores/controlCubeStore';
 import { clsx } from 'clsx';
 
 export interface DraggableCubeProps {

@@ -525,10 +525,12 @@ class AccountService:
             account.jwt_token = jwt_token
 
         if api_key is not None:
-            account.api_key = api_key
+            # Treat empty string as clearing the generic API key
+            account.api_key = api_key or None
 
         if openapi_key is not None:
-            account.api_key_paid = openapi_key
+            # Treat empty string as clearing the OpenAPI key
+            account.api_key_paid = openapi_key or None
 
         if cookies is not None:
             account.cookies = cookies

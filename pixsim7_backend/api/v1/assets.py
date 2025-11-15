@@ -11,12 +11,14 @@ from pixsim7_backend.shared.schemas.asset_schemas import (
 )
 from pixsim7_backend.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7_backend.shared.errors import ResourceNotFoundError
-import os, tempfile
+import os, tempfile, hashlib
 from pydantic import BaseModel, Field
 from typing import Optional
 from pixsim7_backend.services.asset.asset_factory import add_asset
+from pixsim_logging import get_logger
 
 router = APIRouter()
+logger = get_logger()
 
 
 # ===== LIST ASSETS =====
@@ -197,15 +199,24 @@ async def upload_asset_to_provider(
         result = await upload_service.upload(provider_id=provider_id, media_type=media_type, tmp_path=tmp_path)
         # Persist as Asset (best-effort):
         # Derive provider_asset_id and remote_url with fallbacks
-        provider_asset_id = result.provider_asset_id or (result.external_url or "")
-        remote_url = result.external_url or (f"{provider_id}:{provider_asset_id}")
+        provider_asset_id_raw = result.provider_asset_id or (result.external_url or "")
+        remote_url = result.external_url or (f"{provider_id}:{provider_asset_id_raw}")
+        # Ensure provider_asset_id fits DB constraints (max_length=128)
+        if provider_asset_id_raw:
+            provider_asset_id = str(provider_asset_id_raw)
+            if len(provider_asset_id) > 120:
+                digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
+                provider_asset_id = f"upload_{digest}"
+        else:
+            digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
+            provider_asset_id = f"upload_{digest}"
         try:
             await add_asset(
                 db,
                 user_id=user.id,
                 media_type=media_type,
                 provider_id=provider_id,
-                provider_asset_id=str(provider_asset_id),
+                provider_asset_id=provider_asset_id,
                 remote_url=remote_url,
                 thumbnail_url=result.external_url,
                 width=result.width,
@@ -215,9 +226,16 @@ async def upload_asset_to_provider(
                 file_size_bytes=result.file_size_bytes,
                 tags=["user_upload"],
             )
-        except Exception:
-            # Non-fatal if asset creation fails; return upload response anyway
-            pass
+        except Exception as e:
+            # Non-fatal if asset creation fails; log and return upload response anyway
+            logger.error(
+                "asset_create_failed",
+                provider_id=provider_id,
+                media_type=str(media_type),
+                remote_url=remote_url,
+                error=str(e),
+                exc_info=True,
+            )
         return UploadAssetResponse(
             provider_id=result.provider_id,
             media_type=result.media_type,
@@ -336,15 +354,24 @@ async def upload_asset_from_url(
     try:
         result = await upload_service.upload(provider_id=request.provider_id, media_type=media_type, tmp_path=tmp_path)
         # Persist Asset best-effort
-        provider_asset_id = result.provider_asset_id or (result.external_url or "")
-        remote_url = result.external_url or (f"{request.provider_id}:{provider_asset_id}")
+        provider_asset_id_raw = result.provider_asset_id or (result.external_url or "")
+        remote_url = result.external_url or (f"{request.provider_id}:{provider_asset_id_raw}")
+        # Ensure provider_asset_id fits DB constraints (max_length=128)
+        if provider_asset_id_raw:
+            provider_asset_id = str(provider_asset_id_raw)
+            if len(provider_asset_id) > 120:
+                digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
+                provider_asset_id = f"upload_{digest}"
+        else:
+            digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
+            provider_asset_id = f"upload_{digest}"
         try:
             await add_asset(
                 db,
                 user_id=user.id,
                 media_type=media_type,
                 provider_id=request.provider_id,
-                provider_asset_id=str(provider_asset_id),
+                provider_asset_id=provider_asset_id,
                 remote_url=remote_url,
                 thumbnail_url=result.external_url,
                 width=result.width,
@@ -354,8 +381,15 @@ async def upload_asset_from_url(
                 file_size_bytes=result.file_size_bytes,
                 tags=["user_upload", "from_url"],
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(
+                "asset_create_failed",
+                provider_id=request.provider_id,
+                media_type=str(media_type),
+                remote_url=remote_url,
+                error=str(e),
+                exc_info=True,
+            )
 
         return UploadAssetResponse(
             provider_id=result.provider_id,

@@ -1,6 +1,8 @@
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QTextEdit, QHBoxLayout, QPushButton, QMessageBox
+    QDialog, QVBoxLayout, QLabel, QTextEdit, QHBoxLayout, QPushButton,
+    QMessageBox, QGroupBox, QFrame
 )
+from PySide6.QtCore import Qt
 
 try:
     from ..migration_tools import get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head
@@ -10,12 +12,12 @@ except ImportError:
 
 def show_migrations_dialog(parent):
     dlg = QDialog(parent)
-    dlg.setWindowTitle('Alembic Migrations')
-    dlg.setMinimumWidth(600)
-    dlg.setMinimumHeight(400)
+    dlg.setWindowTitle('Database Migrations Manager')
+    dlg.setMinimumWidth(700)
+    dlg.setMinimumHeight(550)
     dlg.setStyleSheet("""
         QDialog {
-            background-color: #f9f9f9;
+            background-color: #f5f5f5;
         }
         QLabel {
             color: #1a1a1a;
@@ -36,7 +38,7 @@ def show_migrations_dialog(parent):
             border-radius: 4px;
             padding: 8px 16px;
             font-weight: bold;
-            min-height: 28px;
+            min-height: 32px;
         }
         QPushButton:hover {
             background-color: #1976D2;
@@ -44,62 +46,286 @@ def show_migrations_dialog(parent):
         QPushButton:pressed {
             background-color: #0D47A1;
         }
+        QPushButton:disabled {
+            background-color: #cccccc;
+            color: #888888;
+        }
+        QGroupBox {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            margin-top: 12px;
+            padding-top: 12px;
+            font-weight: bold;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px;
+        }
     """)
+
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
     layout.setContentsMargins(20, 20, 20, 20)
-    info = QLabel('Database migration operations (local). Use with caution on shared DB.')
-    info.setWordWrap(True)
-    info.setStyleSheet("color: #555; font-weight: 500;")
-    layout.addWidget(info)
 
-    status_box = QTextEdit(); status_box.setReadOnly(True); status_box.setMinimumHeight(180)
-    layout.addWidget(status_box)
+    # Header with explanation
+    header = QLabel('📊 Database Schema Version Control')
+    header.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333; margin-bottom: 8px;")
+    layout.addWidget(header)
 
-    btn_row1 = QHBoxLayout()
-    btn_refresh = QPushButton('Refresh Status')
-    btn_history = QPushButton('Show History')
-    btn_row1.addWidget(btn_refresh)
-    btn_row1.addWidget(btn_history)
-    btn_row1.addStretch()
-    layout.addLayout(btn_row1)
+    help_text = QLabel(
+        "Migrations keep your database schema in sync with code changes. "
+        "Always backup your database before applying migrations!"
+    )
+    help_text.setWordWrap(True)
+    help_text.setStyleSheet("color: #666; font-size: 9pt; margin-bottom: 8px;")
+    layout.addWidget(help_text)
 
-    btn_row2 = QHBoxLayout()
-    btn_upgrade = QPushButton('Upgrade Head')
-    btn_downgrade = QPushButton('Downgrade -1')
-    btn_stamp = QPushButton('Stamp Head')
-    btn_row2.addWidget(btn_upgrade)
-    btn_row2.addWidget(btn_downgrade)
-    btn_row2.addWidget(btn_stamp)
-    btn_row2.addStretch()
-    layout.addLayout(btn_row2)
+    # Status indicator
+    status_frame = QFrame()
+    status_frame.setFrameShape(QFrame.StyledPanel)
+    status_frame.setStyleSheet("background-color: white; border: 1px solid #ddd; border-radius: 6px; padding: 12px;")
+    status_layout = QVBoxLayout(status_frame)
+    status_layout.setContentsMargins(12, 12, 12, 12)
 
+    status_label = QLabel('🔄 Checking status...')
+    status_label.setStyleSheet("font-size: 11pt; font-weight: bold;")
+    status_layout.addWidget(status_label)
+
+    status_detail = QLabel('')
+    status_detail.setWordWrap(True)
+    status_detail.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    status_layout.addWidget(status_detail)
+
+    layout.addWidget(status_frame)
+
+    # Details box
+    details_group = QGroupBox("Details (Technical)")
+    details_layout = QVBoxLayout(details_group)
+    status_box = QTextEdit()
+    status_box.setReadOnly(True)
+    status_box.setMinimumHeight(150)
+    details_layout.addWidget(status_box)
+    layout.addWidget(details_group)
+
+    # Action buttons with clear labels
+    actions_group = QGroupBox("Actions")
+    actions_layout = QVBoxLayout(actions_group)
+
+    # Info buttons row
+    info_row = QHBoxLayout()
+    btn_refresh = QPushButton('🔄 Check Status')
+    btn_refresh.setToolTip('Check current database version and available updates')
+    btn_history = QPushButton('📜 View History')
+    btn_history.setToolTip('Show all migration versions applied to the database')
+    info_row.addWidget(btn_refresh)
+    info_row.addWidget(btn_history)
+    info_row.addStretch()
+    actions_layout.addLayout(info_row)
+
+    # Main action buttons row
+    main_row = QHBoxLayout()
+    btn_upgrade = QPushButton('⬆️ Apply Updates')
+    btn_upgrade.setToolTip('Apply all pending migrations to update database schema')
+    btn_upgrade.setStyleSheet("""
+        QPushButton {
+            background-color: #4CAF50;
+            font-size: 11pt;
+        }
+        QPushButton:hover {
+            background-color: #45a049;
+        }
+        QPushButton:disabled {
+            background-color: #cccccc;
+        }
+    """)
+    main_row.addWidget(btn_upgrade)
+    actions_layout.addLayout(main_row)
+
+    # Advanced buttons row (initially hidden)
+    advanced_row = QHBoxLayout()
+    btn_downgrade = QPushButton('⬇️ Rollback One')
+    btn_downgrade.setToolTip('⚠️ ADVANCED: Undo the last migration (may lose data)')
+    btn_downgrade.setStyleSheet("""
+        QPushButton {
+            background-color: #ff9800;
+            font-size: 9pt;
+        }
+        QPushButton:hover {
+            background-color: #fb8c00;
+        }
+    """)
+    btn_stamp = QPushButton('🏷️ Mark as Updated')
+    btn_stamp.setToolTip('⚠️ ADVANCED: Mark database as current without running migrations')
+    btn_stamp.setStyleSheet("""
+        QPushButton {
+            background-color: #9E9E9E;
+            font-size: 9pt;
+        }
+        QPushButton:hover {
+            background-color: #757575;
+        }
+    """)
+    advanced_row.addWidget(btn_downgrade)
+    advanced_row.addWidget(btn_stamp)
+    advanced_row.addStretch()
+    actions_layout.addLayout(advanced_row)
+
+    advanced_warning = QLabel('⚠️ Advanced options may cause data loss - use only if you know what you\'re doing!')
+    advanced_warning.setStyleSheet("color: #f44336; font-size: 8pt; font-style: italic;")
+    actions_layout.addWidget(advanced_warning)
+
+    layout.addWidget(actions_group)
+
+    # Close button
     btn_close = QPushButton('Close')
+    btn_close.setStyleSheet("background-color: #757575;")
     layout.addWidget(btn_close)
+
+    def parse_status(current_text, heads_text):
+        """Parse alembic output and determine status"""
+        current_clean = current_text.strip()
+        heads_clean = heads_text.strip()
+
+        # Check for errors
+        if 'error' in current_clean.lower() or 'error' in heads_clean.lower():
+            return 'error', 'Database connection error', '❌'
+
+        # Extract revision IDs
+        current_rev = None
+        if current_clean and '(' not in current_clean:
+            parts = current_clean.split()
+            if parts:
+                current_rev = parts[0]
+        elif '(head)' in current_clean:
+            current_rev = current_clean.split()[0]
+
+        heads_rev = None
+        if '(head)' in heads_clean:
+            heads_rev = heads_clean.split()[0]
+        elif heads_clean and not heads_clean.startswith('error'):
+            parts = heads_clean.split()
+            if parts:
+                heads_rev = parts[0]
+
+        # Determine status
+        if current_rev and heads_rev:
+            if current_rev == heads_rev:
+                return 'up_to_date', f'Database is up-to-date (version {current_rev[:8]}...)', '✅'
+            else:
+                return 'pending', f'Updates available! Current: {current_rev[:8]}... → Latest: {heads_rev[:8]}...', '⚠️'
+        elif not current_rev:
+            return 'not_initialized', 'Database not initialized with migrations', '❓'
+        else:
+            return 'unknown', 'Status unclear - check details below', '❔'
 
     def refresh():
         current = get_current_revision()
         heads = get_heads()
-        status_box.setPlainText(f"Current Revision:\n{current}\n\nHeads:\n{heads}")
+
+        # Parse and display user-friendly status
+        state, message, icon = parse_status(current, heads)
+        status_label.setText(f'{icon} {message}')
+
+        if state == 'up_to_date':
+            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #4CAF50;")
+            status_detail.setText('Your database schema is current. No action needed.')
+            btn_upgrade.setEnabled(False)
+            btn_upgrade.setText('✅ Already Up-to-Date')
+        elif state == 'pending':
+            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #ff9800;")
+            status_detail.setText('New migrations are available. Click "Apply Updates" to update your database schema.')
+            btn_upgrade.setEnabled(True)
+            btn_upgrade.setText('⬆️ Apply Updates')
+        elif state == 'error':
+            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #f44336;")
+            status_detail.setText('Cannot connect to database or check migrations. Ensure backend is running.')
+            btn_upgrade.setEnabled(False)
+        else:
+            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #2196F3;")
+            status_detail.setText('Check details below for current migration status.')
+            btn_upgrade.setEnabled(True)
+
+        # Show technical details
+        status_box.setPlainText(
+            f"Current Database Version:\n{current}\n\n"
+            f"Latest Available Version:\n{heads}\n\n"
+            f"📌 Tip: Current and Latest should match when up-to-date"
+        )
 
     def show_history():
         hist = get_history()
-        status_box.setPlainText(f"History (latest):\n{hist}")
+        status_box.setPlainText(
+            f"Migration History (most recent first):\n\n{hist}\n\n"
+            f"📌 Each line shows a migration that was applied to the database"
+        )
 
     def do_upgrade():
-        res = upgrade_head(); status_box.append(f"\n{res}")
-        refresh()
+        reply = QMessageBox.question(
+            dlg,
+            'Confirm Database Update',
+            '⚠️ This will apply new migrations to your database.\n\n'
+            'What this does:\n'
+            '• Creates new tables if needed\n'
+            '• Adds new columns to existing tables\n'
+            '• Updates database structure to match latest code\n\n'
+            '✅ Safe: Usually safe, but always backup first!\n\n'
+            'Continue?',
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            status_box.append('\n⏳ Applying migrations...\n')
+            res = upgrade_head()
+            status_box.append(f"{res}\n")
+            if 'error' not in res.lower() and 'failed' not in res.lower():
+                status_box.append('✅ Migrations applied successfully!\n')
+            refresh()
 
     def do_downgrade():
-        reply = QMessageBox.question(dlg, 'Confirm Downgrade', 'Downgrade -1? This may remove latest schema changes.', QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.warning(
+            dlg,
+            '⚠️ Confirm Rollback (ADVANCED)',
+            '⚠️ WARNING: This will UNDO the last migration!\n\n'
+            'What this does:\n'
+            '• Rolls back the most recent database change\n'
+            '• May DELETE tables or columns\n'
+            '• Could result in DATA LOSS\n\n'
+            '❌ Only use this if:\n'
+            '• You just applied a migration by mistake\n'
+            '• You have a recent database backup\n'
+            '• You understand the consequences\n\n'
+            'Continue with rollback?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
-            res = downgrade_one(); status_box.append(f"\n{res}")
+            status_box.append('\n⏳ Rolling back last migration...\n')
+            res = downgrade_one()
+            status_box.append(f"{res}\n")
             refresh()
 
     def do_stamp():
-        reply = QMessageBox.question(dlg, 'Confirm Stamp', 'Stamp head sets DB revision without migration. Proceed?', QMessageBox.Yes | QMessageBox.No)
+        reply = QMessageBox.warning(
+            dlg,
+            '⚠️ Confirm Manual Mark (ADVANCED)',
+            '⚠️ WARNING: Advanced operation!\n\n'
+            'What this does:\n'
+            '• Marks database as "up-to-date" WITHOUT running migrations\n'
+            '• Does NOT change your actual database structure\n'
+            '• Only updates the version tracking table\n\n'
+            '⚠️ Only use this if:\n'
+            '• You manually created tables yourself\n'
+            '• You restored from a backup at a specific version\n'
+            '• An expert told you to do this\n\n'
+            'Continue?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
-            res = stamp_head(); status_box.append(f"\n{res}")
+            status_box.append('\n⏳ Marking database as current...\n')
+            res = stamp_head()
+            status_box.append(f"{res}\n")
             refresh()
 
     btn_refresh.clicked.connect(refresh)
@@ -108,5 +334,8 @@ def show_migrations_dialog(parent):
     btn_downgrade.clicked.connect(do_downgrade)
     btn_stamp.clicked.connect(do_stamp)
     btn_close.clicked.connect(dlg.accept)
+
+    # Initial status check
     refresh()
+
     dlg.exec()

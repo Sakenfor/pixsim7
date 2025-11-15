@@ -124,10 +124,11 @@ class PixverseProvider(Provider):
             Configured PixverseClient
         """
         # Build session from stored credentials
+        # For OpenAPI, use the dedicated paid key (api_key_paid) only.
         session = {
             "jwt_token": account.jwt_token,
             "api_key": account.api_key,
-            "openapi_key": account.api_key_paid or account.api_key,
+            "openapi_key": account.api_key_paid,
             "cookies": account.cookies or {},
         }
 
@@ -681,15 +682,15 @@ class PixverseProvider(Provider):
 
     def _has_openapi_credentials(self, account: ProviderAccount) -> bool:
         """
-        Return True if the account has any OpenAPI-style API key available.
+        Return True if the account has an OpenAPI-style API key available.
         """
-        return bool(account.api_key_paid or account.api_key)
+        return bool(account.api_key_paid)
 
     def _get_openapi_key(self, account: ProviderAccount) -> str | None:
         """
-        Prefer the dedicated paid OpenAPI key but fall back to the generic API key if needed.
+        Return the dedicated paid OpenAPI key for this account.
         """
-        return account.api_key_paid or account.api_key
+        return account.api_key_paid
 
     def _upload_via_openapi(
         self,
@@ -706,6 +707,13 @@ class PixverseProvider(Provider):
         openapi_key = self._get_openapi_key(account)
         if not openapi_key:
             raise ProviderError("Pixverse OpenAPI key is missing.")
+
+        # Debug which account is used (avoid logging secrets)
+        logger.info(
+            "pixverse_openapi_upload_start",
+            account_id=account.id,
+            email=account.email,
+        )
 
         pix_api = getattr(client, "api", None)
         if not pix_api or not hasattr(pix_api, "session"):

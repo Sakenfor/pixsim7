@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { CubeFace } from '../../stores/controlCubeStore';
-import { PanelAction, PanelActionsConfig } from '../../lib/panelActions';
+import type { CubeFace } from '../../stores/controlCubeStore';
+import type { PanelAction, PanelActionsConfig } from '../../lib/panelActions';
 import { clsx } from 'clsx';
 
 interface EditingAction extends PanelAction {

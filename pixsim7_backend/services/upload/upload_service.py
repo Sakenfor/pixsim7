@@ -19,6 +19,9 @@ from pixsim7_backend.services.account.account_service import AccountService
 from pixsim7_backend.services.provider.registry import registry
 from pixsim7_backend.shared.errors import InvalidOperationError
 from pixsim7_backend.shared.image_utils import get_image_info, downscale_image_max_dim
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -55,21 +58,33 @@ class UploadService:
         prepared_path, meta, prep_note = await self._prepare_file_for_provider(provider_id, media_type, tmp_path)
 
         # Select account for this provider (shared accounts)
-        # Pixverse: prefer any account with API key (OpenAPI) by default
+        # Pixverse: prefer any account with OpenAPI key (api_key_paid) by default
         account: ProviderAccount
         if provider_id == "pixverse":
             result = await self.db.execute(
                 select(ProviderAccount).where(
                     ProviderAccount.provider_id == "pixverse",
                     ProviderAccount.status == AccountStatus.ACTIVE,
-                    (ProviderAccount.api_key.is_not(None)) | (ProviderAccount.api_key_paid.is_not(None))
+                    ProviderAccount.api_key_paid.is_not(None)
                 ).limit(1)
             )
             preferred = result.scalar_one_or_none()
             if preferred is not None:
                 account = preferred
+                selection_source = "preferred_openapi"
             else:
                 account = await self.accounts.select_account(provider_id)
+                selection_source = "account_service"
+
+            # Debug which Pixverse account is used (avoid logging secrets)
+            logger.info(
+                "pixverse_upload_account_selected",
+                account_id=account.id,
+                email=account.email,
+                selection_source=selection_source,
+                has_api_key=bool(account.api_key),
+                has_api_key_paid=bool(account.api_key_paid),
+            )
         else:
             account = await self.accounts.select_account(provider_id)
 
@@ -83,7 +98,7 @@ class UploadService:
                 provider_id=provider_id,
                 media_type=media_type,
                 external_url=uploaded,
-                note=(prep_note or None) or ("Uploaded via OpenAPI" if provider_id == "pixverse" and (account.api_key or account.api_key_paid) else None),
+                note=(prep_note or None) or ("Uploaded via OpenAPI" if provider_id == "pixverse" and bool(account.api_key_paid) else None),
                 width=meta.get('width'),
                 height=meta.get('height'),
                 mime_type=meta.get('mime_type'),
