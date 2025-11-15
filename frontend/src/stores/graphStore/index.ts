@@ -128,8 +128,6 @@ export const useGraphStore = create<GraphState>()(
             const legacyDraft = persistedState.draft;
             const sceneId = legacyDraft.id || `scene_${Date.now()}`;
 
-            console.log('[graphStore] Migrating from v1 to v2 (single draft → multi-scene)');
-
             return {
               scenes: {
                 [sceneId]: legacyDraft,

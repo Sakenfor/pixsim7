@@ -37,10 +37,7 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
         updates.api_key_paid = apiKeyPaid;
       }
       
-      console.log('Saving account updates:', updates);
-      
       if (Object.keys(updates).length === 0) {
-        console.log('No changes to save');
         onClose();
         return;
       }
@@ -380,9 +377,7 @@ export function ProviderSettingsPanel() {
     api_key_paid?: string;
   }) => {
     try {
-      console.log('handleSaveAccount called with:', accountId, data);
       await updateAccount(accountId, data);
-      console.log('Account updated successfully, refreshing...');
       setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Error in handleSaveAccount:', error);

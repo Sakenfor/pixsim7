@@ -52,7 +52,6 @@ export class PreviewBridge {
 
     try {
       contentWindow.postMessage(message, this.targetOrigin);
-      console.log('[PreviewBridge] Sent message:', message.type, message);
       return true;
     } catch (error) {
       console.error('[PreviewBridge] Failed to send message:', error);
@@ -72,8 +71,6 @@ export class PreviewBridge {
       if (!isGameToEditorMessage(message)) {
         return; // Not a game message
       }
-
-      console.log('[PreviewBridge] Received message:', message.type, message);
 
       // Notify all handlers for this message type
       const handlers = this.messageHandlers.get(message.type) || [];

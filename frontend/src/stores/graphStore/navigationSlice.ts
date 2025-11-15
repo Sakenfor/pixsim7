@@ -56,8 +56,6 @@ export const createNavigationSlice: StateCreator<NavigationState> = (set, get, _
       false,
       'zoomIntoGroup'
     );
-
-    console.log(`[navigationSlice] Zoomed into group: ${groupId}`);
   },
 
   zoomOut: () => {

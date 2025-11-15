@@ -161,13 +161,6 @@ export function GraphPanel() {
         return;
       }
 
-      console.log('[GraphPanel] onConnect:', {
-        source: connection.source,
-        target: connection.target,
-        sourceHandle,
-        targetHandle,
-      });
-
       try {
         connectNodes(connection.source, connection.target, {
           fromPort: sourceHandle,

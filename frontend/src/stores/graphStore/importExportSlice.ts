@@ -68,7 +68,6 @@ export const createImportExportSlice: StateCreator<ImportExportState> = (set, ge
         'importScene'
       );
 
-      console.log('[importExportSlice] Imported scene:', importedScene.title);
       return newSceneId;
     } catch (error) {
       console.error('[importExportSlice] Import failed:', error);
@@ -94,7 +93,6 @@ export const createImportExportSlice: StateCreator<ImportExportState> = (set, ge
         'importProject'
       );
 
-      console.log('[importExportSlice] Imported project with', Object.keys(data.scenes).length, 'scenes');
     } catch (error) {
       console.error('[importExportSlice] Project import failed:', error);
     }

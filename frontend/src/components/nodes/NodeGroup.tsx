@@ -40,7 +40,6 @@ export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeDa
     e.stopPropagation();
     // Zoom into this group
     zoomIntoGroup(id);
-    console.log(`[NodeGroup] Zoomed into group: ${id}`);
   };
 
   return (

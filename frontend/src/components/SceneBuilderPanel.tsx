@@ -128,7 +128,6 @@ export function SceneBuilderPanel() {
       // TODO: Wire postMessage to game iframe
       // For now, just show a toast
       toast.info('Preview feature coming soon - scene structure ready');
-      console.log('Scene ready for preview:', scene);
     } catch (error) {
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

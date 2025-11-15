@@ -113,7 +113,6 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
       'createNodeGroup'
     );
 
-    console.log(`[nodeGroupSlice] Created group ${groupId} with ${validNodeIds.length} nodes`);
     return groupId;
   },
 
