@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useControlCubeStore, type CubeType } from '../../stores/controlCubeStore';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 import { ControlCube } from './ControlCube';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
@@ -58,7 +58,7 @@ export function CubeFormationControlCenter() {
   const updateCube = useControlCubeStore((s) => s.updateCube);
   const removeCube = useControlCubeStore((s) => s.removeCube);
   const cubes = useControlCubeStore((s) => s.cubes);
-  const hydrated = useControlCubeStore((s) => (s as any).hydrated ?? true);
+  const hydrated = useControlCubeStore((s) => s.hydrated ?? true);
   const restorePanelFromCube = useControlCubeStore((s) => s.restorePanelFromCube);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
@@ -194,7 +194,7 @@ export function CubeFormationControlCenter() {
       if (!cube) return;
 
       // Map cube type to panel type
-      const CUBE_TO_PANEL_MAP: Record<CubeType, string> = {
+      const CUBE_TO_PANEL_MAP: Record<CubeType, PanelId> = {
         control: 'scene', // Control cubes could open scene builder
         provider: 'providers',
         preset: 'scene', // Presets could also open scene builder
@@ -203,10 +203,10 @@ export function CubeFormationControlCenter() {
         gallery: 'gallery',
       };
 
-      const panelId = CUBE_TO_PANEL_MAP[cube.type] as any;
+      const panelId = CUBE_TO_PANEL_MAP[cube.type];
       if (panelId) {
         // Open floating panel at cube position
-        openFloatingPanel(panelId, position.x, position.y, 600, 400);
+        openFloatingPanel(panelId);
 
         // Optionally remove/hide the cube
         // removeCube(cubeId);

@@ -29,7 +29,7 @@ export interface CubeMessage {
   fromCubeId: string;
   toCubeId: string;
   timestamp: number;
-  data: any;
+  data: unknown;  // Changed from any for type safety
   type?: string;
 }
 
