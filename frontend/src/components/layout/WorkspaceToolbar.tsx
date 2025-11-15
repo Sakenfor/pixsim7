@@ -1,21 +1,14 @@
 import { useState } from 'react';
-import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
-import type { MosaicNode } from 'react-mosaic-component';
-
-const PANEL_NAMES: Record<PanelId, string> = {
-  gallery: 'Gallery',
-  scene: 'Scene Builder',
-  graph: 'Graph',
-  inspector: 'Inspector',
-  health: 'Health',
-  game: 'Game',
-};
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { PresetsDropdown } from './workspace-toolbar/PresetsDropdown';
+import { AddPanelDropdown } from './workspace-toolbar/AddPanelDropdown';
+import { RestoreClosedPanelsMenu } from './workspace-toolbar/RestoreClosedPanelsMenu';
+import { SavePresetDialog } from './workspace-toolbar/SavePresetDialog';
 
 export function WorkspaceToolbar() {
   const [showPresets, setShowPresets] = useState(false);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [presetName, setPresetName] = useState('');
 
   const presets = useWorkspaceStore((s) => s.presets);
   const loadPreset = useWorkspaceStore((s) => s.loadPreset);
@@ -28,12 +21,9 @@ export function WorkspaceToolbar() {
   const toggleLock = useWorkspaceStore((s) => s.toggleLock);
   const reset = useWorkspaceStore((s) => s.reset);
 
-  const handleSavePreset = () => {
-    if (presetName.trim()) {
-      savePreset(presetName);
-      setPresetName('');
-      setShowSaveDialog(false);
-    }
+  const handleSavePreset = (name: string) => {
+    savePreset(name);
+    setShowSaveDialog(false);
   };
 
   return (
@@ -64,42 +54,13 @@ export function WorkspaceToolbar() {
           📐 Presets
         </button>
         {showPresets && (
-          <div className="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-50 min-w-[200px]">
-            <div className="p-2 space-y-1">
-              {presets.map((preset) => (
-                <div key={preset.id} className="flex items-center gap-1">
-                  <button
-                    className="flex-1 text-left text-xs px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded"
-                    onClick={() => {
-                      loadPreset(preset.id);
-                      setShowPresets(false);
-                    }}
-                  >
-                    {preset.name}
-                  </button>
-                  {!['default', 'minimal', 'creative'].includes(preset.id) && (
-                    <button
-                      className="text-xs px-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
-                      onClick={() => deletePreset(preset.id)}
-                      title="Delete preset"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-              <div className="border-t dark:border-neutral-700 my-1" />
-              <button
-                className="w-full text-left text-xs px-2 py-1 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded text-blue-600 dark:text-blue-400"
-                onClick={() => {
-                  setShowPresets(false);
-                  setShowSaveDialog(true);
-                }}
-              >
-                💾 Save Current Layout
-              </button>
-            </div>
-          </div>
+          <PresetsDropdown
+            presets={presets}
+            onLoadPreset={loadPreset}
+            onDeletePreset={deletePreset}
+            onSaveClick={() => setShowSaveDialog(true)}
+            onClose={() => setShowPresets(false)}
+          />
         )}
       </div>
 
@@ -113,78 +74,19 @@ export function WorkspaceToolbar() {
           ➕ Add Panel
         </button>
         {showAddPanel && (
-          <div className="absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-50 min-w-[150px]">
-            <div className="p-2 space-y-1">
-              {(Object.keys(PANEL_NAMES) as PanelId[]).map((panelId) => {
-                const currentLayout = useWorkspaceStore.getState().currentLayout;
-                const getAllLeaves = (node: MosaicNode<PanelId> | null): PanelId[] => {
-                  if (!node) return [];
-                  if (typeof node === 'string') return [node as PanelId];
-                  return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
-                };
-                const existingPanels = getAllLeaves(currentLayout);
-                const alreadyExists = existingPanels.includes(panelId);
-
-                return (
-                  <button
-                    key={panelId}
-                    className={`w-full text-left text-xs px-2 py-1 rounded ${
-                      alreadyExists
-                        ? 'opacity-50 cursor-not-allowed'
-                        : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
-                    }`}
-                    onClick={() => {
-                      if (!alreadyExists) {
-                        restorePanel(panelId);
-                        setShowAddPanel(false);
-                      }
-                    }}
-                    disabled={alreadyExists}
-                    title={alreadyExists ? 'Already in layout' : ''}
-                  >
-                    {PANEL_NAMES[panelId]} {alreadyExists && '✓'}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <AddPanelDropdown
+            onRestorePanel={restorePanel}
+            onClose={() => setShowAddPanel(false)}
+          />
         )}
       </div>
 
       {/* Restore Closed Panels */}
-      {closedPanels.length > 0 && (
-        <div className="relative">
-          <button
-            className="text-xs px-2 py-1 border rounded bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
-            onClick={() => document.getElementById('closed-panels-menu')?.classList.toggle('hidden')}
-          >
-            ↶ Restore ({closedPanels.length})
-          </button>
-          <div
-            id="closed-panels-menu"
-            className="hidden absolute top-full left-0 mt-1 bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-50 min-w-[150px]"
-          >
-            <div className="p-2 space-y-1">
-              {closedPanels.map((panelId) => (
-                <button
-                  key={panelId}
-                  className="w-full text-left text-xs px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded"
-                  onClick={() => restorePanel(panelId)}
-                >
-                  {PANEL_NAMES[panelId]}
-                </button>
-              ))}
-              <div className="border-t dark:border-neutral-700 my-1" />
-              <button
-                className="w-full text-left text-xs px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded text-neutral-600 dark:text-neutral-400"
-                onClick={clearClosedPanels}
-              >
-                Clear History
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RestoreClosedPanelsMenu
+        closedPanels={closedPanels}
+        onRestorePanel={restorePanel}
+        onClearHistory={clearClosedPanels}
+      />
 
       <div className="flex-1" />
 
@@ -205,38 +107,10 @@ export function WorkspaceToolbar() {
 
       {/* Save Preset Dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
-          <div className="bg-white dark:bg-neutral-800 rounded-lg shadow-xl p-4 w-80">
-            <h3 className="text-sm font-semibold mb-2">Save Workspace Preset</h3>
-            <input
-              type="text"
-              className="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-900 dark:border-neutral-700"
-              placeholder="Preset name..."
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
-              autoFocus
-            />
-            <div className="flex gap-2 mt-3 justify-end">
-              <button
-                className="text-xs px-3 py-1 border rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
-                onClick={() => {
-                  setShowSaveDialog(false);
-                  setPresetName('');
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                onClick={handleSavePreset}
-                disabled={!presetName.trim()}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <SavePresetDialog
+          onSave={handleSavePreset}
+          onCancel={() => setShowSaveDialog(false)}
+        />
       )}
     </div>
   );
