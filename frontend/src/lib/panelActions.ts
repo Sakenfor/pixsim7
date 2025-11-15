@@ -10,6 +10,13 @@ import React from 'react';
 
 import type { CubeFace } from '../stores/controlCubeStore';
 
+export interface PanelActionError {
+  actionId: string;
+  panelId: string;
+  error: Error;
+  timestamp: number;
+}
+
 export interface PanelAction {
   id: string;
   label: string;
@@ -19,6 +26,7 @@ export interface PanelAction {
   shortcut?: string;
   execute: () => void | Promise<void>;
   enabled?: () => boolean; // Dynamic enable/disable
+  onError?: (error: Error) => void; // Custom error handler
 }
 
 export interface PanelActionsConfig {
@@ -31,6 +39,8 @@ export interface PanelActionsConfig {
 class PanelActionRegistry {
   private registrations = new Map<string, PanelActionsConfig>();
   private listeners = new Set<() => void>();
+  private errorListeners = new Set<(error: PanelActionError) => void>();
+  private lastErrors: PanelActionError[] = [];
 
   /**
    * Register a panel's available actions
@@ -89,15 +99,21 @@ class PanelActionRegistry {
   }
 
   /**
-   * Execute an action
+   * Execute an action with proper error handling
    */
   async executeAction(panelId: string, actionId: string): Promise<boolean> {
     const action = this.getAction(panelId, actionId);
-    if (!action) return false;
+
+    if (!action) {
+      const error = new Error(`Action '${actionId}' not found in panel '${panelId}'`);
+      this.handleError(panelId, actionId, error);
+      return false;
+    }
 
     // Check if action is enabled
     if (action.enabled && !action.enabled()) {
-      console.warn(`Action ${actionId} is disabled`);
+      const error = new Error(`Action '${actionId}' is currently disabled`);
+      this.handleError(panelId, actionId, error);
       return false;
     }
 
@@ -105,9 +121,74 @@ class PanelActionRegistry {
       await action.execute();
       return true;
     } catch (error) {
-      console.error(`Failed to execute action ${actionId}:`, error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.handleError(panelId, actionId, err);
+
+      // Call custom error handler if provided
+      if (action.onError) {
+        try {
+          action.onError(err);
+        } catch (handlerError) {
+          console.error('Error in custom error handler:', handlerError);
+        }
+      }
+
       return false;
     }
+  }
+
+  /**
+   * Handle action errors
+   */
+  private handleError(panelId: string, actionId: string, error: Error) {
+    const actionError: PanelActionError = {
+      panelId,
+      actionId,
+      error,
+      timestamp: Date.now(),
+    };
+
+    // Store error
+    this.lastErrors.push(actionError);
+    if (this.lastErrors.length > 10) {
+      this.lastErrors.shift(); // Keep only last 10 errors
+    }
+
+    // Log to console
+    console.error(`[Panel Action Error] ${panelId}.${actionId}:`, error.message);
+
+    // Notify error listeners
+    this.errorListeners.forEach((listener) => {
+      try {
+        listener(actionError);
+      } catch (err) {
+        console.error('Error in error listener:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to action errors
+   */
+  onError(listener: (error: PanelActionError) => void): () => void {
+    this.errorListeners.add(listener);
+    return () => {
+      this.errorListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Get recent errors
+   */
+  getRecentErrors(limit = 10): PanelActionError[] {
+    return this.lastErrors.slice(-limit);
+  }
+
+  /**
+   * Clear error history
+   */
+  clearErrors() {
+    this.lastErrors = [];
   }
 
   /**
