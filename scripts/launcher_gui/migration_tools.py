@@ -61,6 +61,40 @@ def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
         return 1, "", f"ERROR: Unexpected error running alembic: {type(e).__name__}: {str(e)}"
 
 
+def check_migration_safety() -> tuple[bool, str]:
+    """
+    Perform pre-migration safety checks.
+
+    Returns:
+        Tuple of (is_safe, message)
+    """
+    # Check 1: Can we connect to the database and query current revision?
+    code, out, err = _run_alembic('current')
+    if code != 0:
+        error_msg = err.strip() or out.strip()
+        if 'could not connect' in error_msg.lower() or 'connection' in error_msg.lower():
+            return False, "Cannot connect to database. Check DATABASE_URL in .env and ensure database is running."
+        elif 'no such table' in error_msg.lower() or 'does not exist' in error_msg.lower():
+            return False, "Database exists but migration tracking table missing. Run 'alembic stamp head' if schema is current, or contact administrator."
+        else:
+            return False, f"Database check failed: {error_msg}"
+
+    # Check 2: Verify alembic configuration integrity
+    code, out, err = _run_alembic('check')
+    if code != 0:
+        # Note: 'alembic check' returns non-zero if there are pending model changes
+        # This is informational, not necessarily an error for migrations
+        if 'target database is not up to date' in out.lower() or 'detected' in out.lower():
+            # This is expected when there are pending migrations - not an error
+            pass
+        else:
+            # Actual configuration error
+            error_msg = err.strip() or out.strip()
+            return False, f"Alembic configuration issue: {error_msg}"
+
+    return True, "Pre-migration checks passed. Safe to proceed."
+
+
 def get_current_revision() -> str:
     code, out, err = _run_alembic('current')
     if code != 0:
@@ -83,6 +117,17 @@ def get_history(limit: int = 20) -> str:
 
 
 def upgrade_head() -> str:
+    """
+    Upgrade database to head revision with safety checks.
+
+    Returns:
+        Human-readable result message
+    """
+    # Run safety checks first
+    safe, msg = check_migration_safety()
+    if not safe:
+        return f"❌ Pre-migration check failed: {msg}"
+
     code, out, err = _run_alembic('upgrade', 'head')
     if code != 0:
         return f"upgrade failed: {err.strip() or out.strip()}"
@@ -90,6 +135,19 @@ def upgrade_head() -> str:
 
 
 def downgrade_one() -> str:
+    """
+    Downgrade database by one revision.
+
+    ⚠️ WARNING: This can cause data loss!
+
+    Returns:
+        Human-readable result message
+    """
+    # Check database connectivity
+    code, out, err = _run_alembic('current')
+    if code != 0:
+        return f"❌ Cannot connect to database: {err.strip() or out.strip()}"
+
     code, out, err = _run_alembic('downgrade', '-1')
     if code != 0:
         return f"downgrade failed: {err.strip() or out.strip()}"
@@ -97,6 +155,19 @@ def downgrade_one() -> str:
 
 
 def stamp_head() -> str:
+    """
+    Mark database as current version without running migrations.
+
+    ⚠️ WARNING: Use only if schema already matches target revision!
+
+    Returns:
+        Human-readable result message
+    """
+    # Check database connectivity
+    code, out, err = _run_alembic('current')
+    if code != 0:
+        return f"❌ Cannot connect to database: {err.strip() or out.strip()}"
+
     code, out, err = _run_alembic('stamp', 'head')
     if code != 0:
         return f"stamp failed: {err.strip() or out.strip()}"
