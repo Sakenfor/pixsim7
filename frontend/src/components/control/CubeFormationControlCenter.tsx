@@ -124,6 +124,8 @@ export function CubeFormationControlCenter() {
       (id) => cubes[id]?.position || { x: 0, y: 0 }
     );
 
+    let frameId: number | null = null;
+
     const animate = () => {
       const elapsed = Date.now() - startTime;
       const rawProgress = Math.min(elapsed / duration, 1);
@@ -140,11 +142,18 @@ export function CubeFormationControlCenter() {
       });
 
       if (rawProgress < 1) {
-        requestAnimationFrame(animate);
+        frameId = requestAnimationFrame(animate);
       }
     };
 
-    requestAnimationFrame(animate);
+    frameId = requestAnimationFrame(animate);
+
+    // Cleanup: Cancel animation frame on unmount or dependency change
+    return () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
   }, [formation, targetPositions]);
 
   // Get standalone cubes (cubes not part of the formation)
