@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
+import { useNavigate } from 'react-router-dom';
 import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
+import { useAssetSelectionStore } from '../../stores/assetSelectionStore';
 import { PromptInput } from '@pixsim7/ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '../../hooks/useProviders';
@@ -14,6 +16,8 @@ import { ccSelectors } from '../../stores/selectors';
 import { logEvent } from '../../lib/logging';
 
 export function QuickGenerateModule() {
+  const navigate = useNavigate();
+
   // Use stable selectors to reduce re-renders
   const operationType = useControlCenterStore(ccSelectors.operationType);
   const providerId = useControlCenterStore(ccSelectors.providerId);
@@ -26,6 +30,9 @@ export function QuickGenerateModule() {
   const setOperationType = useControlCenterStore(s => s.setOperationType);
   const setGenerating = useControlCenterStore(s => s.setGenerating);
   const pushPrompt = useControlCenterStore(s => s.pushPrompt);
+
+  // Active asset support
+  const lastSelectedAsset = useAssetSelectionStore(s => s.lastSelectedAsset);
 
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
@@ -42,6 +49,29 @@ export function QuickGenerateModule() {
   // Operation-specific array fields for video_transition
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [prompts, setPrompts] = useState<string[]>([]);
+
+  // Function to use active asset
+  const useActiveAsset = () => {
+    if (!lastSelectedAsset) return;
+
+    // Auto-fill based on operation type and asset type
+    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
+      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
+    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
+      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
+    }
+  };
+
+  // Auto-fill when active asset changes (if compatible with operation)
+  useEffect(() => {
+    if (!lastSelectedAsset) return;
+
+    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image' && !dynamicParams.image_url) {
+      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
+    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video' && !dynamicParams.video_url) {
+      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
+    }
+  }, [lastSelectedAsset, operationType]);
 
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -175,6 +205,26 @@ export function QuickGenerateModule() {
 
   return (
     <div className="flex flex-col gap-3 h-full overflow-y-auto">
+      {/* Active asset indicator */}
+      {lastSelectedAsset && (
+        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded text-xs flex-shrink-0">
+          <span className="font-medium text-blue-700 dark:text-blue-300">
+            Active: {lastSelectedAsset.name} ({lastSelectedAsset.type})
+          </span>
+          <div className="flex-1" />
+          {(operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
+           (operationType === 'video_extend' && lastSelectedAsset.type === 'video') ? (
+            <button
+              onClick={useActiveAsset}
+              className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              disabled={generating}
+            >
+              Use Asset
+            </button>
+          ) : null}
+        </div>
+      )}
+
       {/* Top controls */}
       <div className="flex gap-3 items-start flex-shrink-0">
         {/* Left column - Prompt and dynamic fields */}
@@ -322,6 +372,41 @@ export function QuickGenerateModule() {
           </div>
         </div>
       )}
+
+      {/* Quick shortcuts */}
+      <div className="border-t pt-3 flex-shrink-0">
+        <div className="text-xs text-neutral-500 font-medium mb-2">Quick shortcuts:</div>
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            onClick={() => navigate('/assets')}
+            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+          >
+            <span>🖼️</span>
+            <span>Gallery</span>
+          </button>
+          <button
+            onClick={() => navigate('/workspace')}
+            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+          >
+            <span>🎨</span>
+            <span>Workspace</span>
+          </button>
+          <button
+            onClick={() => navigate('/')}
+            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+          >
+            <span>🏠</span>
+            <span>Home</span>
+          </button>
+          <button
+            onClick={() => navigate('/graph/1')}
+            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+          >
+            <span>🕸️</span>
+            <span>Graph</span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

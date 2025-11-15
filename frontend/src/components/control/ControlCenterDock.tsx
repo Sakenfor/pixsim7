@@ -2,14 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
 import { QuickGenerateModule } from './QuickGenerateModule';
-import { ShortcutsModule } from './ShortcutsModule';
 import { PresetsModule } from './PresetsModule';
 import { ProviderOverviewModule } from './ProviderOverviewModule';
 import { PanelLauncherModule } from './PanelLauncherModule';
 
 const MODULES: { id: ControlModule; label: string; icon: string }[] = [
   { id: 'quickGenerate', label: 'Generate', icon: '⚡' },
-  { id: 'shortcuts', label: 'Shortcuts', icon: '⌨️' },
   { id: 'presets', label: 'Presets', icon: '🎨' },
   { id: 'providers', label: 'Providers', icon: '🌐' },
   { id: 'panels', label: 'Panels', icon: '🪟' },
@@ -105,8 +103,6 @@ export function ControlCenterDock() {
     switch (activeModule) {
       case 'quickGenerate':
         return <QuickGenerateModule />;
-      case 'shortcuts':
-        return <ShortcutsModule />;
       case 'presets':
         return <PresetsModule />;
       case 'providers':

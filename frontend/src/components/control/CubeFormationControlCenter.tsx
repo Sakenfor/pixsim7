@@ -13,7 +13,6 @@ import {
 } from '../../lib/cubeFormations';
 import { clsx } from 'clsx';
 import { QuickGenerateModule } from './QuickGenerateModule';
-import { ShortcutsModule } from './ShortcutsModule';
 import { PresetsModule } from './PresetsModule';
 import { ProviderOverviewModule } from './ProviderOverviewModule';
 import { PanelLauncherModule } from './PanelLauncherModule';
@@ -24,7 +23,6 @@ import { CubeSettingsPanel } from './CubeSettingsPanel';
  */
 const MODULE_CUBE_MAP: Record<ControlModule, CubeType | null> = {
   quickGenerate: 'control',
-  shortcuts: 'control',
   presets: 'preset',
   providers: 'provider',
   panels: 'panel',
@@ -33,7 +31,6 @@ const MODULE_CUBE_MAP: Record<ControlModule, CubeType | null> = {
 
 const MODULES: { id: ControlModule; label: string; cubeType: CubeType }[] = [
   { id: 'quickGenerate', label: 'Generate', cubeType: 'control' },
-  { id: 'shortcuts', label: 'Shortcuts', cubeType: 'control' },
   { id: 'presets', label: 'Presets', cubeType: 'preset' },
   { id: 'providers', label: 'Providers', cubeType: 'provider' },
   { id: 'panels', label: 'Panels', cubeType: 'panel' },
@@ -266,8 +263,6 @@ export function CubeFormationControlCenter() {
     switch (expandedModule) {
       case 'quickGenerate':
         return <QuickGenerateModule />;
-      case 'shortcuts':
-        return <ShortcutsModule />;
       case 'presets':
         return <PresetsModule />;
       case 'providers':

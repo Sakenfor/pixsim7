@@ -3,6 +3,7 @@ import { useLocalFolders } from '../../stores/localFoldersStore';
 import { useProviders } from '../../hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
+import { MediaCard } from '../media/MediaCard';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
 async function fileToObjectURL(fh: FileSystemFileHandle): Promise<string | undefined> {
@@ -19,6 +20,7 @@ export function LocalFoldersPanel() {
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
+  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
 
   useEffect(() => { loadPersisted(); }, []);
 
@@ -33,6 +35,20 @@ export function LocalFoldersPanel() {
       return acc;
     }, {} as Record<string, string>);
   }, [folders]);
+
+  // Filter assets by selected folder path in tree mode
+  const filteredAssets = useMemo(() => {
+    if (viewMode !== 'tree' || !selectedFolderPath) return assetList;
+
+    return assetList.filter(asset => {
+      // Check if asset belongs to selected folder or its subfolders
+      const assetFullPath = `${asset.folderId}/${asset.relativePath}`;
+      const selectedPath = selectedFolderPath;
+
+      // Match exact folder or parent folder
+      return assetFullPath.startsWith(selectedPath + '/') || asset.folderId === selectedPath;
+    });
+  }, [assetList, selectedFolderPath, viewMode]);
 
   async function preview(keyOrAsset: string | LocalAsset) {
     const asset = typeof keyOrAsset === 'string' ? assets[keyOrAsset] : keyOrAsset;
@@ -230,18 +246,79 @@ export function LocalFoldersPanel() {
         </div>
       ) : (
         <>
-          {/* Tree View */}
+          {/* Tree View - Split Layout */}
           {viewMode === 'tree' && (
-            <TreeFolderView
-              assets={assetList}
-              folderNames={folderNames}
-              onFileClick={handleOpenViewer}
-              onPreview={preview}
-              previews={previews}
-              uploadStatus={uploadStatus}
-              onUpload={uploadOne}
-              providerId={providerId}
-            />
+            <div className="flex gap-4 h-[70vh]">
+              {/* Left: Compact Tree Navigation */}
+              <div className="w-64 flex-shrink-0 overflow-y-auto">
+                <TreeFolderView
+                  assets={assetList}
+                  folderNames={folderNames}
+                  onFileClick={handleOpenViewer}
+                  onPreview={preview}
+                  previews={previews}
+                  uploadStatus={uploadStatus}
+                  onUpload={uploadOne}
+                  providerId={providerId}
+                  compactMode={true}
+                  selectedFolderPath={selectedFolderPath || undefined}
+                  onFolderSelect={setSelectedFolderPath}
+                />
+              </div>
+
+              {/* Right: Thumbnail Grid */}
+              <div className="flex-1 overflow-y-auto">
+                {selectedFolderPath && filteredAssets.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2">
+                    {filteredAssets.map(asset => {
+                      const previewUrl = previews[asset.key];
+                      const status = uploadStatus[asset.key] || 'idle';
+
+                      // Load preview if not already loaded
+                      if (!previewUrl) {
+                        preview(asset);
+                      }
+
+                      return (
+                        <MediaCard
+                          key={asset.key}
+                          id={parseInt(asset.key.split('-')[0] || '0')}
+                          mediaType={asset.kind === 'video' ? 'video' : 'image'}
+                          providerId="local"
+                          providerAssetId={asset.key}
+                          thumbUrl={previewUrl || ''}
+                          remoteUrl={previewUrl || ''}
+                          width={0}
+                          height={0}
+                          tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
+                          description={asset.name}
+                          createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
+                          onOpen={() => handleOpenViewer(asset)}
+                          uploadState={status}
+                          onUploadClick={async () => {
+                            await uploadOne(asset);
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : selectedFolderPath ? (
+                  <div className="flex items-center justify-center h-full text-neutral-500">
+                    <div className="text-center">
+                      <div className="text-6xl mb-4">📂</div>
+                      <p>No files in this folder</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-neutral-500">
+                    <div className="text-center">
+                      <div className="text-6xl mb-4">👈</div>
+                      <p>Select a folder from the tree</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Grid View */}
