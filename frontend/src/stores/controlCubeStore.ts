@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createFormationTemplate } from '../lib/formationTemplates';
 
-export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked';
+export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked' | 'linking';
 
 export type CubeFace = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 
@@ -10,7 +11,27 @@ export type CubeType =
   | 'provider'     // Provider controls
   | 'preset'       // Preset management
   | 'panel'        // Panel controls
-  | 'settings';    // Settings/options
+  | 'settings'     // Settings/options
+  | 'gallery';     // Gallery asset picker
+
+export interface CubeConnection {
+  id: string;
+  fromCubeId: string;
+  fromFace: CubeFace;
+  toCubeId: string;
+  toFace: CubeFace;
+  type?: string;  // Optional: data type being passed (e.g., 'image', 'params', 'command')
+  color?: string; // Optional: connection color
+}
+
+export interface CubeMessage {
+  id: string;
+  fromCubeId: string;
+  toCubeId: string;
+  timestamp: number;
+  data: any;
+  type?: string;
+}
 
 export interface CubePosition {
   x: number;
@@ -21,6 +42,24 @@ export interface CubeRotation {
   x: number;  // degrees
   y: number;  // degrees
   z: number;  // degrees
+}
+
+export interface SavedPosition {
+  name: string;
+  position: CubePosition;
+  rotation: CubeRotation;
+  scale: number;
+  timestamp: number;
+}
+
+export interface Formation {
+  id: string;
+  name: string;
+  type: 'line' | 'circle' | 'grid' | 'star' | 'custom';
+  cubePositions: Record<string, CubePosition>;  // cubeId -> position
+  cubeRotations?: Record<string, CubeRotation>; // cubeId -> rotation (optional)
+  connections?: string[];  // Connection IDs that are part of this formation
+  createdAt: number;
 }
 
 export interface CubeState {
@@ -34,6 +73,9 @@ export interface CubeState {
   activeFace: CubeFace;
   dockedToPanelId?: string;  // If docked to a panel
   zIndex: number;
+  pinnedAssets?: Partial<Record<CubeFace, string>>;  // Asset IDs pinned to faces (for gallery cubes)
+  savedPositions?: Record<string, SavedPosition>;  // Named positions this cube can morph to
+  currentPositionKey?: string;  // Currently active saved position (if any)
 }
 
 export interface ControlCubeStoreState {
@@ -41,6 +83,12 @@ export interface ControlCubeStoreState {
   activeCubeId?: string;
   combinedCubeIds: string[];  // Cubes currently combined into one
   summoned: boolean;          // Whether cube system is summoned (visible)
+  connections: Record<string, CubeConnection>;  // Cube-to-cube connections
+  messages: CubeMessage[];    // Message queue
+  linkingMode: boolean;       // Whether in connection-creation mode
+  linkingFromCube?: { cubeId: string; face: CubeFace };  // Source for new connection
+  formations: Record<string, Formation>;  // Saved formations
+  activeFormationId?: string;  // Currently active formation (if any)
 }
 
 export interface ControlCubeActions {
@@ -71,6 +119,40 @@ export interface ControlCubeActions {
   summonCubes: () => void;
   dismissCubes: () => void;
 
+  // Connections
+  addConnection: (fromCubeId: string, fromFace: CubeFace, toCubeId: string, toFace: CubeFace, type?: string) => string;
+  removeConnection: (connectionId: string) => void;
+  getConnectionsForCube: (cubeId: string) => CubeConnection[];
+  clearAllConnections: () => void;
+
+  // Messages
+  sendMessage: (fromCubeId: string, toCubeId: string, data: any, type?: string) => void;
+  clearMessages: () => void;
+
+  // Linking mode
+  startLinking: (cubeId: string, face: CubeFace) => void;
+  completeLinking: (toCubeId: string, toFace: CubeFace) => void;
+  cancelLinking: () => void;
+
+  // Asset pinning (for gallery cubes)
+  pinAssetToFace: (cubeId: string, face: CubeFace, assetId: string) => void;
+  unpinAssetFromFace: (cubeId: string, face: CubeFace) => void;
+  getPinnedAsset: (cubeId: string, face: CubeFace) => string | undefined;
+
+  // Position memory
+  savePosition: (cubeId: string, name: string) => void;
+  recallPosition: (cubeId: string, name: string, animated?: boolean) => void;
+  deletePosition: (cubeId: string, name: string) => void;
+  shufflePositions: (cubeId: string) => void;  // Cycle through saved positions
+  getSavedPositions: (cubeId: string) => SavedPosition[];
+
+  // Formations
+  saveFormation: (name: string, cubeIds: string[], type?: Formation['type']) => string;
+  recallFormation: (formationId: string, animated?: boolean) => void;
+  deleteFormation: (formationId: string) => void;
+  getFormations: () => Formation[];
+  arrangeInFormation: (cubeIds: string[], type: Formation['type'], options?: { center?: CubePosition; spacing?: number; radius?: number }) => void;
+
   // Utility
   reset: () => void;
 }
@@ -88,6 +170,9 @@ const FACE_ROTATIONS: Record<CubeFace, CubeRotation> = {
 const STORAGE_KEY = 'control_cubes_v1';
 
 let cubeIdCounter = 0;
+let connectionIdCounter = 0;
+let messageIdCounter = 0;
+let formationIdCounter = 0;
 
 export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeActions>()(
   persist(
@@ -96,6 +181,12 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       activeCubeId: undefined,
       combinedCubeIds: [],
       summoned: false,
+      connections: {},
+      messages: [],
+      linkingMode: false,
+      linkingFromCube: undefined,
+      formations: {},
+      activeFormationId: undefined,
 
       addCube: (type, position = { x: window.innerWidth / 2 - 50, y: window.innerHeight / 2 - 50 }) => {
         const id = `cube-${type}-${cubeIdCounter++}`;
@@ -235,12 +326,312 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
         });
       },
 
+      // Connection management
+      addConnection: (fromCubeId, fromFace, toCubeId, toFace, type) => {
+        const connectionId = `conn-${connectionIdCounter++}`;
+        const connection: CubeConnection = {
+          id: connectionId,
+          fromCubeId,
+          fromFace,
+          toCubeId,
+          toFace,
+          type,
+          color: type === 'image' ? '#3b82f6' : type === 'params' ? '#10b981' : '#8b5cf6',
+        };
+
+        set((state) => ({
+          connections: {
+            ...state.connections,
+            [connectionId]: connection,
+          },
+        }));
+
+        return connectionId;
+      },
+
+      removeConnection: (connectionId) => {
+        set((state) => {
+          const { [connectionId]: removed, ...rest } = state.connections;
+          return { connections: rest };
+        });
+      },
+
+      getConnectionsForCube: (cubeId) => {
+        const connections = Object.values(get().connections);
+        return connections.filter(
+          (conn) => conn.fromCubeId === cubeId || conn.toCubeId === cubeId
+        );
+      },
+
+      clearAllConnections: () => {
+        set({ connections: {} });
+      },
+
+      // Message passing
+      sendMessage: (fromCubeId, toCubeId, data, type) => {
+        const message: CubeMessage = {
+          id: `msg-${messageIdCounter++}`,
+          fromCubeId,
+          toCubeId,
+          timestamp: Date.now(),
+          data,
+          type,
+        };
+
+        set((state) => ({
+          messages: [...state.messages, message],
+        }));
+
+        // Auto-clear old messages after 5 seconds
+        setTimeout(() => {
+          set((state) => ({
+            messages: state.messages.filter((m) => m.id !== message.id),
+          }));
+        }, 5000);
+      },
+
+      clearMessages: () => {
+        set({ messages: [] });
+      },
+
+      // Linking mode
+      startLinking: (cubeId, face) => {
+        set({
+          linkingMode: true,
+          linkingFromCube: { cubeId, face },
+        });
+
+        // Set cube to linking mode
+        get().updateCube(cubeId, { mode: 'linking' });
+      },
+
+      completeLinking: (toCubeId, toFace) => {
+        const { linkingFromCube } = get();
+        if (!linkingFromCube) return;
+
+        // Don't allow self-connections
+        if (linkingFromCube.cubeId === toCubeId) {
+          get().cancelLinking();
+          return;
+        }
+
+        // Create connection
+        get().addConnection(
+          linkingFromCube.cubeId,
+          linkingFromCube.face,
+          toCubeId,
+          toFace
+        );
+
+        // Reset linking state
+        get().updateCube(linkingFromCube.cubeId, { mode: 'idle' });
+        set({
+          linkingMode: false,
+          linkingFromCube: undefined,
+        });
+      },
+
+      cancelLinking: () => {
+        const { linkingFromCube } = get();
+        if (linkingFromCube) {
+          get().updateCube(linkingFromCube.cubeId, { mode: 'idle' });
+        }
+
+        set({
+          linkingMode: false,
+          linkingFromCube: undefined,
+        });
+      },
+
+      // Asset pinning
+      pinAssetToFace: (cubeId, face, assetId) => {
+        const cube = get().cubes[cubeId];
+        if (!cube) return;
+
+        const pinnedAssets = { ...cube.pinnedAssets, [face]: assetId };
+        get().updateCube(cubeId, { pinnedAssets });
+      },
+
+      unpinAssetFromFace: (cubeId, face) => {
+        const cube = get().cubes[cubeId];
+        if (!cube || !cube.pinnedAssets) return;
+
+        const { [face]: removed, ...rest } = cube.pinnedAssets;
+        get().updateCube(cubeId, { pinnedAssets: rest });
+      },
+
+      getPinnedAsset: (cubeId, face) => {
+        const cube = get().cubes[cubeId];
+        return cube?.pinnedAssets?.[face];
+      },
+
+      // Position memory
+      savePosition: (cubeId, name) => {
+        const cube = get().cubes[cubeId];
+        if (!cube) return;
+
+        const savedPosition: SavedPosition = {
+          name,
+          position: { ...cube.position },
+          rotation: { ...cube.rotation },
+          scale: cube.scale,
+          timestamp: Date.now(),
+        };
+
+        const savedPositions = {
+          ...cube.savedPositions,
+          [name]: savedPosition,
+        };
+
+        get().updateCube(cubeId, {
+          savedPositions,
+          currentPositionKey: name,
+        });
+      },
+
+      recallPosition: (cubeId, name, animated = true) => {
+        const cube = get().cubes[cubeId];
+        if (!cube?.savedPositions?.[name]) return;
+
+        const savedPos = cube.savedPositions[name];
+
+        get().updateCube(cubeId, {
+          position: savedPos.position,
+          rotation: savedPos.rotation,
+          scale: savedPos.scale,
+          currentPositionKey: name,
+        });
+      },
+
+      deletePosition: (cubeId, name) => {
+        const cube = get().cubes[cubeId];
+        if (!cube?.savedPositions) return;
+
+        const { [name]: removed, ...rest } = cube.savedPositions;
+        const currentKey = cube.currentPositionKey === name ? undefined : cube.currentPositionKey;
+
+        get().updateCube(cubeId, {
+          savedPositions: rest,
+          currentPositionKey: currentKey,
+        });
+      },
+
+      shufflePositions: (cubeId) => {
+        const cube = get().cubes[cubeId];
+        if (!cube?.savedPositions) return;
+
+        const positions = Object.keys(cube.savedPositions);
+        if (positions.length === 0) return;
+
+        // Find next position in cycle
+        const currentIndex = cube.currentPositionKey
+          ? positions.indexOf(cube.currentPositionKey)
+          : -1;
+        const nextIndex = (currentIndex + 1) % positions.length;
+        const nextKey = positions[nextIndex];
+
+        get().recallPosition(cubeId, nextKey);
+      },
+
+      getSavedPositions: (cubeId) => {
+        const cube = get().cubes[cubeId];
+        return cube?.savedPositions ? Object.values(cube.savedPositions) : [];
+      },
+
+      // Formations
+      saveFormation: (name, cubeIds, type = 'custom') => {
+        const formationId = `formation-${formationIdCounter++}`;
+        const cubePositions: Record<string, CubePosition> = {};
+        const cubeRotations: Record<string, CubeRotation> = {};
+
+        // Capture current positions and rotations
+        cubeIds.forEach((cubeId) => {
+          const cube = get().cubes[cubeId];
+          if (cube) {
+            cubePositions[cubeId] = { ...cube.position };
+            cubeRotations[cubeId] = { ...cube.rotation };
+          }
+        });
+
+        // Capture connections between cubes in this formation
+        const allConnections = Object.values(get().connections);
+        const formationConnections = allConnections
+          .filter((conn) => cubeIds.includes(conn.fromCubeId) && cubeIds.includes(conn.toCubeId))
+          .map((conn) => conn.id);
+
+        const formation: Formation = {
+          id: formationId,
+          name,
+          type,
+          cubePositions,
+          cubeRotations,
+          connections: formationConnections,
+          createdAt: Date.now(),
+        };
+
+        set((state) => ({
+          formations: {
+            ...state.formations,
+            [formationId]: formation,
+          },
+          activeFormationId: formationId,
+        }));
+
+        return formationId;
+      },
+
+      recallFormation: (formationId, animated = true) => {
+        const formation = get().formations[formationId];
+        if (!formation) return;
+
+        // Move all cubes to their formation positions
+        Object.entries(formation.cubePositions).forEach(([cubeId, position]) => {
+          const rotation = formation.cubeRotations?.[cubeId];
+          get().updateCube(cubeId, {
+            position,
+            ...(rotation && { rotation }),
+          });
+        });
+
+        set({ activeFormationId: formationId });
+      },
+
+      deleteFormation: (formationId) => {
+        set((state) => {
+          const { [formationId]: removed, ...rest } = state.formations;
+          return {
+            formations: rest,
+            activeFormationId:
+              state.activeFormationId === formationId ? undefined : state.activeFormationId,
+          };
+        });
+      },
+
+      getFormations: () => {
+        return Object.values(get().formations);
+      },
+
+      arrangeInFormation: (cubeIds, type, options) => {
+        const positions = createFormationTemplate(type, cubeIds, options);
+
+        // Apply positions to all cubes
+        Object.entries(positions).forEach(([cubeId, position]) => {
+          get().updateCube(cubeId, { position });
+        });
+      },
+
       reset: () => {
         set({
           cubes: {},
           activeCubeId: undefined,
           combinedCubeIds: [],
           summoned: false,
+          connections: {},
+          messages: [],
+          linkingMode: false,
+          linkingFromCube: undefined,
+          formations: {},
+          activeFormationId: undefined,
         });
       },
     }),
@@ -249,6 +640,8 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       partialize: (state) => ({
         cubes: state.cubes,
         summoned: state.summoned,
+        connections: state.connections,  // Persist connections
+        formations: state.formations,    // Persist formations
       }),
       version: 1,
     }
