@@ -320,6 +320,7 @@ export function ControlCube({
         className={clsx(
           'absolute flex items-center justify-center text-2xl',
           'border backdrop-blur-md transition-all duration-300',
+          'rounded-xl',  // Soften edges with border-radius
           colorClass,
           isActive && 'border-white/70 shadow-lg',
           !isActive && 'hover:border-white/50',

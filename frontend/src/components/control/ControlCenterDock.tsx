@@ -7,12 +7,12 @@ import { PresetsModule } from './PresetsModule';
 import { ProviderOverviewModule } from './ProviderOverviewModule';
 import { PanelLauncherModule } from './PanelLauncherModule';
 
-const MODULES: { id: ControlModule; label: string }[] = [
-  { id: 'quickGenerate', label: 'Generate' },
-  { id: 'shortcuts', label: 'Shortcuts' },
-  { id: 'presets', label: 'Presets' },
-  { id: 'providers', label: 'Providers' },
-  { id: 'panels', label: 'Panels' },
+const MODULES: { id: ControlModule; label: string; icon: string }[] = [
+  { id: 'quickGenerate', label: 'Generate', icon: '⚡' },
+  { id: 'shortcuts', label: 'Shortcuts', icon: '⌨️' },
+  { id: 'presets', label: 'Presets', icon: '🎨' },
+  { id: 'providers', label: 'Providers', icon: '🌐' },
+  { id: 'panels', label: 'Panels', icon: '🪟' },
 ];
 
 export function ControlCenterDock() {
@@ -25,6 +25,7 @@ export function ControlCenterDock() {
   const setPinned = useControlCenterStore(s => s.setPinned);
   const setHeight = useControlCenterStore(s => s.setHeight);
   const setActiveModule = useControlCenterStore(s => s.setActiveModule);
+  const toggleMode = useControlCenterStore(s => s.toggleMode);
 
   const dockRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -121,19 +122,20 @@ export function ControlCenterDock() {
       ref={dockRef}
       className={clsx(
         'fixed left-0 right-0 bottom-0 z-40 select-none',
-        'transition-transform duration-200 ease-out',
-        open ? 'translate-y-0' : 'translate-y-[calc(100%-8px)]'
+        'transition-all duration-300 ease-out',
+        open ? 'translate-y-0 opacity-100' : 'translate-y-[calc(100%-6px)] opacity-90'
       )}
       style={{ height }}
     >
-      {/* Panel chrome */}
-      <div className="h-full border-t bg-white/95 dark:bg-neutral-900/95 backdrop-blur shadow-2xl flex flex-col">
-        {/* Resize handle */}
+      {/* Panel chrome with glassmorphism */}
+      <div className="h-full border-t border-white/20 bg-gradient-to-t from-white/98 via-white/95 to-white/90 dark:from-neutral-900/98 dark:via-neutral-900/95 dark:to-neutral-900/90 backdrop-blur-xl shadow-2xl flex flex-col">
+        {/* Resize handle with glow effect */}
         <div
           onMouseDown={startResize}
           className={clsx(
-            'h-2 w-full cursor-ns-resize hover:bg-neutral-200/40 dark:hover:bg-neutral-700/40 transition-colors',
-            dragging && 'bg-neutral-400/60'
+            'h-1.5 w-full cursor-ns-resize transition-all duration-200',
+            'hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/30 hover:to-pink-500/30',
+            dragging && 'bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 shadow-lg shadow-purple-500/50'
           )}
           title="Drag to resize (or use Alt+Arrow keys)"
           role="separator"
@@ -141,14 +143,14 @@ export function ControlCenterDock() {
           aria-label="Resize control center"
         />
 
-        {/* Toolbar */}
-        <div className="px-3 py-2 flex items-center gap-2 border-b bg-neutral-50/80 dark:bg-neutral-800/60">
-          <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+        {/* Compact Toolbar with animations */}
+        <div className="px-3 py-1.5 flex items-center gap-2 border-b border-white/10 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90">
+          <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Control Center
           </span>
           <div className="flex-1" />
 
-          {/* Module tabs */}
+          {/* Module tabs with icons */}
           <div className="flex gap-1" role="tablist" aria-label="Control center modules">
             {MODULES.map(mod => (
               <button
@@ -158,47 +160,59 @@ export function ControlCenterDock() {
                 aria-controls={`module-${mod.id}`}
                 onClick={() => setActiveModule(mod.id)}
                 className={clsx(
-                  'text-xs px-2 py-1 rounded transition-colors',
-                  'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1',
+                  'text-xs px-2 py-1 rounded-lg transition-all duration-200',
+                  'focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1',
+                  'transform hover:scale-105 active:scale-95',
                   activeModule === mod.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-neutral-200/50 dark:bg-neutral-700/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-purple-500/30'
+                    : 'bg-neutral-200/50 dark:bg-neutral-700/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 hover:shadow-md'
                 )}
               >
+                <span className="mr-1">{mod.icon}</span>
                 {mod.label}
               </button>
             ))}
           </div>
 
-          <div className="w-px h-4 bg-neutral-300 dark:bg-neutral-600" />
+          <div className="w-px h-4 bg-gradient-to-b from-transparent via-neutral-300 to-transparent dark:via-neutral-600" />
+
+          {/* Mode toggle */}
+          <button
+            onClick={toggleMode}
+            className="text-xs px-2 py-1 border border-purple-300/50 dark:border-purple-500/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 hover:scale-105 active:scale-95 hover:shadow-md"
+            title="Switch to Cube Mode"
+          >
+            🎲 Cubes
+          </button>
 
           <button
             onClick={() => setOpen(!open)}
-            className="text-xs px-2 py-1 border rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 hover:scale-105 active:scale-95"
             aria-label={open ? 'Hide control center' : 'Show control center'}
           >
-            {open ? 'Hide' : 'Show'}
+            {open ? '▼' : '▲'}
           </button>
           <button
             onClick={() => setPinned(!pinned)}
             className={clsx(
-              'text-xs px-2 py-1 border rounded transition-colors',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500',
+              'text-xs px-2 py-1 border rounded-lg transition-all duration-200',
+              'focus:outline-none focus:ring-2 focus:ring-amber-500',
+              'hover:scale-105 active:scale-95',
               pinned
-                ? 'bg-amber-200/50 dark:bg-amber-800/30'
-                : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                ? 'bg-amber-200/70 dark:bg-amber-800/50 border-amber-400/70 dark:border-amber-600/50 shadow-md shadow-amber-500/30'
+                : 'border-neutral-300/50 dark:border-neutral-600/50 hover:bg-neutral-100 dark:hover:bg-neutral-700'
             )}
             title="Pin to keep open"
             aria-label={pinned ? 'Unpin control center' : 'Pin control center'}
             aria-pressed={pinned}
           >
-            {pinned ? 'Pinned' : 'Pin'}
+            {pinned ? '📌' : '📍'}
           </button>
         </div>
 
-        {/* Module content */}
+        {/* Module content with smooth fade-in */}
         <div
-          className="flex-1 overflow-y-auto p-3"
+          className="flex-1 overflow-y-auto p-3 scroll-smooth animate-in fade-in duration-300"
           role="tabpanel"
           id={`module-${activeModule}`}
           aria-labelledby={`tab-${activeModule}`}

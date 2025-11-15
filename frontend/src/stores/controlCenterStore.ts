@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type ControlModule = 'quickGenerate' | 'shortcuts' | 'presets' | 'providers' | 'panels' | 'none';
+export type ControlCenterMode = 'dock' | 'cubes';
 
 export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
 export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
@@ -25,6 +26,7 @@ export type TimelineAsset = {
 };
 
 export interface ControlCenterState {
+  mode: ControlCenterMode;  // 'dock' or 'cubes' mode
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
   height: number;           // height in px when expanded
@@ -39,6 +41,8 @@ export interface ControlCenterState {
 }
 
 export interface ControlCenterActions {
+  setMode: (mode: ControlCenterMode) => void;
+  toggleMode: () => void;
   toggleOpen: () => void;
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
@@ -59,9 +63,10 @@ const STORAGE_KEY = 'control_center_v1';
 export const useControlCenterStore = create<ControlCenterState & ControlCenterActions>()(
   persist(
     (set, get) => ({
+      mode: 'dock',
       open: false,
       pinned: false,
-      height: 220,
+      height: 180,
       activeModule: 'quickGenerate',
       operationType: 'text_to_video',
       recentPrompts: [],
@@ -70,6 +75,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       presetParams: {},
       assets: [],
       generating: false,
+      setMode: (mode) => {
+        if (get().mode === mode) return;
+        set({ mode });
+      },
+      toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
       toggleOpen: () => set((s) => ({ open: !s.open })),
       setOpen: (v) => {
         if (get().open === v) return;
@@ -80,7 +90,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         set({ pinned: v });
       },
       setHeight: (px) => {
-        const next = Math.max(140, Math.min(480, px));
+        const next = Math.max(120, Math.min(480, px));
         if (get().height === next) return;
         set({ height: next });
       },
@@ -107,12 +117,12 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ open: false, pinned: false, height: 220, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
+      reset: () => set({ mode: 'dock', open: false, pinned: false, height: 180, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
     }),
     {
       name: STORAGE_KEY,
-      partialize: (s) => ({ open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
-      version: 2,
+      partialize: (s) => ({ mode: s.mode, open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
+      version: 3,
     }
   )
 );
