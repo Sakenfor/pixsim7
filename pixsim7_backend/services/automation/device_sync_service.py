@@ -48,7 +48,16 @@ class DeviceSyncService:
                 )
             ).scalars().first()
 
-            status = DeviceStatus.ONLINE if state == "device" else DeviceStatus.ERROR
+            # Map ADB state to device status
+            error_msg = None
+            if state == "device":
+                status = DeviceStatus.ONLINE
+            elif state == "offline":
+                status = DeviceStatus.OFFLINE
+            else:
+                # unauthorized, no permissions, etc.
+                status = DeviceStatus.ERROR
+                error_msg = f"ADB state: {state}"
 
             # Heuristic: detect emulator-like ids and set fields
             dev_type = DeviceType.ADB
@@ -78,6 +87,7 @@ class DeviceSyncService:
                     instance_name=instance_name,
                     instance_port=instance_port,
                     status=status,
+                    error_message=error_msg,
                     last_seen=now,
                     created_at=now,
                     updated_at=now,
@@ -88,6 +98,7 @@ class DeviceSyncService:
                 # Update existing
                 existing.status = status
                 existing.device_type = dev_type
+                existing.error_message = error_msg
                 if instance_port is not None:
                     existing.instance_port = instance_port
                 existing.last_seen = now
