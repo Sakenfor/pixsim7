@@ -1,7 +1,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useControlCubeStore, type CubeType } from '../../stores/controlCubeStore';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { ControlCube } from './ControlCube';
+import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import {
   calculateFormation,
@@ -54,6 +56,9 @@ export function CubeFormationControlCenter() {
   const updateCube = useControlCubeStore((s) => s.updateCube);
   const removeCube = useControlCubeStore((s) => s.removeCube);
   const cubes = useControlCubeStore((s) => s.cubes);
+  const restorePanelFromCube = useControlCubeStore((s) => s.restorePanelFromCube);
+
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
   // Track cube IDs for this formation
   const [formationCubeIds, setFormationCubeIds] = useState<string[]>([]);
@@ -120,6 +125,11 @@ export function CubeFormationControlCenter() {
     requestAnimationFrame(animate);
   }, [formation, targetPositions]);
 
+  // Get standalone cubes (cubes not part of the formation)
+  const standaloneCubes = useMemo(() => {
+    return Object.values(cubes).filter(cube => !formationCubeIds.includes(cube.id));
+  }, [cubes, formationCubeIds]);
+
   // Handle cube face clicks
   const handleCubeFaceClick = useCallback(
     (cubeIndex: number, face: string) => {
@@ -130,6 +140,29 @@ export function CubeFormationControlCenter() {
       setExpandedModule(expandedModule === module.id ? null : module.id);
     },
     [expandedModule, setActiveModule]
+  );
+
+  // Handle standalone cube clicks (e.g., minimized panels)
+  const handleStandaloneCubeClick = useCallback(
+    (cubeId: string) => {
+      const cube = cubes[cubeId];
+      if (!cube) return;
+
+      // If this cube represents a minimized panel, restore it
+      if (cube.minimizedPanel) {
+        const panelData = restorePanelFromCube(cubeId);
+        if (panelData) {
+          openFloatingPanel(
+            panelData.panelId,
+            panelData.originalPosition.x,
+            panelData.originalPosition.y,
+            panelData.originalSize.width,
+            panelData.originalSize.height
+          );
+        }
+      }
+    },
+    [cubes, restorePanelFromCube, openFloatingPanel]
   );
 
   // Auto-hide when mouse leaves if not pinned
@@ -229,6 +262,33 @@ export function CubeFormationControlCenter() {
             </div>
           );
         })}
+
+        {/* Standalone cubes (e.g., minimized panels) - always visible */}
+        {standaloneCubes.map((cube) => (
+          <div
+            key={cube.id}
+            className="absolute pointer-events-auto"
+            style={{
+              left: `${cube.position.x}px`,
+              top: `${cube.position.y}px`,
+              zIndex: cube.zIndex,
+            }}
+          >
+            <DraggableCube
+              cubeId={cube.id}
+              size={100}
+              faceContent={getCubeFaceContent(cube.type)}
+              onFaceClick={() => handleStandaloneCubeClick(cube.id)}
+            />
+
+            {/* Panel indicator for minimized panels */}
+            {cube.minimizedPanel && (
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-cyan-300 whitespace-nowrap bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
+                📦 {cube.minimizedPanel.panelId}
+              </div>
+            )}
+          </div>
+        ))}
 
         {/* Formation Pattern Indicator */}
         {open && (

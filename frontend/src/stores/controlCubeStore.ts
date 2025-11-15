@@ -62,6 +62,13 @@ export interface Formation {
   createdAt: number;
 }
 
+export interface MinimizedPanelData {
+  panelId: string;
+  originalPosition: { x: number; y: number };
+  originalSize: { width: number; height: number };
+  zIndex: number;
+}
+
 export interface CubeState {
   id: string;
   type: CubeType;
@@ -72,6 +79,7 @@ export interface CubeState {
   visible: boolean;
   activeFace: CubeFace;
   dockedToPanelId?: string;  // If docked to a panel
+  minimizedPanel?: MinimizedPanelData;  // If this cube represents a minimized panel
   zIndex: number;
   pinnedAssets?: Partial<Record<CubeFace, string>>;  // Asset IDs pinned to faces (for gallery cubes)
   savedPositions?: Record<string, SavedPosition>;  // Named positions this cube can morph to
@@ -152,6 +160,10 @@ export interface ControlCubeActions {
   deleteFormation: (formationId: string) => void;
   getFormations: () => Formation[];
   arrangeInFormation: (cubeIds: string[], type: Formation['type'], options?: { center?: CubePosition; spacing?: number; radius?: number }) => void;
+
+  // Panel minimization
+  minimizePanelToCube: (panelData: MinimizedPanelData, cubePosition: CubePosition) => string;
+  restorePanelFromCube: (cubeId: string) => MinimizedPanelData | null;
 
   // Utility
   reset: () => void;
@@ -618,6 +630,30 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
         Object.entries(positions).forEach(([cubeId, position]) => {
           get().updateCube(cubeId, { position });
         });
+      },
+
+      // Panel minimization - create cube from minimized panel
+      minimizePanelToCube: (panelData, cubePosition) => {
+        const cubeId = get().addCube('panel', cubePosition);
+        get().updateCube(cubeId, {
+          minimizedPanel: panelData,
+          mode: 'idle',
+          zIndex: panelData.zIndex,
+        });
+        return cubeId;
+      },
+
+      // Panel restoration - extract panel data from cube
+      restorePanelFromCube: (cubeId) => {
+        const cube = get().cubes[cubeId];
+        if (!cube || !cube.minimizedPanel) return null;
+
+        const panelData = cube.minimizedPanel;
+
+        // Remove the cube
+        get().removeCube(cubeId);
+
+        return panelData;
       },
 
       reset: () => {
