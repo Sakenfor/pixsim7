@@ -17,6 +17,7 @@ import { ShortcutsModule } from './ShortcutsModule';
 import { PresetsModule } from './PresetsModule';
 import { ProviderOverviewModule } from './ProviderOverviewModule';
 import { PanelLauncherModule } from './PanelLauncherModule';
+import { CubeSettingsPanel } from './CubeSettingsPanel';
 
 /**
  * Map control modules to cube types
@@ -44,6 +45,7 @@ export function CubeFormationControlCenter() {
   const [formation, setFormation] = useState<FormationPattern>('arc');
   const [expandedModule, setExpandedModule] = useState<ControlModule | null>(null);
   const [transitionProgress, setTransitionProgress] = useState(1);
+  const [showCubeSettings, setShowCubeSettings] = useState(false);
 
   const open = useControlCenterStore((s) => s.open);
   const pinned = useControlCenterStore((s) => s.pinned);
@@ -56,6 +58,7 @@ export function CubeFormationControlCenter() {
   const updateCube = useControlCubeStore((s) => s.updateCube);
   const removeCube = useControlCubeStore((s) => s.removeCube);
   const cubes = useControlCubeStore((s) => s.cubes);
+  const hydrated = useControlCubeStore((s) => (s as any).hydrated ?? true);
   const restorePanelFromCube = useControlCubeStore((s) => s.restorePanelFromCube);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
@@ -73,10 +76,34 @@ export function CubeFormationControlCenter() {
     });
   }, [formation]);
 
-  // Initialize cubes on mount
+  // Initialize formation cubes after store hydration
   useEffect(() => {
-    const ids: string[] = [];
+    if (!hydrated) return;
+    if (formationCubeIds.length > 0) return;
 
+    const existingIds = Object.keys(cubes);
+
+    // If there are existing cubes, treat matching ones as the formation
+    if (existingIds.length > 0) {
+      const ids: string[] = [];
+
+      MODULES.forEach((module) => {
+        const existing = existingIds
+          .map((id) => cubes[id])
+          .find((cube) => cube && cube.type === module.cubeType && !ids.includes(cube.id));
+        if (existing) {
+          ids.push(existing.id);
+        }
+      });
+
+      if (ids.length > 0) {
+        setFormationCubeIds(ids);
+        return;
+      }
+    }
+
+    // Otherwise, create default formation cubes
+    const ids: string[] = [];
     MODULES.forEach((module, index) => {
       const pos = targetPositions[index];
       const id = addCube(module.cubeType, pos);
@@ -84,12 +111,7 @@ export function CubeFormationControlCenter() {
     });
 
     setFormationCubeIds(ids);
-
-    // Cleanup on unmount
-    return () => {
-      ids.forEach((id) => removeCube(id));
-    };
-  }, []);
+  }, [hydrated, cubes, addCube, targetPositions, formationCubeIds.length]);
 
   // Update cube positions when formation changes
   useEffect(() => {
@@ -265,30 +287,14 @@ export function CubeFormationControlCenter() {
           const isActive = activeModule === module.id;
 
           return (
-            <div
+            <DraggableCube
               key={cubeId}
-              className="absolute pointer-events-auto"
-              style={{
-                left: `${cube.position.x}px`,
-                top: `${cube.position.y}px`,
-                transition: 'transform 0.2s, filter 0.2s',
-                transform: `scale(${isActive ? 1.1 : 1})`,
-                filter: isActive ? 'drop-shadow(0 0 20px rgba(59, 130, 246, 0.5))' : 'none',
-              }}
-            >
-              <ControlCube
-                cubeId={cubeId}
-                size={CUBE_SIZE}
-                faceContent={getCubeFaceContent(module.cubeType)}
-                onFaceClick={(face) => handleCubeFaceClick(index, face)}
-                onExpand={handleCubeExpand}
-              />
-
-              {/* Module label */}
-              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs font-medium text-white/90 whitespace-nowrap bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
-                {module.label}
-              </div>
-            </div>
+              cubeId={cubeId}
+              size={CUBE_SIZE}
+              faceContent={getCubeFaceContent(module.cubeType)}
+              onFaceClick={(face) => handleCubeFaceClick(index, face)}
+              onExpand={handleCubeExpand}
+            />
           );
         })}
 
@@ -331,12 +337,18 @@ export function CubeFormationControlCenter() {
         )}
 
         {/* Control Bar */}
-        <div className="fixed bottom-4 right-4 pointer-events-auto flex gap-2">
+        <div className="fixed bottom-4 right-4 pointer-events-auto flex gap-2 items-center">
           <button
             onClick={() => setOpen(!open)}
             className="px-3 py-2 text-xs border rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm transition-all"
           >
             {open ? 'Hide' : 'Show'}
+          </button>
+          <button
+            onClick={() => addCube('control')}
+            className="px-3 py-2 text-xs border rounded-lg bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm transition-all"
+          >
+            + Cube
           </button>
           <button
             onClick={() => setPinned(!pinned)}
@@ -400,6 +412,8 @@ export function CubeFormationControlCenter() {
           title="Hover to reveal Control Center"
         />
       )}
+
+      {showCubeSettings && <CubeSettingsPanel onClose={() => setShowCubeSettings(false)} />}
     </>
   );
 }

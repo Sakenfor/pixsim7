@@ -29,17 +29,19 @@ export function Toast({ id, message, type = 'info', duration = 4000, onClose }: 
   return (
     <div
       className={clsx(
-        'flex items-start gap-3 p-4 rounded-lg border shadow-lg max-w-md animate-slide-in',
+        'flex items-start gap-3 p-4 rounded-lg border shadow-elevation-2 max-w-md animate-slide-in',
         typeStyles[type]
       )}
     >
       <div className="flex-1 text-sm">{message}</div>
       <button
         onClick={onClose}
-        className="text-current opacity-70 hover:opacity-100 transition-opacity"
+        className="p-0.5 rounded text-current opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all focus:outline-none focus:ring-2 focus:ring-current"
         aria-label="Close"
       >
-        ✕
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
       </button>
     </div>
   );

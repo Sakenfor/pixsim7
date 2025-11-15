@@ -8,11 +8,11 @@ export interface BadgeProps {
 }
 
 const colorMap: Record<string, string> = {
-  blue: 'bg-blue-100 text-blue-700',
-  green: 'bg-green-100 text-green-700',
-  red: 'bg-red-100 text-red-700',
-  gray: 'bg-neutral-200 text-neutral-700',
-  purple: 'bg-purple-100 text-purple-700',
+  blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+  green: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+  red: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+  gray: 'bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300',
+  purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
 };
 
 export function Badge({ color = 'gray', children, className }: BadgeProps) {

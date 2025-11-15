@@ -91,6 +91,7 @@ export interface ControlCubeStoreState {
   activeCubeId?: string;
   combinedCubeIds: string[];  // Cubes currently combined into one
   summoned: boolean;          // Whether cube system is summoned (visible)
+  hydrated: boolean;          // Whether persisted state has been loaded
   connections: Record<string, CubeConnection>;  // Cube-to-cube connections
   messages: CubeMessage[];    // Message queue
   linkingMode: boolean;       // Whether in connection-creation mode
@@ -219,6 +220,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       activeCubeId: undefined,
       combinedCubeIds: [],
       summoned: false,
+      hydrated: false,
       connections: {},
       messages: [],
       linkingMode: false,
@@ -688,6 +690,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
           activeCubeId: undefined,
           combinedCubeIds: [],
           summoned: false,
+          hydrated: false,
           connections: {},
           messages: [],
           linkingMode: false,
@@ -702,6 +705,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       partialize: (state) => ({
         cubes: state.cubes,
         summoned: state.summoned,
+        hydrated: state.hydrated,
         connections: state.connections,  // Persist connections
         formations: state.formations,    // Persist formations
       }),
@@ -709,6 +713,8 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       onRehydrateStorage: () => (state) => {
         if (state) {
           syncCountersFromState(state);
+          // Mark store as hydrated so UI can safely initialize cubes
+          (state as any).hydrated = true;
         }
       },
     }

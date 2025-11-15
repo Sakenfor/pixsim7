@@ -30,6 +30,36 @@ const preset = {
           900: '#1e3a8a',
           950: '#172554',
         },
+        // Semantic colors for theming
+        success: {
+          light: '#10b981',
+          DEFAULT: '#059669',
+          dark: '#047857',
+        },
+        warning: {
+          light: '#f59e0b',
+          DEFAULT: '#d97706',
+          dark: '#b45309',
+        },
+        error: {
+          light: '#ef4444',
+          DEFAULT: '#dc2626',
+          dark: '#b91c1c',
+        },
+        info: {
+          light: '#3b82f6',
+          DEFAULT: '#2563eb',
+          dark: '#1d4ed8',
+        },
+      },
+      boxShadow: {
+        // Elevation system for consistent depth
+        'elevation-0': 'none',
+        'elevation-1': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        'elevation-2': '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        'elevation-3': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+        'elevation-4': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+        'elevation-5': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
       },
     },
   },
@@ -40,10 +70,19 @@ const preset = {
           '--ring': '0 0 #0000',
           '--bg': '255 255 255',
           '--fg': '33 53 71',
+          // Semantic color variables for theming
+          '--success': '16 185 129',
+          '--warning': '245 158 11',
+          '--error': '239 68 68',
+          '--info': '59 130 246',
         },
         '.dark': {
           '--bg': '23 23 23',
           '--fg': '229 231 235',
+          '--success': '52 211 153',
+          '--warning': '251 191 36',
+          '--error': '248 113 113',
+          '--info': '96 165 250',
         },
         'body': {
           backgroundColor: 'rgb(var(--bg))',

@@ -589,6 +589,32 @@ class LauncherWindow(QWidget):
                 except Exception:
                     pass
             return
+
+        # Check dependencies before starting
+        if sp.defn.depends_on:
+            missing_deps = []
+            for dep_key in sp.defn.depends_on:
+                dep_process = self.processes.get(dep_key)
+                if not dep_process or not dep_process.running:
+                    dep_service = next((s for s in self.services if s.key == dep_key), None)
+                    dep_title = dep_service.title if dep_service else dep_key
+                    missing_deps.append(dep_title)
+
+            if missing_deps:
+                deps_list = ", ".join(missing_deps)
+                service_title = sp.defn.title
+                QMessageBox.warning(
+                    self,
+                    'Missing Dependencies',
+                    f'{service_title} requires these services to be running first:\n\n{deps_list}\n\nPlease start them before starting {service_title}.'
+                )
+                if _launcher_logger:
+                    try:
+                        _launcher_logger.warning("service_blocked_dependencies", service_key=key, missing=missing_deps)
+                    except Exception:
+                        pass
+                return
+
         if sp.start():
             self._refresh_console_logs()
 
@@ -676,15 +702,49 @@ class LauncherWindow(QWidget):
         return self.selected_service_key
 
     def start_all(self):
-        for key, sp in self.processes.items():
-            if not sp.tool_available:
-                if _launcher_logger:
-                    try:
-                        _launcher_logger.info("service_skip_start", service_key=key, reason=sp.tool_check_message)
-                    except Exception:
-                        pass
-                continue
-            sp.start()
+        """Start all services in dependency order."""
+        # Build dependency graph and start in correct order
+        started = set()
+
+        def can_start(service_key):
+            """Check if a service's dependencies are satisfied."""
+            sp = self.processes.get(service_key)
+            if not sp or not sp.tool_available:
+                return False
+            if sp.defn.depends_on:
+                return all(dep in started for dep in sp.defn.depends_on)
+            return True
+
+        # Keep trying to start services until no more can be started
+        max_iterations = len(self.processes) * 2  # Prevent infinite loops
+        iteration = 0
+
+        while iteration < max_iterations:
+            made_progress = False
+
+            for key, sp in self.processes.items():
+                if key in started or sp.running:
+                    continue
+
+                if not sp.tool_available:
+                    if _launcher_logger:
+                        try:
+                            _launcher_logger.info("service_skip_start", service_key=key, reason=sp.tool_check_message)
+                        except Exception:
+                            pass
+                    started.add(key)  # Mark as "started" to avoid retrying
+                    continue
+
+                if can_start(key):
+                    sp.start()
+                    started.add(key)
+                    made_progress = True
+
+            if not made_progress:
+                break  # No more services can be started
+
+            iteration += 1
+
         self._refresh_console_logs()
 
     def stop_all(self):
@@ -1068,14 +1128,15 @@ class LauncherWindow(QWidget):
                 self.log_view.setHtml(log_html)
 
                 # Scroll behavior based on auto-scroll setting
-                if self.autoscroll_enabled or was_at_bottom:
-                    # Auto-scroll to bottom if enabled or user was already at bottom
+                if self.autoscroll_enabled:
+                    # Auto-scroll to bottom when explicitly enabled
                     cursor = self.log_view.textCursor()
                     cursor.movePosition(QTextCursor.End)
                     self.log_view.setTextCursor(cursor)
                     scrollbar.setValue(scrollbar.maximum())
                 else:
-                    # Restore previous scroll position (cap at new max to prevent jumps)
+                    # Restore previous scroll position when auto-scroll is disabled
+                    # Maintain relative position from bottom to handle new content gracefully
                     new_max = scrollbar.maximum()
                     target_value = max(0, new_max - distance_from_bottom)
                     scrollbar.setValue(target_value)

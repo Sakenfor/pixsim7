@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useLayoutEffect, useState } from 'react';
 import { useControlCubeStore } from '../stores/controlCubeStore';
+import { BASE_CUBE_SIZE } from '../config/cubeConstants';
 
 const DOCK_SNAP_DISTANCE = 80; // pixels from panel edge to trigger docking
 
@@ -42,8 +43,9 @@ export function useCubeDocking(panelRects: PanelRect[]) {
         const minDistance = Math.min(...distances);
 
         // Check if cube center is near panel
-        const centerX = cube.position.x + 50; // cube size / 2
-        const centerY = cube.position.y + 50;
+        const cubeHalfSize = (BASE_CUBE_SIZE * (cube.scale ?? 1)) / 2;
+        const centerX = cube.position.x + cubeHalfSize;
+        const centerY = cube.position.y + cubeHalfSize;
 
         const isNearPanel =
           centerX >= panel.x - DOCK_SNAP_DISTANCE &&
@@ -73,28 +75,52 @@ export function useCubeDocking(panelRects: PanelRect[]) {
 }
 
 /**
- * Hook to get panel rectangles from DOM
+ * Hook to get panel rectangles from DOM.
+ * Measures panel positions on mount and on window resize/scroll.
  */
 export function usePanelRects(): PanelRect[] {
-  const panelRects: PanelRect[] = [];
+  const [panelRects, setPanelRects] = useState<PanelRect[]>([]);
 
-  // Query all panels with data-panel-id attribute
-  const panelElements = document.querySelectorAll('[data-panel-id]');
-
-  panelElements.forEach((el) => {
-    const rect = el.getBoundingClientRect();
-    const panelId = el.getAttribute('data-panel-id');
-
-    if (panelId) {
-      panelRects.push({
-        id: panelId,
-        x: rect.left,
-        y: rect.top,
-        width: rect.width,
-        height: rect.height,
-      });
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
     }
-  });
+
+    const measure = () => {
+      const rects: PanelRect[] = [];
+
+      const panelElements = document.querySelectorAll('[data-panel-id]');
+
+      panelElements.forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        const panelId = el.getAttribute('data-panel-id');
+
+        if (panelId) {
+          rects.push({
+            id: panelId,
+            x: rect.left,
+            y: rect.top,
+            width: rect.width,
+            height: rect.height,
+          });
+        }
+      });
+
+      setPanelRects(rects);
+    };
+
+    // Initial measure
+    measure();
+
+    // Re-measure on resize and scroll (any scroll container)
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
+    };
+  }, []);
 
   return panelRects;
 }

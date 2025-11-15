@@ -193,7 +193,12 @@ export function GraphPanel() {
   // Add node (generic helper)
   const handleAddNode = useCallback(
     (nodeType: NodeType, position?: { x: number; y: number }) => {
-      const nextIndex = (draft?.nodes.length ?? 0) + 1;
+      // Ensure we have a draft/scene to add into
+      if (!draft) {
+        createDraft('Untitled Scene');
+      }
+
+      const nextIndex = ((draft?.nodes.length ?? 0)) + 1;
       const id = `${nodeType}_${nextIndex}`;
 
       // Calculate position if not provided
@@ -213,7 +218,7 @@ export function GraphPanel() {
 
       toast.success(`Added ${id}`);
     },
-    [toast, draft, addNode]
+    [toast, draft, addNode, createDraft]
   );
 
   // Handle drop on canvas

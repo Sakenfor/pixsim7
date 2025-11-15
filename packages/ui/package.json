@@ -4,20 +4,23 @@
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "zustand": "^5.0.8"
   },
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
     "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2"
+    "@types/react-dom": "^19.2.2",
+    "typescript": "^5.4.0"
   }
 }

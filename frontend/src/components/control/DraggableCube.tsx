@@ -5,6 +5,7 @@ import { ControlCube, type CubeFaceContent } from './ControlCube';
 import type { CubeFace } from '../../stores/controlCubeStore';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import { clsx } from 'clsx';
+import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
 
 export interface DraggableCubeProps {
   cubeId: string;
@@ -18,7 +19,7 @@ export interface DraggableCubeProps {
 
 export function DraggableCube({
   cubeId,
-  size = 100,
+  size = BASE_CUBE_SIZE,
   faceContent,
   onDragStart,
   onDragStop,

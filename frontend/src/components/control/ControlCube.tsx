@@ -68,9 +68,8 @@ export function ControlCube({
   const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
   const [showExpansion, setShowExpansion] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
-  const [isNearEdge, setIsNearEdge] = useState(false);
-  const [isDraggingEdge, setIsDraggingEdge] = useState(false);
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+  const [hoverAtEdge, setHoverAtEdge] = useState(false);
+  const lastClickTime = useRef<number>(0);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -84,90 +83,86 @@ export function ControlCube({
     const x = (e.clientX - centerX) / (rect.width / 2);
     const y = (e.clientY - centerY) / (rect.height / 2);
 
-    // Check if near edge (for drag-to-expand feature)
-    const edgeThreshold = 0.7; // Within 30% of edge
-    const nearEdge = Math.abs(x) > edgeThreshold || Math.abs(y) > edgeThreshold;
-    setIsNearEdge(nearEdge);
-
-    // Calculate distance from center (for front/back detection)
-    const distance = Math.sqrt(x * x + y * y);
-
-    // Determine which face is being hovered based on position and current rotation
+    // Determine which face is being hovered and whether we're truly at the edge
     const absX = Math.abs(x);
     const absY = Math.abs(y);
 
-    // Threshold for considering center (front/back faces)
-    const centerThreshold = 0.3;
+    // Simpler approach: detect which dimension is dominant
+    const centerThreshold = 0.4; // Center zone radius
+    const edgeThreshold = 0.7;   // Edge starts here
 
-    let face: CubeFace;
+    let face: CubeFace = cube.activeFace;
+    let atEdge = false;
 
-    // If near center, determine front vs back based on rotation
-    if (distance < centerThreshold) {
-      // Near center - check rotation to determine if front or back is visible
-      const rotY = cube.rotation.y % 360;
-      const rotX = cube.rotation.x % 360;
-
-      // Normalize to -180 to 180
-      const normRotY = ((rotY + 180) % 360) - 180;
-      const normRotX = ((rotX + 180) % 360) - 180;
-
-      // If rotated significantly, back face is more visible
-      if (Math.abs(normRotY) > 90 && Math.abs(normRotX) < 90) {
-        face = 'back';
-      } else if (Math.abs(normRotX) > 90 && Math.abs(normRotY) < 90) {
-        face = 'back';
+    // Check if we're clearly at an edge (dominant dimension)
+    if (absX > absY) {
+      // Horizontal dimension dominant
+      if (absX > edgeThreshold) {
+        // At horizontal edge
+        atEdge = true;
+        face = x > 0 ? 'right' : 'left';
+      } else if (absX < centerThreshold && absY < centerThreshold) {
+        // In center
+        face = cube.activeFace;
       } else {
-        face = 'front';
+        // Between center and edge - still center
+        face = cube.activeFace;
       }
-    }
-    // Edges - detect which edge face
-    else if (absX > absY) {
-      // Horizontal edge
-      face = x > 0 ? 'right' : 'left';
     } else {
-      // Vertical edge
-      face = y > 0 ? 'bottom' : 'top';
+      // Vertical dimension dominant
+      if (absY > edgeThreshold) {
+        // At vertical edge
+        atEdge = true;
+        face = y > 0 ? 'bottom' : 'top';
+      } else if (absX < centerThreshold && absY < centerThreshold) {
+        // In center
+        face = cube.activeFace;
+      } else {
+        // Between center and edge - still center
+        face = cube.activeFace;
+      }
     }
 
     setHoveredFace(face);
+    setHoverAtEdge(atEdge);
 
-    // Apply subtle tilt based on which face is hovered
-    const tiltAmount = 15;
+    // Apply tilt based on which face is hovered
+    const tiltAmount = 20;
 
-    // Adjust tilt based on face being hovered
+    // Explicit tilt values
     let tiltX = 0;
     let tiltY = 0;
 
     switch (face) {
       case 'front':
-        // Slight tilt based on mouse position within center
-        tiltX = -y * tiltAmount * 0.5;
-        tiltY = x * tiltAmount * 0.5;
-        break;
       case 'back':
-        // Opposite tilt
-        tiltX = y * tiltAmount * 0.5;
-        tiltY = -x * tiltAmount * 0.5;
+        // No tilt for center faces
+        tiltX = 0;
+        tiltY = 0;
         break;
       case 'left':
-        // Hover left edge → tilt RIGHT to show hidden left side
-        tiltY = tiltAmount;
-        tiltX = -y * tiltAmount * 0.3;
+        if (atEdge) {
+          tiltX = 0;
+          tiltY = tiltAmount;
+        }
         break;
       case 'right':
-        // Hover right edge → tilt LEFT to show hidden right side
-        tiltY = -tiltAmount;
-        tiltX = -y * tiltAmount * 0.3;
+        if (atEdge) {
+          tiltX = 0;
+          tiltY = -tiltAmount;
+        }
         break;
       case 'top':
-        // Hover top edge → tilt DOWN to show hidden top side
-        tiltX = tiltAmount;
-        tiltY = x * tiltAmount * 0.3;
+        if (atEdge) {
+          tiltX = -tiltAmount;
+          tiltY = 0;
+        }
         break;
       case 'bottom':
-        // Hover bottom edge → tilt UP to show hidden bottom side
-        tiltX = -tiltAmount;
-        tiltY = x * tiltAmount * 0.3;
+        if (atEdge) {
+          tiltX = tiltAmount;
+          tiltY = 0;
+        }
         break;
     }
 
@@ -206,32 +201,6 @@ export function ControlCube({
     setShowExpansion(false);
   };
 
-  // Handle edge drag to expand into panel
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (isNearEdge && e.shiftKey) {
-      // Shift+drag from edge = expand to panel
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDraggingEdge(true);
-      dragStartPos.current = { x: e.clientX, y: e.clientY };
-    }
-  };
-
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (isDraggingEdge && dragStartPos.current) {
-      const dx = e.clientX - dragStartPos.current.x;
-      const dy = e.clientY - dragStartPos.current.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      // If dragged more than 30px, expand to panel
-      if (distance > 30) {
-        expandToPanel();
-      }
-    }
-    setIsDraggingEdge(false);
-    dragStartPos.current = null;
-  };
-
   // Expand cube into a floating panel
   const expandToPanel = () => {
     if (!containerRef.current || !cube) return;
@@ -248,19 +217,44 @@ export function ControlCube({
     onExpand?.(cubeId, expandPosition);
   };
 
+  // Handle double-click to expand
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    expandToPanel();
+  };
+
   // Click to rotate to the revealed (hovered) face
   const handleCubeClick = (e: React.MouseEvent) => {
-    // Don't rotate if we're in edge drag mode
-    if (isDraggingEdge) return;
+    if (!hoveredFace || !cube) return;
 
-    if (hoveredFace) {
-      e.stopPropagation();
-      // Rotate to the hovered face
-      rotateCubeFace(cubeId, hoveredFace);
-      // Also trigger the face click handler (for panel opening, etc.)
-      onFaceClick?.(hoveredFace);
-      updateCube(cubeId, { activeFace: hoveredFace });
+    const now = Date.now();
+    const timeSinceLastClick = now - lastClickTime.current;
+
+    // Check for double-click (within 300ms)
+    if (timeSinceLastClick < 300) {
+      // Double-click handled by handleDoubleClick
+      return;
     }
+
+    lastClickTime.current = now;
+    e.stopPropagation();
+
+    // If clicking the currently active face (the one showing), open the action
+    if (hoveredFace === cube.activeFace) {
+      onFaceClick?.(hoveredFace);
+      return;
+    }
+
+    // Only rotate when the hover is truly in the edge band
+    if (!hoverAtEdge) {
+      // Treat non-edge clicks as center clicks: no rotation, optional action
+      onFaceClick?.(cube.activeFace);
+      return;
+    }
+
+    // For non-active faces at the edge, rotate to show that face (no action here)
+    rotateCubeFace(cubeId, hoveredFace);
+    updateCube(cubeId, { activeFace: hoveredFace });
   };
 
   useEffect(() => {
@@ -319,10 +313,9 @@ export function ControlCube({
           width: `${size}px`,
           height: `${size}px`,
           transform,
-          pointerEvents: 'none', // Let container handle all events
         }}
       >
-        <div className="pointer-events-none">
+        <div>
           {content || DEFAULT_FACE_CONTENT[face]}
         </div>
       </div>
@@ -335,9 +328,7 @@ export function ControlCube({
       className={clsx(
         'relative transition-all duration-300',
         isDocked && 'opacity-80',
-        isHovering && !isNearEdge && 'cursor-pointer',
-        isNearEdge && 'cursor-nwse-resize',
-        isDraggingEdge && 'cursor-grabbing',
+        isHovering && 'cursor-pointer',
         className
       )}
       style={{
@@ -349,14 +340,13 @@ export function ControlCube({
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
       onClick={handleCubeClick}
+      onDoubleClick={handleDoubleClick}
     >
       <div
         ref={cubeRef}
         className={clsx(
-          'relative w-full h-full transition-transform duration-500',
+          'relative w-full h-full transition-transform duration-150',
           glowClass,
           cube.mode === 'rotating' && 'animate-spin-slow',
           isExpanded && 'shadow-2xl',
@@ -421,18 +411,6 @@ export function ControlCube({
           cubeElement={containerRef.current}
           onClose={() => setShowExpansion(false)}
         />
-      )}
-
-      {/* Edge drag indicator */}
-      {isNearEdge && !isDraggingEdge && (
-        <div className="absolute inset-0 rounded-lg border-2 border-cyan-400/50 pointer-events-none animate-pulse" />
-      )}
-
-      {/* Drag feedback */}
-      {isDraggingEdge && (
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 text-xs text-cyan-300 whitespace-nowrap bg-black/80 px-3 py-1.5 rounded backdrop-blur-sm pointer-events-none">
-          ↗️ Drag to expand
-        </div>
       )}
     </div>
   );

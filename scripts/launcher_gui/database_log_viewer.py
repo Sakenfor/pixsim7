@@ -112,6 +112,7 @@ class DatabaseLogViewer(QWidget):
         filter_bar.addWidget(QLabel('Level:'))
         self.level_combo = self._styled_combo(['All', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'])
         self.level_combo.setMinimumWidth(90)
+        self.level_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.level_combo)
 
         # Time
@@ -119,6 +120,7 @@ class DatabaseLogViewer(QWidget):
         self.time_combo = self._styled_combo(['Last 5 min', 'Last 15 min', 'Last hour', 'Last 6 hours', 'Last 24 hours', 'All time'])
         self.time_combo.setCurrentText('Last hour')
         self.time_combo.setMinimumWidth(110)
+        self.time_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.time_combo)
 
         # Stage quick-filter
@@ -126,6 +128,7 @@ class DatabaseLogViewer(QWidget):
         self.stage_combo = self._styled_combo(['All', 'pipeline:*', 'provider:*', 'pipeline:start', 'pipeline:artifact', 'provider:submit', 'provider:status', 'provider:complete', 'provider:error'])
         self.stage_combo.setCurrentText('All')
         self.stage_combo.setMinimumWidth(130)
+        self.stage_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.stage_combo)
 
         # Limit
@@ -133,12 +136,14 @@ class DatabaseLogViewer(QWidget):
         self.limit_combo = self._styled_combo(['50', '100', '200', '500', '1000'])
         self.limit_combo.setCurrentText('100')
         self.limit_combo.setMinimumWidth(70)
+        self.limit_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.limit_combo)
 
         # Search
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText('Search...')
         self.search_input.setMinimumWidth(150)
+        self.search_input.returnPressed.connect(self.refresh_logs)
         self.search_input.setStyleSheet("""
             QLineEdit {
                 background-color: #3d3d3d;
@@ -744,9 +749,6 @@ class DatabaseLogViewer(QWidget):
             self.log_display.setHtml('<div style="color: #888; padding: 20px; text-align: center;">No logs found matching your filters.<br><br>Try adjusting the time range or removing some filters.</div>')
             self.status_label.setText('No results found')
             return
-
-        # Import here to avoid circular dependency
-        from .log_formatter import format_log_line_html
 
         # Build HTML with styles and log rows
         html_parts = [LOG_ROW_STYLES]

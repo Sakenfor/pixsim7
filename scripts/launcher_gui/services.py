@@ -20,6 +20,7 @@ class ServiceDef:
     health_url: Optional[str] = None
     required_tool: Optional[str] = None  # Tool that must be in PATH
     health_grace_attempts: int = 5       # Attempts before marking unhealthy
+    depends_on: Optional[List[str]] = None  # Service keys that must be running first
 
 
 def build_services() -> List[ServiceDef]:
@@ -58,6 +59,7 @@ def build_services() -> List[ServiceDef]:
             url=f"http://localhost:{ports.backend}/docs",
             health_url=f"http://localhost:{ports.backend}/health",
             health_grace_attempts=6,
+            depends_on=["db"],  # Backend requires database
         ),
         ServiceDef(
             key="worker",
@@ -72,6 +74,7 @@ def build_services() -> List[ServiceDef]:
             url=None,
             health_url=None,  # No HTTP health check for worker
             health_grace_attempts=10,
+            depends_on=["db"],  # Worker requires database and Redis (both in db service)
         ),
         ServiceDef(
             key="admin",

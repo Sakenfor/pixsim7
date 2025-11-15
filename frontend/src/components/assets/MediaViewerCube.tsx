@@ -22,30 +22,36 @@ export function MediaViewerCube({
   onNavigate,
 }: MediaViewerCubeProps) {
   const [viewerMode, setViewerMode] = useState<ViewerMode>('compact');
-  const [cubeId] = useState(() => `viewer-${asset.key}`);
+  const [cubeId, setCubeId] = useState<string | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
 
   const addCube = useControlCubeStore((s) => s.addCube);
   const removeCube = useControlCubeStore((s) => s.removeCube);
   const updateCube = useControlCubeStore((s) => s.updateCube);
   const setCubeMode = useControlCubeStore((s) => s.setCubeMode);
-  const cube = useControlCubeStore((s) => s.cubes[cubeId]);
+  const cube = useControlCubeStore(
+    useCallback(
+      (s) => (cubeId ? s.cubes[cubeId] : undefined),
+      [cubeId]
+    )
+  );
 
   // Create cube on mount
   useEffect(() => {
-    const id = addCube('viewer', {
+    const id = addCube('gallery', {
       x: window.innerWidth / 2 - 75,
       y: window.innerHeight / 2 - 75,
     });
+    setCubeId(id);
 
     return () => {
       removeCube(id);
     };
-  }, []);
+  }, [addCube, removeCube]);
 
   // Update cube based on viewer mode
   useEffect(() => {
-    if (!cube) return;
+    if (!cubeId || !cube) return;
 
     switch (viewerMode) {
       case 'compact':
@@ -72,7 +78,9 @@ export function MediaViewerCube({
   );
 
   const handleClose = useCallback(() => {
-    removeCube(cubeId);
+    if (cubeId) {
+      removeCube(cubeId);
+    }
     onClose?.();
   }, [cubeId, removeCube, onClose]);
 

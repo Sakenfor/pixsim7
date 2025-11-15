@@ -13,7 +13,6 @@ import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { AutomationRoute } from './routes/Automation';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
-// import { ControlCubeManager } from './components/control/ControlCubeManager'; // Disabled in favor of CubeFormationControlCenter
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
