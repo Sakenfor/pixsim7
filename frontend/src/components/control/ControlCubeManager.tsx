@@ -2,9 +2,11 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
-import { useControlCubeStore, type CubeFace, type CubeType } from '../../stores/controlCubeStore';
+import { useControlCubeStore } from '../../stores/controlCubeStore';
+import type { CubeFace } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
-import { panelActionRegistry, type PanelActionsConfig } from '../../lib/panelActions';
+import { panelActionRegistry } from '../../lib/panelActions';
+import type { PanelActionsConfig } from '../../lib/panelActions';
 import { clsx } from 'clsx';
 
 export interface ControlCubeManagerProps {
