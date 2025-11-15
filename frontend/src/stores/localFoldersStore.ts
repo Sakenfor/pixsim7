@@ -210,17 +210,31 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
         set({ folders: ok });
-        // Load from cache first for instant display
+        // Load from cache first for instant display, then refresh in background
         for (const f of ok) {
           const cachedItems = await loadCachedAssets(f.id, f.handle);
           if (cachedItems.length > 0) {
+            // Show cached data immediately
             set(s => ({ assets: { ...s.assets, ...Object.fromEntries(cachedItems.map(a => [a.key, a])) } }));
-          } else {
-            // No cache, do full scan
-            const items = await scanFolder(f.id, f.handle, 5);
-            set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
-            await cacheAssets(f.id, items);
           }
+
+          // Always scan in background to detect changes (new/deleted files)
+          // This runs async without blocking UI
+          scanFolder(f.id, f.handle, 5).then(items => {
+            // Only update if there are actual changes
+            const cachedKeys = new Set(cachedItems.map(a => a.key));
+            const scannedKeys = new Set(items.map(a => a.key));
+            const hasChanges = cachedItems.length !== items.length ||
+              items.some(a => !cachedKeys.has(a.key)) ||
+              cachedItems.some(a => !scannedKeys.has(a.key));
+
+            if (hasChanges) {
+              // Replace entries for this folder with fresh scan
+              const others = Object.entries(get().assets).filter(([k]) => !k.startsWith(f.id + ':'));
+              set({ assets: { ...Object.fromEntries(others), ...Object.fromEntries(items.map(a => [a.key, a])) } });
+              cacheAssets(f.id, items);
+            }
+          });
         }
       }
     } catch (e: unknown) {
