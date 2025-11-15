@@ -66,8 +66,6 @@ export function ControlCube({
   const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
   const [showExpansion, setShowExpansion] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -142,19 +140,23 @@ export function ControlCube({
         tiltY = -x * tiltAmount * 0.5;
         break;
       case 'left':
-        tiltY = -tiltAmount;
-        tiltX = -y * tiltAmount * 0.3;
-        break;
-      case 'right':
+        // Hover left edge → tilt RIGHT to show hidden left side
         tiltY = tiltAmount;
         tiltX = -y * tiltAmount * 0.3;
         break;
+      case 'right':
+        // Hover right edge → tilt LEFT to show hidden right side
+        tiltY = -tiltAmount;
+        tiltX = -y * tiltAmount * 0.3;
+        break;
       case 'top':
-        tiltX = -tiltAmount;
+        // Hover top edge → tilt DOWN to show hidden top side
+        tiltX = tiltAmount;
         tiltY = x * tiltAmount * 0.3;
         break;
       case 'bottom':
-        tiltX = tiltAmount;
+        // Hover bottom edge → tilt UP to show hidden bottom side
+        tiltX = -tiltAmount;
         tiltY = x * tiltAmount * 0.3;
         break;
     }
@@ -194,56 +196,16 @@ export function ControlCube({
     setShowExpansion(false);
   };
 
-  // Mouse down - start drag tracking
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setIsDragging(false);
-  };
-
-  // Mouse up - handle click vs drag
-  const handleMouseUp = (e: React.MouseEvent) => {
-    if (!dragStart) return;
-
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // If moved more than 10px, it's a drag - rotate to that direction
-    if (distance > 10) {
-      const absX = Math.abs(dx);
-      const absY = Math.abs(dy);
-
-      let targetFace: CubeFace;
-      if (absX > absY) {
-        targetFace = dx > 0 ? 'right' : 'left';
-      } else {
-        targetFace = dy > 0 ? 'bottom' : 'top';
-      }
-
-      rotateCubeFace(cubeId, targetFace);
-    } else {
-      // Small movement - treat as click
-      if (hoveredFace) {
-        onFaceClick?.(hoveredFace);
-        updateCube(cubeId, { activeFace: hoveredFace });
-      }
+  // Click to rotate to the revealed (hovered) face
+  const handleCubeClick = (e: React.MouseEvent) => {
+    if (hoveredFace) {
+      e.stopPropagation();
+      // Rotate to the hovered face
+      rotateCubeFace(cubeId, hoveredFace);
+      // Also trigger the face click handler (for panel opening, etc.)
+      onFaceClick?.(hoveredFace);
+      updateCube(cubeId, { activeFace: hoveredFace });
     }
-
-    setDragStart(null);
-    setIsDragging(false);
-  };
-
-  // Track dragging state
-  const handleMouseMoveGlobal = (e: React.MouseEvent) => {
-    if (dragStart) {
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance > 5) {
-        setIsDragging(true);
-      }
-    }
-    handleMouseMove(e);
   };
 
   useEffect(() => {
@@ -327,11 +289,10 @@ export function ControlCube({
         perspective: '1000px',
         transform: `scale(${cubeScale})`,
       }}
-      onMouseMove={handleMouseMoveGlobal}
+      onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
+      onClick={handleCubeClick}
     >
       <div
         ref={cubeRef}
