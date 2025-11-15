@@ -186,6 +186,32 @@ let connectionIdCounter = 0;
 let messageIdCounter = 0;
 let formationIdCounter = 0;
 
+const getNextNumericSuffix = (ids: string[]) => {
+  return ids.reduce((max, id) => {
+    const match = id.match(/-(\d+)$/);
+    if (!match) return max;
+    return Math.max(max, Number.parseInt(match[1], 10));
+  }, -1);
+};
+
+const syncCountersFromState = (
+  state: Partial<Pick<ControlCubeStoreState, 'cubes' | 'connections' | 'formations'>>
+) => {
+  const cubeSuffix = getNextNumericSuffix(Object.keys(state.cubes ?? {}));
+  const connectionSuffix = getNextNumericSuffix(Object.keys(state.connections ?? {}));
+  const formationSuffix = getNextNumericSuffix(Object.keys(state.formations ?? {}));
+
+  if (cubeSuffix >= cubeIdCounter) {
+    cubeIdCounter = cubeSuffix + 1;
+  }
+  if (connectionSuffix >= connectionIdCounter) {
+    connectionIdCounter = connectionSuffix + 1;
+  }
+  if (formationSuffix >= formationIdCounter) {
+    formationIdCounter = formationSuffix + 1;
+  }
+};
+
 export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeActions>()(
   persist(
     (set, get) => ({
@@ -680,6 +706,11 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
         formations: state.formations,    // Persist formations
       }),
       version: 1,
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          syncCountersFromState(state);
+        }
+      },
     }
   )
 );

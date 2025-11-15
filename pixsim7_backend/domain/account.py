@@ -289,8 +289,6 @@ class ProviderAccount(SQLModel, table=True):
         else:
             # Default fallback
             return 300.0  # 5 minutes
-        """Check if account can accept more jobs (not at max concurrency)"""
-        return self.current_processing_jobs < self.max_concurrent_jobs
 
     def calculate_success_rate(self) -> float:
         """Calculate success rate from stats"""
