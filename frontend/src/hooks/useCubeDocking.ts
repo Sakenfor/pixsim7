@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useState, useRef } from 'react';
 import { useControlCubeStore } from '../stores/controlCubeStore';
 import { BASE_CUBE_SIZE } from '../config/cubeConstants';
 
@@ -77,9 +77,12 @@ export function useCubeDocking(panelRects: PanelRect[]) {
 /**
  * Hook to get panel rectangles from DOM.
  * Measures panel positions on mount and on window resize/scroll.
+ * Uses throttling to prevent excessive measurements.
  */
 export function usePanelRects(): PanelRect[] {
   const [panelRects, setPanelRects] = useState<PanelRect[]>([]);
+  const throttleTimeoutRef = useRef<number | null>(null);
+  const lastMeasureTimeRef = useRef<number>(0);
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -107,18 +110,42 @@ export function usePanelRects(): PanelRect[] {
       });
 
       setPanelRects(rects);
+      lastMeasureTimeRef.current = Date.now();
+    };
+
+    // Throttled measure: limits measurements to once per 100ms
+    const throttledMeasure = () => {
+      const now = Date.now();
+      const timeSinceLastMeasure = now - lastMeasureTimeRef.current;
+
+      // If enough time has passed, measure immediately
+      if (timeSinceLastMeasure >= 100) {
+        measure();
+      } else {
+        // Otherwise, schedule a measurement for later
+        if (throttleTimeoutRef.current !== null) {
+          clearTimeout(throttleTimeoutRef.current);
+        }
+        throttleTimeoutRef.current = setTimeout(() => {
+          measure();
+          throttleTimeoutRef.current = null;
+        }, 100 - timeSinceLastMeasure) as unknown as number;
+      }
     };
 
     // Initial measure
     measure();
 
-    // Re-measure on resize and scroll (any scroll container)
-    window.addEventListener('resize', measure);
-    window.addEventListener('scroll', measure, true);
+    // Re-measure on resize and scroll (throttled)
+    window.addEventListener('resize', throttledMeasure);
+    window.addEventListener('scroll', throttledMeasure, true);
 
     return () => {
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', throttledMeasure);
+      window.removeEventListener('scroll', throttledMeasure, true);
+      if (throttleTimeoutRef.current !== null) {
+        clearTimeout(throttleTimeoutRef.current);
+      }
     };
   }, []);
 
