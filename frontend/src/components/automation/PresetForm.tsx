@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { type AppActionPreset, type ActionDefinition } from '../../types/automation';
 import { Button, Panel } from '@pixsim7/ui';
 import { ActionBuilder } from './ActionBuilder';
+import { useToast } from '../../stores/toastStore';
 
 interface PresetFormProps {
   preset?: AppActionPreset;
@@ -16,17 +17,18 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [isShared, setIsShared] = useState(preset?.is_shared ?? false);
   const [actions, setActions] = useState<ActionDefinition[]>(preset?.actions ?? []);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
-      alert('Please enter a preset name');
+      toast.error('Please enter a preset name');
       return;
     }
 
     if (actions.length === 0) {
-      alert('Please add at least one action');
+      toast.error('Please add at least one action');
       return;
     }
 
