@@ -6,6 +6,7 @@ import {
   AccountSelectionMode,
 } from '../../types/automation';
 import { Button, Panel } from '@pixsim7/ui';
+import { useToast } from '../../stores/toastStore';
 
 interface LoopFormProps {
   loop?: ExecutionLoop;
@@ -43,12 +44,13 @@ export function LoopForm({ loop, onSave, onCancel }: LoopFormProps) {
     loop?.skip_google_jwt_accounts ?? false
   );
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!name.trim()) {
-      alert('Please enter a loop name');
+      toast.error('Please enter a loop name');
       return;
     }
 

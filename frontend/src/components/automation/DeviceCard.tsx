@@ -80,11 +80,11 @@ export function DeviceCard({ device }: DeviceCardProps) {
           </div>
         )}
 
-        {device.last_seen_at && (
+        {device.last_seen && (
           <div className="flex justify-between">
             <span className="text-gray-500 dark:text-gray-400">Last Seen:</span>
             <span className="text-gray-900 dark:text-gray-100">
-              {new Date(device.last_seen_at).toLocaleString()}
+              {new Date(device.last_seen).toLocaleString()}
             </span>
           </div>
         )}

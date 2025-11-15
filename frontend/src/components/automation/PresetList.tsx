@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { type AppActionPreset } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
-import { Button, Panel } from '@pixsim7/ui';
+import { Button, Panel, ConfirmModal } from '@pixsim7/ui';
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';
+import { useToast } from '../../stores/toastStore';
+import { useConfirmModal } from '../../hooks/useModal';
 
 type View = 'list' | 'create' | 'edit';
 
@@ -15,6 +17,8 @@ export function PresetList() {
   const [selectedPreset, setSelectedPreset] = useState<AppActionPreset | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const toast = useToast();
+  const { confirm, isOpen: confirmOpen, options: confirmOptions, handleConfirm, handleCancel } = useConfirmModal();
 
   const loadPresets = async () => {
     try {
@@ -39,8 +43,9 @@ export function PresetList() {
       await automationService.createPreset(data);
       await loadPresets();
       setView('list');
+      toast.success('Preset created successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create preset');
+      toast.error(err instanceof Error ? err.message : 'Failed to create preset');
     }
   };
 
@@ -51,23 +56,33 @@ export function PresetList() {
       await loadPresets();
       setView('list');
       setSelectedPreset(null);
+      toast.success('Preset updated successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update preset');
+      toast.error(err instanceof Error ? err.message : 'Failed to update preset');
     }
   };
 
   const handleDelete = async (preset: AppActionPreset) => {
-    if (!confirm(`Are you sure you want to delete "${preset.name}"?`)) return;
+    const confirmed = await confirm({
+      title: 'Delete Preset',
+      message: `Are you sure you want to delete "${preset.name}"?`,
+      variant: 'danger',
+      confirmText: 'Delete',
+    });
+
+    if (!confirmed) return;
+
     try {
       await automationService.deletePreset(preset.id);
       await loadPresets();
+      toast.success('Preset deleted successfully');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete preset');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete preset');
     }
   };
 
   const handleRun = (preset: AppActionPreset) => {
-    alert(`Run preset functionality coming soon!\n\nPreset: ${preset.name}`);
+    toast.info(`Run preset functionality coming soon!\n\nPreset: ${preset.name}`);
   };
 
   // Get unique categories
@@ -261,6 +276,14 @@ export function PresetList() {
           )}
         </div>
       )}
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        isOpen={confirmOpen}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+        {...confirmOptions}
+      />
     </div>
   );
 }
