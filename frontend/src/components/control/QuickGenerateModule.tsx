@@ -353,57 +353,61 @@ export function QuickGenerateModule() {
         </div>
       </div>
 
-      {/* Recent prompts */}
+      {/* Recent prompts - compact */}
       {recentPrompts.length > 0 && (
-        <div className="border-t pt-3 flex-shrink-0">
-          <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
+        <div className="border-t pt-2 flex-shrink-0">
+          <div className="text-[10px] text-neutral-500 font-medium mb-1.5">Recent:</div>
           <div className="flex gap-1 flex-wrap">
-            {recentPrompts.slice(0, 5).map((p, i) => (
+            {recentPrompts.slice(0, 3).map((p, i) => (
               <button
                 key={i}
                 onClick={() => restorePrompt(p)}
                 disabled={generating}
-                className="text-xs px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-xs disabled:opacity-50"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-[120px] disabled:opacity-50"
                 title={p}
               >
-                {p.length > 50 ? `${p.slice(0, 50)}…` : p}
+                {p.length > 30 ? `${p.slice(0, 30)}…` : p}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Quick shortcuts */}
-      <div className="border-t pt-3 flex-shrink-0">
-        <div className="text-xs text-neutral-500 font-medium mb-2">Quick shortcuts:</div>
-        <div className="grid grid-cols-4 gap-2">
+      {/* Quick shortcuts - compact */}
+      <div className="border-t pt-2 flex-shrink-0">
+        <div className="text-[10px] text-neutral-500 font-medium mb-1.5">Quick nav:</div>
+        <div className="grid grid-cols-4 gap-1.5">
           <button
             onClick={() => navigate('/assets')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+            title="Gallery"
           >
-            <span>🖼️</span>
-            <span>Gallery</span>
+            <span className="text-sm">🖼️</span>
+            <span className="text-[9px]">Gallery</span>
           </button>
           <button
             onClick={() => navigate('/workspace')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+            title="Workspace"
           >
-            <span>🎨</span>
-            <span>Workspace</span>
+            <span className="text-sm">🎨</span>
+            <span className="text-[9px]">Space</span>
           </button>
           <button
             onClick={() => navigate('/')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+            title="Home"
           >
-            <span>🏠</span>
-            <span>Home</span>
+            <span className="text-sm">🏠</span>
+            <span className="text-[9px]">Home</span>
           </button>
           <button
             onClick={() => navigate('/graph/1')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+            title="Graph"
           >
-            <span>🕸️</span>
-            <span>Graph</span>
+            <span className="text-sm">🕸️</span>
+            <span className="text-[9px]">Graph</span>
           </button>
         </div>
       </div>
