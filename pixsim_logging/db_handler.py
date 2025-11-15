@@ -21,6 +21,8 @@ from threading import Thread, Event
 from sqlalchemy import create_engine, Table, Column, MetaData
 from sqlalchemy import Integer, String, DateTime, JSON, Text
 
+from .schema import LOG_ENTRY_COLUMNS
+
 
 class DBLogHandler:
     """
@@ -76,13 +78,18 @@ class DBLogHandler:
             extend_existing=True,
         )
 
-        # Auto-create table if missing. Safe due to extend_existing and guarded by try/except.
-        try:
-            self.meta.create_all(self.engine, tables=[self.table])
-        except Exception as exc:
-            # Avoid blocking application startup, but emit a one-line hint so
-            # operators can discover that DB ingestion is not actually working.
-            print(f"[DBLogHandler] Failed to ensure log table exists: {exc}", flush=True)
+        # Auto-create table if missing can be convenient for standalone scripts,
+        # but in managed deployments we usually want migrations to control the
+        # schema (especially for TimescaleDB hypertables and policies).
+        auto_create_env = os.getenv("PIXSIM_LOG_DB_AUTO_CREATE", "true").lower()
+        auto_create = auto_create_env not in {"0", "false", "no", "off"}
+        if auto_create:
+            try:
+                self.meta.create_all(self.engine, tables=[self.table])
+            except Exception as exc:
+                # Avoid blocking application startup, but emit a one-line hint so
+                # operators can discover that DB ingestion is not actually working.
+                print(f"[DBLogHandler] Failed to ensure log table exists: {exc}", flush=True)
 
         self.queue: Queue = Queue(maxsize=1000)
         self.shutdown_event = Event()
@@ -150,17 +157,10 @@ class DBLogHandler:
 
     def _map_event(self, ev: dict[str, Any]) -> dict[str, Any]:
         """Map structlog event to DB row, collecting unknown keys into 'extra'."""
-        known = {
-            "timestamp", "level", "service", "env", "msg",
-            "request_id", "job_id", "submission_id", "artifact_id", "provider_job_id",
-            "provider_id", "operation_type", "stage", "user_id",
-            "error", "error_type", "duration_ms", "attempt",
-            "created_at",
-        }
         row = {}
         extra = {}
         for k, v in ev.items():
-            if k in known:
+            if k in LOG_ENTRY_COLUMNS:
                 row[k] = v
             else:
                 extra[k] = v

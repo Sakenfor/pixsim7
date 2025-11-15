@@ -12,30 +12,9 @@ from sqlmodel import col
 
 from pixsim7_backend.domain import LogEntry
 from pixsim_logging import get_logger
+from pixsim_logging.schema import LOG_ENTRY_COLUMNS
 
 logger = get_logger()
-
-# Fields that map directly onto LogEntry columns; everything else goes into extra.
-KNOWN_LOG_FIELDS = {
-    "timestamp",
-    "level",
-    "service",
-    "env",
-    "msg",
-    "request_id",
-    "job_id",
-    "submission_id",
-    "artifact_id",
-    "provider_job_id",
-    "provider_id",
-    "operation_type",
-    "stage",
-    "user_id",
-    "error",
-    "error_type",
-    "duration_ms",
-    "attempt",
-}
 
 
 class LogService:
@@ -59,7 +38,9 @@ class LogService:
         extra_data: dict = {}
 
         for key, value in log_data.items():
-            if key in KNOWN_LOG_FIELDS:
+            # Let created_at be controlled by the backend DB default; treat it as extra
+            # even though it is a real column so ingestion clients cannot override it.
+            if key in LOG_ENTRY_COLUMNS and key != "created_at":
                 entry_data[key] = value
             else:
                 extra_data[key] = value
@@ -249,6 +230,11 @@ class LogService:
     async def cleanup_old_logs(self, days: int = 30) -> int:
         """
         Delete logs older than specified days.
+
+        This helper is primarily intended for non-Timescale deployments or
+        ad-hoc maintenance scripts. In a TimescaleDB setup with retention
+        policies configured via migrations, prefer those database-level
+        policies instead of calling this method on a schedule.
 
         Args:
             days: Number of days to retain

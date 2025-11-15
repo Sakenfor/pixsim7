@@ -1,8 +1,9 @@
 import { Badge } from '@pixsim7/ui';
 import { Button } from '@pixsim7/ui';
 import { StatusBadge } from '@pixsim7/ui';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
+import { BACKEND_BASE } from '../../lib/api/client';
 
 export interface MediaCardProps {
   id: number;
@@ -30,9 +31,9 @@ export function MediaCard(props: MediaCardProps) {
     id,
     mediaType,
     providerId,
-  providerAssetId: _providerAssetId,
+    providerAssetId: _providerAssetId,
     thumbUrl,
-  remoteUrl: _remoteUrl,
+    remoteUrl: _remoteUrl,
     width,
     height,
     durationSec,
@@ -43,6 +44,9 @@ export function MediaCard(props: MediaCardProps) {
     status,
   } = props;
 
+  const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
+  const objectUrlRef = useRef<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null as unknown as HTMLVideoElement);
   const hover = useHoverScrubVideo(videoRef as React.RefObject<HTMLVideoElement>);
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -50,6 +54,67 @@ export function MediaCard(props: MediaCardProps) {
 
   const effectiveState = props.uploadState ?? internalUploadState;
   const effectiveNote = props.uploadNote ?? internalUploadNote;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Cleanup any previous object URL
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+
+    if (!thumbUrl) {
+      setThumbSrc(undefined);
+      return;
+    }
+
+    // Public absolute URL
+    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://')) {
+      setThumbSrc(thumbUrl);
+      return;
+    }
+
+    const fullUrl = thumbUrl.startsWith('/')
+      ? `${BACKEND_BASE}${thumbUrl}`
+      : `${BACKEND_BASE}/${thumbUrl}`;
+
+    const token = localStorage.getItem('access_token');
+
+    // If no token, fall back to using the URL directly (may work if endpoint is public)
+    if (!token) {
+      setThumbSrc(fullUrl);
+      return;
+    }
+
+    (async () => {
+      try {
+        const res = await fetch(fullUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          setThumbSrc(fullUrl);
+          return;
+        }
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        objectUrlRef.current = objectUrl;
+        if (!cancelled) {
+          setThumbSrc(objectUrl);
+        } else {
+          URL.revokeObjectURL(objectUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setThumbSrc(fullUrl);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [thumbUrl]);
 
   async function handleUploadClick() {
     if (!props.onUploadClick) return;
@@ -72,11 +137,13 @@ export function MediaCard(props: MediaCardProps) {
   return (
     <div className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition">
       <div ref={hover.containerRef} className="relative aspect-video w-full overflow-hidden bg-neutral-100" onMouseEnter={hover.onMouseEnter} onMouseLeave={hover.onMouseLeave} onMouseMove={hover.onMouseMove}>
-        {mediaType === 'video' ? (
-          <video ref={videoRef} src={thumbUrl} className="h-full w-full object-cover" preload="metadata" muted playsInline />
-        ) : (
-          // eslint-disable-next-line jsx-a11y/img-redundant-alt
-          <img src={thumbUrl} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
+        {thumbSrc && (
+          mediaType === 'video' ? (
+            <video ref={videoRef} src={thumbSrc} className="h-full w-full object-cover" preload="metadata" muted playsInline />
+          ) : (
+            // eslint-disable-next-line jsx-a11y/img-redundant-alt
+            <img src={thumbSrc} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
+          )
         )}
         {props.onUploadClick && (
           <div className="absolute right-1 top-1">

@@ -303,12 +303,15 @@ Optimized for these query patterns:
 
 ### Cleanup
 
-Use the cleanup endpoint or service method to delete old logs:
+In non-Timescale or simple PostgreSQL deployments, you can use the cleanup
+service method to delete old logs explicitly. In a TimescaleDB setup with
+retention policies configured via migrations, you normally do **not** need
+an additional scheduled cleanup job – Timescale handles it for you.
 
 ```python
 from pixsim7_backend.services.log_service import LogService
 
-# Delete logs older than 30 days
+# Delete logs older than 30 days (manual / non-Timescale cleanup)
 deleted = await log_service.cleanup_old_logs(days=30)
 ```
 

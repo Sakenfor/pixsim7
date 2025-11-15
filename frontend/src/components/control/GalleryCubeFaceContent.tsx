@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAssets, type AssetSummary } from '../../hooks/useAssets';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
+import { BACKEND_BASE } from '../../lib/api/client';
 
 interface GalleryCubeFaceContentProps {
   cubeId: string;
@@ -38,11 +39,35 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
       );
     }
 
+    const thumbSrc = (() => {
+      const url = asset.thumbnail_url;
+      if (!url) return undefined;
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      if (url.startsWith('/')) return `${BACKEND_BASE}${url}`;
+      return `${BACKEND_BASE}/${url}`;
+    })();
+
+    if (!thumbSrc) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-1">
+          <div className="text-2xl">
+            {face === 'front' && 'dY-��,?'}
+            {face === 'back' && 'dYZ"'}
+            {face === 'left' && '�-?�,?'}
+            {face === 'right' && '�-�,?'}
+            {face === 'top' && '��+�,?'}
+            {face === 'bottom' && 'dY"�'}
+          </div>
+          <div className="text-[8px] text-white/40">{face}</div>
+        </div>
+      );
+    }
+
     return (
       <div className="relative w-full h-full overflow-hidden">
         {/* Thumbnail image */}
         <img
-          src={asset.thumbnail_url}
+          src={thumbSrc}
           alt={`Asset ${asset.id}`}
           className="absolute inset-0 w-full h-full object-cover opacity-80"
         />
