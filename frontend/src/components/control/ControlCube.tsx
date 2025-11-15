@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
 import { clsx } from 'clsx';
 
@@ -54,8 +54,66 @@ export function ControlCube({
   onFaceClick,
 }: ControlCubeProps) {
   const cubeRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const cube = useControlCubeStore((s) => s.cubes[cubeId]);
   const updateCube = useControlCubeStore((s) => s.updateCube);
+  const rotateCubeFace = useControlCubeStore((s) => s.rotateCubeFace);
+
+  const [hoverTilt, setHoverTilt] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+  const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
+
+  // Handle mouse move for hover tilt effect
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    // Calculate mouse position relative to cube center (-1 to 1)
+    const x = (e.clientX - centerX) / (rect.width / 2);
+    const y = (e.clientY - centerY) / (rect.height / 2);
+
+    // Determine which face is being hovered based on position
+    const absX = Math.abs(x);
+    const absY = Math.abs(y);
+
+    let face: CubeFace;
+    if (absX > absY) {
+      face = x > 0 ? 'right' : 'left';
+    } else {
+      face = y > 0 ? 'bottom' : 'top';
+    }
+
+    setHoveredFace(face);
+
+    // Apply subtle tilt (max 15 degrees)
+    const tiltAmount = 15;
+    setHoverTilt({
+      x: -y * tiltAmount, // Inverted for natural feel
+      y: x * tiltAmount,
+    });
+  };
+
+  const handleMouseEnter = () => {
+    setIsHovering(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovering(false);
+    setHoverTilt({ x: 0, y: 0 });
+    setHoveredFace(null);
+  };
+
+  // Click to rotate to hovered face
+  const handleCubeClick = (e: React.MouseEvent) => {
+    if (hoveredFace) {
+      e.stopPropagation();
+      rotateCubeFace(cubeId, hoveredFace);
+      onFaceClick?.(hoveredFace);
+    }
+  };
 
   useEffect(() => {
     if (!cube) return;
@@ -63,13 +121,17 @@ export function ControlCube({
     // Animate rotation changes
     const cubeEl = cubeRef.current;
     if (cubeEl) {
+      const baseRotation = cube.rotation;
+      const tiltX = isHovering ? hoverTilt.x : 0;
+      const tiltY = isHovering ? hoverTilt.y : 0;
+
       cubeEl.style.transform = `
-        rotateX(${cube.rotation.x}deg)
-        rotateY(${cube.rotation.y}deg)
-        rotateZ(${cube.rotation.z}deg)
+        rotateX(${baseRotation.x + tiltX}deg)
+        rotateY(${baseRotation.y + tiltY}deg)
+        rotateZ(${baseRotation.z}deg)
       `;
     }
-  }, [cube?.rotation]);
+  }, [cube?.rotation, hoverTilt, isHovering]);
 
   if (!cube) return null;
 
@@ -115,9 +177,11 @@ export function ControlCube({
 
   return (
     <div
+      ref={containerRef}
       className={clsx(
         'relative transition-all duration-300',
         isDocked && 'opacity-80',
+        isHovering && 'cursor-pointer',
         className
       )}
       style={{
@@ -126,6 +190,10 @@ export function ControlCube({
         perspective: '1000px',
         transform: `scale(${cubeScale})`,
       }}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleCubeClick}
     >
       <div
         ref={cubeRef}
