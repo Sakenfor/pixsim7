@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
+import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
+import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { clsx } from 'clsx';
 
 export interface CubeFaceContent {
@@ -26,6 +27,7 @@ const CUBE_TYPE_COLORS: Record<CubeType, string> = {
   preset: 'bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-400/50',
   panel: 'bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border-cyan-400/50',
   settings: 'bg-gradient-to-br from-gray-500/20 to-slate-500/20 border-gray-400/50',
+  gallery: 'bg-gradient-to-br from-pink-500/20 to-violet-500/20 border-pink-400/50',
 };
 
 const CUBE_TYPE_GLOW: Record<CubeType, string> = {
@@ -34,6 +36,7 @@ const CUBE_TYPE_GLOW: Record<CubeType, string> = {
   preset: 'shadow-orange-500/50',
   panel: 'shadow-cyan-500/50',
   settings: 'shadow-gray-500/50',
+  gallery: 'shadow-pink-500/50',
 };
 
 const DEFAULT_FACE_CONTENT: CubeFaceContent = {
@@ -53,8 +56,150 @@ export function ControlCube({
   onFaceClick,
 }: ControlCubeProps) {
   const cubeRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const cube = useControlCubeStore((s) => s.cubes[cubeId]);
   const updateCube = useControlCubeStore((s) => s.updateCube);
+  const rotateCubeFace = useControlCubeStore((s) => s.rotateCubeFace);
+
+  const [hoverTilt, setHoverTilt] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+  const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
+  const [showExpansion, setShowExpansion] = useState(false);
+  const hoverTimeoutRef = useRef<number | null>(null);
+
+  // Handle mouse move for hover tilt effect
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current || !cube) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    // Calculate mouse position relative to cube center (-1 to 1)
+    const x = (e.clientX - centerX) / (rect.width / 2);
+    const y = (e.clientY - centerY) / (rect.height / 2);
+
+    // Calculate distance from center (for front/back detection)
+    const distance = Math.sqrt(x * x + y * y);
+
+    // Determine which face is being hovered based on position and current rotation
+    const absX = Math.abs(x);
+    const absY = Math.abs(y);
+
+    // Threshold for considering center (front/back faces)
+    const centerThreshold = 0.3;
+
+    let face: CubeFace;
+
+    // If near center, determine front vs back based on rotation
+    if (distance < centerThreshold) {
+      // Near center - check rotation to determine if front or back is visible
+      const rotY = cube.rotation.y % 360;
+      const rotX = cube.rotation.x % 360;
+
+      // Normalize to -180 to 180
+      const normRotY = ((rotY + 180) % 360) - 180;
+      const normRotX = ((rotX + 180) % 360) - 180;
+
+      // If rotated significantly, back face is more visible
+      if (Math.abs(normRotY) > 90 && Math.abs(normRotX) < 90) {
+        face = 'back';
+      } else if (Math.abs(normRotX) > 90 && Math.abs(normRotY) < 90) {
+        face = 'back';
+      } else {
+        face = 'front';
+      }
+    }
+    // Edges - detect which edge face
+    else if (absX > absY) {
+      // Horizontal edge
+      face = x > 0 ? 'right' : 'left';
+    } else {
+      // Vertical edge
+      face = y > 0 ? 'bottom' : 'top';
+    }
+
+    setHoveredFace(face);
+
+    // Apply subtle tilt based on which face is hovered
+    const tiltAmount = 15;
+
+    // Adjust tilt based on face being hovered
+    let tiltX = 0;
+    let tiltY = 0;
+
+    switch (face) {
+      case 'front':
+        // Slight tilt based on mouse position within center
+        tiltX = -y * tiltAmount * 0.5;
+        tiltY = x * tiltAmount * 0.5;
+        break;
+      case 'back':
+        // Opposite tilt
+        tiltX = y * tiltAmount * 0.5;
+        tiltY = -x * tiltAmount * 0.5;
+        break;
+      case 'left':
+        tiltY = -tiltAmount;
+        tiltX = -y * tiltAmount * 0.3;
+        break;
+      case 'right':
+        tiltY = tiltAmount;
+        tiltX = -y * tiltAmount * 0.3;
+        break;
+      case 'top':
+        tiltX = -tiltAmount;
+        tiltY = x * tiltAmount * 0.3;
+        break;
+      case 'bottom':
+        tiltX = tiltAmount;
+        tiltY = x * tiltAmount * 0.3;
+        break;
+    }
+
+    setHoverTilt({ x: tiltX, y: tiltY });
+  };
+
+  const handleMouseEnter = () => {
+    setIsHovering(true);
+
+    // Check if expansion provider exists
+    const providerId = cube?.minimizedPanel?.panelId || cube?.type;
+    if (!providerId) return;
+
+    const provider = cubeExpansionRegistry.get(providerId);
+    if (!provider || !provider.showOnHover) return;
+
+    // Set timeout to show expansion after delay
+    const delay = provider.hoverDelay || 300;
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      setShowExpansion(true);
+    }, delay);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovering(false);
+    setHoverTilt({ x: 0, y: 0 });
+    setHoveredFace(null);
+
+    // Cancel expansion timeout
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+
+    // Hide expansion
+    setShowExpansion(false);
+  };
+
+  // Click to rotate to hovered face
+  const handleCubeClick = (e: React.MouseEvent) => {
+    if (hoveredFace) {
+      e.stopPropagation();
+      rotateCubeFace(cubeId, hoveredFace);
+      onFaceClick?.(hoveredFace);
+    }
+  };
 
   useEffect(() => {
     if (!cube) return;
@@ -62,13 +207,26 @@ export function ControlCube({
     // Animate rotation changes
     const cubeEl = cubeRef.current;
     if (cubeEl) {
+      const baseRotation = cube.rotation;
+      const tiltX = isHovering ? hoverTilt.x : 0;
+      const tiltY = isHovering ? hoverTilt.y : 0;
+
       cubeEl.style.transform = `
-        rotateX(${cube.rotation.x}deg)
-        rotateY(${cube.rotation.y}deg)
-        rotateZ(${cube.rotation.z}deg)
+        rotateX(${baseRotation.x + tiltX}deg)
+        rotateY(${baseRotation.y + tiltY}deg)
+        rotateZ(${baseRotation.z}deg)
       `;
     }
-  }, [cube?.rotation]);
+  }, [cube?.rotation, hoverTilt, isHovering]);
+
+  // Cleanup hover timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (!cube) return null;
 
@@ -114,9 +272,11 @@ export function ControlCube({
 
   return (
     <div
+      ref={containerRef}
       className={clsx(
         'relative transition-all duration-300',
         isDocked && 'opacity-80',
+        isHovering && 'cursor-pointer',
         className
       )}
       style={{
@@ -125,6 +285,10 @@ export function ControlCube({
         perspective: '1000px',
         transform: `scale(${cubeScale})`,
       }}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onClick={handleCubeClick}
     >
       <div
         ref={cubeRef}
@@ -185,6 +349,15 @@ export function ControlCube({
         <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-purple-300 whitespace-nowrap">
           🔗 Combined
         </div>
+      )}
+
+      {/* Expansion overlay */}
+      {showExpansion && containerRef.current && (
+        <CubeExpansionOverlay
+          cube={cube}
+          cubeElement={containerRef.current}
+          onClose={() => setShowExpansion(false)}
+        />
       )}
     </div>
   );
