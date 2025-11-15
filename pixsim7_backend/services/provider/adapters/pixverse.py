@@ -752,7 +752,13 @@ class PixverseProvider(Provider):
             raise ProviderError(f"Pixverse OpenAPI upload missing media ID: {payload}")
 
         result: dict[str, str] = {"id": str(media_id)}
-        if url := resp_data.get("url") or resp_data.get("media_url") or resp_data.get("download_url"):
+        # Pixverse OpenAPI currently returns `img_url`; also check generic keys for forward-compat.
+        if url := (
+            resp_data.get("img_url")
+            or resp_data.get("url")
+            or resp_data.get("media_url")
+            or resp_data.get("download_url")
+        ):
             result["url"] = url
 
         return result
