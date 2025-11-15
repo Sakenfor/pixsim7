@@ -91,3 +91,4 @@ kill-backend-now.bat
 kill_backend.bat
 stop-backend-force.bat
 stop-backend.bat
+data/launcher/*.pid

@@ -82,6 +82,12 @@ try:
 except Exception:
     from health_worker import HealthWorker
 
+# Import centralized theme
+try:
+    from . import theme
+except Exception:
+    import theme
+
 
 # Ports and Env editor dialogs moved to dialogs/* modules
 
@@ -110,55 +116,14 @@ class LauncherWindow(QWidget):
         super().__init__()
         self.setWindowTitle('PixSim7 Launcher')
 
-        # Set dark theme styling
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #2b2b2b;
-                color: #e0e0e0;
-            }
-            QPushButton {
-                background-color: #3d3d3d;
-                color: #e0e0e0;
-                border: 1px solid #555;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-                min-height: 28px;
-            }
-            QPushButton:hover {
-                background-color: #4d4d4d;
-                border: 1px solid #666;
-            }
-            QPushButton:pressed {
-                background-color: #2d2d2d;
-            }
-            QPushButton:disabled {
-                background-color: #333;
-                color: #666;
-                border: 1px solid #444;
-            }
-            QLineEdit {
-                border: 1px solid #555;
-                border-radius: 4px;
-                padding: 6px;
-                background-color: #3d3d3d;
-                color: #e0e0e0;
-            }
-            QLineEdit:focus {
-                border: 1px solid #5a9fd4;
-            }
-            QLabel {
-                color: #e0e0e0;
-                background-color: transparent;
-            }
-            QScrollArea {
-                background-color: #2b2b2b;
-                border: none;
-            }
-            QFrame {
-                background-color: transparent;
-            }
-        """)
+        # Set dark theme styling using centralized theme
+        combined_styles = (
+            theme.get_base_stylesheet() +
+            theme.get_button_stylesheet() +
+            theme.get_input_stylesheet() +
+            theme.get_checkbox_stylesheet()
+        )
+        self.setStyleSheet(combined_styles)
 
         # Load UI state
         self.ui_state = load_ui_state()
@@ -212,7 +177,7 @@ class LauncherWindow(QWidget):
         # Left panel: service cards & controls
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
         splitter.addWidget(left)
 
         # Header
@@ -225,24 +190,9 @@ class LauncherWindow(QWidget):
         header_row.addWidget(header)
         header_row.addStretch()
         self.btn_settings = QPushButton("⚙")
-        self.btn_settings.setFixedSize(34, 34)
+        self.btn_settings.setFixedSize(theme.ICON_BUTTON_MD, theme.ICON_BUTTON_MD)
         self.btn_settings.setToolTip("Launcher Settings")
-        self.btn_settings.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 17px;
-                font-size: 16px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-        """)
+        self.btn_settings.setStyleSheet(theme.get_settings_button_stylesheet())
         header_row.addWidget(self.btn_settings)
         left_layout.addLayout(header_row)
 
@@ -296,55 +246,18 @@ class LauncherWindow(QWidget):
 
         # Status bar with dark theme
         self.status_label = QLabel('Ports: loading...')
-        self.status_label.setStyleSheet("""
-            QLabel {
-                background-color: #1e1e1e;
-                border: 1px solid #555;
-                border-radius: 4px;
-                padding: 6px 10px;
-                font-size: 9pt;
-                font-weight: 500;
-                color: #a0a0a0;
-            }
-        """)
+        self.status_label.setStyleSheet(theme.get_status_label_stylesheet())
         left_layout.addWidget(self.status_label)
 
         # Right panel: main tab widget for all tools
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(8, 8, 8, 8)
+        right_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
         splitter.addWidget(right)
 
         # Create main tab widget with dark theme
         self.main_tabs = QTabWidget()
-        self.main_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #555;
-                border-radius: 4px;
-                background: #2b2b2b;
-            }
-            QTabBar::tab {
-                background: #3d3d3d;
-                color: #e0e0e0;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-weight: 500;
-                border: 1px solid #555;
-                border-bottom: none;
-            }
-            QTabBar::tab:selected {
-                background: #5a9fd4;
-                color: #ffffff;
-            }
-            QTabBar::tab:hover {
-                background: #4d4d4d;
-            }
-            QTabBar::tab:selected:hover {
-                background: #4a8fc4;
-            }
-        """)
+        self.main_tabs.setStyleSheet(theme.get_tab_widget_stylesheet())
         right_layout.addWidget(self.main_tabs)
 
         # === TAB 1: CONSOLE LOGS ===
@@ -390,23 +303,6 @@ class LauncherWindow(QWidget):
         # Quick navigation into DB logs for the same service
         self.btn_open_db_logs = QPushButton("Open DB Logs ▶")
         self.btn_open_db_logs.setToolTip("Switch to Database Logs tab for this service")
-        self.btn_open_db_logs.setStyleSheet("""
-            QPushButton {
-                background-color: #555;
-                color: #e0e0e0;
-                border: 1px solid #666;
-                border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 9pt;
-            }
-            QPushButton:hover {
-                background-color: #666;
-                border: 1px solid #777;
-            }
-            QPushButton:pressed {
-                background-color: #444;
-            }
-        """)
         console_header_layout.addWidget(self.btn_open_db_logs)
 
         console_header_layout.addStretch()
@@ -422,36 +318,15 @@ class LauncherWindow(QWidget):
         for lvl in ["All", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
             self.console_level_combo.addItem(lvl)
         self.console_level_combo.setCurrentText("All")
-        self.console_level_combo.setFixedWidth(80)
+        self.console_level_combo.setFixedWidth(90)
         self.console_level_combo.setToolTip("Filter by log level")
-        self.console_level_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #3d3d3d;
-                color: #e0e0e0;
-                padding: 3px 6px;
-                border: 1px solid #555;
-                border-radius: 4px;
-                font-size: 9pt;
-            }
-            QComboBox:hover { border: 1px solid #5a9fd4; }
-        """)
+        self.console_level_combo.setStyleSheet(theme.get_combobox_stylesheet())
         self.console_level_combo.currentTextChanged.connect(lambda _: self._on_console_filter_changed())
         toolbar.addWidget(self.console_level_combo)
 
         self.console_search_input = QLineEdit()
         self.console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")
-        self.console_search_input.setFixedWidth(200)
-        self.console_search_input.setStyleSheet("""
-            QLineEdit {
-                background-color: #3d3d3d;
-                color: #e0e0e0;
-                border: 1px solid #555;
-                border-radius: 4px;
-                padding: 3px 8px;
-                font-size: 9pt;
-            }
-            QLineEdit:focus { border: 1px solid #5a9fd4; }
-        """)
+        self.console_search_input.setFixedWidth(180)
         self.console_search_input.textChanged.connect(lambda _: self._on_console_filter_changed())
         toolbar.addWidget(self.console_search_input)
 
@@ -464,19 +339,18 @@ class LauncherWindow(QWidget):
         # Action buttons (compact)
         self.btn_refresh_logs = QPushButton('🔄')
         self.btn_refresh_logs.setToolTip("Refresh console logs (F5)")
-        self.btn_refresh_logs.setFixedSize(32, 28)
+        self.btn_refresh_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
         toolbar.addWidget(self.btn_refresh_logs)
-        
+
         self.btn_clear_logs = QPushButton('🗑')
         self.btn_clear_logs.setToolTip("Clear console logs (Ctrl+L)")
-        self.btn_clear_logs.setFixedSize(32, 28)
+        self.btn_clear_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
         toolbar.addWidget(self.btn_clear_logs)
         
         self.autoscroll_checkbox = QCheckBox('Auto-scroll')
         self.autoscroll_checkbox.setChecked(True)
         self.autoscroll_checkbox.setToolTip("Automatically scroll to bottom")
         self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
-        self.autoscroll_checkbox.setStyleSheet("font-size: 9pt;")
         toolbar.addWidget(self.autoscroll_checkbox)
 
         toolbar.addStretch()
@@ -487,16 +361,7 @@ class LauncherWindow(QWidget):
         self.log_view = QTextBrowser()
         self.log_view.setReadOnly(True)
         self.log_view.setOpenExternalLinks(True)  # Open URLs in browser
-        self.log_view.setStyleSheet("""
-            QTextBrowser {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 9pt;
-                border: 1px solid #555;
-                border-radius: 4px;
-            }
-        """)
+        self.log_view.setStyleSheet(theme.get_text_browser_stylesheet())
         console_layout.addWidget(self.log_view)
 
         # Add keyboard shortcuts for console
@@ -513,7 +378,6 @@ class LauncherWindow(QWidget):
 
     def _create_db_logs_tab(self):
         """Create the database logs tab"""
-        from .config import read_env_ports
         p = read_env_ports()
         self.db_log_viewer = DatabaseLogViewer(api_url=f"http://localhost:{p.backend}")
         return self.db_log_viewer
@@ -522,78 +386,64 @@ class LauncherWindow(QWidget):
         """Create the tools tab with organized sections"""
         tools_tab = QWidget()
         tools_layout = QVBoxLayout(tools_tab)
-        tools_layout.setContentsMargins(16, 16, 16, 16)
-        tools_layout.setSpacing(20)
+        tools_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
+        tools_layout.setSpacing(theme.SPACING_LG)
 
         # Database Tools Section
         db_group = QFrame()
         db_group.setFrameShape(QFrame.Shape.StyledPanel)
-        db_group.setStyleSheet("""
-            QFrame {
-                background-color: #333;
-                border: 1px solid #555;
-                border-radius: 8px;
-                padding: 12px;
-            }
-        """)
+        db_group.setStyleSheet(theme.get_group_frame_stylesheet())
         db_layout = QVBoxLayout(db_group)
         
         db_title = QLabel("🗄 Database Tools")
-        db_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        db_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
         db_layout.addWidget(db_title)
-        
+
         self.btn_migrations = QPushButton('🗃 Migrations')
         self.btn_migrations.setToolTip("Database migration manager")
-        self.btn_migrations.setMinimumHeight(40)
+        self.btn_migrations.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_migrations.clicked.connect(lambda: show_migrations_dialog(self))
         db_layout.addWidget(self.btn_migrations)
-        
+
         self.btn_db_browser = QPushButton('📊 Database Browser')
         self.btn_db_browser.setToolTip("Browse accounts, copy passwords, export to CSV")
-        self.btn_db_browser.setMinimumHeight(40)
+        self.btn_db_browser.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_db_browser.clicked.connect(self._open_db_browser)
         db_layout.addWidget(self.btn_db_browser)
-        
+
         self.btn_import_accounts = QPushButton('📥 Import Accounts from PixSim6')
         self.btn_import_accounts.setToolTip("Import provider accounts from PixSim6 database")
-        self.btn_import_accounts.setMinimumHeight(40)
+        self.btn_import_accounts.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_import_accounts.clicked.connect(self._open_import_accounts_dialog)
         db_layout.addWidget(self.btn_import_accounts)
         
         tools_layout.addWidget(db_group)
 
-        # Development Tools Section  
+        # Development Tools Section
         dev_group = QFrame()
         dev_group.setFrameShape(QFrame.Shape.StyledPanel)
-        dev_group.setStyleSheet("""
-            QFrame {
-                background-color: #333;
-                border: 1px solid #555;
-                border-radius: 8px;
-                padding: 12px;
-            }
-        """)
+        dev_group.setStyleSheet(theme.get_group_frame_stylesheet())
         dev_layout = QVBoxLayout(dev_group)
-        
+
         dev_title = QLabel("🔀 Development Tools")
-        dev_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        dev_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
         dev_layout.addWidget(dev_title)
-        
+
         self.btn_git_workflow = QPushButton('⚡ Git Workflow')
         self.btn_git_workflow.setToolTip("Simple git operations: commit, push, pull, merge, cleanup")
-        self.btn_git_workflow.setMinimumHeight(40)
+        self.btn_git_workflow.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_git_workflow.clicked.connect(lambda: show_simple_git_dialog(self))
         dev_layout.addWidget(self.btn_git_workflow)
 
         self.btn_git_tools = QPushButton('🔀 Advanced Git Tools')
         self.btn_git_tools.setToolTip("Structured commit helper (grouped commits)")
-        self.btn_git_tools.setMinimumHeight(40)
+        self.btn_git_tools.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
         dev_layout.addWidget(self.btn_git_tools)
-        
+
         self.btn_log_management = QPushButton('📋 Log Management')
         self.btn_log_management.setToolTip("Manage, archive, and export console logs")
-        self.btn_log_management.setMinimumHeight(40)
+        self.btn_log_management.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_log_management.clicked.connect(lambda: show_log_management_dialog(self, self.processes))
         dev_layout.addWidget(self.btn_log_management)
         
@@ -606,35 +456,28 @@ class LauncherWindow(QWidget):
         """Create the settings tab"""
         settings_tab = QWidget()
         settings_layout = QVBoxLayout(settings_tab)
-        settings_layout.setContentsMargins(16, 16, 16, 16)
-        settings_layout.setSpacing(20)
+        settings_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
+        settings_layout.setSpacing(theme.SPACING_LG)
 
         # Configuration Section
         config_group = QFrame()
         config_group.setFrameShape(QFrame.Shape.StyledPanel)
-        config_group.setStyleSheet("""
-            QFrame {
-                background-color: #333;
-                border: 1px solid #555;
-                border-radius: 8px;
-                padding: 12px;
-            }
-        """)
+        config_group.setStyleSheet(theme.get_group_frame_stylesheet())
         config_layout = QVBoxLayout(config_group)
-        
+
         config_title = QLabel("⚙ Configuration")
-        config_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        config_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
         config_layout.addWidget(config_title)
-        
+
         self.btn_ports = QPushButton('🔌 Edit Ports')
         self.btn_ports.setToolTip("Edit service ports")
-        self.btn_ports.setMinimumHeight(40)
+        self.btn_ports.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_ports.clicked.connect(self.edit_ports)
         config_layout.addWidget(self.btn_ports)
-        
+
         self.btn_env = QPushButton('🔧 Edit Environment Variables')
         self.btn_env.setToolTip("Edit environment variables")
-        self.btn_env.setMinimumHeight(40)
+        self.btn_env.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_env.clicked.connect(self.edit_env)
         config_layout.addWidget(self.btn_env)
         
@@ -643,23 +486,16 @@ class LauncherWindow(QWidget):
         # Application Settings Section
         app_group = QFrame()
         app_group.setFrameShape(QFrame.Shape.StyledPanel)
-        app_group.setStyleSheet("""
-            QFrame {
-                background-color: #333;
-                border: 1px solid #555;
-                border-radius: 8px;
-                padding: 12px;
-            }
-        """)
+        app_group.setStyleSheet(theme.get_group_frame_stylesheet())
         app_layout = QVBoxLayout(app_group)
-        
+
         app_title = QLabel("🎨 Application Settings")
-        app_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
+        app_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
         app_layout.addWidget(app_title)
-        
+
         self.btn_settings = QPushButton('⚙ General Settings')
         self.btn_settings.setToolTip("Configure launcher preferences")
-        self.btn_settings.setMinimumHeight(40)
+        self.btn_settings.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
         self.btn_settings.clicked.connect(self._open_settings)
         app_layout.addWidget(self.btn_settings)
         
