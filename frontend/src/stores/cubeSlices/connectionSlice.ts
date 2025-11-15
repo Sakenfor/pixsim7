@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { CubeConnection, CubeMessage, CubeFace } from './types';
+import { generatePrefixedUUID } from '../../lib/uuid';
 
 export interface ConnectionSlice {
   connections: Record<string, CubeConnection>;
@@ -23,9 +24,6 @@ export interface ConnectionSlice {
   cancelLinking: () => void;
 }
 
-let connectionIdCounter = 0;
-let messageIdCounter = 0;
-
 export const createConnectionSlice: StateCreator<ConnectionSlice, [], [], ConnectionSlice> = (set, get) => ({
   connections: {},
   messages: [],
@@ -33,7 +31,7 @@ export const createConnectionSlice: StateCreator<ConnectionSlice, [], [], Connec
   linkingFromCube: undefined,
 
   addConnection: (fromCubeId, fromFace, toCubeId, toFace, type) => {
-    const connectionId = `conn-${connectionIdCounter++}`;
+    const connectionId = generatePrefixedUUID('conn');
     const connection: CubeConnection = {
       id: connectionId,
       fromCubeId,
@@ -74,7 +72,7 @@ export const createConnectionSlice: StateCreator<ConnectionSlice, [], [], Connec
 
   sendMessage: (fromCubeId, toCubeId, data, type) => {
     const message: CubeMessage = {
-      id: `msg-${messageIdCounter++}`,
+      id: generatePrefixedUUID('msg'),
       fromCubeId,
       toCubeId,
       timestamp: Date.now(),
@@ -134,17 +132,7 @@ export const createConnectionSlice: StateCreator<ConnectionSlice, [], [], Connec
   },
 });
 
-export const syncConnectionCounter = (connectionIds: string[]) => {
-  const getNextNumericSuffix = (ids: string[]) => {
-    return ids.reduce((max, id) => {
-      const match = id.match(/-(\d+)$/);
-      if (!match) return max;
-      return Math.max(max, Number.parseInt(match[1], 10));
-    }, -1);
-  };
-
-  const connectionSuffix = getNextNumericSuffix(connectionIds);
-  if (connectionSuffix >= connectionIdCounter) {
-    connectionIdCounter = connectionSuffix + 1;
-  }
+// No longer needed with UUID-based IDs
+export const syncConnectionCounter = (_connectionIds: string[]) => {
+  // UUIDs don't need counter synchronization
 };

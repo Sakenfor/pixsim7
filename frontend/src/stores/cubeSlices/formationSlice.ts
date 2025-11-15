@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type { Formation, SavedPosition, CubePosition, CubeFace } from './types';
 import { createFormationTemplate } from '../../lib/formationTemplates';
+import { generatePrefixedUUID } from '../../lib/uuid';
 
 export interface FormationSlice {
   formations: Record<string, Formation>;
@@ -26,14 +27,12 @@ export interface FormationSlice {
   getPinnedAsset: (cubeId: string, face: CubeFace) => string | undefined;
 }
 
-let formationIdCounter = 0;
-
 export const createFormationSlice: StateCreator<FormationSlice, [], [], FormationSlice> = (set, get: any) => ({
   formations: {},
   activeFormationId: undefined,
 
   saveFormation: (name, cubeIds, type = 'custom') => {
-    const formationId = `formation-${formationIdCounter++}`;
+    const formationId = generatePrefixedUUID('formation');
     const cubePositions: Record<string, CubePosition> = {};
     const cubeRotations: Record<string, any> = {};
 
@@ -202,17 +201,7 @@ export const createFormationSlice: StateCreator<FormationSlice, [], [], Formatio
   },
 });
 
-export const syncFormationCounter = (formationIds: string[]) => {
-  const getNextNumericSuffix = (ids: string[]) => {
-    return ids.reduce((max, id) => {
-      const match = id.match(/-(\d+)$/);
-      if (!match) return max;
-      return Math.max(max, Number.parseInt(match[1], 10));
-    }, -1);
-  };
-
-  const formationSuffix = getNextNumericSuffix(formationIds);
-  if (formationSuffix >= formationIdCounter) {
-    formationIdCounter = formationSuffix + 1;
-  }
+// No longer needed with UUID-based IDs
+export const syncFormationCounter = (_formationIds: string[]) => {
+  // UUIDs don't need counter synchronization
 };

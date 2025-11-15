@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type { CubeState, CubeType, CubePosition, CubeRotation, CubeMode, CubeFace } from './types';
 import { FACE_ROTATIONS } from './types';
+import { generatePrefixedUUID } from '../../lib/uuid';
 
 export interface CubeManagementSlice {
   cubes: Record<string, CubeState>;
@@ -40,8 +41,6 @@ export interface CubeManagementSlice {
   reset: () => void;
 }
 
-let cubeIdCounter = 0;
-
 export const createCubeManagementSlice: StateCreator<CubeManagementSlice> = (set, get) => ({
   cubes: {},
   activeCubeId: undefined,
@@ -50,7 +49,7 @@ export const createCubeManagementSlice: StateCreator<CubeManagementSlice> = (set
   hydrated: false,
 
   addCube: (type, position = { x: window.innerWidth / 2 - 50, y: window.innerHeight / 2 - 50 }) => {
-    const id = `cube-${type}-${cubeIdCounter++}`;
+    const id = generatePrefixedUUID(`cube-${type}`);
     const cube: CubeState = {
       id,
       type,
@@ -193,17 +192,7 @@ export const createCubeManagementSlice: StateCreator<CubeManagementSlice> = (set
   },
 });
 
-export const syncCubeCounter = (cubeIds: string[]) => {
-  const getNextNumericSuffix = (ids: string[]) => {
-    return ids.reduce((max, id) => {
-      const match = id.match(/-(\d+)$/);
-      if (!match) return max;
-      return Math.max(max, Number.parseInt(match[1], 10));
-    }, -1);
-  };
-
-  const cubeSuffix = getNextNumericSuffix(cubeIds);
-  if (cubeSuffix >= cubeIdCounter) {
-    cubeIdCounter = cubeSuffix + 1;
-  }
+// No longer needed with UUID-based IDs
+export const syncCubeCounter = (_cubeIds: string[]) => {
+  // UUIDs don't need counter synchronization
 };
