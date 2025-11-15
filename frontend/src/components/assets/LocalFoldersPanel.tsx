@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocalFolders } from '../../stores/localFoldersStore';
 import { useProviders } from '../../hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
+import { MediaViewerCube } from './MediaViewerCube';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
 async function fileToObjectURL(fh: FileSystemFileHandle): Promise<string | undefined> {
@@ -18,6 +19,7 @@ export function LocalFoldersPanel() {
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
   const [selectedFolder, setSelectedFolder] = useState<string | undefined>(undefined);
+  const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
 
   useEffect(() => { loadPersisted(); }, []);
 
@@ -71,6 +73,29 @@ export function LocalFoldersPanel() {
     const videos = assetList.filter(a => a.kind === 'video').length;
     return { images, videos, total: assetList.length };
   }, [assetList]);
+
+  const handleOpenViewer = async (asset: LocalAsset) => {
+    // Ensure preview is loaded
+    await preview(asset);
+    setViewerAsset(asset);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerAsset(null);
+  };
+
+  const handleNavigateViewer = (direction: 'prev' | 'next') => {
+    if (!viewerAsset) return;
+    const currentIndex = assetList.findIndex(a => a.key === viewerAsset.key);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex >= 0 && newIndex < assetList.length) {
+      const newAsset = assetList[newIndex];
+      preview(newAsset);
+      setViewerAsset(newAsset);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -247,6 +272,7 @@ export function LocalFoldersPanel() {
             <TreeFolderView
               assets={assetList}
               folderId={selectedFolder}
+              onFileClick={handleOpenViewer}
               onPreview={preview}
               previews={previews}
               uploadStatus={uploadStatus}
@@ -260,7 +286,10 @@ export function LocalFoldersPanel() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {assetList.map(a => (
                 <div key={a.key} className="border rounded-lg overflow-hidden bg-white dark:bg-neutral-900 relative group hover:shadow-lg transition-shadow">
-                  <div className="aspect-video bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+                  <div
+                    className="aspect-video bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center cursor-pointer"
+                    onClick={() => handleOpenViewer(a)}
+                  >
                     {a.kind === 'image' && previews[a.key] && (
                       <img src={previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
                     )}
@@ -268,17 +297,17 @@ export function LocalFoldersPanel() {
                       <video src={previews[a.key]} className="w-full h-full object-cover" muted autoPlay loop />
                     )}
                     {!previews[a.key] && (
-                      <button
-                        className="text-4xl opacity-50 group-hover:opacity-100 transition-opacity"
-                        onClick={() => preview(a.key)}
-                      >
+                      <div className="text-4xl opacity-50 group-hover:opacity-100 transition-opacity">
                         {a.kind === 'image' ? '🖼️' : '🎬'}
-                      </button>
+                      </div>
                     )}
                   </div>
                   <div className="absolute top-2 right-2">
                     <button
-                      onClick={() => uploadOne(a.key)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        uploadOne(a.key);
+                      }}
                       disabled={!providerId || uploadStatus[a.key] === 'uploading'}
                       className={`px-2 py-1 text-[10px] rounded-md shadow-lg font-medium transition-all ${
                         uploadStatus[a.key] === 'success'
@@ -343,7 +372,10 @@ export function LocalFoldersPanel() {
                     {assetList.map(a => (
                       <tr key={a.key} className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
                         <td className="p-3">
-                          <div className="w-16 h-12 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden">
+                          <div
+                            className="w-16 h-12 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden cursor-pointer"
+                            onClick={() => handleOpenViewer(a)}
+                          >
                             {previews[a.key] ? (
                               a.kind === 'image' ? (
                                 <img src={previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
@@ -351,16 +383,15 @@ export function LocalFoldersPanel() {
                                 <video src={previews[a.key]} className="w-full h-full object-cover" muted />
                               )
                             ) : (
-                              <button
-                                onClick={() => preview(a.key)}
-                                className="text-xs text-blue-600 hover:text-blue-700"
-                              >
+                              <div className="text-xs">
                                 {a.kind === 'image' ? '🖼️' : '🎬'}
-                              </button>
+                              </div>
                             )}
                           </div>
                         </td>
-                        <td className="p-3 font-medium">{a.name}</td>
+                        <td className="p-3 font-medium cursor-pointer hover:text-blue-600" onClick={() => handleOpenViewer(a)}>
+                          {a.name}
+                        </td>
                         <td className="p-3 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
                           {a.relativePath}
                         </td>
@@ -413,6 +444,17 @@ export function LocalFoldersPanel() {
             </div>
           )}
         </>
+      )}
+
+      {/* Media Viewer Cube */}
+      {viewerAsset && (
+        <MediaViewerCube
+          asset={viewerAsset}
+          assetUrl={previews[viewerAsset.key]}
+          allAssets={assetList}
+          onClose={handleCloseViewer}
+          onNavigate={handleNavigateViewer}
+        />
       )}
     </div>
   );

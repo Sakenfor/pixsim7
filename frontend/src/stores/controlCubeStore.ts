@@ -10,7 +10,8 @@ export type CubeType =
   | 'provider'     // Provider controls
   | 'preset'       // Preset management
   | 'panel'        // Panel controls
-  | 'settings';    // Settings/options
+  | 'settings'     // Settings/options
+  | 'viewer';      // Media viewer cube
 
 export interface CubePosition {
   x: number;

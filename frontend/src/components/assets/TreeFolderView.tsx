@@ -165,7 +165,10 @@ function TreeNodeView({
       <span className="w-4"></span>
 
       {/* Preview thumbnail or icon */}
-      <div className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+      <div
+        className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer"
+        onClick={() => onFileClick?.(asset)}
+      >
         {previewUrl ? (
           asset.kind === 'image' ? (
             <img src={previewUrl} className="w-full h-full object-cover" alt={asset.name} />
@@ -173,18 +176,17 @@ function TreeNodeView({
             <video src={previewUrl} className="w-full h-full object-cover" muted />
           ) : null
         ) : (
-          <button
-            onClick={() => onPreview?.(asset)}
-            className="text-xs text-blue-600 hover:text-blue-700"
-          >
+          <div className="text-xs">
             {asset.kind === 'image' ? '🖼️' : asset.kind === 'video' ? '🎬' : '📄'}
-          </button>
+          </div>
         )}
       </div>
 
       {/* File info */}
-      <div className="flex-1 min-w-0">
-        <div className="text-sm truncate" title={asset.name}>{asset.name}</div>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onFileClick?.(asset)}>
+        <div className="text-sm truncate hover:text-blue-600 transition-colors" title={asset.name}>
+          {asset.name}
+        </div>
         <div className="text-xs text-neutral-500">
           {asset.kind}
           {asset.size ? ` • ${(asset.size / 1024 / 1024).toFixed(1)} MB` : ''}
