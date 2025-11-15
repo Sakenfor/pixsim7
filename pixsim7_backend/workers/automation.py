@@ -15,7 +15,7 @@ from pixsim7_backend.services.automation import ExecutionLoopService
 from sqlalchemy import select
 from pathlib import Path
 from pixsim7_backend.shared.config import settings
-from pixsim7_backend.services.automation.action_executor import ActionExecutor, ExecutionContext
+from pixsim7_backend.services.automation.action_executor import ActionExecutor, ExecutionContext, ExecutionError
 
 logger = configure_logging("worker")
 
@@ -79,6 +79,8 @@ async def process_automation(execution_id: int) -> dict:
                 # Mark completed
                 execution.status = AutomationStatus.COMPLETED
                 execution.completed_at = datetime.utcnow()
+                execution.current_action_index = ctx.current_action_index
+                execution.total_actions = ctx.total_actions
                 await db.commit()
 
                 return {"status": "completed"}
@@ -91,6 +93,27 @@ async def process_automation(execution_id: int) -> dict:
                         await db.commit()
                 except Exception as e:
                     logger.error("automation_restore_status_failed", error=str(e), exc_info=True)
+        except ExecutionError as e:
+            logger.error("automation_action_failed", error=str(e), action_index=e.action_index, action_type=e.action_type, exc_info=True)
+            try:
+                execution = await db.get(AutomationExecution, execution_id)
+                if execution:
+                    execution.status = AutomationStatus.FAILED
+                    execution.error_message = str(e)
+                    execution.error_action_index = e.action_index
+                    execution.error_details = {
+                        "action_type": e.action_type,
+                        "action_params": e.action_params,
+                        "error": str(e),
+                        "action_index": e.action_index,
+                    }
+                    execution.completed_at = datetime.utcnow()
+                    execution.current_action_index = e.action_index
+                    execution.total_actions = ctx.total_actions if 'ctx' in locals() else 0
+                    await db.commit()
+            except Exception as commit_err:
+                logger.error("failed_to_save_execution_error", error=str(commit_err))
+            raise
         except Exception as e:
             logger.error("automation_failed", error=str(e), exc_info=True)
             try:

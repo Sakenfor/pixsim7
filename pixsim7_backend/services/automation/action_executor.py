@@ -30,6 +30,18 @@ class ExecutionContext:
     serial: str
     variables: Dict[str, Any]
     screenshots_dir: Path
+    # Track execution progress for error reporting
+    current_action_index: int = 0
+    total_actions: int = 0
+
+
+class ExecutionError(Exception):
+    """Exception with detailed context about which action failed"""
+    def __init__(self, message: str, action_index: int, action_type: str, action_params: Dict[str, Any]):
+        super().__init__(message)
+        self.action_index = action_index
+        self.action_type = action_type
+        self.action_params = action_params
 
 
 class ActionExecutor:
@@ -102,13 +114,14 @@ class ActionExecutor:
         await self.adb.input_tap(serial, cx, cy)
         return True
 
-    async def execute_action(self, action: Dict[str, Any], ctx: ExecutionContext, preset: AppActionPreset) -> None:
+    async def execute_action(self, action: Dict[str, Any], ctx: ExecutionContext, preset: AppActionPreset, action_index: int = 0) -> None:
         """Execute a single action (supports nesting)"""
         a_type = action.get("type") or action.get("action")
         params = {k: self._subst(v, ctx) for k, v in (action.get("params", {}) or {}).items()}
 
-        if a_type == "wait":
-            await asyncio.sleep(float(params.get("seconds", 1)))
+        try:
+            if a_type == "wait":
+                await asyncio.sleep(float(params.get("seconds", 1)))
 
         elif a_type == "launch_app":
             await self.adb.launch_app(ctx.serial, params.get("package") or preset.app_package)
@@ -180,7 +193,7 @@ class ActionExecutor:
                 # Execute nested actions recursively (fully nested support)
                 nested_actions = params.get("actions", []) or []
                 for nested_action in nested_actions:
-                    await self.execute_action(nested_action, ctx, preset)
+                    await self.execute_action(nested_action, ctx, preset, action_index)
 
         elif a_type == "if_element_not_exists":
             root = await self._load_ui(ctx.serial)
@@ -196,7 +209,7 @@ class ActionExecutor:
                 # Execute nested actions recursively
                 nested_actions = params.get("actions", []) or []
                 for nested_action in nested_actions:
-                    await self.execute_action(nested_action, ctx, preset)
+                    await self.execute_action(nested_action, ctx, preset, action_index)
 
         elif a_type == "repeat":
             # Repeat nested actions N times or while condition is met
@@ -208,7 +221,7 @@ class ActionExecutor:
             for i in range(min(count, max_iterations)):
                 iterations += 1
                 for nested_action in nested_actions:
-                    await self.execute_action(nested_action, ctx, preset)
+                    await self.execute_action(nested_action, ctx, preset, action_index)
                 # Optional: add delay between iterations
                 if "delay_between" in params:
                     await asyncio.sleep(float(params["delay_between"]))
@@ -217,8 +230,20 @@ class ActionExecutor:
             # Unsupported action types are best-effort no-ops for now
             pass
 
+        except Exception as e:
+            # Wrap any exception with action context
+            raise ExecutionError(
+                str(e),
+                action_index=action_index,
+                action_type=a_type or "unknown",
+                action_params=params
+            ) from e
+
     async def execute(self, preset: AppActionPreset, ctx: ExecutionContext) -> None:  # type: ignore[override]
         """Execute all actions in a preset"""
         actions = preset.actions or []
-        for action in actions:
-            await self.execute_action(action, ctx, preset)
+        ctx.total_actions = len(actions)
+
+        for index, action in enumerate(actions):
+            ctx.current_action_index = index
+            await self.execute_action(action, ctx, preset, action_index=index)
