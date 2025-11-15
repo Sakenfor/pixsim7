@@ -13,6 +13,7 @@ export interface DraggableCubeProps {
   onDragStart?: () => void;
   onDragStop?: () => void;
   onFaceClick?: (face: CubeFace) => void;
+  onExpand?: (cubeId: string, position: { x: number; y: number }) => void;
 }
 
 export function DraggableCube({
@@ -22,6 +23,7 @@ export function DraggableCube({
   onDragStart,
   onDragStop,
   onFaceClick,
+  onExpand,
 }: DraggableCubeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
 
@@ -78,6 +80,7 @@ export function DraggableCube({
           size={size}
           faceContent={faceContent}
           onFaceClick={onFaceClick}
+          onExpand={onExpand}
         />
       </div>
     </Draggable>
