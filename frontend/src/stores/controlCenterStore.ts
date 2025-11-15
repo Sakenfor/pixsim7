@@ -77,9 +77,18 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       generating: false,
       setMode: (mode) => {
         if (get().mode === mode) return;
-        set({ mode });
+        // When switching to cubes mode, ensure it's visible
+        if (mode === 'cubes') {
+          set({ mode, open: true });
+        } else {
+          set({ mode });
+        }
       },
-      toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
+      toggleMode: () => set((s) => ({
+        mode: s.mode === 'dock' ? 'cubes' : 'dock',
+        // When switching to cubes mode, ensure it's visible
+        open: s.mode === 'dock' ? true : s.open
+      })),
       toggleOpen: () => set((s) => ({ open: !s.open })),
       setOpen: (v) => {
         if (get().open === v) return;

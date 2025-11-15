@@ -8,6 +8,7 @@ const PANEL_NAMES: Record<PanelId, string> = {
   inspector: 'Inspector',
   health: 'Health',
   game: 'Game',
+  providers: 'Provider Settings',
 };
 
 interface AddPanelDropdownProps {

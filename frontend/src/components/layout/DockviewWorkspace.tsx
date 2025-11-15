@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
+import type { MosaicNode } from 'react-mosaic-component';
 import 'dockview/dist/styles/dockview.css';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../SceneBuilderPanel';
@@ -77,11 +78,61 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   );
 }
 
+// Helper to convert MosaicNode to Dockview panels
+function applyMosaicLayoutToDockview(
+  api: DockviewReadyEvent['api'],
+  layout: MosaicNode<PanelId> | null,
+  titles: Record<PanelId, string>
+) {
+  // Clear existing panels
+  const existingPanels = api.panels.map((p) => p.id);
+  existingPanels.forEach((id) => api.removePanel(id));
+
+  if (!layout) return;
+
+  let panelCounter = 0;
+
+  // Recursively build panels from MosaicNode
+  const buildPanels = (
+    node: MosaicNode<PanelId>,
+    referencePanel?: string,
+    direction?: 'left' | 'right' | 'above' | 'below'
+  ): string => {
+    if (typeof node === 'string') {
+      // Leaf node - create panel
+      const panelId = `${node}-panel-${panelCounter++}`;
+      api.addPanel({
+        id: panelId,
+        component: 'panel',
+        params: { panelId: node },
+        title: titles[node],
+        position: referencePanel
+          ? { direction: direction!, referencePanel }
+          : undefined,
+      });
+      return panelId;
+    }
+
+    // Branch node - recursively create children
+    const firstPanelId = buildPanels(node.first, referencePanel, direction);
+
+    // Determine direction for second panel
+    const secondDirection = node.direction === 'row' ? 'right' : 'below';
+    const secondPanelId = buildPanels(node.second, firstPanelId, secondDirection);
+
+    return firstPanelId;
+  };
+
+  buildPanels(layout);
+}
+
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const lastAppliedLayoutRef = useRef<MosaicNode<PanelId> | null>(null);
 
   const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
+  const currentLayout = useWorkspaceStore((s) => s.currentLayout);
   const setDockviewLayout = useWorkspaceStore((s) => s.setDockviewLayout);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
 
@@ -180,6 +231,18 @@ export function DockviewWorkspace() {
       }
     });
   }, [isLocked]);
+
+  // Handle preset loading and panel restoration from currentLayout
+  useEffect(() => {
+    if (!apiRef.current || !isReady) return;
+    if (!currentLayout) return;
+
+    // Only apply if the layout actually changed
+    if (currentLayout === lastAppliedLayoutRef.current) return;
+
+    lastAppliedLayoutRef.current = currentLayout;
+    applyMosaicLayoutToDockview(apiRef.current, currentLayout, PANEL_TITLES);
+  }, [currentLayout, isReady]);
 
   const components = {
     panel: PanelWrapper,
