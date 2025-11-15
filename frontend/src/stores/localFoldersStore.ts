@@ -81,6 +81,17 @@ function extKind(name: string): LocalAsset['kind'] {
   return 'other';
 }
 
+// Serializable asset metadata for caching
+type AssetMeta = {
+  key: string;
+  name: string;
+  relativePath: string;
+  kind: 'image' | 'video' | 'other';
+  size?: number;
+  lastModified?: number;
+  folderId: string;
+};
+
 async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
   const out: LocalAsset[] = [];
   try {
@@ -113,6 +124,67 @@ async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = '')
   return out;
 }
 
+// Get file handle by walking the path from root
+async function getFileHandle(root: DirHandle, relativePath: string): Promise<FileHandle | undefined> {
+  try {
+    const parts = relativePath.split('/');
+    let current: DirHandle | FileHandle = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      if (i === parts.length - 1) {
+        // Last part is the file
+        current = await (current as DirHandle).getFileHandle(parts[i]);
+      } else {
+        // Navigate to directory
+        current = await (current as DirHandle).getDirectoryHandle(parts[i]);
+      }
+    }
+
+    return current as FileHandle;
+  } catch (e) {
+    console.warn('getFileHandle error for', relativePath, e);
+    return undefined;
+  }
+}
+
+// Load assets from cache and reconstruct file handles
+async function loadCachedAssets(id: string, handle: DirHandle): Promise<LocalAsset[]> {
+  try {
+    const cached = await idbGet<AssetMeta[]>(`assets_${id}`);
+    if (!cached) return [];
+
+    const assets: LocalAsset[] = [];
+    for (const meta of cached) {
+      const fileHandle = await getFileHandle(handle, meta.relativePath);
+      if (fileHandle) {
+        assets.push({ ...meta, fileHandle });
+      }
+    }
+    return assets;
+  } catch (e) {
+    console.warn('loadCachedAssets error', e);
+    return [];
+  }
+}
+
+// Save assets to cache
+async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
+  try {
+    const meta: AssetMeta[] = assets.map(a => ({
+      key: a.key,
+      name: a.name,
+      relativePath: a.relativePath,
+      kind: a.kind,
+      size: a.size,
+      lastModified: a.lastModified,
+      folderId: a.folderId,
+    }));
+    await idbSet(`assets_${id}`, meta);
+  } catch (e) {
+    console.warn('cacheAssets error', e);
+  }
+}
+
 export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   supported: isFSASupported(),
   folders: [],
@@ -138,10 +210,17 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
         set({ folders: ok });
-        // index in background (deeper scan for tree view)
+        // Load from cache first for instant display
         for (const f of ok) {
-          const items = await scanFolder(f.id, f.handle, 5);
-          set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
+          const cachedItems = await loadCachedAssets(f.id, f.handle);
+          if (cachedItems.length > 0) {
+            set(s => ({ assets: { ...s.assets, ...Object.fromEntries(cachedItems.map(a => [a.key, a])) } }));
+          } else {
+            // No cache, do full scan
+            const items = await scanFolder(f.id, f.handle, 5);
+            set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
+            await cacheAssets(f.id, items);
+          }
         }
       }
     } catch (e: any) {
@@ -165,6 +244,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       await idbSet('folders', folders);
       const items = await scanFolder(id, dir, 5);
       set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
+      await cacheAssets(id, items);
     } catch (e: any) {
       if (e?.name !== 'AbortError') set({ error: e?.message || 'Failed to add folder' });
     } finally {
@@ -176,6 +256,15 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const remain = get().folders.filter(f => f.id !== id);
     set({ folders: remain, assets: Object.fromEntries(Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'))) });
     await idbSet('folders', remain);
+    // Remove cached assets for this folder
+    try {
+      const db = await openDB();
+      const tx = db.transaction('kv', 'readwrite');
+      const store = tx.objectStore('kv');
+      store.delete(`assets_${id}`);
+    } catch (e) {
+      console.warn('Failed to remove cached assets', e);
+    }
   },
 
   refreshFolder: async (id: string) => {
@@ -185,5 +274,6 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     // replace entries belonging to this folder
     const others = Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'));
     set({ assets: { ...Object.fromEntries(others), ...Object.fromEntries(items.map(a => [a.key, a])) } });
+    await cacheAssets(f.id, items);
   },
 }));
