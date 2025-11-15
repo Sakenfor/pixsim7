@@ -28,6 +28,7 @@ try:
     )
     from .docker_utils import compose_ps, compose_up_detached, compose_down
     from .dialogs.git_tools_dialog import show_git_tools_dialog
+    from .dialogs.simple_git_dialog import show_simple_git_dialog
     from .dialogs.migrations_dialog import show_migrations_dialog
     from .dialogs.ports_dialog import show_ports_dialog
     from .dialogs.env_editor_dialog import show_env_editor
@@ -44,6 +45,7 @@ except ImportError:
     )
     from docker_utils import compose_ps, compose_up_detached, compose_down
     from dialogs.git_tools_dialog import show_git_tools_dialog
+    from dialogs.simple_git_dialog import show_simple_git_dialog
     from dialogs.migrations_dialog import show_migrations_dialog
     from dialogs.ports_dialog import show_ports_dialog
     from dialogs.env_editor_dialog import show_env_editor
@@ -577,8 +579,14 @@ class LauncherWindow(QWidget):
         dev_title.setStyleSheet("font-size: 14pt; font-weight: bold; color: #5a9fd4; padding-bottom: 8px;")
         dev_layout.addWidget(dev_title)
         
-        self.btn_git_tools = QPushButton('🔀 Git Tools')
-        self.btn_git_tools.setToolTip("Structured commit helper")
+        self.btn_git_workflow = QPushButton('⚡ Git Workflow')
+        self.btn_git_workflow.setToolTip("Simple git operations: commit, push, pull, merge, cleanup")
+        self.btn_git_workflow.setMinimumHeight(40)
+        self.btn_git_workflow.clicked.connect(lambda: show_simple_git_dialog(self))
+        dev_layout.addWidget(self.btn_git_workflow)
+
+        self.btn_git_tools = QPushButton('🔀 Advanced Git Tools')
+        self.btn_git_tools.setToolTip("Structured commit helper (grouped commits)")
         self.btn_git_tools.setMinimumHeight(40)
         self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
         dev_layout.addWidget(self.btn_git_tools)
