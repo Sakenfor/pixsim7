@@ -18,8 +18,8 @@ export function useLineageGraph(assetId: number | null, depth = 2) {
       try {
         const res = await apiClient.get<LineageGraph>(`/lineage/graph/${assetId}?depth=${depth}`);
         if (active) setGraph(res.data);
-      } catch (e: any) {
-        if (active) setError(e.message || 'Failed to load lineage graph');
+      } catch (e: unknown) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load lineage graph');
       } finally { if (active) setLoading(false); }
     }
     run();

@@ -72,9 +72,9 @@ export function useProviderAccounts(providerId?: string, refreshKey?: number) {
           }
           setAccounts(filtered);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setError(e.message || 'Failed to load accounts');
+          setError(e instanceof Error ? e.message : 'Failed to load accounts');
         }
       } finally {
         if (!cancelled) {

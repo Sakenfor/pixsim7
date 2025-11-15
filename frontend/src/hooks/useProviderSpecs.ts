@@ -31,8 +31,8 @@ export function useProviderSpecs(providerId?: string) {
         if (!cancelled) {
           setSpecs(match?.capabilities || null);
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e.message || 'Failed to load provider specs');
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load provider specs');
       } finally {
         if (!cancelled) setLoading(false);
       }

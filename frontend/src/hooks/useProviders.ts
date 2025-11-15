@@ -21,8 +21,8 @@ export function useProviders() {
         if (!cancelled) {
           setProviders(res.data.map(p => ({ id: p.provider_id, name: p.name })));
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e.message || 'Failed to load providers');
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load providers');
       } finally {
         if (!cancelled) setLoading(false);
       }

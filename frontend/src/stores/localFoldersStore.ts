@@ -223,8 +223,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
       }
-    } catch (e: any) {
-      set({ error: e?.message || 'Failed to load persisted folders' });
+    } catch (e: unknown) {
+      set({ error: e instanceof Error ? e.message : 'Failed to load persisted folders' });
     }
   },
 

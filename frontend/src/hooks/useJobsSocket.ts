@@ -72,8 +72,8 @@ export function useJobsSocket({ autoConnect = false, onEvent }: { autoConnect?: 
           // ignore
         }
       };
-    } catch (e: any) {
-      setError(e.message || 'Failed to connect');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to connect');
       if (import.meta.env.DEV) console.error('[jobs socket] Connect error:', e);
     }
   }

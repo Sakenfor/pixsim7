@@ -63,8 +63,8 @@ export function useJobStatus(
           setLoading(false);
           setError(null);
         },
-        onError: (err: any) => {
-          const errorMsg = err.response?.data?.detail || err.message || 'Failed to fetch job';
+        onError: (err: unknown) => {
+          const errorMsg = (err as any).response?.data?.detail || (err instanceof Error ? err.message : 'Failed to fetch job');
           setError(errorMsg);
           setLoading(false);
         },

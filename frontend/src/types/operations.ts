@@ -96,28 +96,28 @@ export type OperationType = typeof OPERATION_TYPES[number];
 // Type Guards
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function isTextToVideo(params: any): params is TextToVideoParams {
-  return params?.kind === 'text_to_video' || params?.prompt !== undefined;
+export function isTextToVideo(params: unknown): params is TextToVideoParams {
+  return (params as any)?.kind === 'text_to_video' || (params as any)?.prompt !== undefined;
 }
 
-export function isImageToVideo(params: any): params is ImageToVideoParams {
-  return params?.kind === 'image_to_video' || params?.image_url !== undefined;
+export function isImageToVideo(params: unknown): params is ImageToVideoParams {
+  return (params as any)?.kind === 'image_to_video' || (params as any)?.image_url !== undefined;
 }
 
-export function isVideoExtend(params: any): params is VideoExtendParams {
+export function isVideoExtend(params: unknown): params is VideoExtendParams {
   return (
-    params?.kind === 'video_extend' ||
-    params?.video_url !== undefined ||
-    params?.original_video_id !== undefined
+    (params as any)?.kind === 'video_extend' ||
+    (params as any)?.video_url !== undefined ||
+    (params as any)?.original_video_id !== undefined
   );
 }
 
-export function isVideoTransition(params: any): params is VideoTransitionParams {
-  return params?.kind === 'video_transition' || params?.image_urls !== undefined;
+export function isVideoTransition(params: unknown): params is VideoTransitionParams {
+  return (params as any)?.kind === 'video_transition' || (params as any)?.image_urls !== undefined;
 }
 
-export function isFusion(params: any): params is FusionParams {
-  return params?.kind === 'fusion' || params?.fusion_assets !== undefined;
+export function isFusion(params: unknown): params is FusionParams {
+  return (params as any)?.kind === 'fusion' || (params as any)?.fusion_assets !== undefined;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

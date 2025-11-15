@@ -122,7 +122,7 @@ export const useGraphStore = create<GraphState>()(
           currentSceneId: state.currentSceneId,
           sceneMetadata: state.sceneMetadata,
         }),
-        migrate: (persistedState: any, version: number) => {
+        migrate: (persistedState: unknown, version: number) => {
           // Migrate from v1 (single draft) to v2 (multi-scene)
           if (version === 1 && persistedState.draft) {
             const legacyDraft = persistedState.draft;

@@ -69,8 +69,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       setItems(prev => [...prev, ...data.assets]);
       setCursor(data.next_cursor || null);
       setHasMore(Boolean(data.next_cursor));
-    } catch (e: any) {
-      setError(e.message || 'Failed to load assets');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load assets');
     } finally {
       setLoading(false);
     }

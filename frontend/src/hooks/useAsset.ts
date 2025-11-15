@@ -16,8 +16,8 @@ export function useAsset(id: number | string | null) {
       try {
         const res = await apiClient.get<AssetSummary>(`/assets/${id}`);
         if (active) setAsset(res.data);
-      } catch (e: any) {
-        if (active) setError(e.message || 'Failed to load asset');
+      } catch (e: unknown) {
+        if (active) setError(e instanceof Error ? e.message : 'Failed to load asset');
       } finally {
         if (active) setLoading(false);
       }
