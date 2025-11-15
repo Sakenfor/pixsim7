@@ -18,17 +18,21 @@ export function LocalFoldersPanel() {
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('tree');
-  const [selectedFolder, setSelectedFolder] = useState<string | undefined>(undefined);
   const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
 
   useEffect(() => { loadPersisted(); }, []);
 
   const assetList = useMemo(() => {
     const list = Object.values(assets);
-    // Filter by selected folder if any
-    const filtered = selectedFolder ? list.filter(a => a.folderId === selectedFolder) : list;
-    return filtered.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
-  }, [assets, selectedFolder]);
+    return list.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
+  }, [assets]);
+
+  const folderNames = useMemo(() => {
+    return folders.reduce((acc, f) => {
+      acc[f.id] = f.name;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [folders]);
 
   async function preview(keyOrAsset: string | LocalAsset) {
     const asset = typeof keyOrAsset === 'string' ? assets[keyOrAsset] : keyOrAsset;
@@ -76,15 +80,6 @@ export function LocalFoldersPanel() {
     }
   }
 
-  const totalSize = useMemo(() => {
-    return assetList.reduce((sum, a) => sum + (a.size || 0), 0);
-  }, [assetList]);
-
-  const stats = useMemo(() => {
-    const images = assetList.filter(a => a.kind === 'image').length;
-    const videos = assetList.filter(a => a.kind === 'video').length;
-    return { images, videos, total: assetList.length };
-  }, [assetList]);
 
   const handleOpenViewer = async (asset: LocalAsset) => {
     // Ensure preview is loaded
@@ -185,73 +180,31 @@ export function LocalFoldersPanel() {
         </div>
       </div>
 
-      {/* Stats Bar */}
-      {assetList.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-            <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{stats.total}</div>
-            <div className="text-xs text-blue-600 dark:text-blue-500">Total Files</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
-            <div className="text-2xl font-bold text-purple-700 dark:text-purple-400">{stats.images}</div>
-            <div className="text-xs text-purple-600 dark:text-purple-500">Images</div>
-          </div>
-          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-            <div className="text-2xl font-bold text-green-700 dark:text-green-400">{stats.videos}</div>
-            <div className="text-xs text-green-600 dark:text-green-500">Videos</div>
-          </div>
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3">
-            <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">
-              {(totalSize / 1024 / 1024).toFixed(1)}
-            </div>
-            <div className="text-xs text-orange-600 dark:text-orange-500">MB Total</div>
-          </div>
-        </div>
-      )}
-
-      {/* Folders List */}
+      {/* Folder Management */}
       {folders.length > 0 && (
-        <div className="bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg p-3">
-          <div className="text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">Active Folders:</div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedFolder(undefined)}
-              className={`px-3 py-1.5 text-sm rounded-lg border transition-all ${
-                !selectedFolder
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 hover:border-blue-500'
-              }`}
-            >
-              All Folders ({Object.keys(assets).length})
-            </button>
+        <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 bg-white dark:bg-neutral-900">
+          <div className="text-xs font-medium mb-2 text-neutral-600 dark:text-neutral-400 px-1">
+            Local Folders ({folders.length})
+          </div>
+          <div className="space-y-1">
             {folders.map(f => {
               const count = Object.values(assets).filter(a => a.folderId === f.id).length;
               return (
-                <div key={f.id} className="flex items-center gap-1">
-                  <button
-                    onClick={() => setSelectedFolder(f.id)}
-                    className={`px-3 py-1.5 text-sm rounded-l-lg border transition-all ${
-                      selectedFolder === f.id
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 hover:border-blue-500'
-                    }`}
-                  >
-                    📁 {f.name} ({count})
-                  </button>
+                <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded group">
+                  <span className="text-sm">📁</span>
+                  <span className="text-sm flex-1 truncate" title={f.name}>{f.name}</span>
+                  <span className="text-xs text-neutral-500">{count}</span>
                   <button
                     onClick={() => refreshFolder(f.id)}
-                    className="px-2 py-1.5 text-sm border-t border-b bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 transition-colors"
-                    title="Refresh folder"
+                    className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 text-xs hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-opacity"
+                    title="Refresh"
                   >
                     🔄
                   </button>
                   <button
-                    onClick={() => {
-                      if (selectedFolder === f.id) setSelectedFolder(undefined);
-                      removeFolder(f.id);
-                    }}
-                    className="px-2 py-1.5 text-sm rounded-r-lg border-t border-r border-b bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 transition-colors"
-                    title="Remove folder"
+                    onClick={() => removeFolder(f.id)}
+                    className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 text-xs hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded transition-opacity"
+                    title="Remove"
                   >
                     ✕
                   </button>
@@ -272,9 +225,7 @@ export function LocalFoldersPanel() {
           <p className="text-sm text-neutral-500">
             {folders.length === 0
               ? 'Click "Add Folder" to get started'
-              : selectedFolder
-              ? 'This folder contains no media files'
-              : 'Add folders with images or videos'}
+              : 'Added folders contain no media files'}
           </p>
         </div>
       ) : (
@@ -283,7 +234,7 @@ export function LocalFoldersPanel() {
           {viewMode === 'tree' && (
             <TreeFolderView
               assets={assetList}
-              folderId={selectedFolder}
+              folderNames={folderNames}
               onFileClick={handleOpenViewer}
               onPreview={preview}
               previews={previews}

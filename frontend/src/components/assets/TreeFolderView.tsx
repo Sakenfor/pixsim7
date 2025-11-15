@@ -10,49 +10,66 @@ type TreeNode = {
   count?: number; // file count for folders
 };
 
-function buildTree(assets: LocalAsset[], folderId?: string): TreeNode {
+// Build tree grouped by folder ID first
+function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): TreeNode {
   const root: TreeNode = { name: 'root', path: '', type: 'folder', children: [] };
 
-  // Filter assets by folder if specified
-  const filteredAssets = folderId
-    ? assets.filter(a => a.folderId === folderId)
-    : assets;
+  // Group assets by folderId
+  const assetsByFolder = assets.reduce((acc, asset) => {
+    if (!acc[asset.folderId]) acc[asset.folderId] = [];
+    acc[asset.folderId].push(asset);
+    return acc;
+  }, {} as Record<string, LocalAsset[]>);
 
-  for (const asset of filteredAssets) {
-    const parts = asset.relativePath.split('/');
-    let current = root;
+  // Create folder root nodes
+  for (const [folderId, folderAssets] of Object.entries(assetsByFolder)) {
+    const folderRoot: TreeNode = {
+      name: folderNames[folderId] || folderId,
+      path: folderId,
+      type: 'folder',
+      children: [],
+      count: 0
+    };
 
-    // Navigate/create folder nodes
-    for (let i = 0; i < parts.length - 1; i++) {
-      const folderName = parts[i];
-      const folderPath = parts.slice(0, i + 1).join('/');
+    // Build tree structure within this folder
+    for (const asset of folderAssets) {
+      const parts = asset.relativePath.split('/');
+      let current = folderRoot;
 
-      let folder = current.children?.find(
-        n => n.name === folderName && n.type === 'folder'
-      );
+      // Navigate/create folder nodes
+      for (let i = 0; i < parts.length - 1; i++) {
+        const folderName = parts[i];
+        const folderPath = `${folderId}/${parts.slice(0, i + 1).join('/')}`;
 
-      if (!folder) {
-        folder = {
-          name: folderName,
-          path: folderPath,
-          type: 'folder',
-          children: [],
-          count: 0
-        };
-        current.children?.push(folder);
+        let folder = current.children?.find(
+          n => n.name === folderName && n.type === 'folder'
+        );
+
+        if (!folder) {
+          folder = {
+            name: folderName,
+            path: folderPath,
+            type: 'folder',
+            children: [],
+            count: 0
+          };
+          current.children?.push(folder);
+        }
+
+        current = folder;
       }
 
-      current = folder;
+      // Add file node
+      const fileName = parts[parts.length - 1];
+      current.children?.push({
+        name: fileName,
+        path: asset.relativePath,
+        type: 'file',
+        asset
+      });
     }
 
-    // Add file node
-    const fileName = parts[parts.length - 1];
-    current.children?.push({
-      name: fileName,
-      path: asset.relativePath,
-      type: 'file',
-      asset
-    });
+    root.children?.push(folderRoot);
   }
 
   // Calculate file counts for folders recursively
@@ -109,7 +126,7 @@ function TreeNodeView({
   onUpload,
   providerId
 }: TreeNodeViewProps) {
-  const [expanded, setExpanded] = useState(level < 2); // Auto-expand first 2 levels
+  const [expanded, setExpanded] = useState(false); // Start collapsed
 
   if (node.type === 'folder') {
     const hasChildren = node.children && node.children.length > 0;
@@ -228,7 +245,7 @@ function TreeNodeView({
 
 type TreeFolderViewProps = {
   assets: LocalAsset[];
-  folderId?: string;
+  folderNames: Record<string, string>; // folderId -> folder name
   onFileClick?: (asset: LocalAsset) => void;
   onPreview?: (asset: LocalAsset) => void;
   previews: Record<string, string>;
@@ -239,7 +256,7 @@ type TreeFolderViewProps = {
 
 export function TreeFolderView({
   assets,
-  folderId,
+  folderNames,
   onFileClick,
   onPreview,
   previews,
@@ -247,7 +264,7 @@ export function TreeFolderView({
   onUpload,
   providerId
 }: TreeFolderViewProps) {
-  const tree = useMemo(() => buildTree(assets, folderId), [assets, folderId]);
+  const tree = useMemo(() => buildTree(assets, folderNames), [assets, folderNames]);
 
   if (!tree.children || tree.children.length === 0) {
     return (
