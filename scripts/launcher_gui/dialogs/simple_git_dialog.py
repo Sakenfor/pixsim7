@@ -408,14 +408,18 @@ class SimpleGitDialog(QDialog):
         """Handle operation completion."""
         if success:
             self._log(f"✓ {message}")
+            # Update status label for status checks
+            if self.worker and self.worker.operation == "status":
+                self.status_label.setText(message)
         else:
             self._log(f"✗ {message}")
 
         # Re-enable buttons
         self._set_buttons_enabled(True)
 
-        # Refresh status
-        self._refresh_status()
+        # Only refresh status if it wasn't a status operation (prevent infinite loop)
+        if self.worker and self.worker.operation != "status":
+            self._refresh_status()
 
     def _set_buttons_enabled(self, enabled):
         """Enable/disable all action buttons."""
