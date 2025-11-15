@@ -53,6 +53,7 @@ export function CubeFormationControlCenter() {
   const setOpen = useControlCenterStore((s) => s.setOpen);
   const setPinned = useControlCenterStore((s) => s.setPinned);
   const setActiveModule = useControlCenterStore((s) => s.setActiveModule);
+  const toggleMode = useControlCenterStore((s) => s.toggleMode);
 
   const addCube = useControlCubeStore((s) => s.addCube);
   const updateCube = useControlCubeStore((s) => s.updateCube);
@@ -369,6 +370,15 @@ export function CubeFormationControlCenter() {
             )}
           >
             {pinned ? '📌 Pinned' : 'Pin'}
+          </button>
+
+          {/* Mode toggle */}
+          <button
+            onClick={toggleMode}
+            className="px-3 py-2 text-xs border border-purple-300/50 dark:border-purple-500/30 rounded-lg bg-purple-600/60 hover:bg-purple-700/80 text-white backdrop-blur-sm transition-all hover:scale-105 active:scale-95 shadow-md shadow-purple-500/30"
+            title="Switch to Dock Mode"
+          >
+            🪟 Dock
           </button>
 
           {/* Formation selector */}
