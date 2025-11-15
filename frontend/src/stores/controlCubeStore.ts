@@ -183,6 +183,24 @@ const FACE_ROTATIONS: Record<CubeFace, CubeRotation> = {
 
 const STORAGE_KEY = 'control_cubes_v1';
 
+/**
+ * Get default cube position - SSR-safe
+ *
+ * Returns center of viewport if window is available,
+ * otherwise returns a safe default position.
+ */
+const getDefaultCubePosition = (): CubePosition => {
+  if (typeof window === 'undefined') {
+    // SSR or headless environment - use safe defaults
+    return { x: 400, y: 300 };
+  }
+  // Browser environment - center in viewport
+  return {
+    x: window.innerWidth / 2 - 50,
+    y: window.innerHeight / 2 - 50,
+  };
+};
+
 export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeActions>()(
   persist(
     (set, get) => ({
@@ -198,7 +216,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       formations: {},
       activeFormationId: undefined,
 
-      addCube: (type, position = { x: window.innerWidth / 2 - 50, y: window.innerHeight / 2 - 50 }) => {
+      addCube: (type, position = getDefaultCubePosition()) => {
         const id = generatePrefixedUUID('cube');
         const cube: CubeState = {
           id,
