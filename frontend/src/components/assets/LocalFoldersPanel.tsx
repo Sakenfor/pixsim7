@@ -51,7 +51,19 @@ export function LocalFoldersPanel() {
       form.append('file', file, asset.name);
       form.append('provider_id', providerId);
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
-      const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/upload`, { method: 'POST', body: form });
+
+      // Get auth token from localStorage
+      const token = localStorage.getItem('access_token');
+      const headers: HeadersInit = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/upload`, {
+        method: 'POST',
+        body: form,
+        headers
+      });
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || `${res.status} ${res.statusText}`);
