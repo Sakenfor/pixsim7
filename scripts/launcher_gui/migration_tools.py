@@ -6,6 +6,7 @@ Assumes alembic.ini resides at repo root.
 from __future__ import annotations
 import subprocess
 import os
+import sys
 import shutil
 from dataclasses import dataclass
 from typing import Optional
@@ -18,6 +19,8 @@ def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
     """
     Run alembic command with proper error handling and validation.
 
+    Uses 'python -m alembic' for better virtual environment compatibility.
+
     Args:
         args: Command arguments to pass to alembic
         timeout: Maximum execution time in seconds (default: 60)
@@ -26,13 +29,29 @@ def _run_alembic(*args: str, timeout: int = 60) -> tuple[int, str, str]:
         Tuple of (return_code, stdout, stderr)
     """
     # Pre-flight checks
-    if not shutil.which('alembic'):
-        return 1, "", "ERROR: alembic command not found. Please ensure alembic is installed in your environment."
-
     if not os.path.exists(ALEMBIC_INI):
         return 1, "", f"ERROR: alembic.ini not found at {ALEMBIC_INI}. Check your repository setup."
 
-    cmd = ['alembic', '-c', ALEMBIC_INI, *args]
+    # Try python -m alembic first (works in virtual environments)
+    # Fall back to direct alembic command if module not found
+    try:
+        # Test if alembic module is available
+        test_result = subprocess.run(
+            [sys.executable, '-m', 'alembic', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if test_result.returncode == 0:
+            # Use python -m alembic (best for venvs)
+            cmd = [sys.executable, '-m', 'alembic', '-c', ALEMBIC_INI, *args]
+        else:
+            raise FileNotFoundError("alembic module not found")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Fall back to direct alembic command
+        if not shutil.which('alembic'):
+            return 1, "", "ERROR: alembic not found. Please ensure alembic is installed: pip install alembic"
+        cmd = ['alembic', '-c', ALEMBIC_INI, *args]
 
     try:
         proc = subprocess.Popen(

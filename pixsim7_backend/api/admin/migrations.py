@@ -2,6 +2,7 @@
 Admin API endpoints for Alembic database migrations
 """
 import subprocess
+import sys
 import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -40,6 +41,8 @@ def run_alembic_command(args: list[str]) -> tuple[bool, str]:
     """
     Run alembic command and return (success, output)
 
+    Uses 'python -m alembic' for better virtual environment compatibility.
+
     Args:
         args: Command arguments (e.g., ['current'], ['upgrade', 'head'])
 
@@ -54,13 +57,34 @@ def run_alembic_command(args: list[str]) -> tuple[bool, str]:
     # Change to repo root directory for proper path resolution
     repo_root = config_path.parent
 
+    # Prefer 'python -m alembic' for better virtual environment support
+    # This ensures we use the same Python interpreter as the running API
+    try:
+        # Test if alembic module is available
+        test_result = subprocess.run(
+            [sys.executable, '-m', 'alembic', '--version'],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=str(repo_root)
+        )
+        if test_result.returncode == 0:
+            # Use python -m alembic
+            cmd = [sys.executable, '-m', 'alembic', '-c', str(config_path)] + args
+        else:
+            # Fall back to direct alembic command
+            cmd = ['alembic', '-c', str(config_path)] + args
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        # Fall back to direct alembic command
+        cmd = ['alembic', '-c', str(config_path)] + args
+
     try:
         result = subprocess.run(
-            ["alembic", "-c", str(config_path)] + args,
+            cmd,
             cwd=str(repo_root),
             capture_output=True,
             text=True,
-            timeout=60  # 1 minute timeout (reduced from 120s)
+            timeout=60  # 1 minute timeout
         )
 
         output = result.stdout + result.stderr
