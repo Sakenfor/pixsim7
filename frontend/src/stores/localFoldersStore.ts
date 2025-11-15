@@ -81,7 +81,7 @@ function extKind(name: string): LocalAsset['kind'] {
   return 'other';
 }
 
-async function scanFolder(id: string, handle: DirHandle, depth = 1, prefix = ''): Promise<LocalAsset[]> {
+async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
   const out: LocalAsset[] = [];
   try {
     // @ts-expect-error: for-await supported in handles
@@ -138,9 +138,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
         set({ folders: ok });
-        // index in background (shallow)
+        // index in background (deeper scan for tree view)
         for (const f of ok) {
-          const items = await scanFolder(f.id, f.handle, 1);
+          const items = await scanFolder(f.id, f.handle, 5);
           set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
         }
       }
@@ -163,7 +163,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       const folders = [...get().folders, entry];
       set({ folders });
       await idbSet('folders', folders);
-      const items = await scanFolder(id, dir, 1);
+      const items = await scanFolder(id, dir, 5);
       set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
     } catch (e: any) {
       if (e?.name !== 'AbortError') set({ error: e?.message || 'Failed to add folder' });
@@ -181,7 +181,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   refreshFolder: async (id: string) => {
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
-    const items = await scanFolder(f.id, f.handle, 1);
+    const items = await scanFolder(f.id, f.handle, 5);
     // replace entries belonging to this folder
     const others = Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'));
     set({ assets: { ...Object.fromEntries(others), ...Object.fromEntries(items.map(a => [a.key, a])) } });
