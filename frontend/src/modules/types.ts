@@ -1,3 +1,5 @@
+import { logEvent } from '../lib/logging';
+
 /**
  * Base Module Interface
  *
@@ -32,11 +34,12 @@ class ModuleRegistry {
 
   register(module: Module) {
     if (this.modules.has(module.id)) {
-      // Module already registered, skip
+      logEvent('WARNING', 'module_already_registered', { moduleId: module.id });
       return;
     }
 
     this.modules.set(module.id, module);
+    logEvent('INFO', 'module_registered', { moduleId: module.id, moduleName: module.name });
   }
 
   get<T extends Module>(id: string): T | undefined {
@@ -44,15 +47,25 @@ class ModuleRegistry {
   }
 
   async initializeAll() {
+    logEvent('INFO', 'modules_initializing', { count: this.modules.size });
+
     for (const [, module] of this.modules) {
       if (module.initialize) {
         try {
           await module.initialize();
+          logEvent('INFO', 'module_initialized', { moduleId: module.id, moduleName: module.name });
         } catch (error) {
           console.error(`✗ Failed to initialize ${module.name}:`, error);
+          logEvent('ERROR', 'module_init_failed', {
+            moduleId: module.id,
+            moduleName: module.name,
+            error: error instanceof Error ? error.message : String(error)
+          });
         }
       }
     }
+
+    logEvent('INFO', 'modules_initialized', { count: this.modules.size });
   }
 
   async cleanupAll() {

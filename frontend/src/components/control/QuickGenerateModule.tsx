@@ -11,6 +11,7 @@ import { ArrayFieldInput } from './ArrayFieldInput';
 import { useJobsStore } from '../../stores/jobsStore';
 import { JobStatusIndicator } from './JobStatusIndicator';
 import { ccSelectors } from '../../stores/selectors';
+import { logEvent } from '../../lib/logging';
 
 export function QuickGenerateModule() {
   // Use stable selectors to reduce re-renders
@@ -149,6 +150,13 @@ export function QuickGenerateModule() {
         started_at: null,
         completed_at: null,
       } as any, params); // Pass params as originalParams
+
+      logEvent('INFO', 'generation_job_created', {
+        jobId: result.job_id,
+        operationType,
+        providerId: providerId || 'pixverse',
+        status: result.status
+      });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
     } finally {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { DeviceCard } from './DeviceCard';
 import { automationService } from '../../lib/automation/automationService';
 import type { AndroidDevice, DeviceStatus } from '../../types/automation';
+import { logEvent } from '../../lib/logging';
 
 export function DeviceList() {
   const [devices, setDevices] = useState<AndroidDevice[]>([]);
@@ -28,7 +29,14 @@ export function DeviceList() {
     try {
       setScanning(true);
       setError(null);
-      await automationService.scanDevices();
+      const result = await automationService.scanDevices();
+
+      logEvent('INFO', 'device_scan_complete', {
+        scanned: result.scanned,
+        added: result.added,
+        updated: result.updated,
+        offline: result.offline
+      });
 
       // Reload devices
       await loadDevices();
