@@ -149,9 +149,6 @@ export function QuickGenerateModule() {
         started_at: null,
         completed_at: null,
       } as any, params); // Pass params as originalParams
-
-      // eslint-disable-next-line no-console
-      console.log('Generation job created:', result);
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
     } finally {

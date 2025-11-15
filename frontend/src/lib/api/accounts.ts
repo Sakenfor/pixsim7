@@ -16,12 +16,10 @@ export async function updateAccount(
   accountId: number,
   updates: UpdateAccountRequest
 ): Promise<ProviderAccount> {
-  console.log(`Updating account ${accountId} with:`, updates);
   const response = await apiClient.patch<ProviderAccount>(
     `/accounts/${accountId}`,
     updates
   );
-  console.log('Account updated:', response.data);
   return response.data;
 }
 

@@ -32,12 +32,11 @@ class ModuleRegistry {
 
   register(module: Module) {
     if (this.modules.has(module.id)) {
-      console.warn(`Module ${module.id} is already registered`);
+      // Module already registered, skip
       return;
     }
 
     this.modules.set(module.id, module);
-    console.log(`✓ Module registered: ${module.name}`);
   }
 
   get<T extends Module>(id: string): T | undefined {
@@ -45,20 +44,15 @@ class ModuleRegistry {
   }
 
   async initializeAll() {
-    console.log('Initializing modules...');
-
     for (const [, module] of this.modules) {
       if (module.initialize) {
         try {
           await module.initialize();
-          console.log(`✓ ${module.name} initialized`);
         } catch (error) {
           console.error(`✗ Failed to initialize ${module.name}:`, error);
         }
       }
     }
-
-    console.log('All modules initialized');
   }
 
   async cleanupAll() {

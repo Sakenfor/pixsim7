@@ -25,7 +25,7 @@ export const galleryModule: GalleryModule = {
   name: 'Gallery Module',
 
   initialize: async () => {
-    console.log('Gallery module ready (not implemented yet)');
+    // Gallery module initialization (not yet implemented)
   },
 
   isReady: () => true,

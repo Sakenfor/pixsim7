@@ -2,7 +2,7 @@
 // Usage: import { initWebLogger, logEvent } from '@/lib/logging'; initWebLogger('frontend');
 
 const getBackendUrl = (): string | undefined => {
-  return (import.meta as any).env?.VITE_BACKEND_URL as string | undefined;
+  return import.meta.env.VITE_API_URL;
 };
 
 let serviceName = 'web';
@@ -13,7 +13,7 @@ export function initWebLogger(service = 'web') {
     logEvent('ERROR', 'window_error', { error: e?.error?.message || e.message || String(e) });
   });
   window.addEventListener('unhandledrejection', (e) => {
-    logEvent('ERROR', 'unhandled_promise_rejection', { reason: String((e as any).reason) });
+    logEvent('ERROR', 'unhandled_promise_rejection', { reason: String(e.reason) });
   });
 }
 

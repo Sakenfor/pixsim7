@@ -48,7 +48,7 @@ export function Home() {
                   <Button size="sm" variant="secondary" onClick={() => window.open('/workspace', '_self')}>Open Workspace</Button>
                   <Button size="sm" variant="primary" onClick={() => {
                     // open game in new tab
-                    const gameUrl = (import.meta as any).env.VITE_GAME_URL || 'http://localhost:5174'
+                    const gameUrl = import.meta.env.VITE_GAME_URL || 'http://localhost:5174'
                     window.open(gameUrl, '_blank','noopener')
                   }}>Open Game</Button>
                 </div>

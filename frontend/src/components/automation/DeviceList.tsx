@@ -28,11 +28,7 @@ export function DeviceList() {
     try {
       setScanning(true);
       setError(null);
-      const result = await automationService.scanDevices();
-
-      // Show scan results
-      const message = `Scan complete: ${result.scanned} scanned, ${result.added} added, ${result.updated} updated, ${result.offline} offline`;
-      console.log(message);
+      await automationService.scanDevices();
 
       // Reload devices
       await loadDevices();

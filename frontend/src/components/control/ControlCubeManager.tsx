@@ -7,6 +7,7 @@ import type { CubeFace } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
 import { panelActionRegistry } from '../../lib/panelActions';
 import type { PanelActionsConfig } from '../../lib/panelActions';
+import { useToast } from '../../stores/toastStore';
 import { clsx } from 'clsx';
 
 export interface ControlCubeManagerProps {
@@ -19,6 +20,7 @@ const COMBINE_DISTANCE = 120; // pixels to start combining
 export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const managerRef = useRef<HTMLDivElement>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const toast = useToast();
 
   const cubes = useControlCubeStore((s) => s.cubes);
   const summoned = useControlCubeStore((s) => s.summoned);
@@ -171,14 +173,13 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
 
   const handleFaceClick = (cubeId: string, face: CubeFace) => {
     rotateCubeFace(cubeId, face);
-    console.log(`Cube ${cubeId} face ${face} clicked`);
   };
 
   const handleSaveConfig = useCallback((config: PanelActionsConfig) => {
     panelActionRegistry.register(config);
     setEditorOpen(false);
-    alert(`Panel actions saved for ${config.panelName}!`);
-  }, []);
+    toast.success(`Panel actions saved for ${config.panelName}!`);
+  }, [toast]);
 
   return (
     <>
