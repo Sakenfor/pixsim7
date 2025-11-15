@@ -2,10 +2,25 @@
   import { onMount, onDestroy } from 'svelte';
   import { api, type LogEntry, type LogQueryResponse } from '$lib/api/client';
   import { format } from 'date-fns';
+  import {
+    formatLogMessage,
+    formatStage,
+    formatDuration,
+    formatOperationType,
+    formatProviderName,
+    getOperationTypeColor,
+    getProviderColor,
+    getLogDisplayText,
+    isErrorOrWarning,
+    getLogSummary
+  } from '$lib/utils/logFormatting';
 
   // Filter state
   let level = '';
-  let logger = '';
+  let service = '';
+  let provider_id = '';
+  let operation_type = '';
+  let stage = '';
   let search = '';
   let user_id = '';
   let job_id = '';
@@ -81,7 +96,10 @@
       };
 
       if (level) params.level = level;
-      if (logger) params.logger = logger;
+      if (service) params.service = service;
+      if (provider_id) params.provider_id = provider_id;
+      if (operation_type) params.operation_type = operation_type;
+      if (stage) params.stage = stage;
       if (search) params.search = search;
       if (user_id) params.user_id = parseInt(user_id);
       if (job_id) params.job_id = parseInt(job_id);
@@ -106,7 +124,10 @@
 
   function clearFilters() {
     level = '';
-    logger = '';
+    service = '';
+    provider_id = '';
+    operation_type = '';
+    stage = '';
     search = '';
     user_id = '';
     job_id = '';
@@ -313,15 +334,54 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-      <!-- Logger -->
+      <!-- Service -->
       <div>
         <label class="block text-sm font-medium text-gray-300 mb-2">
-          Logger
+          Service
         </label>
         <input
           type="text"
-          bind:value={logger}
-          placeholder="e.g., main, auth_service"
+          bind:value={service}
+          placeholder="e.g., api, worker"
+          class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <!-- Provider -->
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-2">
+          Provider
+        </label>
+        <input
+          type="text"
+          bind:value={provider_id}
+          placeholder="e.g., pixverse, sora"
+          class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <!-- Operation Type -->
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-2">
+          Operation Type
+        </label>
+        <input
+          type="text"
+          bind:value={operation_type}
+          placeholder="e.g., text_to_video"
+          class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <!-- Stage -->
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-2">
+          Stage
+        </label>
+        <input
+          type="text"
+          bind:value={stage}
+          placeholder="e.g., provider:submit"
           class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -459,7 +519,7 @@
             <div class="flex items-start gap-3">
               <!-- Level badge -->
               <span class="shrink-0 px-2 py-1 text-xs rounded font-semibold {getLevelBadgeClass(log.level)}">
-                {@html log.level}
+                {log.level}
               </span>
 
               <!-- Timestamp -->
@@ -467,18 +527,53 @@
                 {formatTimestamp(log.timestamp)}
               </span>
 
-              <!-- Logger -->
-              <span class="text-gray-400 shrink-0 text-xs truncate max-w-[120px]" title={log.logger}>
-                {@html log.logger}
+              <!-- Service -->
+              <span class="text-gray-400 shrink-0 text-xs truncate max-w-[120px]" title="{log.service} ({log.env})">
+                {log.service}
               </span>
 
-              <!-- Message (with HTML colors from ANSI codes) -->
+              <!-- Stage icon and indicator -->
+              {#if log.stage}
+                {@const stageInfo = formatStage(log.stage)}
+                {#if stageInfo}
+                  <span class="shrink-0 text-xs" title={stageInfo.label}>
+                    {stageInfo.icon}
+                  </span>
+                {/if}
+              {/if}
+
+              <!-- Message (formatted for readability) -->
               <span class="flex-1">
-                {@html log.message}
+                {getLogDisplayText(log)}
+                {#if log.error && log.level === 'ERROR'}
+                  <span class="block text-xs text-red-300 mt-1">
+                    {log.error_type ? `[${log.error_type}]` : ''} {log.error}
+                  </span>
+                {/if}
               </span>
 
               <!-- Metadata badges -->
-              <div class="flex gap-1 shrink-0">
+              <div class="flex gap-1 shrink-0 flex-wrap items-center">
+                {#if log.provider_id}
+                  <span class="badge {getProviderColor(log.provider_id)}" title="Provider">
+                    {formatProviderName(log.provider_id)}
+                  </span>
+                {/if}
+                {#if log.operation_type}
+                  <span class="badge {getOperationTypeColor(log.operation_type)}" title="Operation Type">
+                    {formatOperationType(log.operation_type)}
+                  </span>
+                {/if}
+                {#if log.duration_ms !== null && log.duration_ms !== undefined}
+                  <span class="badge bg-cyan-900/50 text-cyan-300" title="Duration">
+                    ⏱️ {formatDuration(log.duration_ms)}
+                  </span>
+                {/if}
+                {#if log.attempt !== null && log.attempt !== undefined && log.attempt > 0}
+                  <span class="badge bg-orange-900/50 text-orange-300" title="Retry Attempt">
+                    🔁 #{log.attempt}
+                  </span>
+                {/if}
                 {#if log.user_id}
                   <span class="badge bg-purple-900/50 text-purple-300" title="User ID">
                     U:{log.user_id}
@@ -489,8 +584,13 @@
                     J:{log.job_id}
                   </span>
                 {/if}
-                {#if log.exception}
-                  <span class="badge bg-red-900/50 text-red-300 font-bold" title="Has exception">
+                {#if log.submission_id}
+                  <span class="badge bg-blue-900/50 text-blue-300" title="Submission ID">
+                    S:{log.submission_id}
+                  </span>
+                {/if}
+                {#if log.exception || (log.error && log.level === 'ERROR')}
+                  <span class="badge bg-red-900/50 text-red-300 font-bold" title="Has exception/error">
                     ⚠
                   </span>
                 {/if}
@@ -499,27 +599,109 @@
 
             <!-- Expanded view -->
             {#if expandedLogIndex === i}
-              <div class="mt-3 pt-3 border-t border-gray-600 space-y-2 text-xs">
-                {#if log.module || log.function}
-                  <div class="flex gap-2">
-                    <span class="text-gray-500 w-24">Location:</span>
-                    <span class="text-gray-300">
-                      {log.module || '?'} → {log.function || '?'}:{log.line || '?'}
-                    </span>
+              <div class="mt-3 pt-3 border-t border-gray-600 space-y-3 text-xs">
+                <!-- Summary -->
+                <div class="bg-gray-800/50 rounded p-3">
+                  <div class="font-semibold text-gray-300 mb-2">📋 Summary</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div><span class="text-gray-500">Service:</span> <span class="text-gray-300">{log.service} ({log.env})</span></div>
+                    <div><span class="text-gray-500">Level:</span> <span class="{getLogLevelColor(log.level)}">{log.level}</span></div>
+                    {#if log.stage}
+                      {@const stageInfo = formatStage(log.stage)}
+                      <div><span class="text-gray-500">Stage:</span> <span class="text-gray-300">{stageInfo ? stageInfo.label : log.stage}</span></div>
+                    {/if}
+                    {#if log.provider_id}
+                      <div><span class="text-gray-500">Provider:</span> <span class="text-gray-300">{formatProviderName(log.provider_id)}</span></div>
+                    {/if}
+                    {#if log.operation_type}
+                      <div><span class="text-gray-500">Operation:</span> <span class="text-gray-300">{formatOperationType(log.operation_type)}</span></div>
+                    {/if}
+                    {#if log.duration_ms !== null && log.duration_ms !== undefined}
+                      <div><span class="text-gray-500">Duration:</span> <span class="text-cyan-300">{formatDuration(log.duration_ms)}</span></div>
+                    {/if}
                   </div>
-                {/if}
-
-                {#if log.exception}
-                  <div class="flex gap-2">
-                    <span class="text-gray-500 w-24">Exception:</span>
-                    <pre class="text-red-300 flex-1 whitespace-pre-wrap text-xs bg-red-950/30 p-2 rounded">{log.exception}</pre>
-                  </div>
-                {/if}
-
-                <div class="flex gap-2">
-                  <span class="text-gray-500 w-24">Full Data:</span>
-                  <pre class="text-gray-400 flex-1 whitespace-pre-wrap text-xs bg-gray-800 p-2 rounded">{JSON.stringify(log, null, 2)}</pre>
                 </div>
+
+                <!-- Correlation IDs -->
+                {#if log.request_id || log.job_id || log.submission_id || log.artifact_id || log.provider_job_id}
+                  <div class="bg-gray-800/50 rounded p-3">
+                    <div class="font-semibold text-gray-300 mb-2">🔗 Correlation IDs</div>
+                    <div class="grid grid-cols-2 gap-2">
+                      {#if log.request_id}
+                        <div><span class="text-gray-500">Request:</span> <code class="text-blue-300 text-xs">{log.request_id}</code></div>
+                      {/if}
+                      {#if log.job_id}
+                        <div><span class="text-gray-500">Job:</span> <code class="text-green-300 text-xs">{log.job_id}</code></div>
+                      {/if}
+                      {#if log.submission_id}
+                        <div><span class="text-gray-500">Submission:</span> <code class="text-blue-300 text-xs">{log.submission_id}</code></div>
+                      {/if}
+                      {#if log.artifact_id}
+                        <div><span class="text-gray-500">Artifact:</span> <code class="text-purple-300 text-xs">{log.artifact_id}</code></div>
+                      {/if}
+                      {#if log.provider_job_id}
+                        <div><span class="text-gray-500">Provider Job:</span> <code class="text-pink-300 text-xs">{log.provider_job_id}</code></div>
+                      {/if}
+                      {#if log.user_id}
+                        <div><span class="text-gray-500">User:</span> <code class="text-purple-300 text-xs">{log.user_id}</code></div>
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Error Details -->
+                {#if log.error || log.exception}
+                  <div class="bg-red-950/30 border border-red-900/50 rounded p-3">
+                    <div class="font-semibold text-red-300 mb-2">⚠️ Error Details</div>
+                    {#if log.error_type}
+                      <div class="mb-2"><span class="text-gray-500">Type:</span> <code class="text-red-400 font-semibold">{log.error_type}</code></div>
+                    {/if}
+                    {#if log.error}
+                      <div class="mb-2"><span class="text-gray-500">Message:</span> <span class="text-red-300">{log.error}</span></div>
+                    {/if}
+                    {#if log.exception}
+                      <div>
+                        <span class="text-gray-500 block mb-1">Stack Trace:</span>
+                        <pre class="text-red-300 whitespace-pre-wrap bg-red-950/50 p-2 rounded overflow-x-auto">{log.exception}</pre>
+                      </div>
+                    {/if}
+                    {#if log.attempt !== null && log.attempt !== undefined}
+                      <div class="mt-2"><span class="text-gray-500">Retry Attempt:</span> <span class="text-orange-300">#{log.attempt}</span></div>
+                    {/if}
+                  </div>
+                {/if}
+
+                <!-- Extra Data -->
+                {#if log.extra && Object.keys(log.extra).length > 0}
+                  <div class="bg-gray-800/50 rounded p-3">
+                    <div class="font-semibold text-gray-300 mb-2">➕ Additional Data</div>
+                    <pre class="text-gray-400 whitespace-pre-wrap bg-gray-900/50 p-2 rounded overflow-x-auto">{JSON.stringify(log.extra, null, 2)}</pre>
+                  </div>
+                {/if}
+
+                <!-- Legacy Fields (if present) -->
+                {#if log.module || log.function || log.message}
+                  <div class="bg-gray-800/50 rounded p-3">
+                    <div class="font-semibold text-gray-300 mb-2">📁 Legacy Fields</div>
+                    <div class="grid grid-cols-2 gap-2">
+                      {#if log.module}
+                        <div><span class="text-gray-500">Module:</span> <span class="text-gray-300">{log.module}</span></div>
+                      {/if}
+                      {#if log.function}
+                        <div><span class="text-gray-500">Function:</span> <span class="text-gray-300">{log.function}:{log.line || '?'}</span></div>
+                      {/if}
+                      {#if log.message}
+                        <div class="col-span-2"><span class="text-gray-500">Message:</span> <span class="text-gray-300">{log.message}</span></div>
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Full JSON (collapsible) -->
+                <details class="bg-gray-800/50 rounded p-3">
+                  <summary class="font-semibold text-gray-300 cursor-pointer hover:text-blue-400">🔍 Full JSON Data</summary>
+                  <pre class="text-gray-400 mt-2 whitespace-pre-wrap bg-gray-900/50 p-2 rounded overflow-x-auto text-xs">{JSON.stringify(log, null, 2)}</pre>
+                </details>
               </div>
             {/if}
           </div>
