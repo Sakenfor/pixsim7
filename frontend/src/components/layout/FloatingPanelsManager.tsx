@@ -162,10 +162,10 @@ export function FloatingPanelsManager() {
                   </button>
                   <button
                     onClick={() => handleMinimize(panel.id)}
-                    className="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-lg leading-none"
+                    className="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-base leading-none"
                     title="Minimize to cube"
                   >
-                    ▪
+                    📦
                   </button>
                   <button
                     onClick={() => closeFloatingPanel(panel.id)}

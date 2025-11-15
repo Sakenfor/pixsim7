@@ -319,8 +319,8 @@ export function CubeFormationControlCenter() {
 
             {/* Panel indicator for minimized panels */}
             {cube.minimizedPanel && (
-              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-cyan-300 whitespace-nowrap bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm">
-                📦 {cube.minimizedPanel.panelId}
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-cyan-300 whitespace-nowrap bg-black/60 px-2 py-0.5 rounded backdrop-blur-sm cursor-pointer hover:bg-black/80 hover:text-cyan-200 transition-colors">
+                📦 {cube.minimizedPanel.panelId} • Click to restore
               </div>
             )}
           </div>

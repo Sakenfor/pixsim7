@@ -41,7 +41,7 @@ export interface WorkspaceActions {
   loadPreset: (id: string) => void;
   deletePreset: (id: string) => void;
   reset: () => void;
-  openFloatingPanel: (panelId: PanelId) => void;
+  openFloatingPanel: (panelId: PanelId, x?: number, y?: number, width?: number, height?: number) => void;
   closeFloatingPanel: (panelId: PanelId) => void;
   minimizeFloatingPanel: (panelId: PanelId) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
@@ -223,7 +223,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: [],
         }),
 
-      openFloatingPanel: (panelId) => {
+      openFloatingPanel: (panelId, x, y, width, height) => {
         const existing = get().floatingPanels.find(p => p.id === panelId);
         if (existing) {
           // Panel already floating, bring to front
@@ -236,17 +236,17 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           return;
         }
 
-        // Calculate center position
-        const width = 600;
-        const height = 400;
-        const x = Math.max(0, (window.innerWidth - width) / 2);
-        const y = Math.max(0, (window.innerHeight - height) / 2);
+        // Use provided position/size or calculate defaults
+        const finalWidth = width ?? 600;
+        const finalHeight = height ?? 400;
+        const finalX = x ?? Math.max(0, (window.innerWidth - finalWidth) / 2);
+        const finalY = y ?? Math.max(0, (window.innerHeight - finalHeight) / 2);
         const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
 
         set({
           floatingPanels: [
             ...get().floatingPanels,
-            { id: panelId, x, y, width, height, zIndex: maxZ + 1 },
+            { id: panelId, x: finalX, y: finalY, width: finalWidth, height: finalHeight, zIndex: maxZ + 1 },
           ],
         });
       },
