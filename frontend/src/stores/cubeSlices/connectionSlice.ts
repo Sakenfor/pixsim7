@@ -84,6 +84,17 @@ export const createConnectionSlice: StateCreator<ConnectionSlice, [], [], Connec
       messages: [...state.messages, message],
     }));
 
+    // Show toast notification - import done dynamically to avoid circular dependency
+    import('../toastStore').then(({ useToastStore }) => {
+      const messageText = typeof data === 'string' ? data : JSON.stringify(data);
+      useToastStore.getState().cubeMessage(
+        messageText,
+        fromCubeId,
+        toCubeId,
+        5000
+      );
+    });
+
     setTimeout(() => {
       set((state) => ({
         messages: state.messages.filter((m) => m.id !== message.id),

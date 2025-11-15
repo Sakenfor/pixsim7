@@ -12,6 +12,7 @@ const TOAST_COLORS = {
   error: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
   info: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
   warning: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
+  'cube-message': 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700',
 };
 
 export function Toast({ toast, onDismiss }: ToastProps) {
@@ -36,15 +37,44 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       role="status"
       aria-live="polite"
       className={clsx(
-        'flex items-center gap-2 p-3 rounded border shadow-lg text-sm transition-all duration-200',
+        'flex items-start gap-2 p-3 rounded border shadow-lg text-sm transition-all duration-200 min-w-[250px] max-w-md',
         TOAST_COLORS[toast.type],
         exiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
       )}
     >
-      <span className="flex-1">{toast.message}</span>
+      {/* Icon */}
+      {toast.icon && (
+        <span className="text-lg flex-shrink-0" aria-hidden="true">
+          {toast.icon}
+        </span>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* Title */}
+        {toast.title && (
+          <div className="font-semibold mb-1">
+            {toast.title}
+          </div>
+        )}
+
+        {/* Message */}
+        <div className="break-words">
+          {toast.message}
+        </div>
+
+        {/* Cube message metadata */}
+        {toast.type === 'cube-message' && toast.fromCubeId && toast.toCubeId && (
+          <div className="text-xs opacity-70 mt-1 font-mono">
+            {toast.fromCubeId} → {toast.toCubeId}
+          </div>
+        )}
+      </div>
+
+      {/* Dismiss button */}
       <button
         onClick={handleDismiss}
-        className="text-current opacity-60 hover:opacity-100 transition-opacity"
+        className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
         aria-label="Dismiss notification"
       >
         <svg
