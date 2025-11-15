@@ -165,11 +165,16 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
     }
   }, [cubes, combinedCubeIds, combineCubes, separateCubes]);
 
-  // Check proximity and docking on drag
+  // Check proximity and docking on drag - docking first to prevent race conditions
   const handleDragStop = useCallback(() => {
-    checkCubeProximity();
+    // Check docking first (higher priority than combining)
+    // This ensures cubes near panels dock before proximity-based combining
     checkDocking();
-  }, [checkCubeProximity, checkDocking]);
+
+    // Then check proximity for combining
+    // Docked cubes are automatically skipped in checkCubeProximity (line 145)
+    checkCubeProximity();
+  }, [checkDocking, checkCubeProximity]);
 
   const handleFaceClick = (cubeId: string, face: CubeFace) => {
     rotateCubeFace(cubeId, face);
