@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createFormationTemplate } from '../lib/formationTemplates';
+import { generatePrefixedUUID } from '../lib/uuid';
 
 export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked' | 'linking';
 
@@ -182,37 +183,6 @@ const FACE_ROTATIONS: Record<CubeFace, CubeRotation> = {
 
 const STORAGE_KEY = 'control_cubes_v1';
 
-let cubeIdCounter = 0;
-let connectionIdCounter = 0;
-let messageIdCounter = 0;
-let formationIdCounter = 0;
-
-const getNextNumericSuffix = (ids: string[]) => {
-  return ids.reduce((max, id) => {
-    const match = id.match(/-(\d+)$/);
-    if (!match) return max;
-    return Math.max(max, Number.parseInt(match[1], 10));
-  }, -1);
-};
-
-const syncCountersFromState = (
-  state: Partial<Pick<ControlCubeStoreState, 'cubes' | 'connections' | 'formations'>>
-) => {
-  const cubeSuffix = getNextNumericSuffix(Object.keys(state.cubes ?? {}));
-  const connectionSuffix = getNextNumericSuffix(Object.keys(state.connections ?? {}));
-  const formationSuffix = getNextNumericSuffix(Object.keys(state.formations ?? {}));
-
-  if (cubeSuffix >= cubeIdCounter) {
-    cubeIdCounter = cubeSuffix + 1;
-  }
-  if (connectionSuffix >= connectionIdCounter) {
-    connectionIdCounter = connectionSuffix + 1;
-  }
-  if (formationSuffix >= formationIdCounter) {
-    formationIdCounter = formationSuffix + 1;
-  }
-};
-
 export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeActions>()(
   persist(
     (set, get) => ({
@@ -229,7 +199,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       activeFormationId: undefined,
 
       addCube: (type, position = { x: window.innerWidth / 2 - 50, y: window.innerHeight / 2 - 50 }) => {
-        const id = `cube-${type}-${cubeIdCounter++}`;
+        const id = generatePrefixedUUID('cube');
         const cube: CubeState = {
           id,
           type,
@@ -368,7 +338,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
 
       // Connection management
       addConnection: (fromCubeId, fromFace, toCubeId, toFace, type) => {
-        const connectionId = `conn-${connectionIdCounter++}`;
+        const connectionId = generatePrefixedUUID('conn');
         const connection: CubeConnection = {
           id: connectionId,
           fromCubeId,
@@ -410,7 +380,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       // Message passing
       sendMessage: (fromCubeId, toCubeId, data, type) => {
         const message: CubeMessage = {
-          id: `msg-${messageIdCounter++}`,
+          id: generatePrefixedUUID('msg'),
           fromCubeId,
           toCubeId,
           timestamp: Date.now(),
@@ -580,7 +550,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
 
       // Formations
       saveFormation: (name, cubeIds, type = 'custom') => {
-        const formationId = `formation-${formationIdCounter++}`;
+        const formationId = generatePrefixedUUID('formation');
         const cubePositions: Record<string, CubePosition> = {};
         const cubeRotations: Record<string, CubeRotation> = {};
 
@@ -712,7 +682,6 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
       version: 1,
       onRehydrateStorage: () => (state) => {
         if (state) {
-          syncCountersFromState(state);
           // Mark store as hydrated so UI can safely initialize cubes
           (state as any).hydrated = true;
         }
