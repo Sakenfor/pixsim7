@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { useControlCenterStore } from './stores/controlCenterStore';
 import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { Login } from './routes/Login';
@@ -13,6 +14,7 @@ import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { AutomationRoute } from './routes/Automation';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
+import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
@@ -21,6 +23,7 @@ import { useTheme } from '@pixsim7/ui';
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const controlCenterMode = useControlCenterStore((s) => s.mode);
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();
@@ -57,10 +60,14 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {/* Cube Formation Control Center (only when authenticated) */}
+      {/* Control Center - Dock or Cubes mode (only when authenticated) */}
       {isAuthenticated && (
         <ErrorBoundary>
-          <CubeFormationControlCenter />
+          {controlCenterMode === 'dock' ? (
+            <ControlCenterDock />
+          ) : (
+            <CubeFormationControlCenter />
+          )}
         </ErrorBoundary>
       )}
       {/* Floating panels (only when authenticated) */}
@@ -69,13 +76,6 @@ function App() {
           <FloatingPanelsManager />
         </ErrorBoundary>
       )}
-      {/* Control Cubes (3D interface, only when authenticated) */}
-      {/* NOTE: ControlCubeManager disabled in favor of CubeFormationControlCenter */}
-      {/* {isAuthenticated && (
-        <ErrorBoundary>
-          <ControlCubeManager />
-        </ErrorBoundary>
-      )} */}
       {/* Global toast notifications */}
       <ToastContainer />
     </BrowserRouter>
