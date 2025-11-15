@@ -98,7 +98,12 @@ def check_migration_safety() -> tuple[bool, str]:
         else:
             return False, f"Database check failed: {error_msg}"
 
-    # Check 2: Verify alembic configuration integrity
+    # Check 2: Look for migration conflicts (multiple heads, branches)
+    has_conflict, conflict_msg = check_for_conflicts()
+    if has_conflict:
+        return False, conflict_msg
+
+    # Check 3: Verify alembic configuration integrity
     code, out, err = _run_alembic('check')
     if code != 0:
         # Note: 'alembic check' returns non-zero if there are pending model changes
@@ -133,6 +138,42 @@ def get_history(limit: int = 20) -> str:
     if code != 0:
         return f"error: {err.strip() or out.strip()}"
     return out.strip()
+
+
+def check_for_conflicts() -> tuple[bool, str]:
+    """
+    Check for migration conflicts (multiple heads, broken chains).
+
+    Returns:
+        Tuple of (has_conflict, message)
+    """
+    # Check for multiple heads (branching)
+    code, out, err = _run_alembic('heads')
+    if code != 0:
+        return True, f"Cannot check for conflicts: {err.strip() or out.strip()}"
+
+    heads = [line.strip() for line in out.strip().split('\n') if line.strip()]
+    if len(heads) > 1:
+        return True, f"⚠️ Multiple migration heads detected ({len(heads)} branches). This indicates branching in migration history. Run 'alembic merge' to resolve."
+
+    # Check if current revision is in the history chain
+    code, out, err = _run_alembic('current')
+    if code != 0:
+        return True, f"Cannot verify current revision: {err.strip() or out.strip()}"
+
+    current = out.strip()
+    if current and '(head)' not in current:
+        # We have a current revision but it's not at head
+        code, heads_out, _ = _run_alembic('heads')
+        if code == 0 and heads_out.strip():
+            head_rev = heads_out.strip().split()[0] if heads_out.strip() else None
+            current_rev = current.split()[0] if current else None
+            if head_rev and current_rev and head_rev != current_rev:
+                # This is expected - there are pending migrations
+                # Not a conflict, just out of date
+                pass
+
+    return False, "No migration conflicts detected."
 
 
 def upgrade_head() -> str:
