@@ -113,6 +113,11 @@ export function CubeConnectionsOverlay() {
       }
 
       // Calculate face position (center of cube face)
+      // Double-check cubes still exist before calculating positions
+      if (!fromCube || !toCube) {
+        return null;
+      }
+
       const fromPoint = getCubeFaceCenter(fromCube, conn.fromFace);
       const toPoint = getCubeFaceCenter(toCube, conn.toFace);
 
@@ -156,6 +161,9 @@ export function CubeConnectionsOverlay() {
       const fromCube = cubes[msg.fromCubeId];
       const toCube = cubes[msg.toCubeId];
 
+      if (!fromCube || !toCube) return null;
+
+      // Double-check cubes still exist before calculating positions
       if (!fromCube || !toCube) return null;
 
       const from = getCubeFaceCenter(fromCube, conn.fromFace);
@@ -332,7 +340,7 @@ export function CubeConnectionsOverlay() {
         })}
 
         {/* Draw linking preview line */}
-        {linkingMode && linkingFromCube && (
+        {linkingMode && linkingFromCube && cubes[linkingFromCube.cubeId] && (
           <line
             x1={getCubeFaceCenter(cubes[linkingFromCube.cubeId], linkingFromCube.face).x}
             y1={getCubeFaceCenter(cubes[linkingFromCube.cubeId], linkingFromCube.face).y}
