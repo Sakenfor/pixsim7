@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { clsx } from 'clsx';
 import { useControlCubeStore, type CubeState } from '../../stores/controlCubeStore';
 import { cubeExpansionRegistry, getExpansionSize } from '../../lib/cubeExpansionRegistry';
+import { CubeErrorBoundary } from './CubeErrorBoundary';
 
 export interface CubeExpansionOverlayProps {
   cube: CubeState;
@@ -95,7 +96,9 @@ export function CubeExpansionOverlay({ cube, cubeElement, onClose }: CubeExpansi
     >
       {/* Expansion content */}
       <div className="w-full h-full overflow-auto">
-        <ExpansionComponent cubeId={cube.id} onClose={onClose} />
+        <CubeErrorBoundary cubeId={cube.id}>
+          <ExpansionComponent cubeId={cube.id} onClose={onClose} />
+        </CubeErrorBoundary>
       </div>
 
       {/* Close button */}
