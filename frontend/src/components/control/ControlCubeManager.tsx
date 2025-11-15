@@ -3,6 +3,7 @@ import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
 import { useControlCubeStore, CubeFace, CubeType } from '../../stores/controlCubeStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
 import { panelActionRegistry, PanelActionsConfig } from '../../lib/panelActions';
 import { clsx } from 'clsx';
@@ -31,6 +32,9 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   const combineCubes = useControlCubeStore((s) => s.combineCubes);
   const separateCubes = useControlCubeStore((s) => s.separateCubes);
   const dockCubeToPanel = useControlCubeStore((s) => s.dockCubeToPanel);
+  const restorePanelFromCube = useControlCubeStore((s) => s.restorePanelFromCube);
+
+  const restoreFloatingPanel = useWorkspaceStore((s) => s.restoreFloatingPanel);
 
   // Get panel rectangles for docking
   const panelRects = usePanelRects();
@@ -168,6 +172,24 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
   }, [checkCubeProximity, checkDocking]);
 
   const handleFaceClick = (cubeId: string, face: CubeFace) => {
+    const cube = cubes[cubeId];
+
+    // If this is a minimized panel cube, restore the panel
+    if (cube?.minimizedPanel) {
+      const panelData = restorePanelFromCube(cubeId);
+      if (panelData) {
+        restoreFloatingPanel({
+          id: panelData.panelId,
+          x: panelData.originalPosition.x,
+          y: panelData.originalPosition.y,
+          width: panelData.originalSize.width,
+          height: panelData.originalSize.height,
+          zIndex: panelData.zIndex,
+        });
+      }
+      return;
+    }
+
     rotateCubeFace(cubeId, face);
     console.log(`Cube ${cubeId} face ${face} clicked`);
   };
@@ -195,7 +217,7 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             key={id}
             cubeId={id}
             size={100}
-            faceContent={getCubeFaceContent(cube.type, cube.dockedToPanelId)}
+            faceContent={getCubeFaceContent(cube.type, cube.dockedToPanelId, cube)}
             onDragStop={handleDragStop}
             onFaceClick={(face) => handleFaceClick(id, face)}
           />

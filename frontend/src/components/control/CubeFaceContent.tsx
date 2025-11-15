@@ -1,6 +1,7 @@
-import { CubeType, CubeFace } from '../../stores/controlCubeStore';
+import { CubeType, CubeFace, type CubeState } from '../../stores/controlCubeStore';
 import { CubeFaceContent } from './ControlCube';
 import { panelActionRegistry } from '../../lib/panelActions';
+import type { PanelId } from '../../stores/workspaceStore';
 
 /**
  * Contextual face content based on cube type and docked panel
@@ -106,15 +107,89 @@ export const SettingsCubeFaces = (dockedPanelId?: string): CubeFaceContent => {
   };
 };
 
+// Panel icons mapping
+const PANEL_ICONS: Record<PanelId, string> = {
+  gallery: '🖼️',
+  scene: '🎬',
+  graph: '📊',
+  inspector: '🔍',
+  health: '❤️',
+  game: '🎮',
+  providers: '⚙️',
+};
+
+const PANEL_NAMES: Record<PanelId, string> = {
+  gallery: 'Gallery',
+  scene: 'Scene',
+  graph: 'Graph',
+  inspector: 'Inspector',
+  health: 'Health',
+  game: 'Game',
+  providers: 'Providers',
+};
+
+/**
+ * Get face content for a minimized panel cube
+ */
+export function getMinimizedPanelFaces(panelId: PanelId): CubeFaceContent {
+  const icon = PANEL_ICONS[panelId] || '📄';
+  const name = PANEL_NAMES[panelId] || 'Panel';
+
+  return {
+    front: (
+      <div className="text-cyan-300 flex flex-col items-center">
+        <div className="text-3xl mb-1">{icon}</div>
+        <div className="text-xs">{name}</div>
+      </div>
+    ),
+    back: (
+      <div className="text-indigo-300 flex flex-col items-center">
+        <div className="text-2xl">↩️</div>
+        <div className="text-xs">Restore</div>
+      </div>
+    ),
+    left: (
+      <div className="text-sky-300 flex flex-col items-center">
+        <div className="text-2xl">{icon}</div>
+        <div className="text-xs">Open</div>
+      </div>
+    ),
+    right: (
+      <div className="text-blue-300 flex flex-col items-center">
+        <div className="text-2xl">{icon}</div>
+        <div className="text-xs">Expand</div>
+      </div>
+    ),
+    top: (
+      <div className="text-cyan-400 flex flex-col items-center">
+        <div className="text-2xl">⬆️</div>
+        <div className="text-xs">Pop</div>
+      </div>
+    ),
+    bottom: (
+      <div className="text-indigo-400 flex flex-col items-center">
+        <div className="text-2xl">✕</div>
+        <div className="text-xs">Close</div>
+      </div>
+    ),
+  };
+}
+
 /**
  * Get appropriate face content based on cube type and context
  *
  * Priority:
- * 1. Dynamic panel actions (if panel has registered actions)
- * 2. Static panel-specific faces (hardcoded for known panels)
- * 3. Generic cube type defaults
+ * 1. Minimized panel (if cube contains minimized panel data)
+ * 2. Dynamic panel actions (if panel has registered actions)
+ * 3. Static panel-specific faces (hardcoded for known panels)
+ * 4. Generic cube type defaults
  */
-export function getCubeFaceContent(type: CubeType, dockedPanelId?: string): CubeFaceContent {
+export function getCubeFaceContent(type: CubeType, dockedPanelId?: string, cube?: CubeState): CubeFaceContent {
+  // If this is a minimized panel cube, show panel-specific restore faces
+  if (cube?.minimizedPanel) {
+    return getMinimizedPanelFaces(cube.minimizedPanel.panelId);
+  }
+
   // If docked to a panel, try to get dynamic actions first
   if (dockedPanelId) {
     const dynamicFaces = getDynamicPanelFaces(dockedPanelId);

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { PanelId } from './workspaceStore';
 
-export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked';
+export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked' | 'minimized';
 
 export type CubeFace = 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom';
 
@@ -24,6 +25,14 @@ export interface CubeRotation {
   z: number;  // degrees
 }
 
+// Data for a minimized panel stored in a cube
+export interface MinimizedPanelData {
+  panelId: PanelId;
+  originalPosition: { x: number; y: number };
+  originalSize: { width: number; height: number };
+  zIndex: number;
+}
+
 export interface CubeState {
   id: string;
   type: CubeType;
@@ -34,6 +43,7 @@ export interface CubeState {
   visible: boolean;
   activeFace: CubeFace;
   dockedToPanelId?: string;  // If docked to a panel
+  minimizedPanel?: MinimizedPanelData;  // If this cube is a minimized panel
   zIndex: number;
 }
 
@@ -67,6 +77,10 @@ export interface ControlCubeActions {
   // Combining
   combineCubes: (cubeIds: string[]) => void;
   separateCubes: () => void;
+
+  // Panel minimization
+  minimizePanelToCube: (panelData: MinimizedPanelData, position: CubePosition) => string;
+  restorePanelFromCube: (cubeId: string) => MinimizedPanelData | null;
 
   // Summoning
   summonCubes: () => void;
@@ -228,12 +242,41 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
 
       dismissCubes: () => {
         set({ summoned: false });
-        // Hide all cubes that aren't docked
+        // Hide all cubes that aren't docked or minimized panels
         Object.entries(get().cubes).forEach(([id, cube]) => {
-          if (cube.mode !== 'docked') {
+          if (cube.mode !== 'docked' && cube.mode !== 'minimized') {
             get().updateCube(id, { visible: false });
           }
         });
+      },
+
+      minimizePanelToCube: (panelData, position) => {
+        const id = `cube-panel-${panelData.panelId}-${cubeIdCounter++}`;
+        const cube: CubeState = {
+          id,
+          type: 'panel',
+          position,
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: 1,
+          mode: 'minimized',
+          visible: true,
+          activeFace: 'front',
+          minimizedPanel: panelData,
+          zIndex: panelData.zIndex,
+        };
+        set((state) => ({
+          cubes: { ...state.cubes, [id]: cube },
+        }));
+        return id;
+      },
+
+      restorePanelFromCube: (cubeId) => {
+        const cube = get().cubes[cubeId];
+        if (!cube || !cube.minimizedPanel) return null;
+
+        const panelData = cube.minimizedPanel;
+        get().removeCube(cubeId);
+        return panelData;
       },
 
       reset: () => {

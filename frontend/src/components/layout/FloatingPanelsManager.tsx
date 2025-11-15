@@ -1,5 +1,6 @@
 import { Rnd } from 'react-rnd';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
+import { useControlCubeStore } from '../../stores/controlCubeStore';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../SceneBuilderPanel';
 import { GraphPanelWithProvider } from '../GraphPanel';
@@ -45,9 +46,36 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+  const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore((s) => s.updateFloatingPanelPosition);
   const updateFloatingPanelSize = useWorkspaceStore((s) => s.updateFloatingPanelSize);
   const bringFloatingPanelToFront = useWorkspaceStore((s) => s.bringFloatingPanelToFront);
+
+  const minimizePanelToCube = useControlCubeStore((s) => s.minimizePanelToCube);
+
+  const handleMinimize = (panelId: PanelId) => {
+    const panel = floatingPanels.find(p => p.id === panelId);
+    if (!panel) return;
+
+    // Calculate center position of the panel (where cube will appear)
+    const cubeSize = 100;
+    const centerX = panel.x + panel.width / 2 - cubeSize / 2;
+    const centerY = panel.y + panel.height / 2 - cubeSize / 2;
+
+    // Create cube at panel's center
+    minimizePanelToCube(
+      {
+        panelId: panel.id,
+        originalPosition: { x: panel.x, y: panel.y },
+        originalSize: { width: panel.width, height: panel.height },
+        zIndex: panel.zIndex,
+      },
+      { x: centerX, y: centerY }
+    );
+
+    // Remove panel from floating panels
+    minimizeFloatingPanel(panelId);
+  };
 
   return (
     <>
@@ -92,13 +120,22 @@ export function FloatingPanelsManager() {
                     FLOATING
                   </span>
                 </div>
-                <button
-                  onClick={() => closeFloatingPanel(panel.id)}
-                  className="text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                  title="Close floating panel"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleMinimize(panel.id)}
+                    className="text-neutral-600 dark:text-neutral-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-lg leading-none"
+                    title="Minimize to cube"
+                  >
+                    ▪
+                  </button>
+                  <button
+                    onClick={() => closeFloatingPanel(panel.id)}
+                    className="text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                    title="Close floating panel"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Content */}

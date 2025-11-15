@@ -43,6 +43,8 @@ export interface WorkspaceActions {
   reset: () => void;
   openFloatingPanel: (panelId: PanelId) => void;
   closeFloatingPanel: (panelId: PanelId) => void;
+  minimizeFloatingPanel: (panelId: PanelId) => void;
+  restoreFloatingPanel: (panelState: FloatingPanelState) => void;
   updateFloatingPanelPosition: (panelId: PanelId, x: number, y: number) => void;
   updateFloatingPanelSize: (panelId: PanelId, width: number, height: number) => void;
   bringFloatingPanelToFront: (panelId: PanelId) => void;
@@ -252,6 +254,20 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       closeFloatingPanel: (panelId) => {
         set({
           floatingPanels: get().floatingPanels.filter(p => p.id !== panelId),
+        });
+      },
+
+      minimizeFloatingPanel: (panelId) => {
+        // Remove from floating panels (it will become a cube)
+        set({
+          floatingPanels: get().floatingPanels.filter(p => p.id !== panelId),
+        });
+      },
+
+      restoreFloatingPanel: (panelState) => {
+        // Restore a panel from minimized cube state
+        set({
+          floatingPanels: [...get().floatingPanels, panelState],
         });
       },
 
