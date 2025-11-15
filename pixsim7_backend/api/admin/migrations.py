@@ -39,39 +39,47 @@ def get_alembic_config_path() -> Path:
 def run_alembic_command(args: list[str]) -> tuple[bool, str]:
     """
     Run alembic command and return (success, output)
-    
+
     Args:
         args: Command arguments (e.g., ['current'], ['upgrade', 'head'])
-    
+
     Returns:
         Tuple of (success: bool, output: str)
     """
     config_path = get_alembic_config_path()
-    
+
     if not config_path.exists():
-        return False, f"Alembic config not found at {config_path}"
-    
+        return False, f"ERROR: Alembic config not found at {config_path}. Check repository structure."
+
     # Change to repo root directory for proper path resolution
     repo_root = config_path.parent
-    
+
     try:
         result = subprocess.run(
             ["alembic", "-c", str(config_path)] + args,
             cwd=str(repo_root),
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+            timeout=60  # 1 minute timeout (reduced from 120s)
         )
-        
+
         output = result.stdout + result.stderr
         return result.returncode == 0, output
-    
+
     except subprocess.TimeoutExpired:
-        return False, "Command timed out after 120 seconds"
+        return False, "ERROR: Migration command timed out after 60 seconds. This may indicate a database connectivity issue or a migration requiring manual intervention. Check database connection and logs."
+
     except FileNotFoundError:
-        return False, "Alembic command not found. Is it installed?"
+        return False, "ERROR: alembic command not found. Please ensure alembic is installed in the Python environment running this API."
+
+    except PermissionError as e:
+        return False, f"ERROR: Permission denied when running alembic. Check file permissions and user privileges. Details: {str(e)}"
+
+    except OSError as e:
+        return False, f"ERROR: System error running alembic. This may be due to path issues or resource limits. Details: {str(e)}"
+
     except Exception as e:
-        return False, f"Error running alembic: {str(e)}"
+        return False, f"ERROR: Unexpected error running alembic: {type(e).__name__}: {str(e)}"
 
 
 @router.get("/admin/migrations/status", response_model=MigrationStatus)
