@@ -2,8 +2,8 @@
 Provider Management API - Provider detection and information
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, HttpUrl
+from fastapi import APIRouter
+from pydantic import BaseModel
 from urllib.parse import urlparse
 
 from pixsim7_backend.api.dependencies import CurrentUser
@@ -11,6 +11,15 @@ from pixsim7_backend.services.provider.registry import registry
 from pixsim7_backend.services.provider.base import Provider
 
 router = APIRouter()
+
+
+def _method_overridden(provider: Provider, method_name: str) -> bool:
+    """Return True if a provider overrides ``method_name`` from the base class."""
+    provider_impl = getattr(type(provider), method_name, None)
+    base_impl = getattr(Provider, method_name, None)
+    if provider_impl is None or base_impl is None:
+        return False
+    return provider_impl is not base_impl
 
 
 class ProviderDetectionRequest(BaseModel):
@@ -206,8 +215,8 @@ def extract_provider_capabilities(provider) -> dict:
         "provider_id": getattr(provider, 'provider_id', 'unknown'),
         "operations": ops,
         "features": {
-            "embedded_assets": hasattr(provider, 'extract_embedded_assets'),
-            "asset_upload": hasattr(provider, 'upload_asset') and provider.upload_asset.__func__ is not Provider.upload_asset,  # type: ignore
+            "embedded_assets": _method_overridden(provider, 'extract_embedded_assets'),
+            "asset_upload": _method_overridden(provider, 'upload_asset'),
         },
         "operation_specs": operation_specs,
     }
