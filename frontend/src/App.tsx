@@ -11,7 +11,7 @@ import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { AutomationRoute } from './routes/Automation';
-import { ControlCenterDock } from './components/control/ControlCenterDock';
+import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCubeManager } from './components/control/ControlCubeManager';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
@@ -54,10 +54,10 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {/* Global bottom dock (only when authenticated) */}
+      {/* Cube Formation Control Center (only when authenticated) */}
       {isAuthenticated && (
         <ErrorBoundary>
-          <ControlCenterDock />
+          <CubeFormationControlCenter />
         </ErrorBoundary>
       )}
       {/* Floating panels (only when authenticated) */}
