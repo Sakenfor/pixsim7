@@ -1,4 +1,5 @@
-import type { CubeType, CubeFace } from '../../stores/controlCubeStore';
+import type { CubeType } from '../../stores/controlCubeStore';
+import type { CubeFace } from '../../stores/controlCubeStore';
 import type { CubeFaceContent } from './ControlCube';
 import { panelActionRegistry } from '../../lib/panelActions';
 
@@ -135,17 +136,6 @@ export function getCubeFaceContent(type: CubeType, dockedPanelId?: string): Cube
       return PanelCubeFaces(dockedPanelId);
     case 'settings':
       return SettingsCubeFaces(dockedPanelId);
-    case 'gallery':
-      // Gallery cubes render assets dynamically, return placeholder
-      // (actual content is rendered by GalleryCubeFaceContent hook)
-      return {
-        front: <div className="text-pink-300 text-sm">🖼️<br/>Loading...</div>,
-        back: <div className="text-rose-300 text-sm">🎨<br/>Loading...</div>,
-        left: <div className="text-fuchsia-300 text-sm">◀️<br/>Prev</div>,
-        right: <div className="text-pink-400 text-sm">▶️<br/>Next</div>,
-        top: <div className="text-rose-400 text-sm">⬆️<br/>Recent</div>,
-        bottom: <div className="text-pink-500 text-sm">📥<br/>Info</div>,
-      };
     default:
       return ControlCubeFaces(dockedPanelId);
   }
