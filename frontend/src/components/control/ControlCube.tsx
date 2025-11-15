@@ -22,12 +22,12 @@ export interface ControlCubeProps {
 }
 
 const CUBE_TYPE_COLORS: Record<CubeType, string> = {
-  control: 'bg-gradient-to-br from-blue-500/20 to-purple-500/20 border-blue-400/50',
-  provider: 'bg-gradient-to-br from-green-500/20 to-teal-500/20 border-green-400/50',
-  preset: 'bg-gradient-to-br from-orange-500/20 to-red-500/20 border-orange-400/50',
-  panel: 'bg-gradient-to-br from-cyan-500/20 to-indigo-500/20 border-cyan-400/50',
-  settings: 'bg-gradient-to-br from-gray-500/20 to-slate-500/20 border-gray-400/50',
-  gallery: 'bg-gradient-to-br from-pink-500/20 to-violet-500/20 border-pink-400/50',
+  control: 'bg-gradient-to-br from-blue-500/50 to-purple-500/50 border-blue-400/70',
+  provider: 'bg-gradient-to-br from-green-500/50 to-teal-500/50 border-green-400/70',
+  preset: 'bg-gradient-to-br from-orange-500/50 to-red-500/50 border-orange-400/70',
+  panel: 'bg-gradient-to-br from-cyan-500/50 to-indigo-500/50 border-cyan-400/70',
+  settings: 'bg-gradient-to-br from-gray-500/50 to-slate-500/50 border-gray-400/70',
+  gallery: 'bg-gradient-to-br from-pink-500/50 to-violet-500/50 border-pink-400/70',
 };
 
 const CUBE_TYPE_GLOW: Record<CubeType, string> = {
@@ -66,6 +66,8 @@ export function ControlCube({
   const [hoveredFace, setHoveredFace] = useState<CubeFace | null>(null);
   const [showExpansion, setShowExpansion] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -192,13 +194,56 @@ export function ControlCube({
     setShowExpansion(false);
   };
 
-  // Click to rotate to hovered face
-  const handleCubeClick = (e: React.MouseEvent) => {
-    if (hoveredFace) {
-      e.stopPropagation();
-      rotateCubeFace(cubeId, hoveredFace);
-      onFaceClick?.(hoveredFace);
+  // Mouse down - start drag tracking
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setDragStart({ x: e.clientX, y: e.clientY });
+    setIsDragging(false);
+  };
+
+  // Mouse up - handle click vs drag
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (!dragStart) return;
+
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If moved more than 10px, it's a drag - rotate to that direction
+    if (distance > 10) {
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      let targetFace: CubeFace;
+      if (absX > absY) {
+        targetFace = dx > 0 ? 'right' : 'left';
+      } else {
+        targetFace = dy > 0 ? 'bottom' : 'top';
+      }
+
+      rotateCubeFace(cubeId, targetFace);
+    } else {
+      // Small movement - treat as click
+      if (hoveredFace) {
+        onFaceClick?.(hoveredFace);
+        updateCube(cubeId, { activeFace: hoveredFace });
+      }
     }
+
+    setDragStart(null);
+    setIsDragging(false);
+  };
+
+  // Track dragging state
+  const handleMouseMoveGlobal = (e: React.MouseEvent) => {
+    if (dragStart) {
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 5) {
+        setIsDragging(true);
+      }
+    }
+    handleMouseMove(e);
   };
 
   useEffect(() => {
@@ -251,16 +296,13 @@ export function ControlCube({
           colorClass,
           isActive && 'border-white/70 shadow-lg',
           !isActive && 'hover:border-white/50',
-          'cursor-pointer select-none'
+          'select-none'
         )}
         style={{
           width: `${size}px`,
           height: `${size}px`,
           transform,
-        }}
-        onClick={() => {
-          onFaceClick?.(face);
-          updateCube(cubeId, { activeFace: face });
+          pointerEvents: 'none', // Let container handle all events
         }}
       >
         <div className="pointer-events-none">
@@ -285,10 +327,11 @@ export function ControlCube({
         perspective: '1000px',
         transform: `scale(${cubeScale})`,
       }}
-      onMouseMove={handleMouseMove}
+      onMouseMove={handleMouseMoveGlobal}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={handleCubeClick}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
     >
       <div
         ref={cubeRef}
