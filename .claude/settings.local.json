@@ -78,7 +78,8 @@
       "Bash(git branch:*)",
       "Bash(export PYTHONPATH=G:/code/pixsim7)",
       "Bash(alembic heads:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(gh pr list:*)"
     ],
     "deny": [],
     "ask": []
