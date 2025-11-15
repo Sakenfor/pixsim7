@@ -69,7 +69,7 @@ export function ControlCube({
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !cube) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -79,25 +79,85 @@ export function ControlCube({
     const x = (e.clientX - centerX) / (rect.width / 2);
     const y = (e.clientY - centerY) / (rect.height / 2);
 
-    // Determine which face is being hovered based on position
+    // Calculate distance from center (for front/back detection)
+    const distance = Math.sqrt(x * x + y * y);
+
+    // Determine which face is being hovered based on position and current rotation
     const absX = Math.abs(x);
     const absY = Math.abs(y);
 
+    // Threshold for considering center (front/back faces)
+    const centerThreshold = 0.3;
+
     let face: CubeFace;
-    if (absX > absY) {
+
+    // If near center, determine front vs back based on rotation
+    if (distance < centerThreshold) {
+      // Near center - check rotation to determine if front or back is visible
+      const rotY = cube.rotation.y % 360;
+      const rotX = cube.rotation.x % 360;
+
+      // Normalize to -180 to 180
+      const normRotY = ((rotY + 180) % 360) - 180;
+      const normRotX = ((rotX + 180) % 360) - 180;
+
+      // If rotated significantly, back face is more visible
+      if (Math.abs(normRotY) > 90 && Math.abs(normRotX) < 90) {
+        face = 'back';
+      } else if (Math.abs(normRotX) > 90 && Math.abs(normRotY) < 90) {
+        face = 'back';
+      } else {
+        face = 'front';
+      }
+    }
+    // Edges - detect which edge face
+    else if (absX > absY) {
+      // Horizontal edge
       face = x > 0 ? 'right' : 'left';
     } else {
+      // Vertical edge
       face = y > 0 ? 'bottom' : 'top';
     }
 
     setHoveredFace(face);
 
-    // Apply subtle tilt (max 15 degrees)
+    // Apply subtle tilt based on which face is hovered
     const tiltAmount = 15;
-    setHoverTilt({
-      x: -y * tiltAmount, // Inverted for natural feel
-      y: x * tiltAmount,
-    });
+
+    // Adjust tilt based on face being hovered
+    let tiltX = 0;
+    let tiltY = 0;
+
+    switch (face) {
+      case 'front':
+        // Slight tilt based on mouse position within center
+        tiltX = -y * tiltAmount * 0.5;
+        tiltY = x * tiltAmount * 0.5;
+        break;
+      case 'back':
+        // Opposite tilt
+        tiltX = y * tiltAmount * 0.5;
+        tiltY = -x * tiltAmount * 0.5;
+        break;
+      case 'left':
+        tiltY = -tiltAmount;
+        tiltX = -y * tiltAmount * 0.3;
+        break;
+      case 'right':
+        tiltY = tiltAmount;
+        tiltX = -y * tiltAmount * 0.3;
+        break;
+      case 'top':
+        tiltX = -tiltAmount;
+        tiltY = x * tiltAmount * 0.3;
+        break;
+      case 'bottom':
+        tiltX = tiltAmount;
+        tiltY = x * tiltAmount * 0.3;
+        break;
+    }
+
+    setHoverTilt({ x: tiltX, y: tiltY });
   };
 
   const handleMouseEnter = () => {
