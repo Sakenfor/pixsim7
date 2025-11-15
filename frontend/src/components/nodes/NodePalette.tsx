@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export type NodeType = 'video' | 'choice' | 'condition' | 'miniGame' | 'end';
+export type NodeType = 'video' | 'choice' | 'condition' | 'miniGame' | 'end' | 'scene_call' | 'return' | 'node_group';
 
 export interface NodeTypeDefinition {
   type: NodeType;
@@ -51,6 +51,30 @@ export const NODE_TYPES: NodeTypeDefinition[] = [
     icon: '🏁',
     color: 'text-red-700 dark:text-red-300',
     bgColor: 'bg-red-100 dark:bg-red-900/30',
+  },
+  {
+    type: 'scene_call',
+    label: 'Scene Call',
+    description: 'Call another scene as a function',
+    icon: '📞',
+    color: 'text-cyan-700 dark:text-cyan-300',
+    bgColor: 'bg-cyan-100 dark:bg-cyan-900/30',
+  },
+  {
+    type: 'return',
+    label: 'Return',
+    description: 'Exit scene through return point',
+    icon: '🔙',
+    color: 'text-orange-700 dark:text-orange-300',
+    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
+  },
+  {
+    type: 'node_group',
+    label: 'Group',
+    description: 'Visual container for organizing nodes',
+    icon: '📦',
+    color: 'text-neutral-700 dark:text-neutral-300',
+    bgColor: 'bg-neutral-100 dark:bg-neutral-900/30',
   },
 ];
 

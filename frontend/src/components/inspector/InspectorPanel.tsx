@@ -8,6 +8,8 @@ import { ChoiceNodeEditor } from './ChoiceNodeEditor';
 import { ConditionNodeEditor } from './ConditionNodeEditor';
 import { MiniGameNodeEditor } from './MiniGameNodeEditor';
 import { EndNodeEditor } from './EndNodeEditor';
+import { SceneCallNodeEditor } from './SceneCallNodeEditor';
+import { ReturnNodeEditor } from './ReturnNodeEditor';
 
 export function InspectorPanel() {
   const { selectedNodeId } = useSelectionStore();
@@ -128,6 +130,24 @@ export function InspectorPanel() {
         )}
         {selectedNode.type === 'end' && (
           <EndNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
+        )}
+        {selectedNode.type === 'scene_call' && (
+          <SceneCallNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
+        )}
+        {selectedNode.type === 'return' && (
+          <ReturnNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
+        )}
+        {selectedNode.type === 'node_group' && (
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="mb-2">Node group for visual organization</p>
+            <p className="text-xs">Configure group properties like label, color, and description using the label field above.</p>
+          </div>
+        )}
+        {selectedNode.type === 'generation' && (
+          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="mb-2">Generation node (experimental)</p>
+            <p className="text-xs">This node type is under development.</p>
+          </div>
         )}
       </div>
     </div>
