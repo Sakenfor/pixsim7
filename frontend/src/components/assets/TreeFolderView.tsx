@@ -114,6 +114,9 @@ type TreeNodeViewProps = {
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
   onUpload?: (asset: LocalAsset) => void;
   providerId?: string;
+  compactMode?: boolean;
+  selectedFolderPath?: string;
+  onFolderSelect?: (path: string) => void;
 };
 
 function TreeNodeView({
@@ -124,27 +127,44 @@ function TreeNodeView({
   previews,
   uploadStatus,
   onUpload,
-  providerId
+  providerId,
+  compactMode,
+  selectedFolderPath,
+  onFolderSelect
 }: TreeNodeViewProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
 
   if (node.type === 'folder') {
     const hasChildren = node.children && node.children.length > 0;
+    const isSelected = compactMode && selectedFolderPath === node.path;
+
+    const handleClick = () => {
+      if (compactMode && onFolderSelect) {
+        onFolderSelect(node.path);
+      }
+      setExpanded(!expanded);
+    };
 
     return (
       <div className="select-none">
         <div
-          className="flex items-center gap-2 py-1 px-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded cursor-pointer"
+          className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition-colors ${
+            isSelected
+              ? 'bg-blue-100 dark:bg-blue-900/30 border-l-2 border-blue-500'
+              : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+          }`}
           style={{ paddingLeft: `${level * 12 + 8}px` }}
-          onClick={() => setExpanded(!expanded)}
+          onClick={handleClick}
         >
           <span className="text-neutral-500 w-4 text-center">
             {hasChildren ? (expanded ? '▼' : '▶') : ''}
           </span>
-          <span className="text-lg">📁</span>
-          <span className="font-medium text-sm">{node.name}</span>
-          <span className="text-xs text-neutral-500 ml-auto">
-            {node.count} {node.count === 1 ? 'file' : 'files'}
+          <span className={compactMode ? 'text-base' : 'text-lg'}>📁</span>
+          <span className={`font-medium ${compactMode ? 'text-xs' : 'text-sm'} truncate`}>
+            {node.name}
+          </span>
+          <span className="text-xs text-neutral-500 ml-auto flex-shrink-0">
+            {node.count}
           </span>
         </div>
 
@@ -161,6 +181,9 @@ function TreeNodeView({
                 uploadStatus={uploadStatus}
                 onUpload={onUpload}
                 providerId={providerId}
+                compactMode={compactMode}
+                selectedFolderPath={selectedFolderPath}
+                onFolderSelect={onFolderSelect}
               />
             ))}
           </div>
@@ -169,7 +192,11 @@ function TreeNodeView({
     );
   }
 
-  // File node
+  // File node - don't render in compact mode (files shown in thumbnail grid instead)
+  if (compactMode) {
+    return null;
+  }
+
   const asset = node.asset!;
   const status = uploadStatus[asset.key] || 'idle';
   const previewUrl = previews[asset.key];
@@ -252,6 +279,10 @@ type TreeFolderViewProps = {
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
   onUpload?: (asset: LocalAsset) => void;
   providerId?: string;
+  // New props for folder selection mode
+  compactMode?: boolean; // If true, show compact tree without file previews
+  selectedFolderPath?: string; // Currently selected folder path
+  onFolderSelect?: (path: string) => void; // Callback when folder is clicked
 };
 
 export function TreeFolderView({
@@ -262,7 +293,10 @@ export function TreeFolderView({
   previews,
   uploadStatus,
   onUpload,
-  providerId
+  providerId,
+  compactMode,
+  selectedFolderPath,
+  onFolderSelect
 }: TreeFolderViewProps) {
   const tree = useMemo(() => buildTree(assets, folderNames), [assets, folderNames]);
 
@@ -275,8 +309,8 @@ export function TreeFolderView({
   }
 
   return (
-    <div className="border rounded-lg bg-white dark:bg-neutral-900 overflow-hidden">
-      <div className="max-h-[70vh] overflow-y-auto">
+    <div className={`border rounded-lg bg-white dark:bg-neutral-900 overflow-hidden ${compactMode ? '' : ''}`}>
+      <div className={`${compactMode ? 'max-h-full' : 'max-h-[70vh]'} overflow-y-auto`}>
         {tree.children.map((child, idx) => (
           <TreeNodeView
             key={child.path || idx}
@@ -288,6 +322,9 @@ export function TreeFolderView({
             uploadStatus={uploadStatus}
             onUpload={onUpload}
             providerId={providerId}
+            compactMode={compactMode}
+            selectedFolderPath={selectedFolderPath}
+            onFolderSelect={onFolderSelect}
           />
         ))}
       </div>
