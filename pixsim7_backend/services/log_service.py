@@ -15,12 +15,60 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
+# Fields that map directly onto LogEntry columns; everything else goes into extra.
+KNOWN_LOG_FIELDS = {
+    "timestamp",
+    "level",
+    "service",
+    "env",
+    "msg",
+    "request_id",
+    "job_id",
+    "submission_id",
+    "artifact_id",
+    "provider_job_id",
+    "provider_id",
+    "operation_type",
+    "stage",
+    "user_id",
+    "error",
+    "error_type",
+    "duration_ms",
+    "attempt",
+}
+
 
 class LogService:
     """Service for log ingestion and querying."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    def _normalize_log_data(self, log_data: dict) -> dict:
+        """Normalize inbound log payload into LogEntry constructor kwargs."""
+        timestamp = log_data.get("timestamp")
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            except ValueError:
+                timestamp = datetime.utcnow()
+        elif timestamp is None:
+            timestamp = datetime.utcnow()
+
+        entry_data: dict = {}
+        extra_data: dict = {}
+
+        for key, value in log_data.items():
+            if key in KNOWN_LOG_FIELDS:
+                entry_data[key] = value
+            else:
+                extra_data[key] = value
+
+        entry_data["timestamp"] = timestamp
+        if extra_data:
+            entry_data["extra"] = extra_data
+
+        return entry_data
 
     async def ingest_log(self, log_data: dict) -> LogEntry:
         """
@@ -32,48 +80,11 @@ class LogService:
         Returns:
             Created LogEntry
         """
-        # Parse timestamp if string
-        timestamp = log_data.get("timestamp")
-        if isinstance(timestamp, str):
-            try:
-                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            except ValueError:
-                timestamp = datetime.utcnow()
-        elif timestamp is None:
-            timestamp = datetime.utcnow()
-
-        # Extract known fields
-        known_fields = {
-            "timestamp", "level", "service", "env", "msg",
-            "request_id", "job_id", "submission_id", "artifact_id", "provider_job_id",
-            "provider_id", "operation_type", "stage", "user_id",
-            "error", "error_type", "duration_ms", "attempt"
-        }
-
-        # Build log entry
-        entry_data = {}
-        extra_data = {}
-
-        for key, value in log_data.items():
-            if key in known_fields:
-                entry_data[key] = value
-            else:
-                # Store unknown fields in extra
-                extra_data[key] = value
-
-        # Add timestamp
-        entry_data["timestamp"] = timestamp
-
-        # Add extra if present
-        if extra_data:
-            entry_data["extra"] = extra_data
-
-        # Create and save log entry
+        entry_data = self._normalize_log_data(log_data)
         log_entry = LogEntry(**entry_data)
         self.db.add(log_entry)
         await self.db.commit()
         await self.db.refresh(log_entry)
-
         return log_entry
 
     async def ingest_batch(self, logs: List[dict]) -> int:
@@ -86,21 +97,25 @@ class LogService:
         Returns:
             Number of logs ingested
         """
-        count = 0
+        entries: List[LogEntry] = []
         for log_data in logs:
             try:
-                await self.ingest_log(log_data)
-                count += 1
+                entry_data = self._normalize_log_data(log_data)
+                entries.append(LogEntry(**entry_data))
             except Exception as e:
                 logger.error(
                     "log_ingest_failed",
                     error=str(e),
                     error_type=e.__class__.__name__,
-                    log_data=log_data
+                    log_data=log_data,
                 )
-                # Continue with other logs
 
-        return count
+        if not entries:
+            return 0
+
+        self.db.add_all(entries)
+        await self.db.commit()
+        return len(entries)
 
     async def query_logs(
         self,
