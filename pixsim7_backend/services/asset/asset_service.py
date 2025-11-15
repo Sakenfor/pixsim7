@@ -23,7 +23,6 @@ from pixsim7_backend.domain import (
 from pixsim7_backend.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
-    DuplicateAssetError,
 )
 from pixsim7_backend.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7_backend.services.user.user_service import UserService
@@ -68,7 +67,6 @@ class AssetService:
 
         Raises:
             InvalidOperationError: Submission not successful
-            DuplicateAssetError: Asset already exists
         """
         # Validate submission is successful
         if submission.status != "success":
@@ -87,22 +85,58 @@ class AssetService:
                 "Submission response missing required fields (provider_video_id, video_url)"
             )
 
-        # Check for duplicate (by provider_video_id)
-        result = await self.db.execute(
-            select(Asset).where(
-                Asset.provider_id == submission.provider_id,
-                Asset.provider_asset_id == provider_video_id
-            )
-        )
-        existing = result.scalar_one_or_none()
-        if existing:
-            raise DuplicateAssetError(provider_video_id, existing.id)
-
-        # Extract metadata
+        # Extract metadata up-front for dedup and insert
         metadata = response.get("metadata", {})
         width = response.get("width") or metadata.get("width")
         height = response.get("height") or metadata.get("height")
         duration_sec = response.get("duration_sec") or metadata.get("duration_sec")
+
+        # Check for duplicate (by provider_video_id scoped to user)
+        result = await self.db.execute(
+            select(Asset).where(
+                Asset.provider_id == submission.provider_id,
+                Asset.provider_asset_id == provider_video_id,
+                Asset.user_id == job.user_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            updated = False
+            uploads = existing.provider_uploads or {}
+            if uploads.get(submission.provider_id) != provider_video_id:
+                uploads = dict(uploads)
+                uploads[submission.provider_id] = provider_video_id
+                existing.provider_uploads = uploads
+                updated = True
+            if not existing.remote_url and video_url:
+                existing.remote_url = video_url
+                updated = True
+            if not existing.thumbnail_url and thumbnail_url:
+                existing.thumbnail_url = thumbnail_url
+                updated = True
+            if not existing.width and width:
+                existing.width = width
+                updated = True
+            if not existing.height and height:
+                existing.height = height
+                updated = True
+            if not existing.duration_sec and duration_sec:
+                existing.duration_sec = duration_sec
+                updated = True
+            if not existing.provider_account_id and submission.account_id:
+                existing.provider_account_id = submission.account_id
+                updated = True
+            if not existing.source_job_id:
+                existing.source_job_id = job.id
+                updated = True
+            if metadata and not existing.media_metadata:
+                existing.media_metadata = metadata
+                updated = True
+            if updated:
+                existing.last_accessed_at = datetime.utcnow()
+                await self.db.commit()
+                await self.db.refresh(existing)
+            return existing
 
         # Create asset
         asset = Asset(
@@ -110,7 +144,7 @@ class AssetService:
             media_type=MediaType.VIDEO,  # TODO: Support images
             provider_id=submission.provider_id,
             provider_asset_id=provider_video_id,
-            provider_account_id=None,  # TODO: Get from job/submission
+            provider_account_id=submission.account_id,
             remote_url=video_url,
             thumbnail_url=thumbnail_url,
             width=width,
@@ -118,6 +152,8 @@ class AssetService:
             duration_sec=duration_sec,
             sync_status=SyncStatus.REMOTE,
             source_job_id=job.id,
+            provider_uploads={submission.provider_id: provider_video_id},
+            media_metadata=metadata or None,
             created_at=datetime.utcnow(),
         )
 
