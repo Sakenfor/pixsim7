@@ -3,6 +3,7 @@ import { useAssets, type AssetSummary } from '../../hooks/useAssets';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
 import { BACKEND_BASE } from '../../lib/api/client';
+import { Icon, Icons } from '../../lib/icons';
 
 interface GalleryCubeFaceContentProps {
   cubeId: string;
@@ -24,16 +25,19 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
   // Helper to render asset thumbnail
   const renderAssetThumbnail = (asset: AssetSummary | undefined, face: CubeFace) => {
     if (!asset) {
+      // Map cube faces to icons
+      const faceIcons: Record<CubeFace, keyof typeof Icons> = {
+        front: 'cubeFront',
+        back: 'cubeBack',
+        left: 'cubeLeft',
+        right: 'cubeRight',
+        top: 'cubeTop',
+        bottom: 'cubeBottom',
+      };
+
       return (
         <div className="flex flex-col items-center justify-center gap-1">
-          <div className="text-2xl">
-            {face === 'front' && '🖼️'}
-            {face === 'back' && '🎨'}
-            {face === 'left' && '◀️'}
-            {face === 'right' && '▶️'}
-            {face === 'top' && '⬆️'}
-            {face === 'bottom' && '📥'}
-          </div>
+          <Icon name={faceIcons[face]} size={24} className="text-white/60" />
           <div className="text-[8px] text-white/40">{face}</div>
         </div>
       );
@@ -48,16 +52,19 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
     })();
 
     if (!thumbSrc) {
+      // Map cube faces to icons (asset has no thumbnail)
+      const faceIcons: Record<CubeFace, keyof typeof Icons> = {
+        front: 'cubeFront',
+        back: 'cubeBack',
+        left: 'cubeLeft',
+        right: 'cubeRight',
+        top: 'cubeTop',
+        bottom: 'cubeBottom',
+      };
+
       return (
         <div className="flex flex-col items-center justify-center gap-1">
-          <div className="text-2xl">
-            {face === 'front' && 'dY-��,?'}
-            {face === 'back' && 'dYZ"'}
-            {face === 'left' && '�-?�,?'}
-            {face === 'right' && '�-�,?'}
-            {face === 'top' && '��+�,?'}
-            {face === 'bottom' && 'dY"�'}
-          </div>
+          <Icon name={faceIcons[face]} size={24} className="text-white/60" />
           <div className="text-[8px] text-white/40">{face}</div>
         </div>
       );
@@ -77,14 +84,21 @@ export function useGalleryCubeFaceContent(cubeId: string): CubeFaceContent {
 
         {/* Asset info */}
         <div className="absolute bottom-0 left-0 right-0 p-1.5 flex items-center gap-1">
+          <Icon
+            name={asset.media_type === 'video' ? 'video' : 'camera'}
+            size={10}
+            className="text-white/90"
+          />
           <div className="text-[10px] text-white/90 font-medium truncate">
-            {asset.media_type === 'video' ? '🎬' : '📷'} #{asset.id}
+            #{asset.id}
           </div>
         </div>
 
         {/* Pin indicator */}
         {cube?.pinnedAssets?.[face] && (
-          <div className="absolute top-1 right-1 text-xs">📌</div>
+          <div className="absolute top-1 right-1">
+            <Icon name="pin" size={12} className="text-white/90" />
+          </div>
         )}
       </div>
     );
