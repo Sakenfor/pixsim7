@@ -104,11 +104,24 @@ export interface Scene {
   startNodeId: string
 }
 
+export interface SceneCallStackFrame {
+  sceneId: string  // Scene that was called
+  callerNodeId: string  // Node in caller scene that made the call
+  returnPointId?: string  // Which return point to route back to
+  parameters: Record<string, any>  // Parameters passed to the scene
+  callerState: {  // State to restore when returning
+    currentNodeId: string
+    flags: Record<string, any>
+  }
+}
+
 export interface SceneRuntimeState {
   currentNodeId: string
+  currentSceneId?: string  // Track which scene we're currently in
   flags: Record<string, any>
   progressionIndex?: number // for progression playback
   activeSegmentId?: string // currently selected segment within node
+  callStack?: SceneCallStackFrame[]  // Stack for scene calling
 }
 
 // ===================

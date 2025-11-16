@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, PlaybackMode, MediaSegment, SelectionStrategy } from '@pixsim7/types'
 import { Button, Panel } from '@pixsim7/ui'
 import { ReflexMiniGame } from './minigames/ReflexMiniGame'
+import { callStackManager, bindParameters } from '../lib/sceneCallStack'
 
 interface ScenePlayerProps {
-  scene: Scene
+  scene: Scene  // Primary scene (for backwards compatibility)
+  scenes?: Record<string, Scene>  // Scene bundle for multi-scene support
   initialState?: Partial<SceneRuntimeState>
   autoAdvance?: boolean
   onStateChange?: (s: SceneRuntimeState) => void
@@ -49,23 +51,32 @@ function isProgression(playback?: PlaybackMode): playback is Extract<PlaybackMod
   return playback?.kind === 'progression'
 }
 
-export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateChange }: ScenePlayerProps) {
+export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, onStateChange }: ScenePlayerProps) {
   const [state, setState] = useState<SceneRuntimeState>(() => ({
     currentNodeId: initialState?.currentNodeId || scene.startNodeId,
+    currentSceneId: initialState?.currentSceneId || scene.id,
     flags: initialState?.flags || {},
     progressionIndex: initialState?.progressionIndex,
+    callStack: initialState?.callStack || [],
   }))
   const [isPlaying, setIsPlaying] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
+  // Resolve current scene from bundle or use primary scene
+  const currentScene: Scene = useMemo(() => {
+    if (!state.currentSceneId) return scene
+    if (scenes && scenes[state.currentSceneId]) return scenes[state.currentSceneId]
+    return scene
+  }, [scene, scenes, state.currentSceneId])
+
   const currentNode: SceneNode | undefined = useMemo(
-    () => scene.nodes.find(n => n.id === state.currentNodeId),
-    [scene, state.currentNodeId]
+    () => currentScene.nodes.find(n => n.id === state.currentNodeId),
+    [currentScene, state.currentNodeId]
   )
 
-  const outgoingEdges = useMemo<SceneEdge[]>(() => scene.edges.filter(e => e.from === state.currentNodeId), [scene, state.currentNodeId])
+  const outgoingEdges = useMemo<SceneEdge[]>(() => currentScene.edges.filter(e => e.from === state.currentNodeId), [currentScene, state.currentNodeId])
   const playableEdges = useMemo(() => outgoingEdges.filter(e => evaluateEdgeConditions(e, state.flags)), [outgoingEdges, state.flags])
 
   // Handle progression playback (multi-step within a single node before choosing edges)
@@ -81,7 +92,63 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
   const chooseEdge = useCallback((edge: SceneEdge) => {
     setState(s => {
       const flags = applyEffects(edge.effects, s.flags)
-      return { currentNodeId: edge.to, flags, progressionIndex: undefined }
+      return { ...s, currentNodeId: edge.to, flags, progressionIndex: undefined }
+    })
+  }, [])
+
+  // Handle scene_call node execution
+  const handleSceneCall = useCallback((callNode: SceneNode) => {
+    if (!callNode.targetSceneId) {
+      console.error('scene_call node missing targetSceneId')
+      return
+    }
+
+    if (!scenes || !scenes[callNode.targetSceneId]) {
+      console.error(`Target scene not found: ${callNode.targetSceneId}`)
+      return
+    }
+
+    const targetScene = scenes[callNode.targetSceneId]
+    const parameters = bindParameters(state, callNode.parameterBindings || {})
+
+    setState(s => {
+      const newState = callStackManager.push(
+        s,
+        callNode.targetSceneId!,
+        callNode.id!,
+        parameters,
+        undefined // returnPointId - could be derived from returnRouting
+      )
+
+      // Set start node of target scene
+      return {
+        ...newState,
+        currentNodeId: targetScene.startNodeId,
+      }
+    })
+  }, [state, scenes])
+
+  // Handle return node execution
+  const handleReturn = useCallback((returnNode: SceneNode) => {
+    setState(s => {
+      const result = callStackManager.pop(s, returnNode.returnValues)
+
+      if (!result) {
+        console.warn('No call stack to return from - staying in current scene')
+        return s
+      }
+
+      // Find the edge to follow based on returnPointId
+      const returnNodeId = result.returnNodeId
+      if (returnNodeId) {
+        // If returnPointId is specified, route to the appropriate edge
+        const returnPointId = returnNode.returnPointId
+        // For now, just advance to next edge from the caller node
+        // In a full implementation, this would use returnRouting from the call node
+        return result.state
+      }
+
+      return result.state
     })
   }, [])
 
@@ -228,6 +295,14 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-lg">Scene Player</h3>
           <div className="flex items-center gap-2">
+            {callStackManager.depth(state) > 0 && (
+              <span className="text-xs px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300">
+                📞 Depth: {callStackManager.depth(state)}
+              </span>
+            )}
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+              {currentScene.title || currentScene.id}
+            </span>
             <span className="text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
               {currentNode?.type || 'unknown'}
             </span>
@@ -351,29 +426,55 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
         {currentNode?.type === 'scene_call' && (
           <div className="p-4 bg-cyan-100 dark:bg-cyan-900/20 rounded">
             <p className="text-sm mb-2">📞 Calling scene: {currentNode.targetSceneId}</p>
-            <p className="text-xs text-neutral-600 dark:text-neutral-400">
-              Scene calling is not yet implemented in runtime player.
-            </p>
-            <Button
-              variant="secondary"
-              className="mt-4"
-              onClick={() => {
-                // For now, just advance to first available edge
-                if (playableEdges.length > 0) chooseEdge(playableEdges[0])
-              }}
-            >
-              Continue (Stub)
-            </Button>
+            {scenes && scenes[currentNode.targetSceneId!] ? (
+              <>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                  Parameters: {JSON.stringify(currentNode.parameterBindings || {})}
+                </p>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                  Call depth: {callStackManager.depth(state)}
+                </p>
+                <Button
+                  variant="primary"
+                  className="mt-4"
+                  onClick={() => handleSceneCall(currentNode)}
+                >
+                  Execute Call
+                </Button>
+              </>
+            ) : (
+              <p className="text-xs text-red-600 dark:text-red-400">
+                Error: Target scene "{currentNode.targetSceneId}" not found
+              </p>
+            )}
           </div>
         )}
 
         {/* Return Node */}
         {currentNode?.type === 'return' && (
           <div className="p-4 bg-orange-100 dark:bg-orange-900/20 rounded">
-            <p className="text-sm mb-2">🔙 Returning through: {currentNode.returnPointId}</p>
-            <p className="text-xs text-neutral-600 dark:text-neutral-400">
-              Return nodes are not yet implemented in runtime player.
-            </p>
+            <p className="text-sm mb-2">🔙 Returning through: {currentNode.returnPointId || 'default'}</p>
+            {callStackManager.depth(state) > 0 ? (
+              <>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                  Return values: {JSON.stringify(currentNode.returnValues || {})}
+                </p>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                  Call depth: {callStackManager.depth(state)}
+                </p>
+                <Button
+                  variant="primary"
+                  className="mt-4"
+                  onClick={() => handleReturn(currentNode)}
+                >
+                  Return to Caller
+                </Button>
+              </>
+            ) : (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Warning: No call stack to return from - this is the root scene
+              </p>
+            )}
           </div>
         )}
         {isProgression(currentNode?.playback) && (
