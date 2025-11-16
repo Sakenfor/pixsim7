@@ -11,8 +11,9 @@ export interface GameSessionDTO {
 }
 
 const getGameApiBase = (): string => {
-  const envBase = (import.meta as any).env?.VITE_GAME_API_BASE as string | undefined
-  return envBase || '/game/v1'
+  // Use unified backend API (Phase 1: Game backend consolidated into main backend)
+  const envBase = (import.meta as any).env?.VITE_API_BASE as string | undefined
+  return envBase || 'http://localhost:8001'
 }
 
 type HttpMethod = 'GET' | 'POST'
@@ -54,7 +55,7 @@ export async function createGameSession(params: {
   token?: string
   signal?: AbortSignal
 }): Promise<GameSessionDTO> {
-  return request<GameSessionDTO>('/sessions', {
+  return request<GameSessionDTO>('/api/v1/game/sessions', {
     method: 'POST',
     token: params.token,
     signal: params.signal,
@@ -69,7 +70,7 @@ export async function getGameSession(params: {
   token?: string
   signal?: AbortSignal
 }): Promise<GameSessionDTO> {
-  return request<GameSessionDTO>(`/sessions/${params.sessionId}`, {
+  return request<GameSessionDTO>(`/api/v1/game/sessions/${params.sessionId}`, {
     method: 'GET',
     token: params.token,
     signal: params.signal,
@@ -82,7 +83,7 @@ export async function advanceGameSession(params: {
   token?: string
   signal?: AbortSignal
 }): Promise<GameSessionDTO> {
-  return request<GameSessionDTO>(`/sessions/${params.sessionId}/advance`, {
+  return request<GameSessionDTO>(`/api/v1/game/sessions/${params.sessionId}/advance`, {
     method: 'POST',
     token: params.token,
     signal: params.signal,
@@ -97,7 +98,7 @@ export async function fetchSceneById(params: {
   token?: string
   signal?: AbortSignal
 }): Promise<Scene> {
-  return request<Scene>(`/scenes/${params.sceneId}`, {
+  return request<Scene>(`/api/v1/game/scenes/${params.sceneId}`, {
     method: 'GET',
     token: params.token,
     signal: params.signal,
