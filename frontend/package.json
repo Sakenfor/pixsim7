@@ -12,6 +12,7 @@
   "dependencies": {
     "@pixsim7/types": "workspace:*",
     "@pixsim7/ui": "workspace:*",
+    "pixcubes": "file:../pixcubes",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "dockview": "^4.11.0",
