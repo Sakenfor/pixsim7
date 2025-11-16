@@ -126,6 +126,7 @@ export const useGraphStore = create<GraphState>()(
               id: scene.id,
               title: scene.title,
               startNodeId: scene.startNodeId,
+              meta: scene.metadata, // Include scene metadata (arc_id, tags, etc.)
               nodes: scene.nodes
                 .map(convertNode)
                 .filter((n): n is NonNullable<typeof n> => n !== null),
