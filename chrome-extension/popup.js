@@ -201,6 +201,22 @@ async function handleLogin() {
     if (response.success) {
       currentUser = response.data.user;
       showLoggedIn();
+
+      // Sync credits for all accounts after login (best-effort, non-blocking)
+      loginBtn.textContent = 'Syncing credits...';
+      try {
+        const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+        if (syncResult.success) {
+          console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
+          // Refresh accounts to show updated credits
+          if (document.getElementById('tab-accounts').classList.contains('active')) {
+            await loadAccounts();
+          }
+        }
+      } catch (syncError) {
+        console.warn('[Popup] Credit sync failed:', syncError);
+        // Non-fatal, just log the error
+      }
     } else {
       showError(response.error || 'Login failed');
     }
@@ -406,59 +422,21 @@ function showAutomationToolbar(show) {
 
 async function loadAutomationOptions() {
   try {
+    // Backend now filters by provider_id, no need for client-side filtering!
+    const providerId = currentProvider?.provider_id || null;
+
     const [presetsRes, loopsRes] = await Promise.all([
-      chrome.runtime.sendMessage({ action: 'getPresets' }),
-      chrome.runtime.sendMessage({ action: 'getLoops' }),
+      chrome.runtime.sendMessage({ action: 'getPresets', providerId }),
+      chrome.runtime.sendMessage({ action: 'getLoops', providerId }),
     ]);
 
-    if (presetsRes.success) automationOptions.presets = filterPresetsByProvider(presetsRes.data || []);
-    if (loopsRes.success) automationOptions.loops = filterLoopsByProvider(loopsRes.data || [], automationOptions.presets);
+    if (presetsRes.success) automationOptions.presets = presetsRes.data || [];
+    if (loopsRes.success) automationOptions.loops = loopsRes.data || [];
 
     populateAutomationSelects();
   } catch (e) {
     console.error('[Popup] Failed to load automation options', e);
   }
-}
-
-function providerKey() {
-  // Map backend provider_id to preset.app_package/keywords
-  // Fallback to generic if unknown
-  const id = currentProvider?.provider_id || '';
-  if (!id) return null;
-  return id.toLowerCase();
-}
-
-function filterPresetsByProvider(presets) {
-  const key = providerKey();
-  if (!key) return presets; // no provider detected → show all
-  const checks = {
-    pixverse: (p) => (p.app_package || '').toLowerCase().includes('pixverse') || (p.tags||[]).includes('pixverse'),
-    runway:   (p) => (p.app_package || '').toLowerCase().includes('runway')   || (p.tags||[]).includes('runway'),
-    pika:     (p) => (p.app_package || '').toLowerCase().includes('pika')     || (p.tags||[]).includes('pika'),
-    sora:     (p) => (p.app_package || '').toLowerCase().includes('sora')     || (p.tags||[]).includes('sora'),
-  };
-  const check = checks[key];
-  if (!check) return presets;
-  const filtered = presets.filter(check);
-  return filtered.length ? filtered : presets; // fallback to all if none match
-}
-
-function filterLoopsByProvider(loops, filteredPresets) {
-  const key = providerKey();
-  if (!key) return loops;
-  const presetById = new Map(filteredPresets.map(p => [p.id, p]));
-  const matchesLoop = (loop) => {
-    if (loop.preset_id && presetById.has(loop.preset_id)) return true;
-    const lists = [];
-    if (Array.isArray(loop.shared_preset_ids)) lists.push(loop.shared_preset_ids);
-    if (Array.isArray(loop.default_preset_ids)) lists.push(loop.default_preset_ids);
-    if (loop.account_preset_config && typeof loop.account_preset_config === 'object') {
-      Object.values(loop.account_preset_config).forEach(arr => Array.isArray(arr) && lists.push(arr));
-    }
-    return lists.some(arr => arr.some(pid => presetById.has(pid)));
-  };
-  const filtered = loops.filter(matchesLoop);
-  return filtered.length ? filtered : loops;
 }
 
 function populateAutomationSelects() {

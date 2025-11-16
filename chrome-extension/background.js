@@ -141,17 +141,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Async response
   }
 
-  // Automation: fetch presets
+  if (message.action === 'syncAllCredits') {
+    // Sync credits for all user accounts using batch endpoint
+    (async () => {
+      try {
+        // Use the new batch sync endpoint - much more efficient!
+        let endpoint = '/api/v1/accounts/sync-all-credits';
+        if (message.providerId) {
+          endpoint += `?provider_id=${encodeURIComponent(message.providerId)}`;
+        }
+
+        const result = await backendRequest(endpoint, { method: 'POST' });
+
+        sendResponse({
+          success: result.success,
+          synced: result.synced,
+          failed: result.failed,
+          total: result.total
+        });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Automation: fetch presets (with optional provider filter)
   if (message.action === 'getPresets') {
-    backendRequest('/api/v1/automation/presets')
+    let endpoint = '/api/v1/automation/presets';
+    if (message.providerId) {
+      endpoint += `?provider_id=${encodeURIComponent(message.providerId)}`;
+    }
+    backendRequest(endpoint)
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true;
   }
 
-  // Automation: fetch loops
+  // Automation: fetch loops (with optional provider filter)
   if (message.action === 'getLoops') {
-    backendRequest('/api/v1/automation/loops')
+    let endpoint = '/api/v1/automation/loops';
+    if (message.providerId) {
+      endpoint += `?provider_id=${encodeURIComponent(message.providerId)}`;
+    }
+    backendRequest(endpoint)
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true;

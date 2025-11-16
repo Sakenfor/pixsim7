@@ -35,9 +35,71 @@ async def scan_devices(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/loops", response_model=List[ExecutionLoop])
-async def list_loops(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ExecutionLoop))
-    return result.scalars().all()
+async def list_loops(
+    provider_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all loops, optionally filtered by provider.
+
+    If provider_id is specified, only returns loops that reference
+    presets for that provider (via preset_id, shared_preset_ids,
+    default_preset_ids, or account_preset_config).
+    """
+    if provider_id:
+        # First get all preset IDs for this provider
+        from sqlalchemy import or_, func
+        provider_lower = provider_id.lower()
+        preset_query = select(AppActionPreset.id).where(
+            or_(
+                func.lower(AppActionPreset.app_package).contains(provider_lower),
+                AppActionPreset.tags.contains([provider_id])
+            )
+        )
+        preset_result = await db.execute(preset_query)
+        provider_preset_ids = set(preset_result.scalars().all())
+
+        if not provider_preset_ids:
+            # No presets for this provider, return empty list
+            return []
+
+        # Filter loops that reference any of these presets
+        # This is complex because presets can be in multiple JSON fields
+        loops_result = await db.execute(select(ExecutionLoop))
+        all_loops = loops_result.scalars().all()
+
+        filtered_loops = []
+        for loop in all_loops:
+            # Check if loop references any provider preset
+            referenced_presets = set()
+
+            # Check preset_id (legacy single preset)
+            if loop.preset_id:
+                referenced_presets.add(loop.preset_id)
+
+            # Check shared_preset_ids
+            if loop.shared_preset_ids:
+                referenced_presets.update(loop.shared_preset_ids)
+
+            # Check default_preset_ids
+            if loop.default_preset_ids:
+                referenced_presets.update(loop.default_preset_ids)
+
+            # Check account_preset_config
+            if loop.account_preset_config:
+                for preset_list in loop.account_preset_config.values():
+                    if isinstance(preset_list, list):
+                        referenced_presets.update(preset_list)
+
+            # Include loop if it references any provider preset
+            if referenced_presets & provider_preset_ids:
+                filtered_loops.append(loop)
+
+        return filtered_loops
+    else:
+        # No filter, return all loops
+        result = await db.execute(select(ExecutionLoop))
+        return result.scalars().all()
 
 
 @router.post("/loops", response_model=ExecutionLoop)
@@ -87,8 +149,31 @@ async def run_loop_now(loop_id: int, db: AsyncSession = Depends(get_db)):
 # ----- Presets -----
 
 @router.get("/presets", response_model=List[AppActionPreset])
-async def list_presets(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(AppActionPreset))
+async def list_presets(
+    provider_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all presets, optionally filtered by provider.
+
+    If provider_id is specified, only returns presets where:
+    - app_package contains the provider_id (case-insensitive), OR
+    - tags array contains the provider_id
+    """
+    query = select(AppActionPreset)
+
+    if provider_id:
+        # Filter by app_package containing provider_id OR tags containing provider_id
+        from sqlalchemy import or_, func
+        provider_lower = provider_id.lower()
+        query = query.where(
+            or_(
+                func.lower(AppActionPreset.app_package).contains(provider_lower),
+                AppActionPreset.tags.contains([provider_id])
+            )
+        )
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 

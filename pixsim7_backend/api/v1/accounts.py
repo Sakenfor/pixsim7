@@ -121,6 +121,108 @@ class SyncCreditsResponse(BaseModel):
     message: str
 
 
+class BatchSyncCreditsResponse(BaseModel):
+    """Response from batch credit sync"""
+    success: bool
+    synced: int
+    failed: int
+    total: int
+    details: list[Dict[str, any]] = []
+
+
+@router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)
+async def sync_all_account_credits(
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+    provider_id: Optional[str] = None
+):
+    """Sync credits for all user accounts in one batch operation.
+
+    This is more efficient than calling sync-credits for each account individually.
+    Optionally filter by provider_id to sync only accounts for a specific provider.
+
+    Returns summary of successful and failed syncs.
+    """
+    # Get all user accounts (optionally filtered by provider)
+    accounts = await account_service.list_accounts(
+        user_id=user.id,
+        provider_id=provider_id,
+        include_shared=False  # Only sync user's own accounts
+    )
+
+    synced = 0
+    failed = 0
+    details = []
+
+    for account in accounts:
+        try:
+            # Get provider and sync credits
+            from pixsim7_backend.services.provider import registry
+            provider = registry.get(account.provider_id)
+
+            # Try provider's get_credits method first
+            credits_data = None
+            if hasattr(provider, 'get_credits'):
+                try:
+                    credits_data = provider.get_credits(account)
+                except Exception as e:
+                    logger.debug(f"Provider get_credits failed for {account.email}: {e}")
+
+            # Fallback: extract from account data
+            if not credits_data:
+                raw_data = {'cookies': account.cookies or {}}
+                extracted = await provider.extract_account_data(raw_data)
+                credits_data = extracted.get('credits')
+
+            # Update credits if available
+            if credits_data and isinstance(credits_data, dict):
+                updated_credits = {}
+                for credit_type, amount in credits_data.items():
+                    try:
+                        await account_service.set_credit(account.id, credit_type, amount)
+                        updated_credits[credit_type] = amount
+                    except Exception as e:
+                        logger.warning(f"Failed to update {credit_type} for {account.email}: {e}")
+
+                await db.commit()
+                await db.refresh(account)
+
+                synced += 1
+                details.append({
+                    "account_id": account.id,
+                    "email": account.email,
+                    "credits": updated_credits,
+                    "success": True
+                })
+            else:
+                failed += 1
+                details.append({
+                    "account_id": account.id,
+                    "email": account.email,
+                    "success": False,
+                    "error": "No credits data available"
+                })
+
+        except Exception as e:
+            failed += 1
+            details.append({
+                "account_id": account.id,
+                "email": account.email,
+                "success": False,
+                "error": str(e)
+            })
+            logger.error(f"Failed to sync credits for account {account.id}: {e}")
+
+    return BatchSyncCreditsResponse(
+        success=True,
+        synced=synced,
+        failed=failed,
+        total=len(accounts),
+        details=details
+    )
+
+
 @router.post("/accounts/{account_id}/sync-credits", response_model=SyncCreditsResponse)
 async def sync_account_credits(
     account_id: int,
