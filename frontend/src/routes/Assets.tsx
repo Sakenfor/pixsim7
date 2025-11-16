@@ -4,9 +4,11 @@ import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
 import { Tabs } from '../components/navigation/Tabs';
-import { Badge } from '@pixsim7/ui';
+import { Badge, Button } from '@pixsim7/ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
+import { useAssetPickerStore } from '../stores/assetPickerStore';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -16,6 +18,12 @@ const SCOPE_TABS = [
 ];
 
 export function AssetsRoute() {
+  // Asset picker mode
+  const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
+  const selectAsset = useAssetPickerStore((s) => s.selectAsset);
+  const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
+  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+
   // Filters state derived from URL + sessionStorage
   const params = new URLSearchParams(window.location.search);
   const sessionKey = 'assets_filters';
@@ -32,6 +40,25 @@ export function AssetsRoute() {
   const { providers } = useProviders();
   const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
   const jobsSocket = useJobsSocket({ autoConnect: true });
+
+  // Handle asset selection
+  const handleSelectAsset = (asset: any) => {
+    selectAsset({
+      id: asset.id,
+      mediaType: asset.media_type,
+      providerId: asset.provider_id,
+      providerAssetId: asset.provider_asset_id,
+      remoteUrl: asset.remote_url,
+      thumbnailUrl: asset.thumbnail_url,
+    });
+    // Close floating gallery panel
+    closeFloatingPanel('gallery');
+  };
+
+  const handleCancelSelection = () => {
+    exitSelectionMode();
+    closeFloatingPanel('gallery');
+  };
 
   function updateURL(next: typeof filters) {
     const p = new URLSearchParams();
@@ -82,6 +109,25 @@ export function AssetsRoute() {
 
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
+      {/* Selection Mode Banner */}
+      {isSelectionMode && (
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+                📎 Asset Selection Mode
+              </h2>
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Click on an asset to select it for your scene node
+              </p>
+            </div>
+            <Button variant="secondary" onClick={handleCancelSelection}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Assets</h1>
         <div className="flex items-center gap-4">
@@ -141,21 +187,52 @@ export function AssetsRoute() {
           <MasonryGrid
             items={items.map(a => (
               <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
-                <MediaCard
-                  id={a.id}
-                  mediaType={a.media_type}
-                  providerId={a.provider_id}
-                  providerAssetId={a.provider_asset_id}
-                  thumbUrl={a.thumbnail_url}
-                  remoteUrl={a.remote_url}
-                  width={a.width}
-                  height={a.height}
-                  durationSec={a.duration_sec}
-                  tags={a.tags}
-                  description={a.description}
-                  createdAt={a.created_at}
-                  status={a.sync_status}
-                />
+                {isSelectionMode ? (
+                  <div className="relative group">
+                    <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+                      <MediaCard
+                        id={a.id}
+                        mediaType={a.media_type}
+                        providerId={a.provider_id}
+                        providerAssetId={a.provider_asset_id}
+                        thumbUrl={a.thumbnail_url}
+                        remoteUrl={a.remote_url}
+                        width={a.width}
+                        height={a.height}
+                        durationSec={a.duration_sec}
+                        tags={a.tags}
+                        description={a.description}
+                        createdAt={a.created_at}
+                        status={a.sync_status}
+                      />
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <Button
+                        variant="primary"
+                        onClick={() => handleSelectAsset(a)}
+                        className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                      >
+                        ✓ Select Asset
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <MediaCard
+                    id={a.id}
+                    mediaType={a.media_type}
+                    providerId={a.provider_id}
+                    providerAssetId={a.provider_asset_id}
+                    thumbUrl={a.thumbnail_url}
+                    remoteUrl={a.remote_url}
+                    width={a.width}
+                    height={a.height}
+                    durationSec={a.duration_sec}
+                    tags={a.tags}
+                    description={a.description}
+                    createdAt={a.created_at}
+                    status={a.sync_status}
+                  />
+                )}
               </div>
             ))}
           />

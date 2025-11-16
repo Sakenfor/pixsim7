@@ -226,18 +226,49 @@ export function GraphPanel() {
     (event: React.DragEvent) => {
       event.preventDefault();
 
-      const nodeType = event.dataTransfer.getData('application/reactflow-nodetype') as NodeType;
-      if (!nodeType) return;
-
       // Get the drop position relative to the React Flow canvas
       const position = screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
 
-      handleAddNode(nodeType, position);
+      // Check if dropping a node type from palette
+      const nodeType = event.dataTransfer.getData('application/reactflow-nodetype') as NodeType;
+      if (nodeType) {
+        handleAddNode(nodeType, position);
+        return;
+      }
+
+      // Check if dropping a scene from library (to create scene_call node)
+      const sceneCallData = event.dataTransfer.getData('application/reactflow-scene-call');
+      if (sceneCallData) {
+        try {
+          const { sceneId, sceneTitle } = JSON.parse(sceneCallData);
+
+          // Create a scene_call node
+          const nextIndex = ((draft?.nodes.length ?? 0)) + 1;
+          const id = `scene_call_${nextIndex}`;
+
+          addNode({
+            id,
+            type: 'scene_call',
+            targetSceneId: sceneId,
+            parameterBindings: {},
+            returnRouting: {},
+            metadata: {
+              label: `Call: ${sceneTitle}`,
+              position,
+            },
+          });
+
+          toast.success(`Created scene call to "${sceneTitle}"`);
+        } catch (error) {
+          toast.error('Failed to create scene call node');
+        }
+        return;
+      }
     },
-    [screenToFlowPosition, handleAddNode]
+    [screenToFlowPosition, handleAddNode, draft, addNode, toast]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {

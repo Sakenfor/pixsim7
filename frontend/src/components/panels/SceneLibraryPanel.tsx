@@ -12,7 +12,7 @@ import type { DraftScene } from '../../modules/scene-builder';
  * - Switch between scenes
  * - Create new scenes
  * - Duplicate/delete scenes
- * - Drag scenes to create scene_call nodes (TODO)
+ * - Drag scenes to create scene_call nodes ✅
  */
 export function SceneLibraryPanel() {
   const listScenes = useGraphStore((s: GraphState) => s.listScenes);
@@ -27,6 +27,7 @@ export function SceneLibraryPanel() {
   const [filterType, setFilterType] = useState<'all' | 'reusable' | 'regular'>('all');
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
 
   const scenes = listScenes();
 
@@ -152,6 +153,11 @@ export function SceneLibraryPanel() {
 
       {/* Scene List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {filteredScenes.length > 0 && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+            💡 Drag scenes onto the graph canvas to create scene call nodes
+          </div>
+        )}
         {filteredScenes.length === 0 ? (
           <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
             {searchQuery ? 'No scenes match your search' : 'No scenes yet - create one to get started!'}
@@ -164,6 +170,7 @@ export function SceneLibraryPanel() {
               isActive={scene.id === currentSceneId}
               isEditing={editingSceneId === scene.id}
               editTitle={editTitle}
+              isDragging={draggedSceneId === scene.id}
               onSetEditTitle={setEditTitle}
               onLoad={() => loadScene(scene.id)}
               onDuplicate={() => handleDuplicateScene(scene.id, scene.title)}
@@ -171,6 +178,8 @@ export function SceneLibraryPanel() {
               onStartRename={() => handleStartRename(scene.id, scene.title)}
               onSaveRename={() => handleSaveRename(scene.id)}
               onCancelRename={handleCancelRename}
+              onDragStart={() => setDraggedSceneId(scene.id)}
+              onDragEnd={() => setDraggedSceneId(null)}
             />
           ))
         )}
@@ -184,6 +193,7 @@ interface SceneCardProps {
   isActive: boolean;
   isEditing: boolean;
   editTitle: string;
+  isDragging: boolean;
   onSetEditTitle: (title: string) => void;
   onLoad: () => void;
   onDuplicate: () => void;
@@ -191,6 +201,8 @@ interface SceneCardProps {
   onStartRename: () => void;
   onSaveRename: () => void;
   onCancelRename: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }
 
 function SceneCard({
@@ -198,6 +210,7 @@ function SceneCard({
   isActive,
   isEditing,
   editTitle,
+  isDragging,
   onSetEditTitle,
   onLoad,
   onDuplicate,
@@ -205,8 +218,21 @@ function SceneCard({
   onStartRename,
   onSaveRename,
   onCancelRename,
+  onDragStart,
+  onDragEnd,
 }: SceneCardProps) {
   const isReusable = scene.signature?.isReusable || false;
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = 'copy';
+    // Set data for creating scene_call node
+    e.dataTransfer.setData('application/reactflow-scene-call', JSON.stringify({
+      sceneId: scene.id,
+      sceneTitle: scene.title,
+    }));
+    onDragStart();
+  };
 
   return (
     <div
@@ -217,8 +243,12 @@ function SceneCard({
             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
             : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
         }
+        ${isDragging ? 'opacity-50 scale-95' : ''}
       `}
       onClick={onLoad}
+      draggable={!isEditing}
+      onDragStart={handleDragStart}
+      onDragEnd={onDragEnd}
     >
       {/* Title */}
       <div className="flex items-center justify-between mb-2">

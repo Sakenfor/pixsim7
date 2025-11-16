@@ -6,6 +6,7 @@ import type { DraftSceneNode } from '../modules/scene-builder';
 import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { logEvent } from '../lib/logging';
+import { previewBridge } from '../lib/preview-bridge';
 
 export function SceneBuilderPanel() {
   const toast = useToast();
@@ -126,15 +127,19 @@ export function SceneBuilderPanel() {
         return;
       }
 
-      // TODO: Wire postMessage to game iframe
-      // For now, just show a toast
       logEvent('DEBUG', 'scene_preview_ready', {
         nodeCount: scene.nodes.length,
         edgeCount: scene.edges.length,
       });
-      toast.info('Preview feature coming soon - scene structure ready');
+
+      const success = previewBridge.loadScene(scene, true);
+      if (success) {
+        toast.success('Scene sent to game preview');
+      } else {
+        toast.warning('Game iframe not available - ensure the game panel is open');
+      }
     } catch (error) {
-      toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Preview error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
