@@ -24,6 +24,7 @@ import type { DraftSceneNode, DraftEdge } from '../modules/scene-builder';
 import { validateConnection, getValidationMessage } from '../modules/scene-builder/portValidation';
 import { NodePalette, type NodeType } from './nodes/NodePalette';
 import { previewBridge } from '../lib/preview-bridge';
+import { ValidationPanel } from './validation/ValidationPanel';
 
 // Node type registry
 const nodeTypes: NodeTypes = {
@@ -405,6 +406,8 @@ export function GraphPanel() {
         >
           {showDebugPanel ? '✓ Debug' : 'Debug'}
         </Button>
+        <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
+        <ValidationPanel />
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <Button size="sm" variant="secondary" onClick={handleExportFile} disabled={!draft}>
           ↓ Export

@@ -21,7 +21,7 @@ export interface ProviderCapabilitySummary {
 // Scene Graph Types
 // ===================
 
-export type SceneNodeType = 'video' | 'action'
+export type SceneNodeType = 'video' | 'action' | 'choice' | 'condition' | 'end' | 'scene_call' | 'return' | 'generation'
 
 export interface MediaSegment {
   id: string
@@ -48,6 +48,28 @@ export interface SceneNode {
   media?: MediaSegment[] // modular clips for this node
   selection?: SelectionStrategy // how to pick from media
   playback?: PlaybackMode
+
+  // Choice node specific
+  choices?: Array<{ label: string; targetNodeId: string }>
+
+  // Condition node specific
+  condition?: { key: string; op: string; value: any }
+  trueTargetNodeId?: string
+  falseTargetNodeId?: string
+
+  // Scene call node specific
+  targetSceneId?: string
+  parameterBindings?: Record<string, any>
+  returnRouting?: Record<string, string>
+
+  // Return node specific
+  returnPointId?: string
+  returnValues?: Record<string, any>
+
+  // End node specific
+  endType?: 'success' | 'failure' | 'neutral'
+  endMessage?: string
+
   // optional prompt or metadata
   meta?: Record<string, any>
 }
@@ -82,11 +104,24 @@ export interface Scene {
   startNodeId: string
 }
 
+export interface SceneCallStackFrame {
+  sceneId: string  // Scene that was called
+  callerNodeId: string  // Node in caller scene that made the call
+  returnPointId?: string  // Which return point to route back to
+  parameters: Record<string, any>  // Parameters passed to the scene
+  callerState: {  // State to restore when returning
+    currentNodeId: string
+    flags: Record<string, any>
+  }
+}
+
 export interface SceneRuntimeState {
   currentNodeId: string
+  currentSceneId?: string  // Track which scene we're currently in
   flags: Record<string, any>
   progressionIndex?: number // for progression playback
   activeSegmentId?: string // currently selected segment within node
+  callStack?: SceneCallStackFrame[]  // Stack for scene calling
 }
 
 // ===================

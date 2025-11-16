@@ -1,7 +1,8 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { getNodePorts, getPortPosition } from '../../modules/scene-builder/portConfig';
+import { validateScene } from '../../modules/scene-builder/validation';
 
 interface SceneNodeData {
   label: string;
@@ -12,11 +13,27 @@ interface SceneNodeData {
 
 export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>) => {
   const updateNode = useGraphStore((s: GraphState) => s.updateNode);
+  const draft = useGraphStore((s: GraphState) => s.draft);
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(data.label);
 
   // Get dynamic port configuration for this node type
   const portConfig = getNodePorts(data.draftNode);
+
+  // Check if this node has validation issues
+  const nodeIssues = useMemo(() => {
+    if (!draft) return [];
+    const validation = validateScene(draft);
+    return validation.issues.filter(issue => issue.nodeId === id);
+  }, [draft, id]);
+
+  // Determine highest severity issue
+  const highestSeverity = useMemo(() => {
+    if (nodeIssues.some(i => i.severity === 'error')) return 'error';
+    if (nodeIssues.some(i => i.severity === 'warning')) return 'warning';
+    if (nodeIssues.some(i => i.severity === 'info')) return 'info';
+    return null;
+  }, [nodeIssues]);
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -60,6 +77,24 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
       {data.isStart && (
         <div className="absolute -top-3 -left-3 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow z-10">
           START
+        </div>
+      )}
+
+      {/* Validation Issue Badge */}
+      {highestSeverity && (
+        <div
+          className={`
+            absolute -top-3 -right-3 text-xs font-bold px-2 py-1 rounded-full shadow z-10
+            ${highestSeverity === 'error' ? 'bg-red-500 text-white' : ''}
+            ${highestSeverity === 'warning' ? 'bg-amber-500 text-white' : ''}
+            ${highestSeverity === 'info' ? 'bg-blue-500 text-white' : ''}
+          `}
+          title={nodeIssues.map(i => i.message).join('\n')}
+        >
+          {highestSeverity === 'error' && '🔴'}
+          {highestSeverity === 'warning' && '⚠️'}
+          {highestSeverity === 'info' && 'ℹ️'}
+          {nodeIssues.length > 1 && ` ${nodeIssues.length}`}
         </div>
       )}
 
