@@ -1,4 +1,5 @@
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../../stores/workspaceStore';
+import { Icon } from '../../../lib/icons';
 
 const PANEL_NAMES: Record<PanelId, string> = {
   gallery: 'Gallery',
@@ -50,7 +51,7 @@ export function AddPanelDropdown({ onRestorePanel, onClose }: AddPanelDropdownPr
               disabled={alreadyExists}
               title={alreadyExists ? 'Already in layout' : ''}
             >
-              {PANEL_NAMES[panelId]} {alreadyExists && '✓'}
+              {PANEL_NAMES[panelId]} {alreadyExists && <Icon name="check" size={14} className="inline ml-1" />}
             </button>
           );
         })}

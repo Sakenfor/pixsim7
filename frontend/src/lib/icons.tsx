@@ -42,6 +42,20 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Heart,
+  Network,
+  Zap,
+  BarChart3,
+  Sliders,
+  FileText,
+  Sparkles,
+  Target,
+  Scissors,
+  Clipboard,
+  Link2,
+  Gamepad2,
+  Clapperboard,
+  Bot,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -62,6 +76,7 @@ export const Icons = {
   image: Image,
   video: Video,
   camera: Camera,
+  clapperboard: Clapperboard,
 
   // Cube faces (directional)
   cubeFront: Image,          // Frame/picture for front face
@@ -85,6 +100,9 @@ export const Icons = {
   upload: Upload,
   download: Download,
   refresh: RefreshCw,
+  cut: Scissors,
+  clipboard: Clipboard,
+  link: Link2,
 
   // Playback
   play: Play,
@@ -99,6 +117,19 @@ export const Icons = {
   folderOpen: FolderOpen,
   eye: Eye,
   eyeOff: EyeOff,
+  sliders: Sliders,
+  fileText: FileText,
+
+  // Panels & Features
+  heart: Heart,
+  graph: Network,
+  palette: Palette,
+  gamepad: Gamepad2,
+  zap: Zap,
+  barChart: BarChart3,
+  sparkles: Sparkles,
+  target: Target,
+  bot: Bot,
 
   // Status indicators
   loading: Loader,
