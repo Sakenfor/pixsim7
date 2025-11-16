@@ -1,10 +1,15 @@
-import { useRef } from 'react';
-import Draggable from 'react-draggable';
-import type { DraggableData, DraggableEvent } from 'react-draggable';
-import { ControlCube, type CubeFaceContent } from './ControlCube';
-import type { CubeFace } from '../../stores/controlCubeStore';
-import { useControlCubeStore } from '../../stores/controlCubeStore';
-import { clsx } from 'clsx';
+// Wrapper around pixcubes DraggableCube with pixsim7-specific dependencies
+import {
+  DraggableCube as PixcubesDraggableCube,
+  type DraggableCubeProps as PixcubesDraggableCubeProps,
+  type CubeFaceContent,
+} from 'pixcubes';
+import { useControlCubeStore, type CubeFace } from '../../stores/controlCubeStore';
+import { useCubeSettingsStore } from '../../stores/cubeSettingsStore';
+import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
+import { CubeExpansionOverlay } from './CubeExpansionOverlay';
+import { CubeTooltip, useTooltipDismissal } from '../ui/CubeTooltip';
+import { Icon } from '../../lib/icons';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
 
 export interface DraggableCubeProps {
@@ -26,60 +31,24 @@ export function DraggableCube({
   onFaceClick,
   onExpand,
 }: DraggableCubeProps) {
-  const nodeRef = useRef<HTMLDivElement>(null);
-
-  const cube = useControlCubeStore((s) => s.cubes[cubeId]);
-  const setCubePosition = useControlCubeStore((s) => s.setCubePosition);
-  const setActiveCube = useControlCubeStore((s) => s.setActiveCube);
-  const updateCube = useControlCubeStore((s) => s.updateCube);
-
-  // Position syncing is handled by react-draggable via controlled position prop
-  // Removed manual DOM manipulation to prevent race conditions with multiple position sources
-
-  if (!cube || !cube.visible) return null;
-
-  const handleDragStart = (_e: DraggableEvent, _data: DraggableData) => {
-    setActiveCube(cubeId);
-    onDragStart?.();
-  };
-
-  const handleDrag = (_e: DraggableEvent, data: DraggableData) => {
-    setCubePosition(cubeId, { x: data.x, y: data.y });
-  };
-
-  const handleDragStop = (_e: DraggableEvent, _data: DraggableData) => {
-    onDragStop?.();
-  };
+  const linkingGesture = useCubeSettingsStore((s) => s.linkingGesture);
 
   return (
-    <Draggable
-      nodeRef={nodeRef}
-      position={cube.position}
-      onStart={handleDragStart}
-      onDrag={handleDrag}
-      onStop={handleDragStop}
-      disabled={cube.mode === 'docked'}
-    >
-      <div
-        ref={nodeRef}
-        className={clsx(
-          'absolute cursor-grab active:cursor-grabbing',
-          'transition-opacity duration-300',
-          cube.mode === 'docked' && 'cursor-default'
-        )}
-        style={{
-          zIndex: cube.zIndex,
-          pointerEvents: cube.visible ? 'auto' : 'none',
-        }}
-      >
-        <ControlCube
-          cubeId={cubeId}
-          size={size}
-          faceContent={faceContent}
-          onFaceClick={onFaceClick}
-          onExpand={onExpand}
-        />
-      </div>
-    </Draggable>
+    <PixcubesDraggableCube
+      cubeId={cubeId}
+      useStore={useControlCubeStore}
+      size={size}
+      faceContent={faceContent}
+      onDragStart={onDragStart}
+      onDragStop={onDragStop}
+      onFaceClick={onFaceClick}
+      onExpand={onExpand}
+      Icon={Icon}
+      CubeTooltip={CubeTooltip}
+      CubeExpansionOverlay={CubeExpansionOverlay}
+      useTooltipDismissal={useTooltipDismissal}
+      cubeExpansionRegistry={cubeExpansionRegistry}
+      linkingGesture={linkingGesture}
+    />
   );
 }
