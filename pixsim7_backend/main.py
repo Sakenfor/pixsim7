@@ -89,6 +89,18 @@ async def lifespan(app: FastAPI):
         ExecutionLoop,
         ExecutionLoopHistory,
     )
+    # Register game domain models
+    from pixsim7_backend.domain.game import (
+        GameScene,
+        GameSceneNode,
+        GameSceneEdge,
+        GameSession,
+        GameSessionEvent,
+        GameLocation,
+        GameNPC,
+        NPCSchedule,
+        NPCState,
+    )
 
     # Initialize database
     await init_database()
@@ -202,7 +214,7 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents
+from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions
 from pixsim7_backend.api.admin import database_router, migrations_router
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
@@ -216,6 +228,8 @@ app.include_router(device_agents.router, prefix="/api/v1", tags=["device-agents"
 app.include_router(providers.router, prefix="/api/v1", tags=["providers"])
 app.include_router(lineage.router, prefix="/api/v1", tags=["lineage"])
 app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
+app.include_router(game_scenes.router, prefix="/api/v1/game/scenes", tags=["game-scenes"])
+app.include_router(game_sessions.router, prefix="/api/v1/game/sessions", tags=["game-sessions"])
 app.include_router(database_router, prefix="/api", tags=["database"])
 app.include_router(migrations_router, prefix="/api", tags=["migrations"])
 
