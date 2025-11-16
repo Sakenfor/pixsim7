@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
-import type { MosaicNode } from 'react-mosaic-component';
 
 export type PanelId =
   | 'gallery'
@@ -12,6 +11,16 @@ export type PanelId =
   | 'game'
   | 'providers'
   | 'settings';
+
+// Tree-based layout structure (replaces MosaicNode)
+export type LayoutNode<T> = T | LayoutBranch<T>;
+
+export interface LayoutBranch<T> {
+  direction: 'row' | 'column';
+  first: LayoutNode<T>;
+  second: LayoutNode<T>;
+  splitPercentage?: number;
+}
 
 export interface FloatingPanelState {
   id: PanelId;
@@ -25,11 +34,11 @@ export interface FloatingPanelState {
 export interface WorkspacePreset {
   id: string;
   name: string;
-  layout: MosaicNode<PanelId> | null;
+  layout: LayoutNode<PanelId> | null;
 }
 
 export interface WorkspaceState {
-  currentLayout: MosaicNode<PanelId> | null; // Legacy mosaic layout
+  currentLayout: LayoutNode<PanelId> | null; // Tree-based layout structure
   dockviewLayout: any | null; // Dockview serialized layout
   closedPanels: PanelId[];
   isLocked: boolean;
@@ -39,7 +48,7 @@ export interface WorkspaceState {
 }
 
 export interface WorkspaceActions {
-  setLayout: (layout: MosaicNode<PanelId> | null) => void;
+  setLayout: (layout: LayoutNode<PanelId> | null) => void;
   setDockviewLayout: (layout: any) => void;
   closePanel: (panelId: PanelId) => void;
   restorePanel: (panelId: PanelId) => void;
@@ -116,14 +125,14 @@ const defaultPresets: WorkspacePreset[] = [
 const STORAGE_KEY = 'workspace_v2';
 
 // Helper to get all leaf IDs from a layout tree
-const getAllLeaves = (node: MosaicNode<PanelId> | null): PanelId[] => {
+const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
   if (!node) return [];
   if (typeof node === 'string') return [node];
   return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
 };
 
 // Helper to validate and fix duplicate IDs in a layout
-const validateAndFixLayout = (layout: MosaicNode<PanelId> | null): MosaicNode<PanelId> | null => {
+const validateAndFixLayout = (layout: LayoutNode<PanelId> | null): LayoutNode<PanelId> | null => {
   if (!layout) return null;
 
   const leaves = getAllLeaves(layout);
@@ -180,7 +189,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }
 
         // Add panel to layout - append to the right side
-        const newLayout: MosaicNode<PanelId> = current
+        const newLayout: LayoutNode<PanelId> = current
           ? {
               direction: 'row',
               first: current,

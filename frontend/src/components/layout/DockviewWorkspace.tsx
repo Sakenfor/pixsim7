@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
 import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
-import type { MosaicNode } from 'react-mosaic-component';
 import 'dockview/dist/styles/dockview.css';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../SceneBuilderPanel';
@@ -11,7 +10,7 @@ import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { previewBridge } from '../../lib/preview-bridge';
-import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
+import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../stores/workspaceStore';
 
 // Game iframe with preview bridge connection
 function GameIframePanel() {
@@ -81,10 +80,10 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   );
 }
 
-// Helper to convert MosaicNode to Dockview panels
-function applyMosaicLayoutToDockview(
+// Helper to convert tree layout to Dockview panels
+function applyLayoutToDockview(
   api: DockviewReadyEvent['api'],
-  layout: MosaicNode<PanelId> | null,
+  layout: LayoutNode<PanelId> | null,
   titles: Record<PanelId, string>
 ) {
   // Clear existing panels (defensively guard against stale/undefined ids)
@@ -103,9 +102,9 @@ function applyMosaicLayoutToDockview(
 
   let panelCounter = 0;
 
-  // Recursively build panels from MosaicNode
+  // Recursively build panels from LayoutNode tree
   const buildPanels = (
-    node: MosaicNode<PanelId>,
+    node: LayoutNode<PanelId>,
     referencePanel?: string,
     direction?: 'left' | 'right' | 'above' | 'below'
   ): string => {
@@ -146,7 +145,7 @@ function applyMosaicLayoutToDockview(
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
   const [isReady, setIsReady] = useState(false);
-  const lastAppliedLayoutRef = useRef<MosaicNode<PanelId> | null>(null);
+  const lastAppliedLayoutRef = useRef<LayoutNode<PanelId> | null>(null);
 
   const dockviewLayout = useWorkspaceStore((s) => s.dockviewLayout);
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
@@ -258,7 +257,7 @@ export function DockviewWorkspace() {
     if (currentLayout === lastAppliedLayoutRef.current) return;
 
     lastAppliedLayoutRef.current = currentLayout;
-    applyMosaicLayoutToDockview(apiRef.current, currentLayout, PANEL_TITLES);
+    applyLayoutToDockview(apiRef.current, currentLayout, PANEL_TITLES);
   }, [currentLayout, isReady]);
 
   const components = {

@@ -1,5 +1,4 @@
-import { useWorkspaceStore, type PanelId } from '../../../stores/workspaceStore';
-import type { MosaicNode } from 'react-mosaic-component';
+import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../../stores/workspaceStore';
 
 const PANEL_NAMES: Record<PanelId, string> = {
   gallery: 'Gallery',
@@ -9,6 +8,7 @@ const PANEL_NAMES: Record<PanelId, string> = {
   health: 'Health',
   game: 'Game',
   providers: 'Provider Settings',
+  settings: 'Settings',
 };
 
 interface AddPanelDropdownProps {
@@ -19,7 +19,7 @@ interface AddPanelDropdownProps {
 export function AddPanelDropdown({ onRestorePanel, onClose }: AddPanelDropdownProps) {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
 
-  const getAllLeaves = (node: MosaicNode<PanelId> | null): PanelId[] => {
+  const getAllLeaves = (node: LayoutNode<PanelId> | null): PanelId[] => {
     if (!node) return [];
     if (typeof node === 'string') return [node as PanelId];
     return [...getAllLeaves(node.first), ...getAllLeaves(node.second)];
