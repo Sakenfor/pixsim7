@@ -42,37 +42,7 @@ export const useGraphStore = create<GraphState>()(
         return {
           ...slices,
 
-          // Legacy compatibility layer
-          get draft(): ReturnType<GraphState['getCurrentScene']> {
-            return (this as unknown as GraphState).getCurrentScene();
-          },
-
-          createDraft: (title: string) => {
-            const state = get() as GraphState;
-            state.createScene(title);
-          },
-
-          clearDraft: () => {
-            const state = get() as GraphState;
-            if (state.currentSceneId) {
-              state.deleteScene(state.currentSceneId);
-            }
-          },
-
-          // Legacy export/import (operate on current scene)
-          exportDraft: () => {
-            const state = get() as GraphState;
-            if (!state.currentSceneId) return null;
-            return state.exportScene(state.currentSceneId);
-          },
-
-          importDraft: (jsonString: string) => {
-            const state = get() as GraphState;
-            const sceneId = state.importScene(jsonString);
-            return sceneId ? state.getScene(sceneId) : null;
-          },
-
-          // Legacy toRuntimeScene (no args, uses current scene)
+          // Runtime scene conversion
           toRuntimeScene: (sceneId?: string): ReturnType<GraphState['toRuntimeScene']> => {
             const state: GraphState = get() as GraphState;
             const targetSceneId = sceneId || state.currentSceneId;

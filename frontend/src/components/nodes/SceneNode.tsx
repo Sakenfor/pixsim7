@@ -4,28 +4,33 @@ import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { getNodePorts, getPortPosition } from '../../modules/scene-builder/portConfig';
 import { validateScene } from '../../modules/scene-builder/validation';
 
+import type { DraftSceneNode } from '../../modules/scene-builder';
+
 interface SceneNodeData {
   label: string;
   nodeType: string;
   isStart: boolean;
-  draftNode: any;
+  draftNode: DraftSceneNode;
 }
 
 export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>) => {
   const updateNode = useGraphStore((s: GraphState) => s.updateNode);
-  const draft = useGraphStore((s: GraphState) => s.draft);
+  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(data.label);
+
+  // Get current scene
+  const currentScene = getCurrentScene();
 
   // Get dynamic port configuration for this node type
   const portConfig = getNodePorts(data.draftNode);
 
   // Check if this node has validation issues
   const nodeIssues = useMemo(() => {
-    if (!draft) return [];
-    const validation = validateScene(draft);
+    if (!currentScene) return [];
+    const validation = validateScene(currentScene);
     return validation.issues.filter(issue => issue.nodeId === id);
-  }, [draft, id]);
+  }, [currentScene, id]);
 
   // Determine highest severity issue
   const highestSeverity = useMemo(() => {
@@ -132,11 +137,6 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
 
         <div className="text-xs text-neutral-500 dark:text-neutral-400">
           ID: {id}
-        </div>
-
-        {/* Connection info */}
-        <div className="text-xs text-neutral-400 dark:text-neutral-500">
-          Connections: {data.draftNode.connections?.length || 0}
         </div>
       </div>
 

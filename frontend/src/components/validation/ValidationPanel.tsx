@@ -10,7 +10,7 @@ import { Button } from '@pixsim7/ui';
  */
 export function ValidationPanel() {
   const { setSelectedNodeId } = useSelectionStore();
-  const draft = useGraphStore((s: GraphState) => s.draft);
+  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const [isOpen, setIsOpen] = useState(false);
   const [validation, setValidation] = useState<ValidationResult>({
     valid: true,
@@ -20,11 +20,14 @@ export function ValidationPanel() {
   });
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Run validation when draft changes
+  // Get current scene
+  const currentScene = getCurrentScene();
+
+  // Run validation when scene changes
   useEffect(() => {
-    const result = validateScene(draft);
+    const result = validateScene(currentScene);
     setValidation(result);
-  }, [draft]);
+  }, [currentScene]);
 
   // Close panel when clicking outside
   useEffect(() => {

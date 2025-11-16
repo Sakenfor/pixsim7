@@ -13,16 +13,19 @@ import { ReturnNodeEditor } from './ReturnNodeEditor';
 
 export function InspectorPanel() {
   const { selectedNodeId } = useSelectionStore();
-  const draft = useGraphStore((s: GraphState) => s.draft);
+  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const updateNode = useGraphStore((s: GraphState) => s.updateNode);
   const toast = useToast();
   const [selectedNode, setSelectedNode] = useState<DraftSceneNode | null>(null);
   const [label, setLabel] = useState('');
 
-  // Load selected node when selection or draft changes
+  // Get current scene
+  const currentScene = getCurrentScene();
+
+  // Load selected node when selection or scene changes
   useEffect(() => {
-    if (selectedNodeId && draft) {
-      const node = draft.nodes.find((n: DraftSceneNode) => n.id === selectedNodeId);
+    if (selectedNodeId && currentScene) {
+      const node = currentScene.nodes.find((n: DraftSceneNode) => n.id === selectedNodeId);
       if (node) {
         setSelectedNode(node);
         setLabel(node.metadata?.label || '');
@@ -32,7 +35,7 @@ export function InspectorPanel() {
     } else {
       setSelectedNode(null);
     }
-  }, [selectedNodeId, draft]);
+  }, [selectedNodeId, currentScene]);
 
   function handleUpdateNode(patch: Partial<DraftSceneNode>) {
     if (!selectedNodeId) return;
