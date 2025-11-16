@@ -1,10 +1,11 @@
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
+import { Icon, type IconName } from '../../lib/icons';
 
 interface PanelInfo {
   id: PanelId;
   title: string;
   description: string;
-  icon: string;
+  icon: IconName;
   category: 'content' | 'tools' | 'settings';
 }
 
@@ -13,49 +14,49 @@ const PANEL_INFO: PanelInfo[] = [
     id: 'gallery',
     title: 'Gallery',
     description: 'Browse and manage generated assets',
-    icon: '🖼️',
+    icon: 'image',
     category: 'content',
   },
   {
     id: 'scene',
     title: 'Scene Builder',
     description: 'Create and edit scenes with timeline',
-    icon: '🎬',
+    icon: 'clapperboard',
     category: 'tools',
   },
   {
     id: 'graph',
     title: 'Graph',
     description: 'Visualize asset dependencies and relationships',
-    icon: '🔗',
+    icon: 'graph',
     category: 'tools',
   },
   {
     id: 'inspector',
     title: 'Inspector',
     description: 'View and edit asset properties',
-    icon: '🔍',
+    icon: 'search',
     category: 'tools',
   },
   {
     id: 'health',
     title: 'Health',
     description: 'Monitor system health and job status',
-    icon: '❤️',
+    icon: 'heart',
     category: 'settings',
   },
   {
     id: 'game',
     title: 'Game Frontend',
     description: 'Interactive game preview and testing',
-    icon: '🎮',
+    icon: 'gamepad',
     category: 'content',
   },
   {
     id: 'providers',
     title: 'Provider Settings',
     description: 'Manage provider accounts and capacity',
-    icon: '⚙️',
+    icon: 'settings',
     category: 'settings',
   },
 ];
@@ -138,7 +139,7 @@ export function PanelLauncherModule() {
                   }`}
                 >
                   {/* Panel info - compact */}
-                  <span className="text-base">{panel.icon}</span>
+                  <Icon name={panel.icon} size={16} />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 truncate">
                       {panel.title}
@@ -161,7 +162,7 @@ export function PanelLauncherModule() {
                       }`}
                       title={isOpen ? 'Panel is docked' : 'Dock panel'}
                     >
-                      {isOpen ? '✓' : 'Dock'}
+                      {isOpen ? <Icon name="check" size={12} /> : 'Dock'}
                     </button>
                     <button
                       onClick={() => handleOpenFloating(panel.id)}

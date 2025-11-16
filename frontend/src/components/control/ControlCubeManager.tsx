@@ -8,6 +8,7 @@ import type { CubeFace } from '../../stores/controlCubeStore';
 import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
 import { panelActionRegistry } from '../../lib/panelActions';
 import type { PanelActionsConfig } from '../../lib/panelActions';
+import { Icon } from '../../lib/icons';
 import { useToast } from '../../stores/toastStore';
 import { clsx } from 'clsx';
 
@@ -232,9 +233,10 @@ export function ControlCubeManager({ className }: ControlCubeManagerProps) {
             </div>
             <button
               onClick={() => setEditorOpen(true)}
-              className="mt-3 w-full px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+              className="mt-3 w-full px-2 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
             >
-              🎨 Open Action Editor
+              <Icon name="palette" size={14} />
+              Open Action Editor
             </button>
           </div>
         )}

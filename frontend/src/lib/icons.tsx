@@ -56,6 +56,15 @@ import {
   Gamepad2,
   Clapperboard,
   Bot,
+  Globe,
+  Radio,
+  Plug,
+  Star,
+  Drama,
+  ClipboardList,
+  LayoutGrid,
+  LightbulbIcon,
+  KeyRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -130,6 +139,15 @@ export const Icons = {
   sparkles: Sparkles,
   target: Target,
   bot: Bot,
+  globe: Globe,
+  radio: Radio,
+  plug: Plug,
+  star: Star,
+  drama: Drama,
+  clipboardList: ClipboardList,
+  layoutGrid: LayoutGrid,
+  lightbulb: LightbulbIcon,
+  key: KeyRound,
 
   // Status indicators
   loading: Loader,

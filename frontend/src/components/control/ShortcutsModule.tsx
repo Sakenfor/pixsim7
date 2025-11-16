@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
+import { Icon, type IconName } from '../../lib/icons';
 
 export interface Shortcut {
   id: string;
   label: string;
-  icon?: string;
+  icon?: IconName;
   action: () => void;
 }
 
@@ -15,25 +16,25 @@ export function ShortcutsModule() {
     {
       id: 'assets',
       label: 'Open Gallery',
-      icon: '🖼️',
+      icon: 'image',
       action: () => navigate('/assets'),
     },
     {
       id: 'workspace',
       label: 'Open Workspace',
-      icon: '🎨',
+      icon: 'palette',
       action: () => navigate('/workspace'),
     },
     {
       id: 'home',
       label: 'Go Home',
-      icon: '🏠',
+      icon: 'heart',
       action: () => navigate('/'),
     },
     {
       id: 'graph',
       label: 'Open Graph',
-      icon: '🕸️',
+      icon: 'graph',
       action: () => navigate('/graph/1'),
     },
   ];
@@ -57,9 +58,7 @@ export function ShortcutsModule() {
             aria-label={shortcut.label}
           >
             {shortcut.icon && (
-              <span className="text-2xl" role="img" aria-hidden="true">
-                {shortcut.icon}
-              </span>
+              <Icon name={shortcut.icon} size={32} aria-hidden="true" />
             )}
             <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
               {shortcut.label}

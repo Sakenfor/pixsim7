@@ -5,6 +5,7 @@ import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { CubeTooltip, useTooltipDismissal } from '../ui/CubeTooltip';
 import { clsx } from 'clsx';
+import { Icon } from '../../lib/icons';
 
 export interface CubeFaceContent {
   front?: ReactNode;
@@ -43,12 +44,12 @@ const CUBE_TYPE_GLOW: Record<CubeType, string> = {
 };
 
 const DEFAULT_FACE_CONTENT: CubeFaceContent = {
-  front: '⚡',
-  back: '🔧',
-  left: '🎨',
-  right: '📊',
-  top: '⚙️',
-  bottom: '🔍',
+  front: <Icon name="zap" size={20} />,
+  back: <Icon name="wrench" size={20} />,
+  left: <Icon name="palette" size={20} />,
+  right: <Icon name="barChart" size={20} />,
+  top: <Icon name="settings" size={20} />,
+  bottom: <Icon name="search" size={20} />,
 };
 
 // Helper function to get the actual face based on visual direction and current active face
@@ -572,8 +573,8 @@ export function ControlCube({
 
       {/* Docked indicator */}
       {isDocked && (
-        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/60 whitespace-nowrap">
-          📌 Docked
+        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/60 whitespace-nowrap flex items-center gap-1">
+          <Icon name="pin" size={12} /> Docked
         </div>
       )}
 
@@ -616,43 +617,43 @@ export function ControlCube({
 // Preset cube configurations
 export const CUBE_CONFIGS = {
   control: {
-    front: <div className="text-blue-300">⚡</div>,
-    back: <div className="text-purple-300">🎮</div>,
-    left: <div className="text-indigo-300">🎨</div>,
-    right: <div className="text-cyan-300">📊</div>,
-    top: <div className="text-violet-300">⚙️</div>,
-    bottom: <div className="text-blue-400">🔍</div>,
+    front: <div className="text-blue-300"><Icon name="zap" size={20} /></div>,
+    back: <div className="text-purple-300"><Icon name="gamepad" size={20} /></div>,
+    left: <div className="text-indigo-300"><Icon name="palette" size={20} /></div>,
+    right: <div className="text-cyan-300"><Icon name="barChart" size={20} /></div>,
+    top: <div className="text-violet-300"><Icon name="settings" size={20} /></div>,
+    bottom: <div className="text-blue-400"><Icon name="search" size={20} /></div>,
   },
   provider: {
-    front: <div className="text-green-300">🌐</div>,
-    back: <div className="text-teal-300">📡</div>,
-    left: <div className="text-emerald-300">🔌</div>,
-    right: <div className="text-lime-300">⚙️</div>,
-    top: <div className="text-green-400">✨</div>,
-    bottom: <div className="text-teal-400">📊</div>,
+    front: <div className="text-green-300"><Icon name="globe" size={20} /></div>,
+    back: <div className="text-teal-300"><Icon name="radio" size={20} /></div>,
+    left: <div className="text-emerald-300"><Icon name="plug" size={20} /></div>,
+    right: <div className="text-lime-300"><Icon name="settings" size={20} /></div>,
+    top: <div className="text-green-400"><Icon name="sparkles" size={20} /></div>,
+    bottom: <div className="text-teal-400"><Icon name="barChart" size={20} /></div>,
   },
   preset: {
-    front: <div className="text-orange-300">🎭</div>,
-    back: <div className="text-red-300">📋</div>,
-    left: <div className="text-amber-300">💾</div>,
-    right: <div className="text-yellow-300">⭐</div>,
-    top: <div className="text-orange-400">🎨</div>,
-    bottom: <div className="text-red-400">📂</div>,
+    front: <div className="text-orange-300"><Icon name="drama" size={20} /></div>,
+    back: <div className="text-red-300"><Icon name="clipboardList" size={20} /></div>,
+    left: <div className="text-amber-300"><Icon name="save" size={20} /></div>,
+    right: <div className="text-yellow-300"><Icon name="star" size={20} /></div>,
+    top: <div className="text-orange-400"><Icon name="palette" size={20} /></div>,
+    bottom: <div className="text-red-400"><Icon name="folder" size={20} /></div>,
   },
   panel: {
-    front: <div className="text-cyan-300">🪟</div>,
-    back: <div className="text-indigo-300">📐</div>,
-    left: <div className="text-sky-300">🔲</div>,
-    right: <div className="text-blue-300">📊</div>,
-    top: <div className="text-cyan-400">✨</div>,
-    bottom: <div className="text-indigo-400">⚡</div>,
+    front: <div className="text-cyan-300"><Icon name="layoutGrid" size={20} /></div>,
+    back: <div className="text-indigo-300"><Icon name="sliders" size={20} /></div>,
+    left: <div className="text-sky-300"><Icon name="layoutGrid" size={20} /></div>,
+    right: <div className="text-blue-300"><Icon name="barChart" size={20} /></div>,
+    top: <div className="text-cyan-400"><Icon name="sparkles" size={20} /></div>,
+    bottom: <div className="text-indigo-400"><Icon name="zap" size={20} /></div>,
   },
   settings: {
-    front: <div className="text-gray-300">⚙️</div>,
-    back: <div className="text-slate-300">🔧</div>,
-    left: <div className="text-zinc-300">🎛️</div>,
-    right: <div className="text-neutral-300">📝</div>,
-    top: <div className="text-gray-400">🔑</div>,
-    bottom: <div className="text-slate-400">💡</div>,
+    front: <div className="text-gray-300"><Icon name="settings" size={20} /></div>,
+    back: <div className="text-slate-300"><Icon name="wrench" size={20} /></div>,
+    left: <div className="text-zinc-300"><Icon name="sliders" size={20} /></div>,
+    right: <div className="text-neutral-300"><Icon name="fileText" size={20} /></div>,
+    top: <div className="text-gray-400"><Icon name="key" size={20} /></div>,
+    bottom: <div className="text-slate-400"><Icon name="lightbulb" size={20} /></div>,
   },
 } satisfies Record<CubeType, CubeFaceContent>;
