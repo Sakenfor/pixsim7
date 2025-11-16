@@ -227,8 +227,15 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
       <Panel className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-lg">Scene Player</h3>
-          <span className="text-xs text-neutral-500">Node: {currentNode?.id}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+              {currentNode?.type || 'unknown'}
+            </span>
+            <span className="text-xs text-neutral-500">Node: {currentNode?.id}</span>
+          </div>
         </div>
+
+        {/* Video Node */}
         {currentNode?.type === 'video' && (currentNode.mediaUrl || selectedSegment) && (
           <div className="relative aspect-video w-full bg-black/90 text-white">
             <video ref={videoRef} className="w-full h-full" playsInline />
@@ -255,6 +262,118 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Choice Node */}
+        {currentNode?.type === 'choice' && (
+          <div className="p-4 bg-neutral-100 dark:bg-neutral-800 rounded">
+            <p className="text-sm mb-4">{currentNode.label || 'Make a choice:'}</p>
+            <div className="flex flex-col gap-2">
+              {currentNode.choices?.map((choice, idx) => (
+                <Button
+                  key={idx}
+                  variant="primary"
+                  onClick={() => {
+                    // Find edge to target node
+                    const edge = outgoingEdges.find(e => e.to === choice.targetNodeId)
+                    if (edge) chooseEdge(edge)
+                  }}
+                >
+                  {choice.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Condition Node */}
+        {currentNode?.type === 'condition' && (
+          <div className="p-4 bg-amber-100 dark:bg-amber-900/20 rounded">
+            <p className="text-sm mb-2">⚖️ Evaluating condition...</p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
+              {currentNode.condition?.key} {currentNode.condition?.op} {JSON.stringify(currentNode.condition?.value)}
+            </p>
+            <Button
+              variant="secondary"
+              className="mt-4"
+              onClick={() => {
+                // Evaluate condition
+                const conditionMet = currentNode.condition
+                  ? (() => {
+                      const v = state.flags[currentNode.condition.key]
+                      switch (currentNode.condition.op) {
+                        case 'eq': return v === currentNode.condition.value
+                        case 'neq': return v !== currentNode.condition.value
+                        case 'gt': return v > currentNode.condition.value
+                        case 'lt': return v < currentNode.condition.value
+                        case 'gte': return v >= currentNode.condition.value
+                        case 'lte': return v <= currentNode.condition.value
+                        default: return v === currentNode.condition.value
+                      }
+                    })()
+                  : false
+
+                // Find appropriate edge
+                const targetId = conditionMet ? currentNode.trueTargetNodeId : currentNode.falseTargetNodeId
+                const edge = outgoingEdges.find(e => e.to === targetId)
+                if (edge) chooseEdge(edge)
+              }}
+            >
+              Evaluate
+            </Button>
+          </div>
+        )}
+
+        {/* End Node */}
+        {currentNode?.type === 'end' && (
+          <div className={`p-6 rounded text-center ${
+            currentNode.endType === 'success' ? 'bg-green-100 dark:bg-green-900/20' :
+            currentNode.endType === 'failure' ? 'bg-red-100 dark:bg-red-900/20' :
+            'bg-neutral-100 dark:bg-neutral-800'
+          }`}>
+            <div className="text-4xl mb-4">
+              {currentNode.endType === 'success' ? '🎉' :
+               currentNode.endType === 'failure' ? '💔' : '🏁'}
+            </div>
+            <h4 className="font-semibold text-lg mb-2">
+              {currentNode.endType === 'success' ? 'Success!' :
+               currentNode.endType === 'failure' ? 'Game Over' :
+               'The End'}
+            </h4>
+            {currentNode.endMessage && (
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">{currentNode.endMessage}</p>
+            )}
+          </div>
+        )}
+
+        {/* Scene Call Node */}
+        {currentNode?.type === 'scene_call' && (
+          <div className="p-4 bg-cyan-100 dark:bg-cyan-900/20 rounded">
+            <p className="text-sm mb-2">📞 Calling scene: {currentNode.targetSceneId}</p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Scene calling is not yet implemented in runtime player.
+            </p>
+            <Button
+              variant="secondary"
+              className="mt-4"
+              onClick={() => {
+                // For now, just advance to first available edge
+                if (playableEdges.length > 0) chooseEdge(playableEdges[0])
+              }}
+            >
+              Continue (Stub)
+            </Button>
+          </div>
+        )}
+
+        {/* Return Node */}
+        {currentNode?.type === 'return' && (
+          <div className="p-4 bg-orange-100 dark:bg-orange-900/20 rounded">
+            <p className="text-sm mb-2">🔙 Returning through: {currentNode.returnPointId}</p>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Return nodes are not yet implemented in runtime player.
+            </p>
           </div>
         )}
         {isProgression(currentNode?.playback) && (
@@ -290,28 +409,31 @@ export function ScenePlayer({ scene, initialState, autoAdvance = false, onStateC
         <div className="text-xs text-neutral-500">Flags: {JSON.stringify(state.flags)}</div>
       </Panel>
 
-      <Panel className="space-y-2">
-        <h4 className="font-medium">Choices</h4>
-        {progression && (state.progressionIndex ?? -1) < (totalSegments - 1) && (
-          <div className="text-xs text-neutral-500">Complete progression to unlock choices.</div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {playableEdges.map(edge => (
-            <Button
-              key={edge.id}
-              size="sm"
-              variant="primary"
-              disabled={!!progression && (state.progressionIndex ?? -1) < (totalSegments - 1)}
-              onClick={() => chooseEdge(edge)}
-            >
-              {edge.label || 'Continue'}
-            </Button>
-          ))}
-          {playableEdges.length === 0 && (
-            <span className="text-xs text-neutral-500">No available transitions.</span>
+      {/* Edge-based choices (for video nodes and nodes without built-in choices) */}
+      {currentNode?.type !== 'choice' && currentNode?.type !== 'end' && currentNode?.type !== 'return' && (
+        <Panel className="space-y-2">
+          <h4 className="font-medium">Transitions</h4>
+          {progression && (state.progressionIndex ?? -1) < (totalSegments - 1) && (
+            <div className="text-xs text-neutral-500">Complete progression to unlock transitions.</div>
           )}
-        </div>
-      </Panel>
+          <div className="flex flex-wrap gap-2">
+            {playableEdges.map(edge => (
+              <Button
+                key={edge.id}
+                size="sm"
+                variant="primary"
+                disabled={!!progression && (state.progressionIndex ?? -1) < (totalSegments - 1)}
+                onClick={() => chooseEdge(edge)}
+              >
+                {edge.label || 'Continue'}
+              </Button>
+            ))}
+            {playableEdges.length === 0 && (
+              <span className="text-xs text-neutral-500">No available transitions.</span>
+            )}
+          </div>
+        </Panel>
+      )}
     </div>
   )
 }
