@@ -76,61 +76,48 @@ cd /g/code/pixsim7
 
 ## Documentation Index
 
-**📖 Getting Started:**
-- `/README.md` - Project overview (this file)
-- `/docs/LAUNCHER.md` - Single-click launcher guide **← Start here!**
-- `/docs/SETUP.md` - Complete manual setup guide
-- `/docs/PORT_CONFIGURATION.md` - Port configuration reference **← For AI assistants!**
+**📖 Core Documentation (START HERE):**
+- `/README.md` - Quick start and overview (this file)
+- `/ARCHITECTURE.md` - Complete system architecture **← Read this first!**
+- `/DEVELOPMENT_GUIDE.md` - Setup, development, and workflows
+- `/AI_README.md` - Guide for AI assistants
 
-**🏗️ Architecture & Systems:**
-- `/MASTER_STATUS.md` - Comprehensive project status (100% backend complete)
-- `/CROSS_PROVIDER_ASSETS.md` - Asset system architecture (cross-provider uploads, caching, branching)
-- `/LOGGING_STRUCTURE.md` - Unified structured logging spec (fields, stages, implementation status)
-- `/MIGRATION_INSTRUCTIONS.md` - Database migration guide
-- `/docs/PROVIDER_ACCOUNT_STRATEGY.md` - Multi-account pooling & concurrency
+**🏗️ Backend:**
+- `/docs/backend/SERVICES.md` - Service layer reference (10 services)
+- `/pixsim7_backend/GETTING_STARTED.md` - Backend setup
+- `/pixsim7_backend/HANDOFF_NOTES.md` - Critical patterns
+- `/docs/PROVIDER_ACCOUNT_STRATEGY.md` - Multi-account pooling
 
-**💻 Frontend Development:**
-- `/frontend/README.md` - Frontend architecture (React, modular service layer)
-- `/docs/FRONTEND_COMPONENT_GUIDE.md` - Component conventions (PromptInput, etc.)
-- `/docs/FRONTEND_CLAUDE_TASKS.md` - Gallery UI tasks (filters, tabs, masonry grid)
+**💻 Frontend:**
+- `/docs/frontend/COMPONENTS.md` - Component library reference
+- `/frontend/README.md` - Frontend architecture
+- `/frontend/src/lib/ICONS_README.md` - Icon system guide
+- `/frontend/EMOJI_MIGRATION.md` - Emoji migration status (100% complete)
 
-**🎮 Game Development:**
-- `/docs/NODE_EDITOR_DEVELOPMENT.md` - Node-based scene editor (phases, tasks, roadmap)
-- `/docs/CLAUDE_UI_TASKS.md` - Scene player and game frontend tasks
-- `/docs/GAME_BACKEND_SIM_SPEC.md` - Game backend simulation spec
+**🎮 Game & Integration:**
+- `/docs/NODE_EDITOR_DEVELOPMENT.md` - Scene editor development
+- `/docs/GAME_BACKEND_SIM_SPEC.md` - Game backend spec
+- `/chrome-extension/README.md` - Chrome extension guide
 
-**🔧 Backend Development:**
-- `/pixsim7_backend/README.md` - Backend architecture overview
-- `/pixsim7_backend/GETTING_STARTED.md` - Backend setup guide
-- `/pixsim7_backend/HANDOFF_NOTES.md` - Critical patterns and handoff info
-- `/pixsim7_backend/SERVICE_LAYER_COMPLETE.md` - Service layer examples (7 services)
-- `/pixsim7_backend/MULTI_USER_AND_SERVICE_DESIGN.md` - Multi-user architecture
-- `/pixsim7_backend/PIXVERSE_INTEGRATION.md` - Pixverse provider integration
-- `/pixsim7_backend/REDIS_AND_WORKERS_SETUP.md` - Redis and ARQ worker setup
+**🔧 Operations:**
+- `/docs/LAUNCHER.md` - Single-click launcher guide
+- `/docs/SETUP.md` - Manual setup guide
+- `/docs/PORT_CONFIGURATION.md` - Port reference ⚠️ **Backend is port 8001!**
+- `/LOGGING_STRUCTURE.md` - Structured logging spec
+- `/MIGRATION_INSTRUCTIONS.md` - Database migrations
 
-**📊 Admin & Monitoring:**
-- `/docs/ADMIN_PANEL.md` - Admin panel user guide (log viewer, filtering)
-- `/admin/README.md` - Admin panel tech docs (SvelteKit, ports, env vars)
-- `/docs/TIMESCALEDB_SETUP.md` - TimescaleDB configuration for logs
-- `/docs/LOG_VIEWER_FIELD_METADATA_API.md` - Log viewer field metadata API
-
-**🔄 Advanced Topics:**
-- `/docs/DYNAMIC_GENERATION_FOUNDATION.md` - Dynamic parameter generation
-- `/docs/PHASE_3_INSPECTOR_TESTING.md` - Inspector testing phase
-- `/docs/PHASE_6_LOG_INGESTION.md` - Log ingestion pipeline phase
-- `/docs/ARCHITECTURE_AUDIT_CLAUDE_TASKS.md` - Architecture audit and refactor tasks
-- `/docs/MICROFRONTENDS_SETUP.md` - Microfrontend architecture setup
-
-**🌐 Extensions:**
-- `/chrome-extension/README.md` - Extension architecture and features
-- `/chrome-extension/SORA_SUPPORT.md` - Sora support in extension
-
-**📜 Scripts & Tools:**
-- `/scripts/launcher_gui/README.md` - Launcher GUI documentation
-- `/scripts/launcher_gui/INTEGRATION_GUIDE.md` - Launcher GUI integration guide
-
-**🔗 Auto-Generated:**
-- API Docs: `http://localhost:8001/docs` (FastAPI/Swagger)
+**📦 Additional Resources:**
+- `/CROSS_PROVIDER_ASSETS.md` - Asset system architecture
+- `/pixsim7_backend/REDIS_AND_WORKERS_SETUP.md` - Redis and ARQ workers
+- `/docs/ADMIN_PANEL.md` - Admin panel user guide
+- `/docs/TIMESCALEDB_SETUP.md` - TimescaleDB for logs
+- `/docs/LOG_VIEWER_FIELD_METADATA_API.md` - Log viewer API
+- `/docs/DYNAMIC_GENERATION_FOUNDATION.md` - Dynamic parameters
+- `/docs/MICROFRONTENDS_SETUP.md` - Microfrontend setup
+- `/chrome-extension/SORA_SUPPORT.md` - Sora extension support
+- `/scripts/launcher_gui/README.md` - Launcher GUI docs
+- API Docs: `http://localhost:8001/docs` (auto-generated Swagger)
+- `/docs/archive/` - Archived/outdated documentation
 
 ---
 
