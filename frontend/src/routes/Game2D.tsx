@@ -2,8 +2,36 @@ import { useEffect, useState } from 'react';
 import type { Scene } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
 import { Button, Panel, Badge } from '@pixsim7/ui';
-import { listGameLocations, getGameLocation, getGameScene, type GameLocationSummary, type GameLocationDetail, type GameHotspotDTO } from '../lib/api/game';
+import {
+  listGameLocations,
+  getGameLocation,
+  getGameScene,
+  getNpcExpressions,
+  getNpcPresence,
+  createGameSession,
+  getGameSession,
+  updateGameSession,
+  listGameWorlds,
+  createGameWorld,
+  getGameWorld,
+  advanceGameWorldTime,
+  type GameLocationSummary,
+  type GameLocationDetail,
+  type GameHotspotDTO,
+  type NpcExpressionDTO,
+  type NpcPresenceDTO,
+  type GameSessionDTO,
+  type GameWorldSummary,
+  type GameWorldDetail,
+} from '../lib/api/game';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
+import {
+  parseHotspotAction,
+  type HotspotAction,
+  type ScenePlaybackPhase,
+  deriveScenePlaybackPhase,
+} from '../lib/game/interactionSchema';
+import { loadWorldSession, saveWorldSession } from '../lib/game/session';
 
 interface WorldTime {
   day: number;
@@ -17,10 +45,20 @@ export function Game2D() {
   const [worldTime, setWorldTime] = useState<WorldTime>({ day: 1, hour: 8 });
   const [currentScene, setCurrentScene] = useState<Scene | null>(null);
   const [isSceneOpen, setIsSceneOpen] = useState(false);
+  const [scenePhase, setScenePhase] = useState<ScenePlaybackPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetResponse | null>(null);
+  const [activeNpcId, setActiveNpcId] = useState<number | null>(null);
+  const [npcExpressions, setNpcExpressions] = useState<NpcExpressionDTO[]>([]);
+  const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetResponse | null>(null);
+  const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
+  const [locationNpcs, setLocationNpcs] = useState<NpcPresenceDTO[]>([]);
+  const [gameSession, setGameSession] = useState<GameSessionDTO | null>(null);
+  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
+  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
+  const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -34,7 +72,112 @@ export function Game2D() {
         setError(String(e?.message ?? e));
       }
     })();
+
+    // Load worlds and restore persisted world/session state.
+    (async () => {
+      try {
+        const ws = await listGameWorlds();
+        setWorlds(ws);
+        if (!selectedWorldId && ws.length > 0) {
+          setSelectedWorldId(ws[0].id);
+          try {
+            const wd = await getGameWorld(ws[0].id);
+            setWorldDetail(wd);
+            const totalHours = Math.floor(wd.world_time / 3600);
+            const totalDays = Math.floor(totalHours / 24);
+            const day = (totalDays % 7) + 1;
+            const hour = totalHours % 24;
+            setWorldTime({ day, hour });
+          } catch (e) {
+            console.error('Failed to load default GameWorld for Game2D', e);
+          }
+        }
+      } catch (e: any) {
+        console.error('Failed to list game worlds', e);
+      }
+
+      const stored = loadWorldSession();
+      if (!stored) return;
+
+      // If we have a backing GameSession, prefer its world_time.
+      if (stored.gameSessionId) {
+        try {
+          const session = await getGameSession(stored.gameSessionId);
+          setGameSession(session);
+          const totalHours = Math.floor(session.world_time / 3600);
+          const totalDays = Math.floor(totalHours / 24);
+          const day = (totalDays % 7) + 1;
+          const hour = totalHours % 24;
+          setWorldTime({ day, hour });
+          return;
+        } catch (e) {
+          console.error('Failed to restore GameSession for Game2D', e);
+        }
+      }
+
+      if (stored.worldId) {
+        setSelectedWorldId(stored.worldId);
+        try {
+          const wd = await getGameWorld(stored.worldId);
+          setWorldDetail(wd);
+          const totalHours = Math.floor(wd.world_time / 3600);
+          const totalDays = Math.floor(totalHours / 24);
+          const day = (totalDays % 7) + 1;
+          const hour = totalHours % 24;
+          setWorldTime({ day, hour });
+          return;
+        } catch (e) {
+          console.error('Failed to restore GameWorld for Game2D', e);
+        }
+      }
+
+      // Fallback to local worldTimeSeconds if no valid GameSession or World.
+      const totalHours = Math.floor(stored.worldTimeSeconds / 3600);
+      const totalDays = Math.floor(totalHours / 24);
+      const day = (totalDays % 7) + 1;
+      const hour = totalHours % 24;
+      setWorldTime({ day, hour });
+    })();
   }, []);
+
+  const handleSelectWorld = async (worldId: number | null) => {
+    setSelectedWorldId(worldId);
+    if (!worldId) {
+      setWorldDetail(null);
+      return;
+    }
+    try {
+      const wd = await getGameWorld(worldId);
+      setWorldDetail(wd);
+      const totalHours = Math.floor(wd.world_time / 3600);
+      const totalDays = Math.floor(totalHours / 24);
+      const day = (totalDays % 7) + 1;
+      const hour = totalHours % 24;
+      setWorldTime({ day, hour });
+      const state = loadWorldSession();
+      const worldTimeSeconds = wd.world_time;
+      saveWorldSession({
+        worldTimeSeconds,
+        gameSessionId: state?.gameSessionId,
+        worldId: worldId,
+      });
+    } catch (e) {
+      console.error('Failed to select GameWorld for Game2D', e);
+    }
+  };
+
+  const handleCreateWorld = async () => {
+    const name = window.prompt('World name:', 'My World');
+    if (!name) return;
+    try {
+      const created = await createGameWorld(name, {});
+      const nextWorlds = [...worlds, { id: created.id, name: created.name }];
+      setWorlds(nextWorlds);
+      await handleSelectWorld(created.id);
+    } catch (e) {
+      console.error('Failed to create GameWorld', e);
+    }
+  };
 
   useEffect(() => {
     if (!selectedLocationId) {
@@ -59,6 +202,14 @@ export function Game2D() {
             setBackgroundAsset(asset);
           }
         }
+
+        // Determine active NPC for this location (simple convention).
+        const primaryNpcId = detail.meta && (detail.meta as any).primary_npc_id;
+        const npcIdNumber =
+          typeof primaryNpcId === 'string' || typeof primaryNpcId === 'number'
+            ? Number(primaryNpcId)
+            : null;
+        setActiveNpcId(Number.isFinite(npcIdNumber) ? npcIdNumber : null);
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
@@ -67,41 +218,141 @@ export function Game2D() {
     })();
   }, [selectedLocationId]);
 
-  const advanceTime = () => {
-    setWorldTime((prev) => {
-      let hour = prev.hour + 1;
-      let day = prev.day;
-      if (hour >= 24) {
-        hour = 0;
-        day = prev.day + 1;
-        if (day > 7) day = 1;
+  // Fetch expressions for the active NPC (once per location / NPC change).
+  useEffect(() => {
+    if (!activeNpcId) {
+      setNpcExpressions([]);
+      setNpcPortraitAsset(null);
+      setNpcPortraitAssetId(null);
+      return;
+    }
+    (async () => {
+      try {
+        const expressions = await getNpcExpressions(activeNpcId);
+        setNpcExpressions(expressions);
+      } catch (e: any) {
+        console.error('Failed to load NPC expressions', e);
       }
-      return { day, hour };
-    });
+    })();
+  }, [activeNpcId]);
+
+  // Fetch NPC presence for the current location and world time.
+  useEffect(() => {
+    if (!selectedLocationId) {
+      setLocationNpcs([]);
+      return;
+    }
+    const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+    (async () => {
+      try {
+        const presences = await getNpcPresence({
+          world_time: worldTimeSeconds,
+          world_id: selectedWorldId ?? undefined,
+          location_id: selectedLocationId,
+        });
+        setLocationNpcs(presences);
+        if (presences.length > 0) {
+          // Prefer the first present NPC over the static primary_npc_id.
+          setActiveNpcId(presences[0].npc_id);
+        }
+      } catch (e: any) {
+        console.error('Failed to load NPC presence', e);
+      }
+    })();
+  }, [selectedLocationId, worldTime]);
+
+  const advanceTime = () => {
+    if (selectedWorldId) {
+      (async () => {
+        try {
+          const updated = await advanceGameWorldTime(selectedWorldId, 3600);
+          setWorldDetail(updated);
+          const totalHours = Math.floor(updated.world_time / 3600);
+          const totalDays = Math.floor(totalHours / 24);
+          const day = (totalDays % 7) + 1;
+          const hour = totalHours % 24;
+          const next = { day, hour };
+          setWorldTime(next);
+          const worldTimeSeconds = updated.world_time;
+          const sessionId = gameSession?.id;
+          saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId, worldId: selectedWorldId });
+          if (sessionId) {
+            updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
+          }
+        } catch (e: any) {
+          console.error('Failed to advance GameWorld time', e);
+        }
+      })();
+    } else {
+      setWorldTime((prev) => {
+        let hour = prev.hour + 1;
+        let day = prev.day;
+        if (hour >= 24) {
+          hour = 0;
+          day = prev.day + 1;
+          if (day > 7) day = 1;
+        }
+        const next = { day, hour };
+        const worldTimeSeconds = ((next.day - 1) * 24 + next.hour) * 3600;
+        const sessionId = gameSession?.id;
+        saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId });
+        if (sessionId) {
+          updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
+        }
+        return next;
+      });
+    }
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
-    const action = (hotspot.meta as any)?.action || null;
+    const rawAction = (hotspot.meta as any)?.action ?? null;
+    const action: HotspotAction | null = parseHotspotAction(rawAction);
 
     // Change location
-    if (action?.type === 'change_location' && action.target_location_id) {
-      const newLoc = Number(action.target_location_id);
-      if (Number.isFinite(newLoc)) {
-        setSelectedLocationId(newLoc);
+    if (action?.type === 'change_location') {
+      const target = action.target_location_id;
+      if (target != null) {
+        const newLoc = Number(target);
+        if (Number.isFinite(newLoc)) {
+          setSelectedLocationId(newLoc);
+          return;
+        }
       }
+    }
+
+    // NPC talk (placeholder for future conversation system)
+    if (action?.type === 'npc_talk') {
+      const npcId = action.npc_id;
+      console.info('npc_talk action triggered', { hotspot, npcId });
+      // For now, just log; later this can open a dialogue UI.
       return;
     }
 
     // Default: play scene (from action.scene_id or linked_scene_id)
-    const sceneId = action?.scene_id ?? hotspot.linked_scene_id;
+    const sceneId = (action && 'scene_id' in action ? action.scene_id : null) ?? hotspot.linked_scene_id;
     if (!sceneId) return;
 
     setIsLoadingScene(true);
     setError(null);
     try {
-      const scene = await getGameScene(sceneId);
+      // Lazily create a backing GameSession the first time we enter a scene.
+      if (!gameSession) {
+        try {
+          const created = await createGameSession(Number(sceneId));
+          setGameSession(created);
+          const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+          saveWorldSession({ worldTimeSeconds, gameSessionId: created.id });
+          // Optionally keep GameSession.world_time in sync on creation.
+          updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+        } catch (err) {
+          console.error('Failed to create GameSession for Game2D', err);
+        }
+      }
+
+      const scene = await getGameScene(Number(sceneId));
       setCurrentScene(scene);
       setIsSceneOpen(true);
+      setScenePhase('playing');
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -109,24 +360,100 @@ export function Game2D() {
     }
   };
 
+  // Derive NPC expression state from scene phase and load portrait asset.
+  useEffect(() => {
+    if (!currentScene || !isSceneOpen || npcExpressions.length === 0) {
+      setNpcPortraitAsset(null);
+      setNpcPortraitAssetId(null);
+      return;
+    }
+
+    let desiredState: string = 'idle';
+    if (scenePhase === 'awaiting_input') {
+      // Prefer an explicit "waiting_for_player" expression if it exists.
+      desiredState = 'waiting_for_player';
+    } else if (scenePhase === 'playing') {
+      desiredState = 'talking';
+    } else if (scenePhase === 'completed') {
+      desiredState = 'idle';
+    }
+
+    const match =
+      npcExpressions.find((e) => e.state === desiredState) ||
+      npcExpressions.find((e) => e.state === 'idle') ||
+      npcExpressions[0];
+
+    if (!match) {
+      setNpcPortraitAsset(null);
+      setNpcPortraitAssetId(null);
+      return;
+    }
+
+    if (npcPortraitAssetId === match.asset_id && npcPortraitAsset) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const asset = await getAsset(match.asset_id);
+        if (asset.media_type === 'image' || asset.media_type === 'video') {
+          setNpcPortraitAsset(asset);
+          setNpcPortraitAssetId(match.asset_id);
+        } else {
+          setNpcPortraitAsset(null);
+          setNpcPortraitAssetId(null);
+        }
+      } catch (e: any) {
+        console.error('Failed to load NPC portrait asset', e);
+        setNpcPortraitAsset(null);
+        setNpcPortraitAssetId(null);
+      }
+    })();
+  }, [currentScene, isSceneOpen, scenePhase, npcExpressions, npcPortraitAssetId, npcPortraitAsset]);
+
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">PixSim7 2D Game</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Turn-based day cycle with locations and interactions, rendered in 2D using existing scenes.
           </p>
         </div>
-        <Panel className="flex items-center gap-3 py-2 px-3">
-          <div className="flex flex-col text-xs">
-            <span className="font-semibold">Day {worldTime.day}</span>
-            <span>{worldTime.hour.toString().padStart(2, '0')}:00</span>
-          </div>
-          <Button size="sm" variant="primary" onClick={advanceTime}>
-            Next Hour
-          </Button>
-        </Panel>
+        <div className="flex flex-col md:flex-row gap-2 md:items-center">
+          <Panel className="flex items-center gap-3 py-2 px-3">
+            <div className="flex flex-col text-xs">
+              <span className="font-semibold">Day {worldTime.day}</span>
+              <span>{worldTime.hour.toString().padStart(2, '0')}:00</span>
+            </div>
+            <Button size="sm" variant="primary" onClick={advanceTime}>
+              Next Hour
+            </Button>
+          </Panel>
+          <Panel className="flex items-center gap-2 py-2 px-3">
+            <div className="flex flex-col text-xs">
+              <span className="font-semibold">World</span>
+              <select
+                className="text-xs bg-transparent border border-neutral-300 dark:border-neutral-700 rounded px-1 py-0.5"
+                value={selectedWorldId ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  handleSelectWorld(v ? Number(v) : null);
+                }}
+              >
+                <option value="">(local session)</option>
+                {worlds.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button size="sm" variant="secondary" onClick={handleCreateWorld}>
+              New World
+            </Button>
+          </Panel>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
@@ -260,13 +587,43 @@ export function Game2D() {
 
       {isSceneOpen && currentScene && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
-          <div className="absolute top-4 right-4">
-            <Button size="sm" variant="secondary" onClick={() => setIsSceneOpen(false)}>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            {activeNpcId && npcPortraitAsset && npcPortraitAsset.file_url && (
+              <Panel className="flex items-center gap-2 py-1 px-2 bg-black/80 border border-neutral-700">
+                {npcPortraitAsset.media_type === 'image' ? (
+                  <img
+                    src={npcPortraitAsset.file_url}
+                    alt="NPC portrait"
+                    className="w-12 h-12 object-cover rounded"
+                  />
+                ) : (
+                  <video
+                    src={npcPortraitAsset.file_url}
+                    className="w-12 h-12 object-cover rounded"
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                  />
+                )}
+              </Panel>
+            )}
+            <Button size="sm" variant="secondary" onClick={() => {
+              setIsSceneOpen(false);
+              setScenePhase(null);
+            }}>
               Close
             </Button>
           </div>
           <div className="w-full max-w-4xl mx-auto bg-black rounded shadow-lg p-4">
-            <ScenePlayer scene={currentScene} initialState={{ flags: { focus: 0 } }} />
+            <ScenePlayer
+              scene={currentScene}
+              initialState={{ flags: { focus: 0 } }}
+              onStateChange={(runtime) => {
+                const phase = deriveScenePlaybackPhase({ scene: currentScene, runtime });
+                setScenePhase(phase);
+              }}
+            />
           </div>
         </div>
       )}

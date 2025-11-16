@@ -214,7 +214,7 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions, game_locations, game_npcs
+from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions, game_locations, game_npcs, game_worlds
 from pixsim7_backend.api.admin import database_router, migrations_router
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
@@ -232,6 +232,7 @@ app.include_router(game_scenes.router, prefix="/api/v1/game/scenes", tags=["game
 app.include_router(game_sessions.router, prefix="/api/v1/game/sessions", tags=["game-sessions"])
 app.include_router(game_locations.router, prefix="/api/v1/game/locations", tags=["game-locations"])
 app.include_router(game_npcs.router, prefix="/api/v1/game/npcs", tags=["game-npcs"])
+app.include_router(game_worlds.router, prefix="/api/v1/game/worlds", tags=["game-worlds"])
 app.include_router(database_router, prefix="/api", tags=["database"])
 app.include_router(migrations_router, prefix="/api", tags=["migrations"])
 

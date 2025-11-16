@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, PlaybackMode, MediaSegment, SelectionStrategy } from '@pixsim7/types'
 import { Button, Panel } from '@pixsim7/ui'
 import { ReflexMiniGame } from './minigames/ReflexMiniGame'
@@ -63,13 +63,6 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-
-  // Expose raw runtime state to callers (e.g. 2D UI) without leaking internal hooks.
-  useEffect(() => {
-    if (onStateChange) {
-      onStateChange(state)
-    }
-  }, [state, onStateChange])
 
   // Resolve current scene from bundle or use primary scene
   const currentScene: Scene = useMemo(() => {
@@ -304,7 +297,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
           <div className="flex items-center gap-2">
             {callStackManager.depth(state) > 0 && (
               <span className="text-xs px-2 py-0.5 rounded bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300">
-                📞 Depth: {callStackManager.depth(state)}
+                ðŸ“ž Depth: {callStackManager.depth(state)}
               </span>
             )}
             <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
@@ -330,7 +323,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
                     <span className="px-2 py-0.5 rounded bg-white/10 text-xs">Seg: {selectedSegment.id}</span>
                   )}
                 </div>
-                <div className="text-xs opacity-80">{isLoading ? 'Loading…' : error ? error : currentNode.label}</div>
+                <div className="text-xs opacity-80">{isLoading ? 'Loadingâ€¦' : error ? error : currentNode.label}</div>
               </div>
               {/* segment indicator row */}
               {selectedSegment && (
@@ -372,7 +365,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
         {/* Condition Node */}
         {currentNode?.type === 'condition' && (
           <div className="p-4 bg-amber-100 dark:bg-amber-900/20 rounded">
-            <p className="text-sm mb-2">⚖️ Evaluating condition...</p>
+            <p className="text-sm mb-2">âš–ï¸ Evaluating condition...</p>
             <p className="text-xs text-neutral-600 dark:text-neutral-400 font-mono">
               {currentNode.condition?.key} {currentNode.condition?.op} {JSON.stringify(currentNode.condition?.value)}
             </p>
@@ -415,8 +408,8 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
             'bg-neutral-100 dark:bg-neutral-800'
           }`}>
             <div className="text-4xl mb-4">
-              {currentNode.endType === 'success' ? '🎉' :
-               currentNode.endType === 'failure' ? '💔' : '🏁'}
+              {currentNode.endType === 'success' ? 'ðŸŽ‰' :
+               currentNode.endType === 'failure' ? 'ðŸ’”' : 'ðŸ'}
             </div>
             <h4 className="font-semibold text-lg mb-2">
               {currentNode.endType === 'success' ? 'Success!' :
@@ -432,7 +425,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
         {/* Scene Call Node */}
         {currentNode?.type === 'scene_call' && (
           <div className="p-4 bg-cyan-100 dark:bg-cyan-900/20 rounded">
-            <p className="text-sm mb-2">📞 Calling scene: {currentNode.targetSceneId}</p>
+            <p className="text-sm mb-2">ðŸ“ž Calling scene: {currentNode.targetSceneId}</p>
             {scenes && scenes[currentNode.targetSceneId!] ? (
               <>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
@@ -460,7 +453,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
         {/* Return Node */}
         {currentNode?.type === 'return' && (
           <div className="p-4 bg-orange-100 dark:bg-orange-900/20 rounded">
-            <p className="text-sm mb-2">🔙 Returning through: {currentNode.returnPointId || 'default'}</p>
+            <p className="text-sm mb-2">ðŸ”™ Returning through: {currentNode.returnPointId || 'default'}</p>
             {callStackManager.depth(state) > 0 ? (
               <>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">

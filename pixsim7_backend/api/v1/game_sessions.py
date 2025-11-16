@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -16,6 +16,12 @@ class CreateSessionRequest(BaseModel):
 
 class SessionAdvanceRequest(BaseModel):
     edge_id: int
+
+
+class SessionUpdateRequest(BaseModel):
+    world_time: Optional[float] = None
+    flags: Optional[Dict[str, Any]] = None
+    relationships: Optional[Dict[str, Any]] = None
 
 
 class GameSessionResponse(BaseModel):
@@ -92,4 +98,37 @@ async def advance_session(
         if msg == "invalid_edge_for_current_node":
             raise HTTPException(status_code=400, detail="Invalid edge for current node")
         raise
+    return GameSessionResponse.from_model(gs)
+
+
+@router.patch("/{session_id}", response_model=GameSessionResponse)
+async def update_session(
+    session_id: int,
+    req: SessionUpdateRequest,
+    game_session_service: GameSessionSvc,
+    user: CurrentUser,
+) -> GameSessionResponse:
+    """Update world_time and/or flags for a game session.
+
+    This is intended for world/life-sim style sessions that track
+    continuous time and coarse-grained world state, independent of
+    the scene graph progression.
+    """
+    gs = await game_session_service.get_session(session_id)
+    if not gs or gs.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        gs = await game_session_service.update_session(
+            session_id=session_id,
+            world_time=req.world_time,
+            flags=req.flags,
+            relationships=req.relationships,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "session_not_found":
+            raise HTTPException(status_code=404, detail="Session not found")
+        raise
+
     return GameSessionResponse.from_model(gs)

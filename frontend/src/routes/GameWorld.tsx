@@ -111,43 +111,94 @@ export function GameWorld() {
             </div>
             <div className="space-y-2">
               {detail.hotspots.map((h, idx) => (
-                <div key={idx} className="grid grid-cols-4 gap-2 items-center text-xs">
-                  <Input
-                    placeholder="object_name (from glTF)"
-                    value={h.object_name}
-                    onChange={(e: any) => handleHotspotChange(idx, { object_name: e.target.value })}
-                  />
-                  <Input
-                    placeholder="hotspot_id"
-                    value={h.hotspot_id}
-                    onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
-                  />
-                  <Input
-                    placeholder="linked_scene_id"
-                    value={h.linked_scene_id ?? ''}
-                    onChange={(e: any) => {
-                      const v = e.target.value.trim();
-                      handleHotspotChange(idx, {
-                        linked_scene_id: v ? Number(v) : undefined,
-                      });
-                    }}
-                  />
-                  <Input
-                    placeholder="meta JSON (optional)"
-                    value={h.meta ? JSON.stringify(h.meta) : ''}
-                    onChange={(e: any) => {
-                      const v = e.target.value.trim();
-                      let parsed: Record<string, unknown> | undefined;
-                      if (v) {
-                        try {
-                          parsed = JSON.parse(v);
-                        } catch {
-                          parsed = h.meta ?? {};
+                <div key={idx} className="space-y-1 text-xs">
+                  <div className="grid grid-cols-4 gap-2 items-center">
+                    <Input
+                      placeholder="object_name (from glTF)"
+                      value={h.object_name}
+                      onChange={(e: any) => handleHotspotChange(idx, { object_name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="hotspot_id"
+                      value={h.hotspot_id}
+                      onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
+                    />
+                    <Input
+                      placeholder="linked_scene_id"
+                      value={h.linked_scene_id ?? ''}
+                      onChange={(e: any) => {
+                        const v = e.target.value.trim();
+                        handleHotspotChange(idx, {
+                          linked_scene_id: v ? Number(v) : undefined,
+                        });
+                      }}
+                    />
+                    <Input
+                      placeholder="meta JSON (optional)"
+                      value={h.meta ? JSON.stringify(h.meta) : ''}
+                      onChange={(e: any) => {
+                        const v = e.target.value.trim();
+                        let parsed: Record<string, unknown> | undefined;
+                        if (v) {
+                          try {
+                            parsed = JSON.parse(v);
+                          } catch {
+                            parsed = h.meta ?? {};
+                          }
                         }
-                      }
-                      handleHotspotChange(idx, { meta: parsed });
-                    }}
-                  />
+                        handleHotspotChange(idx, { meta: parsed });
+                      }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    {(() => {
+                      const meta: any = h.meta || {};
+                      const action = meta.action || {};
+                      const actionType = action.type ?? '';
+                      const sceneId = action.scene_id ?? '';
+                      const targetLocationId = action.target_location_id ?? '';
+                      return (
+                        <>
+                          <Input
+                            placeholder="action type (play_scene/change_location/npc_talk)"
+                            value={actionType}
+                            onChange={(e: any) => {
+                              const v = e.target.value.trim();
+                              const nextMeta: any = { ...(h.meta || {}) };
+                              const nextAction: any = { ...(nextMeta.action || {}) };
+                              nextAction.type = v || undefined;
+                              nextMeta.action = nextAction;
+                              handleHotspotChange(idx, { meta: nextMeta });
+                            }}
+                          />
+                          <Input
+                            placeholder="action.scene_id"
+                            value={sceneId}
+                            onChange={(e: any) => {
+                              const v = e.target.value.trim();
+                              const nextMeta: any = { ...(h.meta || {}) };
+                              const nextAction: any = { ...(nextMeta.action || {}) };
+                              nextAction.scene_id = v ? Number(v) : undefined;
+                              nextMeta.action = nextAction;
+                              handleHotspotChange(idx, { meta: nextMeta });
+                            }}
+                          />
+                          <Input
+                            placeholder="action.target_location_id"
+                            value={targetLocationId}
+                            onChange={(e: any) => {
+                              const v = e.target.value.trim();
+                              const nextMeta: any = { ...(h.meta || {}) };
+                              const nextAction: any = { ...(nextMeta.action || {}) };
+                              nextAction.target_location_id = v ? Number(v) : undefined;
+                              nextMeta.action = nextAction;
+                              handleHotspotChange(idx, { meta: nextMeta });
+                            }}
+                          />
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
               {detail.hotspots.length === 0 && (
@@ -160,4 +211,3 @@ export function GameWorld() {
     </div>
   );
 }
-

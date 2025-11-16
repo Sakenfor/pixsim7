@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -77,6 +77,30 @@ class GameSessionService:
         )
         self.db.add(event)
 
+        await self.db.commit()
+        await self.db.refresh(session)
+        return session
+
+    async def update_session(
+        self,
+        *,
+        session_id: int,
+        world_time: Optional[float] = None,
+        flags: Optional[Dict[str, Any]] = None,
+        relationships: Optional[Dict[str, Any]] = None,
+    ) -> GameSession:
+        session = await self.db.get(GameSession, session_id)
+        if not session:
+            raise ValueError("session_not_found")
+
+        if world_time is not None:
+            session.world_time = float(world_time)
+        if flags is not None:
+            session.flags = flags
+        if relationships is not None:
+            session.relationships = relationships
+
+        self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
         return session

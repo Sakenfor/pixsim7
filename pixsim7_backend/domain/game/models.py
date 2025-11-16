@@ -68,6 +68,23 @@ class GameSessionEvent(SQLModel, table=True):
     ts: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 # World basics
+class GameWorld(SQLModel, table=True):
+    __tablename__ = "game_worlds"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    owner_user_id: int = Field(index=True)
+    name: str = Field(max_length=128)
+    meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class GameWorldState(SQLModel, table=True):
+    __tablename__ = "game_world_states"
+    world_id: int = Field(primary_key=True, foreign_key="game_worlds.id")
+    world_time: float = Field(default=0.0, description="Global world time in seconds")
+    last_advanced_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+
+
 class GameLocation(SQLModel, table=True):
     __tablename__ = "game_locations"
     id: Optional[int] = Field(default=None, primary_key=True)

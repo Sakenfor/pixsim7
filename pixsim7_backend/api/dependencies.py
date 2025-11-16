@@ -14,7 +14,7 @@ from pixsim7_backend.services.account import AccountService
 from pixsim7_backend.services.job import JobService
 from pixsim7_backend.services.asset import AssetService
 from pixsim7_backend.services.provider.provider_service import ProviderService
-from pixsim7_backend.services.game import GameSessionService, GameLocationService, NpcExpressionService
+from pixsim7_backend.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
 
 
 # ===== DATABASE DEPENDENCY =====
@@ -79,6 +79,11 @@ def get_game_location_service(db: AsyncSession = Depends(get_database)) -> GameL
 def get_npc_expression_service(db: AsyncSession = Depends(get_database)) -> NpcExpressionService:
     """Get NpcExpressionService instance"""
     return NpcExpressionService(db)
+
+
+def get_game_world_service(db: AsyncSession = Depends(get_database)) -> GameWorldService:
+    """Get GameWorldService instance"""
+    return GameWorldService(db)
 
 
 # ===== AUTHENTICATION DEPENDENCY =====
@@ -176,3 +181,4 @@ AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
+GameWorldSvc = Annotated[GameWorldService, Depends(get_game_world_service)]
