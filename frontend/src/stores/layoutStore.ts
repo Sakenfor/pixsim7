@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 
-export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game';
+export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game' | 'edgeEffects' | 'sceneMetadata';
 
 export type PanelInstance = {
   id: string;

@@ -6,6 +6,8 @@ import { SceneBuilderPanel } from '../SceneBuilderPanel';
 import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
+import { EdgeEffectsEditor } from '../EdgeEffectsEditor';
+import { SceneMetadataEditor } from '../SceneMetadataEditor';
 import { useEffect, useRef } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
 import { authService } from '../../lib/auth/authService';
@@ -43,6 +45,8 @@ const PANEL_COMPONENTS: Record<string, React.ComponentType> = {
   p_inspector: InspectorPanel,
   p_health: HealthPanel,
   p_game: GameIframePanel,
+  p_edgeEffects: EdgeEffectsEditor,
+  p_sceneMetadata: SceneMetadataEditor,
 };
 
 function renderPanel(panelId: string) {
