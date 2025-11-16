@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { JobStatus, Scene } from '@pixsim7/types'
 import { Button, Panel, ThemeToggle, Input } from '@pixsim7/ui'
-import { ScenePlayer } from './components/ScenePlayer'
+import { ScenePlayer } from '@pixsim7/game-ui'
 import { mockScene } from './scenes/mockScene'
 import type { GameSessionDTO } from './lib/gameApi'
 import { createGameSession, getGameSession, advanceGameSession, fetchSceneById } from './lib/gameApi'
