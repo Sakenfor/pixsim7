@@ -135,6 +135,27 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
           </span>
         </div>
 
+        {/* Phase 4: NPC Visual Hints */}
+        {(data.draftNode.metadata?.speakerRole || data.draftNode.metadata?.npc_id || data.draftNode.metadata?.npc_state) && (
+          <div className="flex flex-wrap gap-1 text-xs">
+            {data.draftNode.metadata?.speakerRole && (
+              <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium" title="Speaker Role">
+                👤 {data.draftNode.metadata.speakerRole}
+              </span>
+            )}
+            {data.draftNode.metadata?.npc_id && (
+              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded font-medium" title="Hard NPC Binding">
+                🔒 NPC #{data.draftNode.metadata.npc_id}
+              </span>
+            )}
+            {data.draftNode.metadata?.npc_state && (
+              <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded font-medium" title="NPC Expression State">
+                😊 {data.draftNode.metadata.npc_state}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="text-xs text-neutral-500 dark:text-neutral-400">
           ID: {id}
         </div>

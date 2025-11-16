@@ -35,6 +35,10 @@ export function SceneBuilderPanel() {
   const [advanceMinutes, setAdvanceMinutes] = useState<number | ''>('');
   const [npcId, setNpcId] = useState<number | ''>('');
 
+  // Phase 4: NPC Expression fields
+  const [speakerRole, setSpeakerRole] = useState<string>('');
+  const [npcState, setNpcState] = useState<string>('');
+
   // Load selected node data when selection changes
   useEffect(() => {
     if (selectedNodeId && currentScene) {
@@ -66,6 +70,10 @@ export function SceneBuilderPanel() {
         const lifeSim: any = node.metadata?.lifeSim || {};
         setAdvanceMinutes(lifeSim.advanceMinutes ?? '');
         setNpcId((node.metadata as any)?.npc_id ?? '');
+
+        // Load Phase 4: Speaker role and NPC expression state
+        setSpeakerRole((node.metadata as any)?.speakerRole ?? '');
+        setNpcState((node.metadata as any)?.npc_state ?? '');
       }
     }
   }, [selectedNodeId, currentScene]);
@@ -129,6 +137,14 @@ export function SceneBuilderPanel() {
       }
       if (npcId !== '') {
         metadata.npc_id = npcId;
+      }
+
+      // Phase 4: Speaker role and NPC expression state
+      if (speakerRole) {
+        metadata.speakerRole = speakerRole;
+      }
+      if (npcState) {
+        metadata.npc_state = npcState;
       }
 
       // Add or update node
@@ -349,6 +365,48 @@ export function SceneBuilderPanel() {
               <p className="text-xs text-neutral-500 mt-1">
                 Lock this node to a specific NPC (bypasses role binding). Use for clips that are
                 strongly tied to a character's identity.
+              </p>
+            </div>
+
+            {/* Speaker Role */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Speaker Role (optional)
+              </label>
+              <input
+                type="text"
+                value={speakerRole}
+                onChange={(e) => setSpeakerRole(e.target.value)}
+                className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                placeholder="e.g., lead, bartender, friend"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Role from Scene.meta.cast - used for role-based NPC binding
+              </p>
+            </div>
+
+            {/* NPC Expression State */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                NPC Expression State (optional)
+              </label>
+              <select
+                value={npcState}
+                onChange={(e) => setNpcState(e.target.value)}
+                className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+              >
+                <option value="">None</option>
+                <option value="idle">Idle</option>
+                <option value="talking">Talking</option>
+                <option value="waiting_for_player">Waiting for Player</option>
+                <option value="happy">Happy</option>
+                <option value="sad">Sad</option>
+                <option value="angry">Angry</option>
+                <option value="surprised">Surprised</option>
+                <option value="thinking">Thinking</option>
+              </select>
+              <p className="text-xs text-neutral-500 mt-1">
+                NPC expression/emotion state for UI overlays (portraits, reactions)
               </p>
             </div>
           </div>
