@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
 import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
@@ -11,6 +12,7 @@ import { previewBridge } from '../lib/preview-bridge';
 
 export function SceneBuilderPanel() {
   const toast = useToast();
+  const navigate = useNavigate();
   const { selectedNodeId } = useSelectionStore();
   const { worldId, locationId } = useWorldContextStore();
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
@@ -193,6 +195,34 @@ export function SceneBuilderPanel() {
     } catch (error) {
       toast.error(`Preview error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  function handlePlayIn2D() {
+    // Phase 5: "Play from here in 2D" - navigate to Game2D with scene context
+    if (!currentSceneId) {
+      toast.error('No scene selected');
+      return;
+    }
+
+    if (!worldId) {
+      toast.warning('No world selected - please select a world first');
+      return;
+    }
+
+    // Build URL with query params for world, location, and scene
+    const params = new URLSearchParams();
+    params.set('worldId', String(worldId));
+    if (locationId) {
+      params.set('locationId', String(locationId));
+    }
+    params.set('sceneId', currentSceneId);
+    if (selectedNodeId) {
+      params.set('nodeId', selectedNodeId);
+    }
+
+    logEvent('DEBUG', 'play_in_2d', { worldId, locationId, sceneId: currentSceneId, nodeId: selectedNodeId });
+    navigate(`/game-2d?${params.toString()}`);
+    toast.success('Opening scene in 2D game...');
   }
 
   return (
@@ -428,6 +458,14 @@ export function SceneBuilderPanel() {
           className="w-full"
         >
           Preview in Game
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={handlePlayIn2D}
+          className="w-full"
+          disabled={!worldId || !currentSceneId}
+        >
+          ▶ Play from Here in 2D
         </Button>
 
         {currentScene && (

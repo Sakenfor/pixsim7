@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Scene } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
 import { Button, Panel, Badge } from '@pixsim7/ui';
@@ -39,6 +40,7 @@ interface WorldTime {
 }
 
 export function Game2D() {
+  const [searchParams] = useSearchParams();
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
   const [locationDetail, setLocationDetail] = useState<GameLocationDetail | null>(null);
@@ -139,6 +141,66 @@ export function Game2D() {
       setWorldTime({ day, hour });
     })();
   }, []);
+
+  // Phase 5: Handle URL params for direct scene playback from editor
+  useEffect(() => {
+    const worldIdParam = searchParams.get('worldId');
+    const locationIdParam = searchParams.get('locationId');
+    const sceneIdParam = searchParams.get('sceneId');
+
+    if (!sceneIdParam) return; // No scene to auto-play
+
+    // Set world and location from params if provided
+    if (worldIdParam) {
+      const wId = Number(worldIdParam);
+      if (Number.isFinite(wId) && wId !== selectedWorldId) {
+        setSelectedWorldId(wId);
+        handleSelectWorld(wId);
+      }
+    }
+
+    if (locationIdParam) {
+      const locId = Number(locationIdParam);
+      if (Number.isFinite(locId) && locId !== selectedLocationId) {
+        setSelectedLocationId(locId);
+      }
+    }
+
+    // Auto-play the scene after a short delay to allow state to settle
+    const timer = setTimeout(async () => {
+      const sceneId = Number(sceneIdParam);
+      if (!Number.isFinite(sceneId)) return;
+
+      setIsLoadingScene(true);
+      setError(null);
+      try {
+        // Lazily create a backing GameSession
+        if (!gameSession) {
+          try {
+            const created = await createGameSession(sceneId);
+            setGameSession(created);
+            const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+            saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
+            updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+          } catch (err) {
+            console.error('Failed to create GameSession for auto-play', err);
+          }
+        }
+
+        const scene = await getGameScene(sceneId);
+        setCurrentScene(scene);
+        setIsSceneOpen(true);
+        setScenePhase('playing');
+        console.info('Auto-playing scene from URL params', { sceneId, worldId: selectedWorldId, locationId: selectedLocationId });
+      } catch (e: any) {
+        setError(`Failed to load scene: ${String(e?.message ?? e)}`);
+      } finally {
+        setIsLoadingScene(false);
+      }
+    }, 500); // Small delay to ensure state has settled
+
+    return () => clearTimeout(timer);
+  }, [searchParams]); // Only run when URL params change
 
   const handleSelectWorld = async (worldId: number | null) => {
     setSelectedWorldId(worldId);
