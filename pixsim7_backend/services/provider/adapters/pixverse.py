@@ -2,6 +2,13 @@
 Pixverse provider adapter
 
 Clean adapter that uses pixverse-py SDK
+
+CHANGELOG (SDK Integration):
+- v1.0.0+: Using SDK's infer_video_dimensions() (removed 44 lines of duplicate code)
+- v1.0.0+: Using SDK's upload_media() method (simplified upload logic)
+- v1.0.0+: SDK provides session-based auth, user info, and credits APIs
+
+For SDK source: https://github.com/Sakenfor/pixverse-py
 """
 from typing import Dict, Any
 from datetime import datetime, timedelta
@@ -15,9 +22,11 @@ import uuid
 try:
     from pixverse import PixverseClient  # type: ignore
     from pixverse.models import GenerationOptions, TransitionOptions  # type: ignore
+    from pixverse import infer_video_dimensions  # type: ignore - New in SDK
 except ImportError:  # pragma: no cover
     PixverseClient = None  # type: ignore
     GenerationOptions = TransitionOptions = object  # fallbacks
+    infer_video_dimensions = None  # type: ignore
 
 from pixsim7_backend.domain import (
     OperationType,
@@ -40,51 +49,17 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
-
-def infer_video_dimensions(quality: str, aspect_ratio: str | None = None) -> tuple[int, int]:
-    """
-    Infer video dimensions from quality and aspect ratio
-
-    Args:
-        quality: Video quality (360p, 720p, 1080p)
-        aspect_ratio: Aspect ratio (16:9, 9:16, 1:1)
-
-    Returns:
-        Tuple of (width, height)
-    """
-    # Default aspect ratio is 16:9 (landscape)
-    if not aspect_ratio or aspect_ratio == "16:9":
-        if quality == "360p":
-            return (640, 360)
-        elif quality == "720p":
-            return (1280, 720)
-        elif quality == "1080p":
-            return (1920, 1080)
-        else:
-            return (1280, 720)  # Default to 720p
-
-    elif aspect_ratio == "9:16":  # Portrait
-        if quality == "360p":
-            return (360, 640)
-        elif quality == "720p":
-            return (720, 1280)
-        elif quality == "1080p":
-            return (1080, 1920)
-        else:
-            return (720, 1280)
-
-    elif aspect_ratio == "1:1":  # Square
-        if quality == "360p":
-            return (360, 360)
-        elif quality == "720p":
-            return (720, 720)
-        elif quality == "1080p":
-            return (1080, 1080)
-        else:
-            return (720, 720)
-
-    # Fallback to 16:9 720p
-    return (1280, 720)
+# Fallback implementation if SDK doesn't have infer_video_dimensions yet
+if infer_video_dimensions is None:
+    def infer_video_dimensions(quality: str, aspect_ratio: str | None = None) -> tuple[int, int]:
+        """Fallback: Infer video dimensions (prefer SDK version)"""
+        if not aspect_ratio or aspect_ratio == "16:9":
+            return (1280, 720) if quality == "720p" else (640, 360) if quality == "360p" else (1920, 1080)
+        elif aspect_ratio == "9:16":
+            return (720, 1280) if quality == "720p" else (360, 640) if quality == "360p" else (1080, 1920)
+        elif aspect_ratio == "1:1":
+            return (720, 720) if quality == "720p" else (360, 360) if quality == "360p" else (1080, 1080)
+        return (1280, 720)
 
 
 class PixverseProvider(Provider):
@@ -614,31 +589,30 @@ class PixverseProvider(Provider):
         file_path: str
     ) -> str:
         """
-        Upload asset (image/video) to Pixverse using OpenAPI when available.
+        Upload asset (image/video) to Pixverse using SDK's upload_media method.
 
         Strategy:
-        - Prefer OpenAPI method when account has api_key/api_key_paid
-        - Fallback to any available client upload method
-        - Return a reusable URL if provided by API; otherwise return provider media ID
+        - Use pixverse-py SDK's upload_media() (available as of SDK v1.0.0+)
+        - Requires OpenAPI key (api_key_paid)
+        - Returns media ID or URL
 
-        Note: Requires pixverse-py to expose a media upload endpoint. We try common
-        method shapes; if not found, raise a clear ProviderError for implementation.
+        Note: Falls back to legacy direct API call for older SDK versions.
         """
         # Choose 'open-api' if any API key present; else default method
         use_method = 'open-api' if (getattr(account, 'api_key_paid', None) or getattr(account, 'api_key', None)) else None
         client = self._create_client(account, use_method=use_method)
 
         try:
-            # Try common method shapes on the SDK
+            # Try SDK's upload_media method (available in SDK v1.0.0+)
             response = None
-            if hasattr(client, 'api') and hasattr(client.api, 'upload_media'):
-                response = await asyncio.to_thread(client.api.upload_media, file_path=file_path)
-            elif hasattr(client, 'upload_media'):
-                response = await asyncio.to_thread(client.upload_media, file_path=file_path)
-            elif hasattr(client, 'upload'):
-                response = await asyncio.to_thread(client.upload, file_path)
+            if hasattr(client, 'upload_media'):
+                # Use official SDK method
+                response = await asyncio.to_thread(client.upload_media, file_path)
+            elif hasattr(client, 'api') and hasattr(client.api, 'upload_media'):
+                # Direct API access (alternative)
+                response = await asyncio.to_thread(client.api.upload_media, file_path, client.pool.get_next())
             else:
-                # Fall back to direct OpenAPI upload when an API key is available
+                # Legacy fallback for older SDK versions
                 if self._has_openapi_credentials(account):
                     response = await asyncio.to_thread(
                         self._upload_via_openapi,
@@ -648,7 +622,8 @@ class PixverseProvider(Provider):
                     )
                 else:
                     raise ProviderError(
-                        "Pixverse upload not available in SDK and no OpenAPI key is configured."
+                        "Pixverse upload requires OpenAPI key (paid tier). "
+                        "Ensure pixverse-py SDK v1.0.0+ is installed."
                     )
 
             # Normalize response to either a URL or media ID
