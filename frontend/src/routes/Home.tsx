@@ -118,6 +118,28 @@ export function Home() {
               <Button size="sm" variant="primary" onClick={() => window.open('/game-world', '_self')}>Open Game World</Button>
             </div>
           </Panel>
+
+          <Panel className="space-y-2">
+            <h3 className="font-medium flex items-center gap-2">
+              <Icon name="play" size={18} />
+              2D Game
+            </h3>
+            <p className="text-xs text-neutral-500">Play the turn-based 2D day cycle game</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/game-2d', '_self')}>Play 2D Game</Button>
+            </div>
+          </Panel>
+
+          <Panel className="space-y-2">
+            <h3 className="font-medium flex items-center gap-2">
+              <Icon name="user" size={18} />
+              NPC Portraits
+            </h3>
+            <p className="text-xs text-neutral-500">Configure NPC expressions mapped to assets</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/npc-portraits', '_self')}>Open NPC Portraits</Button>
+            </div>
+          </Panel>
         </div>
       </section>
 

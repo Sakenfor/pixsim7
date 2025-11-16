@@ -278,10 +278,24 @@ export default function App() {
             authToken={authToken}
             hotspots={hotspots}
             onHotspotClick={async (h) => {
-              if (!authToken || !h.linked_scene_id) return
+              if (!authToken) return
+              const action = (h.meta as any)?.action || null
+
+              // Change location action
+              if (action?.type === 'change_location' && action.target_location_id) {
+                const newLoc = Number(action.target_location_id)
+                if (Number.isFinite(newLoc)) {
+                  setLocationId(newLoc)
+                }
+                return
+              }
+
+              // Default: play scene (from action.scene_id or linked_scene_id)
+              const sceneId = action?.scene_id ?? h.linked_scene_id
+              if (!sceneId) return
               try {
                 const scene = await fetchSceneById({
-                  sceneId: h.linked_scene_id,
+                  sceneId,
                   token: authToken,
                 })
                 setCurrentScene(scene)

@@ -26,6 +26,7 @@ from pixsim7_backend.shared.errors import (
 )
 from pixsim7_backend.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7_backend.services.user.user_service import UserService
+from pixsim7_backend.shared.schemas.media_metadata import RecognitionMetadata
 
 
 class AssetService:
@@ -190,6 +191,88 @@ class AssetService:
         if not asset:
             raise ResourceNotFoundError("Asset", asset_id)
         return asset
+
+    # ===== RECOGNITION / METADATA HELPERS =====
+
+    async def update_recognition_metadata(
+        self,
+        asset: Asset,
+        recognition: RecognitionMetadata,
+    ) -> Asset:
+        """
+        Merge recognition metadata into asset.media_metadata.
+
+        This is intended to be used by offline analysis jobs that perform
+        face recognition, action recognition, etc. It keeps the structure
+        flexible and additive.
+        """
+        meta = dict(asset.media_metadata or {})
+        meta["faces"] = [f.model_dump() for f in recognition.faces]
+        meta["actions"] = [a.model_dump() for a in recognition.actions]
+        meta["interactions"] = [i.model_dump() for i in recognition.interactions]
+        asset.media_metadata = meta
+        asset.last_accessed_at = datetime.utcnow()
+        self.db.add(asset)
+        await self.db.commit()
+        await self.db.refresh(asset)
+        return asset
+
+    async def find_assets_by_face_and_action(
+        self,
+        user: User,
+        *,
+        face_id: Optional[str] = None,
+        action_label: Optional[str] = None,
+        media_type: Optional[MediaType] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[Asset]:
+        """
+        Best-effort helper to find assets matching a face and/or action label.
+
+        This uses media_metadata JSON fields and is intended for convenience
+        in higher-level systems like the scene builder or game world logic.
+        It should not be relied on for strict correctness (recognition is
+        inherently probabilistic).
+        """
+        from sqlalchemy import and_, or_, func
+
+        query = select(Asset)
+
+        # Filter by user (unless admin)
+        if not user.is_admin():
+            query = query.where(Asset.user_id == user.id)
+
+        if media_type:
+            query = query.where(Asset.media_type == media_type)
+
+        # JSONB conditions (PostgreSQL)
+        # faces[*].face_id == face_id
+        # actions[*].label == action_label
+        conditions = []
+        if face_id:
+            conditions.append(
+                func.jsonb_path_exists(
+                    Asset.media_metadata,
+                    f'$.faces[*] ? (@.face_id == "{face_id}")',
+                )
+            )
+        if action_label:
+            conditions.append(
+                func.jsonb_path_exists(
+                    Asset.media_metadata,
+                    f'$.actions[*] ? (@.label == "{action_label}")',
+                )
+            )
+
+        if conditions:
+            query = query.where(and_(*conditions))
+
+        query = query.order_by(Asset.created_at.desc(), Asset.id.desc())
+        query = query.limit(limit).offset(offset)
+
+        result = await self.db.execute(query)
+        return result.scalars().all()
 
     async def get_asset_for_user(self, asset_id: int, user: User) -> Asset:
         """

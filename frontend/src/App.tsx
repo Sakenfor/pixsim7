@@ -14,6 +14,8 @@ import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { GameWorld } from './routes/GameWorld';
 import { AutomationRoute } from './routes/Automation';
+import { NpcPortraits } from './routes/NpcPortraits';
+import { Game2D } from './routes/Game2D';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -58,7 +60,9 @@ function App() {
           <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
           <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
           <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
+          <Route path="/game-2d" element={<ProtectedRoute><Game2D /></ProtectedRoute>} />
           <Route path="/game-world" element={<ProtectedRoute><GameWorld /></ProtectedRoute>} />
+          <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

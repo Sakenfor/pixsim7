@@ -1,4 +1,5 @@
 import { apiClient } from './api/client';
+import type { Scene } from '@pixsim7/types';
 
 export interface GameLocationSummary {
   id: number;
@@ -24,6 +25,19 @@ export interface GameLocationDetail {
   hotspots: GameHotspotDTO[];
 }
 
+export interface GameNpcSummary {
+  id: number;
+  name: string;
+}
+
+export interface NpcExpressionDTO {
+  id?: number;
+  state: string;
+  asset_id: number;
+  crop?: Record<string, unknown> | null;
+  meta?: Record<string, unknown> | null;
+}
+
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
   const res = await apiClient.get<GameLocationSummary[]>('/game/locations');
   return res.data;
@@ -44,3 +58,27 @@ export async function saveGameLocationHotspots(
   return res.data;
 }
 
+export async function getGameScene(sceneId: number): Promise<Scene> {
+  const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
+  return res.data;
+}
+
+export async function listGameNpcs(): Promise<GameNpcSummary[]> {
+  const res = await apiClient.get<GameNpcSummary[]>('/game/npcs');
+  return res.data;
+}
+
+export async function getNpcExpressions(npcId: number): Promise<NpcExpressionDTO[]> {
+  const res = await apiClient.get<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`);
+  return res.data;
+}
+
+export async function saveNpcExpressions(
+  npcId: number,
+  expressions: NpcExpressionDTO[],
+): Promise<NpcExpressionDTO[]> {
+  const res = await apiClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
+    expressions,
+  });
+  return res.data;
+}

@@ -112,6 +112,28 @@ class NPCState(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class NpcExpression(SQLModel, table=True):
+    """
+    Mapping between NPCs, conversational states, and assets.
+
+    Allows reusing the same asset (image or short clip) as a portrait
+    or talking animation across 2D and 3D UIs.
+    """
+    __tablename__ = "npc_expressions"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    npc_id: int = Field(foreign_key="game_npcs.id", index=True)
+    state: str = Field(max_length=64, description="Conversation state: idle, talking, thinking, bored, reaction, etc.")
+    asset_id: int = Field(foreign_key="assets.id", index=True)
+    crop: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Optional crop rect for portrait framing (e.g. {x,y,w,h} in 0-1)",
+    )
+    meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class GameHotspot(SQLModel, table=True):
     """
     Clickable hotspot within a GameLocation.
