@@ -287,6 +287,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – Graph editor + life-sim integration
 - `GAME_WORLD_DISPLAY_MODES.md` – 2D/3D display modes for scenes
 - `NODE_EDITOR_DEVELOPMENT.md` – Scene editor architecture and roadmap
+- `PHASE4_CANONICAL_SCENE_SCHEMA.md` – Canonical `@pixsim7/types.Scene` schema definition
 
 ---
 
