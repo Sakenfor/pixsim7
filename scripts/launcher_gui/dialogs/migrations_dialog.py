@@ -262,6 +262,42 @@ def show_migrations_dialog(parent):
         )
 
     def do_upgrade():
+        # First, show backup reminder
+        backup_reply = QMessageBox.warning(
+            dlg,
+            '📋 Important: Database Backup',
+            '⚠️ RECOMMENDED: Backup your database before proceeding!\n\n'
+            'While migrations are usually safe, having a backup ensures you can:\n'
+            '• Recover from unexpected issues\n'
+            '• Rollback if something goes wrong\n'
+            '• Avoid data loss in case of errors\n\n'
+            'Quick backup options:\n'
+            '1. Use pgAdmin or your database tool\n'
+            '2. Run: pg_dump pixsim7 > backup_$(date +%Y%m%d).sql\n'
+            '3. Take a filesystem snapshot if available\n\n'
+            '✅ Have you backed up your database?\n',
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Cancel
+        )
+
+        if backup_reply == QMessageBox.Cancel:
+            return
+        elif backup_reply == QMessageBox.No:
+            # User says they haven't backed up, confirm they want to proceed anyway
+            proceed_anyway = QMessageBox.question(
+                dlg,
+                'Proceed Without Backup?',
+                '⚠️ You indicated you have NOT backed up your database.\n\n'
+                'Proceeding without a backup is risky. If something goes wrong,\n'
+                'you may not be able to recover your data.\n\n'
+                'Are you sure you want to continue?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if proceed_anyway != QMessageBox.Yes:
+                return
+
+        # Now confirm the actual migration
         reply = QMessageBox.question(
             dlg,
             'Confirm Database Update',
@@ -270,39 +306,73 @@ def show_migrations_dialog(parent):
             '• Creates new tables if needed\n'
             '• Adds new columns to existing tables\n'
             '• Updates database structure to match latest code\n\n'
-            '✅ Safe: Usually safe, but always backup first!\n\n'
-            'Continue?',
-            QMessageBox.Yes | QMessageBox.No
+            '✅ Usually safe with proper backups\n\n'
+            'Continue with migration?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
         )
         if reply == QMessageBox.Yes:
             status_box.append('\n⏳ Applying migrations...\n')
             res = upgrade_head()
             status_box.append(f"{res}\n")
-            if 'error' not in res.lower() and 'failed' not in res.lower():
+            if 'error' not in res.lower() and 'failed' not in res.lower() and '❌' not in res:
                 status_box.append('✅ Migrations applied successfully!\n')
+            else:
+                status_box.append('❌ Migration failed. Check error message above.\n')
             refresh()
 
     def do_downgrade():
+        # First, verify they have a backup
+        backup_check = QMessageBox.critical(
+            dlg,
+            '🛑 DANGER: Backup Required',
+            '⚠️ STOP: This operation can DELETE DATA!\n\n'
+            'Downgrading a migration may:\n'
+            '• DROP entire tables permanently\n'
+            '• DELETE columns and all their data\n'
+            '• REMOVE indexes and constraints\n\n'
+            '🔴 REQUIRED: You MUST have a database backup before proceeding!\n\n'
+            'Do you have a VERIFIED backup that you can restore from?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if backup_check != QMessageBox.Yes:
+            QMessageBox.information(
+                dlg,
+                'Cancelled',
+                'Good decision! Create a backup first:\n\n'
+                'pg_dump pixsim7 > backup_before_downgrade.sql\n\n'
+                'Test that you can restore from it before attempting downgrades.'
+            )
+            return
+
+        # Double confirmation for downgrade
         reply = QMessageBox.warning(
             dlg,
-            '⚠️ Confirm Rollback (ADVANCED)',
-            '⚠️ WARNING: This will UNDO the last migration!\n\n'
+            '⚠️ Final Confirmation: Rollback (ADVANCED)',
+            '⚠️ FINAL WARNING: This will UNDO the last migration!\n\n'
             'What this does:\n'
             '• Rolls back the most recent database change\n'
-            '• May DELETE tables or columns\n'
-            '• Could result in DATA LOSS\n\n'
-            '❌ Only use this if:\n'
-            '• You just applied a migration by mistake\n'
-            '• You have a recent database backup\n'
-            '• You understand the consequences\n\n'
+            '• May DELETE tables or columns with all data\n'
+            '• Changes cannot be undone without backup restore\n\n'
+            '❌ Only proceed if:\n'
+            '• You just applied a wrong migration\n'
+            '• You have verified your backup works\n'
+            '• You fully understand the consequences\n\n'
+            'Type of the current migration to confirm you want to rollback.\n\n'
             'Continue with rollback?',
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
         if reply == QMessageBox.Yes:
-            status_box.append('\n⏳ Rolling back last migration...\n')
+            status_box.append('\n⚠️ Rolling back last migration...\n')
             res = downgrade_one()
             status_box.append(f"{res}\n")
+            if 'error' not in res.lower() and 'failed' not in res.lower() and '❌' not in res:
+                status_box.append('✅ Rollback completed.\n')
+            else:
+                status_box.append('❌ Rollback failed. Check error message above.\n')
             refresh()
 
     def do_stamp():
