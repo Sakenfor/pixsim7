@@ -26,12 +26,6 @@ import { NodePalette, type NodeType } from './nodes/NodePalette';
 import { previewBridge } from '../lib/preview-bridge';
 import { ValidationPanel } from './validation/ValidationPanel';
 
-// Node type registry
-const nodeTypes: NodeTypes = {
-  scene: SceneNode,
-  group: NodeGroup,
-};
-
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
@@ -57,6 +51,15 @@ export function GraphPanel() {
   const [showPalette, setShowPalette] = useState(true);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+
+  // Stable node type registry to satisfy React Flow error #002
+  const nodeTypes = useMemo<NodeTypes>(
+    () => ({
+      scene: SceneNode,
+      group: NodeGroup,
+    }),
+    []
+  );
 
   // Convert draft to React Flow format (memoized)
   const flowNodes = useMemo(() => toFlowNodes(draft), [draft]);

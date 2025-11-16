@@ -10,9 +10,27 @@ export function Home() {
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-10 content-with-dock min-h-screen">
       <header className="border-b border-neutral-200 dark:border-neutral-800 pb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold mb-1">PixSim7 - Interactive Video Platform</h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Welcome, {user?.username}!</p>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-semibold">PixSim7 - Interactive Video Platform</h1>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            Welcome, {user?.username}! The workspace lets you orchestrate gallery, scene, graph, and health panels.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => window.open('/workspace', '_self')}
+            >
+              Open Workspace
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => window.open('/assets', '_self')}
+            >
+              Open Gallery
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2">
           <ThemeToggle />

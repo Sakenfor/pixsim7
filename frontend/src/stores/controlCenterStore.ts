@@ -96,7 +96,12 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         // Adjust default size based on position
         const isVertical = position === 'left' || position === 'right';
         const newHeight = isVertical ? 320 : 180;
-        set({ dockPosition: position, height: newHeight });
+        // When switching to floating mode, ensure it's visible
+        const updates: any = { dockPosition: position, height: newHeight };
+        if (position === 'floating') {
+          updates.open = true;
+        }
+        set(updates);
       },
       toggleOpen: () => set((s) => ({ open: !s.open })),
       setOpen: (v) => {
@@ -147,7 +152,29 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       name: STORAGE_KEY,
       storage: createBackendStorage('controlCenter'),
       partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, floatingPosition: s.floatingPosition, floatingSize: s.floatingSize, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
-      version: 4,
+      version: 5,
+      migrate: (persistedState: any, version: number) => {
+        // Migrate from version 4 to 5: add floating position/size defaults
+        if (version < 5) {
+          const migrated = {
+            ...persistedState,
+            floatingPosition: persistedState.floatingPosition || { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
+            floatingSize: persistedState.floatingSize || { width: 600, height: 500 },
+          };
+          // Ensure floating mode is always visible on load
+          if (migrated.dockPosition === 'floating') {
+            migrated.open = true;
+          }
+          return migrated;
+        }
+        return persistedState;
+      },
+      onRehydrateStorage: () => (state) => {
+        // After rehydration, ensure floating mode is visible
+        if (state?.dockPosition === 'floating' && !state?.open) {
+          state.setOpen(true);
+        }
+      },
     }
   )
 );

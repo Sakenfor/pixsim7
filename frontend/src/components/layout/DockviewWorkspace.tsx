@@ -9,6 +9,7 @@ import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
+import { SettingsPanel } from '../settings/SettingsPanel';
 import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 
@@ -44,6 +45,7 @@ const PANEL_COMPONENTS: Record<PanelId, React.ComponentType> = {
   health: HealthPanel,
   game: GameIframePanel,
   providers: ProviderSettingsPanel,
+  settings: SettingsPanel,
 };
 
 const PANEL_TITLES: Record<PanelId, string> = {
@@ -54,6 +56,7 @@ const PANEL_TITLES: Record<PanelId, string> = {
   health: 'Health',
   game: 'Game',
   providers: 'Provider Settings',
+  settings: 'Settings',
 };
 
 // Wrapper for panels to provide data-panel-id
@@ -84,9 +87,17 @@ function applyMosaicLayoutToDockview(
   layout: MosaicNode<PanelId> | null,
   titles: Record<PanelId, string>
 ) {
-  // Clear existing panels
-  const existingPanels = api.panels.map((p) => p.id);
-  existingPanels.forEach((id) => api.removePanel(id));
+  // Clear existing panels (defensively guard against stale/undefined ids)
+  const existingPanels = api.panels.map((p) => p.id).filter(Boolean);
+  existingPanels.forEach((id) => {
+    try {
+      api.removePanel(id);
+    } catch (e) {
+      // If Dockview already removed this panel or its group, ignore
+      // to avoid hard failures when syncing layouts.
+      // console.warn('Failed to remove panel', id, e);
+    }
+  });
 
   if (!layout) return;
 

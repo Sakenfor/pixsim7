@@ -105,7 +105,8 @@ export function ControlCube({
 
   // Per-user input configuration
   const linkingGesture = useCubeSettingsStore((s) => s.linkingGesture);
-  const cancelLinking = useControlCubeStore((s) => s.cancelLinking);
+  const linkingGestureLabel =
+    linkingGesture === 'middleClick' ? 'Middle-click' : 'Shift+Left-click';
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -387,7 +388,7 @@ export function ControlCube({
       if (linkingFromCube?.cubeId === cubeId) {
         return {
           id: 'linking-source',
-          content: 'Middle-click another cube face to connect',
+          content: `${linkingGestureLabel} another cube face to connect`,
           variant: 'info' as const,
           show: !linkingTooltip.dismissed && isHovering,
           shortcut: 'ESC to cancel',
@@ -395,7 +396,7 @@ export function ControlCube({
       } else {
         return {
           id: 'linking-target',
-          content: 'Middle-click to connect from source',
+          content: `${linkingGestureLabel} to connect from source`,
           variant: 'info' as const,
           show: !linkingTooltip.dismissed && isHovering,
         };

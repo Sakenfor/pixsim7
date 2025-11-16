@@ -141,8 +141,24 @@ export function AssetsRoute() {
               onClick={() => setView('local')}
             >Local</button>
           </div>
-          <div className="text-xs text-neutral-500">
-            Jobs WS: {jobsSocket.connected ? 'connected' : 'disconnected'}
+          <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${
+              jobsSocket.connected
+                ? 'border-green-500 text-green-600 dark:text-green-300'
+                : 'border-amber-500 text-amber-600 dark:text-amber-300'
+            }`}>
+              <span
+                className={`w-2 h-2 rounded-full mr-1 ${
+                  jobsSocket.connected ? 'bg-green-500' : 'bg-amber-500'
+                }`}
+              />
+              Jobs feed: {jobsSocket.connected ? 'live' : 'offline'}
+            </span>
+            {jobsSocket.error && (
+              <span className="text-[10px] text-red-500 dark:text-red-400">
+                ({jobsSocket.error})
+              </span>
+            )}
           </div>
         </div>
       </div>
