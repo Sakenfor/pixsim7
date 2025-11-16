@@ -27,6 +27,7 @@ import { validateConnection, getValidationMessage } from '../modules/scene-build
 import { NodePalette, type NodeType } from './nodes/NodePalette';
 import { previewBridge } from '../lib/preview-bridge';
 import { ValidationPanel } from './validation/ValidationPanel';
+import { WorldContextSelector } from './WorldContextSelector';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -41,6 +42,7 @@ export function GraphPanel() {
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const createScene = useGraphStore((s: GraphState) => s.createScene);
   const addNode = useGraphStore((s: GraphState) => s.addNode);
+  const updateNode = useGraphStore((s: GraphState) => s.updateNode);
   const removeNode = useGraphStore((s: GraphState) => s.removeNode);
   const connectNodes = useGraphStore((s: GraphState) => s.connectNodes);
   const setStartNode = useGraphStore((s: GraphState) => s.setStartNode);
@@ -416,6 +418,9 @@ export function GraphPanel() {
       {/* Toolbar */}
       <div className="border-b p-2 flex items-center gap-2 text-xs bg-neutral-50 dark:bg-neutral-800 z-10">
         <span className="font-semibold">Scene Graph</span>
+        <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
+        <WorldContextSelector />
+        <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <Button
           size="sm"
           variant={showPalette ? 'primary' : 'secondary'}

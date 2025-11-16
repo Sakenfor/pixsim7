@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Panel, Input, Select } from '@pixsim7/ui';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO } from '../lib/api/game';
 import { listGameLocations, getGameLocation, saveGameLocationHotspots } from '../lib/api/game';
+import type { HotspotActionType } from '../lib/game/interactionSchema';
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
@@ -9,6 +10,7 @@ export function GameWorld() {
   const [detail, setDetail] = useState<GameLocationDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     (async () => {
@@ -52,6 +54,31 @@ export function GameWorld() {
     setDetail({ ...detail, hotspots: nextHotspots });
   };
 
+  const handleActionChange = (
+    index: number,
+    field: 'type' | 'scene_id' | 'target_location_id' | 'npc_id',
+    value: string | number | null
+  ) => {
+    if (!detail) return;
+    const h = detail.hotspots[index];
+    const meta: any = { ...(h.meta || {}) };
+    const action: any = { ...(meta.action || {}) };
+
+    if (field === 'type') {
+      // When changing type, reset action to only have the new type
+      meta.action = { type: value || undefined };
+    } else {
+      action[field] = value || undefined;
+      // Clean up undefined values
+      if (!action[field]) {
+        delete action[field];
+      }
+      meta.action = action;
+    }
+
+    handleHotspotChange(index, { meta });
+  };
+
   const handleAddHotspot = () => {
     if (!detail) return;
     setDetail({
@@ -60,6 +87,14 @@ export function GameWorld() {
         ...detail.hotspots,
         { object_name: '', hotspot_id: '', linked_scene_id: undefined, meta: {} },
       ],
+    });
+  };
+
+  const handleRemoveHotspot = (index: number) => {
+    if (!detail) return;
+    setDetail({
+      ...detail,
+      hotspots: detail.hotspots.filter((_, i) => i !== index),
     });
   };
 
@@ -76,6 +111,10 @@ export function GameWorld() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const toggleAdvanced = (index: number) => {
+    setShowAdvanced(prev => ({ ...prev, [index]: !prev[index] }));
   };
 
   return (
@@ -106,103 +145,166 @@ export function GameWorld() {
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">Hotspots</h2>
               <Button size="sm" variant="secondary" onClick={handleAddHotspot}>
-                Add Hotspot
+                + Add Hotspot
               </Button>
             </div>
-            <div className="space-y-2">
-              {detail.hotspots.map((h, idx) => (
-                <div key={idx} className="space-y-1 text-xs">
-                  <div className="grid grid-cols-4 gap-2 items-center">
-                    <Input
-                      placeholder="object_name (from glTF)"
-                      value={h.object_name}
-                      onChange={(e: any) => handleHotspotChange(idx, { object_name: e.target.value })}
-                    />
-                    <Input
-                      placeholder="hotspot_id"
-                      value={h.hotspot_id}
-                      onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
-                    />
-                    <Input
-                      placeholder="linked_scene_id"
-                      value={h.linked_scene_id ?? ''}
-                      onChange={(e: any) => {
-                        const v = e.target.value.trim();
-                        handleHotspotChange(idx, {
-                          linked_scene_id: v ? Number(v) : undefined,
-                        });
-                      }}
-                    />
-                    <Input
-                      placeholder="meta JSON (optional)"
-                      value={h.meta ? JSON.stringify(h.meta) : ''}
-                      onChange={(e: any) => {
-                        const v = e.target.value.trim();
-                        let parsed: Record<string, unknown> | undefined;
-                        if (v) {
-                          try {
-                            parsed = JSON.parse(v);
-                          } catch {
-                            parsed = h.meta ?? {};
-                          }
-                        }
-                        handleHotspotChange(idx, { meta: parsed });
-                      }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    {(() => {
-                      const meta: any = h.meta || {};
-                      const action = meta.action || {};
-                      const actionType = action.type ?? '';
-                      const sceneId = action.scene_id ?? '';
-                      const targetLocationId = action.target_location_id ?? '';
-                      return (
-                        <>
-                          <Input
-                            placeholder="action type (play_scene/change_location/npc_talk)"
+            <div className="space-y-3">
+              {detail.hotspots.map((h, idx) => {
+                const meta: any = h.meta || {};
+                const action: any = meta.action || {};
+                const actionType: HotspotActionType | '' = action.type ?? '';
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700 space-y-2"
+                  >
+                    {/* Basic Hotspot Info */}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <Input
+                        placeholder="object_name (from glTF)"
+                        value={h.object_name}
+                        onChange={(e: any) => handleHotspotChange(idx, { object_name: e.target.value })}
+                      />
+                      <Input
+                        placeholder="hotspot_id"
+                        value={h.hotspot_id}
+                        onChange={(e: any) => handleHotspotChange(idx, { hotspot_id: e.target.value })}
+                      />
+                      <Input
+                        placeholder="linked_scene_id (fallback)"
+                        value={h.linked_scene_id ?? ''}
+                        onChange={(e: any) => {
+                          const v = e.target.value.trim();
+                          handleHotspotChange(idx, {
+                            linked_scene_id: v ? Number(v) : undefined,
+                          });
+                        }}
+                      />
+                    </div>
+
+                    {/* Structured Action Controls */}
+                    <div className="border-t pt-2 dark:border-neutral-700">
+                      <label className="block text-xs font-semibold mb-1">Hotspot Action</label>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+                            Action Type
+                          </label>
+                          <Select
                             value={actionType}
-                            onChange={(e: any) => {
-                              const v = e.target.value.trim();
-                              const nextMeta: any = { ...(h.meta || {}) };
-                              const nextAction: any = { ...(nextMeta.action || {}) };
-                              nextAction.type = v || undefined;
-                              nextMeta.action = nextAction;
-                              handleHotspotChange(idx, { meta: nextMeta });
-                            }}
-                          />
+                            onChange={(e: any) => handleActionChange(idx, 'type', e.target.value)}
+                          >
+                            <option value="">None</option>
+                            <option value="play_scene">Play Scene</option>
+                            <option value="change_location">Change Location</option>
+                            <option value="npc_talk">NPC Talk</option>
+                          </Select>
+                        </div>
+
+                        {/* Conditional Action Fields */}
+                        {actionType === 'play_scene' && (
+                          <div>
+                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+                              Scene ID
+                            </label>
+                            <Input
+                              placeholder="Scene ID"
+                              value={action.scene_id ?? ''}
+                              onChange={(e: any) => {
+                                const v = e.target.value.trim();
+                                handleActionChange(idx, 'scene_id', v ? Number(v) : null);
+                              }}
+                            />
+                            <p className="text-xs text-neutral-500 mt-0.5">
+                              Leave empty to use linked_scene_id
+                            </p>
+                          </div>
+                        )}
+
+                        {actionType === 'change_location' && (
+                          <div>
+                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+                              Target Location ID
+                            </label>
+                            <Input
+                              placeholder="Location ID"
+                              value={action.target_location_id ?? ''}
+                              onChange={(e: any) => {
+                                const v = e.target.value.trim();
+                                handleActionChange(idx, 'target_location_id', v ? Number(v) : null);
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {actionType === 'npc_talk' && (
+                          <div>
+                            <label className="block text-xs text-neutral-600 dark:text-neutral-400 mb-1">
+                              NPC ID
+                            </label>
+                            <Input
+                              placeholder="NPC ID"
+                              value={action.npc_id ?? ''}
+                              onChange={(e: any) => {
+                                const v = e.target.value.trim();
+                                handleActionChange(idx, 'npc_id', v ? Number(v) : null);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Advanced: Raw Meta JSON */}
+                    <div className="border-t pt-2 dark:border-neutral-700">
+                      <button
+                        onClick={() => toggleAdvanced(idx)}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {showAdvanced[idx] ? '▼ Hide' : '▶ Show'} Advanced (Raw Meta JSON)
+                      </button>
+                      {showAdvanced[idx] && (
+                        <div className="mt-2">
                           <Input
-                            placeholder="action.scene_id"
-                            value={sceneId}
+                            placeholder="Raw meta JSON (for advanced use)"
+                            value={h.meta ? JSON.stringify(h.meta) : ''}
                             onChange={(e: any) => {
                               const v = e.target.value.trim();
-                              const nextMeta: any = { ...(h.meta || {}) };
-                              const nextAction: any = { ...(nextMeta.action || {}) };
-                              nextAction.scene_id = v ? Number(v) : undefined;
-                              nextMeta.action = nextAction;
-                              handleHotspotChange(idx, { meta: nextMeta });
+                              let parsed: Record<string, unknown> | undefined;
+                              if (v) {
+                                try {
+                                  parsed = JSON.parse(v);
+                                } catch {
+                                  parsed = h.meta ?? {};
+                                }
+                              }
+                              handleHotspotChange(idx, { meta: parsed });
                             }}
+                            className="font-mono text-xs"
                           />
-                          <Input
-                            placeholder="action.target_location_id"
-                            value={targetLocationId}
-                            onChange={(e: any) => {
-                              const v = e.target.value.trim();
-                              const nextMeta: any = { ...(h.meta || {}) };
-                              const nextAction: any = { ...(nextMeta.action || {}) };
-                              nextAction.target_location_id = v ? Number(v) : undefined;
-                              nextMeta.action = nextAction;
-                              handleHotspotChange(idx, { meta: nextMeta });
-                            }}
-                          />
-                        </>
-                      );
-                    })()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Remove Button */}
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleRemoveHotspot(idx)}
+                        className="text-xs text-red-600 hover:text-red-700"
+                      >
+                        Remove Hotspot
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {detail.hotspots.length === 0 && (
-                <p className="text-xs text-neutral-500">No hotspots yet. Add one above.</p>
+                <p className="text-xs text-neutral-500 text-center py-4">
+                  No hotspots yet. Click "Add Hotspot" above to create one.
+                </p>
               )}
             </div>
           </div>

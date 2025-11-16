@@ -5,12 +5,14 @@ import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
 import type { DraftSceneNode } from '../modules/scene-builder';
 import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { useWorldContextStore } from '../stores/worldContextStore';
 import { logEvent } from '../lib/logging';
 import { previewBridge } from '../lib/preview-bridge';
 
 export function SceneBuilderPanel() {
   const toast = useToast();
   const { selectedNodeId } = useSelectionStore();
+  const { worldId, locationId } = useWorldContextStore();
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const createScene = useGraphStore((s: GraphState) => s.createScene);
@@ -28,6 +30,10 @@ export function SceneBuilderPanel() {
   const [progressionSteps, setProgressionSteps] = useState<Array<{ label: string; segmentIds: string }>>([
     { label: 'Step 1', segmentIds: '' }
   ]);
+
+  // Life Sim fields
+  const [advanceMinutes, setAdvanceMinutes] = useState<number | ''>('');
+  const [npcId, setNpcId] = useState<number | ''>('');
 
   // Load selected node data when selection changes
   useEffect(() => {
@@ -55,6 +61,11 @@ export function SceneBuilderPanel() {
           }));
           setProgressionSteps(steps.length > 0 ? steps : [{ label: 'Step 1', segmentIds: '' }]);
         }
+
+        // Load Life Sim metadata
+        const lifeSim: any = node.metadata?.lifeSim || {};
+        setAdvanceMinutes(lifeSim.advanceMinutes ?? '');
+        setNpcId((node.metadata as any)?.npc_id ?? '');
       }
     }
   }, [selectedNodeId, currentScene]);
@@ -106,13 +117,27 @@ export function SceneBuilderPanel() {
         miniGame: { id: 'reflex', config: { rounds: 3 } }
       };
 
+      // Build Life Sim metadata
+      const lifeSim: any = {};
+      if (advanceMinutes !== '') {
+        lifeSim.advanceMinutes = advanceMinutes;
+      }
+
+      const metadata: any = { label };
+      if (Object.keys(lifeSim).length > 0) {
+        metadata.lifeSim = lifeSim;
+      }
+      if (npcId !== '') {
+        metadata.npc_id = npcId;
+      }
+
       // Add or update node
       const existingNode = currentScene.nodes.find((n: DraftSceneNode) => n.id === nodeId);
       if (existingNode) {
         updateNode(nodeId, {
           selection,
           playback,
-          metadata: { label }
+          metadata
         });
         toast.success('Node updated successfully');
       } else {
@@ -121,7 +146,7 @@ export function SceneBuilderPanel() {
           type: 'video',
           selection,
           playback,
-          metadata: { label }
+          metadata
         });
         toast.success('Node added to scene');
       }
@@ -161,6 +186,16 @@ export function SceneBuilderPanel() {
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
           Configure a scene node with selection strategy and progression steps
         </p>
+        {/* World/Location Context Indicator */}
+        {(worldId || locationId) && (
+          <div className="px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-xs">
+            <span className="font-semibold text-green-900 dark:text-green-300">Context: </span>
+            <span className="text-green-700 dark:text-green-400">
+              {worldId ? `World ${worldId}` : 'No World'}
+              {locationId ? ` • Location ${locationId}` : ''}
+            </span>
+          </div>
+        )}
         {selectedNodeId && (
           <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs">
             <span className="font-semibold text-blue-900 dark:text-blue-300">Editing: </span>
@@ -269,6 +304,53 @@ export function SceneBuilderPanel() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Life Sim Section */}
+        <div className="border-t pt-3 dark:border-neutral-700">
+          <h4 className="text-sm font-semibold mb-2">Life Sim Metadata</h4>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+            Configure how this node affects world time and NPC bindings
+          </p>
+
+          <div className="space-y-3">
+            {/* Time Advancement */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Advance World Time (minutes)
+              </label>
+              <input
+                type="number"
+                value={advanceMinutes}
+                onChange={(e) => setAdvanceMinutes(e.target.value ? Number(e.target.value) : '')}
+                className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                placeholder="e.g., 15 (leave empty for no time change)"
+                min="0"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Number of in-game minutes to advance when this node is entered
+              </p>
+            </div>
+
+            {/* NPC ID Binding */}
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Hard NPC Binding (optional)
+              </label>
+              <input
+                type="number"
+                value={npcId}
+                onChange={(e) => setNpcId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                placeholder="e.g., 12 (NPC ID for identity-specific clips)"
+                min="0"
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Lock this node to a specific NPC (bypasses role binding). Use for clips that are
+                strongly tied to a character's identity.
+              </p>
+            </div>
           </div>
         </div>
       </div>
