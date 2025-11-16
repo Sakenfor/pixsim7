@@ -99,11 +99,11 @@ class PixverseProvider(Provider):
             Configured PixverseClient
         """
         # Build session from stored credentials
-        # For OpenAPI, use the dedicated paid key (api_key_paid) only.
+        # Note: api_key_paid is the OpenAPI key (available to any account, get from dashboard)
         session = {
             "jwt_token": account.jwt_token,
             "api_key": account.api_key,
-            "openapi_key": account.api_key_paid,
+            "openapi_key": account.api_key_paid,  # OpenAPI key (any tier)
             "cookies": account.cookies or {},
         }
 
@@ -593,7 +593,7 @@ class PixverseProvider(Provider):
 
         Strategy:
         - Use pixverse-py SDK's upload_media() (available as of SDK v1.0.0+)
-        - Requires OpenAPI key (api_key_paid)
+        - Requires OpenAPI key (any account can get from Pixverse dashboard)
         - Returns media ID or URL
 
         Note: Falls back to legacy direct API call for older SDK versions.
@@ -622,7 +622,7 @@ class PixverseProvider(Provider):
                     )
                 else:
                     raise ProviderError(
-                        "Pixverse upload requires OpenAPI key (paid tier). "
+                        "Pixverse upload requires OpenAPI key (get from dashboard). "
                         "Ensure pixverse-py SDK v1.0.0+ is installed."
                     )
 
@@ -663,7 +663,7 @@ class PixverseProvider(Provider):
 
     def _get_openapi_key(self, account: ProviderAccount) -> str | None:
         """
-        Return the dedicated paid OpenAPI key for this account.
+        Return the OpenAPI key for this account (any tier can have OpenAPI key).
         """
         return account.api_key_paid
 
