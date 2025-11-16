@@ -141,6 +141,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Async response
   }
 
+  if (message.action === 'syncAllCredits') {
+    // Sync credits for all user accounts
+    (async () => {
+      try {
+        // First get all accounts
+        const accounts = await backendRequest('/api/v1/accounts');
+
+        // Sync credits for each account (best-effort, non-blocking)
+        const results = await Promise.allSettled(
+          accounts.map(acc =>
+            backendRequest(`/api/v1/accounts/${acc.id}/sync-credits`, { method: 'POST' })
+              .catch(e => ({ error: e.message, accountId: acc.id }))
+          )
+        );
+
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected').length;
+
+        sendResponse({
+          success: true,
+          synced: successful,
+          failed: failed,
+          total: accounts.length
+        });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Automation: fetch presets
   if (message.action === 'getPresets') {
     backendRequest('/api/v1/automation/presets')

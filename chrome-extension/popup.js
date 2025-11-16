@@ -201,6 +201,22 @@ async function handleLogin() {
     if (response.success) {
       currentUser = response.data.user;
       showLoggedIn();
+
+      // Sync credits for all accounts after login (best-effort, non-blocking)
+      loginBtn.textContent = 'Syncing credits...';
+      try {
+        const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+        if (syncResult.success) {
+          console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
+          // Refresh accounts to show updated credits
+          if (document.getElementById('tab-accounts').classList.contains('active')) {
+            await loadAccounts();
+          }
+        }
+      } catch (syncError) {
+        console.warn('[Popup] Credit sync failed:', syncError);
+        // Non-fatal, just log the error
+      }
     } else {
       showError(response.error || 'Login failed');
     }
