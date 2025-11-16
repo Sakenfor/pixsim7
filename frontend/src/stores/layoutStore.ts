@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 
-export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game' | 'edgeEffects' | 'sceneMetadata';
+export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game' | 'edgeEffects' | 'sceneMetadata' | 'sessionState';
 
 export type PanelInstance = {
   id: string;
@@ -30,7 +30,7 @@ export type LayoutActions = {
   load: () => void;
   save: () => void;
   reset: () => void;
-  applyPreset: (name: 'galleryLeft' | 'galleryRight' | 'fullscreenGallery' | 'sceneBelow' | 'workspace') => void;
+  applyPreset: (name: 'galleryLeft' | 'galleryRight' | 'fullscreenGallery' | 'sceneBelow' | 'workspace' | 'storyDesigner') => void;
 }
 
 const STORAGE_KEY = 'workspace_layout_v1';
@@ -105,6 +105,32 @@ const presets: Record<string, { panels: PanelInstance[]; root: SplitNode }> = {
         { kind: 'panel', panelId: 'p_inspector' },
         { kind: 'panel', panelId: 'p_health' },
         { kind: 'panel', panelId: 'p_game' },
+      ]
+    }
+  },
+  storyDesigner: {
+    panels: [
+      { id: 'p_graph', type: 'graph', title: 'Graph' },
+      { id: 'p_scene', type: 'scene', title: 'Node Editor' },
+      { id: 'p_edgeEffects', type: 'edgeEffects', title: 'Edge Effects' },
+      { id: 'p_sceneMetadata', type: 'sceneMetadata', title: 'Scene Metadata' },
+      { id: 'p_sessionState', type: 'sessionState', title: 'Session State' },
+      { id: 'p_game', type: 'game', title: 'Game' },
+    ],
+    root: {
+      kind: 'split', direction: 'col', sizes: [60, 40], children: [
+        // Top: Graph + Scene Builder
+        { kind: 'split', direction: 'row', sizes: [50, 50], children: [
+          { kind: 'panel', panelId: 'p_graph' },
+          { kind: 'panel', panelId: 'p_scene' },
+        ] },
+        // Bottom: Edge Effects + Scene Metadata + Session State + Game
+        { kind: 'split', direction: 'row', sizes: [25, 25, 25, 25], children: [
+          { kind: 'panel', panelId: 'p_edgeEffects' },
+          { kind: 'panel', panelId: 'p_sceneMetadata' },
+          { kind: 'panel', panelId: 'p_sessionState' },
+          { kind: 'panel', panelId: 'p_game' },
+        ] }
       ]
     }
   }
