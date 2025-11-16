@@ -4,14 +4,14 @@ A separate React + Vite app for the game UI (sessions, scene player, etc.).
 
 ## Dev
 
-- Prereq: run the Game Service on port 9001 (e.g., `uvicorn pixsim7_game_service.main:app --reload --port 9001`).
+- Prereq: run the main Backend API on port 8001 (e.g., `python pixsim7_backend/main.py` or `launch.bat`).
 - Start the app:
   - With pnpm (recommended): run at repo root `pnpm -r --parallel dev`
   - Or directly in this folder: `npm install` then `npm run dev`
 
-The dev server proxies game API calls:
-- `/game/health` -> `http://localhost:9001/health`
-- `/game/v1/*` -> `http://localhost:9001/api/v1/*`
+The dev server proxies game API calls to the backend:
+- `/game/health` -> `http://localhost:8001/health`
+- `/game/v1/*` -> `http://localhost:8001/api/v1/game/*`
 
 ## Sharing code
 
