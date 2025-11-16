@@ -187,3 +187,77 @@ quests for analytics or cross-player events), you can introduce dedicated
 tables and services and migrate the data progressively, keeping the
 `flags`/`relationships` layout for backwards compatibility.
 
+---
+
+## 6. Per-World Relationship Scales (Tiers)
+
+Many worlds (especially romance- or erotic-focused ones) need to express
+relationship **levels** in a way that is:
+- Configurable per world (not hard-coded by the engine),
+- Still backed by simple numeric values in `GameSession.relationships`.
+
+### 6.1 Numeric Base
+
+Per session, per NPC, use numeric fields in `GameSession.relationships`:
+
+```jsonc
+{
+  "npc:12": { "affinity": 72, "trust": 40, "flags": ["kissed_once"] },
+  "npc:15": { "affinity": 35 }
+}
+```
+
+- `affinity`, `trust`, etc. are floats/ints (`0–100` is a convenient convention,
+  but not enforced by the schema).
+- Scenes and world events compare numbers and/or flags directly.
+
+### 6.2 World-Defined Tiers
+
+Each `GameWorld` can define its own relationship tiers in `meta`, e.g.:
+
+```jsonc
+{
+  "relationship_schemas": {
+    "default": [
+      { "id": "stranger", "min": 0,  "max": 9 },
+      { "id": "acquaintance", "min": 10, "max": 29 },
+      { "id": "friend", "min": 30, "max": 59 },
+      { "id": "close_friend", "min": 60, "max": 79 },
+      { "id": "lover", "min": 80, "max": 100 }
+    ]
+  }
+}
+```
+
+- This is **author-controlled**: worlds can choose tame or spicy vocabularies,
+  different thresholds, or multiple schemas if needed.
+- The engine can provide helper logic (frontend) to resolve:
+  - `(affinity, schema) -> tierId` (e.g., `"lover"`).
+
+### 6.3 Using Tiers in Arcs and Conditions
+
+World-story / arc graphs (see `GRAPH_UI_LIFE_SIM_PHASES.md`, Phase 7) can use
+either raw numbers or tier IDs in their conditions:
+
+- Numeric checks:
+  - `relationships["npc:anne"].affinity >= 80`
+- Tier-based checks (translated by helpers into numeric checks):
+  - `"tier(relationships['npc:anne'].affinity) >= 'lover'"`
+    → `affinity >= min('lover')` for the chosen schema.
+
+This allows arcs like:
+
+- “Unlock this scene when you and Anne are at **lover** level”,
+- “Loop this arc as long as all three partners stay above **close_friend**.”
+
+### 6.4 UI and Editor Implications
+
+- World settings UI can offer a “Relationship scales” editor:
+  - Add/Edit tiers with `id`, `min`, `max`, optional label/icon.
+- Arc/quest editors can:
+  - Let authors choose a numeric threshold *or* a tier name for conditions.
+- Game UIs (2D/3D) can show tier labels/badges based on the active schema.
+
+All of this remains backend-agnostic and compatible with the existing numeric
+`GameSession.relationships` structure; tiers are a per-world, data-driven
+overlay that world creators control.
