@@ -8,6 +8,7 @@ import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { useEffect, useRef } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
+import { authService } from '../../lib/auth/authService';
 
 // Game iframe with preview bridge connection
 function GameIframePanel() {
@@ -17,6 +18,8 @@ function GameIframePanel() {
   useEffect(() => {
     if (iframeRef.current) {
       previewBridge.setIframe(iframeRef.current);
+      const token = authService.getStoredToken();
+      previewBridge.sendAuthToken(token);
     }
   }, []);
 

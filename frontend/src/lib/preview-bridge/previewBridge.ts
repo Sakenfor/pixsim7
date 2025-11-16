@@ -13,6 +13,7 @@ import type {
   PauseSceneMessage,
   StopSceneMessage,
   SeekToNodeMessage,
+  SetAuthTokenMessage,
 } from './messageTypes';
 import { isGameToEditorMessage } from './messageTypes';
 import { logEvent } from '../logging';
@@ -171,6 +172,17 @@ export class PreviewBridge {
     const message: SeekToNodeMessage = {
       type: 'seek-to-node',
       payload: { nodeId },
+    };
+    return this.sendMessage(message);
+  }
+
+  /**
+   * Send auth token to game iframe
+   */
+  sendAuthToken(token: string | null): boolean {
+    const message: SetAuthTokenMessage = {
+      type: 'set-auth-token',
+      payload: { token },
     };
     return this.sendMessage(message);
   }

@@ -1,14 +1,25 @@
 import { useEffect, useState } from 'react'
 import type { JobStatus, Scene } from '@pixsim7/types'
-import { Button, Panel, ThemeToggle } from '@pixsim7/ui'
+import { Button, Panel, ThemeToggle, Input } from '@pixsim7/ui'
 import { ScenePlayer } from './components/ScenePlayer'
 import { mockScene } from './scenes/mockScene'
+import type { GameSessionDTO } from './lib/gameApi'
+import { createGameSession, getGameSession, advanceGameSession, fetchSceneById } from './lib/gameApi'
 
 export default function App() {
   const [health, setHealth] = useState<string>('checking...')
   const [error, setError] = useState<string | null>(null)
   const [currentScene, setCurrentScene] = useState<Scene>(mockScene)
+  const [sceneError, setSceneError] = useState<string | null>(null)
+  const [isSceneLoading, setIsSceneLoading] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
+  const [session, setSession] = useState<GameSessionDTO | null>(null)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [isSessionLoading, setIsSessionLoading] = useState(false)
+  const [edgeIdInput, setEdgeIdInput] = useState<string>('')
+  const [authToken, setAuthToken] = useState<string | undefined>(
+    () => (typeof window !== 'undefined' ? localStorage.getItem('access_token') || undefined : undefined),
+  )
 
   useEffect(() => {
     fetch('/game/health')
@@ -30,6 +41,7 @@ export default function App() {
         console.log('[Game] Received load-scene message:', message.payload.scene);
         setCurrentScene(message.payload.scene);
         setPreviewMode(true);
+        setSceneError(null);
 
         // Send acknowledgment
         if (event.source && 'postMessage' in event.source) {
@@ -46,6 +58,10 @@ export default function App() {
         }
       }
 
+      if (message?.type === 'set-auth-token') {
+        setAuthToken(message.payload?.token || undefined)
+      }
+
       // Other message types can be handled here
       // play-scene, pause-scene, stop-scene, seek-to-node
     };
@@ -53,6 +69,107 @@ export default function App() {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [])
+
+  useEffect(() => {
+    if (!authToken) {
+      setSession(null)
+      setSessionError(null)
+    }
+  }, [authToken])
+
+  useEffect(() => {
+    if (previewMode) return
+    if (!authToken) return
+    if (typeof window === 'undefined') return
+
+    const params = new URLSearchParams(window.location.search)
+    const sceneId = params.get('sceneId')
+    if (!sceneId) return
+
+    let cancelled = false
+    setIsSceneLoading(true)
+    setSceneError(null)
+
+    ;(async () => {
+      try {
+        const scene = await fetchSceneById({
+          sceneId,
+          token: authToken,
+        })
+        if (!cancelled) {
+          setCurrentScene(scene)
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setSceneError(String(e?.message ?? e))
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSceneLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewMode, authToken])
+
+  const handleCreateSession = async () => {
+    setSessionError(null)
+    setIsSessionLoading(true)
+    try {
+      const s = await createGameSession({
+        sceneId: 1,
+        token: authToken,
+      })
+      setSession(s)
+    } catch (e: any) {
+      setSessionError(String(e?.message ?? e))
+    } finally {
+      setIsSessionLoading(false)
+    }
+  }
+
+  const handleRefreshSession = async () => {
+    if (!session) return
+    setSessionError(null)
+    setIsSessionLoading(true)
+    try {
+      const s = await getGameSession({
+        sessionId: session.id,
+        token: authToken,
+      })
+      setSession(s)
+    } catch (e: any) {
+      setSessionError(String(e?.message ?? e))
+    } finally {
+      setIsSessionLoading(false)
+    }
+  }
+
+  const handleAdvanceSession = async () => {
+    if (!session || !edgeIdInput.trim()) return
+    const edgeId = Number(edgeIdInput)
+    if (!Number.isFinite(edgeId)) {
+      setSessionError('Edge ID must be a number')
+      return
+    }
+    setSessionError(null)
+    setIsSessionLoading(true)
+    try {
+      const s = await advanceGameSession({
+        sessionId: session.id,
+        edgeId,
+        token: authToken,
+      })
+      setSession(s)
+    } catch (e: any) {
+      setSessionError(String(e?.message ?? e))
+    } finally {
+      setIsSessionLoading(false)
+    }
+  }
 
   const demoStatus: JobStatus = 'queued'
 
@@ -73,6 +190,8 @@ export default function App() {
         <p>Health: {error ? `error: ${error}` : health}</p>
         <p>Scene: {currentScene.title || currentScene.id}</p>
         <p>Nodes: {currentScene.nodes?.length || 0} | Edges: {currentScene.edges?.length || 0}</p>
+        {isSceneLoading && <p className="text-xs text-neutral-500">Loading scene…</p>}
+        {sceneError && <p className="text-xs text-red-500">Scene error: {sceneError}</p>}
         {!previewMode && (
           <>
             <p>Shared types wired: demo JobStatus = {demoStatus}</p>
@@ -84,6 +203,34 @@ export default function App() {
             Exit Preview
           </Button>
         )}
+        <div className="mt-4 space-y-2 border-t border-neutral-200 dark:border-neutral-800 pt-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium">Backend Game Session</span>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={handleCreateSession} disabled={isSessionLoading || !authToken}>
+                {isSessionLoading && !session ? 'Creating…' : 'Create Session (scene 1)'}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={handleRefreshSession} disabled={isSessionLoading || !session}>
+                Refresh
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              className="max-w-[140px]"
+              placeholder="Edge ID"
+              value={edgeIdInput}
+              onChange={(e: any) => setEdgeIdInput(e.target.value)}
+            />
+            <Button size="sm" variant="primary" onClick={handleAdvanceSession} disabled={isSessionLoading || !session}>
+              Advance
+            </Button>
+          </div>
+          <p className="text-xs text-neutral-500">
+            Session: {authToken ? (session ? `id=${session.id}, node=${session.current_node_id}` : 'none yet') : 'login required'}
+          </p>
+          {sessionError && <p className="text-xs text-red-500">Session error: {sessionError}</p>}
+        </div>
       </Panel>
       <ScenePlayer scene={currentScene} initialState={{ flags: { focus: 0 } }} />
     </div>

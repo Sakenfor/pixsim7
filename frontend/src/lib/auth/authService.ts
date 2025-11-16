@@ -1,4 +1,5 @@
 import { apiClient } from '../api/client';
+import { previewBridge } from '../preview-bridge';
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from '../../types';
 
 class AuthService {
@@ -11,6 +12,7 @@ class AuthService {
 
     if (response.data.access_token) {
       this.saveAuth(response.data);
+      previewBridge.sendAuthToken(response.data.access_token);
     }
 
     return response.data;
@@ -21,6 +23,7 @@ class AuthService {
 
     if (response.data.access_token) {
       this.saveAuth(response.data);
+      previewBridge.sendAuthToken(response.data.access_token);
     }
 
     return response.data;
@@ -34,6 +37,7 @@ class AuthService {
   logout() {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
+    previewBridge.sendAuthToken(null);
     window.location.href = '/login';
   }
 

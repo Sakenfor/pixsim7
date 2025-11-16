@@ -16,7 +16,8 @@ export type EditorToGameMessage =
   | PlaySceneMessage
   | PauseSceneMessage
   | StopSceneMessage
-  | SeekToNodeMessage;
+  | SeekToNodeMessage
+  | SetAuthTokenMessage;
 
 /**
  * Load a scene into the game player (doesn't auto-play)
@@ -57,6 +58,13 @@ export interface SeekToNodeMessage {
   type: 'seek-to-node';
   payload: {
     nodeId: string;
+  };
+}
+
+export interface SetAuthTokenMessage {
+  type: 'set-auth-token';
+  payload: {
+    token: string | null;
   };
 }
 
@@ -123,7 +131,7 @@ export function isEditorToGameMessage(msg: any): msg is EditorToGameMessage {
     msg &&
     typeof msg === 'object' &&
     typeof msg.type === 'string' &&
-    ['load-scene', 'play-scene', 'pause-scene', 'stop-scene', 'seek-to-node'].includes(msg.type)
+    ['load-scene', 'play-scene', 'pause-scene', 'stop-scene', 'seek-to-node', 'set-auth-token'].includes(msg.type)
   );
 }
 
