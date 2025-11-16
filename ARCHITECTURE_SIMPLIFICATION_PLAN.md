@@ -170,39 +170,47 @@ Result: you still have the option of two frontends (editor + player), but you no
 
 ---
 
-## Phase 4 – Canonical Scene Schema & Storage (status: READY FOR AGENT)
+## Phase 4 – Canonical Scene Schema & Storage (status: ✅ COMPLETE)
+
+**Documentation:** See `docs/PHASE4_CANONICAL_SCENE_SCHEMA.md`
 
 You now have **one backend** and **one primary frontend**, but scenes are still mirrored in multiple places (backend content models, game models, TS types).
 
-### 4.1 – Choose a canonical wire format (`@pixsim7/types.Scene`)
+### 4.1 – Choose a canonical wire format (`@pixsim7/types.Scene`) ✅
 
 - Treat `@pixsim7/types.Scene` (and related types: `SceneNode`, `SceneEdge`, `MediaSegment`, etc.) as the **canonical wire format** for any scene used by a player.
 
 - Backend responsibilities:
   - Provide routes that return scenes in this format:
-    - `GET /api/v1/game/scenes/{id}` → `Scene` DTO.
+    - `GET /api/v1/game/scenes/{id}` → `Scene` DTO. ✅ **Implemented**
   - Internally, you may have multiple storage forms:
-    - content/editor scenes,
-    - game‑specific compiled scenes, etc.
-  - Always map into the canonical `Scene` type for clients.
+    - content/editor scenes, ✅ **domain/scene.py**
+    - game‑specific compiled scenes, etc. ✅ **domain/game/models.py**
+  - Always map into the canonical `Scene` type for clients. ✅ **api/v1/game_scenes.py**
 
-### 4.2 – Unify editor scene builder with canonical type
+### 4.2 – Unify editor scene builder with canonical type (DEFERRED)
 
-- Ensure the editor’s scene‑builder stores and manipulates a structure that is either:
+- Ensure the editor's scene‑builder stores and manipulates a structure that is either:
   - exactly the canonical `Scene`, or
   - something trivially mappable to/from it.
 
-- When you click “preview” in the editor:
+- When you click "preview" in the editor:
   - either pass the in‑memory `Scene` directly to `ScenePlayer`, or
   - save it, then load via `GET /api/v1/game/scenes/{id}` to exercise your mapping pipeline.
 
-### 4.3 – Clarify how media segments relate to assets
+**Note:** Editor integration deferred pending pixcubes workspace resolution (from Phase 3).
+
+### 4.3 – Clarify how media segments relate to assets ✅
 
 - Adopt a clear convention for `MediaSegment` ↔ `Asset` mapping:
-  - Either store `asset_id` in `SceneNode.meta.segments` (what you’re doing now), and let the backend hydrate segments with URLs and metadata.
+  - Either store `asset_id` in `SceneNode.meta.segments` (what you're doing now), and let the backend hydrate segments with URLs and metadata. ✅ **CHOSEN PATTERN**
   - Or pre‑build full `MediaSegment`s at save time (front‑load the mapping and store URLs/tags directly in scene data).
 
-Pick one and stick to it; the current `meta.segments` + runtime hydration pattern is fine and keeps the scene format provider‑agnostic.
+✅ **Implementation complete:**
+- Asset IDs stored in `GameSceneNode.asset_id` and `meta.segments[].asset_id`
+- Runtime hydration in `api/v1/game_scenes.py` via `AssetService`
+- Full permission enforcement during hydration
+- MediaSegment URLs ready to use in frontend
 
 ---
 
