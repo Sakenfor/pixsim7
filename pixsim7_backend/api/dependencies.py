@@ -14,6 +14,7 @@ from pixsim7_backend.services.account import AccountService
 from pixsim7_backend.services.job import JobService
 from pixsim7_backend.services.asset import AssetService
 from pixsim7_backend.services.provider.provider_service import ProviderService
+from pixsim7_backend.services.game import GameSessionService
 
 
 # ===== DATABASE DEPENDENCY =====
@@ -63,6 +64,11 @@ def get_asset_service(
 ) -> AssetService:
     """Get AssetService instance"""
     return AssetService(db, user_service)
+
+
+def get_game_session_service(db: AsyncSession = Depends(get_database)) -> GameSessionService:
+    """Get GameSessionService instance"""
+    return GameSessionService(db)
 
 
 # ===== AUTHENTICATION DEPENDENCY =====
@@ -157,3 +163,4 @@ AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 JobSvc = Annotated[JobService, Depends(get_job_service)]
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
+GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
