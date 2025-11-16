@@ -74,7 +74,17 @@ class GameLocation(SQLModel, table=True):
     name: str = Field(max_length=64)
     x: float = Field(default=0.0)
     y: float = Field(default=0.0)
+    asset_id: Optional[int] = Field(
+        default=None,
+        description="References assets.id for the primary 3D asset/scene used at this location",
+    )
+    default_spawn: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Name of spawn point node in the primary 3D asset (e.g. a marker or empty)",
+    )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 class GameNPC(SQLModel, table=True):
     __tablename__ = "game_npcs"
@@ -100,3 +110,20 @@ class NPCState(SQLModel, table=True):
     state: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     version: int = Field(default=0)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class GameHotspot(SQLModel, table=True):
+    """
+    Clickable hotspot within a GameLocation.
+
+    Links a glTF object (by name) to a logical hotspot_id and optionally
+    to a GameScene (interactive video sequence).
+    """
+    __tablename__ = "game_hotspots"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    location_id: int = Field(foreign_key="game_locations.id", index=True)
+    object_name: str = Field(max_length=128, description="Exact node/mesh name in glTF")
+    hotspot_id: str = Field(max_length=128, description="Canonical hotspot identifier (e.g., couch-kiss)")
+    linked_scene_id: Optional[int] = Field(default=None, foreign_key="game_scenes.id")
+    meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

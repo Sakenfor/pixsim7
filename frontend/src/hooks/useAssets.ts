@@ -4,7 +4,7 @@ import { apiClient } from '../lib/api/client';
 
 export interface AssetSummary {
   id: number;
-  media_type: 'video' | 'image';
+  media_type: 'video' | 'image' | 'audio' | '3d_model';
   provider_id: string;
   provider_asset_id: string;
   remote_url: string;
@@ -31,6 +31,7 @@ export type AssetFilters = {
   tag?: string;
   provider_id?: string | null;
   sort?: 'new' | 'old' | 'alpha';
+  media_type?: 'video' | 'image' | 'audio' | '3d_model';
 };
 
 export function useAssets(options?: { limit?: number; filters?: AssetFilters }) {
@@ -48,7 +49,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     tag: filters.tag || undefined,
     provider_id: filters.provider_id || undefined,
     sort: filters.sort || undefined,
-  }), [filters.q, filters.tag, filters.provider_id, filters.sort]);
+    media_type: filters.media_type || undefined,
+  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type]);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -63,6 +65,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       if (filterParams.provider_id) params.set('provider_id', String(filterParams.provider_id));
       // 'sort' may be ignored by backend; included for future compatibility
       if (filterParams.sort) params.set('sort', filterParams.sort);
+      if (filterParams.media_type) params.set('media_type', filterParams.media_type);
 
       const res = await apiClient.get<AssetsResponse>(`/assets?${params.toString()}`);
       const data = res.data;
@@ -87,7 +90,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, limit]);
+  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, limit]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {
@@ -96,7 +99,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       loadMore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, loading, filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, limit]);
+  }, [items.length, loading, filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, limit]);
 
   return { items, loadMore, loading, error, hasMore, reset };
 }

@@ -82,7 +82,12 @@ async def get_scene(
     asset_service: AssetSvc,
     user: CurrentUser,
 ) -> SceneResponse:
-    """Get a game scene by ID with all its nodes and edges"""
+    """Get a game scene by ID with all its nodes and edges.
+
+    This endpoint describes how different assets (videos, images, 3D scenes, etc.)
+    are connected in a narrative flow. It does not assume any particular
+    visualization: the same scene graph can drive 2D or 3D presentations.
+    """
     scene = await db.get(GameScene, scene_id)
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")

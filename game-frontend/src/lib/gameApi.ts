@@ -1,4 +1,5 @@
 import type { Scene } from '@pixsim7/types'
+import type { GameLocationDetail } from './gameWorldTypes'
 
 export interface GameSessionDTO {
   id: number
@@ -99,6 +100,18 @@ export async function fetchSceneById(params: {
   signal?: AbortSignal
 }): Promise<Scene> {
   return request<Scene>(`/api/v1/game/scenes/${params.sceneId}`, {
+    method: 'GET',
+    token: params.token,
+    signal: params.signal,
+  })
+}
+
+export async function fetchLocationById(params: {
+  locationId: number
+  token?: string
+  signal?: AbortSignal
+}): Promise<GameLocationDetail> {
+  return request<GameLocationDetail>(`/api/v1/game/locations/${params.locationId}`, {
     method: 'GET',
     token: params.token,
     signal: params.signal,

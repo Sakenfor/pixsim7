@@ -12,6 +12,7 @@ import { AssetsRoute } from './routes/Assets';
 import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
 import { WorkspaceRoute } from './routes/Workspace';
+import { GameWorld } from './routes/GameWorld';
 import { AutomationRoute } from './routes/Automation';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
@@ -57,6 +58,7 @@ function App() {
           <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
           <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
           <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
+          <Route path="/game-world" element={<ProtectedRoute><GameWorld /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

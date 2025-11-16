@@ -4,7 +4,9 @@ import { Button, Panel, ThemeToggle, Input } from '@pixsim7/ui'
 import { ScenePlayer } from '@pixsim7/game-ui'
 import { mockScene } from './scenes/mockScene'
 import type { GameSessionDTO } from './lib/gameApi'
-import { createGameSession, getGameSession, advanceGameSession, fetchSceneById } from './lib/gameApi'
+import { createGameSession, getGameSession, advanceGameSession, fetchSceneById, fetchLocationById } from './lib/gameApi'
+import { Game3DView } from './components/Game3DView'
+import type { GameHotspotDTO } from './lib/gameWorldTypes'
 
 export default function App() {
   const [health, setHealth] = useState<string>('checking...')
@@ -13,6 +15,8 @@ export default function App() {
   const [sceneError, setSceneError] = useState<string | null>(null)
   const [isSceneLoading, setIsSceneLoading] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
+  const [locationId, setLocationId] = useState<number | null>(null)
+  const [hotspots, setHotspots] = useState<GameHotspotDTO[]>([])
   const [session, setSession] = useState<GameSessionDTO | null>(null)
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [isSessionLoading, setIsSessionLoading] = useState(false)
@@ -84,6 +88,13 @@ export default function App() {
 
     const params = new URLSearchParams(window.location.search)
     const sceneId = params.get('sceneId')
+    const locId = params.get('locationId')
+    if (locId) {
+      const parsed = Number(locId)
+      if (Number.isFinite(parsed)) {
+        setLocationId(parsed)
+      }
+    }
     if (!sceneId) return
 
     let cancelled = false
@@ -114,6 +125,30 @@ export default function App() {
       cancelled = true
     }
   }, [previewMode, authToken])
+
+  useEffect(() => {
+    if (!locationId || !authToken) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const loc = await fetchLocationById({
+          locationId,
+          token: authToken,
+        })
+        if (!cancelled) {
+          setHotspots(loc.hotspots || [])
+        }
+      } catch (e) {
+        // hotspot load errors are non-fatal for now
+        if (!cancelled) {
+          setHotspots([])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [locationId, authToken])
 
   const handleCreateSession = async () => {
     setSessionError(null)
@@ -232,6 +267,32 @@ export default function App() {
           {sessionError && <p className="text-xs text-red-500">Session error: {sessionError}</p>}
         </div>
       </Panel>
+      {locationId && (
+        <Panel className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">3D Location</h2>
+            <p className="text-xs text-neutral-500">Location ID: {locationId}</p>
+          </div>
+          <Game3DView
+            locationId={locationId}
+            authToken={authToken}
+            hotspots={hotspots}
+            onHotspotClick={async (h) => {
+              if (!authToken || !h.linked_scene_id) return
+              try {
+                const scene = await fetchSceneById({
+                  sceneId: h.linked_scene_id,
+                  token: authToken,
+                })
+                setCurrentScene(scene)
+                setPreviewMode(false)
+              } catch (e: any) {
+                setSceneError(String(e?.message ?? e))
+              }
+            }}
+          />
+        </Panel>
+      )}
       <ScenePlayer scene={currentScene} initialState={{ flags: { focus: 0 } }} />
     </div>
   )

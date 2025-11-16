@@ -35,6 +35,7 @@ export function AssetsRoute() {
     tag: params.get('tag') || persisted.tag || undefined,
     provider_id: params.get('provider_id') || persisted.provider_id || undefined,
     sort: (params.get('sort') as any) || persisted.sort || 'new',
+    media_type: (params.get('media_type') as any) || persisted.media_type || undefined,
   };
   const [filters, setFilters] = useState(initialFilters);
   const { providers } = useProviders();
@@ -66,6 +67,7 @@ export function AssetsRoute() {
     if (next.tag) p.set('tag', next.tag);
     if (next.provider_id) p.set('provider_id', next.provider_id);
     if (next.sort) p.set('sort', next.sort);
+    if (next.media_type) p.set('media_type', next.media_type);
     const newUrl = `${window.location.pathname}?${p.toString()}`;
     window.history.replaceState({}, '', newUrl);
     sessionStorage.setItem(sessionKey, JSON.stringify(next));

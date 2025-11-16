@@ -7,7 +7,7 @@ import { BACKEND_BASE } from '../../lib/api/client';
 
 export interface MediaCardProps {
   id: number;
-  mediaType: 'video' | 'image';
+  mediaType: 'video' | 'image' | 'audio' | '3d_model';
   providerId: string;
   providerAssetId: string;
   thumbUrl: string;
@@ -146,6 +146,7 @@ export function MediaCard(props: MediaCardProps) {
           mediaType === 'video' ? (
             <video ref={videoRef} src={thumbSrc} className="h-full w-full object-cover" preload="metadata" muted playsInline />
           ) : (
+            // For images, 3D models, and audio we show an img thumbnail (could be a generated preview or generic icon)
             // eslint-disable-next-line jsx-a11y/img-redundant-alt
             <img src={thumbSrc} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
           )

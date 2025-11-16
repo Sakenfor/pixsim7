@@ -11,8 +11,11 @@
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "@pixsim7/game-ui": "workspace:*",
     "@pixsim7/types": "workspace:*",
-    "@pixsim7/ui": "workspace:*"
+    "@pixsim7/ui": "workspace:*",
+    "babylonjs": "^7.42.0",
+    "babylonjs-loaders": "^7.42.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",
