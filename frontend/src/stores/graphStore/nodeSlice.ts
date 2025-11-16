@@ -117,18 +117,11 @@ export const createNodeSlice: StateCreator<NodeManagementState> = (set, _get, _a
           return state;
         }
 
-        // Update node.connections for backward compatibility
-        const updatedFromNode = {
-          ...fromNode,
-          connections: Array.from(new Set([...(fromNode.connections || []), toId])),
-        };
-
         return {
           scenes: {
             ...state.scenes,
             [state.currentSceneId]: {
               ...scene,
-              nodes: scene.nodes.map((n) => (n.id === fromId ? updatedFromNode : n)),
               edges: [...scene.edges, { id: edgeId, from: fromId, to: toId, meta }],
               updatedAt: new Date().toISOString(),
             },

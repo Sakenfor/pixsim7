@@ -24,7 +24,7 @@ export interface GraphState
     NavigationState,
     CrossSceneState,
     ImportExportState,
-    LegacyCompatibilityState {}
+    RuntimeConversionState {}
 
 // ===== Core State =====
 
@@ -131,15 +131,10 @@ export interface ImportExportState {
   importProject: (jsonString: string) => void;
 }
 
-// ===== Legacy Compatibility =====
+// ===== Runtime Conversion =====
 
-export interface LegacyCompatibilityState {
-  draft: DraftScene | null; // DEPRECATED
-  createDraft: (title: string) => void; // DEPRECATED
-  clearDraft: () => void; // DEPRECATED
-  exportDraft: () => string | null; // DEPRECATED - use exportScene
-  importDraft: (jsonString: string) => DraftScene | null; // DEPRECATED - use importScene
-  toRuntimeScene: (sceneId?: string) => Scene | null; // Optional sceneId for legacy compat
+export interface RuntimeConversionState {
+  toRuntimeScene: (sceneId?: string) => Scene | null;
 }
 
 // ===== Slice Creator Type =====

@@ -57,7 +57,6 @@ export interface BaseNodeData {
   segments?: MediaSegment[]
   selection?: SelectionStrategy
   playback?: PlaybackMode
-  connections?: string[] // deprecated: prefer draft.edges
   metadata?: Record<string, any>
 }
 

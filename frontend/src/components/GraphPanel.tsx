@@ -9,11 +9,13 @@ import ReactFlow, {
   useEdgesState,
   useReactFlow,
   type NodeTypes,
+  type NodeChange,
+  type EdgeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
-import { toFlowNodes, toFlowEdges, applyNodePositions } from '../modules/scene-builder/graphSync';
+import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '../modules/scene-builder/graphSync';
 import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { logEvent } from '../lib/logging';
@@ -35,23 +37,26 @@ const defaultEdgeOptions = {
 export function GraphPanel() {
   const toast = useToast();
   const { selectedNodeId, setSelectedNodeId } = useSelectionStore();
-  const draft = useGraphStore((s: GraphState) => s.draft);
-  const createDraft = useGraphStore((s: GraphState) => s.createDraft);
+  const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
+  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
+  const createScene = useGraphStore((s: GraphState) => s.createScene);
   const addNode = useGraphStore((s: GraphState) => s.addNode);
   const removeNode = useGraphStore((s: GraphState) => s.removeNode);
   const connectNodes = useGraphStore((s: GraphState) => s.connectNodes);
   const setStartNode = useGraphStore((s: GraphState) => s.setStartNode);
-  const exportDraft = useGraphStore((s: GraphState) => s.exportDraft);
-  const importDraft = useGraphStore((s: GraphState) => s.importDraft);
+  const exportScene = useGraphStore((s: GraphState) => s.exportScene);
+  const importScene = useGraphStore((s: GraphState) => s.importScene);
   const toRuntimeScene = useGraphStore((s: GraphState) => s.toRuntimeScene);
   const getCurrentZoomLevel = useGraphStore((s: GraphState) => s.getCurrentZoomLevel);
   const navigationStack = useGraphStore((s: GraphState) => s.navigationStack);
+
+  // Get current scene (derived from currentSceneId)
+  const currentScene = getCurrentScene();
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
-  const [hasSize, setHasSize] = useState(false);
 
   // Stable node type registry to satisfy React Flow error #002
   const nodeTypes = useMemo<NodeTypes>(
@@ -62,46 +67,24 @@ export function GraphPanel() {
     []
   );
 
-  // Convert draft to React Flow format (memoized)
-  const flowNodes = useMemo(() => toFlowNodes(draft), [draft]);
-  const flowEdges = useMemo(() => toFlowEdges(draft), [draft]);
+  // Convert current scene to React Flow format (memoized)
+  const flowNodes = useMemo(() => toFlowNodes(currentScene), [currentScene]);
+  const flowEdges = useMemo(() => toFlowEdges(currentScene), [currentScene]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(flowNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(flowEdges);
 
-  // Ensure a draft exists
+  // Ensure a scene exists
   useEffect(() => {
-    if (!draft) {
-      createDraft('Untitled Scene');
+    if (!currentSceneId) {
+      createScene('Untitled Scene');
     }
-  }, [draft, createDraft]);
+  }, [currentSceneId, createScene]);
 
-  // Track when the React Flow container has a non-zero size to avoid error #004
-  useEffect(() => {
-    const el = reactFlowWrapper.current;
-    if (!el) return;
-
-    const updateSize = () => {
-      const { clientWidth, clientHeight } = el;
-      setHasSize(clientWidth > 0 && clientHeight > 0);
-    };
-
-    updateSize();
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(updateSize);
-      observer.observe(el);
-      return () => observer.disconnect();
-    } else {
-      window.addEventListener('resize', updateSize);
-      return () => window.removeEventListener('resize', updateSize);
-    }
-  }, []);
-
-  // Sync React Flow nodes/edges when draft changes
+  // Sync React Flow nodes/edges when scene changes
   // Apply filters: collapsed groups + zoom level
   useEffect(() => {
-    if (!draft) {
+    if (!currentScene) {
       setNodes([]);
       setEdges([]);
       return;
@@ -111,8 +94,8 @@ export function GraphPanel() {
 
     // Find collapsed groups
     const collapsedGroupIds = new Set<string>();
-    draft.nodes.forEach((node) => {
-      if (node.type === 'node_group' && (node as any).collapsed) {
+    currentScene.nodes.forEach((node) => {
+      if (node.type === 'node_group' && 'collapsed' in node && node.collapsed) {
         collapsedGroupIds.add(node.id);
       }
     });
@@ -148,15 +131,28 @@ export function GraphPanel() {
 
     setNodes(visibleNodes);
     setEdges(visibleEdges);
-  }, [flowNodes, flowEdges, setNodes, setEdges, draft, getCurrentZoomLevel, navigationStack]);
+  }, [flowNodes, flowEdges, setNodes, setEdges, currentScene, getCurrentZoomLevel, navigationStack]);
 
-  // Handle node position changes - sync back to draft
+  // Handle node position changes - sync back to scene via store actions
   const handleNodesChange = useCallback(
-    (changes: any) => {
+    (changes: NodeChange[]) => {
       onNodesChange(changes);
-      applyNodePositions(draft, changes, nodes);
+
+      // Extract position updates and apply via updateNode action
+      const positionUpdates = extractPositionUpdates(changes, nodes);
+      positionUpdates.forEach(({ nodeId, position }) => {
+        const node = currentScene?.nodes.find(n => n.id === nodeId);
+        if (node) {
+          updateNode(nodeId, {
+            metadata: {
+              ...node.metadata,
+              position,
+            },
+          });
+        }
+      });
     },
-    [onNodesChange, nodes, draft]
+    [onNodesChange, nodes, currentScene, updateNode]
   );
 
   // Handle edge creation with validation
@@ -168,8 +164,8 @@ export function GraphPanel() {
       const targetHandle = connection.targetHandle || 'input';
 
       // Find source and target nodes
-      const sourceNode = draft?.nodes.find((n: DraftSceneNode) => n.id === connection.source);
-      const targetNode = draft?.nodes.find((n: DraftSceneNode) => n.id === connection.target);
+      const sourceNode = currentScene?.nodes.find((n: DraftSceneNode) => n.id === connection.source);
+      const targetNode = currentScene?.nodes.find((n: DraftSceneNode) => n.id === connection.target);
 
       if (!sourceNode || !targetNode) {
         toast.error('Node not found');
@@ -180,12 +176,6 @@ export function GraphPanel() {
       const validationResult = validateConnection(connection, sourceNode, targetNode);
       if (!validationResult.valid) {
         toast.error(`Invalid connection: ${getValidationMessage(validationResult)}`);
-        return;
-      }
-
-      // Check for duplicate
-      if (sourceNode?.connections?.includes(connection.target)) {
-        toast.info('Connection already exists');
         return;
       }
 
@@ -205,7 +195,7 @@ export function GraphPanel() {
         toast.error('Failed to connect nodes');
       }
     },
-    [toast, draft, connectNodes]
+    [toast, currentScene, connectNodes]
   );
 
   // Handle selection
@@ -220,12 +210,19 @@ export function GraphPanel() {
   // Add node (generic helper)
   const handleAddNode = useCallback(
     (nodeType: NodeType, position?: { x: number; y: number }) => {
-      // Ensure we have a draft/scene to add into
-      if (!draft) {
-        createDraft('Untitled Scene');
+      // Ensure we have a scene to add into
+      if (!currentSceneId) {
+        createScene('Untitled Scene');
+        toast.info('Creating new scene. Please click again to add node.');
+        return; // Exit early - scene creation is async
       }
 
-      const nextIndex = ((draft?.nodes.length ?? 0)) + 1;
+      if (!currentScene) {
+        toast.error('No active scene');
+        return;
+      }
+
+      const nextIndex = currentScene.nodes.length + 1;
       const id = `${nodeType}_${nextIndex}`;
 
       // Calculate position if not provided
@@ -245,7 +242,7 @@ export function GraphPanel() {
 
       toast.success(`Added ${id}`);
     },
-    [toast, draft, addNode, createDraft]
+    [toast, currentScene, currentSceneId, addNode, createScene]
   );
 
   // Handle drop on canvas
@@ -272,8 +269,13 @@ export function GraphPanel() {
         try {
           const { sceneId, sceneTitle } = JSON.parse(sceneCallData);
 
+          if (!currentScene) {
+            toast.error('No active scene');
+            return;
+          }
+
           // Create a scene_call node
-          const nextIndex = ((draft?.nodes.length ?? 0)) + 1;
+          const nextIndex = currentScene.nodes.length + 1;
           const id = `scene_call_${nextIndex}`;
 
           addNode({
@@ -295,7 +297,7 @@ export function GraphPanel() {
         return;
       }
     },
-    [screenToFlowPosition, handleAddNode, draft, addNode, toast]
+    [screenToFlowPosition, handleAddNode, currentScene, addNode, toast]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -350,16 +352,21 @@ export function GraphPanel() {
     }
   }, [toast, toRuntimeScene]);
 
-  // Export draft to JSON file
+  // Export scene to JSON file
   const handleExportFile = useCallback(() => {
     try {
-      const jsonString = exportDraft();
-      if (!jsonString) {
-        toast.error('Failed to export draft');
+      if (!currentSceneId) {
+        toast.error('No scene to export');
         return;
       }
 
-      const filename = `${draft?.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'scene'}_${Date.now()}.json`;
+      const jsonString = exportScene(currentSceneId);
+      if (!jsonString) {
+        toast.error('Failed to export scene');
+        return;
+      }
+
+      const filename = `${currentScene?.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'scene'}_${Date.now()}.json`;
 
       // Create blob and download
       const blob = new Blob([jsonString], { type: 'application/json' });
@@ -374,9 +381,9 @@ export function GraphPanel() {
     } catch (error) {
       toast.error(`Export error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [toast, draft, exportDraft]);
+  }, [toast, currentScene, currentSceneId, exportScene]);
 
-  // Import draft from JSON file
+  // Import scene from JSON file
   const handleImportFile = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -388,9 +395,10 @@ export function GraphPanel() {
 
       try {
         const text = await file.text();
-        const imported = importDraft(text);
-        if (imported) {
-          toast.success(`Imported: ${imported.title}`);
+        const sceneId = importScene(text);
+        if (sceneId) {
+          const scene = getCurrentScene();
+          toast.success(`Imported: ${scene?.title || sceneId}`);
         }
       } catch (error) {
         toast.error(`Import error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -398,7 +406,7 @@ export function GraphPanel() {
     };
 
     input.click();
-  }, [toast, importDraft]);
+  }, [toast, importScene, getCurrentScene]);
 
   return (
     <div className="h-full w-full flex flex-col">
@@ -422,7 +430,7 @@ export function GraphPanel() {
           Delete
         </Button>
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
-        <Button size="sm" variant="primary" onClick={handlePreview} disabled={!draft?.startNodeId}>
+        <Button size="sm" variant="primary" onClick={handlePreview} disabled={!currentScene?.startNodeId}>
           ▶ Preview
         </Button>
         <Button
@@ -435,16 +443,16 @@ export function GraphPanel() {
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <ValidationPanel />
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
-        <Button size="sm" variant="secondary" onClick={handleExportFile} disabled={!draft}>
+        <Button size="sm" variant="secondary" onClick={handleExportFile} disabled={!currentScene}>
           ↓ Export
         </Button>
         <Button size="sm" variant="secondary" onClick={handleImportFile}>
           ↑ Import
         </Button>
         <div className="ml-auto text-neutral-500">
-          {draft?.startNodeId ? (
+          {currentScene?.startNodeId ? (
             <span>
-              Start: <b>{draft.startNodeId}</b>
+              Start: <b>{currentScene.startNodeId}</b>
             </span>
           ) : (
             <span>No start node</span>
@@ -463,32 +471,30 @@ export function GraphPanel() {
 
         {/* Canvas */}
         <div className="flex-1" ref={reactFlowWrapper}>
-          {hasSize && (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={handleNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onSelectionChange={onSelectionChange}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              nodeTypes={nodeTypes}
-              defaultEdgeOptions={defaultEdgeOptions}
-              fitView
-              minZoom={0.1}
-              maxZoom={4}
-            >
-              <Background />
-              <Controls />
-              <MiniMap
-                nodeStrokeWidth={3}
-                zoomable
-                pannable
-                className="bg-neutral-100 dark:bg-neutral-800"
-              />
-            </ReactFlow>
-          )}
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onSelectionChange={onSelectionChange}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            nodeTypes={nodeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
+            fitView
+            minZoom={0.1}
+            maxZoom={4}
+          >
+          <Background />
+          <Controls />
+          <MiniMap
+            nodeStrokeWidth={3}
+            zoomable
+            pannable
+            className="bg-neutral-100 dark:bg-neutral-800"
+          />
+          </ReactFlow>
         </div>
 
         {/* Debug Panel */}
@@ -504,9 +510,9 @@ export function GraphPanel() {
               </button>
             </div>
             <div className="p-3 overflow-y-auto max-h-80 text-xs font-mono">
-              {draft?.edges && draft.edges.length > 0 ? (
+              {currentScene?.edges && currentScene.edges.length > 0 ? (
                 <div className="space-y-2">
-                  {draft.edges.map((edge: DraftEdge) => (
+                  {currentScene.edges.map((edge: DraftEdge) => (
                     <div
                       key={edge.id}
                       className="p-2 border border-neutral-300 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800"
@@ -533,7 +539,7 @@ export function GraphPanel() {
                 </div>
               ) : (
                 <div className="text-neutral-500 text-center py-4">
-                  No edges in draft
+                  No edges in scene
                 </div>
               )}
             </div>

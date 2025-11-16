@@ -11,11 +11,15 @@ import { previewBridge } from '../lib/preview-bridge';
 export function SceneBuilderPanel() {
   const toast = useToast();
   const { selectedNodeId } = useSelectionStore();
-  const draft = useGraphStore((s: GraphState) => s.draft);
-  const createDraft = useGraphStore((s: GraphState) => s.createDraft);
+  const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
+  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
+  const createScene = useGraphStore((s: GraphState) => s.createScene);
   const addNode = useGraphStore((s: GraphState) => s.addNode);
   const updateNode = useGraphStore((s: GraphState) => s.updateNode);
   const toRuntimeScene = useGraphStore((s: GraphState) => s.toRuntimeScene);
+
+  // Get current scene
+  const currentScene = getCurrentScene();
 
   const [nodeId, setNodeId] = useState('node_1');
   const [label, setLabel] = useState('');
@@ -27,8 +31,8 @@ export function SceneBuilderPanel() {
 
   // Load selected node data when selection changes
   useEffect(() => {
-    if (selectedNodeId && draft) {
-      const node = draft.nodes.find((n: DraftSceneNode) => n.id === selectedNodeId);
+    if (selectedNodeId && currentScene) {
+      const node = currentScene.nodes.find((n: DraftSceneNode) => n.id === selectedNodeId);
       if (node) {
         setNodeId(node.id);
         setLabel(node.metadata?.label || '');
@@ -53,7 +57,7 @@ export function SceneBuilderPanel() {
         }
       }
     }
-  }, [selectedNodeId, draft]);
+  }, [selectedNodeId, currentScene]);
 
   function handleAddStep() {
     setProgressionSteps([...progressionSteps, { label: `Step ${progressionSteps.length + 1}`, segmentIds: '' }]);
@@ -71,9 +75,16 @@ export function SceneBuilderPanel() {
 
   function handleSaveToDraft() {
     try {
-      // Create or get draft
-      if (!draft) {
-        createDraft('Untitled Scene');
+      // Create or get scene
+      if (!currentSceneId) {
+        createScene('Untitled Scene');
+        toast.info('Creating new scene. Please save again.');
+        return;
+      }
+
+      if (!currentScene) {
+        toast.error('No active scene');
+        return;
       }
 
       // Build selection strategy
@@ -96,7 +107,7 @@ export function SceneBuilderPanel() {
       };
 
       // Add or update node
-      const existingNode = draft?.nodes.find((n: DraftSceneNode) => n.id === nodeId);
+      const existingNode = currentScene.nodes.find((n: DraftSceneNode) => n.id === nodeId);
       if (existingNode) {
         updateNode(nodeId, {
           selection,
@@ -112,7 +123,7 @@ export function SceneBuilderPanel() {
           playback,
           metadata: { label }
         });
-        toast.success('Node added to draft');
+        toast.success('Node added to scene');
       }
     } catch (error) {
       toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -279,11 +290,11 @@ export function SceneBuilderPanel() {
           Preview in Game
         </Button>
 
-        {draft && (
+        {currentScene && (
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs">
-            <div className="font-semibold text-blue-900 dark:text-blue-300">Current Draft</div>
+            <div className="font-semibold text-blue-900 dark:text-blue-300">Current Scene</div>
             <div className="text-blue-700 dark:text-blue-400 mt-1">
-              {draft.title} - {draft.nodes.length} node(s)
+              {currentScene.title} - {currentScene.nodes.length} node(s)
             </div>
           </div>
         )}

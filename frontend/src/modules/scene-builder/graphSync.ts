@@ -1,5 +1,5 @@
 import type { Node, Edge } from 'reactflow';
-import type { DraftScene, DraftSceneNode } from './index';
+import type { DraftScene, DraftSceneNode, NodeGroupData } from './index';
 
 /**
  * Graph Sync Utilities
@@ -8,7 +8,7 @@ import type { DraftScene, DraftSceneNode } from './index';
 
 // Map DraftSceneNode to React Flow Node
 export function toFlowNode(draftNode: DraftSceneNode, isStart: boolean, parentNodeId?: string): Node {
-  const position = (draftNode.metadata as any)?.position || { x: 100, y: 100 };
+  const position = draftNode.metadata?.position || { x: 100, y: 100 };
 
   // Determine React Flow node type
   const flowType = draftNode.type === 'node_group' ? 'group' : 'scene';
@@ -33,7 +33,7 @@ export function toFlowNode(draftNode: DraftSceneNode, isStart: boolean, parentNo
 
   // For group nodes, add dimensions
   if (draftNode.type === 'node_group') {
-    const groupData = draftNode as any;
+    const groupData = draftNode as NodeGroupData;
     flowNode.style = {
       width: groupData.width || 400,
       height: groupData.height || 300,
@@ -52,8 +52,8 @@ export function toFlowNodes(draft: DraftScene | undefined | null): Node[] {
   const parentMap = new Map<string, string>(); // nodeId -> parentGroupId
   draft.nodes.forEach((node) => {
     if (node.type === 'node_group') {
-      const groupNode = node as any; // NodeGroupData
-      groupNode.childNodeIds?.forEach((childId: string) => {
+      const groupNode = node as NodeGroupData;
+      groupNode.childNodeIds?.forEach((childId) => {
         parentMap.set(childId, node.id);
       });
     }
@@ -72,62 +72,46 @@ export function toFlowEdges(draft: DraftScene | undefined | null): Edge[] {
 
   const flowEdges: Edge[] = [];
 
-  if (draft.edges && draft.edges.length > 0) {
-    // Use new draft.edges with port metadata
-    draft.edges.forEach((e, i) => {
-      flowEdges.push({
-        id: e.id || `edge_${i}`,
-        source: e.from,
-        target: e.to,
-        sourceHandle: e.meta?.fromPort || 'default',
-        targetHandle: e.meta?.toPort || 'input',
-        type: 'smoothstep',
-      });
+  // Use draft.edges with port metadata
+  draft.edges.forEach((e, i) => {
+    flowEdges.push({
+      id: e.id || `edge_${i}`,
+      source: e.from,
+      target: e.to,
+      sourceHandle: e.meta?.fromPort || 'default',
+      targetHandle: e.meta?.toPort || 'input',
+      type: 'smoothstep',
     });
-  } else {
-    // Fallback to legacy node.connections for backward compatibility
-    let edgeIndex = 0;
-    draft.nodes.forEach((n) => {
-      (n.connections || []).forEach((targetId) => {
-        flowEdges.push({
-          id: `${n.id}-${targetId}-${edgeIndex}`,
-          source: n.id,
-          target: targetId,
-          type: 'smoothstep',
-        });
-        edgeIndex++;
-      });
-    });
-  }
+  });
 
   return flowEdges;
 }
 
+import type { NodeChange } from 'reactflow';
+
 /**
- * Apply node position changes from React Flow back to draft metadata
- * @param draft - The draft scene
+ * Extract node position updates from React Flow changes
+ * Returns an array of { nodeId, position } for nodes that need updating
  * @param changes - React Flow node changes array
  * @param nodes - Current React Flow nodes (for looking up data)
  */
-export function applyNodePositions(
-  draft: DraftScene | undefined | null,
-  changes: any[],
+export function extractPositionUpdates(
+  changes: NodeChange[],
   nodes: Node[]
-): void {
-  if (!draft) return;
+): Array<{ nodeId: string; position: { x: number; y: number } }> {
+  const updates: Array<{ nodeId: string; position: { x: number; y: number } }> = [];
 
-  changes.forEach((change: any) => {
+  changes.forEach((change) => {
     if (change.type === 'position' && change.position && !change.dragging) {
       const node = nodes.find((n) => n.id === change.id);
       if (node) {
-        const draftNode = draft.nodes.find((n) => n.id === change.id);
-        if (draftNode) {
-          draftNode.metadata = {
-            ...draftNode.metadata,
-            position: change.position,
-          };
-        }
+        updates.push({
+          nodeId: change.id,
+          position: change.position,
+        });
       }
     }
   });
+
+  return updates;
 }
