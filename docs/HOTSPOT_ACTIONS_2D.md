@@ -1,5 +1,19 @@
 # 2D Hotspot Actions & NPC Portraits (Frontend Schema)
 
+## Scope
+
+**This doc is for:** Developers working on 2D gameplay, hotspot interactions, scene playback, and NPC portrait rendering in the Game2D preview.
+
+**See also:**
+- `SYSTEM_OVERVIEW.md` – High-level map of game systems
+- `RELATIONSHIPS_AND_ARCS.md` – How to model relationships and arcs on top of sessions
+- `NODE_EDITOR_DEVELOPMENT.md` – Scene graph editor architecture
+- `GRAPH_UI_LIFE_SIM_PHASES.md` – World/life-sim integration with the graph editor
+
+---
+
+## Overview
+
 This document describes the **frontend-only** schema used by the 2D game UI
 for interpreting hotspot actions and scene playback phases. The backend
 models (`GameLocation`, `GameHotspot`, `GameScene`, `GameNPC`, `NpcExpression`)

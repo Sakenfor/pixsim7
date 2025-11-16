@@ -1,12 +1,25 @@
 # Game World – 2D Video Display Modes in 3D Contexts
 
-This document defines how 2D narrative content (videos / `ScenePlayer` scenes) is presented within the 3D world, without baking “room” or any specific visual metaphor into the core domain.
+## Scope
+
+**This doc is for:** Developers working on 3D environments, video display modes (fullscreen, surface, panel), and how 2D narrative content is presented within 3D contexts.
+
+**See also:**
+- `SYSTEM_OVERVIEW.md` – High-level map of game systems
+- `HOTSPOT_ACTIONS_2D.md` – Hotspot actions that trigger scenes
+- `NODE_EDITOR_DEVELOPMENT.md` – Scene graph editor for authoring reusable scenes
+
+---
+
+## Overview
+
+This document defines how 2D narrative content (videos / `ScenePlayer` scenes) is presented within the 3D world, without baking "room" or any specific visual metaphor into the core domain.
 
 The goal is to keep:
 - **Assets** generic (`3d_model`, `video`, etc.),
 - **Scenes** reusable (graph of nodes/edges referencing assets),
 - **World** as the long‑lived context (locations, hotspots, NPCs),
-and express “how to show a scene here” as configuration, not new hard‑coded types.
+and express "how to show a scene here" as configuration, not new hard‑coded types.
 
 ---
 

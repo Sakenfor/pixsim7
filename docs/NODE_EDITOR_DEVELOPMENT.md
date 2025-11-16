@@ -1,6 +1,15 @@
 # Node-Based Scene Editor Development
 
-Comprehensive guide and task breakdown for the node-based Scene Editor system.
+## Scope
+
+**This doc is for:** Developers working on the node-based scene graph editor, including the visual graph canvas, property inspector, asset/segment pickers, and validation tools.
+
+**See also:**
+- `SYSTEM_OVERVIEW.md` – High-level map of game systems
+- `GRAPH_UI_LIFE_SIM_PHASES.md` – World/life-sim integration with the editor
+- `HOTSPOT_ACTIONS_2D.md` – How scenes are triggered from hotspots in 2D gameplay
+- `RELATIONSHIPS_AND_ARCS.md` – How scenes affect session state (flags, relationships)
+- `GAME_WORLD_DISPLAY_MODES.md` – How scenes are presented in different contexts
 
 ---
 

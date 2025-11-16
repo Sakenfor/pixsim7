@@ -1,5 +1,19 @@
 # Relationships, Arcs, and Future Systems (Quests / Items / Events)
 
+## Scope
+
+**This doc is for:** Developers working on NPC relationships, story arcs, quest systems, inventory, and life-sim progression. Covers conventions for using `GameSession.flags` and `GameSession.relationships` without adding new database tables.
+
+**See also:**
+- `SYSTEM_OVERVIEW.md` – High-level map of game systems
+- `HOTSPOT_ACTIONS_2D.md` – How hotspot actions trigger scenes and update session state
+- `GRAPH_UI_LIFE_SIM_PHASES.md` – How to wire arc state into scene graphs and hotspots
+- `NODE_EDITOR_DEVELOPMENT.md` – Scene editor for authoring scenes that update arcs/relationships
+
+---
+
+## Overview
+
 This document describes how to model relationships and story arcs on top of
 the existing game session + world model without introducing new tables.
 The goal is to keep the core domain generic and extend behavior via

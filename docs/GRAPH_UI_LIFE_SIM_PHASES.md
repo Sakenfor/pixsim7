@@ -1,5 +1,19 @@
 # Graph + Life Sim Integration Phases (Editor Tasks)
 
+## Scope
+
+**This doc is for:** Developers working on integrating world/life-sim features (NPCs, relationships, time, arcs) into the node-based scene editor and 2D preview. Assumes familiarity with the scene graph editor baseline.
+
+**See also:**
+- `SYSTEM_OVERVIEW.md` – High-level map of game systems
+- `NODE_EDITOR_DEVELOPMENT.md` – Scene graph editor architecture (required reading)
+- `RELATIONSHIPS_AND_ARCS.md` – How to model relationships and arcs in session state
+- `HOTSPOT_ACTIONS_2D.md` – How hotspot actions wire to scenes and affect playback
+
+---
+
+## Overview
+
 This brief layers the **world / life‑sim features** we just added onto the
 existing **node‑based Scene Editor** and 2D game preview. It assumes the
 baseline in `NODE_EDITOR_DEVELOPMENT.md` is already in place.
