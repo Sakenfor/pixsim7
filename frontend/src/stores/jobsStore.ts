@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { JobResponse, JobStatus } from '../lib/api/jobs';
+import { createBackendStorage } from '../lib/backendStorage';
 
 const MAX_JOBS = 25;
 
@@ -90,6 +91,7 @@ export const useJobsStore = create<JobsState>()(persist(
   }),
   {
     name: 'jobs-store-v1',
+    storage: createBackendStorage('jobsUi'),
     partialize: (state) => ({
       jobs: state.jobs,
       lastCreatedJobId: state.lastCreatedJobId,

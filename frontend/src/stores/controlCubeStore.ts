@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createFormationTemplate } from '../lib/formationTemplates';
+import { createBackendStorage } from '../lib/backendStorage';
 
 export type CubeMode = 'idle' | 'rotating' | 'expanded' | 'combined' | 'docked' | 'linking';
 
@@ -732,6 +733,7 @@ export const useControlCubeStore = create<ControlCubeStoreState & ControlCubeAct
     }),
     {
       name: STORAGE_KEY,
+      storage: createBackendStorage('cubes'),
       partialize: (state) => ({
         cubes: state.cubes,
         summoned: state.summoned,

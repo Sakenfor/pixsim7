@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
+import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
 import { QuickGenerateModule } from './QuickGenerateModule';
 import { PresetsModule } from './PresetsModule';
@@ -19,10 +20,16 @@ export function ControlCenterDock() {
   const pinned = useControlCenterStore(s => s.pinned);
   const height = useControlCenterStore(s => s.height);
   const activeModule = useControlCenterStore(s => s.activeModule);
+  const dockPosition = useControlCenterStore(s => s.dockPosition);
+  const floatingPosition = useControlCenterStore(s => s.floatingPosition);
+  const floatingSize = useControlCenterStore(s => s.floatingSize);
   const setOpen = useControlCenterStore(s => s.setOpen);
   const setPinned = useControlCenterStore(s => s.setPinned);
   const setHeight = useControlCenterStore(s => s.setHeight);
   const setActiveModule = useControlCenterStore(s => s.setActiveModule);
+  const setDockPosition = useControlCenterStore(s => s.setDockPosition);
+  const setFloatingPosition = useControlCenterStore(s => s.setFloatingPosition);
+  const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
   const toggleMode = useControlCenterStore(s => s.toggleMode);
 
   const dockRef = useRef<HTMLDivElement>(null);
@@ -37,42 +44,76 @@ export function ControlCenterDock() {
     heightRef.current = height;
   }, [open, height]);
 
-  // Auto-hide when mouse leaves if not pinned
+  // Auto-hide when mouse leaves if not pinned (disabled for floating mode)
   useEffect(() => {
+    if (dockPosition === 'floating') return; // Floating mode doesn't auto-hide
+
     function onMouseLeave(e: MouseEvent) {
       if (pinned) return;
-      // If leaving to the reveal strip (bottom 8px), keep open
+      // If leaving to the reveal strip, keep open
       const winH = window.innerHeight;
-      if (e.clientY >= winH - 10) return;
+      const winW = window.innerWidth;
+
+      if (dockPosition === 'bottom' && e.clientY >= winH - 10) return;
+      if (dockPosition === 'top' && e.clientY <= 10) return;
+      if (dockPosition === 'left' && e.clientX <= 10) return;
+      if (dockPosition === 'right' && e.clientX >= winW - 10) return;
+
       setOpen(false);
     }
     const n = dockRef.current;
     if (!n) return;
     n.addEventListener('mouseleave', onMouseLeave);
     return () => n.removeEventListener('mouseleave', onMouseLeave);
-  }, [pinned, setOpen]);
+  }, [pinned, setOpen, dockPosition]);
 
-  // Reveal strip hover to open
+  // Reveal strip hover to open (disabled for floating mode)
   useEffect(() => {
+    if (dockPosition === 'floating') return; // Floating mode doesn't use reveal strip
+
     function onMove(e: MouseEvent) {
-      const winH = window.innerHeight;
       // Check ref to avoid re-creating listener
-      if (!openRef.current && e.clientY >= winH - 6) {
-        setOpen(true);
-      }
+      if (openRef.current) return;
+
+      const winH = window.innerHeight;
+      const winW = window.innerWidth;
+
+      // Check appropriate edge based on dock position
+      let shouldOpen = false;
+      if (dockPosition === 'bottom' && e.clientY >= winH - 6) shouldOpen = true;
+      if (dockPosition === 'top' && e.clientY <= 6) shouldOpen = true;
+      if (dockPosition === 'left' && e.clientX <= 6) shouldOpen = true;
+      if (dockPosition === 'right' && e.clientX >= winW - 6) shouldOpen = true;
+
+      if (shouldOpen) setOpen(true);
     }
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [setOpen]);
+  }, [setOpen, dockPosition]);
 
   function startResize(e: React.MouseEvent) {
     e.preventDefault();
     setDragging(true);
     const startY = e.clientY;
+    const startX = e.clientX;
     const startH = height;
+    const pos = dockPosition;
+
     function onMove(ev: MouseEvent) {
-      const dy = startY - ev.clientY;
-      setHeight(startH + dy);
+      if (pos === 'left') {
+        const dx = ev.clientX - startX;
+        setHeight(startH + dx);
+      } else if (pos === 'right') {
+        const dx = startX - ev.clientX;
+        setHeight(startH + dx);
+      } else if (pos === 'top') {
+        const dy = ev.clientY - startY;
+        setHeight(startH + dy);
+      } else {
+        // bottom
+        const dy = startY - ev.clientY;
+        setHeight(startH + dy);
+      }
     }
     function onUp() {
       setDragging(false);
@@ -113,34 +154,70 @@ export function ControlCenterDock() {
         return null;
     }
   }
-  return (
-    <div
-      ref={dockRef}
-      className={clsx(
-        'fixed left-0 right-0 bottom-0 z-40 select-none',
-        'transition-all duration-300 ease-out',
-        open ? 'translate-y-0 opacity-100' : 'translate-y-[calc(100%-6px)] opacity-90'
-      )}
-      style={{ height }}
-    >
-      {/* Panel chrome with glassmorphism */}
-      <div className="h-full border-t border-white/20 bg-gradient-to-t from-white/98 via-white/95 to-white/90 dark:from-neutral-900/98 dark:via-neutral-900/95 dark:to-neutral-900/90 backdrop-blur-xl shadow-2xl flex flex-col">
+  const isVertical = dockPosition === 'left' || dockPosition === 'right';
+  const isFloating = dockPosition === 'floating';
+
+  // Position classes (for docked modes)
+  const positionClasses = clsx(
+    'fixed z-40 select-none transition-all duration-300 ease-out',
+    {
+      'left-0 right-0 bottom-0': dockPosition === 'bottom',
+      'left-0 top-0 bottom-0': dockPosition === 'left',
+      'right-0 top-0 bottom-0': dockPosition === 'right',
+      'left-0 right-0 top-0': dockPosition === 'top',
+    }
+  );
+
+  // Transform classes based on position and open state (for docked modes)
+  const transformClasses = clsx({
+    'translate-y-0 opacity-100': open && dockPosition === 'bottom',
+    'translate-y-[calc(100%-6px)] opacity-90': !open && dockPosition === 'bottom',
+    'translate-y-0 opacity-100': open && dockPosition === 'top',
+    '-translate-y-[calc(100%-6px)] opacity-90': !open && dockPosition === 'top',
+    'translate-x-0 opacity-100': open && dockPosition === 'left',
+    '-translate-x-[calc(100%-6px)] opacity-90': !open && dockPosition === 'left',
+    'translate-x-0 opacity-100': open && dockPosition === 'right',
+    'translate-x-[calc(100%-6px)] opacity-90': !open && dockPosition === 'right',
+  });
+
+  const containerStyle = isVertical
+    ? { width: `${height}px` }
+    : { height: `${height}px` };
+
+  // Render content (shared between floating and docked)
+  const renderContent = () => (
+    <div className={clsx(
+        'h-full bg-gradient-to-t from-white/98 via-white/95 to-white/90 dark:from-neutral-900/98 dark:via-neutral-900/95 dark:to-neutral-900/90 backdrop-blur-xl shadow-2xl flex',
+        {
+          'border-t border-white/20 flex-col': dockPosition === 'bottom',
+          'border-b border-white/20 flex-col': dockPosition === 'top',
+          'border-r border-white/20 flex-row': dockPosition === 'left',
+          'border-l border-white/20 flex-row': dockPosition === 'right',
+          'border border-white/20 rounded-lg flex-col': isFloating,
+        }
+      )}>
         {/* Resize handle with glow effect */}
-        <div
-          onMouseDown={startResize}
-          className={clsx(
-            'h-1.5 w-full cursor-ns-resize transition-all duration-200',
-            'hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/30 hover:to-pink-500/30',
-            dragging && 'bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 shadow-lg shadow-purple-500/50'
-          )}
-          title="Drag to resize (or use Alt+Arrow keys)"
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label="Resize control center"
-        />
+        {!isFloating && (
+          <div
+            onMouseDown={startResize}
+            className={clsx(
+              'transition-all duration-200',
+              {
+                'h-1.5 w-full cursor-ns-resize': !isVertical,
+                'w-1.5 h-full cursor-ew-resize': isVertical,
+              },
+              'hover:bg-gradient-to-r hover:from-blue-500/30 hover:via-purple-500/30 hover:to-pink-500/30',
+              dragging && 'bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-pink-500/50 shadow-lg shadow-purple-500/50'
+            )}
+            title="Drag to resize (or use Alt+Arrow keys)"
+            role="separator"
+            aria-orientation={isVertical ? 'vertical' : 'horizontal'}
+            aria-label="Resize control center"
+          />
+        )}
 
         {/* Compact Toolbar with animations */}
-        <div className="px-3 py-1.5 flex items-center gap-2 border-b border-white/10 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90">
+        <div className="control-center-header px-3 py-1.5 flex items-center gap-2 border-b border-white/10 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90 cursor-move">
           <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Control Center
           </span>
@@ -171,6 +248,20 @@ export function ControlCenterDock() {
           </div>
 
           <div className="w-px h-4 bg-gradient-to-b from-transparent via-neutral-300 to-transparent dark:via-neutral-600" />
+
+          {/* Dock Position Dropdown */}
+          <select
+            value={dockPosition}
+            onChange={(e) => setDockPosition(e.target.value as any)}
+            className="text-xs px-1.5 py-0.5 border border-neutral-300/50 dark:border-neutral-600/50 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            title="Dock position"
+          >
+            <option value="bottom">⬇ Bottom</option>
+            <option value="top">⬆ Top</option>
+            <option value="left">⬅ Left</option>
+            <option value="right">➡ Right</option>
+            <option value="floating">⊡ Float</option>
+          </select>
 
           {/* Mode toggle */}
           <button
@@ -206,16 +297,58 @@ export function ControlCenterDock() {
           </button>
         </div>
 
-        {/* Module content with smooth fade-in */}
-        <div
-          className="flex-1 overflow-y-auto p-3 scroll-smooth animate-in fade-in duration-300"
-          role="tabpanel"
-          id={`module-${activeModule}`}
-          aria-labelledby={`tab-${activeModule}`}
-        >
-          {renderModule()}
-        </div>
+      {/* Module content with smooth fade-in */}
+      <div
+        className={clsx(
+          'flex-1 overflow-y-auto scroll-smooth animate-in fade-in duration-300',
+          isVertical || isFloating ? 'p-2 text-sm' : 'p-3'
+        )}
+        role="tabpanel"
+        id={`module-${activeModule}`}
+        aria-labelledby={`tab-${activeModule}`}
+      >
+        {renderModule()}
       </div>
+    </div>
+  );
+
+  // Floating mode: use react-rnd for draggable/resizable behavior
+  if (isFloating) {
+    if (!open) return null;
+
+    return (
+      <Rnd
+        position={floatingPosition}
+        size={floatingSize}
+        onDragStop={(e, d) => {
+          setFloatingPosition(d.x, d.y);
+        }}
+        onResizeStop={(e, direction, ref, delta, position) => {
+          setFloatingSize(
+            parseInt(ref.style.width),
+            parseInt(ref.style.height)
+          );
+          setFloatingPosition(position.x, position.y);
+        }}
+        minWidth={400}
+        minHeight={300}
+        bounds="window"
+        dragHandleClassName="control-center-header"
+        style={{ zIndex: 50 }}
+      >
+        {renderContent()}
+      </Rnd>
+    );
+  }
+
+  // Docked mode: use fixed positioning with edge-based reveal
+  return (
+    <div
+      ref={dockRef}
+      className={clsx(positionClasses, transformClasses)}
+      style={containerStyle}
+    >
+      {renderContent()}
     </div>
   );
 }

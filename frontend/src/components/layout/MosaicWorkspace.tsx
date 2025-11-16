@@ -12,6 +12,7 @@ import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
+import { SettingsPanel } from '../settings/SettingsPanel';
 import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 
@@ -47,6 +48,7 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   health: { title: 'Health', Component: HealthPanel },
   game: { title: 'Game', Component: GameIframePanel },
   providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
+  settings: { title: 'Settings', Component: SettingsPanel },
 };
 
 // Panel switcher dropdown component

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createBackendStorage } from '../lib/backendStorage';
 
 export type PanelType = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'player' | 'console' | 'game';
 
@@ -143,6 +144,7 @@ export const useLayoutStore = create<LayoutState & LayoutActions>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createBackendStorage('workspaceLayout'),
       partialize: (s) => ({ panels: s.panels, root: s.root, activePanelId: s.activePanelId }),
       version: 1,
     }

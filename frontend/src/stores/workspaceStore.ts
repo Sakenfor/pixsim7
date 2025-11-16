@@ -1,8 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createBackendStorage } from '../lib/backendStorage';
 import type { MosaicNode } from 'react-mosaic-component';
 
-export type PanelId = 'gallery' | 'scene' | 'graph' | 'inspector' | 'health' | 'game' | 'providers';
+export type PanelId =
+  | 'gallery'
+  | 'scene'
+  | 'graph'
+  | 'inspector'
+  | 'health'
+  | 'game'
+  | 'providers'
+  | 'settings';
 
 export interface FloatingPanelState {
   id: PanelId;
@@ -298,6 +307,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     }),
     {
       name: STORAGE_KEY,
+      storage: createBackendStorage('workspace'),
       version: 1,
       onRehydrateStorage: () => (state) => {
         // Validate and fix the layout after loading from storage

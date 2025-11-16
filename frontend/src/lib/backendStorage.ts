@@ -1,4 +1,4 @@
-import { StateStorage } from 'zustand/middleware';
+import type { StateStorage } from 'zustand/middleware';
 import { getUserPreferences, updatePreferenceKey } from './api/userPreferences';
 
 /**
@@ -53,8 +53,17 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
 
       saveTimeout = setTimeout(async () => {
         try {
-          const parsed = JSON.parse(value);
-          await updatePreferenceKey(preferenceKey, parsed);
+          // Persist the deserialized state into user preferences.
+          // `value` is typically a JSON string from zustand/persist, but
+          // be defensive in case some store passes a non-JSON string.
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(value);
+          } catch {
+            // Fallback: store raw string if parsing fails
+            parsed = value;
+          }
+          await updatePreferenceKey(preferenceKey as any, parsed as any);
         } catch (error) {
           console.error(`[BackendStorage] Failed to sync to backend for ${preferenceKey}:`, error);
           // Don't throw - localStorage save already succeeded

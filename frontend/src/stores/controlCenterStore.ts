@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createBackendStorage } from '../lib/backendStorage';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
@@ -32,6 +33,8 @@ export interface ControlCenterState {
   open: boolean;            // whether dock is expanded
   pinned: boolean;          // if true, stays open
   height: number;           // height/width in px when expanded (used for vertical/horizontal sizing)
+  floatingPosition: { x: number; y: number }; // position when floating
+  floatingSize: { width: number; height: number }; // size when floating
   activeModule: ControlModule;
   operationType: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
   recentPrompts: string[];
@@ -50,6 +53,8 @@ export interface ControlCenterActions {
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
   setHeight: (px: number) => void;
+  setFloatingPosition: (x: number, y: number) => void;
+  setFloatingSize: (width: number, height: number) => void;
   setActiveModule: (m: ControlModule) => void;
   setOperationType: (op: ControlCenterState['operationType']) => void;
   pushPrompt: (p: string) => void;
@@ -71,6 +76,8 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       open: false,
       pinned: false,
       height: 180,
+      floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
+      floatingSize: { width: 600, height: 500 },
       activeModule: 'quickGenerate',
       operationType: 'text_to_video',
       recentPrompts: [],
@@ -109,6 +116,8 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().height === next) return;
         set({ height: next });
       },
+      setFloatingPosition: (x, y) => set({ floatingPosition: { x, y } }),
+      setFloatingSize: (width, height) => set({ floatingSize: { width, height } }),
       setActiveModule: (m) => {
         if (get().activeModule === m) return;
         set({ activeModule: m });
@@ -132,11 +141,12 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 180, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
+      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 180, floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 }, floatingSize: { width: 600, height: 500 }, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
     }),
     {
       name: STORAGE_KEY,
-      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
+      storage: createBackendStorage('controlCenter'),
+      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, floatingPosition: s.floatingPosition, floatingSize: s.floatingSize, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
       version: 4,
     }
   )

@@ -1,8 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useControlCubeStore, type CubeType } from '../../stores/controlCubeStore';
+import { useCubeSettingsStore, type LinkingGesture } from '../../stores/cubeSettingsStore';
+import { panelActionRegistry } from '../../lib/panelActions';
 import { Button } from '@pixsim7/ui';
 
+type CubeSettingsTab = 'cubes' | 'actions' | 'input';
+
 export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<CubeSettingsTab>('cubes');
+
   const cubes = useControlCubeStore((s) => s.cubes);
   const activeCubeId = useControlCubeStore((s) => s.activeCubeId);
   const setActiveCube = useControlCubeStore((s) => s.setActiveCube);
@@ -11,6 +17,9 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
   const summonCubes = useControlCubeStore((s) => s.summonCubes);
   const dismissCubes = useControlCubeStore((s) => s.dismissCubes);
   const reset = useControlCubeStore((s) => s.reset);
+
+  const linkingGesture = useCubeSettingsStore((s) => s.linkingGesture);
+  const setLinkingGesture = useCubeSettingsStore((s) => s.setLinkingGesture);
 
   const cubeList = useMemo(
     () => Object.values(cubes).sort((a, b) => a.zIndex - b.zIndex),
@@ -27,18 +36,18 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
     updateCube(id, { type });
   };
 
-  return (
-    <div className="fixed bottom-20 right-4 z-[9999] w-80 max-h-[60vh] bg-black/85 text-white text-xs rounded-lg border border-white/20 shadow-2xl backdrop-blur-md flex flex-col">
-      <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
-        <div className="font-semibold text-[11px] tracking-wide">Cubes Overview</div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-[11px] text-white/60 hover:text-white"
-        >
-          Close
-        </button>
-      </div>
+  const panels = useMemo(
+    () =>
+      panelActionRegistry.getAllPanels().map((panelId) => ({
+        id: panelId,
+        config: panelActionRegistry.getConfig(panelId),
+        mappings: panelActionRegistry.getFaceMappings(panelId),
+      })),
+    []
+  );
+
+  const renderCubesTab = () => (
+    <>
       <div className="px-3 py-2 flex gap-2 border-b border-white/10">
         <Button size="xs" variant="secondary" onClick={summonCubes}>
           Summon
@@ -126,6 +135,132 @@ export function CubeSettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
+    </>
+  );
+
+  const renderActionsTab = () => (
+    <div className="flex-1 overflow-auto">
+      {panels.length === 0 ? (
+        <div className="px-3 py-4 text-white/50 text-center">
+          No panel actions registered yet.
+        </div>
+      ) : (
+        <div className="px-3 py-2 space-y-3">
+          {panels.map(({ id, config, mappings }) => (
+            <div key={id} className="border border-white/15 rounded-md p-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[11px] font-semibold">
+                  {config?.panelName || id}
+                </div>
+                <div className="text-[10px] text-white/50">{id}</div>
+              </div>
+              <div className="grid grid-cols-3 gap-1 text-[10px]">
+                {(Object.keys(mappings) as (keyof typeof mappings)[]).map((face) => {
+                  const action = mappings[face];
+                  return (
+                    <div
+                      key={face}
+                      className="border border-white/15 rounded px-1.5 py-1 bg-white/5"
+                    >
+                      <div className="font-mono text-[9px] text-white/60 mb-0.5">
+                        {face}
+                      </div>
+                      {action ? (
+                        <div className="flex flex-col">
+                          <span className="truncate">{action.label}</span>
+                          {action.shortcut && (
+                            <span className="text-white/40 text-[9px]">
+                              {action.shortcut}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-white/40 italic">Unassigned</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderInputTab = () => (
+    <div className="flex-1 overflow-auto px-3 py-3 space-y-3">
+      <div>
+        <div className="text-[11px] font-semibold mb-1">Linking Gesture</div>
+        <div className="text-[10px] text-white/60 mb-1">
+          Choose how to create connections between cube faces.
+        </div>
+        <select
+          value={linkingGesture}
+          onChange={(e) => setLinkingGesture(e.target.value as LinkingGesture)}
+          className="w-full bg-black/40 border border-white/25 rounded px-1.5 py-1 text-[11px]"
+        >
+          <option value="middleClick">Middle-click face to connect</option>
+          <option value="shiftLeftClick">Shift + Left-click face to connect</option>
+        </select>
+        <div className="mt-1 text-[10px] text-white/50">
+          Tip: Middle-click avoids conflicts with dragging; Shift+Left-click works on
+          trackpads without a middle button.
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed bottom-20 right-4 z-[9999] w-96 max-h-[70vh] bg-black/85 text-white text-xs rounded-lg border border-white/20 shadow-2xl backdrop-blur-md flex flex-col">
+      <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+        <div className="font-semibold text-[11px] tracking-wide">Cube Settings</div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-[11px] text-white/60 hover:text-white"
+        >
+          Close
+        </button>
+      </div>
+      <div className="px-3 pt-2 flex gap-1 border-b border-white/10">
+        <button
+          type="button"
+          onClick={() => setActiveTab('cubes')}
+          className={`px-2 py-1 rounded-t text-[10px] border-b-2 ${
+            activeTab === 'cubes'
+              ? 'border-blue-400 text-white'
+              : 'border-transparent text-white/60 hover:text-white'
+          }`}
+        >
+          Cubes
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('actions')}
+          className={`px-2 py-1 rounded-t text-[10px] border-b-2 ${
+            activeTab === 'actions'
+              ? 'border-blue-400 text-white'
+              : 'border-transparent text-white/60 hover:text-white'
+          }`}
+        >
+          Actions
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('input')}
+          className={`px-2 py-1 rounded-t text-[10px] border-b-2 ${
+            activeTab === 'input'
+              ? 'border-blue-400 text-white'
+              : 'border-transparent text-white/60 hover:text-white'
+          }`}
+        >
+          Input
+        </button>
+      </div>
+      {activeTab === 'cubes' && renderCubesTab()}
+      {activeTab === 'actions' && renderActionsTab()}
+      {activeTab === 'input' && renderInputTab()}
     </div>
   );
 }

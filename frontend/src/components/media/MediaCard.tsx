@@ -51,6 +51,7 @@ export function MediaCard(props: MediaCardProps) {
   const hover = useHoverScrubVideo(videoRef as React.RefObject<HTMLVideoElement>);
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
+  const [isHovered, setIsHovered] = useState(false);
 
   const effectiveState = props.uploadState ?? internalUploadState;
   const effectiveNote = props.uploadNote ?? internalUploadNote;
@@ -69,8 +70,8 @@ export function MediaCard(props: MediaCardProps) {
       return;
     }
 
-    // Public absolute URL
-    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://')) {
+    // Public absolute URL or blob URL
+    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://') || thumbUrl.startsWith('blob:')) {
       setThumbSrc(thumbUrl);
       return;
     }
@@ -135,7 +136,11 @@ export function MediaCard(props: MediaCardProps) {
   }
 
   return (
-    <div className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition">
+    <div
+      className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       <div ref={hover.containerRef} className="relative aspect-video w-full overflow-hidden bg-neutral-100" onMouseEnter={hover.onMouseEnter} onMouseLeave={hover.onMouseLeave} onMouseMove={hover.onMouseMove}>
         {thumbSrc && (
           mediaType === 'video' ? (
@@ -176,28 +181,44 @@ export function MediaCard(props: MediaCardProps) {
             {durationSec ? `${Math.round(durationSec)}s` : 'video'}
           </div>
         )}
-      </div>
-      <div className="p-3 space-y-2">
-        <div className="flex items-center justify-between">
-          <Badge color="blue">{providerId}</Badge>
-          <Badge color="purple">{mediaType}</Badge>
-        </div>
-        {description && (
-          <p className="line-clamp-2 text-xs text-neutral-700">{description}</p>
+
+        {/* Hover overlay with detailed info at bottom */}
+        {isHovered && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent p-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge color="blue">{providerId}</Badge>
+              <Badge color="purple">{mediaType}</Badge>
+              {status && <StatusBadge status={status} />}
+            </div>
+            {description && (
+              <p className="text-xs text-white/90 line-clamp-2">{description}</p>
+            )}
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {tags.slice(0, 3).map(t => (
+                  <Badge key={t} color="gray" className="text-[10px]">{t}</Badge>
+                ))}
+                {tags.length > 3 && <Badge color="gray" className="text-[10px]">+{tags.length - 3}</Badge>}
+              </div>
+            )}
+            <div className="flex items-center justify-between text-[10px] text-white/70">
+              <span>{new Date(createdAt).toLocaleDateString()}</span>
+              <span>{width && height ? `${width}×${height}` : ''}</span>
+              {durationSec && <span>{Math.round(durationSec)}s</span>}
+            </div>
+          </div>
         )}
-        <div className="flex flex-wrap gap-1">
-          {tags.slice(0, 4).map(t => (
-            <Badge key={t} color="gray">{t}</Badge>
-          ))}
-          {tags.length > 4 && <Badge color="gray">+{tags.length - 4}</Badge>}
+      </div>
+
+      {/* Minimal footer - only show when not hovering image */}
+      <div className="p-2 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Badge color="blue" className="text-[10px]">{providerId}</Badge>
+          <span className="text-[10px] text-neutral-500">{new Date(createdAt).toLocaleDateString()}</span>
         </div>
-        <div className="flex items-center justify-between text-xs text-neutral-500">
-          <span>{new Date(createdAt).toLocaleDateString()}</span>
-          <span>{width && height ? `${width}x${height}` : ''}</span>
-        </div>
-        <div className="pt-1">
-          <Button size="sm" variant="secondary" onClick={() => onOpen?.(id)}>Open</Button>
-        </div>
+        <Button size="sm" variant="secondary" onClick={() => onOpen?.(id)} className="text-xs px-2 py-1">
+          Open
+        </Button>
       </div>
     </div>
   );

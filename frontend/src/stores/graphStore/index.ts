@@ -10,6 +10,7 @@ import { createNavigationSlice } from './navigationSlice';
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
 import { logEvent } from '../../lib/logging';
+import { createBackendStorage } from '../../lib/backendStorage';
 
 /**
  * Graph Store - Multi-Scene Architecture (Modular)
@@ -117,6 +118,7 @@ export const useGraphStore = create<GraphState>()(
       },
       {
         name: 'scene-graph-v2',
+        storage: createBackendStorage('sceneGraph'),
         version: 2,
         partialize: (state) => ({
           scenes: state.scenes,

@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useControlCubeStore, type CubeType, type CubeFace } from '../../stores/controlCubeStore';
+import { useCubeSettingsStore } from '../../stores/cubeSettingsStore';
 import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
 import { CubeTooltip, useTooltipDismissal } from '../ui/CubeTooltip';
@@ -85,7 +86,7 @@ export function ControlCube({
   const [showExpansion, setShowExpansion] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
   const [hoverAtEdge, setHoverAtEdge] = useState(false);
-  const lastClickTime = useRef<number>(0);
+  const singleClickTimeoutRef = useRef<number | null>(null);
 
   // Tooltip dismissal state
   const edgeHoverTooltip = useTooltipDismissal(`edge-hover-${cubeId}`);
@@ -94,10 +95,17 @@ export function ControlCube({
   const dockedTooltip = useTooltipDismissal(`docked-${cubeId}`);
   const combinedTooltip = useTooltipDismissal(`combined-${cubeId}`);
 
-  // Store state for context-aware tooltips
+  // Store state & actions for context-aware behavior
   const linkingMode = useControlCubeStore((s) => s.linkingMode);
   const linkingFromCube = useControlCubeStore((s) => s.linkingFromCube);
   const combinedCubeIds = useControlCubeStore((s) => s.combinedCubeIds);
+  const startLinking = useControlCubeStore((s) => s.startLinking);
+  const completeLinking = useControlCubeStore((s) => s.completeLinking);
+  const cancelLinking = useControlCubeStore((s) => s.cancelLinking);
+
+  // Per-user input configuration
+  const linkingGesture = useCubeSettingsStore((s) => s.linkingGesture);
+  const cancelLinking = useControlCubeStore((s) => s.cancelLinking);
 
   // Handle mouse move for hover tilt effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -182,6 +190,13 @@ export function ControlCube({
   const handleMouseEnter = () => {
     setIsHovering(true);
 
+    // Default hovered face to the currently active face so
+    // a stationary click (no mousemove) still triggers an action.
+    if (cube) {
+      setHoveredFace(cube.activeFace);
+      setHoverAtEdge(false);
+    }
+
     // Check if expansion provider exists
     const providerId = cube?.minimizedPanel?.panelId || cube?.type;
     if (!providerId) return;
@@ -200,6 +215,7 @@ export function ControlCube({
     setIsHovering(false);
     setHoverTilt({ x: 0, y: 0 });
     setHoveredFace(null);
+    setHoverAtEdge(false);
 
     // Cancel expansion timeout
     if (hoverTimeoutRef.current) {
@@ -210,6 +226,18 @@ export function ControlCube({
     // Hide expansion
     setShowExpansion(false);
   };
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+      if (singleClickTimeoutRef.current) {
+        window.clearTimeout(singleClickTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Expand cube into a floating panel
   const expandToPanel = () => {
@@ -229,41 +257,95 @@ export function ControlCube({
 
   // Handle double-click to expand
   const handleDoubleClick = (e: React.MouseEvent) => {
+    // Only left-button double-click should expand
+    if (e.button !== 0) return;
     e.stopPropagation();
+
+    // Cancel any pending single-click action
+    if (singleClickTimeoutRef.current) {
+      window.clearTimeout(singleClickTimeoutRef.current);
+      singleClickTimeoutRef.current = null;
+    }
+
     expandToPanel();
   };
 
-  // Click to rotate to the revealed (hovered) face
-  const handleCubeClick = (e: React.MouseEvent) => {
-    if (!hoveredFace || !cube) return;
+  // Mouse gesture to start/complete linking between cube faces
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cube) return;
 
-    const now = Date.now();
-    const timeSinceLastClick = now - lastClickTime.current;
+    const isMiddleClick = e.button === 1;
+    const isShiftLeftClick = e.button === 0 && e.shiftKey;
 
-    // Check for double-click (within 300ms)
-    if (timeSinceLastClick < 300) {
-      // Double-click handled by handleDoubleClick
-      return;
-    }
+    const shouldHandle =
+      (linkingGesture === 'middleClick' && isMiddleClick) ||
+      (linkingGesture === 'shiftLeftClick' && isShiftLeftClick);
 
-    lastClickTime.current = now;
+    if (!shouldHandle) return;
+
     e.stopPropagation();
+    e.preventDefault();
 
-    // If clicking the currently active face (the one showing), open the action
-    if (hoveredFace === cube.activeFace) {
-      onFaceClick?.(hoveredFace);
+    const face = hoveredFace ?? cube.activeFace;
+    if (!face) return;
+
+    // If we're not in linking mode, start linking from this cube/face
+    if (!linkingMode) {
+      startLinking(cubeId, face);
       return;
     }
 
-    // Only rotate when the hover is truly in the edge band
-    if (!hoverAtEdge) {
-      // Treat non-edge clicks as center clicks: no rotation, optional action
-      onFaceClick?.(cube.activeFace);
+    // If clicking the same cube+face again while linking, cancel
+    if (linkingFromCube && linkingFromCube.cubeId === cubeId && linkingFromCube.face === face) {
+      cancelLinking();
       return;
     }
 
-    // For non-active faces at the edge, rotate to show that face (no action here)
-    rotateCubeFace(cubeId, hoveredFace);
+    // Otherwise complete the link to this cube/face
+    completeLinking(cubeId, face);
+  };
+
+  // Left-click to rotate to the revealed (hovered) face or invoke actions
+  const handleCubeClick = (e: React.MouseEvent) => {
+    // Only left-click should trigger rotation/actions; ignore middle/right clicks here.
+    if (e.button !== 0) return;
+
+    e.stopPropagation();
+    if (!cube) return;
+
+    // Use the hovered face if available, otherwise fall back to active face
+    const face = hoveredFace ?? cube.activeFace;
+    const atEdge = hoverAtEdge;
+    const activeFace = cube.activeFace;
+
+    // Clear any existing pending single-click action
+    if (singleClickTimeoutRef.current) {
+      window.clearTimeout(singleClickTimeoutRef.current);
+      singleClickTimeoutRef.current = null;
+    }
+
+    // Defer the single-click action slightly so a double-click can cancel it
+    singleClickTimeoutRef.current = window.setTimeout(() => {
+      singleClickTimeoutRef.current = null;
+
+      if (!face) return;
+
+      // If clicking the currently active face (the one showing), open the action
+      if (face === activeFace) {
+        onFaceClick?.(face);
+        return;
+      }
+
+      // Only rotate when the hover is truly in the edge band
+      if (!atEdge) {
+        // Treat non-edge clicks as center clicks: no rotation, optional action
+        onFaceClick?.(activeFace);
+        return;
+      }
+
+      // For non-active faces at the edge, rotate to show that face (no action here)
+      rotateCubeFace(cubeId, face);
+    }, 250);
   };
 
   useEffect(() => {
@@ -283,15 +365,6 @@ export function ControlCube({
       `;
     }
   }, [cube?.rotation, hoverTilt, isHovering]);
-
-  // Cleanup hover timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Auto-dismiss edge hover tooltip after user has used it a few times
   useEffect(() => {
@@ -314,7 +387,7 @@ export function ControlCube({
       if (linkingFromCube?.cubeId === cubeId) {
         return {
           id: 'linking-source',
-          content: 'Click another cube face to connect',
+          content: 'Middle-click another cube face to connect',
           variant: 'info' as const,
           show: !linkingTooltip.dismissed && isHovering,
           shortcut: 'ESC to cancel',
@@ -322,7 +395,7 @@ export function ControlCube({
       } else {
         return {
           id: 'linking-target',
-          content: 'Click to create connection',
+          content: 'Middle-click to connect from source',
           variant: 'info' as const,
           show: !linkingTooltip.dismissed && isHovering,
         };
@@ -445,6 +518,7 @@ export function ControlCube({
       onMouseMove={handleMouseMove}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onMouseUp={handleMouseUp}
       onClick={handleCubeClick}
       onDoubleClick={handleDoubleClick}
     >
