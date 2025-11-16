@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: pixsim
       POSTGRES_PASSWORD: ${DB_PASSWORD:-pixsim123}
     ports:
-      - "${POSTGRES_PORT:-5434}:5432"  # Configurable, default 5434
+      - "${POSTGRES_PORT:-5435}:5432"  # Configurable, default 5435 (matches local .env and backend defaults)
     volumes:
       # All PostgreSQL data in ./data/postgres
       - ./data/postgres:/var/lib/postgresql/data
