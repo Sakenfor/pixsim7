@@ -111,7 +111,13 @@ function applyMosaicLayoutToDockview(
   ): string => {
     if (typeof node === 'string') {
       // Leaf node - create panel
-      const panelId = `${node}-panel-${panelCounter++}`;
+      const baseId = `${node}-panel-${panelCounter++}`;
+      // Ensure the id is unique in the current Dockview instance
+      let panelId = baseId;
+      let suffix = 1;
+      while (api.panels.some((p) => p.id === panelId)) {
+        panelId = `${baseId}-${suffix++}`;
+      }
       api.addPanel({
         id: panelId,
         component: 'panel',

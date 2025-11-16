@@ -89,7 +89,8 @@
       "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe history)",
       "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe revision:*)",
       "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe:*)",
-      "Bash(git show:*)"
+      "Bash(git show:*)",
+      "Bash(git init:*)"
     ],
     "deny": [],
     "ask": []

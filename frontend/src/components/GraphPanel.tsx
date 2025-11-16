@@ -51,6 +51,7 @@ export function GraphPanel() {
   const [showPalette, setShowPalette] = useState(true);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+  const [hasSize, setHasSize] = useState(false);
 
   // Stable node type registry to satisfy React Flow error #002
   const nodeTypes = useMemo<NodeTypes>(
@@ -74,6 +75,28 @@ export function GraphPanel() {
       createDraft('Untitled Scene');
     }
   }, [draft, createDraft]);
+
+  // Track when the React Flow container has a non-zero size to avoid error #004
+  useEffect(() => {
+    const el = reactFlowWrapper.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const { clientWidth, clientHeight } = el;
+      setHasSize(clientWidth > 0 && clientHeight > 0);
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateSize);
+      observer.observe(el);
+      return () => observer.disconnect();
+    } else {
+      window.addEventListener('resize', updateSize);
+      return () => window.removeEventListener('resize', updateSize);
+    }
+  }, []);
 
   // Sync React Flow nodes/edges when draft changes
   // Apply filters: collapsed groups + zoom level
@@ -440,30 +463,32 @@ export function GraphPanel() {
 
         {/* Canvas */}
         <div className="flex-1" ref={reactFlowWrapper}>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onSelectionChange={onSelectionChange}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            nodeTypes={nodeTypes}
-            defaultEdgeOptions={defaultEdgeOptions}
-            fitView
-            minZoom={0.1}
-            maxZoom={4}
-          >
-          <Background />
-          <Controls />
-          <MiniMap
-            nodeStrokeWidth={3}
-            zoomable
-            pannable
-            className="bg-neutral-100 dark:bg-neutral-800"
-          />
-          </ReactFlow>
+          {hasSize && (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={handleNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onSelectionChange={onSelectionChange}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              nodeTypes={nodeTypes}
+              defaultEdgeOptions={defaultEdgeOptions}
+              fitView
+              minZoom={0.1}
+              maxZoom={4}
+            >
+              <Background />
+              <Controls />
+              <MiniMap
+                nodeStrokeWidth={3}
+                zoomable
+                pannable
+                className="bg-neutral-100 dark:bg-neutral-800"
+              />
+            </ReactFlow>
+          )}
         </div>
 
         {/* Debug Panel */}
