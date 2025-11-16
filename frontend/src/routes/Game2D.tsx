@@ -67,7 +67,11 @@ export function Game2D() {
       try {
         const locs = await listGameLocations();
         setLocations(locs);
-        if (!selectedLocationId && locs.length > 0) {
+        const locationIdParam = searchParams.get('locationId');
+        const locFromParam = locationIdParam ? Number(locationIdParam) : null;
+        if (locFromParam && Number.isFinite(locFromParam)) {
+          setSelectedLocationId(locFromParam);
+        } else if (!selectedLocationId && locs.length > 0) {
           setSelectedLocationId(locs[0].id);
         }
       } catch (e: any) {
@@ -80,10 +84,26 @@ export function Game2D() {
       try {
         const ws = await listGameWorlds();
         setWorlds(ws);
-        if (!selectedWorldId && ws.length > 0) {
-          setSelectedWorldId(ws[0].id);
+        // Prefer worldId from URL, then stored world, then first world
+        const worldIdParam = searchParams.get('worldId');
+        const stored = loadWorldSession();
+        let effectiveWorldId: number | null = null;
+
+        if (worldIdParam) {
+          const wId = Number(worldIdParam);
+          if (Number.isFinite(wId)) {
+            effectiveWorldId = wId;
+          }
+        } else if (stored?.worldId) {
+          effectiveWorldId = stored.worldId;
+        } else if (!selectedWorldId && ws.length > 0) {
+          effectiveWorldId = ws[0].id;
+        }
+
+        if (effectiveWorldId != null) {
+          setSelectedWorldId(effectiveWorldId);
           try {
-            const wd = await getGameWorld(ws[0].id);
+            const wd = await getGameWorld(effectiveWorldId);
             setWorldDetail(wd);
             const totalHours = Math.floor(wd.world_time / 3600);
             const totalDays = Math.floor(totalHours / 24);
@@ -91,7 +111,7 @@ export function Game2D() {
             const hour = totalHours % 24;
             setWorldTime({ day, hour });
           } catch (e) {
-            console.error('Failed to load default GameWorld for Game2D', e);
+            console.error('Failed to restore GameWorld for Game2D', e);
           }
         }
       } catch (e: any) {
@@ -200,7 +220,7 @@ export function Game2D() {
     }, 500); // Small delay to ensure state has settled
 
     return () => clearTimeout(timer);
-  }, [searchParams]); // Only run when URL params change
+  }, [searchParams, gameSession, worldTime, selectedWorldId, selectedLocationId]); // include state used in effect
 
   const handleSelectWorld = async (worldId: number | null) => {
     setSelectedWorldId(worldId);
