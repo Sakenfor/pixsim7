@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@pixsim7/ui';
+import { Button, Select } from '@pixsim7/ui';
 import { useToast } from '../stores/toastStore';
 import { getGameSession, listGameSessions, type GameSessionDTO } from '../lib/api/game';
 import { parseNpcKey, parseArcKey, parseQuestKey } from '../lib/game/relationshipHelpers';
@@ -305,17 +305,18 @@ export function SessionStateViewer() {
       {/* Session Selection */}
       <div className="flex items-center gap-2">
         <label className="text-sm font-medium">Session:</label>
-        <select
+        <Select
           value={selectedSessionId || ''}
           onChange={(e) => handleSessionChange(Number(e.target.value))}
-          className="flex-1 px-2 py-1 text-xs border rounded bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+          size="sm"
+          className="flex-1"
         >
           {sessions.map((s) => (
             <option key={s.id} value={s.id}>
               Session #{s.id} - {new Date(s.created_at).toLocaleString()}
             </option>
           ))}
-        </select>
+        </Select>
         <Button size="sm" variant="secondary" onClick={() => loadSession(selectedSessionId!)}>
           Refresh
         </Button>
