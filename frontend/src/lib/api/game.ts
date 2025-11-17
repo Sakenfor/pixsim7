@@ -1,4 +1,4 @@
-import { apiClient } from './api/client';
+import { apiClient } from './client';
 import type { Scene } from '@pixsim7/types';
 
 export interface GameLocationSummary {
