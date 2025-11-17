@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { NpcBrainState } from '../../lib/core/types';
-import { BrainFace, brainShape } from '../../lib/shapes/brain';
+import type { NpcBrainState } from '@pixsim7/game-core';
+import { BrainFace, brainShape } from '@pixsim7/semantic-shapes';
 import './BrainShape.css';
 
 export interface BrainShapeProps {

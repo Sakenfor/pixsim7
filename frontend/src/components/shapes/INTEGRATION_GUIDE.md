@@ -69,7 +69,7 @@ function NPCEditor() {
 ### 2. Using the Shape Registry
 
 ```typescript
-import { ShapeRegistry } from './lib/shapes/registry';
+import { ShapeRegistry } from '@pixsim7/semantic-shapes';
 
 // Get a shape definition
 const brainShape = ShapeRegistry.get('brain');
@@ -116,7 +116,7 @@ const neonGlow = sciFiTheme.utils.neonGlow('#00D9FF', 1.5);
 
 ```typescript
 // lib/shapes/customShape.ts
-import { SemanticShape } from './registry';
+import { SemanticShape } from '@pixsim7/semantic-shapes';
 
 export const customShape: SemanticShape = {
   id: 'custom',
@@ -156,7 +156,7 @@ export const customShape: SemanticShape = {
 ### Step 2: Register the Shape
 
 ```typescript
-import { ShapeRegistry } from './lib/shapes/registry';
+import { ShapeRegistry } from '@pixsim7/semantic-shapes';
 import { customShape } from './lib/shapes/customShape';
 
 // Register on app initialization
@@ -167,7 +167,7 @@ ShapeRegistry.register(customShape);
 
 ```tsx
 // components/shapes/CustomShape.tsx
-import { SemanticShapeInstance } from '../../lib/shapes/registry';
+import { SemanticShapeInstance } from '@pixsim7/semantic-shapes';
 
 interface CustomShapeProps {
   data: any;
@@ -330,8 +330,8 @@ import { BrainShapeExample } from './components/examples/BrainShapeExample';
 
 ## Resources
 
-- Core Types: `/lib/core/types.ts`
-- Shape Registry: `/lib/shapes/registry.ts`
+- Core Types: `@pixsim7/game-core`
+- Shape Registry: `@pixsim7/semantic-shapes`
 - Sci-Fi Theme: `/lib/theme/scifi-tokens.ts`
 - Brain Shape Component: `/components/shapes/BrainShape.tsx`
 - Example Implementation: `/components/examples/BrainShapeExample.tsx`

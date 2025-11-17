@@ -14,6 +14,7 @@
     "@pixsim7/ui": "workspace:*",
     "@pixsim7/game-ui": "workspace:*",
     "@pixsim7/game-core": "workspace:*",
+    "@pixsim7/semantic-shapes": "workspace:*",
     "pixcubes": "workspace:*",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",

@@ -6,8 +6,8 @@
 import { useState, useEffect } from 'react';
 import { BrainShape } from '../shapes/BrainShape';
 import { mockCore } from '../../lib/core/mockCore';
-import { NpcBrainState } from '../../lib/core/types';
-import { BrainFace } from '../../lib/shapes/brain';
+import type { NpcBrainState } from '@pixsim7/game-core';
+import { BrainFace } from '@pixsim7/semantic-shapes';
 import { sciFiTheme } from '../../lib/theme/scifi-tokens';
 import './BrainShapeExample.css';
 
