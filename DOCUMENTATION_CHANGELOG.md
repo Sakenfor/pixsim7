@@ -1,5 +1,62 @@
 # Documentation Changelog
 
+## 2025-11-17 - Refactoring Documentation Cleanup
+
+### 🎯 **Motivation**
+
+After the Phase 1-4 architecture simplification refactorings were completed (2025-11-16), multiple refactoring and migration documentation files accumulated in the repository. These docs described completed work but were scattered across different locations, making it unclear which refactorings were done vs. ongoing.
+
+### ✅ **What Changed**
+
+#### **Created Archive Structure:**
+
+Created `/docs/archive/completed-refactoring/` to house documentation for fully completed refactoring projects.
+
+#### **Archived Documents (10 files):**
+
+Moved completed refactoring docs to `/docs/archive/completed-refactoring/`:
+
+**Architecture Simplification (Phases 1-4):**
+- `docs/PHASE1_CONSOLIDATION_SUMMARY.md` → `docs/archive/completed-refactoring/`
+- `docs/PHASE2_AUTH_BOUNDARIES_SUMMARY.md` → `docs/archive/completed-refactoring/`
+- `docs/PHASE3_FRONTEND_SIMPLIFICATION_SUMMARY.md` → `docs/archive/completed-refactoring/`
+- `docs/PHASE4_CANONICAL_SCENE_SCHEMA.md` → `docs/archive/completed-refactoring/`
+
+**Feature Migrations:**
+- `frontend/EMOJI_MIGRATION.md` → `docs/archive/completed-refactoring/`
+- `docs/BACKEND_PLUGIN_MIGRATION.md` → `docs/archive/completed-refactoring/`
+- `pixsim7_backend/shared/JWT_REFACTORING.md` → `docs/archive/completed-refactoring/`
+
+**Handoff & Migration Docs:**
+- `docs/HANDOFF_BACKEND_PLUGINS.md` → `docs/archive/completed-refactoring/`
+- `pixsim7_backend/HANDOFF_NOTES.md` → `docs/archive/completed-refactoring/`
+- `MIGRATION_INSTRUCTIONS.md` → `docs/archive/completed-refactoring/`
+
+#### **Created Documentation:**
+
+- `docs/archive/completed-refactoring/README.md` - Comprehensive index of all completed refactorings with status and impact details
+- Updated `docs/archive/README.md` - Added reference to completed-refactoring subdirectory
+
+### 📊 **Impact**
+
+**Before:**
+- 10 refactoring docs scattered across 4 different directories
+- Unclear which refactorings were complete vs. ongoing
+- Mix of historical and current documentation
+
+**After:**
+- ✅ All completed refactoring docs centralized in one archive location
+- ✅ Clear README explaining what was done and current state
+- ✅ Easy to distinguish archived (complete) vs. active (ongoing) refactorings
+- ✅ Repository root and docs/ folder decluttered
+
+**Remaining Active Docs:**
+- `ARCHITECTURE_SIMPLIFICATION_PLAN.md` - Master plan (future phases)
+- `docs/INTERACTION_SYSTEM_REFACTOR.md` - Future refactoring guide
+- Current architecture and development guides
+
+---
+
 ## 2025-11-16 - Major Documentation Overhaul
 
 ### 🎯 **Motivation**
