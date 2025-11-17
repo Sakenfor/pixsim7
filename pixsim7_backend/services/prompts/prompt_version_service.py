@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+from datetime import datetime
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
@@ -694,3 +695,342 @@ class PromptVersionService:
             version_metrics.sort(key=lambda x: x["avg_rating"], reverse=True)
 
         return version_metrics[:limit]
+
+    # ===== Batch Operations (Phase 3) =====
+
+    async def batch_create_versions(
+        self,
+        family_id: UUID,
+        versions: List[Dict[str, Any]],
+        author: Optional[str] = None
+    ) -> List[PromptVersion]:
+        """Create multiple versions at once
+
+        Args:
+            family_id: Parent family
+            versions: List of version dicts with prompt_text, commit_message, etc.
+            author: Default author for all versions
+
+        Returns:
+            List of created PromptVersion objects
+        """
+        created_versions = []
+
+        for version_data in versions:
+            version = await self.create_version(
+                family_id=family_id,
+                prompt_text=version_data["prompt_text"],
+                commit_message=version_data.get("commit_message"),
+                author=version_data.get("author") or author,
+                parent_version_id=version_data.get("parent_version_id"),
+                variables=version_data.get("variables", {}),
+                provider_hints=version_data.get("provider_hints", {}),
+                tags=version_data.get("tags", [])
+            )
+            created_versions.append(version)
+
+        return created_versions
+
+    # ===== Import/Export (Phase 3) =====
+
+    async def export_family(
+        self,
+        family_id: UUID,
+        include_versions: bool = True,
+        include_analytics: bool = False
+    ) -> Dict[str, Any]:
+        """Export a family and optionally its versions
+
+        Args:
+            family_id: Family to export
+            include_versions: Include all versions
+            include_analytics: Include analytics data
+
+        Returns:
+            Dict with family data in portable format
+        """
+        family = await self.get_family(family_id)
+        if not family:
+            raise ValueError(f"Family {family_id} not found")
+
+        export_data = {
+            "format_version": "1.0",
+            "exported_at": datetime.utcnow().isoformat(),
+            "family": {
+                "slug": family.slug,
+                "title": family.title,
+                "description": family.description,
+                "prompt_type": family.prompt_type,
+                "category": family.category,
+                "tags": family.tags,
+                "family_metadata": family.family_metadata,
+            }
+        }
+
+        if include_versions:
+            versions = await self.list_versions(family_id, limit=1000)
+            export_data["versions"] = [
+                {
+                    "version_number": v.version_number,
+                    "prompt_text": v.prompt_text,
+                    "commit_message": v.commit_message,
+                    "author": v.author,
+                    "variables": v.variables,
+                    "provider_hints": v.provider_hints,
+                    "tags": v.tags,
+                    "semantic_version": v.semantic_version,
+                    "branch_name": v.branch_name,
+                    "created_at": v.created_at.isoformat(),
+                }
+                for v in reversed(versions)  # Export in chronological order
+            ]
+
+        if include_analytics:
+            analytics = await self.get_family_analytics(family_id)
+            export_data["analytics"] = analytics
+
+        return export_data
+
+    async def import_family(
+        self,
+        import_data: Dict[str, Any],
+        author: Optional[str] = None,
+        preserve_metadata: bool = True
+    ) -> PromptFamily:
+        """Import a family from exported data
+
+        Args:
+            import_data: Exported family data
+            author: Override author for imported versions
+            preserve_metadata: Keep original metadata (authors, dates in descriptions)
+
+        Returns:
+            Created PromptFamily
+
+        Note:
+            - Handles both internal exports and external prompts
+            - External prompts without family structure are imported as single versions
+            - Slug conflicts are auto-resolved
+        """
+        # Handle external prompt (just text, not structured export)
+        if isinstance(import_data, str):
+            # Simple text prompt - create minimal family
+            import_data = {
+                "family": {
+                    "title": "Imported Prompt",
+                    "slug": f"imported-{datetime.utcnow().timestamp()}",
+                    "prompt_type": "visual",
+                    "description": "Imported from external source"
+                },
+                "versions": [
+                    {
+                        "prompt_text": import_data,
+                        "commit_message": "Initial import from external source"
+                    }
+                ]
+            }
+
+        family_data = import_data.get("family", {})
+
+        # Auto-resolve slug conflicts
+        base_slug = family_data.get("slug", "imported")
+        slug = base_slug
+        counter = 1
+        while await self.get_family_by_slug(slug):
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        # Create family
+        family = await self.create_family(
+            title=family_data.get("title", "Imported Family"),
+            prompt_type=family_data.get("prompt_type", "visual"),
+            slug=slug,
+            description=family_data.get("description"),
+            category=family_data.get("category"),
+            tags=family_data.get("tags", []),
+            created_by=author
+        )
+
+        # Import versions if present
+        versions_data = import_data.get("versions", [])
+        if versions_data:
+            for v_data in versions_data:
+                version_author = v_data.get("author") if preserve_metadata else author
+                await self.create_version(
+                    family_id=family.id,
+                    prompt_text=v_data["prompt_text"],
+                    commit_message=v_data.get("commit_message", "Imported version"),
+                    author=version_author or author,
+                    variables=v_data.get("variables", {}),
+                    provider_hints=v_data.get("provider_hints", {}),
+                    tags=v_data.get("tags", []),
+                    semantic_version=v_data.get("semantic_version"),
+                    branch_name=v_data.get("branch_name")
+                )
+
+        return family
+
+    # ===== Historical Inference (Phase 3) =====
+
+    async def infer_versions_from_assets(
+        self,
+        family_id: UUID,
+        asset_ids: List[int],
+        author: Optional[str] = None
+    ) -> List[PromptVersion]:
+        """Backfill prompt versions for existing assets
+
+        Args:
+            family_id: Target family for inferred versions
+            asset_ids: Assets to infer prompts from
+            author: Author for inferred versions
+
+        Returns:
+            List of created versions
+        """
+        from pixsim7_backend.domain.asset import Asset
+
+        created_versions = []
+
+        for asset_id in asset_ids:
+            # Get asset and its job
+            asset_result = await self.db.execute(
+                select(Asset).where(Asset.id == asset_id)
+            )
+            asset = asset_result.scalar_one_or_none()
+            if not asset or not asset.source_job_id:
+                continue
+
+            # Get job's generation artifact
+            artifact_result = await self.db.execute(
+                select(GenerationArtifact)
+                .join(Job, GenerationArtifact.job_id == Job.id)
+                .where(Job.id == asset.source_job_id)
+            )
+            artifact = artifact_result.scalar_one_or_none()
+            if not artifact:
+                continue
+
+            # Skip if already linked to a version
+            if artifact.prompt_version_id:
+                continue
+
+            # Extract prompt from artifact
+            prompt_text = artifact.final_prompt or artifact.canonical_params.get("prompt", "")
+            if not prompt_text:
+                continue
+
+            # Create version
+            version = await self.create_version(
+                family_id=family_id,
+                prompt_text=prompt_text,
+                commit_message=f"Inferred from asset {asset_id}",
+                author=author or "system",
+                tags=["inferred", f"asset:{asset_id}"]
+            )
+
+            # Link artifact to new version
+            artifact.prompt_version_id = version.id
+            await self.db.commit()
+
+            created_versions.append(version)
+
+        return created_versions
+
+    # ===== Similarity Search (Phase 3) =====
+
+    async def find_similar_prompts(
+        self,
+        prompt_text: str,
+        limit: int = 10,
+        threshold: float = 0.5,
+        family_id: Optional[UUID] = None
+    ) -> List[Dict[str, Any]]:
+        """Find similar prompts using text similarity
+
+        Args:
+            prompt_text: Query prompt
+            limit: Number of results
+            threshold: Minimum similarity score (0-1)
+            family_id: Optional family filter
+
+        Returns:
+            List of similar versions with similarity scores
+        """
+        from .similarity_utils import calculate_text_similarity
+
+        query = select(PromptVersion)
+        if family_id:
+            query = query.where(PromptVersion.family_id == family_id)
+
+        result = await self.db.execute(query)
+        all_versions = list(result.scalars().all())
+
+        # Calculate similarity scores
+        similarities = []
+        for version in all_versions:
+            similarity = calculate_text_similarity(prompt_text, version.prompt_text)
+            if similarity >= threshold:
+                similarities.append({
+                    "version_id": str(version.id),
+                    "family_id": str(version.family_id),
+                    "version_number": version.version_number,
+                    "prompt_text": version.prompt_text,
+                    "similarity_score": round(similarity, 4),
+                    "commit_message": version.commit_message,
+                })
+
+        # Sort by similarity (descending)
+        similarities.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+        return similarities[:limit]
+
+    # ===== Template Validation (Phase 3) =====
+
+    def validate_template_prompt(
+        self,
+        prompt_text: str,
+        variable_defs: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Validate a prompt template
+
+        Args:
+            prompt_text: Prompt text (may contain {{variables}})
+            variable_defs: Optional variable definitions
+
+        Returns:
+            Validation result with errors/warnings
+        """
+        from .template_utils import validate_prompt_text, parse_variable_definitions
+
+        parsed_defs = None
+        if variable_defs:
+            parsed_defs = parse_variable_definitions(variable_defs)
+
+        return validate_prompt_text(prompt_text, parsed_defs)
+
+    def render_template_prompt(
+        self,
+        prompt_text: str,
+        variables: Dict[str, Any],
+        variable_defs: Optional[Dict[str, Any]] = None,
+        strict: bool = True
+    ) -> str:
+        """Render a template prompt with variable substitution
+
+        Args:
+            prompt_text: Template text
+            variables: Variable values
+            variable_defs: Optional variable definitions
+            strict: Raise error on validation failure
+
+        Returns:
+            Rendered prompt text
+        """
+        from .template_utils import substitute_variables, parse_variable_definitions
+
+        parsed_defs = None
+        if variable_defs:
+            parsed_defs = parse_variable_definitions(variable_defs)
+
+        return substitute_variables(prompt_text, variables, parsed_defs, strict)

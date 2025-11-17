@@ -1,7 +1,7 @@
 # Prompt Versioning System
 
-**Status**: Phase 2 Complete ✅
-**Implementation Date**: Phase 1: 2025-11-17, Phase 2: 2025-11-17
+**Status**: Phase 3 Complete ✅
+**Implementation Date**: Phase 1: 2025-11-17, Phase 2: 2025-11-17, Phase 3: 2025-11-17
 **Migration**: `20251117_0550_7ed0db0fe547_add_prompt_versioning_tables`
 
 ## Overview
@@ -347,7 +347,15 @@ GET /api/v1/prompts/families/uuid-123/versions
 ✅ **Analytics**: Comprehensive performance metrics and success rates
 ✅ **Top Performers**: Query best performing versions by various metrics
 
-### Future (Phase 3+)
+### Phase 3 (Complete)
+
+✅ **Batch Operations**: Create multiple versions at once
+✅ **Import/Export**: Portable JSON format with external prompt support
+✅ **Template Validation**: Variable substitution with type checking
+✅ **Historical Inference**: Backfill versions from existing assets
+✅ **Similarity Search**: Find similar prompts across families
+
+### Future (Phase 4+)
 
 ⏳ **ActionEngine**: Use versioned prompts in ActionBlocks
 ⏳ **NarrativeEngine**: Link dialogue prompts to versions
@@ -461,7 +469,7 @@ curl http://localhost:8000/api/v1/prompts/families \
 - ✅ Top performing versions query (by success_rate, total_generations, avg_rating)
 - ✅ Comprehensive metrics dashboard
 
-### New API Endpoints
+### New API Endpoints (Phase 2)
 ```
 GET    /api/v1/prompts/versions/{version_id}/diff?format=inline
 GET    /api/v1/prompts/versions/compare?from_version_id=X&to_version_id=Y&format=unified
@@ -470,12 +478,102 @@ GET    /api/v1/prompts/families/{family_id}/analytics
 GET    /api/v1/prompts/analytics/top-performing?metric=success_rate&limit=10
 ```
 
+## Phase 3: Completed Features ✅
+
+### Batch Operations
+- ✅ Create multiple versions in a single request
+- ✅ Bulk import/migration support
+- ✅ Atomic batch creation with rollback on error
+
+### Import/Export
+- ✅ Export families to portable JSON format
+- ✅ Import structured exports from other systems
+- ✅ **Import plain text prompts** from external sources (Midjourney, DALL-E, etc.)
+- ✅ Auto-resolve slug conflicts
+- ✅ Preserve or override metadata (authors, timestamps)
+- ✅ Optional analytics inclusion in exports
+
+### Template Validation
+- ✅ Variable extraction from {{template}} syntax
+- ✅ Type validation (string, int, float, bool, enum)
+- ✅ Required variable checking
+- ✅ Default values support
+- ✅ Enum value validation
+- ✅ Template rendering with substitution
+- ✅ Validation errors and warnings
+
+### Historical Inference
+- ✅ Backfill prompt versions from existing assets
+- ✅ Extract prompts from generation artifacts
+- ✅ Link artifacts to new versions
+- ✅ Skip already-linked artifacts
+- ✅ Batch inference for multiple assets
+
+### Similarity Search
+- ✅ Text similarity scoring (combined: sequence + token + n-gram)
+- ✅ Configurable threshold filtering
+- ✅ Family-scoped search
+- ✅ Keyword extraction
+- ✅ Duplicate detection
+
+### New API Endpoints (Phase 3)
+```
+POST   /api/v1/prompts/families/{id}/versions/batch
+GET    /api/v1/prompts/families/{id}/export?include_versions=true&include_analytics=false
+POST   /api/v1/prompts/families/import
+POST   /api/v1/prompts/families/{id}/infer-from-assets
+GET    /api/v1/prompts/search/similar?prompt=...&threshold=0.5
+POST   /api/v1/prompts/templates/validate
+POST   /api/v1/prompts/templates/render
+```
+
+### Example: External Prompt Import
+```python
+# Import a plain text prompt from Midjourney
+POST /api/v1/prompts/families/import
+{
+  "import_data": "cinematic shot of a futuristic city, neon lights, rain, cyberpunk aesthetic, 8k",
+  "preserve_metadata": false
+}
+
+# System automatically creates:
+# - New family "Imported Prompt"
+# - Version 1 with the prompt text
+# - Auto-resolved slug if conflicts exist
+```
+
+### Example: Template Usage
+```python
+# Create template version
+POST /api/v1/prompts/families/{id}/versions
+{
+  "prompt_text": "{{character}} at {{location}}, {{lighting}} lighting, {{mood}} mood",
+  "variables": {
+    "character": {"type": "string", "required": true},
+    "location": {"type": "string", "required": true},
+    "lighting": {"type": "enum", "enum_values": ["golden hour", "dramatic", "soft"], "default": "golden hour"},
+    "mood": {"type": "string", "default": "romantic"}
+  },
+  "commit_message": "Created reusable character scene template"
+}
+
+# Render template
+POST /api/v1/prompts/templates/render
+{
+  "prompt_text": "{{character}} at {{location}}, {{lighting}} lighting",
+  "variables": {
+    "character": "John",
+    "location": "park bench",
+    "lighting": "golden hour"
+  }
+}
+# Returns: "John at park bench, golden hour lighting"
+```
+
 ## Future Enhancements
 
-### Phase 3: Game Integration & Advanced Features
+### Phase 4: Game Integration & Advanced Features
 - [ ] Per-world prompt overrides (`prompt_world_override` table)
-- [ ] Batch operations (create multiple versions)
-- [ ] Import/export for prompt sharing
 - [ ] ActionEngine integration (use versioned prompts in blocks)
 - [ ] NarrativeEngine integration (dialogue prompt versions)
 - [ ] Automatic prompt selection based on game context
@@ -530,4 +628,4 @@ GET    /api/v1/prompts/analytics/top-performing?metric=success_rate&limit=10
 ---
 
 **Last Updated**: 2025-11-17
-**Next Review**: Before Phase 3 implementation
+**Next Review**: Before Phase 4 implementation
