@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { InteractiveTool as ToolType, Vector3D, TouchPattern } from '../../lib/gizmos/types';
+import { InteractiveTool as ToolType, Vector3D, TouchPattern } from '@pixsim7/scene-gizmos';
 import './InteractiveTool.css';
 
 interface InteractiveToolProps {

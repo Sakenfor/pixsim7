@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { GizmoComponentProps, Vector3D, GizmoZone } from '../../lib/gizmos/types';
+import { GizmoComponentProps, Vector3D, GizmoZone } from '@pixsim7/scene-gizmos';
 import './ConstellationGizmo.css';
 
 interface Star {

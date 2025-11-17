@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { GizmoComponentProps, Vector3D, GizmoZone } from '../../lib/gizmos/types';
+import { GizmoComponentProps, Vector3D, GizmoZone } from '@pixsim7/scene-gizmos';
 import './OrbGizmo.css';
 
 export const OrbGizmo: React.FC<GizmoComponentProps> = ({

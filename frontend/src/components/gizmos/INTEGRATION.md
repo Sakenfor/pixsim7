@@ -43,6 +43,8 @@ The SceneGizmoMiniGame will automatically render when the scene reaches a node w
 The gizmo emits results as the player interacts:
 
 ```typescript
+import type { GizmoResult } from '@pixsim7/scene-gizmos';
+
 interface GizmoResult {
   segmentId?: string;      // Next segment to play
   intensity?: number;      // 0-1, player-controlled intensity
@@ -138,6 +140,7 @@ Use gestures to trigger special segments:
 For diegetic interaction (player's touch in the scene):
 
 ```typescript
+import type { InteractiveTool as ToolType, TouchPattern } from '@pixsim7/scene-gizmos';
 import { InteractiveTool } from '../gizmos/InteractiveTool';
 
 <InteractiveTool
@@ -146,7 +149,7 @@ import { InteractiveTool } from '../gizmos/InteractiveTool';
     type: 'touch',
     visual: { model: 'hand', ... },
   }}
-  onPatternDetected={(pattern) => {
+  onPatternDetected={(pattern: TouchPattern) => {
     // 'circular', 'linear', 'tap', etc.
     triggerSegmentByPattern(pattern);
   }}
@@ -226,6 +229,7 @@ if (currentNode.miniGame?.id === 'sceneGizmo') {
 ### Adding Custom Gizmos
 
 ```typescript
+import type { GizmoDefinition, SceneGizmoConfig } from '@pixsim7/scene-gizmos';
 import { registerCustomGizmo } from '../../lib/gizmos/registry';
 
 registerCustomGizmo({
@@ -236,13 +240,14 @@ registerCustomGizmo({
   defaultConfig: {
     zones: generateColorWheel(8),
     style: 'custom',
-  },
+  } as Partial<SceneGizmoConfig>,
 });
 ```
 
 ### Adding Custom Tools
 
 ```typescript
+import type { InteractiveTool } from '@pixsim7/scene-gizmos';
 import { registerCustomTool } from '../../lib/gizmos/registry';
 
 registerCustomTool({
@@ -254,7 +259,7 @@ registerCustomTool({
     particles: { type: 'petals', density: 0.6 },
   },
   // ... physics, feedback
-});
+} as InteractiveTool);
 ```
 
 ## Troubleshooting
