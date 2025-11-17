@@ -24,9 +24,8 @@ from pixsim7_backend.domain.prompt_versioning import (
     PromptVersion,
     PromptVariantFeedback,
 )
-from pixsim7_backend.domain.generation_artifact import GenerationArtifact
+from pixsim7_backend.domain.generation import Generation
 from pixsim7_backend.domain.asset import Asset
-from pixsim7_backend.domain.job import Job
 from .diff_utils import generate_inline_diff, get_change_summary
 
 
@@ -241,7 +240,7 @@ class PromptVersionService:
         """
         # Get the artifact
         result = await self.db.execute(
-            select(GenerationArtifact).where(GenerationArtifact.id == artifact_id)
+            select(Generation).where(Generation.id == artifact_id)
         )
         artifact = result.scalar_one_or_none()
         if not artifact:
@@ -386,10 +385,9 @@ class PromptVersionService:
         """Get all assets generated from this prompt version"""
         result = await self.db.execute(
             select(Asset)
-            .join(Job, Asset.source_job_id == Job.id)
-            .join(GenerationArtifact, Job.id == GenerationArtifact.job_id)
-            .where(GenerationArtifact.prompt_version_id == version_id)
-            .order_by(Asset.created_at.desc())
+            .join(Generation, Asset.source_generation_id == Generation.id)
+            .join(Generation, Generation.id == Generation.id)
+            .where(Generation.prompt_version_id == version_id)
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -398,9 +396,9 @@ class PromptVersionService:
         """Find which prompt version created this asset"""
         result = await self.db.execute(
             select(PromptVersion)
-            .join(GenerationArtifact, PromptVersion.id == GenerationArtifact.prompt_version_id)
-            .join(Job, GenerationArtifact.job_id == Job.id)
-            .where(Job.asset_id == asset_id)
+            .join(Generation, PromptVersion.id == Generation.prompt_version_id)
+            .join(Generation, Generation.id == Generation.id)
+            .where(Generation.asset_id == asset_id)
         )
         return result.scalar_one_or_none()
 
@@ -519,8 +517,8 @@ class PromptVersionService:
 
         # Get all artifacts for this version
         artifacts_result = await self.db.execute(
-            select(GenerationArtifact)
-            .where(GenerationArtifact.prompt_version_id == version_id)
+            select(Generation)
+            .where(Generation.prompt_version_id == version_id)
         )
         artifacts = list(artifacts_result.scalars().all())
 
@@ -898,17 +896,16 @@ class PromptVersionService:
                 select(Asset).where(Asset.id == asset_id)
             )
             asset = asset_result.scalar_one_or_none()
-            if not asset or not asset.source_job_id:
+            if not asset or not asset.source_generation_id:
                 continue
 
-            # Get job's generation artifact
+            # Get generation record
             artifact_result = await self.db.execute(
-                select(GenerationArtifact)
-                .join(Job, GenerationArtifact.job_id == Job.id)
-                .where(Job.id == asset.source_job_id)
+                select(Generation)
+                .where(Generation.id == asset.source_generation_id)
             )
-            artifact = artifact_result.scalar_one_or_none()
-            if not artifact:
+            generation = artifact_result.scalar_one_or_none()
+            if not generation:
                 continue
 
             # Skip if already linked to a version

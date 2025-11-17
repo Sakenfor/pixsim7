@@ -635,7 +635,7 @@ class AssetService:
                 height=item.get("height"),
                 duration_sec=None,
                 sync_status=SyncStatus.REMOTE,
-                source_job_id=None,
+                source_generation_id=None,
             )
             # Add lineage link child=video asset, parent=new image/video asset
             from pixsim7_backend.domain.asset_lineage import AssetLineage
