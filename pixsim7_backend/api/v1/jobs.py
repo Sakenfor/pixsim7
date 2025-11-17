@@ -58,18 +58,20 @@ async def create_job(
     await job_create_limiter.check(identifier)
     
     try:
-        job = await job_service.create_job(
+        # GenerationService.create_generation has slightly different signature
+        generation = await job_service.create_generation(
             user=user,
             operation_type=request.operation_type,
             provider_id=request.provider_id,
             params=request.params,
             workspace_id=request.workspace_id,
-            parent_job_id=request.parent_job_id,
+            parent_generation_id=request.parent_job_id,  # Map parent_job_id to parent_generation_id
             priority=request.priority,
-            scheduled_at=request.scheduled_at
+            scheduled_at=request.scheduled_at,
+            prompt_version_id=request.params.get("prompt_version_id") if request.params else None,
         )
 
-        return JobResponse.model_validate(job)
+        return JobResponse.model_validate(generation)
 
     except QuotaExceededError as e:
         raise HTTPException(status_code=429, detail=str(e))
@@ -98,8 +100,8 @@ async def list_jobs(
     Jobs are returned in reverse chronological order (newest first).
     """
     try:
-        # Get jobs with pagination
-        jobs = await job_service.list_jobs(
+        # Get generations with pagination (list_generations in GenerationService)
+        generations = await job_service.list_generations(
             user=user,
             workspace_id=workspace_id,
             status=status,
@@ -109,7 +111,7 @@ async def list_jobs(
         )
 
         # Get total count (same filters, no pagination)
-        total = await job_service.count_jobs(
+        total = await job_service.count_generations(
             user=user,
             workspace_id=workspace_id,
             status=status,
@@ -117,7 +119,7 @@ async def list_jobs(
         )
 
         return JobListResponse(
-            jobs=[JobResponse.model_validate(job) for job in jobs],
+            jobs=[JobResponse.model_validate(gen) for gen in generations],
             total=total,
             limit=limit,
             offset=offset
@@ -142,8 +144,8 @@ async def get_job(
     Users can only access their own jobs.
     """
     try:
-        job = await job_service.get_job_for_user(job_id, user)
-        return JobResponse.model_validate(job)
+        generation = await job_service.get_generation_for_user(job_id, user)
+        return JobResponse.model_validate(generation)
 
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -168,7 +170,7 @@ async def cancel_job(
     Users can only cancel their own jobs.
     """
     try:
-        await job_service.cancel_job(job_id, user)
+        await job_service.cancel_generation(job_id, user)
         return None
 
     except ResourceNotFoundError:
@@ -253,17 +255,17 @@ async def job_events_websocket(websocket: WebSocket, token: str | None = Query(N
             if event_user_id and event_user_id != user.id:
                 return  # Not this user's job
 
-            # If no user_id in event, we need to query the job
+            # If no user_id in event, we need to query the generation
             if not event_user_id:
                 async for db in get_database():
-                    from pixsim7_backend.domain.job import Job
+                    from pixsim7_backend.domain.generation import Generation
                     from sqlalchemy import select
 
-                    result = await db.execute(select(Job).where(Job.id == job_id))
-                    job = result.scalar_one_or_none()
+                    result = await db.execute(select(Generation).where(Generation.id == job_id))
+                    generation = result.scalar_one_or_none()
 
-                    if not job or job.user_id != user.id:
-                        return  # Not this user's job
+                    if not generation or generation.user_id != user.id:
+                        return  # Not this user's generation
                     break
 
             # Queue the event for sending

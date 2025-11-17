@@ -25,11 +25,16 @@ from .enums import (
 from .user import User, UserSession, UserQuotaUsage, UserRole
 from .workspace import Workspace
 from .asset import Asset, AssetVariant
-from .job import Job
+from .generation import Generation
 from .provider_submission import ProviderSubmission
-from .generation_artifact import GenerationArtifact
 from .account import ProviderAccount
 from .provider_credit import ProviderCredit
+
+# Backward compatibility aliases (will be removed in future)
+# from .job import Job  # Removed - use Generation instead
+# from .generation_artifact import GenerationArtifact  # Removed - use Generation instead
+Job = Generation  # Backward compatibility alias
+GenerationArtifact = Generation  # Backward compatibility alias
 
 # Asset metadata tables
 from .asset_metadata import (
@@ -73,11 +78,13 @@ __all__ = [
     "Workspace",
     "Asset",
     "AssetVariant",
-    "Job",
+    "Generation",
     "ProviderSubmission",
-    "GenerationArtifact",
     "ProviderAccount",
     "ProviderCredit",
+    # Backward compatibility (deprecated)
+    "Job",  # Alias for Generation
+    "GenerationArtifact",  # Alias for Generation
     # Asset metadata
     "Asset3DMetadata",
     "AssetAudioMetadata",
