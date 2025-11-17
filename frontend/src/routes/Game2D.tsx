@@ -38,6 +38,7 @@ import {
   deriveScenePlaybackPhase,
 } from '../lib/game/interactionSchema';
 import { loadWorldSession, saveWorldSession } from '../lib/game/session';
+import { executeInteraction, type InteractionContext } from '../lib/game/interactions';
 
 interface WorldTime {
   day: number;
@@ -414,80 +415,97 @@ export function Game2D() {
     if (!assignment.npcId) return;
 
     const slot = assignment.slot;
-    const interactions = slot.interactions;
+    const interactions = slot.interactions || {};
 
-    // Handle Talk interaction
-    if (interactions?.canTalk) {
-      const npcId = interactions.npcTalk?.npcId || assignment.npcId;
-      const sceneId = interactions.npcTalk?.preferredSceneId;
-
-      if (sceneId) {
-        // Play the preferred scene
+    // Build context once - everything a plugin needs
+    const context: InteractionContext = {
+      state: {
+        assignment,
+        gameSession,
+        sessionFlags: gameSession?.flags || {},
+        relationships: gameSession?.relationships || {},
+        worldId: selectedWorldId,
+        worldTime,
+        locationId: selectedLocationId!,
+        locationNpcs,
+      },
+      api: {
+        getSession: (id) => getGameSession(id),
+        updateSession: (id, updates) => updateGameSession(id, updates),
+        attemptPickpocket: (req) => attemptPickpocket(req),
+        getScene: (id) => getGameScene(id),
+      },
+      onSceneOpen: async (sceneId, npcId) => {
         setIsLoadingScene(true);
-        setError(null);
         try {
           if (!gameSession) {
-            const created = await createGameSession(Number(sceneId));
+            const created = await createGameSession(sceneId);
             setGameSession(created);
             const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
-            saveWorldSession({ worldTimeSeconds, gameSessionId: created.id });
+            saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
             updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
           }
-
-          const scene = await getGameScene(Number(sceneId));
+          const scene = await getGameScene(sceneId);
           setCurrentScene(scene);
           setIsSceneOpen(true);
           setScenePhase('playing');
           setActiveNpcId(npcId);
-        } catch (e: any) {
-          setError(String(e?.message ?? e));
         } finally {
           setIsLoadingScene(false);
         }
-      } else {
-        console.info('NPC talk triggered but no scene ID configured', { npcId });
-      }
-      return;
+      },
+      onSessionUpdate: (session) => setGameSession(session),
+      onError: (msg) => setError(msg),
+      onSuccess: (msg) => alert(msg),
+    };
+
+    // Handle old format (backward compatibility)
+    const normalizedInteractions: Record<string, any> = {};
+
+    if ((interactions as any).canTalk) {
+      normalizedInteractions.talk = {
+        enabled: true,
+        ...(interactions as any).npcTalk,
+      };
+    } else if ((interactions as any).talk) {
+      normalizedInteractions.talk = (interactions as any).talk;
     }
 
-    // Handle Pickpocket interaction
-    if (interactions?.canPickpocket && interactions.pickpocket) {
-      if (!gameSession) {
-        setError('No game session active. Please start a scene first.');
-        return;
+    if ((interactions as any).canPickpocket) {
+      normalizedInteractions.pickpocket = {
+        enabled: true,
+        ...(interactions as any).pickpocket,
+      };
+    } else if ((interactions as any).pickpocket) {
+      normalizedInteractions.pickpocket = (interactions as any).pickpocket;
+    }
+
+    // Copy over any other plugin-based interactions
+    for (const [key, value] of Object.entries(interactions)) {
+      if (key !== 'canTalk' && key !== 'npcTalk' && key !== 'canPickpocket' && key !== 'pickpocket') {
+        normalizedInteractions[key] = value;
       }
+    }
 
-      setIsLoadingScene(true);
-      setError(null);
+    // Execute all enabled interactions
+    let hasInteraction = false;
+    for (const [interactionId, config] of Object.entries(normalizedInteractions)) {
+      if (!config || !config.enabled) continue;
+
+      hasInteraction = true;
       try {
-        const result = await attemptPickpocket({
-          npc_id: assignment.npcId,
-          slot_id: slot.id,
-          base_success_chance: interactions.pickpocket.baseSuccessChance,
-          detection_chance: interactions.pickpocket.detectionChance,
-          world_id: selectedWorldId,
-          session_id: gameSession.id,
-        });
-
-        // Show result to user
-        const resultMessage = `${result.message}`;
-        alert(resultMessage); // Simple alert for now, can be replaced with a modal
-
-        // Optionally update session if needed
-        const updatedSession = await getGameSession(gameSession.id);
-        setGameSession(updatedSession);
-
-        console.info('Pickpocket result:', result);
+        const result = await executeInteraction(interactionId, config, context);
+        if (result.success && result.message) {
+          console.info(`Interaction ${interactionId} succeeded:`, result.message);
+        }
       } catch (e: any) {
         setError(String(e?.message ?? e));
-      } finally {
-        setIsLoadingScene(false);
       }
-      return;
     }
 
-    // Default: just log
-    console.info('NPC slot clicked but no interactions configured', assignment);
+    if (!hasInteraction) {
+      console.info('NPC slot clicked but no interactions configured', assignment);
+    }
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
@@ -737,8 +755,14 @@ export function Game2D() {
                   {npcSlotAssignments.map((assignment) => {
                     const slot = assignment.slot;
                     const hasNpc = assignment.npcId !== null;
+                    // Check for both old and new format interactions
+                    const interactions = slot.interactions || {};
                     const hasInteractions =
-                      slot.interactions?.canTalk || slot.interactions?.canPickpocket;
+                      (interactions as any).canTalk ||
+                      (interactions as any).canPickpocket ||
+                      (interactions as any).talk?.enabled ||
+                      (interactions as any).pickpocket?.enabled ||
+                      Object.values(interactions).some((config: any) => config?.enabled);
 
                     return (
                       <button

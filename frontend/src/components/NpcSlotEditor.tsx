@@ -3,6 +3,8 @@ import { Button, Panel, Input, Badge } from '@pixsim7/ui';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
 import type { GameLocationDetail, NpcSlot2d } from '../lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
+import { interactionRegistry } from '../lib/game/interactions';
+import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -331,186 +333,87 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
               <div className="border-t pt-3 dark:border-neutral-700">
                 <h4 className="text-xs font-semibold mb-2">Interactions</h4>
 
-                {/* Talk Interaction */}
-                <div className="space-y-2 mb-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedSlot.interactions?.canTalk || false}
-                      onChange={(e) =>
-                        updateSlot(selectedSlot.id, {
-                          interactions: {
-                            ...(selectedSlot.interactions || {}),
-                            canTalk: e.target.checked,
-                            npcTalk: e.target.checked ? (selectedSlot.interactions?.npcTalk || {}) : undefined,
-                          },
-                        })
-                      }
-                      className="rounded"
-                    />
-                    <span className="text-xs font-medium">Enable Talk</span>
-                  </label>
+                {interactionRegistry.getAll().map((plugin) => {
+                  // Support both old and new format
+                  const interactions = selectedSlot.interactions || {};
+                  let config: any;
 
-                  {selectedSlot.interactions?.canTalk && (
-                    <div className="ml-6 space-y-2">
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">NPC ID Override</label>
-                        <Input
-                          type="number"
-                          value={selectedSlot.interactions.npcTalk?.npcId || ''}
-                          onChange={(e: any) =>
+                  // Migration: Convert old format to new format
+                  if (plugin.id === 'talk') {
+                    if ((interactions as any).canTalk) {
+                      // Old format
+                      config = {
+                        enabled: true,
+                        ...(interactions as any).npcTalk,
+                      };
+                    } else if ((interactions as any).talk) {
+                      // New format
+                      config = (interactions as any).talk;
+                    } else {
+                      config = null;
+                    }
+                  } else if (plugin.id === 'pickpocket') {
+                    if ((interactions as any).canPickpocket) {
+                      // Old format
+                      config = {
+                        enabled: true,
+                        ...(interactions as any).pickpocket,
+                      };
+                    } else if ((interactions as any).pickpocket) {
+                      // New format
+                      config = (interactions as any).pickpocket;
+                    } else {
+                      config = null;
+                    }
+                  } else {
+                    config = (interactions as any)[plugin.id] || null;
+                  }
+
+                  const enabled = config?.enabled ?? false;
+
+                  return (
+                    <div key={plugin.id} className="mb-3">
+                      <label className="flex items-center gap-2 mb-2">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(e) => {
+                            const newConfig = e.target.checked
+                              ? { ...plugin.defaultConfig, enabled: true }
+                              : { enabled: false };
+
                             updateSlot(selectedSlot.id, {
                               interactions: {
                                 ...selectedSlot.interactions,
-                                npcTalk: {
-                                  ...(selectedSlot.interactions?.npcTalk || {}),
-                                  npcId: e.target.value ? Number(e.target.value) : null,
-                                },
+                                [plugin.id]: newConfig,
                               },
-                            })
-                          }
-                          placeholder="Use assigned NPC"
+                            });
+                          }}
+                          className="rounded"
                         />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">Preferred Scene ID</label>
-                        <Input
-                          type="number"
-                          value={selectedSlot.interactions.npcTalk?.preferredSceneId || ''}
-                          onChange={(e: any) =>
+                        <span className="text-xs font-medium">
+                          {plugin.icon && `${plugin.icon} `}
+                          {plugin.name}
+                        </span>
+                      </label>
+
+                      {enabled && (
+                        <InteractionConfigForm
+                          plugin={plugin}
+                          config={config}
+                          onConfigChange={(newConfig) =>
                             updateSlot(selectedSlot.id, {
                               interactions: {
                                 ...selectedSlot.interactions,
-                                npcTalk: {
-                                  ...(selectedSlot.interactions?.npcTalk || {}),
-                                  preferredSceneId: e.target.value ? Number(e.target.value) : null,
-                                },
+                                [plugin.id]: newConfig,
                               },
                             })
                           }
-                          placeholder="Scene ID for conversation"
                         />
-                      </div>
+                      )}
                     </div>
-                  )}
-                </div>
-
-                {/* Pickpocket Interaction */}
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedSlot.interactions?.canPickpocket || false}
-                      onChange={(e) =>
-                        updateSlot(selectedSlot.id, {
-                          interactions: {
-                            ...(selectedSlot.interactions || {}),
-                            canPickpocket: e.target.checked,
-                            pickpocket: e.target.checked
-                              ? (selectedSlot.interactions?.pickpocket || {
-                                  baseSuccessChance: 0.4,
-                                  detectionChance: 0.3,
-                                  onSuccessFlags: [],
-                                  onFailFlags: [],
-                                })
-                              : undefined,
-                          },
-                        })
-                      }
-                      className="rounded"
-                    />
-                    <span className="text-xs font-medium">Enable Pickpocket</span>
-                  </label>
-
-                  {selectedSlot.interactions?.canPickpocket && selectedSlot.interactions.pickpocket && (
-                    <div className="ml-6 space-y-2">
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">Success Chance (0-1)</label>
-                        <Input
-                          type="number"
-                          value={selectedSlot.interactions.pickpocket.baseSuccessChance}
-                          onChange={(e: any) =>
-                            updateSlot(selectedSlot.id, {
-                              interactions: {
-                                ...selectedSlot.interactions,
-                                pickpocket: {
-                                  ...selectedSlot.interactions!.pickpocket!,
-                                  baseSuccessChance: Math.max(0, Math.min(1, Number(e.target.value))),
-                                },
-                              },
-                            })
-                          }
-                          step="0.1"
-                          min="0"
-                          max="1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">Detection Chance (0-1)</label>
-                        <Input
-                          type="number"
-                          value={selectedSlot.interactions.pickpocket.detectionChance}
-                          onChange={(e: any) =>
-                            updateSlot(selectedSlot.id, {
-                              interactions: {
-                                ...selectedSlot.interactions,
-                                pickpocket: {
-                                  ...selectedSlot.interactions!.pickpocket!,
-                                  detectionChance: Math.max(0, Math.min(1, Number(e.target.value))),
-                                },
-                              },
-                            })
-                          }
-                          step="0.1"
-                          min="0"
-                          max="1"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">Success Flags (comma-separated)</label>
-                        <Input
-                          value={selectedSlot.interactions.pickpocket.onSuccessFlags?.join(', ') || ''}
-                          onChange={(e: any) =>
-                            updateSlot(selectedSlot.id, {
-                              interactions: {
-                                ...selectedSlot.interactions,
-                                pickpocket: {
-                                  ...selectedSlot.interactions!.pickpocket!,
-                                  onSuccessFlags: e.target.value
-                                    .split(',')
-                                    .map((f: string) => f.trim())
-                                    .filter(Boolean),
-                                },
-                              },
-                            })
-                          }
-                          placeholder="e.g., stealth:stole_from_npc"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-neutral-500 mb-1">Fail Flags (comma-separated)</label>
-                        <Input
-                          value={selectedSlot.interactions.pickpocket.onFailFlags?.join(', ') || ''}
-                          onChange={(e: any) =>
-                            updateSlot(selectedSlot.id, {
-                              interactions: {
-                                ...selectedSlot.interactions,
-                                pickpocket: {
-                                  ...selectedSlot.interactions!.pickpocket!,
-                                  onFailFlags: e.target.value
-                                    .split(',')
-                                    .map((f: string) => f.trim())
-                                    .filter(Boolean),
-                                },
-                              },
-                            })
-                          }
-                          placeholder="e.g., stealth:caught_by_npc"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
 
               <div className="flex justify-end">
