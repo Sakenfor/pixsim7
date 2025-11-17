@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { type AppActionPreset } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
-import { Button, Panel, ConfirmModal } from '@pixsim7/ui';
+import { accountService } from '../../lib/api/accountService';
+import { Button, Panel, ConfirmModal, Modal, Select } from '@pixsim7/ui';
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';
 import { useToast } from '../../stores/toastStore';
@@ -17,6 +18,11 @@ export function PresetList() {
   const [selectedPreset, setSelectedPreset] = useState<AppActionPreset | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [selectedPresetToRun, setSelectedPresetToRun] = useState<AppActionPreset | null>(null);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [executing, setExecuting] = useState(false);
   const toast = useToast();
   const { confirm, isOpen: confirmOpen, options: confirmOptions, handleConfirm, handleCancel } = useConfirmModal();
 
@@ -36,7 +42,17 @@ export function PresetList() {
 
   useEffect(() => {
     loadPresets();
+    loadAccounts();
   }, []);
+
+  const loadAccounts = async () => {
+    try {
+      const data = await accountService.getAccounts();
+      setAccounts(data.filter((acc: any) => acc.provider_id === 'pixverse'));
+    } catch (err) {
+      console.error('Error loading accounts:', err);
+    }
+  };
 
   const handleCreate = async (data: Partial<AppActionPreset>) => {
     try {
@@ -82,7 +98,29 @@ export function PresetList() {
   };
 
   const handleRun = (preset: AppActionPreset) => {
-    toast.info(`Run preset functionality coming soon!\n\nPreset: ${preset.name}`);
+    setSelectedPresetToRun(preset);
+    setSelectedAccountId(null);
+    setShowAccountModal(true);
+  };
+
+  const handleExecutePreset = async () => {
+    if (!selectedPresetToRun || !selectedAccountId) {
+      toast.error('Please select an account');
+      return;
+    }
+
+    try {
+      setExecuting(true);
+      const result = await automationService.executePreset(selectedPresetToRun.id, selectedAccountId);
+      toast.success(`Preset queued for execution!\n\nExecution ID: ${result.execution_id}`);
+      setShowAccountModal(false);
+      setSelectedPresetToRun(null);
+      setSelectedAccountId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to execute preset');
+    } finally {
+      setExecuting(false);
+    }
   };
 
   // Get unique categories
@@ -284,6 +322,57 @@ export function PresetList() {
         onCancel={handleCancel}
         {...confirmOptions}
       />
+
+      {/* Account Selection Modal */}
+      <Modal
+        isOpen={showAccountModal}
+        onClose={() => {
+          setShowAccountModal(false);
+          setSelectedPresetToRun(null);
+          setSelectedAccountId(null);
+        }}
+        title={`Execute Preset: ${selectedPresetToRun?.name || ''}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Select an account to run this preset with:
+          </p>
+
+          <Select
+            value={selectedAccountId?.toString() || ''}
+            onChange={(e) => setSelectedAccountId(e.target.value ? Number(e.target.value) : null)}
+            options={[
+              { value: '', label: 'Select an account...' },
+              ...accounts.map((acc) => ({
+                value: acc.id.toString(),
+                label: `${acc.email} (${acc.provider_id})`,
+              })),
+            ]}
+          />
+
+          <div className="flex gap-2 pt-4">
+            <Button
+              variant="primary"
+              onClick={handleExecutePreset}
+              disabled={!selectedAccountId || executing}
+              className="flex-1"
+            >
+              {executing ? 'Executing...' : 'Execute'}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowAccountModal(false);
+                setSelectedPresetToRun(null);
+                setSelectedAccountId(null);
+              }}
+              disabled={executing}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

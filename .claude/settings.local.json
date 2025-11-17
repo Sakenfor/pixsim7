@@ -92,7 +92,11 @@
       "Bash(git show:*)",
       "Bash(git init:*)",
       "Bash(git diff:*)",
-      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe show:*)"
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe show:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb kill-server:*)",
+      "Bash(adb start-server:*)",
+      "Bash(adb:*)"
     ],
     "deny": [],
     "ask": []

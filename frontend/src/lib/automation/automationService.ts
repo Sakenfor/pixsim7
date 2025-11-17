@@ -46,6 +46,15 @@ class AutomationService {
     await apiClient.delete(`/automation/presets/${id}`);
   }
 
+  async executePreset(presetId: number, accountId: number, priority: number = 1): Promise<{ status: string; execution_id: number; task_id: string }> {
+    const response = await apiClient.post('/automation/execute-preset', {
+      preset_id: presetId,
+      account_id: accountId,
+      priority,
+    });
+    return response.data;
+  }
+
   // ===== Execution Management =====
 
   async getExecutions(limit: number = 100, status?: string): Promise<AutomationExecution[]> {

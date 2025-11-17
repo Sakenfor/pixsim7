@@ -194,17 +194,18 @@ class ProviderAccount(SQLModel, table=True):
 
     def has_sufficient_credits(self, min_amount: int) -> bool:
         """
-        Check if account has sufficient credits (any type)
+        Check if account has sufficient total credits
 
         Args:
             min_amount: Minimum credits required (provider-specific)
 
         Returns:
-            True if any credit type has >= min_amount
+            True if total credits (sum of all types) >= min_amount
         """
         if not self.credits:
             return False
-        return any(c.amount >= min_amount for c in self.credits)
+        # Use total sum of all credit types
+        return self.get_total_credits() >= min_amount
 
     def has_any_credits(self) -> bool:
         """

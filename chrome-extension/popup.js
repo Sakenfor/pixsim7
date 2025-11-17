@@ -31,6 +31,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if logged in
   await checkLogin();
 
+  // Sync all credits on popup open (only if logged in)
+  if (currentUser) {
+    console.log('[Popup] Syncing credits on popup open...');
+    try {
+      const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+      if (syncResult.success) {
+        console.log(`[Popup] Synced ${syncResult.synced}/${syncResult.total} accounts`);
+      }
+    } catch (err) {
+      console.warn('[Popup] Credit sync failed:', err);
+    }
+  }
+
   // Detect provider from current tab
   await detectProviderFromTab();
 

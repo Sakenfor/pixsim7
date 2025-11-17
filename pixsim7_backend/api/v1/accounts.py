@@ -179,11 +179,18 @@ async def sync_all_account_credits(
             if credits_data and isinstance(credits_data, dict):
                 updated_credits = {}
                 for credit_type, amount in credits_data.items():
+                    # Skip computed fields like total_credits
+                    if credit_type in ('total_credits', 'total'):
+                        continue
+
+                    # Strip credit_ prefix if present (credit_daily -> daily)
+                    clean_type = credit_type.replace('credit_', '') if credit_type.startswith('credit_') else credit_type
+
                     try:
-                        await account_service.set_credit(account.id, credit_type, amount)
-                        updated_credits[credit_type] = amount
+                        await account_service.set_credit(account.id, clean_type, amount)
+                        updated_credits[clean_type] = amount
                     except Exception as e:
-                        logger.warning(f"Failed to update {credit_type} for {account.email}: {e}")
+                        logger.warning(f"Failed to update {clean_type} for {account.email}: {e}")
 
                 await db.commit()
                 await db.refresh(account)

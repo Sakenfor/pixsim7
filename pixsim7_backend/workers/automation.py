@@ -45,8 +45,13 @@ async def process_automation(execution_id: int) -> dict:
             execution.started_at = datetime.utcnow()
             await db.commit()
 
-            # Fetch preset and device
+            # Fetch preset, account, and device
             preset = await db.get(AppActionPreset, execution.preset_id)
+
+            # Fetch account for credential injection
+            from pixsim7_backend.domain import ProviderAccount
+            account = await db.get(ProviderAccount, execution.account_id) if execution.account_id else None
+
             device = await db.get(AndroidDevice, execution.device_id) if execution.device_id else None
             if not device:
                 # Pick any device by adb_id from first ONLINE one (optional enhancement: proper selection in loop)
@@ -68,9 +73,29 @@ async def process_automation(execution_id: int) -> dict:
                 device.status = DeviceStatus.BUSY
                 await db.commit()
 
-                # Build execution context
+                # Build execution context with auto-injected account credentials
                 screenshots_dir = Path(settings.storage_base_path) / settings.automation_screenshots_dir / f"exec-{execution.id}"
-                ctx = ExecutionContext(serial=device.adb_id, variables=execution.execution_context or {}, screenshots_dir=screenshots_dir)
+
+                # Start with existing context or empty dict
+                variables = dict(execution.execution_context or {})
+
+                # Auto-inject account credentials if account exists
+                if account:
+                    variables.update({
+                        "email": account.email,
+                        "password": account.password or "",
+                        "provider_id": account.provider_id,
+                        "account_id": str(account.id),
+                    })
+                    logger.info(
+                        "credentials_injected",
+                        execution_id=execution_id,
+                        account_id=account.id,
+                        email=account.email,
+                        has_password=bool(account.password)
+                    )
+
+                ctx = ExecutionContext(serial=device.adb_id, variables=variables, screenshots_dir=screenshots_dir)
 
                 # Execute actions
                 executor = ActionExecutor()
