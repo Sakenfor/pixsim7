@@ -52,7 +52,8 @@ class AssetService:
     async def create_from_submission(
         self,
         submission: ProviderSubmission,
-        job: Job
+        generation = None,  # Generation object (or job for backward compatibility)
+        job = None  # Deprecated: use generation parameter instead
     ) -> Asset:
         """
         Create asset from provider submission
@@ -61,7 +62,8 @@ class AssetService:
 
         Args:
             submission: Provider submission with video data
-            job: Job that created this asset
+            generation: Generation that created this asset (preferred)
+            job: DEPRECATED - use generation parameter instead
 
         Returns:
             Created asset
@@ -69,6 +71,11 @@ class AssetService:
         Raises:
             InvalidOperationError: Submission not successful
         """
+        # Backward compatibility: accept either generation or job parameter
+        if generation is None and job is not None:
+            generation = job
+        elif generation is None:
+            raise InvalidOperationError("Either generation or job parameter must be provided")
         # Validate submission is successful
         if submission.status != "success":
             raise InvalidOperationError(
@@ -97,7 +104,7 @@ class AssetService:
             select(Asset).where(
                 Asset.provider_id == submission.provider_id,
                 Asset.provider_asset_id == provider_video_id,
-                Asset.user_id == job.user_id,
+                Asset.user_id == generation.user_id,
             )
         )
         existing = result.scalar_one_or_none()
@@ -127,8 +134,8 @@ class AssetService:
             if not existing.provider_account_id and submission.account_id:
                 existing.provider_account_id = submission.account_id
                 updated = True
-            if not existing.source_job_id:
-                existing.source_job_id = job.id
+            if not existing.source_generation_id:
+                existing.source_generation_id = generation.id
                 updated = True
             if metadata and not existing.media_metadata:
                 existing.media_metadata = metadata
@@ -141,7 +148,7 @@ class AssetService:
 
         # Create asset
         asset = Asset(
-            user_id=job.user_id,
+            user_id=generation.user_id,
             media_type=MediaType.VIDEO,  # TODO: Support images
             provider_id=submission.provider_id,
             provider_asset_id=provider_video_id,
@@ -152,7 +159,7 @@ class AssetService:
             height=height,
             duration_sec=duration_sec,
             sync_status=SyncStatus.REMOTE,
-            source_job_id=job.id,
+            source_generation_id=generation.id,
             provider_uploads={submission.provider_id: provider_video_id},
             media_metadata=metadata or None,
             created_at=datetime.utcnow(),
@@ -165,8 +172,9 @@ class AssetService:
         # Emit event
         await event_bus.publish(ASSET_CREATED, {
             "asset_id": asset.id,
-            "user_id": job.user_id,
-            "job_id": job.id,
+            "user_id": generation.user_id,
+            "generation_id": generation.id,
+            "job_id": generation.id,  # Backward compatibility
             "provider_id": submission.provider_id,
         })
 

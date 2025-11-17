@@ -1,18 +1,18 @@
 """
-Status poller worker - checks job status on providers
+Status poller worker - checks generation status on providers
 
 Runs periodically to:
-1. Find jobs in PROCESSING state
+1. Find generations in PROCESSING state
 2. Check status with provider
 3. Create assets when completed
-4. Update job status
+4. Update generation status
 """
 from pixsim_logging import configure_logging
 from datetime import datetime, timedelta
 from sqlalchemy import select
-from pixsim7_backend.domain import Job, ProviderSubmission, ProviderAccount
+from pixsim7_backend.domain import Generation, ProviderSubmission, ProviderAccount
 from pixsim7_backend.domain.enums import JobStatus, VideoStatus
-from pixsim7_backend.services.job import JobService
+from pixsim7_backend.services.generation import GenerationService
 from pixsim7_backend.services.provider import ProviderService
 from pixsim7_backend.services.asset import AssetService
 from pixsim7_backend.services.user import UserService
@@ -24,15 +24,15 @@ logger = configure_logging("worker")
 
 async def poll_job_statuses() -> dict:
     """
-    Poll status of all processing jobs
+    Poll status of all processing generations
 
     This runs periodically (e.g., every 10 seconds) to check
-    job status with providers and update accordingly.
+    generation status with providers and update accordingly.
 
     Returns:
         dict with poll statistics
     """
-    logger.info("poll_start", msg="Polling job statuses")
+    logger.info("poll_start", msg="Polling generation statuses")
 
     checked = 0
     completed = 0
@@ -43,63 +43,63 @@ async def poll_job_statuses() -> dict:
         try:
             # Initialize services
             user_service = UserService(db)
-            job_service = JobService(db, user_service)
+            generation_service = GenerationService(db, user_service)
             provider_service = ProviderService(db)
             asset_service = AssetService(db, user_service)
 
-            # Get all PROCESSING jobs
+            # Get all PROCESSING generations
             result = await db.execute(
-                select(Job)
-                .where(Job.status == JobStatus.PROCESSING)
-                .order_by(Job.started_at)
+                select(Generation)
+                .where(Generation.status == JobStatus.PROCESSING)
+                .order_by(Generation.started_at)
             )
-            processing_jobs = list(result.scalars().all())
+            processing_generations = list(result.scalars().all())
 
-            logger.info("poll_found_jobs", count=len(processing_jobs))
+            logger.info("poll_found_generations", count=len(processing_generations))
 
-            # Check for timed-out jobs (processing > 2 hours)
+            # Check for timed-out generations (processing > 2 hours)
             from datetime import timedelta
             TIMEOUT_HOURS = 2
             timeout_threshold = datetime.utcnow() - timedelta(hours=TIMEOUT_HOURS)
-            
-            for job in processing_jobs:
+
+            for generation in processing_generations:
                 # Check timeout first
-                if job.started_at and job.started_at < timeout_threshold:
-                    logger.warning("job_timeout", job_id=job.id, started_at=str(job.started_at))
-                    
+                if generation.started_at and generation.started_at < timeout_threshold:
+                    logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
+
                     # Get submission and account to decrement counter
                     submission_result = await db.execute(
                         select(ProviderSubmission)
-                        .where(ProviderSubmission.job_id == job.id)
-                        .order_by(ProviderSubmission.created_at.desc())
+                        .where(ProviderSubmission.generation_id == generation.id)
+                        .order_by(ProviderSubmission.submitted_at.desc())
                     )
                     submission = submission_result.scalar_one_or_none()
-                    
+
                     if submission and submission.account_id:
                         account = await db.get(ProviderAccount, submission.account_id)
                         if account and account.current_processing_jobs > 0:
                             account.current_processing_jobs -= 1
-                    
-                    await job_service.mark_failed(job.id, f"Job timed out after {TIMEOUT_HOURS} hours")
+
+                    await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
                     failed += 1
                     continue
 
-            for job in processing_jobs:
+            for generation in processing_generations:
                 checked += 1
 
                 try:
-                    # Get submission for this job
+                    # Get submission for this generation
                     submission_result = await db.execute(
                         select(ProviderSubmission)
-                        .where(ProviderSubmission.job_id == job.id)
-                        .order_by(ProviderSubmission.created_at.desc())
+                        .where(ProviderSubmission.generation_id == generation.id)
+                        .order_by(ProviderSubmission.submitted_at.desc())
                     )
                     submission = submission_result.scalar_one_or_none()
 
                     if not submission:
-                        logger.warning("no_submission", job_id=job.id)
-                        await job_service.mark_failed(
-                            job.id,
+                        logger.warning("no_submission", generation_id=generation.id)
+                        await generation_service.mark_failed(
+                            generation.id,
                             "No provider submission found"
                         )
                         failed += 1
@@ -109,7 +109,7 @@ async def poll_job_statuses() -> dict:
                     account = await db.get(ProviderAccount, submission.account_id)
                     if not account:
                         logger.error("account_not_found", account_id=submission.account_id)
-                        await job_service.mark_failed(job.id, "Account not found")
+                        await generation_service.mark_failed(generation.id, "Account not found")
                         failed += 1
                         continue
 
@@ -120,54 +120,54 @@ async def poll_job_statuses() -> dict:
                             account=account
                         )
 
-                        logger.debug("job_status", job_id=job.id, status=str(status_result.status), progress=status_result.progress)
+                        logger.debug("generation_status", generation_id=generation.id, status=str(status_result.status), progress=status_result.progress)
 
                         # Handle status
                         if status_result.status == VideoStatus.COMPLETED:
                             # Create asset from submission
                             asset = await asset_service.create_from_submission(
                                 submission=submission,
-                                job=job
+                                generation=generation  # Changed from job=job
                             )
-                            logger.info("job_completed", job_id=job.id, asset_id=asset.id)
+                            logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
 
-                            # Mark job as completed
-                            await job_service.mark_completed(job.id, asset.id)
-                            
+                            # Mark generation as completed
+                            await generation_service.mark_completed(generation.id, asset.id)
+
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
-                            
+
                             completed += 1
 
                         elif status_result.status == VideoStatus.FAILED:
-                            logger.warning("job_failed_provider", job_id=job.id, error=status_result.error_message)
-                            await job_service.mark_failed(
-                                job.id,
+                            logger.warning("generation_failed_provider", generation_id=generation.id, error=status_result.error_message)
+                            await generation_service.mark_failed(
+                                generation.id,
                                 status_result.error_message or "Provider reported failure"
                             )
-                            
+
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
-                            
+
                             failed += 1
 
                         elif status_result.status == VideoStatus.PROCESSING:
                             still_processing += 1
 
                         else:
-                            logger.debug("job_pending", job_id=job.id)
+                            logger.debug("generation_pending", generation_id=generation.id)
                             still_processing += 1
 
                     except ProviderError as e:
-                        logger.error("provider_check_error", job_id=job.id, error=str(e))
-                        # Don't fail the job yet - might be temporary
+                        logger.error("provider_check_error", generation_id=generation.id, error=str(e))
+                        # Don't fail the generation yet - might be temporary
                         # Let it retry on next poll
 
                 except Exception as e:
-                    logger.error("poll_job_error", job_id=job.id, error=str(e), exc_info=True)
-                    # Continue with next job
+                    logger.error("poll_generation_error", generation_id=generation.id, error=str(e), exc_info=True)
+                    # Continue with next generation
 
             # Commit all changes
             await db.commit()
