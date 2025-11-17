@@ -53,23 +53,38 @@ class UploadService:
         """
         Upload file to specified provider. No cross-provider auto-selection.
 
-        Pixverse-specific behavior: prefer OpenAPI if account has api_key/api_key_paid; else use web-api.
+        Pixverse-specific behavior: prefer OpenAPI if account has an 'openapi'
+        key in api_keys; else use web-api.
         """
         # Prepare file for provider (may downscale/compress)
         prepared_path, meta, prep_note = await self._prepare_file_for_provider(provider_id, media_type, tmp_path)
 
         # Select account for this provider (shared accounts)
-        # Pixverse: prefer any account with OpenAPI key (api_key_paid) by default
+        # Pixverse: prefer any account with an OpenAPI key (api_keys.kind=='openapi')
         account: ProviderAccount
         if provider_id == "pixverse":
+            # Coarse filter: any account with non-null api_keys JSON;
+            # finer filtering by key kind is done in Python below.
             result = await self.db.execute(
                 select(ProviderAccount).where(
                     ProviderAccount.provider_id == "pixverse",
                     ProviderAccount.status == AccountStatus.ACTIVE,
-                    ProviderAccount.api_key_paid.is_not(None)
-                ).limit(1)
+                    ProviderAccount.api_keys.is_not(None)
+                )
             )
-            preferred = result.scalar_one_or_none()
+            candidates = list(result.scalars().all())
+            preferred = None
+            for acc in candidates:
+                api_keys = getattr(acc, "api_keys", None) or []
+                if any(
+                    isinstance(entry, dict)
+                    and entry.get("kind") == "openapi"
+                    and entry.get("value")
+                    for entry in api_keys
+                ):
+                    preferred = acc
+                    break
+
             if preferred is not None:
                 account = preferred
                 selection_source = "preferred_openapi"
@@ -84,7 +99,12 @@ class UploadService:
                 email=account.email,
                 selection_source=selection_source,
                 has_api_key=bool(account.api_key),
-                has_api_key_paid=bool(account.api_key_paid),
+                has_openapi_key=any(
+                    isinstance(entry, dict)
+                    and entry.get("kind") == "openapi"
+                    and entry.get("value")
+                    for entry in (getattr(account, "api_keys", None) or [])
+                ),
             )
         else:
             account = await self.accounts.select_account(provider_id)
@@ -99,7 +119,17 @@ class UploadService:
                 provider_id=provider_id,
                 media_type=media_type,
                 external_url=uploaded,
-                note=(prep_note or None) or ("Uploaded via OpenAPI" if provider_id == "pixverse" and bool(account.api_key_paid) else None),
+                note=(prep_note or None) or (
+                    "Uploaded via OpenAPI"
+                    if provider_id == "pixverse"
+                    and any(
+                        isinstance(entry, dict)
+                        and entry.get("kind") == "openapi"
+                        and entry.get("value")
+                        for entry in (getattr(account, "api_keys", None) or [])
+                    )
+                    else None
+                ),
                 width=meta.get('width'),
                 height=meta.get('height'),
                 mime_type=meta.get('mime_type'),

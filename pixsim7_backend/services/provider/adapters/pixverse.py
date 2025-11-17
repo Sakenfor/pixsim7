@@ -99,13 +99,18 @@ class PixverseProvider(Provider):
             Configured PixverseClient
         """
         # Build session from stored credentials
-        # Note: api_key_paid is the OpenAPI key (available to any account, get from dashboard)
-        session = {
+        session: Dict[str, Any] = {
             "jwt_token": account.jwt_token,
             "api_key": account.api_key,
-            "openapi_key": account.api_key_paid,  # OpenAPI key (any tier)
             "cookies": account.cookies or {},
         }
+
+        # Attach OpenAPI key from api_keys (kind="openapi"), if present
+        api_keys = getattr(account, "api_keys", None) or []
+        for entry in api_keys:
+            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
+                session["openapi_key"] = entry["value"]
+                break
 
         # Add use_method if specified
         if use_method:
@@ -598,8 +603,14 @@ class PixverseProvider(Provider):
 
         Note: Falls back to legacy direct API call for older SDK versions.
         """
-        # Choose 'open-api' if any API key present; else default method
-        use_method = 'open-api' if (getattr(account, 'api_key_paid', None) or getattr(account, 'api_key', None)) else None
+        # Choose 'open-api' if any OpenAPI-style key present; else default method
+        has_openapi_key = any(
+            isinstance(entry, dict)
+            and entry.get("kind") == "openapi"
+            and entry.get("value")
+            for entry in (getattr(account, "api_keys", None) or [])
+        )
+        use_method = 'open-api' if (has_openapi_key or getattr(account, 'api_key', None)) else None
         client = self._create_client(account, use_method=use_method)
 
         try:
@@ -659,13 +670,21 @@ class PixverseProvider(Provider):
         """
         Return True if the account has an OpenAPI-style API key available.
         """
-        return bool(account.api_key_paid)
+        return any(
+            isinstance(entry, dict)
+            and entry.get("kind") == "openapi"
+            and entry.get("value")
+            for entry in (getattr(account, "api_keys", None) or [])
+        )
 
     def _get_openapi_key(self, account: ProviderAccount) -> str | None:
         """
         Return the OpenAPI key for this account (any tier can have OpenAPI key).
         """
-        return account.api_key_paid
+        for entry in (getattr(account, "api_keys", None) or []):
+            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
+                return str(entry["value"])
+        return None
 
     def _upload_via_openapi(
         self,
@@ -778,15 +797,14 @@ class PixverseProvider(Provider):
         Args:
             jwt_token: Pixverse JWT token
 
-        Returns:
-            {
-                'email': str,
-                'username': str,
-                'nickname': str,
-                'account_id': str,
-                'raw_data': dict,  # Full getUserInfo response
-                'credits': dict    # Extracted credit info
-            }
+          Returns:
+              {
+                  'email': str,
+                  'username': str,
+                  'nickname': str,
+                  'account_id': str,
+                  'raw_data': dict,  # Full getUserInfo response
+              }
 
         Raises:
             Exception: If API call fails
@@ -825,44 +843,29 @@ class PixverseProvider(Provider):
         if not email:
             raise Exception("Email not found in getUserInfo response (Mail field missing)")
 
-        # Extract credits from getUserInfo response
-        credits = {}
-        fast_quota = user_info_data.get("FastQuota", 0)
-        used_fast = user_info_data.get("UsedFastQuota", 0)
-        bonus_quota = user_info_data.get("FastBonusQuota", 0)
-        used_bonus = user_info_data.get("UsedFastBonusQuota", 0)
-
-        # Calculate available credits
-        available_fast = max(0, fast_quota - used_fast)
-        available_bonus = max(0, bonus_quota - used_bonus)
-
-        if available_fast > 0:
-            credits['webapi'] = available_fast
-        if available_bonus > 0:
-            credits['bonus'] = available_bonus
-
-        return {
-            'email': email,
-            'username': username,
-            'nickname': nickname,
-            'account_id': str(acc_id) if acc_id else None,
-            'raw_data': user_info_data,  # Save entire response
-            'credits': credits if credits else None
-        }
+          return {
+              'email': email,
+              'username': username,
+              'nickname': nickname,
+              'account_id': str(acc_id) if acc_id else None,
+              'raw_data': user_info_data,  # Save entire response
+          }
 
     def get_credits(self, account: ProviderAccount) -> dict:
-        """Fetch current credits using SDK's get_credits() function.
+        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
 
-        Uses pixverse-py library's get_credits endpoint.
+        Web and OpenAPI credits are **separate** budgets and must not be
+        combined. This method returns distinct buckets so the backend can
+        track and spend them independently.
 
-        Args:
-            account: Provider account with credentials
-
-        Returns:
-            {'webapi': int, 'daily': int, 'monthly': int, 'package': int, 'total': int}
+        Returns (for Pixverse only):
+            {
+                "web": int,       # total web/session credits
+                "openapi": int,   # total OpenAPI credits (all types)
+            }
 
         Raises:
-            Exception: If SDK credit function fails
+            Exception: If SDK credit functions fail
         """
         try:
             from pixverse import Account  # type: ignore
@@ -876,34 +879,46 @@ class PixverseProvider(Provider):
         if not Account or not PixverseAPI:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
-        # Create temporary account for API call
+        # Build session including both JWT (web) and OpenAPI key if present.
+        session: Dict[str, Any] = {
+            "jwt_token": account.jwt_token,
+            "cookies": account.cookies or {},
+        }
+        # OpenAPI key from api_keys (kind="openapi"), if configured
+        api_keys = getattr(account, "api_keys", None) or []
+        for entry in api_keys:
+            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
+                session["openapi_key"] = entry["value"]
+                break
+
         temp_account = Account(
             email=account.email,
-            session={"jwt_token": account.jwt_token, "cookies": account.cookies or {}}
+            session=session,
         )
 
         api = PixverseAPI()
-        # Call SDK's get_credits() function
+
+        # 1) Web credits via /creative_platform/user/credits
+        web_total = 0
         try:
-            credit_data = api.get_credits(temp_account)
+            web_data = api.get_credits(temp_account)
+            web_total = int(web_data.get("total_credits") or 0)
         except Exception as e:
-            logger.warning(f"PixverseAPI get_credits failed: {e}")
-            raise
+            logger.warning(f"PixverseAPI get_credits (web) failed: {e}")
 
-        # SDK returns: {'total_credits', 'credit_daily', 'credit_monthly', 'credit_package'}
-        # Map to our credit types
-        credits = {}
-        
-        if credit_data.get("credit_daily", 0) > 0:
-            credits['daily'] = credit_data["credit_daily"]
-        if credit_data.get("credit_monthly", 0) > 0:
-            credits['monthly'] = credit_data["credit_monthly"]
-        if credit_data.get("credit_package", 0) > 0:
-            credits['package'] = credit_data["credit_package"]
-        if credit_data.get("total_credits", 0) > 0:
-            credits['total'] = credit_data["total_credits"]
+        # 2) OpenAPI credits via /openapi/v2/account/credits
+        openapi_total = 0
+        if "openapi_key" in session:
+            try:
+                openapi_data = api.get_openapi_credits(temp_account)
+                openapi_total = int(openapi_data.get("total_credits") or 0)
+            except Exception as e:
+                logger.warning(f"PixverseAPI get_openapi_credits failed: {e}")
 
-        return credits
+        return {
+            "web": max(0, web_total),
+            "openapi": max(0, openapi_total),
+        }
 
     async def extract_account_data(self, raw_data: dict) -> dict:
         """
@@ -937,9 +952,8 @@ class PixverseProvider(Provider):
         email = None
         username = None
         nickname = None
-        account_id = None
-        provider_metadata = None
-        credits_data = None
+          account_id = None
+          provider_metadata = None
 
         try:
             # Call getUserInfo API (synchronous, using pixverse-py library)
@@ -947,9 +961,8 @@ class PixverseProvider(Provider):
             email = user_info['email']
             username = user_info.get('username')
             nickname = user_info.get('nickname')
-            account_id = user_info.get('account_id')
-            provider_metadata = user_info.get('raw_data')
-            credits_data = user_info.get('credits')
+              account_id = user_info.get('account_id')
+              provider_metadata = user_info.get('raw_data')
             logger.debug(
                 f"[Pixverse] getUserInfo success: email={email}, username={username}, credits={credits_data}"
             )
@@ -999,13 +1012,12 @@ class PixverseProvider(Provider):
                 "Pixverse: Could not extract email. Ensure pixverse-py is installed on backend for getUserInfo, or JWT includes 'Mail'/'email'."
             )
 
-        return {
-            'email': email,
-            'jwt_token': ai_token,
-            'cookies': cookies,
-            'username': username,
-            'nickname': nickname,
-            'account_id': account_id,
-            'provider_metadata': provider_metadata,  # Full getUserInfo response
-            'credits': credits_data  # Credits from getUserInfo
-        }
+          return {
+              'email': email,
+              'jwt_token': ai_token,
+              'cookies': cookies,
+              'username': username,
+              'nickname': nickname,
+              'account_id': account_id,
+              'provider_metadata': provider_metadata,  # Full getUserInfo response
+          }

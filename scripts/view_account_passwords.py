@@ -78,7 +78,13 @@ async def main():
                 print(f"   Password: {acc.password or 'N/A'}")
                 print(f"   JWT Token: {'Yes' if acc.jwt_token else 'No'}")
                 print(f"   API Key: {'Yes' if acc.api_key else 'No'}")
-                print(f"   API Key (Paid): {'Yes' if acc.api_key_paid else 'No'}")
+                has_openapi = any(
+                    isinstance(entry, dict)
+                    and entry.get("kind") == "openapi"
+                    and entry.get("value")
+                    for entry in (getattr(acc, "api_keys", None) or [])
+                )
+                print(f"   API Key (Paid/OpenAPI): {'Yes' if has_openapi else 'No'}")
                 print(f"   Cookies: {'Yes' if acc.cookies else 'No'}")
                 print(f"   Videos Generated: {acc.total_videos_generated}")
                 print(f"   Success Rate: {acc.success_rate:.1%}")

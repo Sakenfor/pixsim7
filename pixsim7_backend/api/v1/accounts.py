@@ -40,6 +40,14 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
     if account.credits:  # credits is the relationship to ProviderCredit
         credits_dict = {c.credit_type: c.amount for c in account.credits}
 
+    # Has any OpenAPI-style key?
+    has_openapi_key = False
+    api_keys = getattr(account, "api_keys", None) or []
+    for entry in api_keys:
+        if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
+            has_openapi_key = True
+            break
+
     return AccountResponse(
         id=account.id,
         user_id=account.user_id,
@@ -52,7 +60,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         has_jwt=bool(account.jwt_token),
         jwt_expired=jwt_expired,
         jwt_expires_at=jwt_expires_at,
-        has_api_key_paid=bool(account.api_key_paid),
+        has_api_key_paid=has_openapi_key,
         has_cookies=bool(account.cookies),
         # Credits (normalized)
         credits=credits_dict,
@@ -177,31 +185,62 @@ async def sync_all_account_credits(
 
             # Update credits if available
             if credits_data and isinstance(credits_data, dict):
-                updated_credits = {}
-                for credit_type, amount in credits_data.items():
-                    # Skip computed fields like total_credits
-                    if credit_type in ('total_credits', 'total'):
-                        continue
+                updated_credits: Dict[str, int] = {}
 
-                    # Strip credit_ prefix if present (credit_daily -> daily)
-                    clean_type = credit_type.replace('credit_', '') if credit_type.startswith('credit_') else credit_type
+                if account.provider_id == "pixverse":
+                    # Pixverse has separate web and OpenAPI credit pools.
+                    web_total = credits_data.get("web")
+                    openapi_total = credits_data.get("openapi")
 
-                    try:
-                        await account_service.set_credit(account.id, clean_type, amount)
-                        updated_credits[clean_type] = amount
-                    except Exception as e:
-                        logger.warning(f"Failed to update {clean_type} for {account.email}: {e}")
+                    if web_total is not None:
+                        try:
+                            web_int = int(web_total)
+                        except (TypeError, ValueError):
+                            web_int = 0
+                        await account_service.set_credit(account.id, "web", web_int)
+                        updated_credits["web"] = web_int
 
-                await db.commit()
-                await db.refresh(account)
+                    if openapi_total is not None:
+                        try:
+                            openapi_int = int(openapi_total)
+                        except (TypeError, ValueError):
+                            openapi_int = 0
+                        await account_service.set_credit(account.id, "openapi", openapi_int)
+                        updated_credits["openapi"] = openapi_int
+                else:
+                    for credit_type, amount in credits_data.items():
+                        # Skip computed fields like total_credits / total
+                        if credit_type in ('total_credits', 'total'):
+                            continue
 
-                synced += 1
-                details.append({
-                    "account_id": account.id,
-                    "email": account.email,
-                    "credits": updated_credits,
-                    "success": True
-                })
+                        # Strip credit_ prefix if present (credit_daily -> daily)
+                        clean_type = credit_type.replace('credit_', '') if credit_type.startswith('credit_') else credit_type
+
+                        try:
+                            await account_service.set_credit(account.id, clean_type, amount)
+                            updated_credits[clean_type] = amount
+                        except Exception as e:
+                            logger.warning(f"Failed to update {clean_type} for {account.email}: {e}")
+
+                if updated_credits:
+                    await db.commit()
+                    await db.refresh(account)
+
+                    synced += 1
+                    details.append({
+                        "account_id": account.id,
+                        "email": account.email,
+                        "credits": updated_credits,
+                        "success": True
+                    })
+                else:
+                    failed += 1
+                    details.append({
+                        "account_id": account.id,
+                        "email": account.email,
+                        "success": False,
+                        "error": "No usable credits data available"
+                    })
             else:
                 failed += 1
                 details.append({
@@ -269,14 +308,43 @@ async def sync_account_credits(
             credits_data = extracted.get('credits')
 
         # Update credits if available
-        updated_credits = {}
+        updated_credits: Dict[str, int] = {}
         if credits_data and isinstance(credits_data, dict):
-            for credit_type, amount in credits_data.items():
-                try:
-                    await account_service.set_credit(account.id, credit_type, amount)
-                    updated_credits[credit_type] = amount
-                except Exception as e:
-                    print(f"Failed to update credits {credit_type}: {e}")
+            if account.provider_id == "pixverse":
+                # For Pixverse, persist separate web and OpenAPI credit pools.
+                web_total = credits_data.get("web")
+                openapi_total = credits_data.get("openapi")
+
+                if web_total is not None:
+                    try:
+                        web_int = int(web_total)
+                    except (TypeError, ValueError):
+                        web_int = 0
+                    await account_service.set_credit(account.id, "web", web_int)
+                    updated_credits["web"] = web_int
+
+                if openapi_total is not None:
+                    try:
+                        openapi_int = int(openapi_total)
+                    except (TypeError, ValueError):
+                        openapi_int = 0
+                    await account_service.set_credit(account.id, "openapi", openapi_int)
+                    updated_credits["openapi"] = openapi_int
+            else:
+                for credit_type, amount in credits_data.items():
+                    # Skip computed fields like total_credits/total which are
+                    # derived aggregates, not separate buckets.
+                    if credit_type in ("total_credits", "total"):
+                        continue
+
+                    # Normalize credit type names (credit_daily -> daily)
+                    clean_type = credit_type.replace("credit_", "") if credit_type.startswith("credit_") else credit_type
+
+                    try:
+                        await account_service.set_credit(account.id, clean_type, amount)
+                        updated_credits[clean_type] = amount
+                    except Exception as e:
+                        logger.warning(f"Failed to update credits {clean_type} for {account.email}: {e}")
 
             await db.commit()
             await db.refresh(account)
@@ -360,9 +428,9 @@ async def create_account(
 
     For Pixverse:
     - jwt_token: For WebAPI (free accounts)
-    - api_key_paid: For OpenAPI (paid accounts)
+    - api_keys: List of keys (e.g., kind='openapi' for OpenAPI keys)
 
-    Credits are set separately via /accounts/{id}/credits endpoint
+    Credits are set separately via /accounts/{id}/credits endpoint.
     """
     try:
         account = await account_service.create_account(
@@ -371,7 +439,7 @@ async def create_account(
             provider_id=request.provider_id,
             jwt_token=request.jwt_token,
             api_key=request.api_key,
-            openapi_key=request.api_key_paid,
+            api_keys=request.api_keys,
             cookies=request.cookies,
             is_private=request.is_private
         )
@@ -400,9 +468,13 @@ async def update_account(
 
     For Pixverse:
     - jwt_token: Update WebAPI credentials
-    - api_key_paid: Update OpenAPI credentials
+    - api_keys: Update OpenAPI or other API keys
     """
-    logger.info(f"[PATCH /accounts/{account_id}] User {user.id} updating account. Request data: email={request.email}, nickname={request.nickname}, has_api_key={request.api_key is not None}, has_api_key_paid={request.api_key_paid is not None}")
+    logger.info(
+        f"[PATCH /accounts/{account_id}] User {user.id} updating account. "
+        f"Request data: email={request.email}, nickname={request.nickname}, "
+        f"has_api_key={request.api_key is not None}, has_api_keys={request.api_keys is not None}"
+    )
     try:
         account = await account_service.update_account(
             account_id=account_id,
@@ -411,7 +483,7 @@ async def update_account(
             nickname=request.nickname,
             jwt_token=request.jwt_token,
             api_key=request.api_key,
-            openapi_key=request.api_key_paid,
+            api_keys=request.api_keys,
             cookies=request.cookies,
             is_private=request.is_private,
             status=request.status

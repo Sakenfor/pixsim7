@@ -107,7 +107,11 @@ async def import_account(
         provider_user_id=account_data.get('provider_user_id'),
         jwt_token=account_data.get('jwt_token'),
         api_key=account_data.get('api_key'),
-        api_key_paid=account_data.get('openapi_key'),  # Map openapi_key to api_key_paid
+        api_keys=(
+            [{"id": "openapi_main", "kind": "openapi", "value": account_data.get("openapi_key"), "priority": 10}]
+            if account_data.get("openapi_key")
+            else None
+        ),  # Map openapi_key to generic api_keys
         cookies=account_data.get('cookies'),
         total_videos_generated=account_data.get('total_videos_generated', 0),
         total_videos_failed=account_data.get('total_videos_failed', 0),

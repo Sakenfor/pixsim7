@@ -58,12 +58,16 @@ class ProviderAccount(SQLModel, table=True):
     password: Optional[str] = None
 
     # Authentication credentials (provider-specific usage)
-    jwt_token: Optional[str] = None  # Pixverse: WebAPI auth
-    api_key: Optional[str] = None    # General API key
-    api_key_paid: Optional[str] = Field(  # Pixverse: OpenAPI key for paid tier
+    jwt_token: Optional[str] = None  # Web/session auth (e.g., Pixverse WebAPI)
+    api_key: Optional[str] = None    # Legacy/general API key (provider-specific meaning)
+    api_keys: Optional[list[Dict[str, Any]]] = Field(
         default=None,
-        max_length=500,
-        description="Paid/premium API key (e.g., Pixverse OpenAPI)"
+        sa_column=Column(JSON),
+        description=(
+            "List of API keys for this account. "
+            "Each entry is a dict such as "
+            "{'id': 'main', 'kind': 'openapi', 'value': 'pk...', 'priority': 10}."
+        ),
     )
     cookies: Optional[Dict[str, Any]] = Field(
         default=None,

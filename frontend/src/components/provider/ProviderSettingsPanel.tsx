@@ -11,7 +11,7 @@ interface EditAccountModalProps {
     email?: string;
     nickname?: string;
     api_key?: string;
-    api_key_paid?: string;
+    api_keys?: Array<{ id?: string; kind: string; value: string; priority?: number }>;
   }) => Promise<void>;
 }
 
@@ -31,10 +31,11 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
       if (nickname !== account.nickname) updates.nickname = nickname;
       if (apiKey) updates.api_key = apiKey;
       if (clearOpenApiKey) {
-        // Use empty string to explicitly clear the stored OpenAPI key
-        updates.api_key_paid = '';
+        // Clear all OpenAPI keys
+        updates.api_keys = [];
       } else if (apiKeyPaid) {
-        updates.api_key_paid = apiKeyPaid;
+        // Single OpenAPI key entry for now
+        updates.api_keys = [{ id: 'openapi_main', kind: 'openapi', value: apiKeyPaid, priority: 10 }];
       }
       
       if (Object.keys(updates).length === 0) {
@@ -374,7 +375,7 @@ export function ProviderSettingsPanel() {
     email?: string;
     nickname?: string;
     api_key?: string;
-    api_key_paid?: string;
+    api_keys?: Array<{ id?: string; kind: string; value: string; priority?: number }>;
   }) => {
     try {
       await updateAccount(accountId, data);

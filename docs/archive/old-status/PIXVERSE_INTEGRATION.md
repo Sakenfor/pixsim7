@@ -390,7 +390,7 @@ MediaCard Badge Click
 POST /api/v1/assets/upload (file + provider_id)
         ↓
 UploadService.upload()
-        • Select Pixverse account (prefer OpenAPI api_key/api_key_paid)  
+        • Select Pixverse account (prefer OpenAPI api_keys entries with kind="openapi")  
         • Acceptance prep (images only for now)  
         • Delegate to provider adapter upload_asset()  
         • Persist Asset (tag: user_upload)  
@@ -412,7 +412,7 @@ Notes: When downscaled or recompressed, `note` field includes details (e.g., `Do
 
 ### OpenAPI vs Web API Preference
 
-UploadService will automatically prefer an account with `api_key` or `api_key_paid` (Pixverse OpenAPI) when uploading images. The badge's successful upload may include a note like `Uploaded via OpenAPI`.
+UploadService will automatically prefer an account with `api_key` or an `api_keys` entry of kind `openapi` when uploading images. The badge's successful upload may include a note like `Uploaded via OpenAPI`.
 
 Fallback path: If no OpenAPI-capable account exists, a regular Web API account is selected via `AccountService.select_account()`.
 
@@ -451,7 +451,7 @@ Add new provider acceptance by extending `_prepare_file_for_provider` with a bra
 
 ## Configuration Checklist for Uploads
 
-1. Create at least one Pixverse account row with valid `jwt_token` (Web API) OR `api_key` / `api_key_paid` (OpenAPI).
+1. Create at least one Pixverse account row with valid `jwt_token` (Web API) OR `api_key` / `api_keys` entry of kind `openapi` (OpenAPI).
 2. Ensure Pillow installed (`pillow==10.x`).
 3. Frontend sets `provider_id="pixverse"` in form data when calling upload endpoint.
 4. Optional: Multiple accounts allowed; highest priority OpenAPI account auto-selected.
@@ -488,7 +488,7 @@ Response example:
 |---------|-------|-----|
 | 400 Pixverse upload rejected | Image >20MB after recompress | Convert to JPEG/WebP or reduce dimensions manually |
 | Badge stays gray | No request fired | Check that `onUploadClick` is wired and form data includes provider_id |
-| Always Web API path | No account with api_key/api_key_paid | Add OpenAPI key to an active Pixverse account |
+| Always Web API path | No account with `api_key` or any `api_keys` entry of kind `openapi` | Add OpenAPI key to an active Pixverse account |
 | Provider returns ID only | SDK missing URL field | Use provider_asset_id to later resolve URL or update SDK |
 
 ---

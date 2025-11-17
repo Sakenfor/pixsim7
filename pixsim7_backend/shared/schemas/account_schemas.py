@@ -26,7 +26,7 @@ class AccountCreate(BaseModel):
     provider_id: str = "pixverse"
     jwt_token: Optional[str] = None
     api_key: Optional[str] = None
-    api_key_paid: Optional[str] = None  # Paid/premium API key (e.g., Pixverse OpenAPI)
+    api_keys: Optional[list[dict]] = None  # Generic API keys (provider-specific structure)
     cookies: Optional[dict] = None
     is_private: bool = False  # False = shared with all users, True = only owner can use
 
@@ -37,7 +37,7 @@ class AccountUpdate(BaseModel):
     nickname: Optional[str] = None
     jwt_token: Optional[str] = None
     api_key: Optional[str] = None
-    api_key_paid: Optional[str] = None  # Paid/premium API key
+    api_keys: Optional[list[dict]] = None  # Generic API keys
     cookies: Optional[dict] = None
     is_private: Optional[bool] = None
     status: Optional[AccountStatus] = None
@@ -57,7 +57,7 @@ class AccountResponse(BaseModel):
     has_jwt: bool
     jwt_expired: bool
     jwt_expires_at: Optional[datetime]
-    has_api_key_paid: bool  # Has paid/premium API key
+    has_api_key_paid: bool  # True if any API key of kind 'openapi' exists
     has_cookies: bool
 
     # Credits (normalized - supports any number of credit types)

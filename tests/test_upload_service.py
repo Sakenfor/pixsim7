@@ -35,8 +35,15 @@ class DummyProvider:
     provider_id = "pixverse"
 
     async def upload_asset(self, account: ProviderAccount, file_path: str):
-        # If account has api_key/api_key_paid, return URL; else return ID
-        if getattr(account, "api_key", None) or getattr(account, "api_key_paid", None):
+        # If account has api_key or any openapi api_keys entry, return URL; else return ID
+        api_keys = getattr(account, "api_keys", None) or []
+        has_openapi = any(
+            isinstance(entry, dict)
+            and entry.get("kind") == "openapi"
+            and entry.get("value")
+            for entry in api_keys
+        )
+        if getattr(account, "api_key", None) or has_openapi:
             return "https://cdn.example.com/media/ok.jpg"
         return "media_12345"
 

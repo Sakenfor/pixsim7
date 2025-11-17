@@ -9,7 +9,9 @@ export interface UpdateAccountRequest {
   is_private?: boolean;
   jwt_token?: string;
   api_key?: string;
-  api_key_paid?: string;
+   // Generic API keys; for Pixverse, entries with kind === 'openapi'
+   // represent OpenAPI keys.
+  api_keys?: Array<{ id?: string; kind: string; value: string; priority?: number }>;
   cookies?: Record<string, any>;
 }
 

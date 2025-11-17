@@ -232,7 +232,7 @@ async def upload_asset_to_provider(
     """
     Upload media to the specified provider (no cross-provider Pixverse override).
 
-    Pixverse: OpenAPI (api_key/api_key_paid) usage is internal preference via UploadService.
+    Pixverse: OpenAPI usage is internal preference via UploadService (based on api_keys). 
     If provider rejects (e.g., unsupported mime/dimensions), returns error.
     """
     content_type = file.content_type or ""

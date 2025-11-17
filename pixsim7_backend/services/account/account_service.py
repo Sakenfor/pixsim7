@@ -422,7 +422,7 @@ class AccountService:
         password: Optional[str] = None,
         jwt_token: Optional[str] = None,
         api_key: Optional[str] = None,
-        openapi_key: Optional[str] = None,
+        api_keys: Optional[list[dict]] = None,
         cookies: Optional[dict] = None,
         is_private: bool = False,
         nickname: Optional[str] = None
@@ -436,8 +436,8 @@ class AccountService:
             provider_id: Provider identifier (default "pixverse")
             password: Optional password for auto-refresh (skip for Google accounts)
             jwt_token: Optional JWT token (for WebAPI)
-            api_key: Optional API key
-            openapi_key: Optional OpenAPI key (for paid API access)
+            api_key: Optional legacy/general API key
+            api_keys: Optional list of API keys (provider-specific)
             cookies: Optional cookies dict
             is_private: Whether account is private to owner (default False = shared)
             nickname: Optional nickname for account
@@ -461,7 +461,7 @@ class AccountService:
             password=password,
             jwt_token=jwt_token,
             api_key=api_key,
-            api_key_paid=openapi_key,
+            api_keys=api_keys,
             cookies=cookies or {},
             is_private=is_private,
             nickname=nickname,
@@ -485,7 +485,7 @@ class AccountService:
         email: Optional[str] = None,
         jwt_token: Optional[str] = None,
         api_key: Optional[str] = None,
-        openapi_key: Optional[str] = None,
+        api_keys: Optional[list[dict]] = None,
         cookies: Optional[dict] = None,
         is_private: Optional[bool] = None,
         status: Optional[AccountStatus] = None,
@@ -499,8 +499,8 @@ class AccountService:
             user_id: Current user ID (for permission check)
             email: Optional new email
             jwt_token: Optional new JWT token (for WebAPI)
-            api_key: Optional new API key
-            openapi_key: Optional new OpenAPI key (for paid API)
+            api_key: Optional new generic API key
+            api_keys: Optional new list of API keys
             cookies: Optional new cookies
             is_private: Optional new private status
             status: Optional new account status
@@ -531,9 +531,9 @@ class AccountService:
             # Treat empty string as clearing the generic API key
             account.api_key = api_key or None
 
-        if openapi_key is not None:
-            # Treat empty string as clearing the OpenAPI key
-            account.api_key_paid = openapi_key or None
+        if api_keys is not None:
+            # Replace full API key list (empty list clears)
+            account.api_keys = api_keys or []
 
         if cookies is not None:
             account.cookies = cookies
