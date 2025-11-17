@@ -42,6 +42,8 @@ import { executeInteraction, type InteractionContext } from '../lib/game/interac
 import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
 import { QuestLog } from '../components/game/QuestLog';
 import { InventoryPanel } from '../components/game/InventoryPanel';
+import { SimpleDialogue } from '../components/game/DialogueUI';
+import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
 
 interface WorldTime {
   day: number;
@@ -74,6 +76,9 @@ export function Game2D() {
   const [showRelationshipDashboard, setShowRelationshipDashboard] = useState(false);
   const [showQuestLog, setShowQuestLog] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [showDialogue, setShowDialogue] = useState(false);
+  const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
+  const [notifications, setNotifications] = useState<GameNotification[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -417,6 +422,21 @@ export function Game2D() {
     }
   };
 
+  const addNotification = (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string, duration?: number) => {
+    const notification: GameNotification = {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      title,
+      message,
+      duration,
+    };
+    setNotifications((prev) => [...prev, notification]);
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;
 
@@ -461,8 +481,8 @@ export function Game2D() {
         }
       },
       onSessionUpdate: (session) => setGameSession(session),
-      onError: (msg) => setError(msg),
-      onSuccess: (msg) => alert(msg),
+      onError: (msg) => addNotification('error', 'Error', msg),
+      onSuccess: (msg) => addNotification('success', 'Success', msg),
     };
 
     // Handle old format (backward compatibility)
@@ -495,22 +515,35 @@ export function Game2D() {
 
     // Execute all enabled interactions
     let hasInteraction = false;
+    let hasTalkInteraction = false;
+
     for (const [interactionId, config] of Object.entries(normalizedInteractions)) {
       if (!config || !config.enabled) continue;
 
       hasInteraction = true;
+
+      if (interactionId === 'talk') {
+        hasTalkInteraction = true;
+        // Show dialogue UI for talk interactions
+        setDialogueNpcId(assignment.npcId);
+        setShowDialogue(true);
+        continue;
+      }
+
       try {
         const result = await executeInteraction(interactionId, config, context);
         if (result.success && result.message) {
-          console.info(`Interaction ${interactionId} succeeded:`, result.message);
+          addNotification('success', `${interactionId} Success`, result.message);
         }
       } catch (e: any) {
-        setError(String(e?.message ?? e));
+        addNotification('error', 'Interaction Failed', String(e?.message ?? e));
       }
     }
 
     if (!hasInteraction) {
-      console.info('NPC slot clicked but no interactions configured', assignment);
+      // No interactions configured, show simple dialogue
+      setDialogueNpcId(assignment.npcId);
+      setShowDialogue(true);
     }
   };
 
@@ -934,6 +967,40 @@ export function Game2D() {
           </div>
         </div>
       )}
+
+      {/* Dialogue UI */}
+      {showDialogue && dialogueNpcId && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
+          <SimpleDialogue
+            npcId={dialogueNpcId}
+            onStartScene={async (sceneId) => {
+              setShowDialogue(false);
+              setIsLoadingScene(true);
+              try {
+                if (!gameSession) {
+                  const created = await createGameSession(sceneId);
+                  setGameSession(created);
+                  const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+                  saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
+                  updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+                }
+                const scene = await getGameScene(sceneId);
+                setCurrentScene(scene);
+                setIsSceneOpen(true);
+                setScenePhase('playing');
+              } catch (e: any) {
+                addNotification('error', 'Scene Error', String(e?.message ?? e));
+              } finally {
+                setIsLoadingScene(false);
+              }
+            }}
+            onClose={() => setShowDialogue(false)}
+          />
+        </div>
+      )}
+
+      {/* Game Notifications */}
+      <GameNotifications notifications={notifications} onDismiss={dismissNotification} />
     </div>
   );
 }
