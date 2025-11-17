@@ -82,6 +82,19 @@ try:
 except Exception:
     from health_worker import HealthWorker
 
+# New launcher_core integration
+try:
+    from .launcher_facade import LauncherFacade
+    from .service_adapter import ServiceProcessAdapter
+    USE_NEW_CORE = True
+except Exception:
+    try:
+        from launcher_facade import LauncherFacade
+        from service_adapter import ServiceProcessAdapter
+        USE_NEW_CORE = True
+    except Exception:
+        USE_NEW_CORE = False
+
 # Import centralized theme
 try:
     from . import theme
@@ -147,7 +160,37 @@ class LauncherWindow(QWidget):
             self.move(self.ui_state.window_x, self.ui_state.window_y)
 
         self.services = build_services()
-        self.processes: Dict[str, ServiceProcess] = {s.key: ServiceProcess(s) for s in self.services}
+
+        # Initialize service management
+        # Use new launcher_core if available, otherwise fall back to old implementation
+        if USE_NEW_CORE:
+            # Create facade (wraps core managers)
+            self.facade = LauncherFacade(self)
+            # Create adapter instances (provides ServiceProcess-compatible interface)
+            self.processes: Dict[str, ServiceProcessAdapter] = {
+                s.key: ServiceProcessAdapter(s, self.facade) for s in self.services
+            }
+            # Log that we're using new core
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info(
+                        "launcher_using_new_core",
+                        message="Using launcher_core managers"
+                    )
+                except Exception:
+                    pass
+        else:
+            # Fall back to old implementation
+            self.facade = None
+            self.processes: Dict[str, ServiceProcess] = {s.key: ServiceProcess(s) for s in self.services}
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning(
+                        "launcher_using_old_core",
+                        message="Falling back to old ServiceProcess implementation"
+                    )
+                except Exception:
+                    pass
 
         # Log service discovery
         if _launcher_logger:
@@ -181,10 +224,19 @@ class LauncherWindow(QWidget):
             # Select first service by default
             self._select_service(self.services[0].key)
 
-        # Background health worker replaces direct timer to avoid UI freeze
-        self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-        self.health_worker.health_update.connect(self._update_service_health)
-        self.health_worker.start()
+        # Background health worker / health manager
+        if USE_NEW_CORE and self.facade:
+            # Use new launcher_core health manager (via facade)
+            self.health_worker = None
+            # Start managers
+            self.facade.start_all_managers()
+            # Connect facade signals to update UI
+            self.facade.health_update.connect(self._update_service_health)
+        else:
+            # Use old health worker
+            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
+            self.health_worker.health_update.connect(self._update_service_health)
+            self.health_worker.start()
 
         # Connect health check signal (for any manual triggers if added later)
         self.health_check_signal.connect(self._update_service_health)
@@ -1387,7 +1439,14 @@ class LauncherWindow(QWidget):
                 self.db_log_viewer.shutdown()
         except Exception:
             pass
-        if hasattr(self, 'health_worker'):
+
+        # Stop health monitoring
+        if hasattr(self, 'facade') and self.facade:
+            try:
+                self.facade.stop_all_managers()
+            except Exception:
+                pass
+        elif hasattr(self, 'health_worker') and self.health_worker:
             try:
                 self.health_worker.stop()
                 self.health_worker.wait(2000)
