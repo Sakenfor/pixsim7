@@ -9,7 +9,7 @@ import os
 import signal
 import subprocess
 import time
-from typing import Dict, Optional, Callable, List
+from typing import Dict, Optional, Callable, List, Any
 from pathlib import Path
 
 from .types import (
@@ -19,6 +19,13 @@ from .types import (
     HealthStatus,
     ProcessEvent
 )
+
+# Import Windows Job Objects for robust process tree management
+try:
+    from . import windows_job
+    WINDOWS_JOB_AVAILABLE = windows_job.is_available()
+except ImportError:
+    WINDOWS_JOB_AVAILABLE = False
 
 
 class ProcessManager:
@@ -45,6 +52,7 @@ class ProcessManager:
         self.services: Dict[str, ServiceDefinition] = {s.key: s for s in services}
         self.states: Dict[str, ServiceState] = {}
         self.processes: Dict[str, Optional[subprocess.Popen]] = {}
+        self.job_objects: Dict[str, Any] = {}  # Windows Job Objects for process tree management
         self.event_callback = event_callback
 
         # Set up log directory
@@ -224,6 +232,18 @@ class ProcessManager:
             state.health = HealthStatus.STARTING
             state.last_error = ''
 
+            # On Windows, assign process to a Job Object for robust process tree management
+            if WINDOWS_JOB_AVAILABLE:
+                try:
+                    job = windows_job.WindowsJobObject(name=f"PixSim7-{service_key}")
+                    if job.assign_process(proc.pid):
+                        self.job_objects[service_key] = job
+                        # Job Object will automatically track all child processes
+                        # and terminate them when the job is closed
+                except Exception:
+                    # Job Object creation failed, fall back to manual process tree management
+                    pass
+
             self._emit_event(ProcessEvent(
                 service_key=service_key,
                 event_type="started",
@@ -291,9 +311,18 @@ class ProcessManager:
             state.health = HealthStatus.STOPPED
             return True
 
-        # Kill the process
+        # Kill the process - prefer Job Object if available
         try:
-            if target_pid:
+            # Check if we have a Job Object for this service
+            job = self.job_objects.get(service_key)
+            if job:
+                # Use Job Object to terminate entire process tree
+                # This is much more reliable than manual tree killing
+                job.terminate(exit_code=0)
+                job.close()
+                self.job_objects.pop(service_key, None)
+            elif target_pid:
+                # Fall back to manual process tree killing
                 self._kill_process_tree(target_pid, force=not graceful)
 
             # Clean up
@@ -320,6 +349,13 @@ class ProcessManager:
 
         except Exception as e:
             state.last_error = f"Failed to stop: {str(e)}"
+            # Clean up job object even on failure
+            if service_key in self.job_objects:
+                try:
+                    self.job_objects[service_key].close()
+                except Exception:
+                    pass
+                self.job_objects.pop(service_key, None)
             return False
 
     def restart(self, service_key: str) -> bool:
@@ -400,3 +436,11 @@ class ProcessManager:
         for service_key in list(self.states.keys()):
             if self.is_running(service_key):
                 self.stop(service_key, graceful=True)
+
+        # Final cleanup: close any remaining job objects
+        for service_key, job in list(self.job_objects.items()):
+            try:
+                job.close()
+            except Exception:
+                pass
+        self.job_objects.clear()
