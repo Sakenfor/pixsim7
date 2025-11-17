@@ -321,6 +321,10 @@ class ProcessManager:
                 job.terminate(exit_code=0)
                 job.close()
                 self.job_objects.pop(service_key, None)
+                # Defensive: also attempt to kill the process tree by PID in case
+                # some children were created outside the Job (e.g., reloaders).
+                if target_pid:
+                    self._kill_process_tree(target_pid, force=not graceful)
             elif target_pid:
                 # Fall back to manual process tree killing
                 self._kill_process_tree(target_pid, force=not graceful)
