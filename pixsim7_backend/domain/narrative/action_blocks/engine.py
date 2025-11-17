@@ -32,6 +32,7 @@ except ImportError:
     ENHANCED_TYPES_AVAILABLE = False
 
 from .pose_taxonomy import POSE_TAXONOMY
+from .generated_store import GeneratedBlockStore
 from ..engine import NarrativeEngine  # For shared template rendering
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,8 @@ class ActionEngine:
     def __init__(
         self,
         library_path: Optional[Path] = None,
-        narrative_engine: Optional[NarrativeEngine] = None
+        narrative_engine: Optional[NarrativeEngine] = None,
+        generated_store: Optional[GeneratedBlockStore] = None
     ):
         """
         Initialize the action engine.
@@ -56,8 +58,10 @@ class ActionEngine:
         """
         self.library_path = library_path or Path(__file__).parent / "library"
         self.narrative_engine = narrative_engine or NarrativeEngine()
+        self.generated_store = generated_store or GeneratedBlockStore()
         self.blocks: Dict[str, ActionBlock] = {}
         self.pose_taxonomy = POSE_TAXONOMY
+        self._generated_loaded = False
         self._load_library()
 
     def _load_library(self):
@@ -143,6 +147,8 @@ class ActionEngine:
         Returns:
             ActionSelectionResult with selected blocks and metadata
         """
+        await self._ensure_generated_blocks_loaded(db_session)
+
         # Find matching blocks
         candidates = self._find_candidates(context)
 
@@ -200,6 +206,28 @@ class ActionEngine:
             prompts=prompts,
             segments=segments
         )
+
+    async def _ensure_generated_blocks_loaded(self, db_session: Optional[Any]) -> None:
+        """Load cached generated blocks from DB once per engine instance."""
+        if self._generated_loaded or not db_session:
+            return
+
+        try:
+            blocks_data = await self.generated_store.load_blocks(db_session)
+            for data in blocks_data:
+                block = self._parse_block(dict(data))
+                if block:
+                    self.blocks[block.id] = block
+            self._generated_loaded = True
+        except Exception as exc:
+            logger.error(f"Failed to load generated action blocks: {exc}")
+            self._generated_loaded = True  # Avoid repeated attempts
+
+    def register_block(self, block_data: Dict[str, Any]) -> None:
+        """Parse and register a block in memory immediately."""
+        block = self._parse_block(dict(block_data))
+        if block:
+            self.blocks[block.id] = block
 
     def _find_candidates(self, context: ActionSelectionContext) -> List[ActionBlock]:
         """

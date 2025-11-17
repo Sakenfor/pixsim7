@@ -336,6 +336,13 @@ The generator uses this snapshot to:
 - Default `startPose`/`tags.pose` to the snapshot pose
 - Append “Continuation Notes” to the prompt so Claude understands it must keep composition/lighting consistent.
 
+### Automatic Block Caching
+
+Whenever `/actions/generate`, `/actions/generate/creature`, or `/actions/next` produce a block successfully, it is written to the `generated_action_blocks` table and immediately registered with the action engine. This means:
+- Future `/actions/select` calls can reuse those blocks without calling the generator again.
+- Cached blocks survive restarts (they load from DB the first time a selection runs with a DB session).
+- Metadata about who requested the block, the selection payload, and any `previous_segment` snapshot is stored alongside the block for later auditing.
+
 ### Transition Block Example
 
 ```json

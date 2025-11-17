@@ -100,6 +100,37 @@ def _build_generation_request(req: GenerateActionBlockRequest) -> GenerationRequ
     )
 
 
+async def _persist_generated_block(
+    db: DatabaseSession,
+    action_engine: ActionEngine,
+    block_data: Dict[str, Any],
+    *,
+    source: str,
+    user_id: int,
+    previous_segment: Optional[PreviousSegmentInput] = None,
+    selection: Optional[ActionSelectionRequest] = None
+) -> None:
+    """Store the generated block in the DB cache and register it in memory."""
+    meta: Dict[str, Any] = {
+        "requested_by": user_id,
+        "source": source
+    }
+    if selection:
+        meta["selection"] = selection.dict()
+    if previous_segment:
+        meta["previous_segment"] = previous_segment.dict()
+
+    await action_engine.generated_store.upsert_block(
+        db,
+        block_data,
+        source=source,
+        previous_block_id=previous_segment.block_id if previous_segment else None,
+        reference_asset_id=previous_segment.asset_id if previous_segment else None,
+        meta=meta
+    )
+    action_engine.register_block(block_data)
+
+
 class DialogueNextLineRequest(BaseModel):
     """Request for generating the next dialogue line."""
     npc_id: int
@@ -652,6 +683,16 @@ async def select_or_generate_action(
             generation_error=gen_result.error_message or "generation_failed"
         )
 
+    await _persist_generated_block(
+        db,
+        action_engine,
+        gen_result.action_block,
+        source="api:actions/next",
+        user_id=user.id,
+        previous_segment=req.generation.previous_segment if req.generation else None,
+        selection=req.selection
+    )
+
     generation_info = {
         "generation_time": gen_result.generation_time,
         "template_used": gen_result.template_used
@@ -793,8 +834,10 @@ class TestGenerationResponse(BaseModel):
 @router.post("/actions/generate", response_model=GenerateActionBlockResponse)
 async def generate_action_block(
     req: GenerateActionBlockRequest,
+    db: DatabaseSession,
     user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
+    generator: DynamicBlockGenerator = Depends(get_block_generator),
+    action_engine: ActionEngine = Depends(get_action_engine)
 ) -> GenerateActionBlockResponse:
     """
     Generate a new action block dynamically using templates and concepts.
@@ -808,6 +851,16 @@ async def generate_action_block(
     # Generate the block
     result = generator.generate_block(gen_request)
 
+    if result.success and result.action_block:
+        await _persist_generated_block(
+            db,
+            action_engine,
+            result.action_block,
+            source="api:actions/generate",
+            user_id=user.id,
+            previous_segment=req.previous_segment
+        )
+
     return GenerateActionBlockResponse(
         success=result.success,
         action_block=result.action_block,
@@ -820,8 +873,10 @@ async def generate_action_block(
 @router.post("/actions/generate/creature", response_model=GenerateActionBlockResponse)
 async def generate_creature_interaction(
     req: GenerateCreatureInteractionRequest,
+    db: DatabaseSession,
     user: CurrentUser,
-    generator: DynamicBlockGenerator = Depends(get_block_generator)
+    generator: DynamicBlockGenerator = Depends(get_block_generator),
+    action_engine: ActionEngine = Depends(get_action_engine)
 ) -> GenerateActionBlockResponse:
     """
     Generate a creature interaction action block.
@@ -841,6 +896,8 @@ async def generate_creature_interaction(
             generation_time=0.0
         )
 
+    previous_snapshot = _convert_previous_segment(req.previous_segment)
+
     # Generate using specialized method
     result = generator.generate_creature_interaction(
         creature_type=creature_type,
@@ -851,8 +908,18 @@ async def generate_creature_interaction(
         character_reaction=req.character_reaction,
         camera_movement=req.camera_movement,
         duration=req.duration,
-        previous_segment=_convert_previous_segment(req.previous_segment)
+        previous_segment=previous_snapshot
     )
+
+    if result.success and result.action_block:
+        await _persist_generated_block(
+            db,
+            action_engine,
+            result.action_block,
+            source="api:actions/generate/creature",
+            user_id=user.id,
+            previous_segment=req.previous_segment
+        )
 
     return GenerateActionBlockResponse(
         success=result.success,
