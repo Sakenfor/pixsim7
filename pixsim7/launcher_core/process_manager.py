@@ -311,9 +311,15 @@ class ProcessManager:
                 try:
                     port = self._extract_port_from_url(definition.health_url)
                     if port:
-                        detected_pid = self._detect_pid_by_port(port)
-                        if detected_pid:
-                            self._kill_process_tree(detected_pid, force=not graceful)
+                        # Get ALL PIDs on this port (important for uvicorn --reload)
+                        detected_pids = self._detect_all_pids_by_port(port)
+                        if detected_pids:
+                            # Kill all detected PIDs
+                            # On Windows, always use force for external processes (they often don't respond to graceful)
+                            force_kill = True if os.name == 'nt' else (not graceful)
+                            for pid in detected_pids:
+                                self._kill_process_tree(pid, force=force_kill)
+
                             state.status = ServiceStatus.STOPPED
                             state.health = HealthStatus.STOPPED
                             state.pid = None
@@ -321,7 +327,7 @@ class ProcessManager:
                             self._emit_event(ProcessEvent(
                                 service_key=service_key,
                                 event_type="stopped",
-                                data={"detected_pid": detected_pid}
+                                data={"detected_pids": detected_pids}
                             ))
                             return True
                 except Exception:
@@ -429,8 +435,24 @@ class ProcessManager:
             port: Port number to check
 
         Returns:
-            PID if found, None otherwise
+            First PID if found, None otherwise
         """
+        pids = self._detect_all_pids_by_port(port)
+        return pids[0] if pids else None
+
+    def _detect_all_pids_by_port(self, port: int) -> List[int]:
+        """
+        Detect ALL PIDs of processes listening on given port.
+
+        Important for uvicorn --reload which creates parent + child processes.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            List of PIDs (may be empty)
+        """
+        pids = []
         try:
             if os.name == 'nt':
                 # Windows: use netstat
@@ -446,7 +468,9 @@ class ProcessManager:
                             parts = line.split()
                             if len(parts) >= 5:
                                 try:
-                                    return int(parts[-1])
+                                    pid = int(parts[-1])
+                                    if pid not in pids:
+                                        pids.append(pid)
                                 except ValueError:
                                     pass
             else:
@@ -459,7 +483,13 @@ class ProcessManager:
                         timeout=5
                     )
                     if result.returncode == 0 and result.stdout.strip():
-                        return int(result.stdout.strip().split()[0])
+                        for pid_str in result.stdout.strip().split('\n'):
+                            try:
+                                pid = int(pid_str.strip())
+                                if pid not in pids:
+                                    pids.append(pid)
+                            except ValueError:
+                                pass
                 except FileNotFoundError:
                     # lsof not available, try ss
                     import re
@@ -470,13 +500,17 @@ class ProcessManager:
                         timeout=5
                     )
                     if result.returncode == 0:
-                        # Extract PID from ss output
-                        match = re.search(r'pid=(\d+)', result.stdout)
-                        if match:
-                            return int(match.group(1))
+                        # Extract all PIDs from ss output
+                        for match in re.finditer(r'pid=(\d+)', result.stdout):
+                            try:
+                                pid = int(match.group(1))
+                                if pid not in pids:
+                                    pids.append(pid)
+                            except ValueError:
+                                pass
         except Exception:
             pass
-        return None
+        return pids
 
     def _kill_process_tree(self, pid: int, force: bool = False):
         """
@@ -484,15 +518,12 @@ class ProcessManager:
 
         Args:
             pid: Process ID to kill
-            force: If True, use SIGKILL (immediate). If False, use SIGKILL immediately.
+            force: If True, use SIGKILL/force (immediate). If False, use SIGTERM/gentle.
         """
         if os.name == 'nt':
             # Windows: use taskkill with /T for tree
-            flag = "/F" if force else ""
-            cmd = ["taskkill", "/PID", str(pid), "/T"]
-            if flag:
-                cmd.append(flag)
-
+            # Always use /F for now - graceful termination doesn't work well with uvicorn --reload
+            cmd = ["taskkill", "/PID", str(pid), "/T", "/F"]
             subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         else:
             # Unix: kill process group
