@@ -1,156 +1,126 @@
-/**
- * Modular Interaction System
- *
- * Each interaction type is a self-contained module that provides:
- * - Type definitions
- * - UI configuration schema
- * - Handler logic
- * - Backend endpoint info
- */
-
-import type { NpcSlotAssignment } from '../slotAssignment';
-import type { GameSessionDTO } from '../../api/game';
+import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
 
 /**
- * Base configuration for any interaction type
+ * Base config interface all interaction plugins extend
  */
 export interface BaseInteractionConfig {
   enabled: boolean;
 }
 
 /**
- * API client interface injected into interaction context.
- * Prevents each plugin from importing and calling APIs directly.
+ * Form field types for auto-generating UI
  */
-export interface InteractionAPI {
-  // Game state
-  getSession: (sessionId: number) => Promise<GameSessionDTO>;
-  updateSession: (sessionId: number, updates: Partial<GameSessionDTO>) => Promise<GameSessionDTO>;
+export type FormFieldType = 'number' | 'text' | 'boolean' | 'select' | 'tags';
 
-  // World/NPCs
-  getWorld: (worldId: number) => Promise<any>;
-  getNpcPresence: (params: any) => Promise<any[]>;
-
-  // Interactions (generic endpoint for future)
-  executeInteraction: (payload: any) => Promise<any>;
-
-  // Specific endpoints (backward compat)
-  attemptPickpocket: (req: any) => Promise<any>;
-
-  // Scenes
-  getScene: (sceneId: number) => Promise<any>;
+export interface FormField {
+  key: string;
+  label: string;
+  type: FormFieldType;
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  placeholder?: string;
+  options?: Array<{ value: string | number; label: string }>;
 }
 
 /**
- * Full state snapshot passed to interaction handlers.
- * Includes everything a plugin might need to make decisions.
- */
-export interface InteractionState {
-  // Current assignment
-  assignment: NpcSlotAssignment;
-
-  // Session state (if active)
-  gameSession: GameSessionDTO | null;
-  sessionFlags: Record<string, any>;
-  relationships: Record<string, any>;
-
-  // World state
-  worldId: number | null;
-  worldTime: { day: number; hour: number };
-
-  // Location context
-  locationId: number;
-  locationNpcs: any[];
-
-  // Player state (future)
-  inventory?: any[];
-  stats?: Record<string, number>;
-}
-
-/**
- * Context passed to interaction handlers.
- * Provides everything a plugin needs without importing directly.
+ * Interaction execution context - everything a plugin needs
  */
 export interface InteractionContext {
-  // Full state snapshot
   state: InteractionState;
-
-  // Typed API client (injected, don't import in plugins)
   api: InteractionAPI;
-
-  // UI callbacks
   onSceneOpen: (sceneId: number, npcId: number) => Promise<void>;
-  onError: (error: string) => void;
-  onSuccess: (message: string) => void;
   onSessionUpdate?: (session: GameSessionDTO) => void;
+  onError: (msg: string) => void;
+  onSuccess: (msg: string) => void;
 }
 
 /**
- * Result of executing an interaction
+ * Complete world/session/NPC state injected into plugins
+ */
+export interface InteractionState {
+  assignment: NpcSlotAssignment;
+  gameSession: GameSessionDTO | null;
+  sessionFlags: Record<string, unknown>;
+  relationships: Record<string, unknown>;
+  worldId: number | null;
+  worldTime: { day: number; hour: number };
+  locationId: number;
+  locationNpcs: NpcPresenceDTO[];
+}
+
+/**
+ * Typed API client for plugins (NO imports needed in plugins!)
+ */
+export interface InteractionAPI {
+  getSession: (id: number) => Promise<GameSessionDTO>;
+  updateSession: (id: number, updates: Partial<GameSessionDTO>) => Promise<GameSessionDTO>;
+  attemptPickpocket: (req: PickpocketRequest) => Promise<PickpocketResult>;
+  getScene: (id: number) => Promise<any>;
+  // Add more API methods as needed
+}
+
+export interface NpcSlotAssignment {
+  slot: any; // NpcSlot2d
+  npcId: number | null;
+  matchedRoles: string[];
+}
+
+export interface PickpocketRequest {
+  npc_id: number;
+  slot_id: string;
+  base_success_chance: number;
+  detection_chance: number;
+  world_id: number | null;
+  session_id: number;
+}
+
+export interface PickpocketResult {
+  success: boolean;
+  detected: boolean;
+  message: string;
+}
+
+/**
+ * Interaction execution result
  */
 export interface InteractionResult {
   success: boolean;
   message?: string;
-  triggerScene?: number;
-  updateSession?: boolean;
+  data?: unknown;
 }
 
 /**
- * Form field definition for UI generation
+ * Core plugin interface
  */
-export type FormField =
-  | { type: 'number'; key: string; label: string; min?: number; max?: number; step?: number; placeholder?: string }
-  | { type: 'text'; key: string; label: string; placeholder?: string }
-  | { type: 'array'; key: string; label: string; placeholder?: string; help?: string }
-  | { type: 'checkbox'; key: string; label: string };
-
-/**
- * An interaction plugin defines everything needed for an interaction type
- */
-export interface InteractionPlugin<TConfig extends BaseInteractionConfig = BaseInteractionConfig> {
-  /** Unique identifier for this interaction type */
-  id: string;
-
-  /** Display name */
-  name: string;
-
-  /** Short description */
-  description: string;
-
-  /** Icon or emoji */
-  icon?: string;
-
-  /** Default configuration when enabled */
-  defaultConfig: TConfig;
-
-  /** Form fields for configuring this interaction */
-  configFields: FormField[];
-
-  /** Execute the interaction (client-side) */
+export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
+  id: string; // Unique ID (e.g., 'pickpocket')
+  name: string; // Display name
+  description: string; // Short description
+  icon?: string; // Emoji or icon
+  defaultConfig: TConfig; // Default values when enabled
+  configFields: FormField[]; // Auto-generates UI forms
   execute: (config: TConfig, context: InteractionContext) => Promise<InteractionResult>;
-
-  /** Validate configuration */
   validate?: (config: TConfig) => string | null;
-
-  /** Check if interaction is available (optional gates) */
   isAvailable?: (context: InteractionContext) => boolean;
 }
 
 /**
- * Registry of all available interaction plugins
+ * Plugin registry
  */
 export class InteractionRegistry {
-  private plugins = new Map<string, InteractionPlugin>();
+  private plugins = new Map<string, InteractionPlugin<any>>();
 
-  register(plugin: InteractionPlugin) {
+  register<TConfig extends BaseInteractionConfig>(plugin: InteractionPlugin<TConfig>) {
     this.plugins.set(plugin.id, plugin);
   }
 
-  get(id: string): InteractionPlugin | undefined {
+  get(id: string): InteractionPlugin<any> | undefined {
     return this.plugins.get(id);
   }
 
-  getAll(): InteractionPlugin[] {
+  getAll(): InteractionPlugin<any>[] {
     return Array.from(this.plugins.values());
   }
 
@@ -159,5 +129,37 @@ export class InteractionRegistry {
   }
 }
 
-// Global registry instance
+/**
+ * Global registry instance
+ */
 export const interactionRegistry = new InteractionRegistry();
+
+/**
+ * Execute an interaction by ID
+ */
+export async function executeInteraction(
+  interactionId: string,
+  config: BaseInteractionConfig,
+  context: InteractionContext
+): Promise<InteractionResult> {
+  const plugin = interactionRegistry.get(interactionId);
+  if (!plugin) {
+    throw new Error(`Unknown interaction plugin: ${interactionId}`);
+  }
+
+  // Validate config
+  if (plugin.validate) {
+    const error = plugin.validate(config);
+    if (error) {
+      return { success: false, message: error };
+    }
+  }
+
+  // Check availability
+  if (plugin.isAvailable && !plugin.isAvailable(context)) {
+    return { success: false, message: `${plugin.name} is not available` };
+  }
+
+  // Execute
+  return plugin.execute(config, context);
+}

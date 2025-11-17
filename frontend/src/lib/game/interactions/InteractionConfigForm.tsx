@@ -1,24 +1,17 @@
-/**
- * Generic Interaction Configuration Form
- *
- * Renders a form for any interaction plugin based on its configFields definition.
- * This eliminates the need to manually create UI for each interaction type.
- */
-
 import { Input } from '@pixsim7/ui';
-import type { InteractionPlugin, FormField } from './types';
+import type { InteractionPlugin, BaseInteractionConfig, FormField } from './types';
 
-interface InteractionConfigFormProps {
-  plugin: InteractionPlugin;
-  config: any;
-  onConfigChange: (config: any) => void;
+interface InteractionConfigFormProps<TConfig extends BaseInteractionConfig> {
+  plugin: InteractionPlugin<TConfig>;
+  config: TConfig;
+  onConfigChange: (config: TConfig) => void;
 }
 
-export function InteractionConfigForm({
+export function InteractionConfigForm<TConfig extends BaseInteractionConfig>({
   plugin,
   config,
   onConfigChange,
-}: InteractionConfigFormProps) {
+}: InteractionConfigFormProps<TConfig>) {
   const updateField = (key: string, value: any) => {
     onConfigChange({
       ...config,
@@ -27,62 +20,10 @@ export function InteractionConfigForm({
   };
 
   const renderField = (field: FormField) => {
-    const value = config[field.key];
+    const value = (config as any)[field.key];
 
     switch (field.type) {
-      case 'number':
-        return (
-          <div key={field.key}>
-            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
-              type="number"
-              value={value ?? ''}
-              onChange={(e: any) => {
-                const v = e.target.value;
-                updateField(field.key, v ? Number(v) : null);
-              }}
-              min={field.min}
-              max={field.max}
-              step={field.step}
-              placeholder={field.placeholder}
-            />
-          </div>
-        );
-
-      case 'text':
-        return (
-          <div key={field.key}>
-            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
-              value={value ?? ''}
-              onChange={(e: any) => updateField(field.key, e.target.value)}
-              placeholder={field.placeholder}
-            />
-          </div>
-        );
-
-      case 'array':
-        return (
-          <div key={field.key}>
-            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
-              value={Array.isArray(value) ? value.join(', ') : ''}
-              onChange={(e: any) => {
-                const arr = e.target.value
-                  .split(',')
-                  .map((s: string) => s.trim())
-                  .filter(Boolean);
-                updateField(field.key, arr);
-              }}
-              placeholder={field.placeholder}
-            />
-            {field.help && (
-              <p className="text-xs text-neutral-500 mt-1">{field.help}</p>
-            )}
-          </div>
-        );
-
-      case 'checkbox':
+      case 'boolean':
         return (
           <div key={field.key}>
             <label className="flex items-center gap-2">
@@ -92,8 +33,102 @@ export function InteractionConfigForm({
                 onChange={(e) => updateField(field.key, e.target.checked)}
                 className="rounded"
               />
-              <span className="text-xs font-medium">{field.label}</span>
+              <span className="text-xs text-neutral-500">{field.label}</span>
             </label>
+            {field.description && (
+              <p className="text-xs text-neutral-500 mt-1 ml-6">{field.description}</p>
+            )}
+          </div>
+        );
+
+      case 'number':
+        return (
+          <div key={field.key}>
+            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
+            <Input
+              type="number"
+              value={value ?? ''}
+              onChange={(e: any) =>
+                updateField(
+                  field.key,
+                  e.target.value ? Number(e.target.value) : null
+                )
+              }
+              step={field.step}
+              min={field.min}
+              max={field.max}
+              placeholder={field.placeholder}
+            />
+            {field.description && (
+              <p className="text-xs text-neutral-500 mt-1">{field.description}</p>
+            )}
+          </div>
+        );
+
+      case 'text':
+        return (
+          <div key={field.key}>
+            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
+            <Input
+              type="text"
+              value={value ?? ''}
+              onChange={(e: any) => updateField(field.key, e.target.value)}
+              placeholder={field.placeholder}
+            />
+            {field.description && (
+              <p className="text-xs text-neutral-500 mt-1">{field.description}</p>
+            )}
+          </div>
+        );
+
+      case 'select':
+        return (
+          <div key={field.key}>
+            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
+            <select
+              className="w-full text-xs bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+              value={value ?? ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                // Try to parse as number if it looks like one
+                const parsed = !isNaN(Number(val)) ? Number(val) : val;
+                updateField(field.key, parsed);
+              }}
+            >
+              {!value && <option value="">Select...</option>}
+              {field.options?.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {field.description && (
+              <p className="text-xs text-neutral-500 mt-1">{field.description}</p>
+            )}
+          </div>
+        );
+
+      case 'tags':
+        return (
+          <div key={field.key}>
+            <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
+            <Input
+              type="text"
+              value={Array.isArray(value) ? value.join(', ') : ''}
+              onChange={(e: any) =>
+                updateField(
+                  field.key,
+                  e.target.value
+                    .split(',')
+                    .map((v: string) => v.trim())
+                    .filter(Boolean)
+                )
+              }
+              placeholder={field.placeholder}
+            />
+            {field.description && (
+              <p className="text-xs text-neutral-500 mt-1">{field.description}</p>
+            )}
           </div>
         );
 
@@ -103,17 +138,8 @@ export function InteractionConfigForm({
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 mb-2">
-        {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
-        <div>
-          <h5 className="text-xs font-semibold">{plugin.name}</h5>
-          <p className="text-xs text-neutral-500">{plugin.description}</p>
-        </div>
-      </div>
-      <div className="ml-6 space-y-2">
-        {plugin.configFields.map((field) => renderField(field))}
-      </div>
+    <div className="ml-6 space-y-2">
+      {plugin.configFields.map(renderField)}
     </div>
   );
 }

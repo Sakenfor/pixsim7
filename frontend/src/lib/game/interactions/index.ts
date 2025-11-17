@@ -8,12 +8,14 @@
  */
 
 import { interactionRegistry } from './types';
-import { talkInteraction } from './talk';
-import { pickpocketInteraction } from './pickpocket';
+import { talkPlugin } from './talk';
+import { pickpocketPlugin } from './pickpocket';
+import { giveItemInteraction } from './giveItem';
 
 // Register all built-in interactions
-interactionRegistry.register(talkInteraction);
-interactionRegistry.register(pickpocketInteraction);
+interactionRegistry.register(talkPlugin);
+interactionRegistry.register(pickpocketPlugin);
+interactionRegistry.register(giveItemInteraction);
 
 // Export registry and types for use in components
 export { interactionRegistry } from './types';
@@ -28,6 +30,10 @@ export type {
 // Export specific configs for type safety
 export type { TalkConfig } from './talk';
 export type { PickpocketConfig } from './pickpocket';
+export type { GiveItemConfig } from './giveItem';
+
+// Export the config form component
+export { InteractionConfigForm } from './InteractionConfigForm';
 
 /**
  * Helper to execute an interaction by ID
