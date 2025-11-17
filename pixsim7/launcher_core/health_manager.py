@@ -5,12 +5,13 @@ Monitors service health via HTTP endpoints or custom checks,
 without UI dependencies. Uses threading instead of QThread.
 """
 
+import os
 import time
 import socket
 import threading
 import urllib.request
 from typing import Dict, Optional, Callable
-from .types import HealthStatus, HealthEvent, ServiceState
+from .types import HealthStatus, HealthEvent, ServiceState, ServiceStatus
 
 
 class HealthManager:
@@ -287,6 +288,9 @@ class HealthManager:
                         is_healthy = definition.custom_health_check(state)
                         if is_healthy:
                             self.failure_counts[key] = 0
+                            # Mark as RUNNING if detected externally
+                            if state.status.value == 'stopped':
+                                state.status = ServiceStatus.RUNNING
                             self._emit_health_update(key, HealthStatus.HEALTHY)
                         else:
                             self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
@@ -311,6 +315,9 @@ class HealthManager:
 
                         if is_healthy:
                             self.failure_counts[key] = 0
+                            # Mark as RUNNING if detected externally
+                            if state.status.value == 'stopped':
+                                state.status = ServiceStatus.RUNNING
                             self._emit_health_update(key, HealthStatus.HEALTHY)
                         else:
                             self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
@@ -327,6 +334,10 @@ class HealthManager:
 
                     if is_healthy:
                         self.failure_counts[key] = 0
+                        # Mark as RUNNING if detected externally
+                        if state.status.value == 'stopped':
+                            from .types import ServiceStatus
+                            state.status = ServiceStatus.RUNNING
                         self._emit_health_update(key, HealthStatus.HEALTHY)
                     else:
                         self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
@@ -345,6 +356,11 @@ class HealthManager:
 
                     if is_healthy:
                         self.failure_counts[key] = 0
+                        # If service is healthy but status is STOPPED, it must be running externally
+                        # Mark it as RUNNING so UI shows correct state
+                        if state.status.value == 'stopped':
+                            from .types import ServiceStatus
+                            state.status = ServiceStatus.RUNNING
                         self._emit_health_update(key, HealthStatus.HEALTHY)
                     else:
                         self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
