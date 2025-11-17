@@ -84,14 +84,39 @@ class AssetService:
 
         # Extract data from submission response
         response = submission.response
-        provider_video_id = response.get("provider_video_id")
-        video_url = response.get("video_url")
+
+        # Support both images and videos - check for generic asset ID first,
+        # then fall back to video-specific or image-specific fields
+        provider_asset_id = (
+            response.get("provider_asset_id") or
+            response.get("provider_video_id") or
+            response.get("provider_image_id")
+        )
+
+        # Get asset URL - try generic first, then specific types
+        asset_url = (
+            response.get("asset_url") or
+            response.get("video_url") or
+            response.get("image_url")
+        )
         thumbnail_url = response.get("thumbnail_url")
 
-        if not provider_video_id or not video_url:
+        if not provider_asset_id or not asset_url:
             raise InvalidOperationError(
-                "Submission response missing required fields (provider_video_id, video_url)"
+                "Submission response missing required fields (provider_asset_id/provider_video_id, asset_url/video_url)"
             )
+
+        # Detect media type from response or infer from operation type
+        media_type_str = response.get("media_type")
+        if media_type_str:
+            media_type = MediaType(media_type_str)
+        elif response.get("image_url") or response.get("provider_image_id"):
+            media_type = MediaType.IMAGE
+        elif response.get("video_url") or response.get("provider_video_id"):
+            media_type = MediaType.VIDEO
+        else:
+            # Default to video for backward compatibility
+            media_type = MediaType.VIDEO
 
         # Extract metadata up-front for dedup and insert
         metadata = response.get("metadata", {})
@@ -99,11 +124,11 @@ class AssetService:
         height = response.get("height") or metadata.get("height")
         duration_sec = response.get("duration_sec") or metadata.get("duration_sec")
 
-        # Check for duplicate (by provider_video_id scoped to user)
+        # Check for duplicate (by provider_asset_id scoped to user)
         result = await self.db.execute(
             select(Asset).where(
                 Asset.provider_id == submission.provider_id,
-                Asset.provider_asset_id == provider_video_id,
+                Asset.provider_asset_id == provider_asset_id,
                 Asset.user_id == generation.user_id,
             )
         )
@@ -111,13 +136,13 @@ class AssetService:
         if existing:
             updated = False
             uploads = existing.provider_uploads or {}
-            if uploads.get(submission.provider_id) != provider_video_id:
+            if uploads.get(submission.provider_id) != provider_asset_id:
                 uploads = dict(uploads)
-                uploads[submission.provider_id] = provider_video_id
+                uploads[submission.provider_id] = provider_asset_id
                 existing.provider_uploads = uploads
                 updated = True
-            if not existing.remote_url and video_url:
-                existing.remote_url = video_url
+            if not existing.remote_url and asset_url:
+                existing.remote_url = asset_url
                 updated = True
             if not existing.thumbnail_url and thumbnail_url:
                 existing.thumbnail_url = thumbnail_url
@@ -149,18 +174,18 @@ class AssetService:
         # Create asset
         asset = Asset(
             user_id=generation.user_id,
-            media_type=MediaType.VIDEO,  # TODO: Support images
+            media_type=media_type,  # Dynamically detected from response
             provider_id=submission.provider_id,
-            provider_asset_id=provider_video_id,
+            provider_asset_id=provider_asset_id,
             provider_account_id=submission.account_id,
-            remote_url=video_url,
+            remote_url=asset_url,
             thumbnail_url=thumbnail_url,
             width=width,
             height=height,
-            duration_sec=duration_sec,
+            duration_sec=duration_sec,  # None for images
             sync_status=SyncStatus.REMOTE,
             source_generation_id=generation.id,
-            provider_uploads={submission.provider_id: provider_video_id},
+            provider_uploads={submission.provider_id: provider_asset_id},
             media_metadata=metadata or None,
             created_at=datetime.utcnow(),
         )

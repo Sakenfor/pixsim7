@@ -217,3 +217,24 @@ def get_provider_video_constraints(provider_id: str) -> Dict[str, Any]:
         Dict with constraint parameters, or empty dict if no constraints defined
     """
     return PROVIDER_VIDEO_CONSTRAINTS.get(provider_id, {})
+
+
+def extract_duration_safe(file_path: str) -> Optional[float]:
+    """
+    Safely extract duration from video file.
+
+    Unlike get_video_metadata(), this function returns None instead of raising
+    an exception if ffprobe is not available or extraction fails.
+
+    Args:
+        file_path: Path to video file
+
+    Returns:
+        Duration in seconds, or None if extraction fails
+    """
+    try:
+        metadata = get_video_metadata(file_path)
+        return metadata.get("duration")
+    except (InvalidOperationError, FileNotFoundError, subprocess.SubprocessError):
+        # ffprobe not available or extraction failed
+        return None

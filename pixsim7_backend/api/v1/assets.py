@@ -443,6 +443,16 @@ async def upload_asset_from_url(
             except Exception as e:
                 logger.warning(f"Failed to extract image dimensions: {e}")
 
+        # Extract video duration if it's a video
+        duration_sec = None
+        if media_type == MediaType.VIDEO:
+            from pixsim7_backend.shared.video_utils import extract_duration_safe
+            duration_sec = extract_duration_safe(temp_local_path)
+            if duration_sec:
+                logger.debug(f"Extracted video duration: {duration_sec:.2f}s")
+            else:
+                logger.debug("Could not extract video duration (ffprobe not available or extraction failed)")
+
     except Exception as e:
         # Clean up temp files
         try:
@@ -470,7 +480,7 @@ async def upload_asset_from_url(
             sync_status=SyncStatus.DOWNLOADED,  # Already have it locally!
             width=width,
             height=height,
-            duration_sec=None,  # TODO: Extract for videos
+            duration_sec=duration_sec,  # Extracted from video via ffprobe
             mime_type=content_type,
             file_size_bytes=file_size_bytes,
             sha256=sha256,
