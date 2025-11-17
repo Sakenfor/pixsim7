@@ -35,8 +35,8 @@ importers:
         specifier: ^0.553.0
         version: 0.553.0(react@19.2.0)
       pixcubes:
-        specifier: file:../../pixcubes
-        version: file:../pixcubes(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(zustand@5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)))
+        specifier: workspace:*
+        version: link:../packages/pixcubes
       react:
         specifier: ^19.2.0
         version: 19.2.0
@@ -186,6 +186,18 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
+
+  packages/pixcubes:
+    dependencies:
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      react-dom:
+        specifier: '>=18'
+        version: 19.2.0(react@19.2.0)
+      zustand:
+        specifier: '>=4'
+        version: 5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
 
   packages/types:
     devDependencies:
@@ -1574,14 +1586,6 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
-
-  pixcubes@file:../pixcubes:
-    resolution: {directory: ../pixcubes, type: directory}
-    engines: {node: '>=16.0.0'}
-    peerDependencies:
-      react: ^18.0.0
-      react-dom: ^18.0.0
-      zustand: ^4.0.0
 
   postcss-import@15.1.0:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
@@ -3312,15 +3316,6 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
-
-  pixcubes@file:../pixcubes(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(zustand@5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))):
-    dependencies:
-      clsx: 2.1.1
-      react: 19.2.0
-      react-dom: 19.2.0(react@19.2.0)
-      zustand: 5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
-    optionalDependencies:
-      react-draggable: 4.5.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
 
   postcss-import@15.1.0(postcss@8.5.6):
     dependencies:

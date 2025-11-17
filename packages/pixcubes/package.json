@@ -1,0 +1,18 @@
+{
+  "name": "pixcubes",
+  "version": "0.1.0",
+  "private": true,
+  "main": "../../pixcubes/dist/index.js",
+  "module": "../../pixcubes/dist/index.js",
+  "types": "../../pixcubes/dist/index.d.ts",
+  "files": [],
+  "scripts": {
+    "build": "cd ../../pixcubes && npm run build"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "zustand": ">=4"
+  }
+}
+
