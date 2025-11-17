@@ -280,32 +280,27 @@ class PluginManager:
         ]
 
 
-# Global plugin manager instance (initialized in main.py)
-plugin_manager: Optional[PluginManager] = None
-
-
 def init_plugin_manager(app: FastAPI, plugin_dir: str | Path) -> PluginManager:
     """
-    Initialize the global plugin manager.
+    Initialize a plugin manager instance.
 
     Usage in main.py:
         from pixsim7_backend.infrastructure.plugins import init_plugin_manager
 
         plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
+        routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
     """
-    global plugin_manager
-
-    plugin_manager = PluginManager(app)
+    manager = PluginManager(app)
 
     # Auto-discover plugins
-    discovered = plugin_manager.discover_plugins(plugin_dir)
+    discovered = manager.discover_plugins(plugin_dir)
     logger.info(f"Discovered {len(discovered)} plugins", plugins=discovered)
 
     # Load all
     for plugin_name in discovered:
-        plugin_manager.load_plugin(plugin_name, plugin_dir)
+        manager.load_plugin(plugin_name, plugin_dir)
 
     # Register with FastAPI
-    plugin_manager.register_all()
+    manager.register_all()
 
-    return plugin_manager
+    return manager

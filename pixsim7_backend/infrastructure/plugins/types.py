@@ -5,6 +5,7 @@ Enables dynamic loading of API routers as plugins.
 Future-proof for sandboxed community plugins.
 """
 
+import inspect
 from typing import Protocol, Callable, Any, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -85,10 +86,20 @@ class PluginHooks:
         self._hooks[event].append(callback)
 
     async def emit(self, event: str, *args, **kwargs) -> list[Any]:
-        """Emit an event, calling all registered callbacks"""
+        """
+        Emit an event, calling all registered callbacks.
+
+        Supports both sync and async callbacks.
+        """
         results = []
         for callback in self._hooks.get(event, []):
-            result = await callback(*args, **kwargs) if callable(callback) else None
+            if not callable(callback):
+                results.append(None)
+                continue
+
+            result = callback(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
             results.append(result)
         return results
 
