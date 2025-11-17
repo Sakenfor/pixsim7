@@ -843,13 +843,13 @@ class PixverseProvider(Provider):
         if not email:
             raise Exception("Email not found in getUserInfo response (Mail field missing)")
 
-          return {
-              'email': email,
-              'username': username,
-              'nickname': nickname,
-              'account_id': str(acc_id) if acc_id else None,
-              'raw_data': user_info_data,  # Save entire response
-          }
+        return {
+            'email': email,
+            'username': username,
+            'nickname': nickname,
+            'account_id': str(acc_id) if acc_id else None,
+            'raw_data': user_info_data,  # Save entire response
+        }
 
     def get_credits(self, account: ProviderAccount) -> dict:
         """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
