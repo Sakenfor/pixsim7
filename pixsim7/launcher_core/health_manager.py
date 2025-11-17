@@ -6,8 +6,10 @@ without UI dependencies. Uses threading instead of QThread.
 """
 
 import os
+import re
 import time
 import socket
+import subprocess
 import threading
 import urllib.request
 from typing import Dict, Optional, Callable
@@ -251,7 +253,6 @@ class HealthManager:
             True if containers are running
         """
         try:
-            import subprocess
             result = subprocess.run(
                 ['docker-compose', '-f', compose_file, 'ps'],
                 capture_output=True,
@@ -264,6 +265,71 @@ class HealthManager:
         except Exception:
             pass
         return False
+
+    def _detect_pid_by_port(self, port: int) -> Optional[int]:
+        """
+        Detect PID of process listening on given port.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            PID if found, None otherwise
+        """
+        try:
+            if os.name == 'nt':
+                # Windows: use netstat
+                result = subprocess.run(
+                    ['netstat', '-ano'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if f':{port}' in line and 'LISTENING' in line:
+                            parts = line.split()
+                            if len(parts) >= 5:
+                                try:
+                                    return int(parts[-1])
+                                except ValueError:
+                                    pass
+            else:
+                # Unix: use lsof or ss
+                try:
+                    result = subprocess.run(
+                        ['lsof', '-ti', f':{port}'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        return int(result.stdout.strip().split()[0])
+                except FileNotFoundError:
+                    # lsof not available, try ss
+                    result = subprocess.run(
+                        ['ss', '-lptn', f'sport = :{port}'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        # Extract PID from ss output
+                        match = re.search(r'pid=(\d+)', result.stdout)
+                        if match:
+                            return int(match.group(1))
+        except Exception:
+            pass
+        return None
+
+    def _extract_port_from_url(self, url: str) -> Optional[int]:
+        """Extract port number from URL."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            return parsed.port
+        except Exception:
+            return None
 
     def _run_loop(self):
         """Main health checking loop (runs in thread)."""
@@ -291,6 +357,11 @@ class HealthManager:
                             # Mark as RUNNING if detected externally
                             if state.status.value == 'stopped':
                                 state.status = ServiceStatus.RUNNING
+                                # Try to detect PID by port
+                                if not state.detected_pid and definition.health_url:
+                                    port = self._extract_port_from_url(definition.health_url)
+                                    if port:
+                                        state.detected_pid = self._detect_pid_by_port(port)
                             self._emit_health_update(key, HealthStatus.HEALTHY)
                         else:
                             self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
@@ -336,8 +407,12 @@ class HealthManager:
                         self.failure_counts[key] = 0
                         # Mark as RUNNING if detected externally
                         if state.status.value == 'stopped':
-                            from .types import ServiceStatus
                             state.status = ServiceStatus.RUNNING
+                            # Try to detect PID by port (if worker exposes HTTP endpoint)
+                            if not state.detected_pid and definition.health_url:
+                                port = self._extract_port_from_url(definition.health_url)
+                                if port:
+                                    state.detected_pid = self._detect_pid_by_port(port)
                         self._emit_health_update(key, HealthStatus.HEALTHY)
                     else:
                         self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
@@ -357,10 +432,14 @@ class HealthManager:
                     if is_healthy:
                         self.failure_counts[key] = 0
                         # If service is healthy but status is STOPPED, it must be running externally
-                        # Mark it as RUNNING so UI shows correct state
+                        # Mark it as RUNNING and detect PID so we can stop it later
                         if state.status.value == 'stopped':
-                            from .types import ServiceStatus
                             state.status = ServiceStatus.RUNNING
+                            # Try to detect PID by port
+                            if not state.detected_pid:
+                                port = self._extract_port_from_url(definition.health_url)
+                                if port:
+                                    state.detected_pid = self._detect_pid_by_port(port)
                         self._emit_health_update(key, HealthStatus.HEALTHY)
                     else:
                         self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
