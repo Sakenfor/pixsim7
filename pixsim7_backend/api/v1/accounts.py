@@ -539,6 +539,7 @@ class CookieImportRequest(BaseModel):
     provider_id: str
     url: str
     raw_data: Dict  # Raw cookies + localStorage from content script
+    password: Optional[str] = None  # Optional password for auto-refresh (skip for Google accounts)
 
 
 class CookieImportResponse(BaseModel):
@@ -632,6 +633,11 @@ async def import_cookies(
                 existing.cookies = cookies_dict
                 updated_fields.append("cookies")
 
+            # Update password if provided (for auto-refresh)
+            if request.password and existing.password != request.password:
+                existing.password = request.password
+                updated_fields.append("password")
+
             # Update metadata fields
             if nickname and existing.nickname != nickname:
                 existing.nickname = nickname
@@ -693,6 +699,7 @@ async def import_cookies(
                 user_id=user.id,
                 email=email,
                 provider_id=request.provider_id,
+                password=request.password,  # Store password for auto-refresh
                 jwt_token=jwt_token,
                 cookies=cookies_dict,
                 is_private=False,  # Default to shared

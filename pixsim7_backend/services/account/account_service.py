@@ -419,6 +419,7 @@ class AccountService:
         email: str,
         provider_id: str = "pixverse",
         *,
+        password: Optional[str] = None,
         jwt_token: Optional[str] = None,
         api_key: Optional[str] = None,
         openapi_key: Optional[str] = None,
@@ -433,6 +434,7 @@ class AccountService:
             user_id: Owner user ID
             email: Account email
             provider_id: Provider identifier (default "pixverse")
+            password: Optional password for auto-refresh (skip for Google accounts)
             jwt_token: Optional JWT token (for WebAPI)
             api_key: Optional API key
             openapi_key: Optional OpenAPI key (for paid API access)
@@ -456,6 +458,7 @@ class AccountService:
             user_id=user_id,
             email=email,
             provider_id=provider_id,
+            password=password,
             jwt_token=jwt_token,
             api_key=api_key,
             api_key_paid=openapi_key,

@@ -91,7 +91,8 @@
       "Bash(G:/code/conda_envs/pixsim7/Scripts/alembic.exe:*)",
       "Bash(git show:*)",
       "Bash(git init:*)",
-      "Bash(git diff:*)"
+      "Bash(git diff:*)",
+      "Bash(G:/code/conda_envs/pixsim7/Scripts/pip.exe show:*)"
     ],
     "deny": [],
     "ask": []
