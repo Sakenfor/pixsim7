@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="User management endpoints (profile, preferences, usage)",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["users"],
     dependencies=["auth"],  # Depends on auth for CurrentUser

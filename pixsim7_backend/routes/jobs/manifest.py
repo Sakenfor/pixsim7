@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Video generation job management",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["jobs"],
     dependencies=["auth"],

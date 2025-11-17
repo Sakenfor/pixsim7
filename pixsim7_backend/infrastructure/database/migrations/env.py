@@ -1,5 +1,8 @@
 """
 Alembic environment configuration for PixSim7
+
+Uses the domain model registry for consistent model discovery.
+This ensures alignment with main.py and provides a single source of truth.
 """
 from logging.config import fileConfig
 from sqlalchemy import pool
@@ -10,43 +13,13 @@ from alembic import context
 from sqlmodel import SQLModel
 from pixsim7_backend.shared.config import settings
 
-# Import all models to ensure they're registered with SQLModel metadata
-from pixsim7_backend.domain import (
-    # Core models
-    User,
-    UserSession,
-    UserQuotaUsage,
-    Workspace,
-    Asset,
-    AssetVariant,
-    Job,
-    ProviderSubmission,
-    ProviderAccount,
-    ProviderCredit,
-    # Asset metadata
-    Asset3DMetadata,
-    AssetAudioMetadata,
-    AssetTemporalSegment,
-    AssetAdultMetadata,
-    # Asset lineage
-    AssetLineage,
-    AssetBranch,
-    AssetBranchVariant,
-    AssetClip,
-    # Scene models
-    Scene,
-    SceneAsset,
-    SceneConnection,
-)
+# Use domain registry to auto-discover and register all models
+# This replaces manual imports and ensures consistency with main.py
+from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
 
-# Import automation models so Alembic sees these tables
-from pixsim7_backend.domain.automation import (
-    AndroidDevice,
-    AppActionPreset,
-    AutomationExecution,
-    ExecutionLoop,
-    ExecutionLoopHistory,
-)
+# Initialize domain registry to import all models
+# All domain models are now registered with SQLModel.metadata
+_domain_registry = init_domain_registry("pixsim7_backend/domain_models")
 
 # this is the Alembic Config object
 config = context.config

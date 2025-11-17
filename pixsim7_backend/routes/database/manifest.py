@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Database administration endpoints",
     author="PixSim Team",
+    kind="route",
     prefix="/api",
     tags=["database"],
     dependencies=[],  # Admin routes, no auth dependency

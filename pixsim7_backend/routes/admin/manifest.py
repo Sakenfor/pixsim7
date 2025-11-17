@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Administrative endpoints (users, quotas, system info)",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["admin"],
     dependencies=["auth"],

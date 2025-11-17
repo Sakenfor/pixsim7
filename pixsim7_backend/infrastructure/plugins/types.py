@@ -6,7 +6,7 @@ Future-proof for sandboxed community plugins.
 """
 
 import inspect
-from typing import Protocol, Callable, Any, Optional
+from typing import Protocol, Callable, Any, Optional, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -18,6 +18,9 @@ class PluginManifest(BaseModel):
     version: str                     # Semver (e.g., "1.0.0")
     description: str                 # Short description
     author: str = "PixSim Team"      # Plugin author
+
+    # Plugin type
+    kind: Literal["route", "feature"] = "feature"  # "route" = core API, "feature" = optional gameplay
 
     # API configuration
     prefix: str = "/api/v1"          # URL prefix

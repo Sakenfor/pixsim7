@@ -22,6 +22,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Provides stealth mechanics including pickpocket interactions",
     author="PixSim Team",
+    kind="feature",
     prefix="/api/v1",
     tags=["game-stealth"],
     dependencies=[],  # Could depend on "game-sessions" plugin

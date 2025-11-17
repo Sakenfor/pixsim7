@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Provider account management (Pixverse, Sora, etc.)",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["accounts"],
     dependencies=["auth"],

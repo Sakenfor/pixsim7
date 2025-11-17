@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Video generation provider endpoints",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["providers"],
     dependencies=["auth"],
