@@ -96,3 +96,4 @@ class AccountBulkCreditUpdate(BaseModel):
     """Bulk update credits by email"""
     email: EmailStr
     credits: Dict[str, int]  # credit_type -> amount (e.g., {"webapi": 100, "openapi": 50})
+    provider_id: str = "pixverse"  # Default to pixverse for backward compatibility

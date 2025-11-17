@@ -8,17 +8,19 @@
 import { useState, useEffect } from 'react';
 import { pluginManager } from '../lib/plugins/PluginManager';
 import type { PluginOverlay } from '../lib/plugins/types';
+import { useToast } from '../stores/toastStore';
 
 export function PluginOverlays() {
   const [overlays, setOverlays] = useState<PluginOverlay[]>([]);
+  const toast = useToast();
 
   useEffect(() => {
     // Setup callbacks
     pluginManager.setUICallbacks({
       onOverlaysChange: () => setOverlays(pluginManager.getOverlays()),
       onNotification: (notification) => {
-        // TODO: Integrate with your notification system
-        alert(notification.message);
+        const type = notification.type || 'info';
+        toast[type](notification.message, notification.duration);
       },
     });
 

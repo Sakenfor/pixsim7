@@ -593,7 +593,7 @@ async def bulk_update_credits(
     for update in updates:
         updated = await account_service.update_credits_by_email(
             email=update.email,
-            provider_id="pixverse",  # TODO: Add provider_id to request
+            provider_id=update.provider_id,
             credits_map=update.credits
         )
         for acc in updated:
