@@ -22,6 +22,7 @@ Notes:
 from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
+from uuid import UUID
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
@@ -62,6 +63,18 @@ class GenerationArtifact(SQLModel, table=True):
         max_length=64,
         index=True,
         description="SHA256 of canonical_params + inputs for dedup/retry grouping"
+    )
+
+    # Prompt versioning integration (Phase 7)
+    prompt_version_id: Optional[UUID] = Field(
+        default=None,
+        foreign_key="prompt_versions.id",
+        index=True,
+        description="Optional link to prompt version used for this generation"
+    )
+    final_prompt: Optional[str] = Field(
+        default=None,
+        description="Final prompt text after variable substitution (for debugging)"
     )
 
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

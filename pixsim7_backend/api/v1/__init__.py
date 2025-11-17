@@ -1,7 +1,7 @@
 """
 API v1 routers
 """
-from . import auth, users, jobs, assets, admin, services, accounts, automation
+from . import auth, users, jobs, assets, admin, services, accounts, automation, prompts
 
 __all__ = [
 	"auth",
@@ -12,4 +12,5 @@ __all__ = [
 	"services",
 	"accounts",
 	"automation",
+	"prompts",
 ]

@@ -124,12 +124,19 @@ class JobSubmissionPipeline:
                 inputs.append({"role": "source_video", "remote_url": vid_url})
 
         artifact_hash = GenerationArtifact.compute_hash(canonical, inputs)
+
+        # Extract prompt versioning info if present (Phase 7)
+        prompt_version_id = job.params.get("prompt_version_id")
+        final_prompt = job.params.get("prompt") or canonical.get("prompt")
+
         artifact = GenerationArtifact(
             job_id=job.id,
             operation_type=job.operation_type,
             canonical_params=canonical,
             inputs=inputs,
             reproducible_hash=artifact_hash,
+            prompt_version_id=prompt_version_id,
+            final_prompt=final_prompt,
         )
         self.db.add(artifact)
         await self.db.commit()
@@ -138,6 +145,16 @@ class JobSubmissionPipeline:
         # Bind artifact context for remaining logs
         artifact_logger = bind_artifact_context(job_logger, artifact_id=artifact.id)
         artifact_logger.info("pipeline:artifact", msg="artifact_created", reproducible_hash=artifact_hash)
+
+        # Increment prompt version usage counter if present (Phase 7)
+        if prompt_version_id:
+            try:
+                from pixsim7_backend.services.prompts import PromptVersionService
+                prompt_service = PromptVersionService(self.db)
+                await prompt_service.increment_generation_count(prompt_version_id)
+                artifact_logger.info("prompt_version_tracked", prompt_version_id=str(prompt_version_id))
+            except Exception as e:
+                artifact_logger.warning("prompt_version_tracking_failed", error=str(e))
 
         # Execute via ProviderService
         try:
