@@ -22,6 +22,67 @@ from pixsim7_backend.infrastructure.redis import check_redis_connection, get_red
 router = APIRouter()
 
 
+# ===== HELPER FUNCTIONS =====
+
+def analyze_api_routes(app) -> Dict[str, Any]:
+    """
+    Analyze FastAPI app routes and return statistics
+
+    Returns:
+        - total: Total endpoint count
+        - by_method: Breakdown by HTTP method
+        - by_tag: Breakdown by router/tag
+        - protected: Count of authenticated endpoints
+        - public: Count of public endpoints
+    """
+    from fastapi.routing import APIRoute
+    from pixsim7_backend.api.dependencies import get_current_user, get_current_admin_user
+
+    total = 0
+    by_method = {}
+    by_tag = {}
+    protected = 0
+    public = 0
+
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            # Count each method separately
+            for method in route.methods:
+                if method == "HEAD":
+                    continue  # Skip HEAD methods
+
+                total += 1
+
+                # Count by method
+                by_method[method] = by_method.get(method, 0) + 1
+
+                # Count by tag
+                for tag in route.tags:
+                    by_tag[tag] = by_tag.get(tag, 0) + 1
+
+                # Check if protected (has authentication dependency)
+                is_protected = False
+                if route.dependant and route.dependant.dependencies:
+                    for dep in route.dependant.dependencies:
+                        dep_call = getattr(dep, 'call', None)
+                        if dep_call in (get_current_user, get_current_admin_user):
+                            is_protected = True
+                            break
+
+                if is_protected:
+                    protected += 1
+                else:
+                    public += 1
+
+    return {
+        "total": total,
+        "by_method": dict(sorted(by_method.items(), key=lambda x: x[1], reverse=True)),
+        "by_tag": dict(sorted(by_tag.items(), key=lambda x: x[1], reverse=True)),
+        "protected": protected,
+        "public": public,
+    }
+
+
 # ===== RESPONSE SCHEMAS =====
 
 class ServiceStatus(BaseModel):
@@ -82,8 +143,20 @@ async def get_services_status(admin: CurrentAdminUser):
     - PostgreSQL
     - Redis
     """
+    from fastapi import Request
+    from pixsim7_backend.shared.config import settings
+
     services = []
     now = datetime.utcnow()
+
+    # Get app instance to analyze routes
+    # Note: We need to import the app from main
+    try:
+        from pixsim7_backend.main import app
+        route_stats = analyze_api_routes(app)
+    except Exception:
+        # Fallback if analysis fails
+        route_stats = {"total": "unknown"}
 
     # API Server (always running if you can call this endpoint)
     services.append(ServiceStatus(
@@ -92,8 +165,12 @@ async def get_services_status(admin: CurrentAdminUser):
         healthy=True,
         last_check=now,
         details={
-            "version": "0.1.0",
-            "endpoints": 20,  # TODO: Count actual endpoints
+            "version": settings.api_version,
+            "endpoints": route_stats.get("total", "unknown"),
+            "by_method": route_stats.get("by_method", {}),
+            "by_router": route_stats.get("by_tag", {}),
+            "protected": route_stats.get("protected", "unknown"),
+            "public": route_stats.get("public", "unknown"),
         }
     ))
 
