@@ -26,6 +26,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Provides NPC management, expressions, schedules, and presence tracking",
     author="PixSim Team",
+    kind="feature",
     prefix="/api/v1",
     tags=["game-npcs"],
     dependencies=[],  # Independent - no dependencies

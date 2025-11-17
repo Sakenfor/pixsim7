@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Database migration management endpoints",
     author="PixSim Team",
+    kind="route",
     prefix="/api",
     tags=["migrations"],
     dependencies=[],  # Admin routes, no auth dependency

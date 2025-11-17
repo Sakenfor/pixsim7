@@ -13,6 +13,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Git-like prompt versioning with variant feedback tracking",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["prompts"],
     dependencies=["auth", "assets"],

@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Android device agent endpoints",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["device-agents"],
     dependencies=[],  # Public endpoints for agents

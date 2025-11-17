@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Game world management",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1/game/worlds",
     tags=["game-worlds"],
     dependencies=["auth"],

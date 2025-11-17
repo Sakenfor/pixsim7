@@ -5,7 +5,8 @@ Enables dynamic loading of API routers as plugins.
 Future-proof for sandboxed community plugins.
 """
 
-from typing import Protocol, Callable, Any, Optional
+import inspect
+from typing import Protocol, Callable, Any, Optional, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -17,6 +18,9 @@ class PluginManifest(BaseModel):
     version: str                     # Semver (e.g., "1.0.0")
     description: str                 # Short description
     author: str = "PixSim Team"      # Plugin author
+
+    # Plugin type
+    kind: Literal["route", "feature"] = "feature"  # "route" = core API, "feature" = optional gameplay
 
     # API configuration
     prefix: str = "/api/v1"          # URL prefix
@@ -85,10 +89,20 @@ class PluginHooks:
         self._hooks[event].append(callback)
 
     async def emit(self, event: str, *args, **kwargs) -> list[Any]:
-        """Emit an event, calling all registered callbacks"""
+        """
+        Emit an event, calling all registered callbacks.
+
+        Supports both sync and async callbacks.
+        """
         results = []
         for callback in self._hooks.get(event, []):
-            result = await callback(*args, **kwargs) if callable(callback) else None
+            if not callable(callback):
+                results.append(None)
+                continue
+
+            result = callback(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
             results.append(result)
         return results
 

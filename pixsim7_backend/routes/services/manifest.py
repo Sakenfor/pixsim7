@@ -11,6 +11,7 @@ manifest = PluginManifest(
     version="1.0.0",
     description="Service management and orchestration",
     author="PixSim Team",
+    kind="route",
     prefix="/api/v1",
     tags=["services"],
     dependencies=["auth"],
