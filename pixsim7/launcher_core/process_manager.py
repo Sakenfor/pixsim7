@@ -140,6 +140,25 @@ class ProcessManager:
         if state.status in (ServiceStatus.RUNNING, ServiceStatus.STARTING):
             return True
 
+        definition = state.definition
+        # Enforce dependencies (if defined)
+        if definition.depends_on:
+            missing: list[str] = []
+            for dep_key in definition.depends_on:
+                dep_state = self.states.get(dep_key)
+                if not dep_state or dep_state.status not in (ServiceStatus.RUNNING, ServiceStatus.STARTING):
+                    missing.append(dep_key)
+            if missing:
+                msg = f"Cannot start '{service_key}': required services not running: {', '.join(missing)}"
+                state.status = ServiceStatus.FAILED
+                state.last_error = msg
+                self._emit_event(ProcessEvent(
+                    service_key=service_key,
+                    event_type="failed",
+                    data={"error": msg}
+                ))
+                return False
+
         # Check tool availability
         if not self.check_tool_availability(service_key):
             state.status = ServiceStatus.FAILED
@@ -150,8 +169,6 @@ class ProcessManager:
                 data={"error": state.tool_check_message}
             ))
             return False
-
-        definition = state.definition
 
         # Use custom start function if provided
         if definition.custom_start:

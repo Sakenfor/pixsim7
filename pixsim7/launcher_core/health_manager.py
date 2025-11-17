@@ -431,8 +431,8 @@ class HealthManager:
 
                     if is_healthy:
                         self.failure_counts[key] = 0
-                        # If service is healthy but status is STOPPED, it must be running externally
-                        # Mark it as RUNNING and detect PID so we can stop it later
+                        # If service is healthy but status is STOPPED, it must be running externally.
+                        # Mark it as RUNNING and detect PID so we can stop it later.
                         if state.status.value == 'stopped':
                             state.status = ServiceStatus.RUNNING
                             # Try to detect PID by port
@@ -455,8 +455,13 @@ class HealthManager:
                         # Was healthy, now unhealthy
                         elif current_status == HealthStatus.HEALTHY or (state.status.value == 'running' and current_status == HealthStatus.STARTING):
                             self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                        # Just stopped
+                        # Just stopped / no longer reachable: mark both health and status as STOPPED
                         else:
+                            # Clear PID/detected_pid so UI reflects stopped state even if
+                            # the process was killed externally (e.g. via diagnostic script).
+                            state.pid = None
+                            state.detected_pid = None
+                            state.status = ServiceStatus.STOPPED
                             self._emit_health_update(key, HealthStatus.STOPPED)
                 else:
                     # No health URL, assume healthy if running

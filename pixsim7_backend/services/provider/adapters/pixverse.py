@@ -952,8 +952,8 @@ class PixverseProvider(Provider):
         email = None
         username = None
         nickname = None
-          account_id = None
-          provider_metadata = None
+        account_id = None
+        provider_metadata = None
 
         try:
             # Call getUserInfo API (synchronous, using pixverse-py library)
@@ -961,8 +961,8 @@ class PixverseProvider(Provider):
             email = user_info['email']
             username = user_info.get('username')
             nickname = user_info.get('nickname')
-              account_id = user_info.get('account_id')
-              provider_metadata = user_info.get('raw_data')
+            account_id = user_info.get('account_id')
+            provider_metadata = user_info.get('raw_data')
             logger.debug(
                 f"[Pixverse] getUserInfo success: email={email}, username={username}, credits={credits_data}"
             )
@@ -1012,12 +1012,12 @@ class PixverseProvider(Provider):
                 "Pixverse: Could not extract email. Ensure pixverse-py is installed on backend for getUserInfo, or JWT includes 'Mail'/'email'."
             )
 
-          return {
-              'email': email,
-              'jwt_token': ai_token,
-              'cookies': cookies,
-              'username': username,
-              'nickname': nickname,
-              'account_id': account_id,
-              'provider_metadata': provider_metadata,  # Full getUserInfo response
-          }
+        return {
+            'email': email,
+            'jwt_token': ai_token,
+            'cookies': cookies,
+            'username': username,
+            'nickname': nickname,
+            'account_id': account_id,
+            'provider_metadata': provider_metadata,  # Full getUserInfo response
+        }
