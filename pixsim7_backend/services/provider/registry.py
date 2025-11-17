@@ -89,25 +89,136 @@ class ProviderRegistry:
 registry = ProviderRegistry()
 
 
-# ===== AUTO-REGISTER PROVIDERS =====
+# ===== AUTO-DISCOVER PROVIDERS =====
+
+def discover_providers(providers_dir: str = "pixsim7_backend/providers") -> list[str]:
+    """
+    Discover provider plugins by scanning providers directory
+
+    Args:
+        providers_dir: Path to providers directory
+
+    Returns:
+        List of discovered provider IDs
+    """
+    import os
+
+    discovered = []
+
+    if not os.path.exists(providers_dir):
+        logger.warning(f"Providers directory not found: {providers_dir}")
+        return discovered
+
+    # Scan for provider directories
+    for item in os.listdir(providers_dir):
+        provider_path = os.path.join(providers_dir, item)
+
+        # Skip if not a directory
+        if not os.path.isdir(provider_path):
+            continue
+
+        # Skip __pycache__ and hidden directories
+        if item.startswith('_') or item.startswith('.'):
+            continue
+
+        # Check for manifest.py
+        manifest_path = os.path.join(provider_path, "manifest.py")
+        if not os.path.exists(manifest_path):
+            logger.debug(f"Skipping {item} - no manifest.py found")
+            continue
+
+        discovered.append(item)
+
+    logger.info(f"Discovered {len(discovered)} provider plugins: {discovered}")
+    return discovered
+
+
+def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7_backend/providers") -> bool:
+    """
+    Load and register a provider plugin
+
+    Args:
+        provider_name: Provider directory name
+        providers_dir: Path to providers directory
+
+    Returns:
+        True if loaded successfully, False otherwise
+    """
+    import importlib
+
+    try:
+        # Build module path
+        module_path = f"{providers_dir.replace('/', '.')}.{provider_name}.manifest"
+
+        # Import manifest module
+        module = importlib.import_module(module_path)
+
+        # Get provider instance and manifest
+        provider_instance = getattr(module, 'provider', None)
+        manifest = getattr(module, 'manifest', None)
+
+        if not provider_instance:
+            logger.error(f"Provider plugin {provider_name} has no 'provider' instance")
+            return False
+
+        if not manifest:
+            logger.warning(f"Provider plugin {provider_name} has no manifest")
+
+        # Check if enabled
+        if manifest and hasattr(manifest, 'enabled') and not manifest.enabled:
+            logger.info(f"Provider plugin {provider_name} is disabled, skipping")
+            return False
+
+        # Register provider
+        registry.register(provider_instance)
+
+        # Call on_register hook if exists
+        on_register = getattr(module, 'on_register', None)
+        if callable(on_register):
+            on_register()
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to load provider plugin {provider_name}: {e}", exc_info=True)
+        return False
+
+
+def register_providers_from_plugins(providers_dir: str = "pixsim7_backend/providers") -> int:
+    """
+    Auto-discover and register all provider plugins
+
+    Args:
+        providers_dir: Path to providers directory
+
+    Returns:
+        Number of providers registered
+    """
+    discovered = discover_providers(providers_dir)
+
+    registered_count = 0
+    for provider_name in discovered:
+        if load_provider_plugin(provider_name, providers_dir):
+            registered_count += 1
+
+    logger.info(f"✅ Registered {registered_count} provider plugins")
+    return registered_count
+
+
+# ===== LEGACY MANUAL REGISTRATION (Deprecated) =====
 
 def register_default_providers() -> None:
     """
-    Register default providers
+    Register default providers (DEPRECATED - use register_providers_from_plugins)
 
-    Call this on application startup
+    This function is kept for backward compatibility but now uses auto-discovery.
+    Call this on application startup.
     """
-    from pixsim7_backend.services.provider.adapters.pixverse import PixverseProvider
-    from pixsim7_backend.services.provider.adapters.sora import SoraProvider
+    # Use auto-discovery instead of manual registration
+    register_providers_from_plugins()
 
-    # Register Pixverse
-    registry.register(PixverseProvider())
-
-    # Register Sora
-    registry.register(SoraProvider())
-
-    # TODO: Register other providers
-    # registry.register(RunwayProvider())
-    # registry.register(PikaProvider())
-
-    logger.info(f"✅ Registered {len(registry.list_providers())} providers")
+    # Legacy code (commented out - now handled by plugin system):
+    # from pixsim7_backend.services.provider.adapters.pixverse import PixverseProvider
+    # from pixsim7_backend.services.provider.adapters.sora import SoraProvider
+    # registry.register(PixverseProvider())
+    # registry.register(SoraProvider())
