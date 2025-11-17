@@ -96,7 +96,8 @@
       "Bash(adb devices:*)",
       "Bash(adb kill-server:*)",
       "Bash(adb start-server:*)",
-      "Bash(adb:*)"
+      "Bash(adb:*)",
+      "Bash(G:codeconda_envspixsim7python.exe launcher.py)"
     ],
     "deny": [],
     "ask": []

@@ -227,6 +227,7 @@ class DatabaseLogViewer(QWidget):
         self.log_display.setReadOnly(True)
         self.log_display.setOpenLinks(False)  # Handle clicks manually
         self.log_display.setOpenExternalLinks(False)
+        self.log_display.setUndoRedoEnabled(False)  # Disable undo to prevent memory leak
         self.log_display.anchorClicked.connect(self._on_log_link_clicked)
         self._expanded_rows = set()  # Track which rows are expanded
         self.log_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

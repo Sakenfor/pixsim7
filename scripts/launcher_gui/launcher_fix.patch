@@ -1,0 +1,14 @@
+--- a/launcher.py
++++ b/launcher.py
+@@ -1178,7 +1178,11 @@ class LauncherWindow(QWidget):
+ 
+         # Calculate hash of current log buffer to detect changes
+         if sp.log_buffer:
+-            buffer_signature = hash(tuple(sp.log_buffer))
++            # Efficient hash: use buffer length + hash of last 10 lines
++            # This avoids creating a massive tuple every second
++            last_lines = sp.log_buffer[-10:] if len(sp.log_buffer) > 10 else sp.log_buffer
++            buffer_signature = hash((len(sp.log_buffer), tuple(last_lines)))
+         else:
+             buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
+         filter_signature = self._console_filter_signature()

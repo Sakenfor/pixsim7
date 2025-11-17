@@ -435,6 +435,7 @@ class LauncherWindow(QWidget):
         self.log_view = QTextBrowser()
         self.log_view.setReadOnly(True)
         self.log_view.setOpenExternalLinks(True)  # Open URLs in browser
+        self.log_view.setUndoRedoEnabled(False)  # Disable undo to prevent memory leak
         self.log_view.setStyleSheet(theme.get_text_browser_stylesheet())
         console_layout.addWidget(self.log_view)
 
@@ -1022,11 +1023,16 @@ class LauncherWindow(QWidget):
                 self.processes[key].start()
 
         # Restart health worker with new process dict
-        if hasattr(self, 'health_worker'):
-            self.health_worker.processes = self.processes
-            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
-            self.health_worker.health_update.connect(self._on_health_update)
-            self.health_worker.start()
+        if hasattr(self, 'health_worker') and self.health_worker:
+            try:
+                self.health_worker.stop()
+                self.health_worker.wait(2000)  # Wait up to 2 seconds
+            except Exception:
+                pass
+        # Create new health worker
+        self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
+        self.health_worker.health_update.connect(self._on_health_update)
+        self.health_worker.start()
 
         # Update UI (cards will be updated via health_update signals)
         self._refresh_db_logs()
@@ -1178,7 +1184,10 @@ class LauncherWindow(QWidget):
 
         # Calculate hash of current log buffer to detect changes
         if sp.log_buffer:
-            buffer_signature = hash(tuple(sp.log_buffer))
+            # Efficient hash: use buffer length + hash of last 10 lines
+            # This avoids creating a massive tuple every second
+            last_lines = sp.log_buffer[-10:] if len(sp.log_buffer) > 10 else sp.log_buffer
+            buffer_signature = hash((len(sp.log_buffer), tuple(last_lines)))
         else:
             buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
         filter_signature = self._console_filter_signature()
