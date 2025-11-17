@@ -1,0 +1,488 @@
+/**
+ * Constellation Gizmo Styles - Navigate through star fields
+ * Ethereal space navigation with beautiful nebula effects
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.constellation-gizmo {
+  position: relative;
+  width: 500px;
+  height: 500px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: radial-gradient(
+    circle at center,
+    #0a0a0f,
+    #000000
+  );
+  cursor: crosshair;
+  user-select: none;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.constellation-gizmo.dragging {
+  cursor: move;
+}
+
+.constellation-gizmo.active {
+  box-shadow: 0 0 60px rgba(0, 217, 255, 0.3);
+}
+
+/* ============================================================================
+   Starfield Background
+   ============================================================================ */
+
+.starfield-bg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Nebula clouds */
+.nebula {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.3;
+  animation: nebula-drift 60s ease-in-out infinite;
+}
+
+.nebula-1 {
+  width: 300px;
+  height: 300px;
+  top: -100px;
+  left: -100px;
+  background: radial-gradient(
+    circle,
+    rgba(147, 51, 234, 0.4),
+    transparent 70%
+  );
+  animation-duration: 45s;
+}
+
+.nebula-2 {
+  width: 400px;
+  height: 400px;
+  bottom: -150px;
+  right: -150px;
+  background: radial-gradient(
+    circle,
+    rgba(0, 217, 255, 0.3),
+    transparent 70%
+  );
+  animation-duration: 60s;
+  animation-delay: -20s;
+}
+
+.nebula-3 {
+  width: 250px;
+  height: 250px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 100, 200, 0.2),
+    transparent 70%
+  );
+  animation-duration: 75s;
+  animation-delay: -40s;
+}
+
+@keyframes nebula-drift {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -20px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 30px) scale(0.9);
+  }
+}
+
+/* ============================================================================
+   Constellation Lines
+   ============================================================================ */
+
+.constellation-lines {
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.connection-line {
+  stroke-dasharray: 2 4;
+  animation: connection-pulse 3s ease-in-out infinite;
+}
+
+@keyframes connection-pulse {
+  0%, 100% {
+    stroke-dashoffset: 0;
+    opacity: 0.3;
+  }
+  50% {
+    stroke-dashoffset: 6;
+    opacity: 0.6;
+  }
+}
+
+/* ============================================================================
+   Stars
+   ============================================================================ */
+
+.stars-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.star {
+  position: absolute;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: star-twinkle 4s ease-in-out infinite;
+  animation-delay: calc(var(--pulse-phase, 0) * 1s);
+}
+
+@keyframes star-twinkle {
+  0%, 100% {
+    opacity: calc(0.5 + var(--star-brightness, 0.5) * 0.5);
+  }
+  50% {
+    opacity: var(--star-brightness, 0.5);
+  }
+}
+
+.star.active {
+  animation: star-active-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes star-active-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.star-core {
+  position: relative;
+  width: var(--star-size, 4px);
+  height: var(--star-size, 4px);
+}
+
+.star-core::before {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle,
+    white 0%,
+    var(--star-color, #FFFFFF) 40%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  filter: brightness(var(--star-brightness, 0.5));
+}
+
+.star-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--star-size, 4px) * 4);
+  height: calc(var(--star-size, 4px) * 4);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    var(--star-color, #FFFFFF) 0%,
+    transparent 50%
+  );
+  opacity: var(--star-brightness, 0.5);
+  filter: blur(calc(var(--star-size, 4px) * 0.5));
+  pointer-events: none;
+}
+
+/* Star rays (for bright/active stars) */
+.star-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--star-size, 4px) * 6);
+  height: 2px;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.star.active .star-rays {
+  opacity: 0.6;
+}
+
+.star-rays::before,
+.star-rays::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--star-color, #FFFFFF) 50%,
+    transparent 100%
+  );
+}
+
+.star-rays::after {
+  transform: rotate(90deg);
+}
+
+/* Star label (for active stars) */
+.star-label {
+  position: absolute;
+  top: calc(var(--star-size, 4px) + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--star-color, #FFFFFF);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  opacity: 0;
+  animation: label-fade-in 0.3s ease forwards;
+  pointer-events: none;
+}
+
+@keyframes label-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================================================
+   Cursor Indicator
+   ============================================================================ */
+
+.cursor-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.cursor-crosshair {
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.cursor-crosshair::before,
+.cursor-crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.cursor-crosshair::before {
+  width: 1px;
+  height: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.cursor-crosshair::after {
+  width: 100%;
+  height: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cursor-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(0, 217, 255, 0.5);
+  border-radius: 50%;
+  animation: cursor-ring-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cursor-ring-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0.8;
+  }
+}
+
+/* ============================================================================
+   Navigation Compass
+   ============================================================================ */
+
+.navigation-compass {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 60px;
+  height: 60px;
+  pointer-events: none;
+}
+
+.compass-rose {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.3s ease;
+}
+
+.compass-direction {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
+
+.compass-direction.n {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-direction.s {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.compass-direction.e {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-direction.w {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.compass-rose::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+}
+
+/* ============================================================================
+   Active Star Info
+   ============================================================================ */
+
+.active-star-info {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 8px;
+  padding: 12px 20px;
+  backdrop-filter: blur(10px);
+  animation: info-slide-up 0.3s ease;
+}
+
+@keyframes info-slide-up {
+  from {
+    transform: translateX(-50%) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+.star-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #00D9FF;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.star-distance {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+.star-tags {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.star-tag {
+  padding: 2px 8px;
+  background: rgba(147, 51, 234, 0.3);
+  border-radius: 999px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================================
+   Control Hints
+   ============================================================================ */
+
+.control-hints {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.constellation-gizmo:hover .control-hints {
+  opacity: 0.7;
+}
+
+.hint {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
