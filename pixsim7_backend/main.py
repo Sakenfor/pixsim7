@@ -44,43 +44,10 @@ async def lifespan(app: FastAPI):
     if not settings.debug and settings.secret_key == "change-this-in-production":
         raise ValueError("SECRET_KEY must be set in production mode. Set DEBUG=true for development or provide a secure SECRET_KEY.")
 
-    # Import all domain models to register them with SQLModel
-    from pixsim7_backend.domain import (
-        User,
-        UserSession,
-        UserQuotaUsage,
-        Workspace,
-        Asset,
-        AssetVariant,
-        Job,
-        ProviderSubmission,
-        ProviderAccount,
-        ProviderCredit,
-        Scene,
-        SceneAsset,
-        SceneConnection,
-        LogEntry,
-    )
-    # Register automation domain models
-    from pixsim7_backend.domain.automation import (
-        AndroidDevice,
-        AppActionPreset,
-        AutomationExecution,
-        ExecutionLoop,
-        ExecutionLoopHistory,
-    )
-    # Register game domain models
-    from pixsim7_backend.domain.game import (
-        GameScene,
-        GameSceneNode,
-        GameSceneEdge,
-        GameSession,
-        GameSessionEvent,
-        GameLocation,
-        GameNPC,
-        NPCSchedule,
-        NPCState,
-    )
+    # Auto-register domain models with SQLModel
+    from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
+    domain_registry = init_domain_registry("pixsim7_backend/domain_models")
+    logger.info(f"Registered {len(domain_registry.registered_models)} domain models")
 
     # Initialize database
     await init_database()
