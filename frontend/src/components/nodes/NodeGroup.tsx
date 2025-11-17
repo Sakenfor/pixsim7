@@ -21,7 +21,7 @@ interface NodeGroupNodeData {
  * Features:
  * - Collapse/expand to hide/show children
  * - Visual container with header
- * - Zoom navigation (TODO)
+ * - Zoom navigation
  */
 export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeData>) => {
   const toggleGroupCollapsed = useGraphStore((s: GraphState) => s.toggleGroupCollapsed);
