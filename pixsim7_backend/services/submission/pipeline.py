@@ -1,28 +1,21 @@
 """
-JobSubmissionPipeline - lean orchestration wrapper (Phase 1)
+GenerationSubmissionPipeline - unified generation orchestration wrapper
 
 Purpose:
-- Provide a single entrypoint for job submission logic
-- Wrap existing AccountService + ProviderService behavior with structured logging
-- Be trivially swappable into the worker without changing core services
+- Single entrypoint for generation submission logic
+- Uses unified Generation model (replaces Job + GenerationArtifact)
+- Wraps AccountService + ProviderService with structured logging
 
-Initial Scope (Phase 1):
+Scope:
 - Select account
-- Mark job started
+- Mark generation started
 - Execute provider submission (ProviderService)
-- Return provider_job_id
-
-Future (Phase 2+):
-- Canonical option mappers
-- Pre-upload cache stage
-- Retry/backoff policy abstraction
-- Artifact extraction/persistence
-- Emission of lifecycle domain events (JobSubmitted, JobFailed, etc.)
+- Return provider_job_id and result
 
 Design Notes:
-- Non-invasive: uses existing services; does not duplicate their logic
+- Uses unified Generation model (no separate artifact creation needed)
 - Feature flag controlled via env PIXSIM7_USE_PIPELINE (checked in worker)
-- Adds minimal structured logging fields to ease later ingestion
+- Structured logging for observability
 """
 from __future__ import annotations
 
@@ -33,9 +26,9 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7_backend.domain import Job, ProviderAccount, GenerationArtifact, OperationType
+from pixsim7_backend.domain import Generation, ProviderAccount, OperationType
 from pixsim7_backend.services.account import AccountService
-from pixsim7_backend.services.job import JobService
+from pixsim7_backend.services.generation import GenerationService
 from pixsim7_backend.services.provider.provider_service import ProviderService
 from pixsim7_backend.shared.errors import (
     NoAccountAvailableError,
@@ -50,7 +43,7 @@ logger = get_logger()
 
 @dataclass
 class PipelineResult:
-    job_id: int
+    generation_id: int
     status: str
     provider_job_id: str | None = None
     error: str | None = None
@@ -58,145 +51,116 @@ class PipelineResult:
     submitted_at: datetime | None = None
 
 
-class JobSubmissionPipeline:
-    """Lean submission pipeline wrapper.
+class GenerationSubmissionPipeline:
+    """Unified generation submission pipeline.
 
     Methods:
-        run(job, db_session) -> PipelineResult
+        run(generation, db_session) -> PipelineResult
     """
     def __init__(self, db: AsyncSession):
         self.db = db
         self.account_service = AccountService(db)
         self.provider_service = ProviderService(db)
-        # UserService only needed indirectly by JobService
+        # UserService only needed indirectly by GenerationService
         from pixsim7_backend.services.user import UserService
         self.user_service = UserService(db)
-        self.job_service = JobService(db, self.user_service)
+        self.generation_service = GenerationService(db, self.user_service)
 
-    async def run(self, job: Job) -> PipelineResult:
-        """Execute submission pipeline for a job.
+    async def run(self, generation: Generation) -> PipelineResult:
+        """Execute submission pipeline for a generation.
 
-        Phase 1 implementation mirrors previous worker logic but centralizes it.
+        Uses unified Generation model (no separate artifact needed).
         """
-        # Bind job context for structured logging
-        job_logger = bind_job_context(
+        # Bind generation context for structured logging
+        gen_logger = bind_job_context(
             logger,
-            job_id=job.id,
-            operation_type=job.operation_type.value,
-            provider_id=job.provider_id
+            job_id=generation.id,  # Keep "job_id" key for backward compatibility with logging
+            generation_id=generation.id,
+            operation_type=generation.operation_type.value,
+            provider_id=generation.provider_id
         )
 
-        job_logger.info("pipeline:start", msg="job_submission_started", retry_count=job.retry_count)
+        gen_logger.info("pipeline:start", msg="generation_submission_started", retry_count=generation.retry_count)
 
-        # Guard: only pending jobs
-        if job.status.value != "pending":
-            job_logger.warning("pipeline:skip", msg="job_not_pending", status=job.status.value)
-            return PipelineResult(job_id=job.id, status="skipped")
+        # Guard: only pending generations
+        if generation.status.value != "pending":
+            gen_logger.warning("pipeline:skip", msg="generation_not_pending", status=generation.status.value)
+            return PipelineResult(generation_id=generation.id, status="skipped")
 
         # Select account
         try:
             account: ProviderAccount = await self.account_service.select_account(
-                provider_id=job.provider_id,
-                user_id=job.user_id,
+                provider_id=generation.provider_id,
+                user_id=generation.user_id,
             )
-            job_logger.info("account_selected", account_id=account.id)
+            gen_logger.info("account_selected", account_id=account.id)
         except NoAccountAvailableError as e:
-            job_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
-            return PipelineResult(job_id=job.id, status="no_account", error=str(e))
+            gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
+            return PipelineResult(generation_id=generation.id, status="no_account", error=str(e))
 
         # Mark started
-        await self.job_service.mark_started(job.id)
+        await self.generation_service.mark_started(generation.id)
 
-        # Canonicalize params & create artifact BEFORE provider mapping
-        from pixsim7_backend.services.submission.parameter_mappers import get_mapper
-        mapper = get_mapper(job.operation_type)
-        canonical = mapper.canonicalize(job.params)
-
-        # Derive inputs list (minimal heuristic Phase 1)
-        inputs: list[dict] = []
-        if job.operation_type == OperationType.IMAGE_TO_VIDEO:
-            img_url = job.params.get("image_url")
-            if img_url:
-                inputs.append({"role": "seed_image", "remote_url": img_url})
-        if job.operation_type == OperationType.VIDEO_EXTEND:
-            vid_url = job.params.get("video_url")
-            if vid_url:
-                inputs.append({"role": "source_video", "remote_url": vid_url})
-
-        artifact_hash = GenerationArtifact.compute_hash(canonical, inputs)
-
-        # Extract prompt versioning info if present (Phase 7)
-        prompt_version_id = job.params.get("prompt_version_id")
-        final_prompt = job.params.get("prompt") or canonical.get("prompt")
-
-        artifact = GenerationArtifact(
-            job_id=job.id,
-            operation_type=job.operation_type,
-            canonical_params=canonical,
-            inputs=inputs,
-            reproducible_hash=artifact_hash,
-            prompt_version_id=prompt_version_id,
-            final_prompt=final_prompt,
+        # Generation already has canonical_params, inputs, and reproducible_hash
+        # from creation time (GenerationService.create_generation)
+        gen_logger.info(
+            "pipeline:generation",
+            msg="using_unified_generation",
+            reproducible_hash=generation.reproducible_hash,
+            has_prompt_version=generation.prompt_version_id is not None
         )
-        self.db.add(artifact)
-        await self.db.commit()
-        await self.db.refresh(artifact)
-
-        # Bind artifact context for remaining logs
-        artifact_logger = bind_artifact_context(job_logger, artifact_id=artifact.id)
-        artifact_logger.info("pipeline:artifact", msg="artifact_created", reproducible_hash=artifact_hash)
-
-        # Increment prompt version usage counter if present (Phase 7)
-        if prompt_version_id:
-            try:
-                from pixsim7_backend.services.prompts import PromptVersionService
-                prompt_service = PromptVersionService(self.db)
-                await prompt_service.increment_generation_count(prompt_version_id)
-                artifact_logger.info("prompt_version_tracked", prompt_version_id=str(prompt_version_id))
-            except Exception as e:
-                artifact_logger.warning("prompt_version_tracking_failed", error=str(e))
 
         # Execute via ProviderService
+        # Map canonical_params to provider-specific params
+        from pixsim7_backend.services.submission.parameter_mappers import get_mapper
+        mapper = get_mapper(generation.operation_type)
+        provider_params = mapper.map_to_provider(generation.canonical_params)
+
         try:
+            # Note: ProviderService.execute_job still expects 'job' parameter
+            # We'll pass generation with the same interface for now
+            # TODO: Update ProviderService to accept generation directly
             submission = await self.provider_service.execute_job(
-                job=job,
+                job=generation,  # Pass generation (compatible interface)
                 account=account,
-                params=job.params,
+                params=provider_params,  # Use provider-mapped params
             )
             # Track concurrency (lightweight; more robust reservation phase later)
             account.current_processing_jobs += 1
             await self.db.commit()
 
             # Bind submission context
-            submission_logger = bind_artifact_context(
-                artifact_logger,
-                submission_id=submission.id
-            )
+            submission_logger = gen_logger
             submission_logger.info(
                 "provider:submit",
-                msg="job_submitted_to_provider",
+                msg="generation_submitted_to_provider",
                 provider_job_id=submission.provider_job_id,
-                account_id=account.id
+                account_id=account.id,
+                submission_id=submission.id
             )
             return PipelineResult(
-                job_id=job.id,
+                generation_id=generation.id,
                 status="submitted",
                 provider_job_id=submission.provider_job_id,
                 account_id=account.id,
                 submitted_at=submission.submitted_at,
             )
         except ProviderError as e:
-            artifact_logger.error(
+            gen_logger.error(
                 "provider:error",
                 msg="provider_submission_failed",
                 error=str(e),
                 error_type=e.__class__.__name__,
-                attempt=job.retry_count
+                attempt=generation.retry_count
             )
-            await self.job_service.mark_failed(job.id, str(e))
-            return PipelineResult(job_id=job.id, status="error", error=str(e))
+            await self.generation_service.mark_failed(generation.id, str(e))
+            return PipelineResult(generation_id=generation.id, status="error", error=str(e))
 
 
 def is_enabled() -> bool:
     """Feature flag check for using pipeline in worker."""
     return os.getenv("PIXSIM7_USE_PIPELINE", "0") in {"1", "true", "TRUE"}
+
+
+# Backward compatibility alias
+JobSubmissionPipeline = GenerationSubmissionPipeline

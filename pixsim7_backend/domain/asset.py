@@ -188,10 +188,10 @@ class Asset(SQLModel, table=True):
     )
 
     # ===== PROVENANCE =====
-    # Link back to creation job (for audit trail)
-    source_job_id: Optional[int] = Field(
+    # Link back to creation generation (for audit trail)
+    source_generation_id: Optional[int] = Field(
         default=None,
-        foreign_key="jobs.id",
+        foreign_key="generations.id",
         index=True
     )
 

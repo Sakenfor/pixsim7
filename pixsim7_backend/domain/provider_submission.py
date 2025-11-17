@@ -30,8 +30,8 @@ class ProviderSubmission(SQLModel, table=True):
     # Primary key
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    # ===== JOB LINK =====
-    job_id: int = Field(foreign_key="jobs.id", index=True)
+    # ===== GENERATION LINK =====
+    generation_id: int = Field(foreign_key="generations.id", index=True)
 
     # ===== ACCOUNT =====
     # Track which account was used for this submission
@@ -108,7 +108,7 @@ class ProviderSubmission(SQLModel, table=True):
 
     # ===== INDEXES =====
     __table_args__ = (
-        Index("idx_submission_job_attempt", "job_id", "retry_attempt"),
+        Index("idx_submission_generation_attempt", "generation_id", "retry_attempt"),
         Index("idx_submission_status_submitted", "status", "submitted_at"),
         Index("idx_submission_provider_job", "provider_id", "provider_job_id"),
     )
@@ -116,7 +116,7 @@ class ProviderSubmission(SQLModel, table=True):
     def __repr__(self):
         return (
             f"<ProviderSubmission(id={self.id}, "
-            f"job_id={self.job_id}, "
+            f"generation_id={self.generation_id}, "
             f"provider={self.provider_id}, "
             f"status={self.status})>"
         )

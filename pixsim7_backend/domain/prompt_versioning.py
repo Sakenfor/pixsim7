@@ -267,11 +267,11 @@ class PromptVariantFeedback(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Asset IDs used as seeds / keyframes for this generation"
     )
-    generation_artifact_id: Optional[int] = Field(
+    generation_id: Optional[int] = Field(
         default=None,
-        foreign_key="generation_artifacts.id",
+        foreign_key="generations.id",
         index=True,
-        description="Optional link back to the generation artifact snapshot"
+        description="Optional link back to the unified generation record"
     )
 
     # Who rated it

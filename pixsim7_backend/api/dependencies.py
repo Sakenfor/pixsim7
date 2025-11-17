@@ -11,7 +11,7 @@ from pixsim7_backend.domain import User
 from pixsim7_backend.infrastructure.database.session import get_db
 from pixsim7_backend.services.user import UserService, AuthService
 from pixsim7_backend.services.account import AccountService
-from pixsim7_backend.services.job import JobService
+from pixsim7_backend.services.generation import GenerationService
 from pixsim7_backend.services.asset import AssetService
 from pixsim7_backend.services.provider.provider_service import ProviderService
 from pixsim7_backend.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
@@ -45,12 +45,21 @@ def get_account_service(db: AsyncSession = Depends(get_database)) -> AccountServ
     return AccountService(db)
 
 
+def get_generation_service(
+    db: AsyncSession = Depends(get_database),
+    user_service: UserService = Depends(get_user_service)
+) -> GenerationService:
+    """Get GenerationService instance"""
+    return GenerationService(db, user_service)
+
+
+# Backward compatibility alias
 def get_job_service(
     db: AsyncSession = Depends(get_database),
     user_service: UserService = Depends(get_user_service)
-) -> JobService:
-    """Get JobService instance"""
-    return JobService(db, user_service)
+) -> GenerationService:
+    """Get GenerationService instance (backward compatibility alias for get_generation_service)"""
+    return GenerationService(db, user_service)
 
 
 def get_provider_service(db: AsyncSession = Depends(get_database)) -> ProviderService:
@@ -175,7 +184,8 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_database)]
 UserSvc = Annotated[UserService, Depends(get_user_service)]
 AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 AccountSvc = Annotated[AccountService, Depends(get_account_service)]
-JobSvc = Annotated[JobService, Depends(get_job_service)]
+GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
+JobSvc = Annotated[GenerationService, Depends(get_job_service)]  # Backward compatibility
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
