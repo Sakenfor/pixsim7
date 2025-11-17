@@ -5,8 +5,6 @@ Clean architecture entry point
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import sys
 from pathlib import Path
@@ -27,32 +25,13 @@ from pixsim7_backend.infrastructure.database.session import (
     close_database
 )
 from pixsim7_backend.infrastructure.redis import close_redis
-from pixsim7_backend.api.middleware import RequestIdMiddleware
 from pixsim7_backend.infrastructure.plugins import init_plugin_manager
+from pixsim7_backend.infrastructure.middleware import init_middleware_manager
 
 # Configure structured logging using pixsim_logging
 from pixsim_logging import configure_logging
 
 logger = configure_logging("api")
-
-
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        from time import time as _time
-        start = _time()
-        response = await call_next(request)
-        duration_ms = int((_time() - start) * 1000)
-        try:
-            logger.info(
-                "http_request",
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-                duration_ms=duration_ms,
-            )
-        except Exception:
-            pass
-        return response
 
 
 @asynccontextmanager
@@ -147,12 +126,23 @@ async def lifespan(app: FastAPI):
     # Enable all plugins
     await plugin_manager.enable_all()
 
+    # Enable all middleware (call lifecycle hooks)
+    # Note: Middleware was already registered before lifespan, this just calls hooks
+    from pixsim7_backend.infrastructure.middleware.manager import middleware_manager
+    if middleware_manager:
+        await middleware_manager.enable_all()
+
     logger.info("PixSim7 ready!")
 
     yield
 
     # Shutdown
     logger.info("Shutting down PixSim7...")
+
+    # Disable middleware
+    if middleware_manager:
+        await middleware_manager.disable_all()
+
     await plugin_manager.disable_all()
     await close_redis()
     await close_database()
@@ -168,20 +158,10 @@ app = FastAPI(
     debug=settings.debug,
 )
 
-# Add request ID middleware for log tracing
-app.add_middleware(RequestIdMiddleware)
-app.add_middleware(RequestLoggingMiddleware)
-
-# CORS middleware - must be added last (first in execution chain)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=3600,
-)
+# Initialize middleware plugin system
+# Middleware is loaded and registered here (before app startup)
+init_middleware_manager(app, "pixsim7_backend/middleware")
+logger.info("Middleware plugin system initialized")
 
 
 # ===== HEALTH CHECK =====
