@@ -115,7 +115,14 @@ class PromptFamily(SQLModel, table=True):
 
 class PromptVersion(SQLModel, table=True):
     """Individual version (immutable)"""
+
+class PromptVariantFeedback(SQLModel, table=True):
+    """Feedback on prompt+asset combinations"""
 ```
+
+**Plugin Registration**: `pixsim7_backend/domain_models/prompt_models/manifest.py`
+- Auto-registers models with SQLModel during app startup
+- Declares dependency on `core_models`
 
 ### Service Layer
 **File**: `pixsim7_backend/services/prompts/prompt_version_service.py`
@@ -147,6 +154,10 @@ class PromptVersionService:
 
 ### API Endpoints
 **File**: `pixsim7_backend/api/v1/prompts.py`
+
+**Plugin Registration**: `pixsim7_backend/routes/prompts/manifest.py`
+- Auto-registers routes at `/api/v1/prompts/*` during app startup
+- Declares dependencies on `auth` and `assets` routes
 
 **Endpoints**:
 ```
