@@ -116,6 +116,17 @@ class LauncherWindow(QWidget):
         super().__init__()
         self.setWindowTitle('PixSim7 Launcher')
 
+        # Log launcher startup
+        if _launcher_logger:
+            try:
+                _launcher_logger.info(
+                    "launcher_started",
+                    python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                    platform=sys.platform
+                )
+            except Exception:
+                pass
+
         # Set dark theme styling using centralized theme
         combined_styles = (
             theme.get_base_stylesheet() +
@@ -137,6 +148,17 @@ class LauncherWindow(QWidget):
 
         self.services = build_services()
         self.processes: Dict[str, ServiceProcess] = {s.key: ServiceProcess(s) for s in self.services}
+
+        # Log service discovery
+        if _launcher_logger:
+            try:
+                _launcher_logger.info(
+                    "services_discovered",
+                    count=len(self.services),
+                    services=[s.key for s in self.services]
+                )
+            except Exception:
+                pass
         self.cards: Dict[str, ServiceCard] = {}
         self.selected_service_key: Optional[str] = None
 
@@ -617,6 +639,12 @@ class LauncherWindow(QWidget):
 
         if sp.start():
             self._refresh_console_logs()
+            # Log service start
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info("service_started", service_key=key, pid=sp.process.processId() if sp.process else None)
+                except Exception:
+                    pass
 
     def _stop_service(self, key: str):
         """Stop a specific service."""
@@ -624,6 +652,12 @@ class LauncherWindow(QWidget):
         if sp:
             sp.stop(graceful=True)
             self._refresh_console_logs()
+            # Log service stop
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info("service_stopped", service_key=key)
+                except Exception:
+                    pass
 
     def _restart_service(self, key: str):
         """Restart a specific service."""

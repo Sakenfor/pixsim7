@@ -10,6 +10,9 @@ importers:
 
   frontend:
     dependencies:
+      '@pixsim7/game-ui':
+        specifier: workspace:*
+        version: link:../packages/game-ui
       '@pixsim7/types':
         specifier: workspace:*
         version: link:../packages/types
@@ -31,6 +34,9 @@ importers:
       lucide-react:
         specifier: ^0.553.0
         version: 0.553.0(react@19.2.0)
+      pixcubes:
+        specifier: file:../../pixcubes
+        version: file:../pixcubes(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(zustand@5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)))
       react:
         specifier: ^19.2.0
         version: 19.2.0
@@ -104,12 +110,21 @@ importers:
 
   game-frontend:
     dependencies:
+      '@pixsim7/game-ui':
+        specifier: workspace:*
+        version: link:../packages/game-ui
       '@pixsim7/types':
         specifier: workspace:*
         version: link:../packages/types
       '@pixsim7/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      babylonjs:
+        specifier: ^7.42.0
+        version: 7.54.3
+      babylonjs-loaders:
+        specifier: ^7.42.0
+        version: 7.54.3
       react:
         specifier: ^19.2.0
         version: 19.2.0
@@ -146,6 +161,31 @@ importers:
         version: 7.2.2(@types/node@24.10.1)(jiti@1.21.7)
 
   packages/config-tailwind: {}
+
+  packages/game-ui:
+    dependencies:
+      '@pixsim7/types':
+        specifier: workspace:*
+        version: link:../types
+      '@pixsim7/ui':
+        specifier: workspace:*
+        version: link:../ui
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      react-dom:
+        specifier: '>=18'
+        version: 19.2.0(react@19.2.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.3
+      '@types/react-dom':
+        specifier: ^19.2.2
+        version: 19.2.3(@types/react@19.2.3)
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/types:
     devDependencies:
@@ -907,6 +947,15 @@ packages:
   axios@1.13.2:
     resolution: {integrity: sha512-VPk9ebNqPcy5lRGuSlKx752IlDatOjT9paPlm8A7yOuW2Fbvp4X3JznJtT4f0GzGLLiWE9W8onz51SqLYwzGaA==}
 
+  babylonjs-gltf2interface@7.54.3:
+    resolution: {integrity: sha512-ZAWYFyE+SOczfWT19O4e3YRkCZ5i57SiD2eK2kqc+Tow/t9X1S45xgSFNuHZff++dd5BlVIEQDSnFV+McFLSnQ==}
+
+  babylonjs-loaders@7.54.3:
+    resolution: {integrity: sha512-2irNiXHTHKpo7Od+f8GtNjuJpPB6VBH4cdkdQ105RyVkRqls2BF5i2dBHksJfd1jE2GV8NE99SUcmpbk7Dhiaw==}
+
+  babylonjs@7.54.3:
+    resolution: {integrity: sha512-DFkTQhOavmr9sgnXnzHlxknUH6qhHqnDnWhjGnD87w9oqTP6Z/gOlC5anpReDgdi0CPFmXaKqhqQ1cA9GXJlug==}
+
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -1525,6 +1574,14 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
+
+  pixcubes@file:../pixcubes:
+    resolution: {directory: ../pixcubes, type: directory}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      react: ^18.0.0
+      react-dom: ^18.0.0
+      zustand: ^4.0.0
 
   postcss-import@15.1.0:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
@@ -2665,6 +2722,15 @@ snapshots:
     transitivePeerDependencies:
       - debug
 
+  babylonjs-gltf2interface@7.54.3: {}
+
+  babylonjs-loaders@7.54.3:
+    dependencies:
+      babylonjs: 7.54.3
+      babylonjs-gltf2interface: 7.54.3
+
+  babylonjs@7.54.3: {}
+
   balanced-match@1.0.2: {}
 
   baseline-browser-mapping@2.8.26: {}
@@ -3246,6 +3312,15 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
+
+  pixcubes@file:../pixcubes(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(zustand@5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))):
+    dependencies:
+      clsx: 2.1.1
+      react: 19.2.0
+      react-dom: 19.2.0(react@19.2.0)
+      zustand: 5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+    optionalDependencies:
+      react-draggable: 4.5.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
 
   postcss-import@15.1.0(postcss@8.5.6):
     dependencies:
