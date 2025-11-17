@@ -17,10 +17,12 @@ Changes:
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import ProgrammingError, OperationalError
 
 # revision identifiers, used by Alembic.
 revision = '20251117_unify_gen'
-down_revision = 'a786922d98aa'
+# Chain after prompt versioning + variant feedback so history is linear.
+down_revision = '9a0b1c3d4e5f'
 branch_labels = None
 depends_on = None
 
@@ -105,10 +107,10 @@ def upgrade():
     op.create_foreign_key('fk_provider_submissions_generation_id', 'provider_submissions', 'generations', ['generation_id'], ['id'])
 
     # Drop old job_id FK and column (after data migration if needed)
-    # NOTE: In a real migration with data, you'd migrate data first before dropping
-    op.drop_constraint('provider_submissions_job_id_fkey', 'provider_submissions', type_='foreignkey')
-    op.drop_index('idx_submission_job_attempt', table_name='provider_submissions')
-    op.drop_column('provider_submissions', 'job_id')
+    # NOTE: Use IF EXISTS to avoid errors if constraint/index names differ.
+    op.execute("ALTER TABLE provider_submissions DROP CONSTRAINT IF EXISTS provider_submissions_job_id_fkey")
+    op.execute("DROP INDEX IF EXISTS idx_submission_job_attempt")
+    op.execute("ALTER TABLE provider_submissions DROP COLUMN IF EXISTS job_id")
 
     # Recreate index with new column name
     op.create_index('idx_submission_generation_attempt', 'provider_submissions', ['generation_id', 'retry_attempt'])
@@ -120,9 +122,9 @@ def upgrade():
     op.create_foreign_key('fk_assets_source_generation_id', 'assets', 'generations', ['source_generation_id'], ['id'])
 
     # Drop old source_job_id FK and column
-    op.drop_constraint('assets_source_job_id_fkey', 'assets', type_='foreignkey')
-    op.drop_index('ix_assets_source_job_id', table_name='assets')
-    op.drop_column('assets', 'source_job_id')
+    op.execute("ALTER TABLE assets DROP CONSTRAINT IF EXISTS assets_source_job_id_fkey")
+    op.execute("DROP INDEX IF EXISTS ix_assets_source_job_id")
+    op.execute("ALTER TABLE assets DROP COLUMN IF EXISTS source_job_id")
 
     # ===== 4. UPDATE PROMPT_VARIANT_FEEDBACK =====
     # Add new generation_id column
@@ -131,32 +133,32 @@ def upgrade():
     op.create_foreign_key('fk_prompt_variant_feedback_generation_id', 'prompt_variant_feedback', 'generations', ['generation_id'], ['id'])
 
     # Drop old generation_artifact_id FK and column
-    op.drop_constraint('prompt_variant_feedback_generation_artifact_id_fkey', 'prompt_variant_feedback', type_='foreignkey')
-    op.drop_index('ix_prompt_variant_feedback_generation_artifact_id', table_name='prompt_variant_feedback')
-    op.drop_column('prompt_variant_feedback', 'generation_artifact_id')
+    op.execute("ALTER TABLE prompt_variant_feedback DROP CONSTRAINT IF EXISTS prompt_variant_feedback_generation_artifact_id_fkey")
+    op.execute("DROP INDEX IF EXISTS ix_prompt_variant_feedback_generation_artifact_id")
+    op.execute("ALTER TABLE prompt_variant_feedback DROP COLUMN IF EXISTS generation_artifact_id")
 
     # ===== 5. DROP OLD TABLES =====
     # Drop generation_artifacts table
-    op.drop_index('idx_artifact_job_op', table_name='generation_artifacts')
-    op.drop_index('ix_generation_artifacts_job_id', table_name='generation_artifacts')
-    op.drop_index('ix_generation_artifacts_operation_type', table_name='generation_artifacts')
-    op.drop_index('ix_generation_artifacts_prompt_version_id', table_name='generation_artifacts')
-    op.drop_index('ix_generation_artifacts_created_at', table_name='generation_artifacts')
-    op.drop_table('generation_artifacts')
+    op.execute("DROP INDEX IF EXISTS idx_artifact_job_op")
+    op.execute("DROP INDEX IF EXISTS ix_generation_artifacts_job_id")
+    op.execute("DROP INDEX IF EXISTS ix_generation_artifacts_operation_type")
+    op.execute("DROP INDEX IF EXISTS ix_generation_artifacts_prompt_version_id")
+    op.execute("DROP INDEX IF EXISTS ix_generation_artifacts_created_at")
+    op.execute("DROP TABLE IF EXISTS generation_artifacts")
 
     # Drop jobs table
-    op.drop_index('idx_job_workspace', table_name='jobs')
-    op.drop_index('idx_job_user_status_created', table_name='jobs')
-    op.drop_index('idx_job_status_created', table_name='jobs')
-    op.drop_index('idx_job_priority_created', table_name='jobs')
-    op.drop_index('ix_jobs_user_id', table_name='jobs')
-    op.drop_index('ix_jobs_status', table_name='jobs')
-    op.drop_index('ix_jobs_scheduled_at', table_name='jobs')
-    op.drop_index('ix_jobs_provider_id', table_name='jobs')
-    op.drop_index('ix_jobs_priority', table_name='jobs')
-    op.drop_index('ix_jobs_created_at', table_name='jobs')
-    op.drop_index('ix_jobs_asset_id', table_name='jobs')
-    op.drop_table('jobs')
+    op.execute("DROP INDEX IF EXISTS idx_job_workspace")
+    op.execute("DROP INDEX IF EXISTS idx_job_user_status_created")
+    op.execute("DROP INDEX IF EXISTS idx_job_status_created")
+    op.execute("DROP INDEX IF EXISTS idx_job_priority_created")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_user_id")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_status")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_scheduled_at")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_provider_id")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_priority")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_created_at")
+    op.execute("DROP INDEX IF EXISTS ix_jobs_asset_id")
+    op.execute("DROP TABLE IF EXISTS jobs")
 
 
 def downgrade():
