@@ -152,13 +152,22 @@ UI_STATE_PATH = os.path.join(os.path.dirname(__file__), 'launcher.json')
 
 @dataclass
 class UIState:
+    # Window state
     window_x: int = -1
     window_y: int = -1
     window_width: int = 1100
     window_height: int = 700
     selected_service: str = ''
+
+    # General settings
     stop_services_on_exit: bool = True  # Graceful shutdown of all services when closing launcher
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
+
+    # Health check settings
+    health_check_interval: float = 5.0  # Seconds between health checks (default: 5s)
+    health_check_adaptive: bool = True  # Use adaptive intervals (fast on startup, slow when stable)
+    health_check_startup_interval: float = 2.0  # Fast interval during service startup
+    health_check_stable_interval: float = 10.0  # Slow interval when all services stable
 
 
 def load_ui_state() -> UIState:
@@ -167,11 +176,19 @@ def load_ui_state() -> UIState:
         try:
             with open(UI_STATE_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Provide defaults for newly added keys
+                # Provide defaults for newly added keys (backwards compatibility)
                 if 'stop_services_on_exit' not in data:
                     data['stop_services_on_exit'] = True
                 if 'auto_refresh_logs' not in data:
                     data['auto_refresh_logs'] = False
+                if 'health_check_interval' not in data:
+                    data['health_check_interval'] = 5.0
+                if 'health_check_adaptive' not in data:
+                    data['health_check_adaptive'] = True
+                if 'health_check_startup_interval' not in data:
+                    data['health_check_startup_interval'] = 2.0
+                if 'health_check_stable_interval' not in data:
+                    data['health_check_stable_interval'] = 10.0
                 return UIState(**data)
         except Exception:
             pass
