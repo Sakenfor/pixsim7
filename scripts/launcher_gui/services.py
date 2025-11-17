@@ -120,18 +120,4 @@ def build_services() -> List[ServiceDef]:
             required_tool="pnpm",
             health_grace_attempts=15,
         ),
-        ServiceDef(
-            key="game_backend",
-            title="Game Backend",
-            program=python_exe,
-            args=["-m", "uvicorn", "pixsim7_game_service.main:app", "--host", "0.0.0.0", "--port", str(ports.game_service), "--reload"],
-            cwd=ROOT,
-            env_overrides={
-                "PYTHONPATH": ROOT,
-                "PIXSIM_LOG_FORMAT": "human",  # Human-readable logs in console
-            },
-            url=None,
-            health_url=f"http://localhost:{ports.game_service}/health",
-            health_grace_attempts=6,
-        ),
     ]
