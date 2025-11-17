@@ -40,19 +40,49 @@ print("=" * 60)
 
 # 1. Check if something is listening
 print(f"\n1. Checking who's listening on port {ports.backend}:")
-result = subprocess.run(['lsof', '-ti', f':{ports.backend}'],
-                       capture_output=True, text=True)
-if result.returncode == 0 and result.stdout.strip():
-    pids = result.stdout.strip().split('\n')
-    print(f"   Found PIDs: {pids}")
-    for pid in pids:
-        # Get process details
-        ps_result = subprocess.run(['ps', '-p', pid, '-o', 'pid,cmd'],
-                                  capture_output=True, text=True)
-        print(f"   {ps_result.stdout.strip()}")
+if os.name == 'nt':
+    # Windows: use netstat
+    result = subprocess.run(['netstat', '-ano'], capture_output=True, text=True)
+    pids = []
+    if result.returncode == 0:
+        for line in result.stdout.split('\n'):
+            if f':{ports.backend}' in line and 'LISTENING' in line:
+                parts = line.split()
+                if len(parts) >= 5:
+                    pid = parts[-1]
+                    pids.append(pid)
+                    print(f"   Found PID: {pid} - {line.strip()}")
+
+        if pids:
+            # Get process details using tasklist
+            for pid in set(pids):  # Remove duplicates
+                tasklist_result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV'],
+                                                capture_output=True, text=True)
+                if tasklist_result.returncode == 0:
+                    lines = tasklist_result.stdout.strip().split('\n')
+                    if len(lines) > 1:  # Skip header
+                        print(f"   Process details: {lines[1]}")
+        else:
+            print(f"   No process listening on port {ports.backend}")
+            sys.exit(0)
+    else:
+        print(f"   netstat failed")
+        sys.exit(1)
 else:
-    print(f"   No process listening on port {ports.backend}")
-    sys.exit(0)
+    # Unix: use lsof
+    result = subprocess.run(['lsof', '-ti', f':{ports.backend}'],
+                           capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        pids = result.stdout.strip().split('\n')
+        print(f"   Found PIDs: {pids}")
+        for pid in pids:
+            # Get process details
+            ps_result = subprocess.run(['ps', '-p', pid, '-o', 'pid,cmd'],
+                                      capture_output=True, text=True)
+            print(f"   {ps_result.stdout.strip()}")
+    else:
+        print(f"   No process listening on port {ports.backend}")
+        sys.exit(0)
 
 # 2. Test PM's detection
 print(f"\n2. Testing ProcessManager's PID detection:")
@@ -101,9 +131,20 @@ except Exception as e:
 
 # 6. Check if it's still running
 print(f"\n6. Checking if still running:")
-result = subprocess.run(['lsof', '-ti', f':{ports.backend}'],
-                       capture_output=True, text=True)
-if result.returncode == 0 and result.stdout.strip():
-    print(f"   ✗ STILL RUNNING! PIDs: {result.stdout.strip()}")
+if os.name == 'nt':
+    result = subprocess.run(['netstat', '-ano'], capture_output=True, text=True)
+    found = False
+    if result.returncode == 0:
+        for line in result.stdout.split('\n'):
+            if f':{ports.backend}' in line and 'LISTENING' in line:
+                found = True
+                print(f"   ✗ STILL RUNNING! {line.strip()}")
+    if not found:
+        print(f"   ✓ Successfully stopped")
 else:
-    print(f"   ✓ Successfully stopped")
+    result = subprocess.run(['lsof', '-ti', f':{ports.backend}'],
+                           capture_output=True, text=True)
+    if result.returncode == 0 and result.stdout.strip():
+        print(f"   ✗ STILL RUNNING! PIDs: {result.stdout.strip()}")
+    else:
+        print(f"   ✓ Successfully stopped")
