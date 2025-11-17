@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Button, Panel, Badge } from '@pixsim7/ui';
+import { Button, Panel, Badge, Input } from '@pixsim7/ui';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
 import type { GameLocationDetail, NpcSlot2d } from '../lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
@@ -250,8 +250,8 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium mb-1">Slot ID</label>
-                <input
-                  className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+                <Input
+                  size="sm"
                   value={selectedSlot.id}
                   onChange={(e: any) => updateSlot(selectedSlot.id, { id: e.target.value })}
                   placeholder="e.g., bench_left"
@@ -263,8 +263,8 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs text-neutral-500">X</label>
-                    <input
-                      className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+                    <Input
+                      size="sm"
                       type="number"
                       value={selectedSlot.x}
                       onChange={(e: any) =>
@@ -279,8 +279,8 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
                   </div>
                   <div>
                     <label className="text-xs text-neutral-500">Y</label>
-                    <input
-                      className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+                    <Input
+                      size="sm"
                       type="number"
                       value={selectedSlot.y}
                       onChange={(e: any) =>
@@ -298,8 +298,8 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
 
               <div>
                 <label className="block text-xs font-medium mb-1">Roles (comma-separated)</label>
-                <input
-                  className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+                <Input
+                  size="sm"
                   value={selectedSlot.roles?.join(', ') || ''}
                   onChange={(e: any) =>
                     updateSlot(selectedSlot.id, {
@@ -318,8 +318,8 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
 
               <div>
                 <label className="block text-xs font-medium mb-1">Fixed NPC ID (optional)</label>
-                <input
-                  className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
+                <Input
+                  size="sm"
                   type="number"
                   value={selectedSlot.fixedNpcId || ''}
                   onChange={(e: any) =>
