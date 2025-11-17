@@ -1,205 +1,161 @@
 """
 Event handlers for cross-cutting concerns
 
-Registers handlers for:
-- Event metrics (count events by type)
-- Webhooks (dispatch events to external URLs)
-- Future: Analytics, notifications, audit trail, etc.
+Auto-discovers and registers event handler plugins from event_handlers/ directory.
+
+Handler plugins can subscribe to specific event types or all events ("*").
+Examples: metrics tracking, webhooks, analytics, notifications, audit trail.
 
 Note: This is separate from pixsim_logging which handles structured logging.
 Event handlers are for reacting to domain events (metrics, webhooks, side effects).
 """
 from typing import Dict
-from collections import defaultdict
-from datetime import datetime
+import os
+import importlib
 
-from pixsim7_backend.infrastructure.events.bus import (
-    event_bus,
-    Event,
-    # Common event types
-    JOB_CREATED,
-    JOB_STARTED,
-    JOB_COMPLETED,
-    JOB_FAILED,
-    JOB_CANCELLED,
-    ASSET_CREATED,
-    ASSET_DOWNLOADED,
-)
+from pixsim7_backend.infrastructure.events.bus import event_bus, Event
 from pixsim_logging import configure_logging
 
 logger = configure_logging("events")
 
 
-# ===== EVENT METRICS =====
+# ===== AUTO-DISCOVER EVENT HANDLERS =====
 
-class EventMetrics:
+def discover_event_handlers(handlers_dir: str = "pixsim7_backend/event_handlers") -> list[str]:
     """
-    Track event counts and patterns for monitoring
+    Discover event handler plugins by scanning event_handlers directory
 
-    Useful for:
-    - Admin dashboard (show event counts)
-    - Health monitoring (detect anomalies)
-    - Analytics (user activity patterns)
+    Args:
+        handlers_dir: Path to event handlers directory
+
+    Returns:
+        List of discovered handler IDs
     """
+    discovered = []
 
-    def __init__(self):
-        self.counts: Dict[str, int] = defaultdict(int)
-        self.first_seen: Dict[str, datetime] = {}
-        self.last_seen: Dict[str, datetime] = {}
+    if not os.path.exists(handlers_dir):
+        logger.warning(f"Event handlers directory not found: {handlers_dir}")
+        return discovered
 
-    async def track_event(self, event: Event) -> None:
-        """Track event occurrence"""
-        event_type = event.event_type
+    # Scan for handler directories
+    for item in os.listdir(handlers_dir):
+        handler_path = os.path.join(handlers_dir, item)
 
-        # Increment counter
-        self.counts[event_type] += 1
+        # Skip if not a directory
+        if not os.path.isdir(handler_path):
+            continue
 
-        # Track first/last seen
-        if event_type not in self.first_seen:
-            self.first_seen[event_type] = event.timestamp
-        self.last_seen[event_type] = event.timestamp
+        # Skip __pycache__ and hidden directories
+        if item.startswith('_') or item.startswith('.'):
+            continue
 
-        # Log milestone counts (every 100th event)
-        count = self.counts[event_type]
-        if count % 100 == 0:
-            logger.info(
-                "event_milestone",
-                event_type=event_type,
-                count=count,
-                first_seen=self.first_seen[event_type].isoformat(),
-            )
+        # Check for manifest.py
+        manifest_path = os.path.join(handler_path, "manifest.py")
+        if not os.path.exists(manifest_path):
+            logger.debug(f"Skipping {item} - no manifest.py found")
+            continue
 
-    def get_stats(self) -> Dict[str, any]:
-        """Get current metrics"""
-        return {
-            "total_events": sum(self.counts.values()),
-            "by_type": dict(self.counts),
-            "unique_types": len(self.counts),
-        }
+        discovered.append(item)
+
+    logger.info(f"Discovered {len(discovered)} event handler plugins: {discovered}")
+    return discovered
 
 
-# Global metrics instance
-_event_metrics = EventMetrics()
-
-
-def get_event_metrics() -> EventMetrics:
-    """Get the global event metrics tracker"""
-    return _event_metrics
-
-
-# ===== WEBHOOK DISPATCHER =====
-
-async def dispatch_webhooks(event: Event) -> None:
+def load_event_handler_plugin(handler_name: str, handlers_dir: str = "pixsim7_backend/event_handlers") -> bool:
     """
-    Dispatch events to registered webhooks
+    Load and register an event handler plugin
 
-    TODO: Implement webhook dispatching
-    - Fetch webhook URLs from database/config
-    - Filter by event type subscriptions
-    - Send HTTP POST with event data
-    - Handle retries and failures
-    - Track delivery status
+    Args:
+        handler_name: Handler directory name
+        handlers_dir: Path to handlers directory
 
-    Future enhancement for:
-    - Zapier/Make integrations
-    - Custom user webhooks
-    - Third-party service notifications
-    - Discord/Slack bots
+    Returns:
+        True if loaded successfully, False otherwise
     """
-    # Placeholder for webhook implementation
-    # logger.debug(f"Webhook dispatch for {event.event_type} (not implemented)")
-    pass
+    try:
+        # Build module path
+        module_path = f"{handlers_dir.replace('/', '.')}.{handler_name}.manifest"
+
+        # Import manifest module
+        module = importlib.import_module(module_path)
+
+        # Get handler function and manifest
+        handle_event = getattr(module, 'handle_event', None)
+        manifest = getattr(module, 'manifest', None)
+
+        if not handle_event:
+            logger.error(f"Event handler plugin {handler_name} has no 'handle_event' function")
+            return False
+
+        if not manifest:
+            logger.warning(f"Event handler plugin {handler_name} has no manifest")
+
+        # Check if enabled
+        if manifest and hasattr(manifest, 'enabled') and not manifest.enabled:
+            logger.info(f"Event handler plugin {handler_name} is disabled, skipping")
+            return False
+
+        # Get subscribe pattern (default to all events)
+        subscribe_to = "*"
+        if manifest and hasattr(manifest, 'subscribe_to'):
+            subscribe_to = manifest.subscribe_to
+
+        # Subscribe handler to events
+        event_bus.subscribe(subscribe_to, handle_event)
+
+        # Call on_register hook if exists
+        on_register = getattr(module, 'on_register', None)
+        if callable(on_register):
+            on_register()
+
+        logger.info(f"✅ Registered event handler: {handler_name} (subscribes to: {subscribe_to})")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to load event handler plugin {handler_name}: {e}", exc_info=True)
+        return False
 
 
-# ===== AUDIT TRAIL =====
-
-async def store_audit_event(event: Event) -> None:
+def register_handlers_from_plugins(handlers_dir: str = "pixsim7_backend/event_handlers") -> int:
     """
-    Store events in audit trail database
+    Auto-discover and register all event handler plugins
 
-    TODO: Implement audit trail storage
-    - Create EventLog table (separate from log_entries)
-    - Store full event data as JSONB
-    - Index by event_type, timestamp, user_id
-    - Retention policy (30 days? 90 days?)
+    Args:
+        handlers_dir: Path to event handlers directory
 
-    Useful for:
-    - Compliance/audit requirements
-    - User activity history
-    - Debugging production issues
-    - Data recovery
+    Returns:
+        Number of handlers registered
     """
-    # Placeholder for audit storage
-    pass
+    discovered = discover_event_handlers(handlers_dir)
+
+    registered_count = 0
+    for handler_name in discovered:
+        if load_event_handler_plugin(handler_name, handlers_dir):
+            registered_count += 1
+
+    logger.info(f"✅ Registered {registered_count} event handler plugins")
+    return registered_count
 
 
-# ===== ANALYTICS =====
-
-async def track_analytics(event: Event) -> None:
-    """
-    Send events to analytics platform
-
-    TODO: Implement analytics tracking
-    - Send to analytics service (Mixpanel, Amplitude, PostHog, etc.)
-    - Track user behavior patterns
-    - A/B test event tracking
-    - Funnel analysis
-
-    Examples:
-    - job:created → Track generation requests by provider/model
-    - job:completed → Track success rate by provider
-    - asset:downloaded → Track download patterns
-    """
-    # Placeholder for analytics
-    pass
-
-
-# ===== NOTIFICATIONS =====
-
-async def send_notifications(event: Event) -> None:
-    """
-    Send user notifications based on events
-
-    TODO: Implement notification system
-    - Email notifications (job completed, errors)
-    - Push notifications (mobile app)
-    - In-app notifications
-    - SMS alerts (critical errors)
-
-    Examples:
-    - job:completed → Email with download link
-    - job:failed → Alert user about failure
-    - account:exhausted → Notify to add credits
-    """
-    # Placeholder for notifications
-    pass
-
-
-# ===== HANDLER REGISTRATION =====
+# ===== LEGACY HANDLER REGISTRATION (Deprecated) =====
 
 def register_handlers() -> None:
     """
-    Register all event handlers
+    Register all event handlers (DEPRECATED - use register_handlers_from_plugins)
 
-    Called during application startup (main.py lifespan)
+    This function is kept for backward compatibility but now uses auto-discovery.
+    Called during application startup (main.py lifespan).
     """
     logger.info("Registering event handlers...")
 
-    # Register metrics tracker for ALL events
-    event_bus.subscribe("*", _event_metrics.track_event)
-    logger.info("✓ Event metrics tracker registered")
-
-    # Register webhook dispatcher for all events
-    # event_bus.subscribe("*", dispatch_webhooks)
-    # logger.info("✓ Webhook dispatcher registered")
-
-    # Register specific handlers
-    # event_bus.subscribe(JOB_CREATED, store_audit_event)
-    # event_bus.subscribe(JOB_COMPLETED, track_analytics)
-    # event_bus.subscribe(JOB_COMPLETED, send_notifications)
-    # event_bus.subscribe(JOB_FAILED, send_notifications)
+    # Use auto-discovery instead of manual registration
+    register_handlers_from_plugins()
 
     logger.info(f"Event handlers registered: {len(event_bus._handlers)} event types")
+
+    # Legacy code (commented out - now handled by plugin system):
+    # event_bus.subscribe("*", _event_metrics.track_event)
+    # event_bus.subscribe("*", dispatch_webhooks)
 
 
 # ===== UTILITY FUNCTIONS =====
@@ -210,8 +166,48 @@ def get_handler_stats() -> Dict[str, any]:
 
     Useful for admin dashboard
     """
+    # Try to get metrics from metrics plugin
+    metrics_stats = {}
+    try:
+        from pixsim7_backend.event_handlers.metrics import get_metrics
+        metrics_stats = get_metrics().get_stats()
+    except Exception:
+        pass
+
     return {
         "registered_event_types": len(event_bus._handlers),
         "wildcard_handlers": len(event_bus._wildcard_handlers),
-        "event_metrics": _event_metrics.get_stats(),
+        "event_metrics": metrics_stats,
     }
+
+
+# ===== LEGACY COMPATIBILITY EXPORTS =====
+
+def get_event_metrics():
+    """
+    Legacy compatibility function
+
+    Use event_handlers.metrics.get_metrics() instead
+    """
+    try:
+        from pixsim7_backend.event_handlers.metrics import get_metrics
+        return get_metrics()
+    except Exception:
+        # Fallback if metrics plugin not loaded
+        from collections import defaultdict
+        from datetime import datetime
+
+        class DummyMetrics:
+            def __init__(self):
+                self.counts = defaultdict(int)
+                self.first_seen = {}
+                self.last_seen = {}
+
+            def get_stats(self):
+                return {
+                    "total_events": 0,
+                    "by_type": {},
+                    "unique_types": 0,
+                }
+
+        return DummyMetrics()
