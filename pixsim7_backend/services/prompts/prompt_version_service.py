@@ -14,7 +14,11 @@ import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 
-from pixsim7_backend.domain.prompt_versioning import PromptFamily, PromptVersion
+from pixsim7_backend.domain.prompt_versioning import (
+    PromptFamily,
+    PromptVersion,
+    PromptVariantFeedback,
+)
 from pixsim7_backend.domain.generation_artifact import GenerationArtifact
 from pixsim7_backend.domain.asset import Asset
 from pixsim7_backend.domain.job import Job
@@ -262,6 +266,103 @@ class PromptVersionService:
             .values(successful_assets=PromptVersion.successful_assets + 1)
         )
         await self.db.commit()
+
+    # ===== Variant Feedback =====
+
+    async def record_variant_feedback(
+        self,
+        *,
+        prompt_version_id: UUID,
+        output_asset_id: int,
+        input_asset_ids: Optional[List[int]] = None,
+        generation_artifact_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+    ) -> PromptVariantFeedback:
+        """
+        Create or fetch a feedback row for a specific prompt+asset combination.
+
+        If a row already exists for (prompt_version_id, output_asset_id),
+        it will be returned and updated with any new input_asset_ids / artifact.
+        """
+        result = await self.db.execute(
+            select(PromptVariantFeedback).where(
+                PromptVariantFeedback.prompt_version_id == prompt_version_id,
+                PromptVariantFeedback.output_asset_id == output_asset_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Merge input_asset_ids if provided
+            if input_asset_ids:
+                merged = set(existing.input_asset_ids or [])
+                merged.update(input_asset_ids)
+                existing.input_asset_ids = list(sorted(merged))
+            if generation_artifact_id and not existing.generation_artifact_id:
+                existing.generation_artifact_id = generation_artifact_id
+            if user_id and not existing.user_id:
+                existing.user_id = user_id
+            await self.db.commit()
+            await self.db.refresh(existing)
+            return existing
+
+        variant = PromptVariantFeedback(
+            prompt_version_id=prompt_version_id,
+            output_asset_id=output_asset_id,
+            input_asset_ids=input_asset_ids or [],
+            generation_artifact_id=generation_artifact_id,
+            user_id=user_id,
+        )
+        self.db.add(variant)
+        await self.db.commit()
+        await self.db.refresh(variant)
+        return variant
+
+    async def rate_variant(
+        self,
+        variant_id: int,
+        *,
+        user_rating: Optional[int] = None,
+        is_favorite: Optional[bool] = None,
+        notes: Optional[str] = None,
+        quality_score: Optional[float] = None,
+    ) -> PromptVariantFeedback:
+        """Update rating / favorite / notes for a variant feedback row."""
+        result = await self.db.execute(
+            select(PromptVariantFeedback).where(PromptVariantFeedback.id == variant_id)
+        )
+        variant = result.scalar_one_or_none()
+        if not variant:
+            raise ValueError(f"Variant {variant_id} not found")
+
+        if user_rating is not None:
+            variant.user_rating = user_rating
+        if is_favorite is not None:
+            variant.is_favorite = is_favorite
+        if notes is not None:
+            variant.notes = notes
+        if quality_score is not None:
+            variant.quality_score = quality_score
+
+        await self.db.commit()
+        await self.db.refresh(variant)
+        return variant
+
+    async def list_variants_for_version(
+        self,
+        version_id: UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[PromptVariantFeedback]:
+        """List feedback variants for a specific prompt version."""
+        result = await self.db.execute(
+            select(PromptVariantFeedback)
+            .where(PromptVariantFeedback.prompt_version_id == version_id)
+            .order_by(PromptVariantFeedback.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())
 
     async def get_assets_for_version(
         self,

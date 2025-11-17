@@ -236,3 +236,71 @@ class PromptVersion(SQLModel, table=True):
             f"family_id={self.family_id}, "
             f"v{self.version_number})>"
         )
+
+
+class PromptVariantFeedback(SQLModel, table=True):
+    """
+    Feedback on a specific combination of prompt version + input assets + output asset.
+
+    This is where we track:
+        - Which seed images were used
+        - Which output asset was produced
+        - Per-variant ratings, favorites, and notes
+    """
+    __tablename__ = "prompt_variant_feedback"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Identity and linkage
+    prompt_version_id: UUID = Field(
+        foreign_key="prompt_versions.id",
+        index=True,
+        description="Prompt version used for this generation"
+    )
+    output_asset_id: int = Field(
+        foreign_key="assets.id",
+        index=True,
+        description="Asset produced by this combination"
+    )
+    input_asset_ids: List[int] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="Asset IDs used as seeds / keyframes for this generation"
+    )
+    generation_artifact_id: Optional[int] = Field(
+        default=None,
+        foreign_key="generation_artifacts.id",
+        index=True,
+        description="Optional link back to the generation artifact snapshot"
+    )
+
+    # Who rated it
+    user_id: Optional[int] = Field(
+        default=None,
+        foreign_key="users.id",
+        index=True,
+        description="User who provided feedback"
+    )
+
+    # Ratings and quality
+    user_rating: Optional[int] = Field(
+        default=None,
+        description="Explicit 1-5 rating from user"
+    )
+    quality_score: Optional[float] = Field(
+        default=None,
+        description="Optional computed quality score (e.g., aggregate metric)"
+    )
+    is_favorite: bool = Field(
+        default=False,
+        description="Whether user marked this variant as favorite"
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description="Free-form notes about this result"
+    )
+
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        index=True
+    )
