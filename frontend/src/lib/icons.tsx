@@ -65,6 +65,8 @@ import {
   LayoutGrid,
   LightbulbIcon,
   KeyRound,
+  Map,
+  User,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -148,6 +150,8 @@ export const Icons = {
   layoutGrid: LayoutGrid,
   lightbulb: LightbulbIcon,
   key: KeyRound,
+  map: Map,
+  user: User,
 
   // Status indicators
   loading: Loader,
@@ -183,6 +187,12 @@ export function Icon({
   ...props
 }: IconProps & { name: IconName }) {
   const IconComponent = getIcon(name);
+
+  if (!IconComponent) {
+    console.error(`Icon "${name}" not found in Icons. Available icons:`, Object.keys(Icons));
+    return null;
+  }
+
   return (
     <IconComponent
       size={size}
