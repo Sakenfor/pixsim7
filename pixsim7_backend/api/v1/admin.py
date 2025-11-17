@@ -328,6 +328,38 @@ async def get_system_metrics(admin: CurrentAdminUser):
     return metrics
 
 
+# ===== EVENT METRICS =====
+
+@router.get("/admin/events/metrics")
+async def get_event_metrics(admin: CurrentAdminUser):
+    """
+    Get event processing metrics
+
+    Returns statistics about domain events:
+    - Total events processed
+    - Breakdown by event type
+    - Handler registration info
+    """
+    try:
+        from pixsim7_backend.infrastructure.events.handlers import get_handler_stats
+
+        stats = get_handler_stats()
+
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "handlers": {
+                "registered_event_types": stats["registered_event_types"],
+                "wildcard_handlers": stats["wildcard_handlers"],
+            },
+            "metrics": stats["event_metrics"],
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "error_type": e.__class__.__name__,
+        }
+
+
 # ===== LOG MANAGEMENT =====
 
 @router.get("/admin/logs", response_model=LogQueryResponse)

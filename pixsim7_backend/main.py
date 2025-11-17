@@ -133,9 +133,9 @@ async def lifespan(app: FastAPI):
     register_default_providers()
     logger.info("Providers registered")
 
-    # TODO: Initialize event handlers
-    # from pixsim7_backend.infrastructure.events.handlers import register_handlers
-    # register_handlers()
+    # Initialize event handlers (metrics, webhooks, etc.)
+    from pixsim7_backend.infrastructure.events.handlers import register_handlers
+    register_handlers()
 
     logger.info("PixSim7 ready!")
 
