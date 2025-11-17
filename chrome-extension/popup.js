@@ -31,17 +31,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if logged in
   await checkLogin();
 
-  // Sync all credits on popup open (only if logged in)
+  // Sync credits on popup open (only if logged in, throttled)
   if (currentUser) {
-    console.log('[Popup] Syncing credits on popup open...');
-    try {
-      const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
-      if (syncResult.success) {
-        console.log(`[Popup] Synced ${syncResult.synced}/${syncResult.total} accounts`);
-      }
-    } catch (err) {
-      console.warn('[Popup] Credit sync failed:', err);
-    }
+    syncCreditsThrottled('popup-open'); // fire-and-forget, best-effort
   }
 
   // Detect provider from current tab
@@ -114,6 +106,52 @@ function setupEventListeners() {
   // Copy token button
   const copyTokenBtn = document.getElementById('copyTokenBtn');
   if (copyTokenBtn) copyTokenBtn.addEventListener('click', handleCopyToken);
+}
+
+// ===== CREDIT SYNC (THROTTLED) =====
+
+const CREDIT_SYNC_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+async function syncCreditsThrottled(reason, options = {}) {
+  const force = options.force === true;
+
+  try {
+    const now = Date.now();
+    const { lastCreditSyncAt, creditSyncInProgress } = await chrome.storage.local.get({
+      lastCreditSyncAt: null,
+      creditSyncInProgress: false,
+    });
+
+    if (creditSyncInProgress) {
+      console.log('[Popup] Credit sync already in progress, skipping:', reason);
+      return;
+    }
+
+    if (!force && lastCreditSyncAt && now - lastCreditSyncAt < CREDIT_SYNC_THRESHOLD_MS) {
+      console.log('[Popup] Skipping credit sync (throttled):', reason);
+      return;
+    }
+
+    await chrome.storage.local.set({ creditSyncInProgress: true });
+    console.log('[Popup] Syncing credits...', reason);
+
+    const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+    if (syncResult && syncResult.success) {
+      console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
+      await chrome.storage.local.set({ lastCreditSyncAt: now });
+
+      // Refresh accounts to show updated credits if Accounts tab is active
+      if (currentUser && document.getElementById('tab-accounts').classList.contains('active')) {
+        await loadAccounts();
+      }
+    } else if (syncResult && syncResult.error) {
+      console.warn('[Popup] Credit sync failed:', syncResult.error);
+    }
+  } catch (err) {
+    console.warn('[Popup] Credit sync error:', err);
+  } finally {
+    await chrome.storage.local.set({ creditSyncInProgress: false });
+  }
 }
 
 // ===== TAB MANAGEMENT =====
@@ -215,21 +253,9 @@ async function handleLogin() {
       currentUser = response.data.user;
       showLoggedIn();
 
-      // Sync credits for all accounts after login (best-effort, non-blocking)
+      // Sync credits for all accounts after login (best-effort, forced)
       loginBtn.textContent = 'Syncing credits...';
-      try {
-        const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
-        if (syncResult.success) {
-          console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
-          // Refresh accounts to show updated credits
-          if (document.getElementById('tab-accounts').classList.contains('active')) {
-            await loadAccounts();
-          }
-        }
-      } catch (syncError) {
-        console.warn('[Popup] Credit sync failed:', syncError);
-        // Non-fatal, just log the error
-      }
+      await syncCreditsThrottled('login', { force: true });
     } else {
       showError(response.error || 'Login failed');
     }
@@ -550,8 +576,8 @@ function formatCredits(credits, totalCredits) {
     return '<span class="credits-none">No credits</span>';
   }
 
-  // Order: daily, monthly, package, then others
-  const order = ['daily', 'monthly', 'package'];
+  // Order: show web/openapi first (Pixverse), then other known buckets.
+  const order = ['web', 'openapi', 'daily', 'monthly', 'package'];
   const ordered = [];
   
   order.forEach(type => {
@@ -567,9 +593,15 @@ function formatCredits(credits, totalCredits) {
     }
   });
 
-  const parts = ordered.map(({ type, amount }) => 
-    `<span class="credit-item"><span class="credit-type">${type}</span>: <span class="credit-amount">${amount}</span></span>`
-  );
+  const parts = ordered.map(({ type, amount }) => {
+    // Simple display mapping; keep keys readable
+    const label =
+      type === 'web' ? 'web' :
+      type === 'openapi' ? 'openapi' :
+      type;
+
+    return `<span class="credit-item"><span class="credit-type">${label}</span>: <span class="credit-amount">${amount}</span></span>`;
+  });
 
   // Show total if available and different from single credit
   if (totalCredits !== undefined && ordered.length > 1) {
