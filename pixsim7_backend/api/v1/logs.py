@@ -10,6 +10,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from pixsim7_backend.api.dependencies import CurrentAdminUser
 from pixsim7_backend.infrastructure.database.session import get_log_db
 from pixsim7_backend.services.log_service import LogService
 from pixsim7_backend.domain import LogEntry
@@ -203,7 +204,8 @@ async def query_logs(
     search: Optional[str] = Query(None, description="Text search in msg and error fields"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
-    db: AsyncSession = Depends(get_log_db)
+    db: AsyncSession = Depends(get_log_db),
+    admin: CurrentAdminUser = Depends()
 ) -> LogQueryResponse:
     """
     Query structured logs with filters.
@@ -247,7 +249,8 @@ async def query_logs(
 @router.get("/trace/job/{job_id}", response_model=List[LogEntryResponse])
 async def get_job_trace(
     job_id: int,
-    db: AsyncSession = Depends(get_log_db)
+    db: AsyncSession = Depends(get_log_db),
+    admin: CurrentAdminUser = Depends()
 ) -> List[LogEntryResponse]:
     """
     Get complete log trace for a job.
@@ -274,7 +277,8 @@ async def get_job_trace(
 @router.get("/trace/request/{request_id}", response_model=List[LogEntryResponse])
 async def get_request_trace(
     request_id: str,
-    db: AsyncSession = Depends(get_log_db)
+    db: AsyncSession = Depends(get_log_db),
+    admin: CurrentAdminUser = Depends()
 ) -> List[LogEntryResponse]:
     """
     Get complete log trace for an API request.
@@ -302,7 +306,8 @@ async def get_request_trace(
 async def get_fields(
     service: Optional[str] = Query(None, description="Service name to scope field discovery"),
     sample_limit: int = Query(300, ge=1, le=2000, description="Number of recent rows to inspect"),
-    db: AsyncSession = Depends(get_log_db)
+    db: AsyncSession = Depends(get_log_db),
+    admin: CurrentAdminUser = Depends()
 ):
     """Discover available log fields.
 
@@ -338,7 +343,9 @@ async def get_fields(
 
 
 @router.get("/files")
-async def list_log_files():
+async def list_log_files(
+    admin: CurrentAdminUser = Depends()
+):
     """List available log files."""
     import os
 
@@ -371,31 +378,39 @@ async def list_log_files():
 @router.get("/files/tail")
 async def tail_log_file(
     path: str = Query(..., description="Log file path (e.g., data/logs/console/backend.log)"),
-    lines: int = Query(100, ge=1, le=10000, description="Number of lines to return")
+    lines: int = Query(100, ge=1, le=10000, description="Number of lines to return"),
+    admin: CurrentAdminUser = Depends()
 ):
     """Get last N lines from a log file (like tail -n)."""
     import os
     from collections import deque
+    from pathlib import Path
+
+    base_dir = Path("data/logs").resolve()
+    target_path = Path(path).resolve()
 
     # Security: only allow reading from data/logs directory
-    if not path.startswith("data/logs/"):
+    if base_dir != target_path and base_dir not in target_path.parents:
         raise HTTPException(status_code=403, detail="Access denied: can only read from data/logs/")
 
-    if not os.path.exists(path):
+    if not target_path.exists():
         raise HTTPException(status_code=404, detail=f"Log file not found: {path}")
+
+    if not target_path.is_file():
+        raise HTTPException(status_code=403, detail="Access denied: requested path is not a file")
 
     try:
         # Efficiently read last N lines
-        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(target_path, 'r', encoding='utf-8', errors='ignore') as f:
             last_lines = deque(f, maxlen=lines)
 
         return {
-            "path": path,
+            "path": str(target_path),
             "lines": list(last_lines),
             "count": len(last_lines)
         }
     except Exception as e:
-        logger.error("file_tail_error", path=path, error=str(e))
+        logger.error("file_tail_error", path=str(target_path), error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to read log file: {str(e)}")
 
 
@@ -410,7 +425,8 @@ async def get_distinct(
     job_id: Optional[int] = None,
     user_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_log_db)
+    db: AsyncSession = Depends(get_log_db),
+    admin: CurrentAdminUser = Depends()
 ):
     """Return distinct values for a field.
 

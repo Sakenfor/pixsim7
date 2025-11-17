@@ -15,7 +15,8 @@ from pixsim7_backend.shared.errors import (
     ValidationError as DomainValidationError,
     ResourceNotFoundError,
 )
-# Rate limiter disabled for now
+from pixsim7_backend.shared.rate_limit import login_limiter, get_client_identifier
+
 
 router = APIRouter()
 
@@ -83,9 +84,11 @@ async def login(
     
     Rate limited: 5 requests per 60 seconds per IP/user
     """
-    # Rate limit disabled
+    # Enforce login rate limit per user/IP
     
     try:
+        identifier = await get_client_identifier(req)
+        await login_limiter.check(identifier)
         # Get client info
         ip_address = req.client.host if req.client else None
         user_agent = req.headers.get("user-agent")
