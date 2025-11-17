@@ -19,6 +19,7 @@ from pixsim7_backend.services.account.account_service import AccountService
 from pixsim7_backend.services.provider.registry import registry
 from pixsim7_backend.shared.errors import InvalidOperationError
 from pixsim7_backend.shared.image_utils import get_image_info, downscale_image_max_dim
+from pixsim7_backend.shared.video_utils import validate_video_for_provider, get_provider_video_constraints
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -171,19 +172,53 @@ class UploadService:
             }, note
 
         if provider_id == "pixverse" and media_type == MediaType.VIDEO:
-            # Placeholder for future Pixverse video acceptance rules.
-            # Likely constraints: file size, codecs, duration, and dimensions.
-            # For now, we simply return as-is and let provider enforce.
-            # TODO: Implement ffprobe-based checks when video rules are finalized.
-            try:
-                import os
-                size = os.path.getsize(tmp_path)
-            except Exception:
-                size = None
+            # Validate video using ffprobe-based checks
+            constraints = get_provider_video_constraints(provider_id)
+
+            if constraints:
+                # Perform validation with provider-specific constraints
+                metadata, error = validate_video_for_provider(
+                    tmp_path,
+                    provider_id,
+                    **constraints
+                )
+
+                if error:
+                    # Video doesn't meet provider requirements
+                    raise InvalidOperationError(f"Video validation failed: {error}")
+
+                # Extract metadata for return
+                width = metadata.get('width')
+                height = metadata.get('height')
+                size = metadata.get('size_bytes')
+
+                # Add note about validation
+                duration = metadata.get('duration', 0)
+                codec = metadata.get('codec', 'unknown')
+                note = f"Validated: {width}x{height}, {duration:.1f}s, {codec} codec"
+
+                logger.info(
+                    "video_validated",
+                    provider_id=provider_id,
+                    width=width,
+                    height=height,
+                    duration=duration,
+                    codec=codec,
+                    size_mb=round(size / (1024 * 1024), 2) if size else None,
+                )
+            else:
+                # No constraints defined, fall back to basic size check
+                try:
+                    import os
+                    size = os.path.getsize(tmp_path)
+                    width = height = None
+                except Exception:
+                    size = width = height = None
+
             return tmp_path, {
-                'width': None,
-                'height': None,
-                'mime_type': None,
+                'width': width,
+                'height': height,
+                'mime_type': 'video/mp4',  # Assume mp4 for now
                 'file_size_bytes': size,
             }, note
 
