@@ -27,31 +27,31 @@ class ServiceCard(QFrame):
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setFrameShadow(QFrame.Raised)
-        self.setLineWidth(2)
+        self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(70)
-        self.setMaximumHeight(90)
+        self.setMinimumHeight(48)
+        self.setMaximumHeight(58)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
-        layout.setSpacing(theme.SPACING_MD)
+        layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_SM, theme.SPACING_LG, theme.SPACING_SM)
+        layout.setSpacing(theme.SPACING_LG)
 
         self.status_indicator = QLabel()
-        self.status_indicator.setFixedSize(16, 16)
+        self.status_indicator.setFixedSize(10, 10)
         self.status_indicator.setStyleSheet(f"""
             background-color: {STATUS_COLORS[self.service_process.health_status]};
-            border-radius: 8px;
-            border: 2px solid {theme.BG_PRIMARY};
+            border-radius: 5px;
+            border: none;
         """)
         layout.addWidget(self.status_indicator)
 
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(4)
+        info_layout.setSpacing(2)
 
         self.title_label = QLabel(service_def.title)
-        title_font = QFont(); title_font.setPointSize(10); title_font.setBold(True)
+        title_font = QFont(); title_font.setPointSize(9); title_font.setBold(True)
         self.title_label.setFont(title_font)
         self.title_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         info_layout.addWidget(self.title_label)
@@ -66,30 +66,30 @@ class ServiceCard(QFrame):
             except Exception:
                 pass
         self.status_label = QLabel(status_info)
-        status_font = QFont(); status_font.setPointSize(8)
+        status_font = QFont(); status_font.setPointSize(7)
         self.status_label.setFont(status_font)
         self.status_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
         info_layout.addWidget(self.status_label)
 
         layout.addLayout(info_layout, stretch=1)
 
-        btn_layout = QHBoxLayout(); btn_layout.setSpacing(6)
+        btn_layout = QHBoxLayout(); btn_layout.setSpacing(4)
 
         self.start_btn = QPushButton("Start")
-        self.start_btn.setFixedSize(52, theme.BUTTON_HEIGHT_MD)
+        self.start_btn.setFixedSize(45, theme.BUTTON_HEIGHT_MD)
         self.start_btn.setToolTip("Start service")
         self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
         self.start_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.ACCENT_SUCCESS};
                 color: white;
-                font-size: {theme.FONT_SIZE_SM};
+                font-size: {theme.FONT_SIZE_XS};
                 font-weight: 600;
                 border: none;
-                border-radius: {theme.RADIUS_MD}px;
+                border-radius: {theme.RADIUS_SM}px;
             }}
             QPushButton:hover {{
-                background-color: #66BB6A;
+                background-color: #56d364;
             }}
             QPushButton:disabled {{
                 background-color: {theme.BG_SECONDARY};
@@ -99,20 +99,20 @@ class ServiceCard(QFrame):
         btn_layout.addWidget(self.start_btn)
 
         self.stop_btn = QPushButton("Stop")
-        self.stop_btn.setFixedSize(52, theme.BUTTON_HEIGHT_MD)
+        self.stop_btn.setFixedSize(45, theme.BUTTON_HEIGHT_MD)
         self.stop_btn.setToolTip("Stop service")
         self.stop_btn.setEnabled(self.service_process.running)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.ACCENT_ERROR};
                 color: white;
-                font-size: {theme.FONT_SIZE_SM};
+                font-size: {theme.FONT_SIZE_XS};
                 font-weight: 600;
                 border: none;
-                border-radius: {theme.RADIUS_MD}px;
+                border-radius: {theme.RADIUS_SM}px;
             }}
             QPushButton:hover {{
-                background-color: #F44336;
+                background-color: #ff6b6b;
             }}
             QPushButton:disabled {{
                 background-color: {theme.BG_SECONDARY};
@@ -122,20 +122,20 @@ class ServiceCard(QFrame):
         btn_layout.addWidget(self.stop_btn)
 
         self.restart_btn = QPushButton("Restart")
-        self.restart_btn.setFixedSize(58, theme.BUTTON_HEIGHT_MD)
+        self.restart_btn.setFixedSize(52, theme.BUTTON_HEIGHT_MD)
         self.restart_btn.setToolTip("Restart service")
         self.restart_btn.setEnabled(self.service_process.running)
         self.restart_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {theme.ACCENT_WARNING};
                 color: white;
-                font-size: {theme.FONT_SIZE_SM};
+                font-size: {theme.FONT_SIZE_XS};
                 font-weight: 600;
                 border: none;
-                border-radius: {theme.RADIUS_MD}px;
+                border-radius: {theme.RADIUS_SM}px;
             }}
             QPushButton:hover {{
-                background-color: #FFA726;
+                background-color: #e8a730;
             }}
             QPushButton:disabled {{
                 background-color: {theme.BG_SECONDARY};
@@ -146,16 +146,16 @@ class ServiceCard(QFrame):
 
         if service_def.url:
             self.open_btn = QPushButton("Open")
-            self.open_btn.setFixedSize(48, theme.BUTTON_HEIGHT_MD)
+            self.open_btn.setFixedSize(42, theme.BUTTON_HEIGHT_MD)
             self.open_btn.setToolTip(f"Open {service_def.url}")
             self.open_btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {theme.ACCENT_PRIMARY};
                     color: white;
-                    font-size: {theme.FONT_SIZE_SM};
+                    font-size: {theme.FONT_SIZE_XS};
                     font-weight: 600;
                     border: none;
-                    border-radius: {theme.RADIUS_MD}px;
+                    border-radius: {theme.RADIUS_SM}px;
                 }}
                 QPushButton:hover {{
                     background-color: {theme.ACCENT_HOVER};
@@ -223,8 +223,8 @@ class ServiceCard(QFrame):
 
         self.status_indicator.setStyleSheet(f"""
             background-color: {STATUS_COLORS[status]};
-            border-radius: 8px;
-            border: 2px solid {theme.BG_PRIMARY};
+            border-radius: 5px;
+            border: none;
         """)
         status_info = STATUS_TEXT[status]
         if not self.service_process.tool_available:
@@ -262,25 +262,22 @@ class ServiceCard(QFrame):
         if self.is_selected:
             self.setStyleSheet(f"""
                 ServiceCard {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #3d5a7f, stop:1 #2a4060);
-                    border: 2px solid {theme.ACCENT_PRIMARY};
-                    border-radius: {theme.RADIUS_LG}px;
+                    background-color: {theme.BG_HOVER};
+                    border: 1px solid {theme.ACCENT_PRIMARY};
+                    border-radius: {theme.RADIUS_MD}px;
                 }}
                 QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
             """)
         else:
             self.setStyleSheet(f"""
                 ServiceCard {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 {theme.BG_TERTIARY}, stop:1 {theme.BG_SECONDARY});
-                    border: 2px solid {theme.BORDER_DEFAULT};
-                    border-radius: {theme.RADIUS_LG}px;
+                    background-color: {theme.BG_TERTIARY};
+                    border: 1px solid {theme.BORDER_DEFAULT};
+                    border-radius: {theme.RADIUS_MD}px;
                 }}
                 ServiceCard:hover {{
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 {theme.BG_HOVER}, stop:1 {theme.BG_TERTIARY});
-                    border: 2px solid {theme.BORDER_FOCUS};
+                    background-color: {theme.BG_HOVER};
+                    border: 1px solid {theme.BORDER_FOCUS};
                 }}
                 QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
             """)

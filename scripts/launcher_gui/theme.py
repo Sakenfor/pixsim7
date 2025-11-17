@@ -5,53 +5,54 @@ Provides consistent colors, spacing, and styling across all components.
 
 # ========== COLOR PALETTE ==========
 
-# Background colors
-BG_PRIMARY = "#1e1e1e"      # Main background
-BG_SECONDARY = "#252525"    # Secondary panels
-BG_TERTIARY = "#2d2d2d"     # Elevated elements (cards, buttons)
-BG_HOVER = "#353535"        # Hover states
-BG_PRESSED = "#1a1a1a"      # Pressed states
+# Background colors - Darker, sleeker palette (GitHub Dark inspired)
+BG_PRIMARY = "#0d1117"      # Main background (darker)
+BG_SECONDARY = "#161b22"    # Secondary panels
+BG_TERTIARY = "#1f2428"     # Elevated elements (cards, buttons)
+BG_HOVER = "#2d333b"        # Hover states
+BG_PRESSED = "#0a0e14"      # Pressed states
 
-# Text colors
-TEXT_PRIMARY = "#e0e0e0"    # Main text
-TEXT_SECONDARY = "#a0a0a0"  # Secondary text
-TEXT_DISABLED = "#666666"   # Disabled text
+# Text colors - More subtle
+TEXT_PRIMARY = "#c9d1d9"    # Main text (slightly dimmer)
+TEXT_SECONDARY = "#8b949e"  # Secondary text (more muted)
+TEXT_DISABLED = "#484f58"   # Disabled text
 TEXT_INVERSE = "#ffffff"    # Text on colored backgrounds
 
-# Accent colors
-ACCENT_PRIMARY = "#5a9fd4"  # Primary accent (blue)
-ACCENT_HOVER = "#4a8fc4"    # Accent hover
-ACCENT_SUCCESS = "#81C784"  # Success green
-ACCENT_WARNING = "#FFB74D"  # Warning orange
-ACCENT_ERROR = "#EF5350"    # Error red
-ACCENT_INFO = "#64B5F6"     # Info blue
+# Accent colors - More muted, less saturated
+ACCENT_PRIMARY = "#58a6ff"  # Primary accent (softer blue)
+ACCENT_HOVER = "#479af0"    # Accent hover
+ACCENT_SUCCESS = "#3fb950"  # Success green (less bright)
+ACCENT_WARNING = "#d29922"  # Warning orange (muted)
+ACCENT_ERROR = "#f85149"    # Error red (softer)
+ACCENT_INFO = "#58a6ff"     # Info blue
 
-# Border colors
-BORDER_DEFAULT = "#404040"  # Default borders
-BORDER_SUBTLE = "#333333"   # Subtle borders
-BORDER_FOCUS = "#5a9fd4"    # Focused elements
+# Border colors - More subtle
+BORDER_DEFAULT = "#30363d"  # Default borders (more subtle)
+BORDER_SUBTLE = "#21262d"   # Subtle borders
+BORDER_FOCUS = "#58a6ff"    # Focused elements
 
-# Status colors
-STATUS_HEALTHY = "#81C784"
-STATUS_STARTING = "#FFB74D"
-STATUS_STOPPED = "#666666"
-STATUS_ERROR = "#EF5350"
+# Status colors - Muted versions
+STATUS_HEALTHY = "#3fb950"
+STATUS_STARTING = "#d29922"
+STATUS_STOPPED = "#484f58"
+STATUS_ERROR = "#f85149"
 
 # ========== SPACING SYSTEM ==========
+# Reduced spacing for more compact UI
 
-SPACING_XS = 4
-SPACING_SM = 6
-SPACING_MD = 8
-SPACING_LG = 12
-SPACING_XL = 16
-SPACING_XXL = 20
+SPACING_XS = 3
+SPACING_SM = 4
+SPACING_MD = 6
+SPACING_LG = 8
+SPACING_XL = 10
+SPACING_XXL = 12
 
 # ========== SIZING SYSTEM ==========
 
-# Button heights
-BUTTON_HEIGHT_SM = 24
-BUTTON_HEIGHT_MD = 28
-BUTTON_HEIGHT_LG = 32
+# Button heights - Smaller for sleeker look
+BUTTON_HEIGHT_SM = 22
+BUTTON_HEIGHT_MD = 24
+BUTTON_HEIGHT_LG = 28
 
 # Icon button sizes
 ICON_BUTTON_SM = 28
