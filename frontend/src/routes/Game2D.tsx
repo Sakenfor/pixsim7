@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Scene } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
-import { Button, Panel, Badge } from '@pixsim7/ui';
+import { Button, Panel, Badge, Select } from '@pixsim7/ui';
 import {
   listGameLocations,
   getGameLocation,
@@ -637,8 +637,10 @@ export function Game2D() {
           <Panel className="flex items-center gap-2 py-2 px-3">
             <div className="flex flex-col text-xs">
               <span className="font-semibold">World</span>
-              <select
-                className="text-xs bg-transparent border border-neutral-300 dark:border-neutral-700 rounded px-1 py-0.5"
+              <Select
+                size="sm"
+                transparent
+                className="py-0.5"
                 value={selectedWorldId ?? ''}
                 onChange={(e) => {
                   const v = e.target.value;
@@ -651,7 +653,7 @@ export function Game2D() {
                     {w.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <Button size="sm" variant="secondary" onClick={handleCreateWorld}>
               New World

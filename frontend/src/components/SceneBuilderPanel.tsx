@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@pixsim7/ui';
+import { Button, Select } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
 import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
 import type { DraftSceneNode } from '../modules/scene-builder';
@@ -283,15 +283,15 @@ export function SceneBuilderPanel() {
         {/* Selection Strategy */}
         <div>
           <label className="block text-sm font-medium mb-1">Selection Strategy</label>
-          <select
+          <Select
             value={selectionKind}
             onChange={(e) => setSelectionKind(e.target.value as any)}
-            className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+            size="md"
           >
             <option value="ordered">Ordered</option>
             <option value="random">Random</option>
             <option value="pool">Pool (filter by tags)</option>
-          </select>
+          </Select>
         </div>
 
         {/* Filter Tags (only for pool) */}
@@ -420,10 +420,10 @@ export function SceneBuilderPanel() {
               <label className="block text-sm font-medium mb-1">
                 NPC Expression State (optional)
               </label>
-              <select
+              <Select
                 value={npcState}
                 onChange={(e) => setNpcState(e.target.value)}
-                className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                size="md"
               >
                 <option value="">None</option>
                 <option value="idle">Idle</option>
@@ -434,7 +434,7 @@ export function SceneBuilderPanel() {
                 <option value="angry">Angry</option>
                 <option value="surprised">Surprised</option>
                 <option value="thinking">Thinking</option>
-              </select>
+              </Select>
               <p className="text-xs text-neutral-500 mt-1">
                 NPC expression/emotion state for UI overlays (portraits, reactions)
               </p>

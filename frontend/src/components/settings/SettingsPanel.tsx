@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Select } from '@pixsim7/ui';
 import { CubeSettingsPanel } from '../control/CubeSettingsPanel';
 import { useCubeSettingsStore, type LinkingGesture } from '../../stores/cubeSettingsStore';
 import { panelActionRegistry } from '../../lib/panelActions';
@@ -46,14 +47,15 @@ export function SettingsPanel() {
               <div className="text-[11px] text-neutral-600 dark:text-neutral-400 mb-1">
                 Choose how to create connections between cube faces.
               </div>
-              <select
+              <Select
                 value={linkingGesture}
                 onChange={(e) => setLinkingGesture(e.target.value as LinkingGesture)}
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-[11px]"
+                size="sm"
+                className="text-[11px]"
               >
                 <option value="middleClick">Middle-click face to connect</option>
                 <option value="shiftLeftClick">Shift + Left-click face to connect</option>
-              </select>
+              </Select>
               <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
                 Middle-click works well with a mouse; Shift+Left-click is better on trackpads
                 that lack a middle button.
