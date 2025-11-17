@@ -1,18 +1,20 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QTextEdit, QHBoxLayout, QPushButton,
-    QMessageBox, QGroupBox, QFrame
+    QMessageBox, QGroupBox, QFrame, QScrollArea, QWidget
 )
 from PySide6.QtCore import Qt
 
 try:
     from ..migration_tools import (
         get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head,
-        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids
+        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids,
+        parse_migration_history, get_pending_migrations_detailed
     )
 except ImportError:
     from migration_tools import (
         get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head,
-        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids
+        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids,
+        parse_migration_history, get_pending_migrations_detailed
     )
 
 
@@ -181,6 +183,56 @@ def show_migrations_dialog(parent):
 
     layout.addWidget(revid_warning_frame)
 
+    # Pending Migrations List (initially hidden)
+    pending_group = QGroupBox("⏳ Pending Migrations")
+    pending_group.setVisible(False)
+    pending_layout = QVBoxLayout(pending_group)
+
+    pending_scroll = QScrollArea()
+    pending_scroll.setWidgetResizable(True)
+    pending_scroll.setMaximumHeight(200)
+    pending_scroll.setStyleSheet("""
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+    """)
+
+    pending_container = QWidget()
+    pending_container_layout = QVBoxLayout(pending_container)
+    pending_container_layout.setSpacing(8)
+    pending_container_layout.setContentsMargins(0, 0, 0, 0)
+
+    pending_scroll.setWidget(pending_container)
+    pending_layout.addWidget(pending_scroll)
+
+    layout.addWidget(pending_group)
+
+    # Migration Timeline (initially hidden)
+    timeline_group = QGroupBox("📊 Migration Timeline")
+    timeline_group.setVisible(False)
+    timeline_layout = QVBoxLayout(timeline_group)
+
+    timeline_scroll = QScrollArea()
+    timeline_scroll.setWidgetResizable(True)
+    timeline_scroll.setMaximumHeight(250)
+    timeline_scroll.setStyleSheet("""
+        QScrollArea {
+            border: none;
+            background-color: transparent;
+        }
+    """)
+
+    timeline_container = QWidget()
+    timeline_container_layout = QVBoxLayout(timeline_container)
+    timeline_container_layout.setSpacing(4)
+    timeline_container_layout.setContentsMargins(0, 0, 0, 0)
+
+    timeline_scroll.setWidget(timeline_container)
+    timeline_layout.addWidget(timeline_scroll)
+
+    layout.addWidget(timeline_group)
+
     # Details box
     details_group = QGroupBox("Details (Technical)")
     details_layout = QVBoxLayout(details_group)
@@ -264,6 +316,170 @@ def show_migrations_dialog(parent):
     btn_close.setStyleSheet("background-color: #757575;")
     layout.addWidget(btn_close)
 
+    def update_pending_migrations():
+        """Update the pending migrations list widget."""
+        # Clear existing widgets
+        while pending_container_layout.count():
+            child = pending_container_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        pending, err = get_pending_migrations_detailed()
+
+        if err or not pending:
+            pending_group.setVisible(False)
+            return
+
+        pending_group.setVisible(True)
+
+        for migration in pending:
+            # Create migration card
+            card = QFrame()
+            card.setFrameShape(QFrame.StyledPanel)
+            card.setStyleSheet("""
+                QFrame {
+                    background-color: #fff8e1;
+                    border-left: 4px solid #ffa726;
+                    border-radius: 4px;
+                    padding: 8px;
+                    margin: 2px 0;
+                }
+            """)
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(8, 8, 8, 8)
+
+            # Status emoji
+            emoji_label = QLabel(migration.status_emoji)
+            emoji_label.setStyleSheet("font-size: 18pt;")
+            card_layout.addWidget(emoji_label)
+
+            # Migration info
+            info_layout = QVBoxLayout()
+
+            # Revision ID
+            rev_label = QLabel(f"<b>{migration.short_revision}</b>")
+            rev_label.setStyleSheet("font-size: 10pt; color: #333;")
+            info_layout.addWidget(rev_label)
+
+            # Description
+            if migration.description:
+                desc_label = QLabel(migration.description)
+                desc_label.setWordWrap(True)
+                desc_label.setStyleSheet("font-size: 9pt; color: #666;")
+                info_layout.addWidget(desc_label)
+
+            card_layout.addLayout(info_layout, 1)
+
+            # Status badge
+            status_badge = QLabel(migration.status_text)
+            status_badge.setStyleSheet("""
+                background-color: #ffa726;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 8pt;
+                font-weight: bold;
+            """)
+            status_badge.setAlignment(Qt.AlignCenter)
+            card_layout.addWidget(status_badge)
+
+            pending_container_layout.addWidget(card)
+
+        pending_container_layout.addStretch()
+
+    def update_timeline():
+        """Update the migration timeline widget."""
+        # Clear existing widgets
+        while timeline_container_layout.count():
+            child = timeline_container_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        migrations, err = parse_migration_history()
+
+        if err or not migrations:
+            timeline_group.setVisible(False)
+            return
+
+        timeline_group.setVisible(True)
+
+        # Show most recent first (reverse chronological)
+        for migration in reversed(migrations):
+            # Create timeline item
+            item = QFrame()
+            item.setFrameShape(QFrame.NoFrame)
+
+            # Color code based on status
+            if migration.is_current:
+                bg_color = "#e3f2fd"
+                border_color = "#2196F3"
+            elif migration.is_applied:
+                bg_color = "#f1f8e9"
+                border_color = "#4CAF50"
+            else:
+                bg_color = "#fafafa"
+                border_color = "#9E9E9E"
+
+            item.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {bg_color};
+                    border-left: 3px solid {border_color};
+                    padding: 6px;
+                    margin: 1px 0;
+                }}
+            """)
+
+            item_layout = QHBoxLayout(item)
+            item_layout.setContentsMargins(8, 6, 8, 6)
+            item_layout.setSpacing(8)
+
+            # Status indicator
+            status_label = QLabel(migration.status_emoji)
+            status_label.setStyleSheet("font-size: 14pt;")
+            status_label.setFixedWidth(30)
+            item_layout.addWidget(status_label)
+
+            # Migration info
+            info_layout = QVBoxLayout()
+            info_layout.setSpacing(2)
+
+            # Revision with badges
+            rev_layout = QHBoxLayout()
+            rev_label = QLabel(f"<b>{migration.short_revision}</b>")
+            rev_label.setStyleSheet("font-size: 9pt; color: #333;")
+            rev_layout.addWidget(rev_label)
+
+            # Add badges for special statuses
+            if migration.is_head:
+                badge = QLabel("HEAD")
+                badge.setStyleSheet("background-color: #2196F3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
+                rev_layout.addWidget(badge)
+
+            if migration.is_mergepoint:
+                badge = QLabel("MERGE")
+                badge.setStyleSheet("background-color: #9C27B0; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
+                rev_layout.addWidget(badge)
+
+            if migration.is_branchpoint:
+                badge = QLabel("BRANCH")
+                badge.setStyleSheet("background-color: #FF9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
+                rev_layout.addWidget(badge)
+
+            rev_layout.addStretch()
+            info_layout.addLayout(rev_layout)
+
+            # Description
+            if migration.description:
+                desc_label = QLabel(migration.description[:80] + ('...' if len(migration.description) > 80 else ''))
+                desc_label.setStyleSheet("font-size: 8pt; color: #666;")
+                info_layout.addWidget(desc_label)
+
+            item_layout.addLayout(info_layout, 1)
+
+            timeline_container_layout.addWidget(item)
+
+        timeline_container_layout.addStretch()
+
     def parse_status(current_text, heads_text):
         """Parse alembic output and determine status"""
         current_clean = current_text.strip()
@@ -304,6 +520,10 @@ def show_migrations_dialog(parent):
     def refresh():
         current = get_current_revision()
         heads = get_heads()
+
+        # Update visual widgets
+        update_pending_migrations()
+        update_timeline()
 
         # Check for multiple heads (branch conflict)
         heads_list, heads_err = parse_heads()
