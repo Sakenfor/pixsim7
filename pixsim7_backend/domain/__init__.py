@@ -54,7 +54,7 @@ from .scene import Scene, SceneAsset, SceneConnection
 from .log_entry import LogEntry
 
 # Prompt versioning (Phase 7)
-from .prompt_versioning import PromptFamily, PromptVersion
+from .prompt_versioning import PromptFamily, PromptVersion, PromptVariantFeedback
 
 __all__ = [
     # Enums
@@ -97,4 +97,5 @@ __all__ = [
     # Prompt versioning
     "PromptFamily",
     "PromptVersion",
+    "PromptVariantFeedback",
 ]

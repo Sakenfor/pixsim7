@@ -512,3 +512,452 @@ async def list_prompt_variants_for_version(
         )
         for v in variants
     ]
+
+
+# ===== Diff & Comparison Endpoints (Phase 2) =====
+
+
+@router.get("/versions/{version_id}/diff")
+async def get_version_diff(
+    version_id: UUID,
+    format: str = "inline",
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Get diff for a version compared to its parent
+
+    Query params:
+        - format: 'inline' (default), 'unified', or 'summary'
+    """
+    service = PromptVersionService(db)
+    diff = await service.get_version_diff(version_id, format=format)
+
+    if not diff:
+        raise HTTPException(
+            status_code=404,
+            detail="Version not found or has no parent version"
+        )
+
+    return diff
+
+
+@router.get("/versions/compare")
+async def compare_versions(
+    from_version_id: UUID,
+    to_version_id: UUID,
+    format: str = "inline",
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Compare two arbitrary versions
+
+    Query params:
+        - from_version_id: Source version UUID
+        - to_version_id: Target version UUID
+        - format: 'inline' (default), 'unified', or 'summary'
+    """
+    service = PromptVersionService(db)
+
+    try:
+        comparison = await service.compare_versions(
+            from_version_id,
+            to_version_id,
+            format=format
+        )
+        return comparison
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ===== Analytics Endpoints (Phase 2) =====
+
+
+@router.get("/versions/{version_id}/analytics")
+async def get_version_analytics(
+    version_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Get comprehensive analytics for a version
+
+    Returns performance metrics, usage stats, and ratings.
+    """
+    service = PromptVersionService(db)
+
+    try:
+        analytics = await service.get_version_analytics(version_id)
+        return analytics
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/families/{family_id}/analytics")
+async def get_family_analytics(
+    family_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Get aggregate analytics for all versions in a family
+
+    Returns family-wide performance metrics including best performing version.
+    """
+    service = PromptVersionService(db)
+
+    try:
+        analytics = await service.get_family_analytics(family_id)
+        return analytics
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/analytics/top-performing")
+async def get_top_performing_versions(
+    family_id: Optional[UUID] = None,
+    limit: int = 10,
+    metric: str = "success_rate",
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Get top performing versions by various metrics
+
+    Query params:
+        - family_id: Optional UUID to filter by family
+        - limit: Number of results (default 10, max 100)
+        - metric: Sort by 'success_rate' (default), 'total_generations', or 'avg_rating'
+    """
+    if limit > 100:
+        limit = 100
+
+    if metric not in ["success_rate", "total_generations", "avg_rating"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid metric. Must be 'success_rate', 'total_generations', or 'avg_rating'"
+        )
+
+    service = PromptVersionService(db)
+    top_versions = await service.get_top_performing_versions(
+        family_id=family_id,
+        limit=limit,
+        metric=metric
+    )
+
+    return {
+        "metric": metric,
+        "limit": limit,
+        "family_id": str(family_id) if family_id else None,
+        "versions": top_versions,
+    }
+
+
+# ===== Batch Operations (Phase 3) =====
+
+
+class BatchVersionRequest(BaseModel):
+    prompt_text: str
+    commit_message: Optional[str] = None
+    author: Optional[str] = None
+    parent_version_id: Optional[UUID] = None
+    variables: dict = Field(default_factory=dict)
+    provider_hints: dict = Field(default_factory=dict)
+    tags: List[str] = Field(default_factory=list)
+
+
+@router.post("/families/{family_id}/versions/batch", response_model=List[PromptVersionResponse])
+async def batch_create_versions(
+    family_id: UUID,
+    versions: List[BatchVersionRequest],
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Create multiple versions at once
+
+    Useful for bulk imports, testing multiple variants, or batch migrations.
+    """
+    service = PromptVersionService(db)
+
+    # Verify family exists
+    family = await service.get_family(family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Family not found")
+
+    # Convert to dicts
+    versions_data = [v.dict() for v in versions]
+
+    # Create versions
+    created = await service.batch_create_versions(
+        family_id=family_id,
+        versions=versions_data,
+        author=user.email
+    )
+
+    return [
+        PromptVersionResponse(
+            id=v.id,
+            family_id=v.family_id,
+            version_number=v.version_number,
+            prompt_text=v.prompt_text,
+            commit_message=v.commit_message,
+            author=v.author,
+            generation_count=v.generation_count,
+            successful_assets=v.successful_assets,
+            tags=v.tags,
+            created_at=str(v.created_at)
+        )
+        for v in created
+    ]
+
+
+# ===== Import/Export (Phase 3) =====
+
+
+@router.get("/families/{family_id}/export")
+async def export_family(
+    family_id: UUID,
+    include_versions: bool = True,
+    include_analytics: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Export a family and its versions to portable JSON format
+
+    Query params:
+        - include_versions: Include all versions (default: true)
+        - include_analytics: Include analytics data (default: false)
+
+    Returns JSON that can be imported into another system.
+    """
+    service = PromptVersionService(db)
+
+    try:
+        export_data = await service.export_family(
+            family_id=family_id,
+            include_versions=include_versions,
+            include_analytics=include_analytics
+        )
+        return export_data
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+class ImportFamilyRequest(BaseModel):
+    import_data: dict | str = Field(..., description="Exported family data or raw prompt text")
+    preserve_metadata: bool = Field(True, description="Keep original authors/timestamps")
+
+
+@router.post("/families/import", response_model=PromptFamilyResponse)
+async def import_family(
+    request: ImportFamilyRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Import a family from exported data or external prompt
+
+    Handles both:
+    - Structured exports from this system
+    - Plain text prompts from external sources
+
+    Slug conflicts are auto-resolved.
+    """
+    service = PromptVersionService(db)
+
+    family = await service.import_family(
+        import_data=request.import_data,
+        author=user.email,
+        preserve_metadata=request.preserve_metadata
+    )
+
+    # Get version count
+    versions = await service.list_versions(family.id, limit=1000)
+
+    return PromptFamilyResponse(
+        id=family.id,
+        slug=family.slug,
+        title=family.title,
+        description=family.description,
+        prompt_type=family.prompt_type,
+        category=family.category,
+        tags=family.tags,
+        is_active=family.is_active,
+        version_count=len(versions)
+    )
+
+
+# ===== Historical Inference (Phase 3) =====
+
+
+class InferVersionsRequest(BaseModel):
+    asset_ids: List[int] = Field(..., description="Asset IDs to infer prompts from")
+
+
+@router.post("/families/{family_id}/infer-from-assets", response_model=List[PromptVersionResponse])
+async def infer_versions_from_assets(
+    family_id: UUID,
+    request: InferVersionsRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Backfill prompt versions for existing assets
+
+    Extracts prompts from generation artifacts and creates versions.
+    Useful for migrating existing data into the versioning system.
+    """
+    service = PromptVersionService(db)
+
+    # Verify family exists
+    family = await service.get_family(family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Family not found")
+
+    created = await service.infer_versions_from_assets(
+        family_id=family_id,
+        asset_ids=request.asset_ids,
+        author=user.email
+    )
+
+    return [
+        PromptVersionResponse(
+            id=v.id,
+            family_id=v.family_id,
+            version_number=v.version_number,
+            prompt_text=v.prompt_text,
+            commit_message=v.commit_message,
+            author=v.author,
+            generation_count=v.generation_count,
+            successful_assets=v.successful_assets,
+            tags=v.tags,
+            created_at=str(v.created_at)
+        )
+        for v in created
+    ]
+
+
+# ===== Similarity Search (Phase 3) =====
+
+
+@router.get("/search/similar")
+async def find_similar_prompts(
+    prompt: str,
+    limit: int = 10,
+    threshold: float = 0.5,
+    family_id: Optional[UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Find similar prompts using text similarity
+
+    Query params:
+        - prompt: Query prompt text
+        - limit: Number of results (default: 10, max: 50)
+        - threshold: Minimum similarity score 0-1 (default: 0.5)
+        - family_id: Optional family filter
+
+    Returns versions ranked by similarity score.
+    """
+    if limit > 50:
+        limit = 50
+    if threshold < 0 or threshold > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Threshold must be between 0 and 1"
+        )
+
+    service = PromptVersionService(db)
+    similar = await service.find_similar_prompts(
+        prompt_text=prompt,
+        limit=limit,
+        threshold=threshold,
+        family_id=family_id
+    )
+
+    return {
+        "query": prompt,
+        "limit": limit,
+        "threshold": threshold,
+        "family_id": str(family_id) if family_id else None,
+        "results": similar,
+        "result_count": len(similar)
+    }
+
+
+# ===== Template Validation (Phase 3) =====
+
+
+class ValidateTemplateRequest(BaseModel):
+    prompt_text: str
+    variable_defs: Optional[dict] = None
+
+
+@router.post("/templates/validate")
+async def validate_template(
+    request: ValidateTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Validate a prompt template
+
+    Checks for:
+    - Variable syntax
+    - Required variables
+    - Undefined variables
+    - Common issues
+
+    Variable definitions format:
+    {
+        "character": {"type": "string", "required": true},
+        "lighting": {"type": "enum", "enum_values": ["golden", "dramatic"], "default": "golden"}
+    }
+    """
+    service = PromptVersionService(db)
+    result = service.validate_template_prompt(
+        prompt_text=request.prompt_text,
+        variable_defs=request.variable_defs
+    )
+    return result
+
+
+class RenderTemplateRequest(BaseModel):
+    prompt_text: str
+    variables: dict
+    variable_defs: Optional[dict] = None
+    strict: bool = True
+
+
+@router.post("/templates/render")
+async def render_template(
+    request: RenderTemplateRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user),
+):
+    """
+    Render a template prompt with variable substitution
+
+    Substitutes {{variables}} with provided values.
+    Validates types and required variables if definitions provided.
+    """
+    service = PromptVersionService(db)
+
+    try:
+        rendered = service.render_template_prompt(
+            prompt_text=request.prompt_text,
+            variables=request.variables,
+            variable_defs=request.variable_defs,
+            strict=request.strict
+        )
+        return {
+            "original": request.prompt_text,
+            "rendered": rendered,
+            "variables_used": request.variables
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
