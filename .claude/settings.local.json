@@ -97,7 +97,9 @@
       "Bash(adb kill-server:*)",
       "Bash(adb start-server:*)",
       "Bash(adb:*)",
-      "Bash(G:codeconda_envspixsim7python.exe launcher.py)"
+      "Bash(G:codeconda_envspixsim7python.exe launcher.py)",
+      "Bash(tree:*)",
+      "Bash(xargs -I {} bash -c 'head -20 \"\"\"\"{}\"\"\"\" | grep -E \"\"\"\"^import|^from\"\"\"\"')"
     ],
     "deny": [],
     "ask": []

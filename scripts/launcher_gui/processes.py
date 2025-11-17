@@ -4,6 +4,7 @@ import subprocess
 import threading
 from typing import Optional, Union
 from PySide6.QtCore import QProcess, QTimer
+from pixsim_logging.file_rotation import rotate_file, append_line
 
 try:
     from .services import ServiceDef
@@ -20,9 +21,21 @@ except ImportError:
 
 
 try:
-    from .constants import MAX_LOG_LINES
+    from .constants import (
+        MAX_LOG_LINES,
+        CONSOLE_MAX_LINE_CHARS,
+        CONSOLE_MAX_BUFFER_CHARS,
+        LOG_FILE_MAX_BYTES,
+        LOG_FILE_BACKUP_COUNT,
+    )
 except ImportError:
-    from constants import MAX_LOG_LINES
+    from constants import (
+        MAX_LOG_LINES,
+        CONSOLE_MAX_LINE_CHARS,
+        CONSOLE_MAX_BUFFER_CHARS,
+        LOG_FILE_MAX_BYTES,
+        LOG_FILE_BACKUP_COUNT,
+    )
 
 
 class ServiceProcess:
@@ -42,11 +55,12 @@ class ServiceProcess:
         # Console log file persistence
         self.log_file_path = os.path.join(ROOT, 'data', 'logs', 'console', f'{defn.key}.log')
         self._ensure_log_dir()
+        self._buffer_char_count = 0
+        self._log_file_position = 0  # Track position in log file for incremental reading
+        self._log_monitor_timer: Optional[QTimer] = None
         self._load_persisted_logs()
 
         # Log file monitoring for detached processes
-        self._log_file_position = 0  # Track position in log file for incremental reading
-        self._log_monitor_timer: Optional[QTimer] = None
 
     def _ensure_log_dir(self):
         """Ensure console log directory exists."""
@@ -63,7 +77,11 @@ class ServiceProcess:
                 with open(self.log_file_path, 'r', encoding='utf-8', errors='replace') as f:
                     # Load last N lines to respect max_log_lines
                     lines = f.readlines()
-                    self.log_buffer = [line.rstrip() for line in lines[-self.max_log_lines:]]
+                    for line in lines[-self.max_log_lines:]:
+                        clean = line.rstrip()
+                        if clean:
+                            self._append_log_buffer(clean)
+                self._log_file_position = os.path.getsize(self.log_file_path)
         except Exception as e:
             if _launcher_logger:
                 try:
@@ -75,14 +93,28 @@ class ServiceProcess:
                 except Exception:
                     pass
 
-    def _persist_log_line(self, line: str):
+    def _persist_log_line(self, line: str, *, sanitized: bool = False):
         """Append a log line to the persistent file."""
         try:
-            with open(self.log_file_path, 'a', encoding='utf-8') as f:
-                f.write(line + '\n')
+            if not sanitized:
+                line = self._sanitize_log_line(line)
+            rotated = rotate_file(self.log_file_path, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT)
+            if rotated:
+                self._log_file_position = 0
+            append_line(self.log_file_path, line + '\n')
         except Exception:
             # Silently fail - don't interrupt logging if file write fails
             pass
+
+    def _append_log_buffer(self, line: str):
+        """Append sanitized line to buffer enforcing char/line caps."""
+        sanitized = self._sanitize_log_line(line)
+        self.log_buffer.append(sanitized)
+        self._buffer_char_count += len(sanitized)
+        while len(self.log_buffer) > self.max_log_lines or self._buffer_char_count > CONSOLE_MAX_BUFFER_CHARS:
+            removed = self.log_buffer.pop(0)
+            self._buffer_char_count -= len(removed)
+        return sanitized
 
     def _read_new_log_lines(self):
         """Read new lines from log file (for detached processes)."""
@@ -100,17 +132,11 @@ class ServiceProcess:
                 for line in new_lines:
                     line = line.rstrip()
                     if line:
-                        self.log_buffer.append(line)
-                        # Check for errors
-                        if '[ERR]' in line or '[ERROR]' in line:
-                            # Extract the actual error message
-                            parts = line.split('] ', 2)
+                        sanitized = self._append_log_buffer(line)
+                        if '[ERR]' in sanitized or '[ERROR]' in sanitized:
+                            parts = sanitized.split('] ', 2)
                             if len(parts) >= 3:
                                 self.last_error_line = parts[2]
-
-                # Trim buffer if too large
-                if len(self.log_buffer) > self.max_log_lines:
-                    self.log_buffer = self.log_buffer[-self.max_log_lines:]
 
         except Exception as e:
             if _launcher_logger:
@@ -142,6 +168,7 @@ class ServiceProcess:
         """Clear both in-memory buffer and persisted log file."""
         self.log_buffer.clear()
         self._log_file_position = 0  # Reset file position
+        self._buffer_char_count = 0
         try:
             # Truncate the log file
             with open(self.log_file_path, 'w', encoding='utf-8') as f:
@@ -617,6 +644,14 @@ class ServiceProcess:
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         return ansi_escape.sub('', text)
 
+    def _sanitize_log_line(self, line: str) -> str:
+        """Clamp extremely long log lines to keep GUI responsive."""
+        if line and len(line) > CONSOLE_MAX_LINE_CHARS:
+            trimmed = line[-CONSOLE_MAX_LINE_CHARS:]
+            omitted = len(line) - CONSOLE_MAX_LINE_CHARS
+            return f"... ⏬ truncated {omitted} chars ⏬ ... {trimmed}"
+        return line
+
     def _capture(self, is_err: bool):
         if not self.proc:
             return
@@ -632,12 +667,8 @@ class ServiceProcess:
                 timestamp = datetime.now().strftime('%H:%M:%S')
                 stream_tag = 'ERR' if is_err else 'OUT'
                 log_line = f"[{timestamp}] [{stream_tag}] {clean_line}"
-                self.log_buffer.append(log_line)
-                # Persist to file
-                self._persist_log_line(log_line)
-                # Trim buffer if too large
-                if len(self.log_buffer) > self.max_log_lines:
-                    self.log_buffer = self.log_buffer[-self.max_log_lines:]
+                sanitized = self._append_log_buffer(log_line)
+                self._persist_log_line(sanitized, sanitized=True)
 
             if is_err and line.strip():
                 self.last_error_line = self._strip_ansi_codes(line.strip())
@@ -672,18 +703,18 @@ class ServiceProcess:
         if exit_code != 0 or exit_status != QProcess.NormalExit:
             # Abnormal exit - show as error
             log_line = f"[{timestamp}] [ERROR] Service exited abnormally: exit_code={exit_code}, status={status_name}"
-            self.log_buffer.append(log_line)
-            self._persist_log_line(log_line)
+            sanitized = self._append_log_buffer(log_line)
+            self._persist_log_line(sanitized, sanitized=True)
 
             if self.last_error_line:
                 error_line = f"[{timestamp}] [ERROR] Last error: {self.last_error_line}"
-                self.log_buffer.append(error_line)
-                self._persist_log_line(error_line)
+                sanitized_error = self._append_log_buffer(error_line)
+                self._persist_log_line(sanitized_error, sanitized=True)
         else:
             # Normal exit
             log_line = f"[{timestamp}] [INFO] Service stopped normally"
-            self.log_buffer.append(log_line)
-            self._persist_log_line(log_line)
+            sanitized = self._append_log_buffer(log_line)
+            self._persist_log_line(sanitized, sanitized=True)
 
         if _launcher_logger:
             try:
@@ -718,18 +749,18 @@ class ServiceProcess:
         from datetime import datetime
         timestamp = datetime.now().strftime('%H:%M:%S')
         log_line = f"[{timestamp}] [ERROR] {error_msg}"
-        self.log_buffer.append(log_line)
-        self._persist_log_line(log_line)
+        sanitized = self._append_log_buffer(log_line)
+        self._persist_log_line(sanitized, sanitized=True)
 
         # Add details about the command that failed
         details_line = f"[{timestamp}] [ERROR] Command: {self.defn.program} {' '.join(self.defn.args)}"
-        self.log_buffer.append(details_line)
-        self._persist_log_line(details_line)
+        sanitized_details = self._append_log_buffer(details_line)
+        self._persist_log_line(sanitized_details, sanitized=True)
 
         # Add working directory info
         cwd_line = f"[{timestamp}] [ERROR] Working directory: {self.defn.cwd}"
-        self.log_buffer.append(cwd_line)
-        self._persist_log_line(cwd_line)
+        sanitized_cwd = self._append_log_buffer(cwd_line)
+        self._persist_log_line(sanitized_cwd, sanitized=True)
 
         if _launcher_logger:
             try:

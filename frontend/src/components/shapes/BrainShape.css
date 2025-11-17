@@ -1,0 +1,383 @@
+/**
+ * BrainShape Visual Styling - Sci-Fi Theme
+ * Holographic neural visualization with cyberpunk aesthetics
+ */
+
+/* ============================================================================
+   Container & 3D Space
+   ============================================================================ */
+
+.brain-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+  transform: rotateX(-10deg) rotateY(25deg);
+  transition: transform 0.3s ease;
+  user-select: none;
+}
+
+.brain-container:hover {
+  transform: rotateX(-5deg) rotateY(30deg) scale(1.02);
+}
+
+/* ============================================================================
+   Central Core - Brain Stem
+   ============================================================================ */
+
+.brain-core {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  pointer-events: none;
+}
+
+.brain-core-glow {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Style variations for the core */
+.brain-core-glow.brain-style-holographic {
+  background: radial-gradient(
+    circle,
+    rgba(0, 217, 255, 0.4) 0%,
+    rgba(147, 51, 234, 0.2) 40%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 60px rgba(0, 217, 255, 0.6),
+    0 0 120px rgba(147, 51, 234, 0.4),
+    inset 0 0 40px rgba(0, 217, 255, 0.3);
+  filter: blur(8px);
+}
+
+.brain-core-glow.brain-style-organic {
+  background: radial-gradient(
+    circle,
+    rgba(255, 100, 150, 0.5) 0%,
+    rgba(255, 50, 100, 0.3) 40%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 60px rgba(255, 100, 150, 0.6),
+    0 0 100px rgba(255, 50, 100, 0.3),
+    inset 0 0 30px rgba(255, 150, 200, 0.4);
+  filter: blur(12px);
+}
+
+.brain-core-glow.brain-style-circuit {
+  background: radial-gradient(
+    circle,
+    rgba(0, 255, 100, 0.4) 0%,
+    rgba(0, 150, 255, 0.3) 40%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 40px rgba(0, 255, 100, 0.5),
+    0 0 80px rgba(0, 150, 255, 0.3),
+    inset 0 0 30px rgba(100, 255, 150, 0.4);
+  filter: blur(6px);
+}
+
+/* ============================================================================
+   Brain Lobes - Interactive Regions
+   ============================================================================ */
+
+.brain-lobes {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.brain-lobe {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  top: 50%;
+  left: 50%;
+  margin: -48px 0 0 -48px;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.brain-lobe:hover {
+  transform: translateZ(10px) scale(1.1) !important;
+  z-index: 10;
+}
+
+.brain-lobe.active {
+  transform: translateZ(20px) scale(1.15) !important;
+  z-index: 20;
+}
+
+.brain-lobe-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Before pseudo-element for animated border */
+.brain-lobe-content::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 16px;
+  background: linear-gradient(
+    45deg,
+    transparent,
+    currentColor,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+
+.brain-lobe:hover .brain-lobe-content::before {
+  opacity: 0.6;
+  animation: rotate-border 2s linear infinite;
+}
+
+.brain-lobe.active .brain-lobe-content::before {
+  opacity: 1;
+  animation: rotate-border 1s linear infinite;
+}
+
+/* Face-specific colors and gradients */
+.brain-lobe-cortex .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(168, 85, 247, 0.1) 100%);
+  border-color: rgba(147, 51, 234, 0.3);
+  color: #a855f7;
+}
+
+.brain-lobe-memory .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(96, 165, 250, 0.1) 100%);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+.brain-lobe-emotion .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(248, 113, 113, 0.1) 100%);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.brain-lobe-logic .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(74, 222, 128, 0.1) 100%);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.brain-lobe-instinct .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.2) 0%, rgba(251, 191, 36, 0.1) 100%);
+  border-color: rgba(251, 146, 60, 0.3);
+  color: #fb923c;
+}
+
+.brain-lobe-social .brain-lobe-content {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(34, 211, 238, 0.1) 100%);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #22d3ee;
+}
+
+/* Holographic style enhancements */
+.brain-lobe-content.brain-style-holographic {
+  background-blend-mode: screen;
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.05),
+    0 0 30px currentColor;
+}
+
+.brain-lobe-content.brain-style-holographic::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    currentColor 50%,
+    transparent 100%);
+  opacity: 0.6;
+  animation: scan-line 4s linear infinite;
+}
+
+/* Organic style */
+.brain-lobe-content.brain-style-organic {
+  border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  animation: organic-morph 8s ease-in-out infinite;
+  box-shadow:
+    inset 0 0 30px rgba(255, 255, 255, 0.1),
+    0 0 40px currentColor;
+}
+
+/* Circuit style */
+.brain-lobe-content.brain-style-circuit {
+  clip-path: polygon(
+    20% 0%,
+    80% 0%,
+    100% 20%,
+    100% 80%,
+    80% 100%,
+    20% 100%,
+    0% 80%,
+    0% 20%
+  );
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.03) 2px,
+      rgba(255, 255, 255, 0.03) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.03) 2px,
+      rgba(255, 255, 255, 0.03) 4px
+    );
+}
+
+/* Text styling */
+.brain-lobe-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+  text-shadow: 0 0 10px currentColor;
+}
+
+.brain-lobe-data {
+  font-size: 10px;
+  opacity: 0.7;
+  font-family: 'Courier New', monospace;
+}
+
+/* ============================================================================
+   Neural Connections
+   ============================================================================ */
+
+.brain-connections {
+  z-index: -1;
+}
+
+.brain-connection-line {
+  stroke-dasharray: 5 5;
+  animation: flow-dash 1s linear infinite;
+}
+
+.brain-connection-particle {
+  filter: blur(1px);
+  box-shadow: 0 0 10px currentColor;
+}
+
+/* ============================================================================
+   Animations
+   ============================================================================ */
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.3;
+  }
+}
+
+@keyframes rotate-border {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(96px);
+  }
+}
+
+@keyframes organic-morph {
+  0%, 100% {
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  }
+  25% {
+    border-radius: 70% 30% 30% 70% / 70% 70% 30% 30%;
+  }
+  50% {
+    border-radius: 30% 70% 70% 30% / 70% 30% 30% 70%;
+  }
+  75% {
+    border-radius: 70% 30% 30% 70% / 30% 70% 70% 30%;
+  }
+}
+
+@keyframes flow-dash {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 10;
+  }
+}
+
+/* ============================================================================
+   Responsive & Accessibility
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .brain-core-glow,
+  .brain-lobe,
+  .brain-lobe-content,
+  .brain-connection-line,
+  .brain-connection-particle {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Dark mode optimizations */
+@media (prefers-color-scheme: dark) {
+  .brain-lobe-content {
+    backdrop-filter: blur(20px);
+  }
+}
+
+/* Hover effects for touch devices */
+@media (hover: none) {
+  .brain-lobe:active {
+    transform: translateZ(10px) scale(1.1) !important;
+  }
+}

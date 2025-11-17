@@ -130,8 +130,11 @@ class HealthWorker(QThread):
             self.service_healthy_since[key] = None
 
     def _emit_health_update(self, key: str, status: HealthStatus):
-        """Emit health update and track state change for adaptive intervals."""
-        self._emit_health_update(key, status)
+        """Emit health update signal and track state change."""
+        try:
+            self.health_update.emit(key, status)
+        except Exception:
+            pass
         self._track_health_change(key, status)
 
     def _detect_and_store_pid(self, sp, url: str = None, port: int = None):

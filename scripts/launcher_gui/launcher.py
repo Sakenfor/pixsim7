@@ -6,6 +6,7 @@ import signal
 import re
 from html import escape
 from typing import Dict, Optional
+from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
@@ -86,12 +87,12 @@ except Exception:
 try:
     from .launcher_facade import LauncherFacade
     from .service_adapter import ServiceProcessAdapter
-    USE_NEW_CORE = True
+    USE_NEW_CORE = False
 except Exception:
     try:
         from launcher_facade import LauncherFacade
         from service_adapter import ServiceProcessAdapter
-        USE_NEW_CORE = True
+        USE_NEW_CORE = False
     except Exception:
         USE_NEW_CORE = False
 
@@ -103,6 +104,23 @@ except Exception:
 
 
 # Ports and Env editor dialogs moved to dialogs/* modules
+
+
+STARTUP_TRACE_ENABLED = os.getenv("PIXSIM_LAUNCHER_TRACE", "0").lower() in {"1", "true", "yes", "on"}
+
+
+def _startup_trace(message: str) -> None:
+    """Optional startup tracing guarded by PIXSIM_LAUNCHER_TRACE env flag."""
+    if not STARTUP_TRACE_ENABLED:
+        return
+    try:
+        root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        trace_path = os.path.join(root_path, 'data', 'logs', 'launcher', 'startup_trace.log')
+        os.makedirs(os.path.dirname(trace_path), exist_ok=True)
+        with open(trace_path, 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.now().isoformat()} {message}\n")
+    except Exception:
+        pass
 
 
 CONSOLE_LEVEL_PATTERNS = {
@@ -120,6 +138,14 @@ CONSOLE_LEVEL_STYLES = {
     "ERROR": {"accent": "#EF5350", "bg": "rgba(239,83,80,0.12)"},
     "CRITICAL": {"accent": "#FF1744", "bg": "rgba(255,23,68,0.18)"},
 }
+
+CONSOLE_TIMESTAMP_REGEX = re.compile(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)')
+ISO_TIMESTAMP_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(.*)')
+LEVEL_PREFIX_REGEX = re.compile(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', re.IGNORECASE)
+URL_LINK_REGEX = re.compile(r'(https?://[^\s]+)')
+READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening)\b')
+ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
+WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
 
 class LauncherWindow(QWidget):
@@ -223,6 +249,7 @@ class LauncherWindow(QWidget):
         elif self.services:
             # Select first service by default
             self._select_service(self.services[0].key)
+        # Nothing heavy until UI is visible
 
         # Background health worker / health manager
         if USE_NEW_CORE and self.facade:
@@ -629,15 +656,19 @@ class LauncherWindow(QWidget):
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
+        self._startup_trace(f"_select_service start ({key})")
         # Deselect previous card
         if self.selected_service_key and self.selected_service_key in self.cards:
             self.cards[self.selected_service_key].set_selected(False)
+            self._startup_trace("_select_service previous deselected")
 
         # Select new card
         self.selected_service_key = key
         if key in self.cards:
             self.cards[key].set_selected(True)
+            self._startup_trace("_select_service card selected")
             self._refresh_console_logs()
+            self._startup_trace("_select_service console refreshed")
 
         # Keep database log viewer in sync with selected service for quick pivots
         if hasattr(self, 'db_log_viewer') and self.db_log_viewer:
@@ -650,6 +681,8 @@ class LauncherWindow(QWidget):
                 idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
             if idx >= 0:
                 self.db_log_viewer.service_combo.setCurrentIndex(idx)
+                self._startup_trace("_select_service db viewer synced")
+        self._startup_trace(f"_select_service end ({key})")
 
     def _start_service(self, key: str):
         """Start a specific service."""
@@ -1059,7 +1092,7 @@ class LauncherWindow(QWidget):
         html_lines = ['<div style="margin:0; padding:0; line-height:1.4; font-family: \'Consolas\', \'Courier New\', monospace; font-size:9pt;">']
         for raw_line in log_lines:
             line = str(raw_line)
-            timestamp_match = re.match(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)', line)
+            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
             if timestamp_match:
                 time, tag, content = timestamp_match.groups()
                 tag_color = '#f44336' if tag == 'ERR' else '#4CAF50'
@@ -1091,18 +1124,18 @@ class LauncherWindow(QWidget):
             if bg_color:
                 wrapper_style += f" background-color: {bg_color};"
 
-            timestamp_match = re.match(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)', line)
+            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
             if timestamp_match:
                 time, tag, content = timestamp_match.groups()
             else:
-                iso_match = re.match(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(.*)', line)
+                iso_match = ISO_TIMESTAMP_REGEX.match(line)
                 if iso_match:
                     time = iso_match.group(2)
                     tag = None
                     remainder = iso_match.group(3).strip()
                     content = remainder or line[iso_match.start(3):].strip() or line
                 else:
-                    prefix_match = re.match(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', line, re.IGNORECASE)
+                    prefix_match = LEVEL_PREFIX_REGEX.match(line)
                     if prefix_match:
                         possible_level = prefix_match.group(1).upper()
                         if not line_level:
@@ -1156,26 +1189,31 @@ class LauncherWindow(QWidget):
     def _decorate_console_message(self, content: str) -> str:
         """Escape and highlight console content."""
         text = escape(content)
-        text = re.sub(
-            r'(https?://[^\s]+)',
+        text = URL_LINK_REGEX.sub(
             r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
             text
         )
-        text = re.sub(r'\b(VITE|ready|Local|Network|running|started|listening)\b',
-                      r'<span style="color: #81C784; font-weight: bold;">\1</span>', text)
-        text = re.sub(r'\b(ERROR|error|failed|Error|FAILED)\b',
-                      r'<span style="color: #EF5350; font-weight: bold;">\1</span>', text)
-        text = re.sub(r'\b(WARNING|warning|WARN|warn)\b',
-                      r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text)
+        text = READY_REGEX.sub(
+            r'<span style="color: #81C784; font-weight: bold;">\1</span>', text
+        )
+        text = ERROR_REGEX.sub(
+            r'<span style="color: #EF5350; font-weight: bold;">\1</span>', text
+        )
+        text = WARN_REGEX.sub(
+            r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text
+        )
         return text
 
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
+        self._startup_trace("_refresh_console_logs start")
         if not self.selected_service_key:
+            self._startup_trace("_refresh_console_logs skipped (no selection)")
             return
 
         sp = self.processes.get(self.selected_service_key)
         if not sp:
+            self._startup_trace("_refresh_console_logs skipped (no service)")
             return
 
         # Update service label
@@ -1184,6 +1222,13 @@ class LauncherWindow(QWidget):
 
         # Calculate hash of current log buffer to detect changes
         if sp.log_buffer:
+            self._startup_trace(f"_refresh_console_logs buffer size={len(sp.log_buffer)}")
+            if getattr(self, "_startup_tracing", False):
+                try:
+                    max_line = max((len(str(line)) for line in sp.log_buffer), default=0)
+                    self._startup_trace(f"_refresh_console_logs max_line_len={max_line}")
+                except Exception:
+                    pass
             # Efficient hash: use buffer length + hash of last 10 lines
             # This avoids creating a massive tuple every second
             last_lines = sp.log_buffer[-10:] if len(sp.log_buffer) > 10 else sp.log_buffer
@@ -1192,9 +1237,11 @@ class LauncherWindow(QWidget):
             buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
         filter_signature = self._console_filter_signature()
         current_hash = (buffer_signature, filter_signature)
+        self._startup_trace("_refresh_console_logs hash computed")
 
         # Only update UI if logs changed
         if not force and self.last_log_hash.get(self.selected_service_key) == current_hash:
+            self._startup_trace("_refresh_console_logs no changes")
             return
 
         self.last_log_hash[self.selected_service_key] = current_hash
@@ -1211,12 +1258,16 @@ class LauncherWindow(QWidget):
 
             # Get logs from buffer
             if sp.log_buffer:
+                self._startup_trace("_refresh_console_logs applying filter")
                 # Apply in-memory filtering based on console filter controls
                 filtered_buffer = self._filter_console_buffer(sp.log_buffer)
+                self._startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
                 # Format as HTML with syntax highlighting
                 log_html = self._format_console_log_html(filtered_buffer)
+                self._startup_trace("_refresh_console_logs formatted html")
                 self.log_view.setHtml(log_html)
+                self._startup_trace("_refresh_console_logs html applied")
 
                 # Scroll behavior based on auto-scroll setting
                 if self.autoscroll_enabled:
@@ -1325,6 +1376,7 @@ class LauncherWindow(QWidget):
             self.db_log_viewer.refresh_logs()
         except Exception:
             pass
+        self._startup_trace("_refresh_console_logs end")
 
     def _open_settings(self):
         updated = show_settings_dialog(self, self.ui_state)

@@ -21,6 +21,12 @@ LOG_AUTO_REFRESH_INTERVAL_MS = 10000  # 10 seconds
 
 # Log Buffer Settings
 MAX_LOG_LINES = 1000  # Maximum lines to keep in service log buffer
+CONSOLE_MAX_LINE_CHARS = 10000  # Clamp individual console lines to avoid giant HTML updates
+CONSOLE_MAX_BUFFER_CHARS = MAX_LOG_LINES * CONSOLE_MAX_LINE_CHARS  # Upper bound on total characters kept in memory
+
+# Console Log File Rotation (launcher console tab)
+LOG_FILE_MAX_BYTES = 25 * 1024 * 1024  # 25 MB before rotating console logs
+LOG_FILE_BACKUP_COUNT = 1  # Keep one rotated copy (log.log.1)
 
 # Redis Connection Settings
 REDIS_TIMEOUT = 1.5  # Seconds for Redis health check socket timeout
