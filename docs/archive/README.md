@@ -6,6 +6,19 @@ This directory contains historical documentation that has been superseded by the
 
 ## 📁 Directory Structure
 
+### `/completed-refactoring/` - Completed Refactoring Documentation
+
+Documentation for **fully completed** refactoring projects including architecture simplification phases, feature migrations, and handoff notes. **Archived: 2025-11-17**
+
+**Contents:**
+- PHASE 1-4 architecture simplification summaries
+- Emoji migration to icon system
+- Backend plugin system migration
+- JWT refactoring documentation
+- Database migration instructions
+
+See [completed-refactoring/README.md](./completed-refactoring/README.md) for full details.
+
 ### `/old-status/` - Outdated Status Documents
 
 These documents contain outdated status information and TODO lists that claimed features were incomplete when they were already done. **Archived: 2025-11-16**
