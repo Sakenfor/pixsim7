@@ -50,7 +50,6 @@ class ProcessManager:
         # Set up log directory
         if log_dir is None:
             # Default to data/logs/console relative to project root
-            from pathlib import Path
             # Assume we're in pixsim7/launcher_core, so go up to root
             root = Path(__file__).parent.parent.parent
             log_dir = root / 'data' / 'logs' / 'console'
