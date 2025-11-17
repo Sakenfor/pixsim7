@@ -182,7 +182,7 @@ class LauncherWindow(QWidget):
             self._select_service(self.services[0].key)
 
         # Background health worker replaces direct timer to avoid UI freeze
-        self.health_worker = HealthWorker(self.processes, interval_sec=3.0, parent=self)
+        self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
         self.health_worker.health_update.connect(self._update_service_health)
         self.health_worker.start()
 
@@ -972,11 +972,7 @@ class LauncherWindow(QWidget):
         # Restart health worker with new process dict
         if hasattr(self, 'health_worker'):
             self.health_worker.processes = self.processes
-            try:
-                from .constants import HEALTH_CHECK_INTERVAL
-            except ImportError:
-                from constants import HEALTH_CHECK_INTERVAL
-            self.health_worker = HealthWorker(self.processes, HEALTH_CHECK_INTERVAL, self)
+            self.health_worker = HealthWorker(self.processes, ui_state=self.ui_state, parent=self)
             self.health_worker.health_update.connect(self._on_health_update)
             self.health_worker.start()
 

@@ -1,4 +1,3 @@
-import { Input } from '@pixsim7/ui';
 import type { InteractionPlugin, BaseInteractionConfig, FormField } from './types';
 
 interface InteractionConfigFormProps<TConfig extends BaseInteractionConfig> {
@@ -45,7 +44,8 @@ export function InteractionConfigForm<TConfig extends BaseInteractionConfig>({
         return (
           <div key={field.key}>
             <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
+            <input
+              className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
               type="number"
               value={value ?? ''}
               onChange={(e: any) =>
@@ -69,7 +69,8 @@ export function InteractionConfigForm<TConfig extends BaseInteractionConfig>({
         return (
           <div key={field.key}>
             <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
+            <input
+              className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
               type="text"
               value={value ?? ''}
               onChange={(e: any) => updateField(field.key, e.target.value)}
@@ -112,7 +113,8 @@ export function InteractionConfigForm<TConfig extends BaseInteractionConfig>({
         return (
           <div key={field.key}>
             <label className="block text-xs text-neutral-500 mb-1">{field.label}</label>
-            <Input
+            <input
+              className="w-full text-xs bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1.5"
               type="text"
               value={Array.isArray(value) ? value.join(', ') : ''}
               onChange={(e: any) =>
