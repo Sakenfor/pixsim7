@@ -11,7 +11,7 @@ import {
   createInventoryEffect,
   formatEffect,
   validateEffect,
-} from '../lib/game/relationshipHelpers';
+} from '@pixsim7/game-core';
 
 export function EdgeEffectsEditor() {
   const toast = useToast();

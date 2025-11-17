@@ -29,14 +29,15 @@ import {
   type GameWorldDetail,
   type NpcSlot2d,
 } from '../lib/api/game';
-import { assignNpcsToSlots, type NpcSlotAssignment } from '../lib/game/slotAssignment';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
 import {
+  assignNpcsToSlots,
   parseHotspotAction,
+  deriveScenePlaybackPhase,
+  type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
-  deriveScenePlaybackPhase,
-} from '../lib/game/interactionSchema';
+} from '@pixsim7/game-core';
 import { loadWorldSession, saveWorldSession } from '../lib/game/session';
 import { executeInteraction, type InteractionContext } from '../lib/game/interactions';
 import { RelationshipDashboard } from '../components/game/RelationshipDashboard';

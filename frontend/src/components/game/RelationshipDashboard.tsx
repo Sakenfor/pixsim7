@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Panel, Badge, Button, ProgressBar } from '@pixsim7/ui';
-import { parseNpcKey } from '../../lib/game/relationshipHelpers';
 import {
+  parseNpcKey,
   compute_relationship_tier,
   compute_intimacy_level,
   extract_relationship_values,
-} from '../../lib/game/relationshipComputation';
+} from '@pixsim7/game-core';
 import type { GameSessionDTO } from '../../lib/api/game';
 
 interface RelationshipDashboardProps {

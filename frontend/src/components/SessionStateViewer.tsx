@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button, Select } from '@pixsim7/ui';
 import { useToast } from '../stores/toastStore';
 import { getGameSession, listGameSessions, type GameSessionDTO } from '../lib/api/game';
-import { parseNpcKey, parseArcKey, parseQuestKey } from '../lib/game/relationshipHelpers';
+import { parseNpcKey, parseArcKey, parseQuestKey } from '@pixsim7/game-core';
 
 /**
  * Session State Viewer

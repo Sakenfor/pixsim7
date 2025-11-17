@@ -129,3 +129,9 @@ export interface SceneRuntimeState {
 // ===================
 
 export * from './generation'
+
+// ===================
+// Game DTO Types
+// ===================
+
+export * from './game'

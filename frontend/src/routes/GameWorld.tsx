@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Panel, Input, Select } from '@pixsim7/ui';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO } from '../lib/api/game';
 import { listGameLocations, getGameLocation, saveGameLocationHotspots } from '../lib/api/game';
-import type { HotspotActionType } from '../lib/game/interactionSchema';
+import type { HotspotActionType } from '@pixsim7/game-core';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
 
 export function GameWorld() {

@@ -1,4 +1,5 @@
 import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
+import type { NpcSlotAssignment } from '@pixsim7/game-core';
 
 /**
  * Base config interface all interaction plugins extend
@@ -59,12 +60,6 @@ export interface InteractionAPI {
   attemptPickpocket: (req: PickpocketRequest) => Promise<PickpocketResult>;
   getScene: (id: number) => Promise<any>;
   // Add more API methods as needed
-}
-
-export interface NpcSlotAssignment {
-  slot: any; // NpcSlot2d
-  npcId: number | null;
-  matchedRoles: string[];
 }
 
 export interface PickpocketRequest {

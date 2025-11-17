@@ -10,6 +10,9 @@ importers:
 
   frontend:
     dependencies:
+      '@pixsim7/game-core':
+        specifier: workspace:*
+        version: link:../packages/game-core
       '@pixsim7/game-ui':
         specifier: workspace:*
         version: link:../packages/game-ui
@@ -161,6 +164,16 @@ importers:
         version: 7.2.2(@types/node@24.10.1)(jiti@1.21.7)
 
   packages/config-tailwind: {}
+
+  packages/game-core:
+    dependencies:
+      '@pixsim7/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/game-ui:
     dependencies:

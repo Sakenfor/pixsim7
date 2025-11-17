@@ -1,98 +1,41 @@
 import { apiClient } from './client';
-import type { Scene } from '@pixsim7/types';
+import type {
+  Scene,
+  GameLocationSummary,
+  GameHotspotDTO,
+  NpcSlot2d,
+  GameLocationDetail,
+  GameNpcSummary,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  GameWorldSummary,
+  GameWorldDetail,
+  GameSessionDTO,
+  PickpocketRequest,
+  PickpocketResponse,
+  QuestObjectiveDTO,
+  QuestDTO,
+  InventoryItemDTO,
+} from '@pixsim7/types';
 
-export interface GameLocationSummary {
-  id: number;
-  name: string;
-  asset_id?: number | null;
-  default_spawn?: string | null;
-}
-
-export interface GameHotspotDTO {
-  id?: number;
-  object_name: string;
-  hotspot_id: string;
-  linked_scene_id?: number | null;
-  meta?: Record<string, unknown> | null;
-}
-
-export interface NpcTalkConfig {
-  npcId?: number | null; // Optional override; else use assigned NPC
-  preferredSceneId?: number | null;
-}
-
-export interface PickpocketConfig {
-  baseSuccessChance: number;
-  detectionChance: number;
-  onSuccessFlags?: string[];
-  onFailFlags?: string[];
-}
-
-export interface NpcSlotInteractions {
-  canTalk?: boolean;
-  npcTalk?: NpcTalkConfig;
-  canPickpocket?: boolean;
-  pickpocket?: PickpocketConfig;
-}
-
-export interface NpcSlot2d {
-  id: string;
-  x: number; // Normalized 0-1 position
-  y: number; // Normalized 0-1 position
-  roles?: string[];
-  fixedNpcId?: number | null;
-  interactions?: NpcSlotInteractions;
-}
-
-export interface GameLocationDetail {
-  id: number;
-  name: string;
-  asset_id?: number | null;
-  default_spawn?: string | null;
-  meta?: Record<string, unknown> | null;
-  hotspots: GameHotspotDTO[];
-}
-
-export interface GameNpcSummary {
-  id: number;
-  name: string;
-}
-
-export interface NpcExpressionDTO {
-  id?: number;
-  state: string;
-  asset_id: number;
-  crop?: Record<string, unknown> | null;
-  meta?: Record<string, unknown> | null;
-}
-
-export interface NpcPresenceDTO {
-  npc_id: number;
-  location_id: number;
-  state: Record<string, unknown>;
-}
-
-export interface GameWorldSummary {
-  id: number;
-  name: string;
-}
-
-export interface GameWorldDetail {
-  id: number;
-  name: string;
-  meta?: Record<string, unknown> | null;
-  world_time: number;
-}
-
-export interface GameSessionDTO {
-  id: number;
-  user_id: number;
-  scene_id: number;
-  current_node_id: number;
-  flags: Record<string, unknown>;
-  relationships: Record<string, unknown>;
-  world_time: number;
-}
+// Re-export types for backward compatibility
+export type {
+  GameLocationSummary,
+  GameHotspotDTO,
+  NpcSlot2d,
+  GameLocationDetail,
+  GameNpcSummary,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  GameWorldSummary,
+  GameWorldDetail,
+  GameSessionDTO,
+  PickpocketRequest,
+  PickpocketResponse,
+  QuestObjectiveDTO,
+  QuestDTO,
+  InventoryItemDTO,
+};
 
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
   const res = await apiClient.get<GameLocationSummary[]>('/game/locations');
@@ -161,22 +104,6 @@ export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, s
 export async function getGameScene(sceneId: number): Promise<Scene> {
   const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
   return res.data;
-}
-
-export interface PickpocketRequest {
-  npc_id: number;
-  slot_id: string;
-  base_success_chance: number;
-  detection_chance: number;
-  world_id?: number | null;
-  session_id: number;
-}
-
-export interface PickpocketResponse {
-  success: boolean;
-  detected: boolean;
-  updated_flags: Record<string, unknown>;
-  message: string;
 }
 
 export async function attemptPickpocket(req: PickpocketRequest): Promise<PickpocketResponse> {
@@ -272,24 +199,6 @@ export async function getNpcPresence(params: {
 }
 
 // Quest API
-export interface QuestObjectiveDTO {
-  id: string;
-  description: string;
-  completed: boolean;
-  progress: number;
-  target: number;
-  optional: boolean;
-}
-
-export interface QuestDTO {
-  id: string;
-  title: string;
-  description: string;
-  status: string; // 'active' | 'completed' | 'failed' | 'hidden'
-  objectives: QuestObjectiveDTO[];
-  metadata: Record<string, unknown>;
-}
-
 export async function listSessionQuests(
   sessionId: number,
   status?: string
@@ -365,13 +274,6 @@ export async function completeObjective(
 }
 
 // Inventory API
-export interface InventoryItemDTO {
-  id: string;
-  name: string;
-  quantity: number;
-  metadata: Record<string, unknown>;
-}
-
 export async function listInventoryItems(sessionId: number): Promise<InventoryItemDTO[]> {
   const res = await apiClient.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
   return res.data;

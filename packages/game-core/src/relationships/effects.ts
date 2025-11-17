@@ -1,0 +1,266 @@
+/**
+ * Relationship & Arc Helpers
+ *
+ * Helper functions for building namespaced keys and effects for relationships,
+ * arcs, quests, inventory, and events. Follows conventions from
+ * docs/RELATIONSHIPS_AND_ARCS.md.
+ *
+ * All data is stored in GameSession.flags and GameSession.relationships as JSON,
+ * avoiding new backend tables while maintaining clean semantics.
+ */
+
+// ===== Key Builders =====
+
+/**
+ * Relationship key builders for namespaced keys in GameSession.relationships
+ */
+export const relationshipKeys = {
+  /** NPC ↔ Player relationship key */
+  npc: (npcId: number | string) => `npc:${npcId}`,
+
+  /** NPC ↔ NPC pair relationship key */
+  npcPair: (npc1: number | string, npc2: number | string) => {
+    // Normalize order to ensure consistent keys
+    const [a, b] = [npc1, npc2].sort();
+    return `npcPair:${a}:${b}`;
+  },
+
+  /** Player ↔ Player relationship key (future multiplayer) */
+  player: (playerId: string) => `player:${playerId}`,
+
+  /** Network graph path for NPC relationships */
+  network: (fromNpcId: number | string, toNpcId: number | string) =>
+    `network.npc:${fromNpcId}.npc:${toNpcId}`,
+};
+
+/**
+ * Arc and quest key builders for namespaced keys in GameSession.flags
+ */
+export const arcKeys = {
+  /** Arc key in flags.arcs */
+  arc: (arcId: string) => `arcs.${arcId}`,
+
+  /** Quest key in flags.quests */
+  quest: (questId: string) => `quests.${questId}`,
+
+  /** Inventory path */
+  inventory: () => 'inventory',
+
+  /** Specific item in inventory */
+  item: (itemId: string) => `inventory.items.${itemId}`,
+
+  /** Event key in flags.events */
+  event: (eventId: string) => `events.${eventId}`,
+};
+
+// ===== Effect Builders =====
+
+/**
+ * Edge effect structure for scene graph edges.
+ * Stored in DraftEdge.meta.effects and applied at runtime via
+ * PATCH /game/sessions/{id} { relationships, flags }
+ */
+export interface EdgeEffect {
+  /** Dot-notation key path (e.g., "npc:12.affinity", "arcs.main_romance.stage") */
+  key: string;
+
+  /** Operation: set, inc (increment), dec (decrement), push (array append) */
+  op: 'set' | 'inc' | 'dec' | 'push' | 'remove';
+
+  /** Value to apply */
+  value: any;
+
+  /** Optional description for debugging/display */
+  description?: string;
+}
+
+/**
+ * Create a relationship effect for NPC affinity/trust
+ */
+export function createRelationshipEffect(
+  npcId: number | string,
+  field: 'affinity' | 'trust',
+  op: 'inc' | 'dec' | 'set',
+  value: number,
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${relationshipKeys.npc(npcId)}.${field}`,
+    op,
+    value,
+    description: description || `${op} ${field} with NPC #${npcId} by ${value}`,
+  };
+}
+
+/**
+ * Create an NPC relationship flag effect (e.g., "saved_from_accident")
+ */
+export function createRelationshipFlagEffect(
+  npcId: number | string,
+  flag: string,
+  op: 'push' | 'remove' = 'push',
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${relationshipKeys.npc(npcId)}.flags`,
+    op,
+    value: flag,
+    description: description || `${op} flag "${flag}" for NPC #${npcId}`,
+  };
+}
+
+/**
+ * Create an NPC pair relationship effect
+ */
+export function createNpcPairEffect(
+  npc1: number | string,
+  npc2: number | string,
+  field: 'rivalry' | 'friendship' | string,
+  op: 'inc' | 'dec' | 'set',
+  value: number,
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${relationshipKeys.npcPair(npc1, npc2)}.${field}`,
+    op,
+    value,
+    description: description || `${op} ${field} between NPC #${npc1} and #${npc2} by ${value}`,
+  };
+}
+
+/**
+ * Create an arc progression effect
+ */
+export function createArcEffect(
+  arcId: string,
+  field: string,
+  op: 'inc' | 'set' | 'push',
+  value: any,
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${arcKeys.arc(arcId)}.${field}`,
+    op,
+    value,
+    description: description || `${op} arc "${arcId}" ${field} to ${value}`,
+  };
+}
+
+/**
+ * Create a quest progression effect
+ */
+export function createQuestEffect(
+  questId: string,
+  field: 'status' | 'stepsCompleted' | string,
+  op: 'set' | 'inc' | 'push',
+  value: any,
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${arcKeys.quest(questId)}.${field}`,
+    op,
+    value,
+    description: description || `${op} quest "${questId}" ${field} to ${value}`,
+  };
+}
+
+/**
+ * Create an inventory effect (add/remove item)
+ */
+export function createInventoryEffect(
+  itemId: string,
+  quantity: number = 1,
+  op: 'inc' | 'dec' | 'push' = 'push',
+  description?: string
+): EdgeEffect {
+  if (op === 'push') {
+    // Add new item
+    return {
+      key: 'inventory.items',
+      op: 'push',
+      value: { id: itemId, qty: quantity },
+      description: description || `Add ${quantity}x ${itemId} to inventory`,
+    };
+  } else {
+    // Increment/decrement existing item quantity
+    return {
+      key: `${arcKeys.item(itemId)}.qty`,
+      op,
+      value: quantity,
+      description: description || `${op} ${itemId} quantity by ${quantity}`,
+    };
+  }
+}
+
+/**
+ * Create a world event effect
+ */
+export function createEventEffect(
+  eventId: string,
+  active: boolean,
+  description?: string
+): EdgeEffect {
+  return {
+    key: `${arcKeys.event(eventId)}.active`,
+    op: 'set',
+    value: active,
+    description: description || `${active ? 'Activate' : 'Deactivate'} event "${eventId}"`,
+  };
+}
+
+// ===== Helper Functions =====
+
+/**
+ * Parse a relationship key to extract NPC ID
+ * Returns null if not a valid npc key
+ */
+export function parseNpcKey(key: string): number | null {
+  const match = key.match(/^npc:(\d+)$/);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * Parse an arc key to extract arc ID
+ */
+export function parseArcKey(key: string): string | null {
+  const match = key.match(/^arcs\.(.+)$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Parse a quest key to extract quest ID
+ */
+export function parseQuestKey(key: string): string | null {
+  const match = key.match(/^quests\.(.+)$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Format effect for display in UI
+ */
+export function formatEffect(effect: EdgeEffect): string {
+  if (effect.description) return effect.description;
+
+  const opLabel = {
+    set: 'Set',
+    inc: 'Increase',
+    dec: 'Decrease',
+    push: 'Add',
+    remove: 'Remove',
+  }[effect.op] || effect.op;
+
+  return `${opLabel} ${effect.key} ${effect.op === 'set' ? 'to' : 'by'} ${JSON.stringify(effect.value)}`;
+}
+
+/**
+ * Validate effect structure
+ */
+export function validateEffect(effect: Partial<EdgeEffect>): effect is EdgeEffect {
+  return !!(
+    effect.key &&
+    typeof effect.key === 'string' &&
+    effect.op &&
+    ['set', 'inc', 'dec', 'push', 'remove'].includes(effect.op) &&
+    effect.value !== undefined
+  );
+}
