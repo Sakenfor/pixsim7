@@ -306,7 +306,28 @@ class ProcessManager:
         target_pid = state.pid or state.detected_pid
 
         if not proc and not target_pid:
-            # Already stopped
+            # No PID available - try to detect by port and kill
+            if definition.health_url:
+                try:
+                    port = self._extract_port_from_url(definition.health_url)
+                    if port:
+                        detected_pid = self._detect_pid_by_port(port)
+                        if detected_pid:
+                            self._kill_process_tree(detected_pid, force=not graceful)
+                            state.status = ServiceStatus.STOPPED
+                            state.health = HealthStatus.STOPPED
+                            state.pid = None
+                            state.detected_pid = None
+                            self._emit_event(ProcessEvent(
+                                service_key=service_key,
+                                event_type="stopped",
+                                data={"detected_pid": detected_pid}
+                            ))
+                            return True
+                except Exception:
+                    pass
+
+            # Already stopped or can't find process
             state.status = ServiceStatus.STOPPED
             state.health = HealthStatus.STOPPED
             return True
@@ -391,13 +412,79 @@ class ProcessManager:
             return False
         return state.status in (ServiceStatus.RUNNING, ServiceStatus.STARTING)
 
+    def _extract_port_from_url(self, url: str) -> Optional[int]:
+        """Extract port number from URL."""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            return parsed.port
+        except Exception:
+            return None
+
+    def _detect_pid_by_port(self, port: int) -> Optional[int]:
+        """
+        Detect PID of process listening on given port.
+
+        Args:
+            port: Port number to check
+
+        Returns:
+            PID if found, None otherwise
+        """
+        try:
+            if os.name == 'nt':
+                # Windows: use netstat
+                result = subprocess.run(
+                    ['netstat', '-ano'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if f':{port}' in line and 'LISTENING' in line:
+                            parts = line.split()
+                            if len(parts) >= 5:
+                                try:
+                                    return int(parts[-1])
+                                except ValueError:
+                                    pass
+            else:
+                # Unix: use lsof or ss
+                try:
+                    result = subprocess.run(
+                        ['lsof', '-ti', f':{port}'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        return int(result.stdout.strip().split()[0])
+                except FileNotFoundError:
+                    # lsof not available, try ss
+                    import re
+                    result = subprocess.run(
+                        ['ss', '-lptn', f'sport = :{port}'],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        # Extract PID from ss output
+                        match = re.search(r'pid=(\d+)', result.stdout)
+                        if match:
+                            return int(match.group(1))
+        except Exception:
+            pass
+        return None
+
     def _kill_process_tree(self, pid: int, force: bool = False):
         """
         Kill a process and all its children.
 
         Args:
             pid: Process ID to kill
-            force: If True, use SIGKILL (immediate). If False, use SIGTERM (graceful).
+            force: If True, use SIGKILL (immediate). If False, use SIGKILL immediately.
         """
         if os.name == 'nt':
             # Windows: use taskkill with /T for tree
