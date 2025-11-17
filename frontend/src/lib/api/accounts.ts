@@ -15,6 +15,11 @@ export interface UpdateAccountRequest {
   cookies?: Record<string, any>;
 }
 
+export async function getAccounts(): Promise<ProviderAccount[]> {
+  const response = await apiClient.get<ProviderAccount[]>('/accounts');
+  return response.data;
+}
+
 export async function updateAccount(
   accountId: number,
   updates: UpdateAccountRequest

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { type AppActionPreset } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
-import { accountService } from '../../lib/api/accountService';
+import { getAccounts } from '../../lib/api/accounts';
 import { Button, Panel, ConfirmModal, Modal, Select } from '@pixsim7/ui';
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';
@@ -47,7 +47,7 @@ export function PresetList() {
 
   const loadAccounts = async () => {
     try {
-      const data = await accountService.getAccounts();
+      const data = await getAccounts();
       setAccounts(data.filter((acc: any) => acc.provider_id === 'pixverse'));
     } catch (err) {
       console.error('Error loading accounts:', err);
