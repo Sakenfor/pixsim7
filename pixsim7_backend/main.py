@@ -28,6 +28,7 @@ from pixsim7_backend.infrastructure.database.session import (
 )
 from pixsim7_backend.infrastructure.redis import close_redis
 from pixsim7_backend.api.middleware import RequestIdMiddleware
+from pixsim7_backend.infrastructure.plugins import init_plugin_manager
 
 # Configure structured logging using pixsim_logging
 from pixsim_logging import configure_logging
@@ -137,12 +138,20 @@ async def lifespan(app: FastAPI):
     from pixsim7_backend.infrastructure.events.handlers import register_handlers
     register_handlers()
 
+    # Initialize plugin system
+    plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
+    logger.info(f"Loaded {len(plugin_manager.list_plugins())} plugins")
+
+    # Enable all plugins
+    await plugin_manager.enable_all()
+
     logger.info("PixSim7 ready!")
 
     yield
 
     # Shutdown
     logger.info("Shutting down PixSim7...")
+    await plugin_manager.disable_all()
     await close_redis()
     await close_database()
     logger.info("Cleanup complete")
@@ -214,7 +223,7 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions, game_locations, game_npcs, game_worlds, game_dialogue, game_stealth
+from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions, game_locations, game_worlds  # game_stealth, game_dialogue, game_npcs now loaded via plugin system
 from pixsim7_backend.api.admin import database_router, migrations_router
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
@@ -231,10 +240,10 @@ app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
 app.include_router(game_scenes.router, prefix="/api/v1/game/scenes", tags=["game-scenes"])
 app.include_router(game_sessions.router, prefix="/api/v1/game/sessions", tags=["game-sessions"])
 app.include_router(game_locations.router, prefix="/api/v1/game/locations", tags=["game-locations"])
-app.include_router(game_npcs.router, prefix="/api/v1/game/npcs", tags=["game-npcs"])
+# app.include_router(game_npcs.router, prefix="/api/v1/game/npcs", tags=["game-npcs"])  # Now loaded via plugin system
 app.include_router(game_worlds.router, prefix="/api/v1/game/worlds", tags=["game-worlds"])
-app.include_router(game_dialogue.router, prefix="/api/v1/game/dialogue", tags=["game-dialogue"])
-app.include_router(game_stealth.router, prefix="/api/v1", tags=["game-stealth"])
+# app.include_router(game_dialogue.router, prefix="/api/v1/game/dialogue", tags=["game-dialogue"])  # Now loaded via plugin system
+# app.include_router(game_stealth.router, prefix="/api/v1", tags=["game-stealth"])  # Now loaded via plugin system
 app.include_router(database_router, prefix="/api", tags=["database"])
 app.include_router(migrations_router, prefix="/api", tags=["migrations"])
 
