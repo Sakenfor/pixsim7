@@ -98,25 +98,23 @@ async def list_jobs(
     Jobs are returned in reverse chronological order (newest first).
     """
     try:
-        # Build filters
-        filters = {}
-        if status:
-            filters["status"] = status
-        if operation_type:
-            filters["operation_type"] = operation_type
-        if workspace_id:
-            filters["workspace_id"] = workspace_id
-
-        # Get jobs
+        # Get jobs with pagination
         jobs = await job_service.list_jobs(
             user=user,
-            filters=filters,
+            workspace_id=workspace_id,
+            status=status,
+            operation_type=operation_type,
             limit=limit,
             offset=offset
         )
 
-        # Get total count (simplified - would need separate count query in production)
-        total = len(jobs)  # TODO: Add proper count query to service
+        # Get total count (same filters, no pagination)
+        total = await job_service.count_jobs(
+            user=user,
+            workspace_id=workspace_id,
+            status=status,
+            operation_type=operation_type,
+        )
 
         return JobListResponse(
             jobs=[JobResponse.model_validate(job) for job in jobs],
