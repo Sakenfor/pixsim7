@@ -5,9 +5,15 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 try:
-    from ..migration_tools import get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head
+    from ..migration_tools import (
+        get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head,
+        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids
+    )
 except ImportError:
-    from migration_tools import get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head
+    from migration_tools import (
+        get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head,
+        parse_heads, merge_heads, get_pending_migrations, validate_revision_ids
+    )
 
 
 def show_migrations_dialog(parent):
@@ -99,6 +105,81 @@ def show_migrations_dialog(parent):
     status_layout.addWidget(status_detail)
 
     layout.addWidget(status_frame)
+
+    # Branch conflict warning card (initially hidden)
+    branch_warning_frame = QFrame()
+    branch_warning_frame.setFrameShape(QFrame.StyledPanel)
+    branch_warning_frame.setStyleSheet("""
+        QFrame {
+            background-color: #fff3cd;
+            border: 2px solid #ff9800;
+            border-radius: 6px;
+            padding: 12px;
+        }
+    """)
+    branch_warning_frame.setVisible(False)
+    branch_warning_layout = QVBoxLayout(branch_warning_frame)
+    branch_warning_layout.setContentsMargins(12, 12, 12, 12)
+
+    branch_warning_header = QLabel('⚠️ Multiple Migration Branches Detected')
+    branch_warning_header.setStyleSheet("font-size: 11pt; font-weight: bold; color: #f57c00;")
+    branch_warning_layout.addWidget(branch_warning_header)
+
+    branch_warning_text = QLabel()
+    branch_warning_text.setWordWrap(True)
+    branch_warning_text.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    branch_warning_layout.addWidget(branch_warning_text)
+
+    branch_heads_list = QLabel()
+    branch_heads_list.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt; color: #333; margin: 8px 0;")
+    branch_warning_layout.addWidget(branch_heads_list)
+
+    branch_merge_btn = QPushButton('🔀 Auto-Merge Branches')
+    branch_merge_btn.setToolTip('Automatically create a merge migration to unify the branches')
+    branch_merge_btn.setStyleSheet("""
+        QPushButton {
+            background-color: #ff9800;
+            color: white;
+            font-weight: bold;
+            padding: 8px 16px;
+        }
+        QPushButton:hover {
+            background-color: #fb8c00;
+        }
+    """)
+    branch_warning_layout.addWidget(branch_merge_btn)
+
+    layout.addWidget(branch_warning_frame)
+
+    # Revision ID validation warning (initially hidden)
+    revid_warning_frame = QFrame()
+    revid_warning_frame.setFrameShape(QFrame.StyledPanel)
+    revid_warning_frame.setStyleSheet("""
+        QFrame {
+            background-color: #ffebee;
+            border: 2px solid #f44336;
+            border-radius: 6px;
+            padding: 12px;
+        }
+    """)
+    revid_warning_frame.setVisible(False)
+    revid_warning_layout = QVBoxLayout(revid_warning_frame)
+    revid_warning_layout.setContentsMargins(12, 12, 12, 12)
+
+    revid_warning_header = QLabel('🚨 Revision ID Length Issue Detected')
+    revid_warning_header.setStyleSheet("font-size: 11pt; font-weight: bold; color: #d32f2f;")
+    revid_warning_layout.addWidget(revid_warning_header)
+
+    revid_warning_text = QLabel()
+    revid_warning_text.setWordWrap(True)
+    revid_warning_text.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    revid_warning_layout.addWidget(revid_warning_text)
+
+    revid_list = QLabel()
+    revid_list.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt; color: #333; margin: 8px 0;")
+    revid_warning_layout.addWidget(revid_list)
+
+    layout.addWidget(revid_warning_frame)
 
     # Details box
     details_group = QGroupBox("Details (Technical)")
@@ -223,6 +304,36 @@ def show_migrations_dialog(parent):
     def refresh():
         current = get_current_revision()
         heads = get_heads()
+
+        # Check for multiple heads (branch conflict)
+        heads_list, heads_err = parse_heads()
+        if not heads_err and len(heads_list) > 1:
+            # Show branch warning
+            branch_warning_frame.setVisible(True)
+            branch_warning_text.setText(
+                f'Your migration history has {len(heads_list)} separate branches. '
+                'This typically happens when working on multiple features in parallel. '
+                'Click "Auto-Merge Branches" to create a merge migration that unifies them into a single timeline.'
+            )
+            # List the heads
+            heads_text = '\n'.join([f'  • {h.short_revision} {"(mergepoint)" if h.is_mergepoint else ""}' for h in heads_list])
+            branch_heads_list.setText(f'Branches:\n{heads_text}')
+        else:
+            branch_warning_frame.setVisible(False)
+
+        # Check for revision ID length issues
+        valid, problematic = validate_revision_ids()
+        if not valid and problematic:
+            revid_warning_frame.setVisible(True)
+            revid_warning_text.setText(
+                f'Found {len(problematic)} revision ID(s) longer than 32 characters. '
+                'The alembic_version table uses VARCHAR(32), which will cause errors. '
+                'You need to edit these migration files and use shorter revision IDs.'
+            )
+            revid_text = '\n'.join([f'  • {p}' for p in problematic])
+            revid_list.setText(f'Problematic revisions:\n{revid_text}')
+        else:
+            revid_warning_frame.setVisible(False)
 
         # Parse and display user-friendly status
         state, message, icon = parse_status(current, heads)
@@ -398,11 +509,35 @@ def show_migrations_dialog(parent):
             status_box.append(f"{res}\n")
             refresh()
 
+    def do_merge():
+        """Handle auto-merge of multiple branches."""
+        reply = QMessageBox.question(
+            dlg,
+            'Confirm Branch Merge',
+            '🔀 This will create a merge migration to unify your branches.\n\n'
+            'What this does:\n'
+            '• Creates a new migration file with both branches as parents\n'
+            '• Does NOT modify your database (just creates the file)\n'
+            '• Unifies the migration timeline into a single head\n\n'
+            'After merging, you\'ll need to apply the merge migration using "Apply Updates".\n\n'
+            'Continue?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        if reply == QMessageBox.Yes:
+            status_box.append('\n🔀 Creating merge migration...\n')
+            res = merge_heads("merge migration branches")
+            status_box.append(f"{res}\n")
+            if '✅' in res or 'success' in res.lower():
+                status_box.append('\n✅ Merge migration created! Now click "Apply Updates" to apply it.\n')
+            refresh()
+
     btn_refresh.clicked.connect(refresh)
     btn_history.clicked.connect(show_history)
     btn_upgrade.clicked.connect(do_upgrade)
     btn_downgrade.clicked.connect(do_downgrade)
     btn_stamp.clicked.connect(do_stamp)
+    branch_merge_btn.clicked.connect(do_merge)
     btn_close.clicked.connect(dlg.accept)
 
     # Initial status check

@@ -5,8 +5,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20251116_1905_add_generated_action_blocks"
-down_revision = "20251116_1600_add_game_worlds"
+revision = "1905addactionblocks"
+down_revision = "1116addgameworlds"
 branch_labels = None
 depends_on = None
 

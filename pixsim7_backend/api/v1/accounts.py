@@ -4,11 +4,11 @@ Provider account management API endpoints - CLEAN VERSION
 Users can add their own provider accounts (Pixverse, Runway, etc.)
 and manage credentials, credits, and sharing settings.
 """
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pixsim7_backend.api.dependencies import CurrentUser, AccountSvc, DatabaseSession
 from pixsim7_backend.shared.schemas.account_schemas import (
     AccountCreate,
@@ -127,7 +127,7 @@ class BatchSyncCreditsResponse(BaseModel):
     synced: int
     failed: int
     total: int
-    details: list[Dict[str, any]] = []
+    details: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 @router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)

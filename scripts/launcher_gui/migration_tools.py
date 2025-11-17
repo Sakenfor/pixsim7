@@ -233,3 +233,309 @@ def stamp_head() -> str:
         return f"stamp failed: {err.strip() or out.strip()}"
     return out.strip() or 'stamped head'
 
+
+@dataclass
+class MigrationHead:
+    """Represents a migration head (branch endpoint)."""
+    revision: str
+    is_head: bool = False
+    is_mergepoint: bool = False
+    description: str = ""
+
+    @property
+    def short_revision(self) -> str:
+        """Get shortened revision ID for display."""
+        return self.revision[:12] if len(self.revision) > 12 else self.revision
+
+
+@dataclass
+class MigrationNode:
+    """Represents a single migration in the history."""
+    revision: str
+    down_revision: Optional[str] = None
+    description: str = ""
+    is_current: bool = False
+    is_head: bool = False
+    is_mergepoint: bool = False
+    is_branchpoint: bool = False
+    is_applied: bool = False
+
+    @property
+    def short_revision(self) -> str:
+        """Get shortened revision ID for display."""
+        return self.revision[:8] if len(self.revision) > 8 else self.revision
+
+    @property
+    def status_emoji(self) -> str:
+        """Get emoji representing migration status."""
+        if self.is_current:
+            return "📍"
+        elif self.is_applied:
+            return "✅"
+        elif self.is_head:
+            return "🎯"
+        else:
+            return "⏳"
+
+    @property
+    def status_text(self) -> str:
+        """Get text description of status."""
+        if self.is_current:
+            return "Current"
+        elif self.is_applied:
+            return "Applied"
+        elif self.is_head:
+            return "Target"
+        else:
+            return "Pending"
+
+
+def parse_heads() -> tuple[list[MigrationHead], Optional[str]]:
+    """
+    Parse alembic heads output to detect multiple branches.
+
+    Returns:
+        Tuple of (list of MigrationHead objects, error message if any)
+    """
+    code, out, err = _run_alembic('heads')
+    if code != 0:
+        return [], f"Cannot check heads: {err.strip() or out.strip()}"
+
+    heads = []
+    for line in out.strip().split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+
+        # Parse format: "a786922d98aa (head)" or "a1b2c3d4e5f7 (head) (mergepoint)"
+        parts = line.split()
+        if not parts:
+            continue
+
+        revision = parts[0]
+        is_head = '(head)' in line
+        is_mergepoint = '(mergepoint)' in line
+
+        # Try to extract description (everything after revision and markers)
+        description = ""
+        if len(parts) > 1:
+            # Remove markers from description
+            desc_parts = [p for p in parts[1:] if not p.startswith('(')]
+            description = ' '.join(desc_parts)
+
+        heads.append(MigrationHead(
+            revision=revision,
+            is_head=is_head,
+            is_mergepoint=is_mergepoint,
+            description=description
+        ))
+
+    return heads, None
+
+
+def merge_heads(message: str = "merge migration branches") -> str:
+    """
+    Create a merge migration to unify multiple heads.
+
+    Args:
+        message: Commit message for the merge migration
+
+    Returns:
+        Human-readable result message
+    """
+    # Check if we actually have multiple heads
+    heads, err = parse_heads()
+    if err:
+        return f"❌ Cannot check for multiple heads: {err}"
+
+    if len(heads) < 2:
+        return "✅ No merge needed - only one head exists"
+
+    # Run the merge command
+    code, out, err = _run_alembic('merge', '-m', message, 'heads')
+    if code != 0:
+        error_msg = err.strip() or out.strip()
+        return f"❌ Merge failed: {error_msg}"
+
+    # Extract the created revision ID from output
+    result = out.strip()
+    if 'Generating' in result:
+        return f"✅ Merge migration created successfully!\n\n{result}"
+
+    return result or '✅ Merge completed'
+
+
+def get_pending_migrations() -> tuple[list[str], Optional[str]]:
+    """
+    Get list of pending migrations (not yet applied).
+
+    Returns:
+        Tuple of (list of migration descriptions, error message if any)
+    """
+    # Get current revision
+    code, current_out, err = _run_alembic('current')
+    if code != 0:
+        return [], f"Cannot get current revision: {err.strip() or current_out.strip()}"
+
+    current = current_out.strip()
+
+    # Get all history
+    code, history_out, err = _run_alembic('history')
+    if code != 0:
+        return [], f"Cannot get history: {err.strip() or history_out.strip()}"
+
+    # Parse history to find pending migrations
+    # This is a simplified implementation - could be enhanced to parse the actual chain
+    if not current or '(no revision)' in current:
+        # Database not initialized - all migrations are pending
+        migrations = [line.strip() for line in history_out.split('\n') if line.strip() and '->' in line]
+        return migrations, None
+
+    # Extract current revision ID
+    current_rev = current.split()[0] if current else None
+
+    # Check if we're at head
+    if '(head)' in current:
+        return [], None  # No pending migrations
+
+    # Get heads to determine target
+    code, heads_out, err = _run_alembic('heads')
+    if code != 0:
+        return [], f"Cannot get heads: {err.strip() or heads_out.strip()}"
+
+    # For now, return a simple message indicating migrations are pending
+    # A more sophisticated implementation would parse the full chain
+    return ["Pending migrations available (check 'View History' for details)"], None
+
+
+def validate_revision_ids() -> tuple[bool, list[str]]:
+    """
+    Check if any revision IDs are too long for alembic_version table (VARCHAR(32)).
+
+    Returns:
+        Tuple of (all_valid, list of problematic revision IDs)
+    """
+    code, out, err = _run_alembic('history')
+    if code != 0:
+        return True, []  # Can't check, assume OK
+
+    problematic = []
+    for line in out.split('\n'):
+        line = line.strip()
+        if not line or not '->' in line:
+            continue
+
+        # Extract revision IDs from format like "rev1 -> rev2, description"
+        parts = line.split(',')[0].split('->')
+        for part in parts:
+            rev = part.strip().split()[0] if part.strip() else ""
+            if len(rev) > 32:
+                problematic.append(f"{rev} ({len(rev)} chars)")
+
+    return len(problematic) == 0, problematic
+
+
+def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
+    """
+    Parse alembic history into structured MigrationNode objects.
+
+    Returns:
+        Tuple of (list of MigrationNode objects ordered from oldest to newest, error message if any)
+    """
+    # Get current revision
+    code, current_out, err = _run_alembic('current')
+    if code != 0:
+        return [], f"Cannot get current revision: {err.strip() or current_out.strip()}"
+
+    current_rev = None
+    if current_out.strip():
+        current_rev = current_out.strip().split()[0]
+
+    # Get heads
+    heads_list, heads_err = parse_heads()
+    if heads_err:
+        return [], heads_err
+
+    head_revisions = {h.revision for h in heads_list}
+
+    # Get full history with verbose output
+    code, history_out, err = _run_alembic('history', '--verbose')
+    if code != 0:
+        return [], f"Cannot get history: {err.strip() or history_out.strip()}"
+
+    migrations = []
+    current_migration = None
+
+    for line in history_out.split('\n'):
+        line_stripped = line.strip()
+
+        # Look for revision lines like "Rev: a786922d98aa (head)"
+        if line_stripped.startswith('Rev:'):
+            # Save previous migration if exists
+            if current_migration:
+                migrations.append(current_migration)
+
+            # Parse revision line
+            parts = line_stripped[4:].strip().split()
+            if not parts:
+                continue
+
+            revision = parts[0]
+            is_head = '(head)' in line_stripped
+            is_mergepoint = '(mergepoint)' in line_stripped
+            is_branchpoint = '(branchpoint)' in line_stripped
+
+            current_migration = MigrationNode(
+                revision=revision,
+                is_head=is_head,
+                is_mergepoint=is_mergepoint,
+                is_branchpoint=is_branchpoint,
+                is_current=(revision == current_rev),
+                is_applied=(revision == current_rev)  # Simplified - all before current are applied
+            )
+
+        elif line_stripped.startswith('Parent:') and current_migration:
+            # Parse parent/down_revision
+            parts = line_stripped[7:].strip().split()
+            if parts and parts[0] != '<base>':
+                current_migration.down_revision = parts[0]
+
+        elif current_migration and not line_stripped.startswith(('Rev:', 'Parent:', 'Path:', 'Branches', 'Revision ID:', 'Revises:', 'Create Date:')):
+            # This is likely the description
+            if line_stripped and current_migration.description == "":
+                current_migration.description = line_stripped
+
+    # Add last migration
+    if current_migration:
+        migrations.append(current_migration)
+
+    # Mark all migrations before current as applied
+    found_current = False
+    for migration in reversed(migrations):
+        if migration.revision == current_rev:
+            found_current = True
+            migration.is_applied = True
+        elif found_current:
+            migration.is_applied = True
+        else:
+            migration.is_applied = False
+
+    return list(reversed(migrations)), None  # Return oldest to newest
+
+
+def get_pending_migrations_detailed() -> tuple[list[MigrationNode], Optional[str]]:
+    """
+    Get detailed list of pending migrations that haven't been applied yet.
+
+    Returns:
+        Tuple of (list of pending MigrationNode objects, error message if any)
+    """
+    migrations, err = parse_migration_history()
+    if err:
+        return [], err
+
+    # Filter to only pending (not applied) migrations
+    pending = [m for m in migrations if not m.is_applied]
+
+    return pending, None
+

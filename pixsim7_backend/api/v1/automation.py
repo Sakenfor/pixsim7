@@ -6,7 +6,7 @@ Minimal endpoints to manage devices and execution loops.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from pixsim7_backend.infrastructure.database.session import get_db
 from pixsim7_backend.domain.automation import AndroidDevice, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
