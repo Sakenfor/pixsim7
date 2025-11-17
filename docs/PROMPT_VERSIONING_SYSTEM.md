@@ -1,7 +1,7 @@
 # Prompt Versioning System
 
-**Status**: Phase 1 Complete ✅
-**Implementation Date**: 2025-11-17
+**Status**: Phase 2 Complete ✅
+**Implementation Date**: Phase 1: 2025-11-17, Phase 2: 2025-11-17
 **Migration**: `20251117_0550_7ed0db0fe547_add_prompt_versioning_tables`
 
 ## Overview
@@ -334,18 +334,25 @@ GET /api/v1/prompts/families/uuid-123/versions
 
 ## Integration Points
 
-### Current (Phase 1)
+### Phase 1 (Complete)
 
 ✅ **JobSubmissionPipeline**: Extracts `prompt_version_id` from job params
 ✅ **GenerationArtifact**: Stores linkage to prompt version
 ✅ **Metrics**: Auto-increments generation_count on artifact creation
 
-### Future (Phase 2+)
+### Phase 2 (Complete)
+
+✅ **Diff Generation**: Auto-populates `diff_from_parent` when creating versions
+✅ **Diff API**: Endpoints for viewing diffs and comparing versions
+✅ **Analytics**: Comprehensive performance metrics and success rates
+✅ **Top Performers**: Query best performing versions by various metrics
+
+### Future (Phase 3+)
 
 ⏳ **ActionEngine**: Use versioned prompts in ActionBlocks
 ⏳ **NarrativeEngine**: Link dialogue prompts to versions
 ⏳ **Game Integration**: World-specific prompt overrides
-⏳ **Advanced Analytics**: Success rates, ratings, A/B testing
+⏳ **A/B Testing**: Multi-variant testing framework
 
 ## Database Migration
 
@@ -440,16 +447,35 @@ curl http://localhost:8000/api/v1/prompts/families \
 - Avoids naming conflicts
 - More descriptive
 
+## Phase 2: Completed Features ✅
+
+### Diff Generation
+- ✅ Automatic `diff_from_parent` population when creating versions
+- ✅ Multiple diff formats: inline, unified, summary
+- ✅ Compare any two versions
+- ✅ Change statistics (additions, deletions, similarity score)
+
+### Analytics
+- ✅ Version-level analytics (success rates, usage stats, ratings)
+- ✅ Family-level analytics (aggregate metrics, best performers)
+- ✅ Top performing versions query (by success_rate, total_generations, avg_rating)
+- ✅ Comprehensive metrics dashboard
+
+### New API Endpoints
+```
+GET    /api/v1/prompts/versions/{version_id}/diff?format=inline
+GET    /api/v1/prompts/versions/compare?from_version_id=X&to_version_id=Y&format=unified
+GET    /api/v1/prompts/versions/{version_id}/analytics
+GET    /api/v1/prompts/families/{family_id}/analytics
+GET    /api/v1/prompts/analytics/top-performing?metric=success_rate&limit=10
+```
+
 ## Future Enhancements
 
-### Phase 2: Richer Features
-- [ ] Text diff generation (`diff_from_parent` population)
+### Phase 3: Game Integration & Advanced Features
 - [ ] Per-world prompt overrides (`prompt_world_override` table)
-- [ ] Advanced analytics (success rates, avg ratings)
 - [ ] Batch operations (create multiple versions)
 - [ ] Import/export for prompt sharing
-
-### Phase 3: Game Integration
 - [ ] ActionEngine integration (use versioned prompts in blocks)
 - [ ] NarrativeEngine integration (dialogue prompt versions)
 - [ ] Automatic prompt selection based on game context
@@ -504,4 +530,4 @@ curl http://localhost:8000/api/v1/prompts/families \
 ---
 
 **Last Updated**: 2025-11-17
-**Next Review**: Before Phase 2 implementation
+**Next Review**: Before Phase 3 implementation
