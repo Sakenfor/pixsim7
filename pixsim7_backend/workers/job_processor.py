@@ -20,6 +20,7 @@ from pixsim7_backend.shared.errors import (
     ProviderError,
 )
 from pixsim7_backend.services.submission.pipeline import JobSubmissionPipeline, is_enabled as pipeline_enabled
+from pixsim7_backend.workers.health import get_health_tracker
 
 # Configure structured logging using pixsim_logging
 from pixsim_logging import configure_logging, get_logger, bind_job_context
@@ -61,6 +62,11 @@ async def process_job(job_id: int) -> dict:
                 job_service = pipeline.job_service
                 job = await job_service.get_job(job_id)
                 result = await pipeline.run(job)
+
+                # Track successful job
+                if result.status in ("submitted", "processing"):
+                    get_health_tracker().increment_processed()
+
                 return {
                     "status": result.status,
                     "provider_job_id": result.provider_job_id,
@@ -69,6 +75,10 @@ async def process_job(job_id: int) -> dict:
                 }
             except Exception as e:
                 job_logger.error("pipeline_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+
+                # Track failed job
+                get_health_tracker().increment_failed()
+
                 # Attempt to mark failed
                 try:
                     await JobService(db, UserService(db)).mark_failed(job_id, str(e))
@@ -135,6 +145,9 @@ async def process_job(job_id: int) -> dict:
                     msg="job_submitted_to_provider"
                 )
 
+                # Track successful job
+                get_health_tracker().increment_processed()
+
                 return {
                     "status": "submitted",
                     "provider_job_id": submission.provider_job_id
@@ -143,10 +156,17 @@ async def process_job(job_id: int) -> dict:
             except ProviderError as e:
                 job_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
                 await job_service.mark_failed(job_id, str(e))
+
+                # Track failed job
+                get_health_tracker().increment_failed()
+
                 raise
 
         except Exception as e:
             job_logger.error("job_processing_failed", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+
+            # Track failed job
+            get_health_tracker().increment_failed()
 
             # Try to mark job as failed
             try:

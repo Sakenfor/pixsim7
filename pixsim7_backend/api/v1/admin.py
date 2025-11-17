@@ -223,31 +223,67 @@ async def get_services_status(admin: CurrentAdminUser):
             details={"error": str(e)}
         ))
 
-    # ARQ Worker (check via Redis queue)
+    # ARQ Worker (comprehensive health check)
     try:
-        redis = await get_redis()
-        # Check if worker has processed jobs recently
-        worker_key = "arq:health"
-        worker_health = await redis.get(worker_key)
+        from pixsim7_backend.workers.health import get_worker_health, get_queue_stats
+        from datetime import timezone
 
-        # TODO: Implement proper worker health check
-        services.append(ServiceStatus(
-            name="worker",
-            status="unknown",  # Need better health check
-            healthy=True,  # Assume healthy if Redis is up
-            last_check=now,
-            details={
-                "queue_length": 0,  # TODO: Get actual queue length
-                "note": "Worker health check not fully implemented"
-            }
-        ))
+        # Get worker heartbeat data
+        worker_health = await get_worker_health()
+
+        # Get queue statistics
+        queue_stats = await get_queue_stats()
+
+        if worker_health:
+            # Worker is running and healthy
+            # Calculate time since last heartbeat
+            heartbeat_time = datetime.fromisoformat(worker_health["timestamp"])
+            time_since_heartbeat = (datetime.now(timezone.utc) - heartbeat_time).total_seconds()
+
+            services.append(ServiceStatus(
+                name="worker",
+                status="running",
+                healthy=time_since_heartbeat < 120,  # Healthy if heartbeat within 2 minutes
+                uptime_seconds=worker_health.get("uptime_seconds"),
+                last_check=now,
+                details={
+                    "hostname": worker_health.get("hostname"),
+                    "python_version": worker_health.get("python_version"),
+                    "platform": worker_health.get("platform"),
+                    "processed_jobs": worker_health.get("processed_jobs", 0),
+                    "failed_jobs": worker_health.get("failed_jobs", 0),
+                    "success_rate": f"{worker_health.get('success_rate', 1.0) * 100:.1f}%",
+                    "memory_mb": round(worker_health.get("memory_mb", 0), 2),
+                    "cpu_percent": round(worker_health.get("cpu_percent", 0), 2),
+                    "queue_pending": queue_stats.get("pending", 0),
+                    "queue_in_progress": queue_stats.get("in_progress", 0),
+                    "queue_completed_recent": queue_stats.get("completed_recent", 0),
+                    "last_heartbeat": worker_health["timestamp"],
+                    "seconds_since_heartbeat": round(time_since_heartbeat, 1),
+                }
+            ))
+        else:
+            # No heartbeat - worker is down
+            services.append(ServiceStatus(
+                name="worker",
+                status="stopped",
+                healthy=False,
+                last_check=now,
+                details={
+                    "error": "No heartbeat detected",
+                    "queue_pending": queue_stats.get("pending", 0),
+                    "queue_in_progress": queue_stats.get("in_progress", 0),
+                    "note": "Worker appears to be offline. Check if ARQ worker is running."
+                }
+            ))
+
     except Exception as e:
         services.append(ServiceStatus(
             name="worker",
-            status="unknown",
+            status="error",
             healthy=False,
             last_check=now,
-            details={"error": str(e)}
+            details={"error": str(e), "error_type": e.__class__.__name__}
         ))
 
     return services

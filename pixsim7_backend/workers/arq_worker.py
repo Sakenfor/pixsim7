@@ -21,6 +21,7 @@ from arq.connections import RedisSettings
 from pixsim7_backend.workers.job_processor import process_job
 from pixsim7_backend.workers.automation import process_automation, run_automation_loops
 from pixsim7_backend.workers.status_poller import poll_job_statuses
+from pixsim7_backend.workers.health import update_heartbeat, get_health_tracker
 from pixsim_logging import configure_logging
 
 # Configure structured logging and optional ingestion via env
@@ -34,11 +35,18 @@ async def startup(ctx: dict) -> None:
     Called once when the worker starts.
     Initialize any shared resources here.
     """
+    # Initialize health tracker
+    health = get_health_tracker()
+
     logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
     logger.info("worker_component_registered", component="process_job")
     logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
+    logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
+
+    # Send initial heartbeat
+    await update_heartbeat(ctx)
 
 
 async def shutdown(ctx: dict) -> None:
@@ -89,6 +97,12 @@ class WorkerSettings:
             run_automation_loops,
             second={0, 30},
             run_at_startup=True,
+        ),
+        # Update worker heartbeat every 30 seconds
+        cron(
+            update_heartbeat,
+            second={0, 30},
+            run_at_startup=False,  # Will be called in startup
         )
     ]
 
