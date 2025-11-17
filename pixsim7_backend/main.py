@@ -44,45 +44,10 @@ async def lifespan(app: FastAPI):
     if not settings.debug and settings.secret_key == "change-this-in-production":
         raise ValueError("SECRET_KEY must be set in production mode. Set DEBUG=true for development or provide a secure SECRET_KEY.")
 
-    # Import all domain models to register them with SQLModel
-    from pixsim7_backend.domain import (
-        User,
-        UserSession,
-        UserQuotaUsage,
-        Workspace,
-        Asset,
-        AssetVariant,
-        Job,
-        ProviderSubmission,
-        ProviderAccount,
-        ProviderCredit,
-        Scene,
-        SceneAsset,
-        SceneConnection,
-        LogEntry,
-        PromptFamily,
-        PromptVersion,
-    )
-    # Register automation domain models
-    from pixsim7_backend.domain.automation import (
-        AndroidDevice,
-        AppActionPreset,
-        AutomationExecution,
-        ExecutionLoop,
-        ExecutionLoopHistory,
-    )
-    # Register game domain models
-    from pixsim7_backend.domain.game import (
-        GameScene,
-        GameSceneNode,
-        GameSceneEdge,
-        GameSession,
-        GameSessionEvent,
-        GameLocation,
-        GameNPC,
-        NPCSchedule,
-        NPCState,
-    )
+    # Auto-register domain models with SQLModel
+    from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
+    domain_registry = init_domain_registry("pixsim7_backend/domain_models")
+    logger.info(f"Registered {len(domain_registry.registered_models)} domain models")
 
     # Initialize database
     await init_database()
@@ -119,12 +84,17 @@ async def lifespan(app: FastAPI):
     from pixsim7_backend.infrastructure.events.handlers import register_handlers
     register_handlers()
 
-    # Initialize plugin system
+    # Initialize plugin system (feature plugins)
     plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
-    logger.info(f"Loaded {len(plugin_manager.list_plugins())} plugins")
+    logger.info(f"Loaded {len(plugin_manager.list_plugins())} feature plugins")
+
+    # Initialize route plugin system (core API routes)
+    routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
+    logger.info(f"Loaded {len(routes_manager.list_plugins())} core routes")
 
     # Enable all plugins
     await plugin_manager.enable_all()
+    await routes_manager.enable_all()
 
     # Enable all middleware (call lifecycle hooks)
     # Note: Middleware was already registered before lifespan, this just calls hooks
@@ -143,7 +113,10 @@ async def lifespan(app: FastAPI):
     if middleware_manager:
         await middleware_manager.disable_all()
 
+    # Disable plugins
+    await routes_manager.disable_all()
     await plugin_manager.disable_all()
+
     await close_redis()
     await close_database()
     logger.info("Cleanup complete")
@@ -205,34 +178,11 @@ async def health():
 
 # ===== API ROUTES =====
 
-from pixsim7_backend.api.v1 import auth, users, jobs, assets, admin, services, accounts, providers, lineage, logs, automation, device_agents, game_scenes, game_sessions, game_locations, game_worlds, prompts  # game_stealth, game_dialogue, game_npcs now loaded via plugin system
-from pixsim7_backend.api.admin import database_router, migrations_router
-app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
-app.include_router(users.router, prefix="/api/v1", tags=["users"])
-app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])
-app.include_router(assets.router, prefix="/api/v1", tags=["assets"])
-app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
-app.include_router(services.router, prefix="/api/v1", tags=["services"])
-app.include_router(accounts.router, prefix="/api/v1", tags=["accounts"])
-app.include_router(automation.router, prefix="/api/v1", tags=["automation"])
-app.include_router(device_agents.router, prefix="/api/v1", tags=["device-agents"])
-app.include_router(providers.router, prefix="/api/v1", tags=["providers"])
-app.include_router(lineage.router, prefix="/api/v1", tags=["lineage"])
-app.include_router(logs.router, prefix="/api/v1/logs", tags=["logs"])
-app.include_router(prompts.router, prefix="/api/v1", tags=["prompts"])
-app.include_router(game_scenes.router, prefix="/api/v1/game/scenes", tags=["game-scenes"])
-app.include_router(game_sessions.router, prefix="/api/v1/game/sessions", tags=["game-sessions"])
-app.include_router(game_locations.router, prefix="/api/v1/game/locations", tags=["game-locations"])
-# app.include_router(game_npcs.router, prefix="/api/v1/game/npcs", tags=["game-npcs"])  # Now loaded via plugin system
-app.include_router(game_worlds.router, prefix="/api/v1/game/worlds", tags=["game-worlds"])
-# app.include_router(game_dialogue.router, prefix="/api/v1/game/dialogue", tags=["game-dialogue"])  # Now loaded via plugin system
-# app.include_router(game_stealth.router, prefix="/api/v1", tags=["game-stealth"])  # Now loaded via plugin system
-app.include_router(database_router, prefix="/api", tags=["database"])
-app.include_router(migrations_router, prefix="/api", tags=["migrations"])
-
-# TODO: Include more routers (Phase 2)
-# from pixsim7_backend.api.v1 import scenes
-# app.include_router(scenes.router, prefix="/api/v1", tags=["scenes"])
+# All API routes are now loaded via the plugin system
+# See pixsim7_backend/routes/ for core API route plugins
+# See pixsim7_backend/plugins/ for feature plugins (game mechanics, etc.)
+#
+# Routes are auto-discovered and registered during app startup (see lifespan function above)
 
 
 if __name__ == "__main__":
