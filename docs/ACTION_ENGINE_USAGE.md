@@ -98,6 +98,68 @@ Selects appropriate action blocks based on context.
 }
 ```
 
+### Auto-Select with Generation Fallback
+
+**Endpoint:** `POST /api/v1/game/dialogue/actions/next`
+
+This endpoint first attempts the normal library selection flow, then (if no strong matches or if `prefer_generation` is set) falls back to `/actions/generate` using the provided parameters.
+
+#### Request
+
+```json
+{
+  "selection": {
+    "location_tag": "bench_park",
+    "pose": "sitting_close",
+    "lead_npc_id": 12,
+    "session_id": 456,
+    "world_id": 1
+  },
+  "generation": {
+    "concept_type": "dynamic_interaction",
+    "parameters": {
+      "lead": "Anne",
+      "partner": "Player",
+      "location": "bench",
+      "branch_type": "escalate"
+    },
+    "previous_segment": {
+      "block_id": "bench_idle_loop",
+      "asset_id": 9876,
+      "pose": "sitting_close",
+      "intensity": 5,
+      "tags": ["bench_park", "evening"],
+      "mood": "romantic"
+    }
+  },
+  "compatibility_threshold": 0.8
+}
+```
+
+#### Response
+
+```json
+{
+  "mode": "generation",
+  "selection": {
+    "compatibility_score": 0.62,
+    "...": "library attempt details"
+  },
+  "generated_block": {
+    "id": "gen_dynamic_interaction_ab12cd",
+    "prompt": "...",
+    "tags": { "content_rating": "intimate" },
+    "cameraMovement": { "type": "rotation", "speed": "slow" }
+  },
+  "generation_info": {
+    "generation_time": 0.08,
+    "template_used": "dynamic_interaction"
+  }
+}
+```
+
+If the library result meets the threshold, the response returns `mode: "library"` with the usual `ActionSelectionResponse`. This is the hook the 2D client can use to “loop current clip while we pre-generate the next one”: keep playing the loop clip, call `/actions/next` with a `previous_segment` snapshot, and then cut to the generated block once it returns.
+
 #### Response
 
 ```json
@@ -252,6 +314,27 @@ Example:
   "compatiblePrev": ["couch_sit_together"]
 }
 ```
+
+### Continuation Snapshots for Generation
+
+Dynamic generation now accepts a `previous_segment` payload. Provide either an `asset_id` (preferred) or a temporary `asset_url` pointing to the last frame/keyframe, plus pose/intensity tags:
+
+```json
+"previous_segment": {
+  "block_id": "couch_idle_loop",
+  "asset_id": 44321,
+  "pose": "sitting_close",
+  "intensity": 4,
+  "tags": ["living_room", "evening"],
+  "mood": "tender",
+  "summary": "Continue from a soft cuddle loop on the couch."
+}
+```
+
+The generator uses this snapshot to:
+- Reuse the still as the `referenceImage`
+- Default `startPose`/`tags.pose` to the snapshot pose
+- Append “Continuation Notes” to the prompt so Claude understands it must keep composition/lighting consistent.
 
 ### Transition Block Example
 

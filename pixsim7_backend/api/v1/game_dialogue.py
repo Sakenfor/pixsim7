@@ -3,10 +3,10 @@ Game dialogue and narrative API endpoints.
 """
 
 from __future__ import annotations
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Literal
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
@@ -20,6 +20,13 @@ from pixsim7_backend.domain.narrative.action_blocks import (
     ActionSelectionContext,
     BranchIntent
 )
+from pixsim7_backend.domain.narrative.action_blocks.generator import (
+    DynamicBlockGenerator,
+    GenerationRequest,
+    GenerationResult,
+    PreviousSegmentSnapshot
+)
+from pixsim7_backend.domain.narrative.action_blocks.types_v2 import ContentRating
 
 
 router = APIRouter()
@@ -27,6 +34,7 @@ router = APIRouter()
 # Initialize the engines (singletons)
 _narrative_engine = None
 _action_engine = None
+_block_generator = None
 
 
 def get_narrative_engine() -> NarrativeEngine:
@@ -44,6 +52,52 @@ def get_action_engine() -> ActionEngine:
         # Share the narrative engine for template rendering
         _action_engine = ActionEngine(narrative_engine=get_narrative_engine())
     return _action_engine
+
+
+def get_block_generator() -> DynamicBlockGenerator:
+    """Get or create the block generator singleton."""
+    global _block_generator
+    if _block_generator is None:
+        _block_generator = DynamicBlockGenerator(use_claude_api=False)
+    return _block_generator
+
+
+def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[PreviousSegmentSnapshot]:
+    """Convert API input into a dataclass snapshot."""
+    if not data:
+        return None
+
+    return PreviousSegmentSnapshot(
+        block_id=data.block_id,
+        segment_id=data.segment_id,
+        asset_id=data.asset_id,
+        asset_url=data.asset_url,
+        pose=data.pose,
+        intensity=data.intensity,
+        tags=data.tags or None,
+        mood=data.mood,
+        branch_intent=data.branch_intent,
+        summary=data.summary
+    )
+
+
+def _build_generation_request(req: GenerateActionBlockRequest) -> GenerationRequest:
+    """Create a GenerationRequest from API input."""
+    try:
+        content_rating = ContentRating(req.content_rating)
+    except ValueError:
+        content_rating = ContentRating.GENERAL
+
+    return GenerationRequest(
+        concept_type=req.concept_type,
+        parameters=req.parameters,
+        content_rating=content_rating,
+        duration=req.duration or 6.0,
+        camera_settings=req.camera_settings,
+        consistency_settings=req.consistency_settings,
+        intensity_settings=req.intensity_settings,
+        previous_segment=_convert_previous_segment(req.previous_segment)
+    )
 
 
 class DialogueNextLineRequest(BaseModel):
@@ -73,6 +127,20 @@ class DialogueDebugResponse(BaseModel):
     visual_prompt: Optional[str] = None
     meta: Dict[str, Any] = {}
     debug: Dict[str, Any] = {}
+
+
+class PreviousSegmentInput(BaseModel):
+    """Snapshot of the previous media segment for continuity-aware generation."""
+    block_id: Optional[str] = None
+    segment_id: Optional[str] = None
+    asset_id: Optional[int] = None
+    asset_url: Optional[str] = None
+    pose: Optional[str] = None
+    intensity: Optional[int] = None
+    tags: List[str] = Field(default_factory=list)
+    mood: Optional[str] = None
+    branch_intent: Optional[str] = None
+    summary: Optional[str] = None
 
 
 @router.post("/next-line", response_model=DialogueNextLineResponse)
@@ -404,8 +472,8 @@ class ActionSelectionRequest(BaseModel):
     previous_block_id: Optional[str] = None
     lead_npc_id: int
     partner_npc_id: Optional[int] = None
-    required_tags: List[str] = []
-    exclude_tags: List[str] = []
+    required_tags: List[str] = Field(default_factory=list)
+    exclude_tags: List[str] = Field(default_factory=list)
     max_duration: Optional[float] = None
 
     # Optional context from narrative engine
@@ -424,25 +492,31 @@ class ActionSelectionResponse(BaseModel):
     segments: List[Dict[str, Any]]
 
 
-@router.post("/actions/select", response_model=ActionSelectionResponse)
-async def select_action_blocks(
+class ActionNextRequest(BaseModel):
+    """Combined request that prefers library selection but can fall back to generation."""
+    selection: ActionSelectionRequest
+    generation: Optional[GenerateActionBlockRequest] = None
+    compatibility_threshold: float = 0.8
+    prefer_generation: bool = False
+
+
+class ActionNextResponse(BaseModel):
+    """Response describing whether library or generation was used."""
+    mode: Literal["library", "generation"]
+    selection: Optional[ActionSelectionResponse] = None
+    generated_block: Optional[Dict[str, Any]] = None
+    generation_info: Optional[Dict[str, Any]] = None
+    generation_error: Optional[str] = None
+
+
+async def _run_action_selection(
     req: ActionSelectionRequest,
     db: DatabaseSession,
     user: CurrentUser,
-    action_engine: ActionEngine = Depends(get_action_engine),
-    narrative_engine: NarrativeEngine = Depends(get_narrative_engine)
+    action_engine: ActionEngine,
+    narrative_engine: NarrativeEngine
 ) -> ActionSelectionResponse:
-    """
-    Select appropriate action blocks for visual generation.
-
-    Layering:
-    1. This API layer handles session/world context gathering
-    2. It distills that into a clean ActionSelectionContext
-    3. The pure selector works with the distilled context only
-
-    This keeps the selector module pure and testable without DB dependencies.
-    """
-    # Layer 1: Gather context from session/world if provided
+    """Execute the selection flow and return a response."""
     computed_intimacy_level = req.intimacy_level
     computed_mood = req.mood
     branch_intent_str = req.branch_intent
@@ -450,13 +524,11 @@ async def select_action_blocks(
     if req.session_id and not req.intimacy_level:
         session = await db.get(GameSession, req.session_id)
         if session and session.user_id == user.id:
-            # Get world for intimacy schema
             world = None
             if req.world_id:
                 world = await db.get(GameWorld, req.world_id)
 
             if world:
-                # Build minimal context for intimacy computation
                 from pixsim7_backend.domain.narrative.relationships import (
                     compute_intimacy_level,
                     extract_relationship_values
@@ -480,7 +552,6 @@ async def select_action_blocks(
                 if intimacy_level:
                     computed_intimacy_level = intimacy_level
 
-            # Also check for narrative intents to map to branch intent
             if not branch_intent_str and session.flags.get("last_narrative_intents"):
                 from pixsim7_backend.domain.narrative.intent_mapping import (
                     map_narrative_to_branch_intent
@@ -490,7 +561,6 @@ async def select_action_blocks(
                 if mapped_branch:
                     branch_intent_str = mapped_branch.value
 
-    # Layer 2: Build clean action selection context
     context = ActionSelectionContext(
         locationTag=req.location_tag,
         pose=req.pose,
@@ -505,10 +575,7 @@ async def select_action_blocks(
         maxDuration=req.max_duration
     )
 
-    # Select action blocks
     result = await action_engine.select_actions(context, db)
-
-    # Convert to response format
     blocks_data = [block.dict() for block in result.blocks]
 
     return ActionSelectionResponse(
@@ -519,6 +586,82 @@ async def select_action_blocks(
         fallback_reason=result.fallbackReason,
         prompts=result.prompts,
         segments=result.segments
+    )
+
+
+@router.post("/actions/select", response_model=ActionSelectionResponse)
+async def select_action_blocks(
+    req: ActionSelectionRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    action_engine: ActionEngine = Depends(get_action_engine),
+    narrative_engine: NarrativeEngine = Depends(get_narrative_engine)
+) -> ActionSelectionResponse:
+    """
+    Select appropriate action blocks for visual generation.
+
+    Layering:
+    1. This API layer handles session/world context gathering
+    2. It distills that into a clean ActionSelectionContext
+    3. The pure selector works with the distilled context only
+
+    This keeps the selector module pure and testable without DB dependencies.
+    """
+    return await _run_action_selection(req, db, user, action_engine, narrative_engine)
+
+
+@router.post("/actions/next", response_model=ActionNextResponse)
+async def select_or_generate_action(
+    req: ActionNextRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    action_engine: ActionEngine = Depends(get_action_engine),
+    narrative_engine: NarrativeEngine = Depends(get_narrative_engine),
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
+) -> ActionNextResponse:
+    """
+    Try to use library blocks first, falling back to dynamic generation when needed.
+    """
+    selection_result = await _run_action_selection(
+        req.selection,
+        db,
+        user,
+        action_engine,
+        narrative_engine
+    )
+
+    should_generate = (
+        req.prefer_generation
+        or not selection_result.blocks
+        or selection_result.compatibility_score < req.compatibility_threshold
+    )
+
+    if not should_generate or not req.generation:
+        return ActionNextResponse(
+            mode="library",
+            selection=selection_result
+        )
+
+    gen_request = _build_generation_request(req.generation)
+    gen_result = generator.generate_block(gen_request)
+
+    if not gen_result.success or not gen_result.action_block:
+        return ActionNextResponse(
+            mode="library",
+            selection=selection_result,
+            generation_error=gen_result.error_message or "generation_failed"
+        )
+
+    generation_info = {
+        "generation_time": gen_result.generation_time,
+        "template_used": gen_result.template_used
+    }
+
+    return ActionNextResponse(
+        mode="generation",
+        selection=selection_result,
+        generated_block=gen_result.action_block,
+        generation_info=generation_info
     )
 
 
@@ -590,3 +733,287 @@ async def list_pose_taxonomy(
         "categories": list(taxonomy.category_index.keys()),
         "total": len(poses_data)
     }
+
+
+# ============================================================================
+# DYNAMIC GENERATION ENDPOINTS
+# ============================================================================
+
+
+class GenerateActionBlockRequest(BaseModel):
+    """Request for generating a new action block dynamically."""
+    concept_type: str  # e.g., "creature_interaction", "position_maintenance"
+    parameters: Dict[str, Any]
+    content_rating: Optional[str] = "general"
+    duration: Optional[float] = 6.0
+    camera_settings: Optional[Dict[str, Any]] = None
+    consistency_settings: Optional[Dict[str, Any]] = None
+    intensity_settings: Optional[Dict[str, Any]] = None
+    previous_segment: Optional[PreviousSegmentInput] = None
+
+
+class GenerateActionBlockResponse(BaseModel):
+    """Response containing the generated action block."""
+    success: bool
+    action_block: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    generation_time: float
+    template_used: Optional[str] = None
+
+
+class GenerateCreatureInteractionRequest(BaseModel):
+    """Specialized request for creature interactions."""
+    creature_type: str  # werewolf, vampire, tentacle, etc.
+    character_name: Optional[str] = "She"
+    position: Optional[str] = "standing"
+    intensity: int = 5
+    relative_position: Optional[str] = "behind them"
+    character_reaction: Optional[str] = "responds"
+    camera_movement: Optional[str] = "begins slow rotation"
+    duration: Optional[float] = 8.0
+    previous_segment: Optional[PreviousSegmentInput] = None
+
+
+class TestGenerationRequest(BaseModel):
+    """Request to test generation quality."""
+    original_prompt: str
+    test_type: str = "werewolf_recreation"  # Type of test to run
+
+
+class TestGenerationResponse(BaseModel):
+    """Response with generation test results."""
+    similarity_score: float
+    generated_prompt: str
+    original_prompt: str
+    key_phrases_matched: int
+    total_key_phrases: int
+    test_passed: bool
+
+
+@router.post("/actions/generate", response_model=GenerateActionBlockResponse)
+async def generate_action_block(
+    req: GenerateActionBlockRequest,
+    user: CurrentUser,
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
+) -> GenerateActionBlockResponse:
+    """
+    Generate a new action block dynamically using templates and concepts.
+
+    This endpoint allows creation of novel action blocks without pre-defining
+    them in JSON files. It uses the concept library and template system to
+    generate appropriate prompts.
+    """
+    gen_request = _build_generation_request(req)
+
+    # Generate the block
+    result = generator.generate_block(gen_request)
+
+    return GenerateActionBlockResponse(
+        success=result.success,
+        action_block=result.action_block,
+        error_message=result.error_message,
+        generation_time=result.generation_time,
+        template_used=result.template_used
+    )
+
+
+@router.post("/actions/generate/creature", response_model=GenerateActionBlockResponse)
+async def generate_creature_interaction(
+    req: GenerateCreatureInteractionRequest,
+    user: CurrentUser,
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
+) -> GenerateActionBlockResponse:
+    """
+    Generate a creature interaction action block.
+
+    This is a specialized endpoint for generating creature-based interactions
+    with simplified parameters.
+    """
+    from pixsim7_backend.domain.narrative.action_blocks.concepts import CreatureType
+
+    # Parse creature type
+    try:
+        creature_type = CreatureType(req.creature_type)
+    except ValueError:
+        return GenerateActionBlockResponse(
+            success=False,
+            error_message=f"Unknown creature type: {req.creature_type}",
+            generation_time=0.0
+        )
+
+    # Generate using specialized method
+    result = generator.generate_creature_interaction(
+        creature_type=creature_type,
+        character_name=req.character_name,
+        position=req.position,
+        intensity=req.intensity,
+        relative_position=req.relative_position,
+        character_reaction=req.character_reaction,
+        camera_movement=req.camera_movement,
+        duration=req.duration,
+        previous_segment=_convert_previous_segment(req.previous_segment)
+    )
+
+    return GenerateActionBlockResponse(
+        success=result.success,
+        action_block=result.action_block,
+        error_message=result.error_message,
+        generation_time=result.generation_time,
+        template_used=result.template_used
+    )
+
+
+@router.post("/actions/test", response_model=TestGenerationResponse)
+async def test_generation_quality(
+    req: TestGenerationRequest,
+    user: CurrentUser,
+    generator: DynamicBlockGenerator = Depends(get_block_generator)
+) -> TestGenerationResponse:
+    """
+    Test the quality of action block generation.
+
+    This endpoint tests whether the generation system can accurately recreate
+    complex prompts from templates, helping to validate the template system.
+    """
+    if req.test_type == "werewolf_recreation":
+        # Import test function
+        from pixsim7_backend.domain.narrative.action_blocks.generation_templates import (
+            TemplateGenerator,
+            test_prompt_recreation
+        )
+
+        # Generate the werewolf block
+        generated_block = TemplateGenerator.generate_werewolf_recreation()
+        generated_prompt = generated_block["prompt"]
+
+        # Calculate similarity
+        similarity = test_prompt_recreation(req.original_prompt)
+
+        # Check key phrases
+        key_phrases = [
+            "maintains her position throughout",
+            "camera begins slow rotation",
+            "gripping, releasing, gripping harder",
+            "appearance and lighting remain consistent"
+        ]
+
+        phrase_matches = sum(
+            1 for phrase in key_phrases
+            if phrase.lower() in generated_prompt.lower()
+        )
+
+        return TestGenerationResponse(
+            similarity_score=similarity,
+            generated_prompt=generated_prompt,
+            original_prompt=req.original_prompt,
+            key_phrases_matched=phrase_matches,
+            total_key_phrases=len(key_phrases),
+            test_passed=similarity > 0.7  # 70% threshold
+        )
+    else:
+        return TestGenerationResponse(
+            similarity_score=0.0,
+            generated_prompt="",
+            original_prompt=req.original_prompt,
+            key_phrases_matched=0,
+            total_key_phrases=0,
+            test_passed=False
+        )
+
+
+@router.get("/actions/templates")
+async def list_generation_templates(
+    template_type: Optional[str] = None,
+    user: CurrentUser = None
+) -> Dict[str, Any]:
+    """
+    List available generation templates.
+
+    This endpoint returns all available templates that can be used for
+    dynamic generation, useful for UI tools and debugging.
+    """
+    from pixsim7_backend.domain.narrative.action_blocks.generation_templates import (
+        template_library,
+        TemplateType
+    )
+
+    templates = []
+
+    if template_type:
+        try:
+            tt = TemplateType(template_type)
+            template_list = template_library.get_templates_by_type(tt)
+        except ValueError:
+            template_list = []
+    else:
+        template_list = list(template_library.templates.values())
+
+    for template in template_list:
+        templates.append({
+            "id": template.id,
+            "type": template.type.value,
+            "name": template.name,
+            "required_params": template.required_params,
+            "optional_params": template.optional_params,
+            "content_rating_range": template.content_rating_range,
+            "supports_camera": template.camera_template is not None,
+            "has_consistency": template.consistency_defaults is not None
+        })
+
+    return {
+        "templates": templates,
+        "total": len(templates),
+        "filter": {"type": template_type} if template_type else None
+    }
+
+
+@router.get("/actions/concepts")
+async def list_available_concepts(
+    concept_type: Optional[str] = None,
+    user: CurrentUser = None
+) -> Dict[str, Any]:
+    """
+    List available concepts from the concept library.
+
+    This shows creatures, interaction patterns, positions, and camera patterns
+    that can be used for generation.
+    """
+    from pixsim7_backend.domain.narrative.action_blocks.concepts import (
+        concept_library,
+        CreatureType
+    )
+
+    response = {}
+
+    if not concept_type or concept_type == "creatures":
+        creatures = []
+        for creature_type in CreatureType:
+            creature = concept_library.get_creature(creature_type)
+            if creature:
+                creatures.append({
+                    "type": creature.type.value,
+                    "movement_types": [m.value for m in creature.movement_types],
+                    "special_features": creature.special_features,
+                    "size_category": creature.size_category,
+                    "unique_actions": creature.unique_actions
+                })
+        response["creatures"] = creatures
+
+    if not concept_type or concept_type == "interactions":
+        interactions = []
+        for pattern in concept_library.interaction_patterns:
+            interactions.append({
+                "name": pattern.name,
+                "primary_action": pattern.primary_action,
+                "continuous_actions": pattern.continuous_actions,
+                "intensity_range": pattern.intensity_range
+            })
+        response["interaction_patterns"] = interactions
+
+    if not concept_type or concept_type == "positions":
+        response["positions"] = concept_library.position_library
+
+    if not concept_type or concept_type == "camera":
+        response["camera_patterns"] = concept_library.camera_patterns
+
+    return response

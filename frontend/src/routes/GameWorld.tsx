@@ -3,6 +3,7 @@ import { Button, Panel, Input, Select } from '@pixsim7/ui';
 import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO } from '../lib/api/game';
 import { listGameLocations, getGameLocation, saveGameLocationHotspots } from '../lib/api/game';
 import type { HotspotActionType } from '../lib/game/interactionSchema';
+import { NpcSlotEditor } from '../components/NpcSlotEditor';
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
@@ -11,6 +12,7 @@ export function GameWorld() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
+  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout'>('hotspots');
 
   useEffect(() => {
     (async () => {
@@ -133,22 +135,52 @@ export function GameWorld() {
               <option key={loc.id} value={loc.id}>{loc.name}</option>
             ))}
           </Select>
-          <Button size="sm" variant="primary" onClick={handleSave} disabled={!detail || isLoading}>
-            {isLoading ? 'Saving…' : 'Save Hotspots'}
-          </Button>
+          {activeTab === 'hotspots' && (
+            <Button size="sm" variant="primary" onClick={handleSave} disabled={!detail || isLoading}>
+              {isLoading ? 'Saving…' : 'Save Hotspots'}
+            </Button>
+          )}
         </div>
         {detail && (
           <div className="space-y-3">
             <p className="text-xs text-neutral-500">
               Asset ID: {detail.asset_id ?? 'none'} | Default spawn: {detail.default_spawn ?? 'none'}
             </p>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Hotspots</h2>
-              <Button size="sm" variant="secondary" onClick={handleAddHotspot}>
-                + Add Hotspot
-              </Button>
+
+            {/* Tab Navigation */}
+            <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-700">
+              <button
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'hotspots'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                }`}
+                onClick={() => setActiveTab('hotspots')}
+              >
+                Hotspots
+              </button>
+              <button
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === '2d-layout'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                }`}
+                onClick={() => setActiveTab('2d-layout')}
+              >
+                2D Layout
+              </button>
             </div>
-            <div className="space-y-3">
+
+            {/* Tab Content */}
+            {activeTab === 'hotspots' ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">Hotspots</h2>
+                  <Button size="sm" variant="secondary" onClick={handleAddHotspot}>
+                    + Add Hotspot
+                  </Button>
+                </div>
+                <div className="space-y-3">
               {detail.hotspots.map((h, idx) => {
                 const meta: any = h.meta || {};
                 const action: any = meta.action || {};
@@ -301,12 +333,20 @@ export function GameWorld() {
                   </div>
                 );
               })}
-              {detail.hotspots.length === 0 && (
-                <p className="text-xs text-neutral-500 text-center py-4">
-                  No hotspots yet. Click "Add Hotspot" above to create one.
-                </p>
-              )}
-            </div>
+                  {detail.hotspots.length === 0 && (
+                    <p className="text-xs text-neutral-500 text-center py-4">
+                      No hotspots yet. Click "Add Hotspot" above to create one.
+                    </p>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* 2D Layout Tab */
+              <NpcSlotEditor
+                location={detail}
+                onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
+              />
+            )}
           </div>
         )}
       </Panel>

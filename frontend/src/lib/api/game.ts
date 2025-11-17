@@ -16,6 +16,34 @@ export interface GameHotspotDTO {
   meta?: Record<string, unknown> | null;
 }
 
+export interface NpcTalkConfig {
+  npcId?: number | null; // Optional override; else use assigned NPC
+  preferredSceneId?: number | null;
+}
+
+export interface PickpocketConfig {
+  baseSuccessChance: number;
+  detectionChance: number;
+  onSuccessFlags?: string[];
+  onFailFlags?: string[];
+}
+
+export interface NpcSlotInteractions {
+  canTalk?: boolean;
+  npcTalk?: NpcTalkConfig;
+  canPickpocket?: boolean;
+  pickpocket?: PickpocketConfig;
+}
+
+export interface NpcSlot2d {
+  id: string;
+  x: number; // Normalized 0-1 position
+  y: number; // Normalized 0-1 position
+  roles?: string[];
+  fixedNpcId?: number | null;
+  interactions?: NpcSlotInteractions;
+}
+
 export interface GameLocationDetail {
   id: number;
   name: string;
@@ -86,8 +114,73 @@ export async function saveGameLocationHotspots(
   return res.data;
 }
 
+export async function saveGameLocationMeta(
+  locationId: number,
+  meta: Record<string, unknown>,
+): Promise<GameLocationDetail> {
+  const res = await apiClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
+    meta,
+  });
+  return res.data;
+}
+
+// Helper to extract NPC slots from location meta
+export function getNpcSlots(location: GameLocationDetail): NpcSlot2d[] {
+  const meta = location.meta as any;
+  return meta?.npcSlots2d || [];
+}
+
+// Helper to set NPC slots in location meta
+export function setNpcSlots(location: GameLocationDetail, slots: NpcSlot2d[]): GameLocationDetail {
+  return {
+    ...location,
+    meta: {
+      ...(location.meta || {}),
+      npcSlots2d: slots,
+    },
+  };
+}
+
+// Helper to get NPC roles from world meta
+export function getWorldNpcRoles(world: GameWorldDetail): Record<string, string[]> {
+  const meta = world.meta as any;
+  return meta?.npcRoles || {};
+}
+
+// Helper to set NPC roles in world meta
+export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, string[]>): GameWorldDetail {
+  return {
+    ...world,
+    meta: {
+      ...(world.meta || {}),
+      npcRoles: roles,
+    },
+  };
+}
+
 export async function getGameScene(sceneId: number): Promise<Scene> {
   const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
+  return res.data;
+}
+
+export interface PickpocketRequest {
+  npc_id: number;
+  slot_id: string;
+  base_success_chance: number;
+  detection_chance: number;
+  world_id?: number | null;
+  session_id: number;
+}
+
+export interface PickpocketResponse {
+  success: boolean;
+  detected: boolean;
+  updated_flags: Record<string, unknown>;
+  message: string;
+}
+
+export async function attemptPickpocket(req: PickpocketRequest): Promise<PickpocketResponse> {
+  const res = await apiClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
   return res.data;
 }
 

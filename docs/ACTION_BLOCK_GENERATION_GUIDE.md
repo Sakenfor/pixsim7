@@ -38,16 +38,22 @@ Even though the JSON stores a single `prompt` string, mentally construct it as:
 
 ```json
 "consistency": {
-  "maintainPose": true,      // Character stays in same pose
+  "maintainPose": true,       // Character stays in same pose
   "preserveLighting": true,   // Lighting doesn't change
   "preserveClothing": true,   // Clothing state consistent
   "preservePosition": false   // Characters can move
 }
 ```
 
-**When to use:**
-- `maintainPose`: When showing internal tension or reactions
-- `preservePosition`: For seated/lying scenes where movement is subtle
+**When to use (and when *not* to):**
+- `maintainPose`: Use for some blocks that focus on internal tension or reactions while the body stays mostly put.
+- `preservePosition`: For seated/lying scenes where movement is subtle or localized.
+- It is **not** a default requirement for all blocks. Many clips should allow both characters to move freely (walking to a wall together, sitting down on a couch, changing posture, etc.). Mix “still pose” blocks with “both move” blocks when building packs.
+
+Think in terms of movement patterns when you design sets of blocks:
+- Some blocks: lead mostly static, partner moves around them.
+- Some blocks: partner mostly static, lead moves.
+- Some blocks: **both** move and reposition during the clip.
 
 ### 4. Handle Intensity Progression
 

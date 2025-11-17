@@ -16,6 +16,9 @@ import {
   createGameWorld,
   getGameWorld,
   advanceGameWorldTime,
+  getNpcSlots,
+  getWorldNpcRoles,
+  attemptPickpocket,
   type GameLocationSummary,
   type GameLocationDetail,
   type GameHotspotDTO,
@@ -24,7 +27,9 @@ import {
   type GameSessionDTO,
   type GameWorldSummary,
   type GameWorldDetail,
+  type NpcSlot2d,
 } from '../lib/api/game';
+import { assignNpcsToSlots, type NpcSlotAssignment } from '../lib/game/slotAssignment';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
 import {
   parseHotspotAction,
@@ -61,6 +66,7 @@ export function Game2D() {
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
+  const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -343,6 +349,24 @@ export function Game2D() {
     })();
   }, [selectedLocationId, worldTime]);
 
+  // Assign NPCs to slots when location, NPCs, or world changes.
+  useEffect(() => {
+    if (!locationDetail) {
+      setNpcSlotAssignments([]);
+      return;
+    }
+
+    const slots = getNpcSlots(locationDetail);
+    if (slots.length === 0) {
+      setNpcSlotAssignments([]);
+      return;
+    }
+
+    const npcRoles = worldDetail ? getWorldNpcRoles(worldDetail) : {};
+    const assignments = assignNpcsToSlots(slots, locationNpcs, npcRoles);
+    setNpcSlotAssignments(assignments);
+  }, [locationDetail, locationNpcs, worldDetail]);
+
   const advanceTime = () => {
     if (selectedWorldId) {
       (async () => {
@@ -384,6 +408,86 @@ export function Game2D() {
         return next;
       });
     }
+  };
+
+  const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
+    if (!assignment.npcId) return;
+
+    const slot = assignment.slot;
+    const interactions = slot.interactions;
+
+    // Handle Talk interaction
+    if (interactions?.canTalk) {
+      const npcId = interactions.npcTalk?.npcId || assignment.npcId;
+      const sceneId = interactions.npcTalk?.preferredSceneId;
+
+      if (sceneId) {
+        // Play the preferred scene
+        setIsLoadingScene(true);
+        setError(null);
+        try {
+          if (!gameSession) {
+            const created = await createGameSession(Number(sceneId));
+            setGameSession(created);
+            const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+            saveWorldSession({ worldTimeSeconds, gameSessionId: created.id });
+            updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+          }
+
+          const scene = await getGameScene(Number(sceneId));
+          setCurrentScene(scene);
+          setIsSceneOpen(true);
+          setScenePhase('playing');
+          setActiveNpcId(npcId);
+        } catch (e: any) {
+          setError(String(e?.message ?? e));
+        } finally {
+          setIsLoadingScene(false);
+        }
+      } else {
+        console.info('NPC talk triggered but no scene ID configured', { npcId });
+      }
+      return;
+    }
+
+    // Handle Pickpocket interaction
+    if (interactions?.canPickpocket && interactions.pickpocket) {
+      if (!gameSession) {
+        setError('No game session active. Please start a scene first.');
+        return;
+      }
+
+      setIsLoadingScene(true);
+      setError(null);
+      try {
+        const result = await attemptPickpocket({
+          npc_id: assignment.npcId,
+          slot_id: slot.id,
+          base_success_chance: interactions.pickpocket.baseSuccessChance,
+          detection_chance: interactions.pickpocket.detectionChance,
+          world_id: selectedWorldId,
+          session_id: gameSession.id,
+        });
+
+        // Show result to user
+        const resultMessage = `${result.message}`;
+        alert(resultMessage); // Simple alert for now, can be replaced with a modal
+
+        // Optionally update session if needed
+        const updatedSession = await getGameSession(gameSession.id);
+        setGameSession(updatedSession);
+
+        console.info('Pickpocket result:', result);
+      } catch (e: any) {
+        setError(String(e?.message ?? e));
+      } finally {
+        setIsLoadingScene(false);
+      }
+      return;
+    }
+
+    // Default: just log
+    console.info('NPC slot clicked but no interactions configured', assignment);
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
@@ -625,6 +729,44 @@ export function Game2D() {
                         title={h.hotspot_id || h.object_name}
                       >
                         {h.hotspot_id || h.object_name}
+                      </button>
+                    );
+                  })}
+
+                  {/* NPC slot markers */}
+                  {npcSlotAssignments.map((assignment) => {
+                    const slot = assignment.slot;
+                    const hasNpc = assignment.npcId !== null;
+                    const hasInteractions =
+                      slot.interactions?.canTalk || slot.interactions?.canPickpocket;
+
+                    return (
+                      <button
+                        key={`npc-slot-${slot.id}`}
+                        className={`absolute w-10 h-10 -ml-5 -mt-5 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                          hasNpc
+                            ? hasInteractions
+                              ? 'bg-green-500 border-white hover:bg-green-600 hover:scale-110 shadow-lg'
+                              : 'bg-gray-500 border-white hover:bg-gray-600 hover:scale-105'
+                            : 'bg-gray-300 border-gray-400 opacity-50 cursor-not-allowed'
+                        }`}
+                        style={{
+                          left: `${slot.x * 100}%`,
+                          top: `${slot.y * 100}%`,
+                        }}
+                        disabled={!hasNpc || isLoadingScene}
+                        onClick={() => hasNpc && handleNpcSlotClick(assignment)}
+                        title={
+                          hasNpc
+                            ? `NPC #${assignment.npcId} - ${slot.id}${
+                                hasInteractions ? ' (click to interact)' : ''
+                              }`
+                            : `Empty slot: ${slot.id}`
+                        }
+                      >
+                        <span className="text-white">
+                          {hasNpc ? `#${assignment.npcId}` : '○'}
+                        </span>
                       </button>
                     );
                   })}
