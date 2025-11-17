@@ -270,3 +270,161 @@ export async function getNpcPresence(params: {
   });
   return res.data;
 }
+
+// Quest API
+export interface QuestObjectiveDTO {
+  id: string;
+  description: string;
+  completed: boolean;
+  progress: number;
+  target: number;
+  optional: boolean;
+}
+
+export interface QuestDTO {
+  id: string;
+  title: string;
+  description: string;
+  status: string; // 'active' | 'completed' | 'failed' | 'hidden'
+  objectives: QuestObjectiveDTO[];
+  metadata: Record<string, unknown>;
+}
+
+export async function listSessionQuests(
+  sessionId: number,
+  status?: string
+): Promise<QuestDTO[]> {
+  const res = await apiClient.get<QuestDTO[]>(`/game/quests/sessions/${sessionId}/quests`, {
+    params: status ? { status } : undefined,
+  });
+  return res.data;
+}
+
+export async function getSessionQuest(
+  sessionId: number,
+  questId: string
+): Promise<QuestDTO> {
+  const res = await apiClient.get<QuestDTO>(`/game/quests/sessions/${sessionId}/quests/${questId}`);
+  return res.data;
+}
+
+export async function addQuest(
+  sessionId: number,
+  questData: {
+    quest_id: string;
+    title: string;
+    description: string;
+    objectives: Array<{
+      id: string;
+      description: string;
+      target?: number;
+      optional?: boolean;
+    }>;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<QuestDTO> {
+  const res = await apiClient.post<QuestDTO>(`/game/quests/sessions/${sessionId}/quests`, questData);
+  return res.data;
+}
+
+export async function updateQuestStatus(
+  sessionId: number,
+  questId: string,
+  status: string
+): Promise<QuestDTO> {
+  const res = await apiClient.patch<QuestDTO>(
+    `/game/quests/sessions/${sessionId}/quests/${questId}/status`,
+    { status }
+  );
+  return res.data;
+}
+
+export async function updateObjectiveProgress(
+  sessionId: number,
+  questId: string,
+  objectiveId: string,
+  progress: number,
+  completed?: boolean
+): Promise<QuestDTO> {
+  const res = await apiClient.patch<QuestDTO>(
+    `/game/quests/sessions/${sessionId}/quests/${questId}/objectives`,
+    { objective_id: objectiveId, progress, completed }
+  );
+  return res.data;
+}
+
+export async function completeObjective(
+  sessionId: number,
+  questId: string,
+  objectiveId: string
+): Promise<QuestDTO> {
+  const res = await apiClient.post<QuestDTO>(
+    `/game/quests/sessions/${sessionId}/quests/${questId}/objectives/${objectiveId}/complete`
+  );
+  return res.data;
+}
+
+// Inventory API
+export interface InventoryItemDTO {
+  id: string;
+  name: string;
+  quantity: number;
+  metadata: Record<string, unknown>;
+}
+
+export async function listInventoryItems(sessionId: number): Promise<InventoryItemDTO[]> {
+  const res = await apiClient.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
+  return res.data;
+}
+
+export async function getInventoryItem(sessionId: number, itemId: string): Promise<InventoryItemDTO> {
+  const res = await apiClient.get<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`);
+  return res.data;
+}
+
+export async function addInventoryItem(
+  sessionId: number,
+  itemData: {
+    item_id: string;
+    name: string;
+    quantity?: number;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<InventoryItemDTO> {
+  const res = await apiClient.post<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items`, itemData);
+  return res.data;
+}
+
+export async function removeInventoryItem(
+  sessionId: number,
+  itemId: string,
+  quantity: number = 1
+): Promise<{ message: string }> {
+  const res = await apiClient.delete<{ message: string }>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
+    data: { quantity },
+  });
+  return res.data;
+}
+
+export async function updateInventoryItem(
+  sessionId: number,
+  itemId: string,
+  updates: {
+    name?: string;
+    quantity?: number;
+    metadata?: Record<string, unknown>;
+  }
+): Promise<InventoryItemDTO> {
+  const res = await apiClient.patch<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, updates);
+  return res.data;
+}
+
+export async function clearInventory(sessionId: number): Promise<{ message: string }> {
+  const res = await apiClient.delete<{ message: string }>(`/game/inventory/sessions/${sessionId}/clear`);
+  return res.data;
+}
+
+export async function getInventoryStats(sessionId: number): Promise<{ unique_items: number; total_quantity: number }> {
+  const res = await apiClient.get<{ unique_items: number; total_quantity: number }>(`/game/inventory/sessions/${sessionId}/stats`);
+  return res.data;
+}

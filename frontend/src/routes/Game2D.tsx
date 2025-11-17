@@ -39,6 +39,9 @@ import {
 } from '../lib/game/interactionSchema';
 import { loadWorldSession, saveWorldSession } from '../lib/game/session';
 import { executeInteraction, type InteractionContext } from '../lib/game/interactions';
+import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
+import { QuestLog } from '../components/game/QuestLog';
+import { InventoryPanel } from '../components/game/InventoryPanel';
 
 interface WorldTime {
   day: number;
@@ -68,6 +71,9 @@ export function Game2D() {
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
   const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
+  const [showRelationshipDashboard, setShowRelationshipDashboard] = useState(false);
+  const [showQuestLog, setShowQuestLog] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -659,10 +665,61 @@ export function Game2D() {
               New World
             </Button>
           </Panel>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={showRelationshipDashboard ? "primary" : "secondary"}
+              onClick={() => setShowRelationshipDashboard(!showRelationshipDashboard)}
+            >
+              Relationships
+            </Button>
+            <Button
+              size="sm"
+              variant={showQuestLog ? "primary" : "secondary"}
+              onClick={() => setShowQuestLog(!showQuestLog)}
+            >
+              Quests
+            </Button>
+            <Button
+              size="sm"
+              variant={showInventory ? "primary" : "secondary"}
+              onClick={() => setShowInventory(!showInventory)}
+            >
+              Inventory
+            </Button>
+          </div>
         </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
+
+      {/* Game UI Overlays */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+        {showRelationshipDashboard && (
+          <div className="lg:col-span-1">
+            <RelationshipDashboard
+              session={gameSession}
+              onClose={() => setShowRelationshipDashboard(false)}
+            />
+          </div>
+        )}
+        {showQuestLog && (
+          <div className="lg:col-span-1">
+            <QuestLog
+              session={gameSession}
+              onClose={() => setShowQuestLog(false)}
+            />
+          </div>
+        )}
+        {showInventory && (
+          <div className="lg:col-span-1">
+            <InventoryPanel
+              session={gameSession}
+              onClose={() => setShowInventory(false)}
+            />
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel className="space-y-3">
