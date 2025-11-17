@@ -399,6 +399,47 @@ class JobService:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def count_jobs(
+        self,
+        user: User,
+        workspace_id: Optional[int] = None,
+        status: Optional[JobStatus] = None,
+        operation_type: Optional[OperationType] = None,
+    ) -> int:
+        """
+        Count jobs for user with filters
+
+        Uses same filters as list_jobs but returns count instead of jobs.
+        Essential for pagination UI to show total results.
+
+        Args:
+            user: User (or admin)
+            workspace_id: Filter by workspace
+            status: Filter by status
+            operation_type: Filter by operation type
+
+        Returns:
+            Total count of matching jobs
+        """
+        from sqlalchemy import func
+
+        query = select(func.count(Job.id))
+
+        # Filter by user (unless admin)
+        if not user.is_admin():
+            query = query.where(Job.user_id == user.id)
+
+        # Apply same filters as list_jobs
+        if workspace_id:
+            query = query.where(Job.workspace_id == workspace_id)
+        if status:
+            query = query.where(Job.status == status)
+        if operation_type:
+            query = query.where(Job.operation_type == operation_type)
+
+        result = await self.db.execute(query)
+        return result.scalar() or 0
+
     async def get_pending_jobs(
         self,
         provider_id: Optional[str] = None,

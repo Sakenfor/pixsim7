@@ -170,6 +170,7 @@ JOB_CANCELLED = "job:cancelled"
 ASSET_CREATED = "asset:created"
 ASSET_DOWNLOADED = "asset:downloaded"
 ASSET_DOWNLOAD_FAILED = "asset:download_failed"
+ASSET_DELETED = "asset:deleted"
 
 # Provider events
 PROVIDER_SUBMITTED = "provider:submitted"

@@ -396,12 +396,29 @@ class AssetService:
             storage_gb = asset.file_size_bytes / (1024 ** 3)
             await self.users.decrement_storage(user, storage_gb)
 
+        # Delete local file if exists
+        if asset.local_path and os.path.exists(asset.local_path):
+            try:
+                os.remove(asset.local_path)
+                logger.info(f"Deleted local file: {asset.local_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete local file {asset.local_path}: {e}")
+                # Don't fail the deletion if file removal fails
+
         # Delete from database
         await self.db.delete(asset)
         await self.db.commit()
 
-        # TODO: Delete local file if exists
-        # TODO: Emit asset:deleted event
+        # Emit asset:deleted event
+        from pixsim7_backend.infrastructure.events.bus import event_bus
+        await event_bus.publish("asset:deleted", {
+            "asset_id": asset.id,
+            "user_id": user.id,
+            "provider_id": asset.provider_id,
+            "provider_asset_id": asset.provider_asset_id,
+            "media_type": asset.media_type.value,
+            "had_local_file": bool(asset.local_path),
+        })
 
     # ===== ASSET DOWNLOAD (Phase 2) =====
 
