@@ -14,23 +14,47 @@ type RPCRequest = {
   id: number;
   type: 'call';
   method: string;
-  args: any[];
+  args: unknown[];
 };
 
 type RPCResponse = {
   id: number;
   type: 'return' | 'error';
-  value?: any;
+  value?: unknown;
   error?: string;
 };
 
 type RPCNotification = {
   type: 'notification';
   event: string;
-  data: any;
+  data: unknown;
 };
 
 type RPCMessage = RPCRequest | RPCResponse | RPCNotification;
+
+/**
+ * Validate that a message is a valid RPC message
+ */
+function isValidRPCMessage(msg: unknown): msg is RPCMessage {
+  if (!msg || typeof msg !== 'object') return false;
+  const obj = msg as Record<string, unknown>;
+
+  if (obj.type === 'call') {
+    return typeof obj.id === 'number' &&
+           typeof obj.method === 'string' &&
+           Array.isArray(obj.args);
+  }
+
+  if (obj.type === 'return' || obj.type === 'error') {
+    return typeof obj.id === 'number';
+  }
+
+  if (obj.type === 'notification') {
+    return typeof obj.event === 'string';
+  }
+
+  return obj.type === 'pluginReady' || obj.type === 'pluginError';
+}
 
 /**
  * Sandboxed plugin instance running in an iframe
@@ -38,19 +62,24 @@ type RPCMessage = RPCRequest | RPCResponse | RPCNotification;
 export class SandboxedPlugin implements Plugin {
   private iframe: HTMLIFrameElement;
   private nextRequestId = 1;
-  private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (error: any) => void }>();
+  private pendingRequests = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timeoutId: number }>();
   private messageHandler: ((event: MessageEvent) => void) | null = null;
   private pluginId: string;
   private manifest: PluginManifest;
   private api: PluginAPI;
+  private readonly allowedOrigin: string;
 
   constructor(pluginId: string, manifest: PluginManifest, code: string, api: PluginAPI) {
     this.pluginId = pluginId;
     this.manifest = manifest;
     this.api = api;
+    this.allowedOrigin = window.location.origin;
 
-    // Create isolated iframe
+    // Create isolated iframe with strict sandbox
     this.iframe = document.createElement('iframe');
+    // allow-scripts: Required for plugin code execution
+    // Note: We intentionally DO NOT include 'allow-same-origin' to prevent
+    // access to parent window's DOM, localStorage, etc.
     this.iframe.setAttribute('sandbox', 'allow-scripts');
     this.iframe.style.display = 'none';
     document.body.appendChild(this.iframe);
@@ -74,13 +103,22 @@ export class SandboxedPlugin implements Plugin {
       throw new Error('Failed to access iframe document');
     }
 
+    // Escape HTML entities in plugin name to prevent XSS
+    const escapedName = this.manifest.name
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
     iframeDoc.open();
     iframeDoc.write(`
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
-          <title>Plugin: ${this.manifest.name}</title>
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none';">
+          <title>Plugin: ${escapedName}</title>
         </head>
         <body>
           <script>${sandboxScript}</script>
@@ -94,6 +132,11 @@ export class SandboxedPlugin implements Plugin {
    * Create sandbox script that sets up RPC bridge and loads plugin code
    */
   private createSandboxScript(pluginCode: string): string {
+    // Escape the plugin code to prevent breaking out of the script context
+    const escapedPluginCode = pluginCode
+      .replace(/\\/g, '\\\\')
+      .replace(/<\/script>/gi, '<\\/script>');
+
     return `
       (function() {
         'use strict';
@@ -101,27 +144,46 @@ export class SandboxedPlugin implements Plugin {
         // RPC bridge for communicating with parent
         let nextRequestId = 1;
         const pendingRequests = new Map();
+        const RPC_TIMEOUT = 30000; // 30 seconds
+
+        // Validate message structure
+        function isValidMessage(msg) {
+          if (!msg || typeof msg !== 'object') return false;
+
+          if (msg.type === 'return' || msg.type === 'error') {
+            return typeof msg.id === 'number';
+          }
+
+          if (msg.type === 'notification') {
+            return typeof msg.event === 'string';
+          }
+
+          return false;
+        }
 
         // Call parent API method
         function callParent(method, args) {
           return new Promise((resolve, reject) => {
             const id = nextRequestId++;
-            pendingRequests.set(id, { resolve, reject });
 
+            const timeoutId = setTimeout(() => {
+              if (pendingRequests.has(id)) {
+                pendingRequests.delete(id);
+                reject(new Error('RPC call timeout'));
+              }
+            }, RPC_TIMEOUT);
+
+            pendingRequests.set(id, { resolve, reject, timeoutId });
+
+            // Note: Using '*' as target origin because this iframe is sandboxed
+            // without 'allow-same-origin', giving it a null origin.
+            // Security is enforced by parent's source validation.
             window.parent.postMessage({
               id,
               type: 'call',
               method,
               args
             }, '*');
-
-            // Timeout after 30 seconds
-            setTimeout(() => {
-              if (pendingRequests.has(id)) {
-                pendingRequests.delete(id);
-                reject(new Error('RPC call timeout'));
-              }
-            }, 30000);
           });
         }
 
@@ -129,9 +191,16 @@ export class SandboxedPlugin implements Plugin {
         window.addEventListener('message', (event) => {
           const msg = event.data;
 
+          // Validate message structure
+          if (!isValidMessage(msg)) {
+            console.warn('Plugin received invalid message:', msg);
+            return;
+          }
+
           if (msg.type === 'return' || msg.type === 'error') {
             const pending = pendingRequests.get(msg.id);
             if (pending) {
+              clearTimeout(pending.timeoutId);
               pendingRequests.delete(msg.id);
               if (msg.type === 'return') {
                 pending.resolve(msg.value);
@@ -228,7 +297,7 @@ export class SandboxedPlugin implements Plugin {
 
         // Load plugin code
         try {
-          ${pluginCode}
+          ${escapedPluginCode}
 
           // Plugin code should define a global 'plugin' object
           if (typeof plugin === 'undefined') {
@@ -241,6 +310,7 @@ export class SandboxedPlugin implements Plugin {
           // Call onEnable
           if (plugin.onEnable) {
             Promise.resolve(plugin.onEnable(api)).then(() => {
+              // Note: Using '*' as explained above - sandboxed iframe has null origin
               window.parent.postMessage({ type: 'pluginReady' }, '*');
             }).catch((error) => {
               window.parent.postMessage({
@@ -265,21 +335,28 @@ export class SandboxedPlugin implements Plugin {
    * Handle messages from iframe
    */
   private handleMessage(event: MessageEvent): void {
-    // Only accept messages from our iframe
+    // Security: Only accept messages from our specific iframe
     if (event.source !== this.iframe.contentWindow) {
       return;
     }
 
-    const msg: RPCMessage = event.data;
+    // Validate message structure
+    if (!isValidRPCMessage(event.data)) {
+      console.warn(`[Plugin ${this.pluginId}] Received invalid message:`, event.data);
+      return;
+    }
+
+    const msg = event.data as RPCMessage;
 
     if (msg.type === 'call') {
       // Handle RPC call from plugin
       this.handleRPCCall(msg as RPCRequest);
     } else if (msg.type === 'pluginReady') {
       // Plugin initialization complete
-      console.info(`Plugin ${this.pluginId} ready`);
+      console.info(`[Plugin ${this.pluginId}] Ready`);
     } else if (msg.type === 'pluginError') {
-      console.error(`Plugin ${this.pluginId} error:`, (msg as any).error);
+      const error = (msg as { error?: string }).error || 'Unknown error';
+      console.error(`[Plugin ${this.pluginId}] Error:`, error);
     }
   }
 
@@ -290,15 +367,16 @@ export class SandboxedPlugin implements Plugin {
     try {
       const result = await this.executeAPICall(request.method, request.args);
       this.sendResponse(request.id, result);
-    } catch (error: any) {
-      this.sendError(request.id, String(error?.message ?? error));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.sendError(request.id, errorMessage);
     }
   }
 
   /**
    * Execute API call on behalf of plugin
    */
-  private async executeAPICall(method: string, args: any[]): Promise<any> {
+  private async executeAPICall(method: string, args: unknown[]): Promise<unknown> {
     const parts = method.split('.');
 
     if (parts[0] === 'getPluginId') {
@@ -370,9 +448,11 @@ export class SandboxedPlugin implements Plugin {
   /**
    * Send RPC response to iframe
    */
-  private sendResponse(id: number, value: any): void {
+  private sendResponse(id: number, value: unknown): void {
     if (!this.iframe.contentWindow) return;
 
+    // Note: Using '*' because the iframe is sandboxed without 'allow-same-origin',
+    // giving it a null origin. The iframe's source is validated in handleMessage.
     this.iframe.contentWindow.postMessage({
       id,
       type: 'return',
@@ -386,6 +466,7 @@ export class SandboxedPlugin implements Plugin {
   private sendError(id: number, error: string): void {
     if (!this.iframe.contentWindow) return;
 
+    // Note: Using '*' as explained in sendResponse
     this.iframe.contentWindow.postMessage({
       id,
       type: 'error',
@@ -396,9 +477,10 @@ export class SandboxedPlugin implements Plugin {
   /**
    * Send notification to iframe
    */
-  private sendNotification(event: string, data: any): void {
+  private sendNotification(event: string, data: unknown): void {
     if (!this.iframe.contentWindow) return;
 
+    // Note: Using '*' as explained in sendResponse
     this.iframe.contentWindow.postMessage({
       type: 'notification',
       event,
@@ -433,6 +515,13 @@ export class SandboxedPlugin implements Plugin {
    * Cleanup sandbox
    */
   destroy(): void {
+    // Clear all pending requests and their timeouts
+    for (const [id, request] of this.pendingRequests.entries()) {
+      clearTimeout(request.timeoutId);
+      request.reject(new Error('Plugin destroyed'));
+    }
+    this.pendingRequests.clear();
+
     // Remove message handler
     if (this.messageHandler) {
       window.removeEventListener('message', this.messageHandler);
@@ -443,9 +532,6 @@ export class SandboxedPlugin implements Plugin {
     if (this.iframe.parentNode) {
       this.iframe.parentNode.removeChild(this.iframe);
     }
-
-    // Clear pending requests
-    this.pendingRequests.clear();
   }
 }
 
@@ -459,31 +545,52 @@ export async function loadPluginInSandbox(
   api: PluginAPI
 ): Promise<Plugin> {
   return new Promise((resolve, reject) => {
-    try {
-      const plugin = new SandboxedPlugin(pluginId, manifest, code, api);
+    let plugin: SandboxedPlugin | null = null;
+    let messageHandler: ((event: MessageEvent) => void) | null = null;
 
-      // Wait for plugin ready or error
+    try {
+      plugin = new SandboxedPlugin(pluginId, manifest, code, api);
+      const pluginInstance = plugin;
+
+      // Wait for plugin ready or error (10 seconds timeout)
       const timeout = setTimeout(() => {
-        reject(new Error('Plugin initialization timeout'));
+        if (messageHandler) {
+          window.removeEventListener('message', messageHandler);
+        }
+        reject(new Error(`Plugin ${pluginId} initialization timeout`));
       }, 10000);
 
-      const messageHandler = (event: MessageEvent) => {
-        if (event.source !== (plugin as any).iframe.contentWindow) return;
+      messageHandler = (event: MessageEvent) => {
+        if (event.source !== pluginInstance.iframe.contentWindow) return;
+
+        // Validate message
+        if (!isValidRPCMessage(event.data)) {
+          return;
+        }
 
         if (event.data.type === 'pluginReady') {
           clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
-          resolve(plugin);
+          if (messageHandler) {
+            window.removeEventListener('message', messageHandler);
+          }
+          resolve(pluginInstance);
         } else if (event.data.type === 'pluginError') {
           clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
-          reject(new Error(event.data.error));
+          if (messageHandler) {
+            window.removeEventListener('message', messageHandler);
+          }
+          const error = (event.data as { error?: string }).error || 'Unknown error';
+          reject(new Error(`Plugin ${pluginId} initialization failed: ${error}`));
         }
       };
 
       window.addEventListener('message', messageHandler);
     } catch (error) {
-      reject(error);
+      if (messageHandler) {
+        window.removeEventListener('message', messageHandler);
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      reject(new Error(`Failed to create plugin ${pluginId}: ${errorMessage}`));
     }
   });
 }
