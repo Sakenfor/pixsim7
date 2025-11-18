@@ -49,14 +49,11 @@ import { loadWorldSession, saveWorldSession } from '../lib/game/session';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
-import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
-import { QuestLog } from '../components/game/QuestLog';
-import { InventoryPanel } from '../components/game/InventoryPanel';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
+import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
-import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
 import type { WorldToolContext } from '../lib/worldTools/types';
 import { worldToolRegistry } from '../lib/worldTools/registry';
 
@@ -142,6 +139,11 @@ export function Game2D() {
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  // Register built-in world tools on mount
+  useEffect(() => {
+    registerBuiltinWorldTools();
+  }, []);
 
   // Sync game state with plugin manager
   useEffect(() => {
