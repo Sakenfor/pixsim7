@@ -74,3 +74,84 @@ Create a **Simulation Playground** mode where designers can:
 - Designers can define a simple scenario, advance time, and see changes in world/brain state via existing tools from a dedicated Simulation Playground route.
 - The playground does not interfere with normal Game2D behavior or sessions.
 
+---
+
+## Phase 2: Scenario Libraries, Recording & Deeper Simulation Hooks
+
+Once the Simulation Playground exists as a basic visualizer + time controls, the next step is to turn it into a more robust tool for design and balancing.
+
+**Phase 2 Goals**
+- Introduce **named scenario libraries** (global and per-world) with tags and notes.
+- Allow **recording** of simulation runs (sequence of state snapshots) for later review or regression testing.
+- Provide hooks into deeper simulation logic (relationship drift, scheduled events, etc.) when available.
+
+**Key Ideas**
+- Extend `SimulationScenario` with metadata:
+  ```ts
+  interface SimulationScenario {
+    id: string;
+    name: string;
+    worldId: number;
+    initialWorldTime: number;
+    initialSessionFlags: Record<string, unknown>;
+    initialRelationships: Record<string, any>;
+    npcIds: number[];
+    tags?: string[];
+    notes?: string;
+  }
+  ```
+- Store scenarios in a simple library, with filtering by world and tags.
+- Add a concept of a **simulation run**:
+  ```ts
+  interface SimulationRunSnapshot {
+    tick: number;
+    worldTime: number;
+    sessionFlags: Record<string, unknown>;
+    relationships: Record<string, any>;
+  }
+
+  interface SimulationRun {
+    id: string;
+    scenarioId: string;
+    startedAt: number;
+    snapshots: SimulationRunSnapshot[];
+  }
+  ```
+- Optionally, wire the “tick” into future simulation functions (e.g. `runSimulationStep(state)` from a game-core module).
+
+**Phase 2 Implementation Outline**
+1. **Scenario Library Enhancements**
+   - Replace the one-off list in localStorage with a library module that supports:
+     - `getScenarios()`, `addScenario()`, `updateScenario()`, `removeScenario()`.
+     - Filtering by `worldId` and tags.
+   - Enhance the playground UI:
+     - Show a sidebar of scenarios with search by name/tag.
+     - Allow duplicating a scenario to tweak variations (A/B scenarios).
+
+2. **Simulation Run Recording**
+   - Add a recording toggle in the playground UI:
+     - When enabled, each tick appends a `SimulationRunSnapshot` to the current run (capturing worldTime, session flags, relationships).
+   - Persist runs in localStorage with references to the scenario they came from.
+   - Provide a simple “Run Viewer” section:
+     - List recent runs for the selected scenario.
+     - Allow stepping through snapshots to see how state evolved.
+
+3. **Hook into Deeper Simulation Logic (Optional)**
+   - Define a thin interface in a new module, e.g. `frontend/src/lib/simulation/engine.ts`:
+     ```ts
+     export interface SimulationState {
+       worldTime: number;
+       sessionFlags: Record<string, unknown>;
+       relationships: Record<string, any>;
+       // add more as needed
+     }
+
+     export type SimulationStepFn = (state: SimulationState) => SimulationState;
+     ```
+   - Allow plugging in a `SimulationStepFn` (even a stub) that runs on each tick before snapshots are taken.
+   - For now, this can log or perform very simple relationship drift; later it can call into game-core/back-end logic.
+
+4. **Non-Intrusive Design**
+   - Ensure the playground’s simulation state is isolated from “real” Game2D sessions:
+     - Use cloned state objects for simulation.
+     - Only call backend APIs when explicitly desired (e.g. when simulating real GameSession updates; otherwise keep it local).

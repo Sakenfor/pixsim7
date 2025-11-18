@@ -67,3 +67,58 @@ Add a system for **Interaction Presets** that:
 - Designers can create named interaction presets and reuse them across multiple NPC slots without touching raw config each time.
 - Applying a preset correctly configures and enables the appropriate interaction plugin for a slot.
 
+---
+
+## Phase 2: Preset Libraries, Roles & Balancing
+
+After the basic preset system is working, the next step is to make presets richer and easier to manage across a whole game.
+
+**Phase 2 Goals**
+- Introduce **global preset libraries** and per-world overrides.
+- Let designers define **role-based defaults** (e.g. “bartender greeting”, “romanceable NPC flirt”) that auto-apply to certain slots.
+- Add light **balancing/analytics hooks** so designers can see how often presets are used and how they perform.
+
+**Key Ideas**
+- Extend `InteractionPreset` with optional role/conditions:
+  ```ts
+  interface InteractionPreset {
+    id: string;
+    name: string;
+    interactionId: string;
+    config: Record<string, any>;
+    category?: string;
+    tags?: string[];
+    defaultForRoles?: string[]; // e.g. ['bartender', 'romance_target']
+  }
+  ```
+- Maintain:
+  - A global preset library (e.g. `globalInteractionPresets` in localStorage or a static JSON).
+  - Per-world preset overrides that can shadow or extend global presets.
+- Add optional logging hooks when a preset-based interaction runs to capture usage stats (in dev mode only, or via an in-memory counter).
+
+**Phase 2 Implementation Outline**
+1. **Global vs World Presets**
+   - Adjust presets store to support:
+     - `getGlobalPresets()`, `setGlobalPresets()`.
+     - `getWorldPresets(worldId)`, `setWorldPresets(worldId, presets)`.
+   - Resolution strategy when editing/applying:
+     - Show combined list, but differentiate global vs world in the UI (badge or section).
+     - When saving changes to a global preset from a world context, either:
+       - Fork into a world-specific preset, or
+       - Provide a toggle “update globally” vs “override in this world”.
+
+2. **Role-Based Defaults for Slots**
+   - Extend `NpcSlot2d` and/or its metadata in `GameLocation.meta` with roles that map to presets (if not already set):
+     - e.g. `slot.roles = ['bartender']`.
+   - In `NpcSlotEditor`, when creating or editing a slot:
+     - Suggest presets whose `defaultForRoles` includes any of the slot’s roles.
+     - Optionally auto-apply a role default when creating new slots with a certain role.
+
+3. **Hotspot Preset Integration (Optional but Recommended)**
+   - If there is a hotspot editor for 2D interactions, integrate the same preset selection logic there:
+     - Show presets filtered by interaction kind (e.g. only presets whose `interactionId` matches the hotspot’s action type).
+
+4. **Usage & Balancing Hooks (Lightweight)**
+   - In the interaction executor (`executeSlotInteractions` or `executeInteraction`), add a dev-only hook that:
+     - If an interaction came from a preset (store preset ID on the config metadata when applied), increment a counter for that preset ID in a small in-memory or localStorage store.
+   - Add a simple dev panel (later) to view preset usage counts, helping designers see which presets are actually used.

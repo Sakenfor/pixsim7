@@ -70,3 +70,68 @@ Add a lightweight **per-world UI theme and view mode** system that:
 - Designers can choose theme + view mode per world and see Game2D/UI respond accordingly (e.g., minimalist vs HUD-heavy).
 - Theme and view mode persist with the world and apply automatically when that world is active.
 
+---
+
+## Phase 2: Theme Presets, User Overrides & Plugin-Provided Themes
+
+After basic per-world themes and view modes work, the next step is to make themes more reusable, extensible, and player-aware.
+
+**Phase 2 Goals**
+- Introduce reusable **theme presets** that can be applied to multiple worlds.
+- Allow player-level **UI overrides** (e.g., “always use high-contrast” regardless of world theme).
+- Let UI plugins **contribute themes** in a controlled way (e.g., a “retro CRT” theme plugin).
+
+**Key Ideas**
+- Define a `WorldUiThemePreset` type:
+  ```ts
+  interface WorldUiThemePreset {
+    id: string;                // 'neo-noir', 'bright-minimal'
+    name: string;
+    description?: string;
+    theme: WorldUiTheme;
+  }
+  ```
+- Maintain a global list of theme presets (in a small store or JSON file) and allow worlds to reference presets by ID while still allowing local overrides.
+- Use a simple user preferences store (localStorage-backed) for per-user overrides:
+  - e.g. `{ forcedThemeId?: string; prefersHighContrast?: boolean; }`.
+- For plugin-provided themes, use the UI plugin system to register presets that get merged into the preset list when the plugin is enabled.
+
+**Phase 2 Implementation Outline**
+1. **Theme Preset Store**
+   - Create a `worldThemePresetsStore.ts` in the frontend that:
+     - Holds a list of `WorldUiThemePreset`s.
+     - Provides `getThemePresets()`, `addThemePreset()`, `removeThemePreset()`, `findThemePresetById()`.
+   - Extend `WorldUiConfig` so a world can reference a preset and optionally override parts:
+     ```ts
+     interface WorldUiConfig {
+       themePresetId?: string;
+       themeOverrides?: Partial<WorldUiTheme>;
+       viewMode?: ViewMode;
+     }
+     ```
+   - At runtime, resolve `themePresetId` + `themeOverrides` into the final theme applied.
+
+2. **World Theme Editor Enhancements**
+   - Update `WorldThemeEditor` to:
+     - Show available presets with preview swatches.
+     - Allow saving the current world’s theme as a new preset.
+     - Display when a world is using a preset vs custom theme.
+
+3. **User-Level Overrides**
+   - Add a simple `userUiPreferences` module that stores per-user preferences in localStorage (e.g. `pixsim7_ui_prefs`):
+     - `forcedThemeId?: string;`
+     - `prefersHighContrast?: boolean;`
+   - In the theme application layer:
+     - If `forcedThemeId` is set, use that theme preset instead of the world’s theme (but still consider `prefersHighContrast` to tweak some colors).
+   - Optional: add a small “UI Preferences” panel with toggles for high contrast / theme choice.
+
+4. **Plugin-Provided Themes (Optional)**
+   - Define a minimal theme contribution interface for UI plugins, e.g.:
+     ```ts
+     interface ThemeContribution {
+       id: string;
+       preset: WorldUiThemePreset;
+     }
+     ```
+   - Extend `PluginAPI` (for UI plugins) or a helper to allow plugins with the right permission to register theme contributions into `worldThemePresetsStore` when enabled, and remove them on disable.
+   - This enables “theme plugins” that add new theme presets without touching core code.
