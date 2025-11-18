@@ -10,6 +10,7 @@ import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerBuiltinHelpers } from '@pixsim7/game-core';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { registerSeductionNode } from './lib/plugins/seductionNode';
+import { registerQuestTriggerNode } from './lib/plugins/questTriggerNode';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -47,6 +48,7 @@ function App() {
 
     // Register custom node type plugins
     registerSeductionNode();
+    registerQuestTriggerNode();
 
     // Register builtin node renderers
     registerBuiltinRenderers();

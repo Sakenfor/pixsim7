@@ -12,6 +12,7 @@ import { EndNodeEditor } from './EndNodeEditor';
 import { SceneCallNodeEditor } from './SceneCallNodeEditor';
 import { ReturnNodeEditor } from './ReturnNodeEditor';
 import { SeductionNodeEditor } from './SeductionNodeEditor';
+import { QuestTriggerEditor } from './QuestTriggerEditor';
 
 // Dynamic editor component map
 const EDITOR_COMPONENTS: Record<string, React.ComponentType<any>> = {
@@ -23,6 +24,7 @@ const EDITOR_COMPONENTS: Record<string, React.ComponentType<any>> = {
   ReturnNodeEditor,
   MiniGameNodeEditor,
   SeductionNodeEditor,
+  QuestTriggerEditor,
 };
 
 export function InspectorPanel() {
