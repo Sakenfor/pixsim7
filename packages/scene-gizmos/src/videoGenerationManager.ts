@@ -1,9 +1,11 @@
 /**
  * Video Generation Manager for Real-Time NPC Responses
- * Handles async generation, caching, fallbacks, and predictive pre-generation
+ * Integrates with existing Jobs API for backend generation
+ * Handles caching, fallbacks, and predictive pre-generation client-side
  */
 
 import type { VideoGenerationOutput } from './npcResponseEvaluator';
+import type { NpcResponseParams } from '@pixsim7/types';
 
 // ============================================================================
 // Configuration Types
@@ -27,6 +29,12 @@ export interface VideoGenerationConfig {
 
   /** Enable progressive loading (low quality → high quality) */
   progressive: boolean;
+
+  /** API base URL (default: /api/v1) */
+  apiBaseUrl?: string;
+
+  /** Auth token for API requests */
+  authToken?: string;
 }
 
 export interface QualityPreset {
@@ -79,6 +87,7 @@ export const QUALITY_PRESETS: Record<VideoGenerationConfig['preset'], QualityPre
 
 export interface GenerationRequest {
   id: string;
+  jobId?: number; // Job ID from backend API
   params: VideoGenerationOutput;
   priority: number; // Higher = more urgent
   timestamp: number;
@@ -301,7 +310,9 @@ export class VideoGenerationManager {
   private queue: GenerationRequest[] = [];
   private processing = false;
   private config: VideoGenerationConfig;
-  private generateVideoFn?: (params: VideoGenerationOutput, quality: QualityPreset) => Promise<GeneratedVideo>;
+  private wsConnection: WebSocket | null = null;
+  private apiBaseUrl: string;
+  private pendingJobs = new Map<number, GenerationRequest>(); // jobId -> request
 
   constructor(config: Partial<VideoGenerationConfig> = {}) {
     this.config = {
@@ -311,24 +322,107 @@ export class VideoGenerationManager {
       predictive: true,
       cacheSize: 50,
       progressive: true,
+      apiBaseUrl: '/api/v1',
       ...config,
     };
 
+    this.apiBaseUrl = this.config.apiBaseUrl || '/api/v1';
     this.cache = new VideoCache(this.config.cacheSize);
     this.predictor = new PredictiveGenerator();
+
+    // Connect to WebSocket for real-time job updates
+    if (typeof window !== 'undefined') {
+      this.connectWebSocket();
+    }
   }
 
   /**
-   * Set the actual video generation function (integrates with your backend)
+   * Connect to jobs WebSocket for real-time updates
    */
-  setGenerationFunction(
-    fn: (params: VideoGenerationOutput, quality: QualityPreset) => Promise<GeneratedVideo>
-  ): void {
-    this.generateVideoFn = fn;
+  private connectWebSocket(): void {
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const wsUrl = `${protocol}//${host}${this.apiBaseUrl}/ws/jobs`;
+
+      console.log('[VideoGenerationManager] Connecting to WebSocket:', wsUrl);
+
+      this.wsConnection = new WebSocket(wsUrl);
+
+      this.wsConnection.onopen = () => {
+        console.log('[VideoGenerationManager] WebSocket connected');
+      };
+
+      this.wsConnection.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.handleJobUpdate(data);
+        } catch (error) {
+          console.error('[VideoGenerationManager] Failed to parse WebSocket message:', error);
+        }
+      };
+
+      this.wsConnection.onerror = (error) => {
+        console.error('[VideoGenerationManager] WebSocket error:', error);
+      };
+
+      this.wsConnection.onclose = () => {
+        console.log('[VideoGenerationManager] WebSocket closed, reconnecting in 5s...');
+        setTimeout(() => this.connectWebSocket(), 5000);
+      };
+    } catch (error) {
+      console.error('[VideoGenerationManager] Failed to connect WebSocket:', error);
+    }
   }
 
   /**
-   * Request video generation
+   * Handle job update from WebSocket
+   */
+  private handleJobUpdate(data: any): void {
+    const jobId = data.job_id || data.id;
+    if (!jobId) return;
+
+    const request = this.pendingJobs.get(jobId);
+    if (!request) return;
+
+    if (data.type === 'job:completed' || data.status === 'completed') {
+      // Job completed successfully
+      const video: GeneratedVideo = {
+        id: jobId.toString(),
+        url: data.result_url || data.url || '',
+        params: request.params,
+        quality: this.config.preset,
+        generatedAt: Date.now(),
+        duration: data.duration || 0,
+      };
+
+      // Cache the video
+      this.cache.set(request.params, video);
+
+      // Notify completion
+      request.onComplete?.(video);
+
+      // Remove from pending
+      this.pendingJobs.delete(jobId);
+      this.queue = this.queue.filter(r => r.jobId !== jobId);
+
+    } else if (data.type === 'job:failed' || data.status === 'failed') {
+      // Job failed
+      console.error('[VideoGenerationManager] Job failed:', data.error_message || data.error);
+      request.onFallback?.(this.getFallback(request.params));
+
+      // Remove from pending
+      this.pendingJobs.delete(jobId);
+      this.queue = this.queue.filter(r => r.jobId !== jobId);
+
+    } else if (data.type === 'job:processing' || data.status === 'processing') {
+      // Job is processing
+      console.log('[VideoGenerationManager] Job processing:', jobId);
+    }
+  }
+
+  /**
+   * Request video generation via Jobs API
    */
   async requestVideo(
     params: VideoGenerationOutput,
@@ -341,39 +435,92 @@ export class VideoGenerationManager {
       return cached;
     }
 
-    // Create request
-    const request: GenerationRequest = {
-      id: `${Date.now()}-${Math.random()}`,
-      params,
-      priority,
-      timestamp: Date.now(),
-      config: this.config,
+    // Build NPC response params for API
+    const qualityPreset = QUALITY_PRESETS[this.config.preset];
+    const npcParams: NpcResponseParams = {
+      npc_id: params.npcId || 'unknown',
+      npc_name: params.npcName || 'NPC',
+      npc_base_image: params.npcBaseImage,
+      expression: params.expression,
+      emotion: params.emotion,
+      animation: params.animation,
+      intensity: params.intensity,
+      art_style: params.style?.artStyle,
+      loras: params.loras,
+      prompt: params.prompt,
+      negative_prompt: params.negativePrompt,
+      quality_preset: this.config.preset,
+      width: parseInt(qualityPreset.resolution.split('x')[0]),
+      height: parseInt(qualityPreset.resolution.split('x')[1]),
+      fps: qualityPreset.fps,
+      steps: qualityPreset.steps,
+      cfg: qualityPreset.cfg,
+      seed: params.seed,
     };
 
-    // Add to queue
-    this.queue.push(request);
-    this.sortQueue();
+    // Create job via API
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.config.authToken ? { 'Authorization': `Bearer ${this.config.authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          operation_type: 'npc_response',
+          provider_id: 'comfyui', // TODO: Make this configurable
+          params: npcParams,
+          priority: Math.round(priority * 2), // Map 0-10 to 0-20
+        }),
+      });
 
-    // Start processing if not already
-    if (!this.processing) {
-      this.processQueue();
-    }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
 
-    // Try to predict and pre-generate next states
-    if (this.config.predictive) {
-      this.predictor.recordState(params);
-      const predictions = this.predictor.predictNextStates();
+      const job = await response.json();
+      const jobId = job.id;
 
-      // Queue predictions at lower priority
-      for (const prediction of predictions) {
-        if (!this.cache.has(prediction)) {
-          this.requestVideo(prediction, 0.5); // Lower priority
+      console.log('[VideoGenerationManager] Job created:', jobId);
+
+      // Create request tracking
+      const request: GenerationRequest = {
+        id: `${Date.now()}-${Math.random()}`,
+        jobId,
+        params,
+        priority,
+        timestamp: Date.now(),
+        config: this.config,
+      };
+
+      // Add to pending jobs
+      this.pendingJobs.set(jobId, request);
+      this.queue.push(request);
+
+      // Try to predict and pre-generate next states
+      if (this.config.predictive) {
+        this.predictor.recordState(params);
+        const predictions = this.predictor.predictNextStates();
+
+        // Queue predictions at lower priority
+        for (const prediction of predictions) {
+          if (!this.cache.has(prediction)) {
+            // Don't await - fire and forget for predictions
+            this.requestVideo(prediction, 0.5).catch(err => {
+              console.warn('[VideoGenerationManager] Prediction generation failed:', err);
+            });
+          }
         }
       }
-    }
 
-    // Wait for generation or timeout
-    return this.waitForGeneration(request);
+      // Wait for generation or timeout
+      return this.waitForGeneration(request);
+
+    } catch (error) {
+      console.error('[VideoGenerationManager] Failed to create job:', error);
+      return this.getFallback(params);
+    }
   }
 
   /**
@@ -442,66 +589,13 @@ export class VideoGenerationManager {
   }
 
   /**
-   * Sort queue by priority
+   * Disconnect WebSocket and clean up resources
    */
-  private sortQueue(): void {
-    this.queue.sort((a, b) => {
-      // Higher priority first
-      if (b.priority !== a.priority) {
-        return b.priority - a.priority;
-      }
-      // Older requests first if same priority
-      return a.timestamp - b.timestamp;
-    });
-  }
-
-  /**
-   * Process generation queue
-   */
-  private async processQueue(): Promise<void> {
-    if (this.processing || this.queue.length === 0) {
-      return;
+  disconnect(): void {
+    if (this.wsConnection) {
+      this.wsConnection.close();
+      this.wsConnection = null;
     }
-
-    this.processing = true;
-
-    while (this.queue.length > 0) {
-      const request = this.queue.shift()!;
-
-      try {
-        // Check cache again (might have been generated while waiting)
-        const cached = this.cache.get(request.params);
-        if (cached) {
-          request.onComplete?.(cached);
-          continue;
-        }
-
-        // Generate video
-        const quality = QUALITY_PRESETS[this.config.preset];
-
-        if (!this.generateVideoFn) {
-          console.error('[VideoGenerationManager] No generation function set!');
-          request.onFallback?.(this.getFallback(request.params));
-          continue;
-        }
-
-        console.log('[VideoGenerationManager] Generating:', request.params.expression, quality.name);
-
-        const video = await this.generateVideoFn(request.params, quality);
-
-        // Cache result
-        this.cache.set(request.params, video);
-
-        // Notify completion
-        request.onComplete?.(video);
-
-      } catch (error) {
-        console.error('[VideoGenerationManager] Generation error:', error);
-        request.onFallback?.(this.getFallback(request.params));
-      }
-    }
-
-    this.processing = false;
   }
 
   /**
@@ -532,7 +626,7 @@ export class VideoGenerationManager {
     return {
       cacheStats: this.cache.getStats(),
       queueLength: this.queue.length,
-      processing: this.processing,
+      pendingJobs: this.pendingJobs.size,
       config: this.config,
     };
   }
@@ -543,6 +637,7 @@ export class VideoGenerationManager {
   clear(): void {
     this.cache.clear();
     this.queue = [];
+    this.pendingJobs.clear();
     this.predictor.reset();
   }
 }
@@ -554,6 +649,7 @@ export class VideoGenerationManager {
 export class ProgressiveVideoLoader {
   /**
    * Request video with progressive quality upgrade
+   * Requests low quality first, then upgrades to high quality
    */
   static async requestProgressive(
     manager: VideoGenerationManager,
@@ -561,16 +657,17 @@ export class ProgressiveVideoLoader {
     onLowQuality?: (video: GeneratedVideo) => void,
     onHighQuality?: (video: GeneratedVideo) => void
   ): Promise<void> {
-    // Request low quality immediately
+    // Request low quality immediately (separate manager with realtime preset)
+    const config = manager['config'];
     const lowQualityManager = new VideoGenerationManager({
       preset: 'realtime',
       maxWaitTime: 3000,
       fallback: 'placeholder',
       predictive: false,
       progressive: false,
+      apiBaseUrl: config.apiBaseUrl,
+      authToken: config.authToken,
     });
-
-    lowQualityManager.setGenerationFunction(manager['generateVideoFn']!);
 
     const lowQualityResult = await lowQualityManager.requestVideo(params, 10);
 
@@ -578,7 +675,10 @@ export class ProgressiveVideoLoader {
       onLowQuality?.(lowQualityResult);
     }
 
-    // Then request high quality in background
+    // Clean up low quality manager
+    lowQualityManager.disconnect();
+
+    // Then request high quality in background (using main manager)
     const highQualityResult = await manager.requestVideo(params, 5);
 
     if ('url' in highQualityResult) {
