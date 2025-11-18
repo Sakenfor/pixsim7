@@ -25,6 +25,7 @@ export function registerArcNodeTypes() {
     },
     editorComponent: 'ArcNodeEditor',
     rendererComponent: 'ArcNodeRenderer',
+    preloadPriority: 4, // Arc-level, moderately important
   });
 
   // Quest node - represents quest objective or branch
@@ -47,6 +48,7 @@ export function registerArcNodeTypes() {
     },
     editorComponent: 'QuestNodeEditor',
     rendererComponent: 'QuestNodeRenderer',
+    preloadPriority: 4, // Arc-level, moderately important
   });
 
   // Milestone node - represents major story checkpoint
@@ -68,6 +70,7 @@ export function registerArcNodeTypes() {
     },
     editorComponent: 'MilestoneNodeEditor',
     rendererComponent: 'MilestoneNodeRenderer',
+    preloadPriority: 3, // Arc-level, less common
   });
 
   // Arc Group - organizational container for arc nodes
@@ -86,5 +89,7 @@ export function registerArcNodeTypes() {
       collapsed: false,
     },
     editorComponent: 'ArcGroupNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 2, // Organizational, less critical
   });
 }

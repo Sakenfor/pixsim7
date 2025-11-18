@@ -285,7 +285,7 @@ async function loadInteractionPlugins(verbose: boolean): Promise<{ loaded: numbe
 }
 
 /**
- * Load node type plugins from lib/plugins/**/*Node.{ts,tsx}
+ * Load node type plugins from lib/plugins (pattern: *Node.ts or *Node.tsx)
  * Discovers and registers custom node types for the scene/arc builders
  */
 async function loadNodeTypePlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
