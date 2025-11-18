@@ -34,7 +34,7 @@ export function registerSceneGizmoMiniGame() {
         particleEffects: true,
       },
     },
-    component: SceneGizmoMiniGame as any,
+    component: SceneGizmoMiniGame,
   };
 
   registerMiniGame(sceneGizmoDefinition);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, MediaSegment } from '@pixsim7/types'
+import type { MiniGameResult } from '@pixsim7/scene-gizmos'
 import { Button, Panel } from '@pixsim7/ui'
 import { MiniGameHost } from './minigames/MiniGameHost'
 import {
@@ -448,15 +449,68 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
           <MiniGameHost
             miniGameId={progression.miniGame.id}
             config={progression.miniGame.config}
-            onResult={(result) => {
-              // Handle different result types from different mini-games
-              if (typeof result === 'object' && 'success' in result) {
-                // Reflex mini-game result: { success: boolean, score: number }
-                setState(s => ({ ...s, flags: { ...s.flags, focus: (s.flags.focus ?? 0) + (result.success ? 2 : 0) } }))
-              } else if (typeof result === 'object' && 'segmentId' in result) {
-                // Gizmo mini-game result: { segmentId: string, intensity?: number, transition?: string }
-                // Handle scene navigation based on gizmo selection
-                console.log('Gizmo result:', result)
+            onResult={(result: MiniGameResult) => {
+              // Handle standardized mini-game result types
+              switch (result.type) {
+                case 'stat':
+                  // Update a specific stat/flag
+                  setState(s => {
+                    const currentValue = (s.flags[result.stat] ?? 0) as number;
+                    let newValue: number;
+
+                    switch (result.operation) {
+                      case 'set':
+                        newValue = result.value;
+                        break;
+                      case 'multiply':
+                        newValue = currentValue * result.value;
+                        break;
+                      case 'add':
+                      default:
+                        newValue = currentValue + result.value;
+                        break;
+                    }
+
+                    return {
+                      ...s,
+                      flags: { ...s.flags, [result.stat]: newValue }
+                    };
+                  });
+                  break;
+
+                case 'flag':
+                  // Set a single flag
+                  setState(s => ({
+                    ...s,
+                    flags: { ...s.flags, [result.key]: result.value }
+                  }));
+                  break;
+
+                case 'flags':
+                  // Set multiple flags at once
+                  setState(s => ({
+                    ...s,
+                    flags: { ...s.flags, ...result.flags }
+                  }));
+                  break;
+
+                case 'segment':
+                  // Navigate to a specific segment (for gizmo mini-games)
+                  console.log('[ScenePlayer] Gizmo segment navigation:', result.segmentId, result.intensity, result.transition);
+                  // TODO: Implement segment navigation when needed
+                  break;
+
+                case 'error':
+                  // Handle mini-game error
+                  console.error('[ScenePlayer] Mini-game error:', result.error, result.message);
+                  break;
+
+                case 'none':
+                  // No-op result
+                  break;
+
+                default:
+                  console.warn('[ScenePlayer] Unknown mini-game result type:', result);
               }
             }}
           />

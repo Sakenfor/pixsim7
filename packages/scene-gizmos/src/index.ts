@@ -68,6 +68,8 @@ export {
 export type {
   MiniGameComponentProps,
   MiniGameDefinition,
+  MiniGameResult,
+  CustomMiniGameResult,
 } from './miniGames';
 
 export {
