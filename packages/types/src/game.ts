@@ -134,6 +134,58 @@ export interface WorldManifest {
   [key: string]: unknown;
 }
 
+/**
+ * Per-world UI theme configuration stored in GameWorld.meta.ui.theme
+ * Defines visual styling and density preferences for a specific world
+ *
+ * Example:
+ * ```typescript
+ * world.meta = {
+ *   ui: {
+ *     theme: {
+ *       id: 'neo-noir',
+ *       colors: {
+ *         primary: '#00f3ff',
+ *         secondary: '#ff00e5',
+ *         background: '#0a0a0f'
+ *       },
+ *       density: 'compact'
+ *     },
+ *     viewMode: 'cinematic'
+ *   }
+ * }
+ * ```
+ */
+export interface WorldUiTheme {
+  /** Theme identifier (e.g., 'neo-noir', 'bright-minimal', 'fantasy-rpg') */
+  id: string;
+  /** CSS variable overrides for colors */
+  colors?: Record<string, string>;
+  /** UI density preference */
+  density?: 'compact' | 'comfortable' | 'spacious';
+}
+
+/**
+ * View mode determines which UI tools and panels are visible by default
+ * - 'cinematic': Minimal HUD, emphasize immersion and story
+ * - 'hud-heavy': Show all available world tools and panels
+ * - 'debug': Show debug tools and world info for development
+ */
+export type ViewMode = 'cinematic' | 'hud-heavy' | 'debug';
+
+/**
+ * Per-world UI configuration stored in GameWorld.meta.ui
+ * Controls theming, view mode, and future UI customization
+ */
+export interface WorldUiConfig {
+  /** Visual theme configuration */
+  theme?: WorldUiTheme;
+  /** View mode for tool visibility */
+  viewMode?: ViewMode;
+  /** Future: HUD layout, preferred tools, etc. */
+  [key: string]: unknown;
+}
+
 // ===================
 // Session Types
 // ===================

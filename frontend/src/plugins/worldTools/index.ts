@@ -16,6 +16,7 @@ import { npcBrainDebugTool } from './npcBrainDebug';
 import { worldManifestDebugTool } from './worldManifestDebug';
 import { npcPresenceDebugTool } from './npcPresenceDebug';
 import { relationshipDiffDebugTool } from './relationshipDiffDebug';
+import { worldThemeEditorTool } from './worldThemeEditor';
 
 // Export all plugins
 export {
@@ -30,6 +31,7 @@ export {
   worldManifestDebugTool,
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
+  worldThemeEditorTool,
 };
 
 // Export a helper to register all built-in tools
@@ -45,4 +47,5 @@ export const builtInWorldTools = [
   worldManifestDebugTool,
   npcPresenceDebugTool,
   relationshipDiffDebugTool,
+  worldThemeEditorTool,
 ];
