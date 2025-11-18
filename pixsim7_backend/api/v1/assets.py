@@ -308,8 +308,13 @@ async def upload_asset_to_provider(
     finally:
         try:
             os.unlink(tmp_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "temp_file_cleanup_failed",
+                file_path=tmp_path,
+                error=str(e),
+                detail="Failed to clean up temporary file after upload"
+            )
 
 
 # ===== UPLOAD FROM URL (backend fetches the image) =====
@@ -401,10 +406,19 @@ async def upload_asset_from_url(
             raise HTTPException(status_code=500, detail="Video validation timeout")
         except FileNotFoundError:
             # ffprobe not available, skip validation
-            pass
-        except ValueError:
+            logger.warning(
+                "video_duration_validation_skipped",
+                reason="ffprobe_not_found",
+                detail="ffprobe tool not available, skipping video duration validation"
+            )
+        except ValueError as e:
             # Invalid duration output, skip validation
-            pass
+            logger.warning(
+                "video_duration_validation_skipped",
+                reason="invalid_duration_output",
+                error=str(e),
+                detail="Could not parse video duration from ffprobe output"
+            )
 
     # NEW WORKFLOW: Save locally FIRST, then optionally upload to provider
     # This ensures the asset is always accessible even if provider upload fails
@@ -412,15 +426,16 @@ async def upload_asset_from_url(
     import shutil
     from PIL import Image
 
-    # Step 1: Prepare local storage path (use forward slashes for cross-platform compatibility)
-    # Forward slashes work on both Windows and Linux/Docker, backslashes do not
-    storage_root = f"data/storage/user/{user.id}/assets"
-    os.makedirs(storage_root, exist_ok=True)
+    # Step 1: Prepare local storage path (use pathlib for cross-platform compatibility)
+    # pathlib.Path works consistently across Windows, Linux, and Docker environments
+    from pathlib import Path
+    storage_root = Path("data/storage/user") / str(user.id) / "assets"
+    storage_root.mkdir(parents=True, exist_ok=True)
 
     # Generate temporary asset ID (will be replaced with actual ID after DB insert)
     temp_id = hashlib.sha256(f"{user.id}:{url}:{content[:100]}".encode()).hexdigest()[:16]
     ext = mimetypes.guess_extension(content_type) or (".mp4" if media_type == MediaType.VIDEO else ".jpg")
-    temp_local_path = f"{storage_root}/temp_{temp_id}{ext}"
+    temp_local_path = str(storage_root / f"temp_{temp_id}{ext}")
 
     # Step 2: Save to permanent local storage
     try:
@@ -488,7 +503,7 @@ async def upload_asset_from_url(
         )
 
         # Rename file to use actual asset ID
-        final_local_path = f"{storage_root}/{asset.id}{ext}"
+        final_local_path = str(storage_root / f"{asset.id}{ext}")
         shutil.move(temp_local_path, final_local_path)
 
         # Update asset with final local_path
@@ -566,8 +581,13 @@ async def upload_asset_from_url(
     # Clean up temp file
     try:
         os.unlink(tmp_path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(
+            "temp_file_cleanup_failed",
+            file_path=tmp_path,
+            error=str(e),
+            detail="Failed to clean up temporary file, may need manual cleanup"
+        )
 
     # Return response
     return UploadAssetResponse(
