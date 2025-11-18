@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
 import { useTemplateStore } from '../../lib/graph/templatesStore';
 import { validateTemplate } from '../../lib/graph/graphTemplates';
@@ -8,30 +8,64 @@ interface GraphTemplatePaletteProps {
   /** Callback when a template is selected to be inserted */
   onInsertTemplate: (template: GraphTemplate) => void;
 
+  /** Current world ID for loading world templates */
+  worldId?: number | null;
+
   /** Compact mode for smaller display */
   compact?: boolean;
 }
 
 export function GraphTemplatePalette({
   onInsertTemplate,
+  worldId,
   compact = false,
 }: GraphTemplatePaletteProps) {
-  const templates = useTemplateStore((state) => state.getTemplates());
+  const templates = useTemplateStore((state) => state.getTemplates(worldId));
   const removeTemplate = useTemplateStore((state) => state.removeTemplate);
+  const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+
+  // Load world templates when world changes
+  useEffect(() => {
+    if (worldId !== null && worldId !== undefined) {
+      loadWorldTemplates(worldId);
+    }
+  }, [worldId, loadWorldTemplates]);
 
   const handleInsert = (template: GraphTemplate) => {
     onInsertTemplate(template);
   };
 
-  const handleDelete = (templateId: string, templateName: string) => {
-    if (confirm(`Delete template "${templateName}"?`)) {
-      removeTemplate(templateId);
+  const handleDelete = async (template: GraphTemplate) => {
+    if (template.source === 'builtin') {
+      alert('Cannot delete built-in templates');
+      return;
+    }
+
+    if (confirm(`Delete template "${template.name}"?`)) {
+      try {
+        await removeTemplate(template.id, worldId);
+      } catch (error) {
+        alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
   const toggleExpanded = (templateId: string) => {
     setExpandedTemplateId(expandedTemplateId === templateId ? null : templateId);
+  };
+
+  // Get source badge info
+  const getSourceBadge = (template: GraphTemplate) => {
+    switch (template.source) {
+      case 'builtin':
+        return { label: 'Built-in', className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' };
+      case 'world':
+        return { label: 'World', className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' };
+      case 'user':
+      default:
+        return { label: 'User', className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' };
+    }
   };
 
   if (templates.length === 0) {
@@ -50,13 +84,15 @@ export function GraphTemplatePalette({
     <div className="space-y-2">
       {!compact && (
         <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
-          Graph Templates
+          Graph Templates ({templates.length})
         </div>
       )}
 
       {templates.map((template) => {
         const validation = validateTemplate(template);
         const isExpanded = expandedTemplateId === template.id;
+        const sourceBadge = getSourceBadge(template);
+        const isReadOnly = template.source === 'builtin';
 
         return (
           <div
@@ -67,8 +103,13 @@ export function GraphTemplatePalette({
             <div className="p-3">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate" title={template.name}>
-                    {template.name}
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="font-semibold text-sm truncate" title={template.name}>
+                      {template.name}
+                    </div>
+                    <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${sourceBadge.className}`}>
+                      {sourceBadge.label}
+                    </span>
                   </div>
                   {template.description && (
                     <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 line-clamp-2">
@@ -118,15 +159,17 @@ export function GraphTemplatePalette({
                 >
                   ➕ Insert
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => handleDelete(template.id, template.name)}
-                  className="px-3"
-                  title="Delete template"
-                >
-                  🗑
-                </Button>
+                {!isReadOnly && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handleDelete(template)}
+                    className="px-3"
+                    title="Delete template"
+                  >
+                    🗑
+                  </Button>
+                )}
               </div>
             </div>
 

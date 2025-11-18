@@ -1,0 +1,292 @@
+[
+  {
+    "id": "builtin_simple_dialogue",
+    "name": "Simple Dialogue",
+    "description": "A basic video node followed by a choice node with two options",
+    "createdAt": 1700000000000,
+    "nodeTypes": ["video", "choice", "end"],
+    "data": {
+      "nodes": [
+        {
+          "id": "video_1",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Dialogue",
+            "position": { "x": 100, "y": 100 }
+          }
+        },
+        {
+          "id": "choice_1",
+          "type": "choice",
+          "choices": [
+            { "id": "opt1", "text": "Option 1" },
+            { "id": "opt2", "text": "Option 2" }
+          ],
+          "metadata": {
+            "label": "Player Choice",
+            "position": { "x": 100, "y": 250 }
+          }
+        },
+        {
+          "id": "end_1",
+          "type": "end",
+          "metadata": {
+            "label": "End (Option 1)",
+            "position": { "x": 50, "y": 400 }
+          }
+        },
+        {
+          "id": "end_2",
+          "type": "end",
+          "metadata": {
+            "label": "End (Option 2)",
+            "position": { "x": 200, "y": 400 }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_1",
+          "from": "video_1",
+          "to": "choice_1",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_2",
+          "from": "choice_1",
+          "to": "end_1",
+          "meta": {
+            "fromPort": "opt1",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_3",
+          "from": "choice_1",
+          "to": "end_2",
+          "meta": {
+            "fromPort": "opt2",
+            "toPort": "input"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "builtin_branching_quest",
+    "name": "Branching Quest",
+    "description": "Quest intro with success/fail branches leading to different outcomes",
+    "createdAt": 1700000000000,
+    "nodeTypes": ["video", "condition", "end"],
+    "data": {
+      "nodes": [
+        {
+          "id": "video_intro",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Quest Introduction",
+            "position": { "x": 100, "y": 100 }
+          }
+        },
+        {
+          "id": "condition_check",
+          "type": "condition",
+          "condition": { "type": "true" },
+          "metadata": {
+            "label": "Success Check",
+            "position": { "x": 100, "y": 250 }
+          }
+        },
+        {
+          "id": "video_success",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Success Outcome",
+            "position": { "x": 50, "y": 400 }
+          }
+        },
+        {
+          "id": "video_failure",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Failure Outcome",
+            "position": { "x": 200, "y": 400 }
+          }
+        },
+        {
+          "id": "end_success",
+          "type": "end",
+          "metadata": {
+            "label": "Quest Complete",
+            "position": { "x": 50, "y": 550 }
+          }
+        },
+        {
+          "id": "end_failure",
+          "type": "end",
+          "metadata": {
+            "label": "Quest Failed",
+            "position": { "x": 200, "y": 550 }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_intro_check",
+          "from": "video_intro",
+          "to": "condition_check",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_check_success",
+          "from": "condition_check",
+          "to": "video_success",
+          "meta": {
+            "fromPort": "true",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_check_failure",
+          "from": "condition_check",
+          "to": "video_failure",
+          "meta": {
+            "fromPort": "false",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_success_end",
+          "from": "video_success",
+          "to": "end_success",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_failure_end",
+          "from": "video_failure",
+          "to": "end_failure",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "builtin_conditional_dialogue",
+    "name": "Conditional Dialogue",
+    "description": "Dialogue that branches based on a condition, then converges",
+    "createdAt": 1700000000000,
+    "nodeTypes": ["video", "condition"],
+    "data": {
+      "nodes": [
+        {
+          "id": "video_greeting",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Greeting",
+            "position": { "x": 100, "y": 100 }
+          }
+        },
+        {
+          "id": "condition_relationship",
+          "type": "condition",
+          "condition": { "type": "true" },
+          "metadata": {
+            "label": "Check Relationship",
+            "position": { "x": 100, "y": 250 }
+          }
+        },
+        {
+          "id": "video_friendly",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Friendly Response",
+            "position": { "x": 50, "y": 400 }
+          }
+        },
+        {
+          "id": "video_neutral",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Neutral Response",
+            "position": { "x": 200, "y": 400 }
+          }
+        },
+        {
+          "id": "video_conclusion",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Conclusion",
+            "position": { "x": 125, "y": 550 }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_greeting_check",
+          "from": "video_greeting",
+          "to": "condition_relationship",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_check_friendly",
+          "from": "condition_relationship",
+          "to": "video_friendly",
+          "meta": {
+            "fromPort": "true",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_check_neutral",
+          "from": "condition_relationship",
+          "to": "video_neutral",
+          "meta": {
+            "fromPort": "false",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_friendly_conclusion",
+          "from": "video_friendly",
+          "to": "video_conclusion",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_neutral_conclusion",
+          "from": "video_neutral",
+          "to": "video_conclusion",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        }
+      ]
+    }
+  }
+]
