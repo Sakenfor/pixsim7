@@ -106,3 +106,19 @@ export {
   getCommonNpcStates,
   QUALITY_PRESETS,
 } from './videoGenerationManager';
+
+// Zone Utilities
+export {
+  isPointInZone,
+  findZoneAtPoint,
+  getZonesForSegment,
+  getZonesAtTimestamp,
+  getZoneById,
+  calculateEffectiveIntensity,
+  buildZoneContext,
+  getZoneShapeCSS,
+  getZoneEffectivenessDescription,
+  getZoneColorByEffectiveness,
+  validateZone,
+  validateSegmentZones,
+} from './zoneUtils';
