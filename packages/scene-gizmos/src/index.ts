@@ -63,3 +63,18 @@ export {
   createDefaultPreferences,
   PREFERENCE_PRESETS,
 } from './npc-preferences';
+
+// Mini-Game System
+export type {
+  MiniGameComponentProps,
+  MiniGameDefinition,
+} from './miniGames';
+
+export {
+  registerMiniGame,
+  getMiniGame,
+  getMiniGamesByCategory,
+  getAllMiniGames,
+  hasMiniGame,
+  clearMiniGameRegistry,
+} from './miniGames';

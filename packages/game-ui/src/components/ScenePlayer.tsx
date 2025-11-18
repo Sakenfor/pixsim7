@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, MediaSegment } from '@pixsim7/types'
 import { Button, Panel } from '@pixsim7/ui'
-import { ReflexMiniGame } from './minigames/ReflexMiniGame'
+import { MiniGameHost } from './minigames/MiniGameHost'
 import {
   applyEdgeEffects,
   isProgression,
@@ -444,11 +444,20 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
             )}
           </div>
         )}
-        {progression?.miniGame?.id === 'reflex' && (
-          <ReflexMiniGame
-            config={progression.miniGame.config as any}
-            onResult={(success, score) => {
-              setState(s => ({ ...s, flags: { ...s.flags, focus: (s.flags.focus ?? 0) + (success ? 2 : 0) } }))
+        {progression?.miniGame && (
+          <MiniGameHost
+            miniGameId={progression.miniGame.id}
+            config={progression.miniGame.config}
+            onResult={(result) => {
+              // Handle different result types from different mini-games
+              if (typeof result === 'object' && 'success' in result) {
+                // Reflex mini-game result: { success: boolean, score: number }
+                setState(s => ({ ...s, flags: { ...s.flags, focus: (s.flags.focus ?? 0) + (result.success ? 2 : 0) } }))
+              } else if (typeof result === 'object' && 'segmentId' in result) {
+                // Gizmo mini-game result: { segmentId: string, intensity?: number, transition?: string }
+                // Handle scene navigation based on gizmo selection
+                console.log('Gizmo result:', result)
+              }
             }}
           />
         )}

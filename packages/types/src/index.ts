@@ -58,7 +58,7 @@ export type SelectionStrategy =
 export type PlaybackMode =
   | { kind: 'normal'; segmentId?: string }
   | { kind: 'loopSegment'; segmentId?: string; start?: number; end?: number }
-  | { kind: 'progression'; segments: Array<{ label: string; segmentIds?: string[] }>; miniGame?: { id: 'reflex'; config?: Record<string, any> } }
+  | { kind: 'progression'; segments: Array<{ label: string; segmentIds?: string[] }>; miniGame?: { id: string; config?: Record<string, any> } }
 
 export interface SceneNode {
   id: string
