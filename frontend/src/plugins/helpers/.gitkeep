@@ -1,0 +1,12 @@
+# This directory contains session helper plugins
+#
+# Add your custom helper plugins here. Each plugin should be in its own subdirectory.
+#
+# Example structure:
+# helpers/
+# ├── reputation/
+# │   └── reputation.ts (exports registerReputationHelper)
+# └── skills/
+#     └── skills.ts (exports registerSkillsHelper)
+#
+# See ../README.md for more information.

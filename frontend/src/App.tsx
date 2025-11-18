@@ -10,6 +10,7 @@ import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerBuiltinHelpers } from '@pixsim7/game-core';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { registerSeductionNode } from './lib/plugins/seductionNode';
+import { loadAllPlugins } from './lib/pluginLoader';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -55,6 +56,12 @@ function App() {
     // Register session helpers (built-in and custom)
     registerBuiltinHelpers();
     registerCustomHelpers();
+
+    // Load all plugins (helpers and interactions) from plugins directory
+    loadAllPlugins({
+      verbose: true, // Log plugin loading progress
+      strict: false, // Don't throw on individual plugin errors
+    });
 
     // Initialize modules
     registerModules();

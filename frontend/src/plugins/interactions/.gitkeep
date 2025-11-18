@@ -1,0 +1,12 @@
+# This directory contains NPC interaction plugins
+#
+# Add your custom interaction plugins here. Each plugin should be in its own subdirectory.
+#
+# Example structure:
+# interactions/
+# ├── trade/
+# │   └── trade.ts (exports tradePlugin)
+# └── romance/
+#     └── romance.ts (exports romancePlugin)
+#
+# See ../README.md for more information.
