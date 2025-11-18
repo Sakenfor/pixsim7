@@ -1,17 +1,19 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Button, Panel, Badge, Input } from '@pixsim7/ui';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Button, Panel, Badge, Input, Select } from '@pixsim7/ui';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
-import type { GameLocationDetail, NpcSlot2d } from '../lib/api/game';
+import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '../lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
+import { loadWorldInteractionPresets } from '../lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
+  world?: GameWorldDetail | null;
   onLocationUpdate: (location: GameLocationDetail) => void;
 }
 
-export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps) {
+export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEditorProps) {
   const [slots, setSlots] = useState<NpcSlot2d[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetResponse | null>(null);
@@ -19,6 +21,11 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load presets from world if available
+  const presets = useMemo(() => {
+    return world ? loadWorldInteractionPresets(world) : [];
+  }, [world]);
 
   // Load slots from location meta
   useEffect(() => {
@@ -344,6 +351,9 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
                   const config = (interactions as any)[plugin.id] || null;
                   const enabled = config?.enabled ?? false;
 
+                  // Get presets for this plugin
+                  const pluginPresets = presets.filter(p => p.interactionId === plugin.id);
+
                   return (
                     <div key={plugin.id} className="mb-3">
                       <label className="flex items-center gap-2 mb-2">
@@ -369,6 +379,51 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
                           {plugin.name}
                         </span>
                       </label>
+
+                      {/* Preset Selector */}
+                      {enabled && pluginPresets.length > 0 && (
+                        <div className="ml-6 mb-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded">
+                          <label className="block text-xs text-neutral-500 mb-1">
+                            Quick Apply Preset:
+                          </label>
+                          <div className="flex gap-2">
+                            <Select
+                              size="sm"
+                              id={`preset-${plugin.id}`}
+                              className="flex-1"
+                            >
+                              <option value="">Choose a preset...</option>
+                              {pluginPresets.map(preset => (
+                                <option key={preset.id} value={preset.id}>
+                                  {preset.name}
+                                  {preset.category ? ` [${preset.category}]` : ''}
+                                </option>
+                              ))}
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => {
+                                const selectEl = document.getElementById(`preset-${plugin.id}`) as HTMLSelectElement;
+                                const presetId = selectEl?.value;
+                                if (!presetId) return;
+
+                                const preset = pluginPresets.find(p => p.id === presetId);
+                                if (preset) {
+                                  updateSlot(selectedSlot.id, {
+                                    interactions: {
+                                      ...selectedSlot.interactions,
+                                      [plugin.id]: { ...preset.config, enabled: true },
+                                    },
+                                  });
+                                }
+                              }}
+                            >
+                              Apply
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
                       {enabled && (
                         <InteractionConfigForm
