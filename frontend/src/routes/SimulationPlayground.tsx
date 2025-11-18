@@ -12,6 +12,8 @@ import {
   listGameWorlds,
   getGameWorld,
   listGameNpcs,
+  listGameLocations,
+  getNpcPresence,
   createGameSession,
   getGameSession,
   updateGameSession,
@@ -20,6 +22,8 @@ import {
   type GameWorldDetail,
   type GameNpcSummary,
   type GameSessionDTO,
+  type GameLocationSummary,
+  type NpcPresenceDTO,
 } from '../lib/api/game';
 import {
   parseWorldTime,
@@ -56,9 +60,14 @@ import {
   loadHistory,
   clearHistory,
   getHistoryStats,
+  goToSnapshot,
   type SimulationHistory,
   type SimulationSnapshot,
 } from '../lib/simulation/history';
+import { LocationPresenceMap } from '../components/simulation/LocationPresenceMap';
+import { TimelineScrubber } from '../components/simulation/TimelineScrubber';
+import { ScenarioComparison } from '../components/simulation/ScenarioComparison';
+import { WorldStateOverview } from '../components/simulation/WorldStateOverview';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -66,6 +75,8 @@ export function SimulationPlayground() {
   // World and NPC data
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [npcs, setNpcs] = useState<GameNpcSummary[]>([]);
+  const [locations, setLocations] = useState<GameLocationSummary[]>([]);
+  const [npcPresences, setNpcPresences] = useState<NpcPresenceDTO[]>([]);
 
   // Current simulation state
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
@@ -94,6 +105,14 @@ export function SimulationPlayground() {
   const [showEventsLog, setShowEventsLog] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
+  // Phase 3: Enhanced visualization
+  const [showLocationMap, setShowLocationMap] = useState(false);
+  const [showWorldOverview, setShowWorldOverview] = useState(true);
+  const [showTimelineScrubber, setShowTimelineScrubber] = useState(false);
+  const [showScenarioComparison, setShowScenarioComparison] = useState(false);
+  const [comparisonScenario1, setComparisonScenario1] = useState<string | null>(null);
+  const [comparisonScenario2, setComparisonScenario2] = useState<string | null>(null);
+
   // Register simulation hooks on mount
   useEffect(() => {
     registerBuiltinHooks();
@@ -115,12 +134,14 @@ export function SimulationPlayground() {
   useEffect(() => {
     (async () => {
       try {
-        const [worldList, npcList] = await Promise.all([
+        const [worldList, npcList, locationList] = await Promise.all([
           listGameWorlds(),
           listGameNpcs(),
+          listGameLocations(),
         ]);
         setWorlds(worldList);
         setNpcs(npcList);
+        setLocations(locationList);
         setScenarios(loadScenarios());
 
         // Auto-select first world if available
@@ -132,6 +153,27 @@ export function SimulationPlayground() {
       }
     })();
   }, []);
+
+  // Fetch NPC presence when world time changes
+  useEffect(() => {
+    if (!selectedWorldId) {
+      setNpcPresences([]);
+      return;
+    }
+
+    (async () => {
+      try {
+        const presences = await getNpcPresence({
+          world_time: worldTime,
+          world_id: selectedWorldId,
+        });
+        setNpcPresences(presences);
+      } catch (e: any) {
+        console.error('Failed to fetch NPC presence', e);
+        setNpcPresences([]);
+      }
+    })();
+  }, [selectedWorldId, worldTime]);
 
   const handleSelectWorld = async (worldId: number) => {
     setIsLoading(true);
@@ -244,6 +286,18 @@ export function SimulationPlayground() {
 
   const handleClearEvents = () => {
     setSimulationEvents([]);
+  };
+
+  // Phase 3: Timeline navigation
+  const handleTimelineNavigate = (index: number) => {
+    if (!simulationHistory) return;
+
+    const newHistory = goToSnapshot(simulationHistory, index);
+    if (newHistory) {
+      setSimulationHistory(newHistory);
+      // Note: This doesn't actually change the world state, just the history view
+      // In a full implementation, you'd restore the snapshot state
+    }
   };
 
   const handleCreateScenario = () => {
@@ -411,6 +465,126 @@ export function SimulationPlayground() {
       {error && (
         <Panel className="p-4 border-red-500 bg-red-50 dark:bg-red-900/20">
           <p className="text-sm text-red-600 dark:text-red-400">Error: {error}</p>
+        </Panel>
+      )}
+
+      {/* Phase 3: Visualization Controls */}
+      <Panel className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold">Visualization</h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={showWorldOverview ? 'primary' : 'secondary'}
+            onClick={() => setShowWorldOverview(!showWorldOverview)}
+          >
+            📊 World Overview
+          </Button>
+          <Button
+            size="sm"
+            variant={showLocationMap ? 'primary' : 'secondary'}
+            onClick={() => setShowLocationMap(!showLocationMap)}
+          >
+            🗺️ Location Map ({npcPresences.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={showTimelineScrubber ? 'primary' : 'secondary'}
+            onClick={() => setShowTimelineScrubber(!showTimelineScrubber)}
+            disabled={!simulationHistory || simulationHistory.snapshots.length === 0}
+          >
+            ⏱️ Timeline
+          </Button>
+          <Button
+            size="sm"
+            variant={showScenarioComparison ? 'primary' : 'secondary'}
+            onClick={() => setShowScenarioComparison(!showScenarioComparison)}
+            disabled={scenarios.length < 2}
+          >
+            🔄 Compare Scenarios
+          </Button>
+        </div>
+      </Panel>
+
+      {/* Phase 3: World State Overview */}
+      {showWorldOverview && worldDetail && (
+        <Panel className="p-4">
+          <WorldStateOverview
+            worldDetail={worldDetail}
+            worldTime={worldTime}
+            gameSession={gameSession}
+            npcPresences={npcPresences}
+            selectedNpcIds={selectedNpcIds}
+          />
+        </Panel>
+      )}
+
+      {/* Phase 3: Location Presence Map */}
+      {showLocationMap && (
+        <Panel className="p-4">
+          <h2 className="text-sm font-semibold mb-3">NPC Locations</h2>
+          <LocationPresenceMap
+            locations={locations}
+            npcPresences={npcPresences}
+            selectedNpcIds={selectedNpcIds}
+            onNpcClick={(npcId) => {
+              if (selectedNpcIds.includes(npcId)) {
+                setSelectedNpcIds(selectedNpcIds.filter((id) => id !== npcId));
+              } else {
+                setSelectedNpcIds([...selectedNpcIds, npcId]);
+              }
+            }}
+          />
+        </Panel>
+      )}
+
+      {/* Phase 3: Timeline Scrubber */}
+      {showTimelineScrubber && simulationHistory && simulationHistory.snapshots.length > 0 && (
+        <Panel className="p-4">
+          <h2 className="text-sm font-semibold mb-3">Simulation Timeline</h2>
+          <TimelineScrubber
+            snapshots={simulationHistory.snapshots}
+            currentIndex={simulationHistory.currentIndex}
+            onSnapshotSelect={handleTimelineNavigate}
+          />
+        </Panel>
+      )}
+
+      {/* Phase 3: Scenario Comparison */}
+      {showScenarioComparison && scenarios.length >= 2 && (
+        <Panel className="p-4">
+          <h2 className="text-sm font-semibold mb-3">Scenario Comparison</h2>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <Select
+              size="sm"
+              value={comparisonScenario1 ?? ''}
+              onChange={(e) => setComparisonScenario1(e.target.value || null)}
+            >
+              <option value="">Select Scenario A</option>
+              {scenarios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              value={comparisonScenario2 ?? ''}
+              onChange={(e) => setComparisonScenario2(e.target.value || null)}
+            >
+              <option value="">Select Scenario B</option>
+              {scenarios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <ScenarioComparison
+            scenario1={scenarios.find((s) => s.id === comparisonScenario1) || null}
+            scenario2={scenarios.find((s) => s.id === comparisonScenario2) || null}
+          />
         </Panel>
       )}
 
