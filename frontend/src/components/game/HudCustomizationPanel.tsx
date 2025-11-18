@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Panel, Button, Select } from '@pixsim7/ui';
+import { Panel, Button, Select, Modal } from '@pixsim7/ui';
 import type { GameWorldDetail } from '../../lib/api/game';
 import type { WorldToolPlugin } from '../../lib/worldTools/types';
 import {
@@ -233,17 +233,15 @@ export function HudCustomizationButton({
         🎨 HUD
       </Button>
 
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <HudCustomizationPanel
-            worldDetail={worldDetail}
-            availableTools={availableTools}
-            currentViewMode={currentViewMode}
-            onUpdate={onUpdate}
-            onClose={() => setIsOpen(false)}
-          />
-        </div>
-      )}
+      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="HUD Customization" size="md">
+        <HudCustomizationPanel
+          worldDetail={worldDetail}
+          availableTools={availableTools}
+          currentViewMode={currentViewMode}
+          onUpdate={onUpdate}
+          onClose={() => setIsOpen(false)}
+        />
+      </Modal>
     </>
   );
 }
