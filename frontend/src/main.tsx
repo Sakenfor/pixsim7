@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { initWebLogger, logEvent } from './lib/logging'
 import { registerBuiltInMiniGames } from '@pixsim7/game-ui'
 import { registerFrontendMiniGames } from './components/minigames/registry'
+import './lib/providers/plugins' // Register provider generation UI plugins
 
 // Initialize web logging for frontend
 initWebLogger('frontend')

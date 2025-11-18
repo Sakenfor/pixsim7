@@ -14,6 +14,7 @@ import { useJobsStore } from '../../stores/jobsStore';
 import { JobStatusIndicator } from './JobStatusIndicator';
 import { ccSelectors } from '../../stores/selectors';
 import { logEvent } from '../../lib/logging';
+import { GenerationPluginRenderer } from '../../lib/providers';
 
 export function QuickGenerateModule() {
   const navigate = useNavigate();
@@ -289,6 +290,17 @@ export function QuickGenerateModule() {
                 operationType={operationType}
               />
             </div>
+          )}
+
+          {/* Provider-specific plugin UI */}
+          {providerId && (
+            <GenerationPluginRenderer
+              providerId={providerId}
+              operationType={operationType}
+              values={dynamicParams}
+              onChange={handleDynamicParamChange}
+              disabled={generating}
+            />
           )}
 
           {/* Error display */}
