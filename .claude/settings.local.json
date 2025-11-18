@@ -111,7 +111,8 @@
       "Bash(docs/SEDUCTION_NODE_PLUGIN.md)",
       "Bash(git cherry-pick:*)",
       "Bash(1)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

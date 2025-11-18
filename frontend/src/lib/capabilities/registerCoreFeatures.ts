@@ -1,0 +1,377 @@
+/**
+ * Core Feature Registration
+ *
+ * Example of how core app features should register themselves
+ * in the capability registry so plugins can discover them.
+ */
+
+import { registerCompleteFeature, useCapabilityStore } from './index';
+import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+
+/**
+ * Register all core features
+ * Call this during app initialization
+ */
+export function registerCoreFeatures() {
+  registerAssetsFeature();
+  registerWorkspaceFeature();
+  registerGenerationFeature();
+  registerGameFeature();
+  registerAutomationFeature();
+  registerPluginsFeature();
+
+  console.log('[Capabilities] Registered all core features');
+}
+
+/**
+ * Assets/Gallery Feature
+ */
+function registerAssetsFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'assets',
+      name: 'Assets',
+      description: 'Asset library and media management',
+      icon: '📦',
+      category: 'management',
+      priority: 90,
+      enabled: () => true,
+    },
+    routes: [
+      {
+        path: '/assets',
+        name: 'Asset Gallery',
+        description: 'Browse all assets',
+        icon: '📦',
+        protected: true,
+        showInNav: true,
+      },
+      {
+        path: '/assets/:id',
+        name: 'Asset Detail',
+        description: 'View asset details',
+        icon: '🔍',
+        protected: true,
+        showInNav: false,
+      },
+    ],
+    actions: [
+      {
+        id: 'assets.open-gallery',
+        name: 'Open Gallery',
+        description: 'Open the asset gallery',
+        icon: '📦',
+        shortcut: 'Ctrl+Shift+A',
+        execute: () => {
+          window.location.href = '/assets';
+        },
+      },
+      {
+        id: 'assets.upload',
+        name: 'Upload Asset',
+        description: 'Upload a new asset',
+        icon: '📤',
+        execute: async () => {
+          // TODO: Open upload dialog
+          console.log('Upload asset');
+        },
+      },
+      {
+        id: 'assets.search',
+        name: 'Search Assets',
+        description: 'Search for assets',
+        icon: '🔍',
+        shortcut: 'Ctrl+K',
+        execute: () => {
+          // TODO: Open search
+          console.log('Search assets');
+        },
+      },
+    ],
+    states: [
+      {
+        id: 'assets.count',
+        name: 'Asset Count',
+        getValue: () => {
+          // TODO: Get from assets store
+          return 0;
+        },
+        readonly: true,
+      },
+    ],
+  });
+}
+
+/**
+ * Workspace/Scene Builder Feature
+ */
+function registerWorkspaceFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'workspace',
+      name: 'Workspace',
+      description: 'Scene building and timeline editing',
+      icon: '🎬',
+      category: 'editing',
+      priority: 95,
+    },
+    routes: [
+      {
+        path: '/workspace',
+        name: 'Workspace',
+        description: 'Main editing workspace',
+        icon: '🎬',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'workspace.open',
+        name: 'Open Workspace',
+        icon: '🎬',
+        shortcut: 'Ctrl+Shift+W',
+        execute: () => {
+          window.location.href = '/workspace';
+        },
+      },
+      {
+        id: 'workspace.save',
+        name: 'Save Scene',
+        icon: '💾',
+        shortcut: 'Ctrl+S',
+        execute: async () => {
+          // TODO: Save current scene
+          console.log('Save scene');
+        },
+      },
+      {
+        id: 'workspace.open-panel',
+        name: 'Open Panel',
+        description: 'Open a floating panel',
+        execute: (panelId: string) => {
+          useWorkspaceStore.getState().openFloatingPanel(panelId);
+        },
+      },
+    ],
+    states: [
+      {
+        id: 'workspace.panels',
+        name: 'Open Panels',
+        getValue: () => {
+          return useWorkspaceStore.getState().floatingPanels;
+        },
+        subscribe: (callback) => {
+          return useWorkspaceStore.subscribe(
+            (state) => state.floatingPanels,
+            callback
+          );
+        },
+        readonly: true,
+      },
+    ],
+  });
+}
+
+/**
+ * Content Generation Feature
+ */
+function registerGenerationFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'generation',
+      name: 'Generation',
+      description: 'AI-powered content generation',
+      icon: '✨',
+      category: 'creation',
+      priority: 100,
+    },
+    routes: [
+      {
+        path: '/generate',
+        name: 'Generate',
+        description: 'Quick generation interface',
+        icon: '✨',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'generation.quick-generate',
+        name: 'Quick Generate',
+        icon: '⚡',
+        shortcut: 'Ctrl+G',
+        execute: () => {
+          // Open quick generate in control center
+          useControlCenterStore.getState().setActiveModule('quickGenerate');
+          useControlCenterStore.getState().setOpen(true);
+        },
+      },
+      {
+        id: 'generation.open-presets',
+        name: 'Open Presets',
+        icon: '🎨',
+        execute: () => {
+          useControlCenterStore.getState().setActiveModule('presets');
+          useControlCenterStore.getState().setOpen(true);
+        },
+      },
+      {
+        id: 'generation.select-provider',
+        name: 'Select Provider',
+        icon: '🌐',
+        execute: () => {
+          useControlCenterStore.getState().setActiveModule('providers');
+          useControlCenterStore.getState().setOpen(true);
+        },
+      },
+    ],
+    states: [
+      {
+        id: 'generation.active',
+        name: 'Generation Active',
+        getValue: () => {
+          return useControlCenterStore.getState().generating;
+        },
+        readonly: true,
+      },
+    ],
+  });
+}
+
+/**
+ * Game Features
+ */
+function registerGameFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'game',
+      name: 'Game',
+      description: 'Interactive game world and NPCs',
+      icon: '🎮',
+      category: 'game',
+      priority: 70,
+    },
+    routes: [
+      {
+        path: '/game-world',
+        name: 'Game World',
+        icon: '🌍',
+        protected: true,
+        showInNav: true,
+      },
+      {
+        path: '/game-2d',
+        name: '2D Game',
+        icon: '🎮',
+        protected: true,
+        showInNav: true,
+      },
+      {
+        path: '/npc-portraits',
+        name: 'NPC Portraits',
+        icon: '👤',
+        protected: true,
+        showInNav: true,
+      },
+      {
+        path: '/npc-brain-lab',
+        name: 'NPC Brain Lab',
+        icon: '🧠',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'game.enter-world',
+        name: 'Enter Game World',
+        icon: '🌍',
+        execute: () => {
+          window.location.href = '/game-world';
+        },
+      },
+      {
+        id: 'game.npc-editor',
+        name: 'NPC Editor',
+        icon: '🧠',
+        execute: () => {
+          window.location.href = '/npc-brain-lab';
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Automation Feature
+ */
+function registerAutomationFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'automation',
+      name: 'Automation',
+      description: 'Workflow automation and scheduling',
+      icon: '⚡',
+      category: 'utility',
+      priority: 60,
+    },
+    routes: [
+      {
+        path: '/automation',
+        name: 'Automation',
+        icon: '⚡',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'automation.open',
+        name: 'Open Automation',
+        icon: '⚡',
+        execute: () => {
+          window.location.href = '/automation';
+        },
+      },
+    ],
+  });
+}
+
+/**
+ * Plugin Manager Feature
+ */
+function registerPluginsFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'plugins',
+      name: 'Plugins',
+      description: 'Plugin management and installation',
+      icon: '🔌',
+      category: 'utility',
+      priority: 50,
+    },
+    routes: [
+      {
+        path: '/plugins',
+        name: 'Plugin Manager',
+        icon: '🔌',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'plugins.open',
+        name: 'Open Plugin Manager',
+        icon: '🔌',
+        shortcut: 'Ctrl+Shift+P',
+        execute: () => {
+          window.location.href = '/plugins';
+        },
+      },
+    ],
+  });
+}
