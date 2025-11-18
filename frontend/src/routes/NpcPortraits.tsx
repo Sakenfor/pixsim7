@@ -4,14 +4,22 @@ import {
   listGameNpcs,
   getNpcExpressions,
   saveNpcExpressions,
+  getNpcDetail,
+  saveNpcMeta,
   type GameNpcSummary,
+  type GameNpcDetail,
   type NpcExpressionDTO,
 } from '../lib/api/game';
+import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
+
+type TabType = 'expressions' | 'preferences';
 
 export function NpcPortraits() {
   const [npcs, setNpcs] = useState<GameNpcSummary[]>([]);
   const [selectedNpcId, setSelectedNpcId] = useState<number | null>(null);
+  const [selectedNpc, setSelectedNpc] = useState<GameNpcDetail | null>(null);
   const [expressions, setExpressions] = useState<NpcExpressionDTO[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('expressions');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,14 +40,20 @@ export function NpcPortraits() {
   useEffect(() => {
     if (!selectedNpcId) {
       setExpressions([]);
+      setSelectedNpc(null);
       return;
     }
     setIsLoading(true);
     setError(null);
     (async () => {
       try {
+        // Load expressions
         const rows = await getNpcExpressions(selectedNpcId);
         setExpressions(rows);
+
+        // Load NPC detail for preferences
+        const npcDetail = await getNpcDetail(selectedNpcId);
+        setSelectedNpc(npcDetail);
       } catch (e: any) {
         setError(String(e?.message ?? e));
       } finally {
@@ -76,17 +90,40 @@ export function NpcPortraits() {
     }
   };
 
+  const handleNpcChange = (updated: GameNpcDetail) => {
+    setSelectedNpc(updated);
+  };
+
+  const handleSavePreferences = async () => {
+    if (!selectedNpcId || !selectedNpc) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const saved = await saveNpcMeta(selectedNpcId, selectedNpc.meta || {});
+      setSelectedNpc(saved);
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">NPC Portraits</h1>
+          <h1 className="text-2xl font-semibold">NPC Configuration</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Map NPCs and conversational states (idle, talking, bored, etc.) to assets.
+            Configure NPC portraits, expressions, and interaction preferences.
           </p>
         </div>
-        <Button size="sm" variant="primary" onClick={handleSave} disabled={!selectedNpcId || isLoading}>
-          {isLoading ? 'Saving…' : 'Save Expressions'}
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={activeTab === 'expressions' ? handleSave : handleSavePreferences}
+          disabled={!selectedNpcId || isLoading}
+        >
+          {isLoading ? 'Saving…' : activeTab === 'expressions' ? 'Save Expressions' : 'Save Preferences'}
         </Button>
       </div>
 
@@ -117,23 +154,52 @@ export function NpcPortraits() {
         </Panel>
 
         <Panel className="space-y-3 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Expressions</h2>
-            <Button size="sm" variant="secondary" onClick={addExpression} disabled={!selectedNpcId}>
-              Add Expression
-            </Button>
-          </div>
-          {!selectedNpcId && (
-            <p className="text-xs text-neutral-500">Select an NPC to edit expressions.</p>
-          )}
+          {/* Tab Navigation */}
           {selectedNpcId && (
-            <div className="space-y-2">
-              {expressions.length === 0 && (
-                <p className="text-xs text-neutral-500">
-                  No expressions yet. Add one and specify state and asset_id.
-                </p>
+            <div className="flex border-b border-neutral-200 dark:border-neutral-700 mb-4">
+              <button
+                onClick={() => setActiveTab('expressions')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'expressions'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                    : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
+                }`}
+              >
+                Expressions
+              </button>
+              <button
+                onClick={() => setActiveTab('preferences')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'preferences'
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                    : 'border-transparent text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300'
+                }`}
+              >
+                Preferences
+              </button>
+            </div>
+          )}
+
+          {/* Expressions Tab */}
+          {activeTab === 'expressions' && (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Expressions</h2>
+                <Button size="sm" variant="secondary" onClick={addExpression} disabled={!selectedNpcId}>
+                  Add Expression
+                </Button>
+              </div>
+              {!selectedNpcId && (
+                <p className="text-xs text-neutral-500">Select an NPC to edit expressions.</p>
               )}
-              {expressions.map((expr, idx) => (
+              {selectedNpcId && (
+                <div className="space-y-2">
+                  {expressions.length === 0 && (
+                    <p className="text-xs text-neutral-500">
+                      No expressions yet. Add one and specify state and asset_id.
+                    </p>
+                  )}
+                  {expressions.map((expr, idx) => (
                 <div key={idx} className="grid grid-cols-4 gap-2 items-center text-xs">
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-neutral-500">State</span>
@@ -195,6 +261,18 @@ export function NpcPortraits() {
                 </div>
               ))}
             </div>
+          )}
+            </>
+          )}
+
+          {/* Preferences Tab */}
+          {activeTab === 'preferences' && selectedNpc && (
+            <NpcPreferencesEditor npc={selectedNpc} onChange={handleNpcChange} />
+          )}
+
+          {/* No NPC selected message */}
+          {!selectedNpcId && (
+            <p className="text-xs text-neutral-500">Select an NPC to edit configuration.</p>
           )}
         </Panel>
       </div>

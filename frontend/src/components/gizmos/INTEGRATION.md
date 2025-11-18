@@ -4,6 +4,83 @@
 
 The Scene Gizmo system provides interactive 3D controls for scene progression, particularly useful for erotic/intimate scenes where player agency enhances immersion.
 
+The system uses a **canonical registry** architecture where:
+- All gizmo/tool definitions live in `@pixsim7/scene-gizmos` (pure TypeScript, no React)
+- Frontend "packs" register content by importing
+- Editor UIs and playgrounds query the registry dynamically
+
+## Registry & Pack System
+
+### Loading Packs
+
+To use gizmos and tools, import the pack loader:
+
+```typescript
+import { getAllGizmos, getAllTools } from '../../lib/gizmos/loadDefaultPacks';
+
+// Now all default packs are registered:
+// - Base pack: orb, constellation, touch, temperature, energy
+// - Enhanced pack: feather
+// - Water & Banana pack: water, banana
+
+const gizmos = getAllGizmos();  // Returns all registered gizmos
+const tools = getAllTools();    // Returns all registered tools
+```
+
+### Pack Structure
+
+Packs are organized in dependency layers:
+
+1. **Base Pack** (`frontend/src/lib/gizmos/registry.ts`)
+   - Core gizmos: orb, constellation
+   - Basic tools: touch, temperature, energy
+
+2. **Enhanced Pack** (`frontend/src/lib/gizmos/registry-enhanced.ts`)
+   - Extends base pack
+   - Adds: feather tool
+
+3. **Water & Banana Pack** (`frontend/src/lib/gizmos/registry-water-banana.ts`)
+   - Extends enhanced pack
+   - Adds: water tool (liquid type), banana tool (object type)
+
+Each pack:
+- Imports `registerGizmo`/`registerTool` from `@pixsim7/scene-gizmos`
+- Defines gizmos/tools as pure data objects
+- Auto-registers them at import time
+- Re-exports for direct access if needed
+
+### Querying the Registry
+
+```typescript
+import {
+  getAllGizmos,
+  getGizmo,
+  getAllTools,
+  getTool,
+  getGizmosByCategory,
+  getToolsByType,
+} from '@pixsim7/scene-gizmos';
+
+// Get all gizmos
+const allGizmos = getAllGizmos();
+
+// Get specific gizmo
+const orb = getGizmo('orb');
+
+// Get gizmos by category
+const controlGizmos = getGizmosByCategory('control');
+
+// Get all tools
+const allTools = getAllTools();
+
+// Get specific tool
+const water = getTool('water');
+
+// Get tools by type
+const touchTools = getToolsByType('touch');
+const liquidTools = getToolsByType('liquid');
+```
+
 ## Quick Start
 
 ### 1. Configure in Scene Graph Editor
@@ -226,40 +303,152 @@ if (currentNode.miniGame?.id === 'sceneGizmo') {
 
 ## Extending the System
 
+### Architecture Overview
+
+The gizmo system uses a **canonical registry** in `@pixsim7/scene-gizmos` that serves as the single source of truth for all gizmos and tools. The system is organized into "packs" that register content at import time:
+
+- **Base Pack** (`registry.ts`): Core gizmos (orb, constellation) and basic tools (touch, temperature, energy)
+- **Enhanced Pack** (`registry-enhanced.ts`): Additional tools like feather
+- **Water & Banana Pack** (`registry-water-banana.ts`): Liquid and object tools
+
 ### Adding Custom Gizmos
 
-```typescript
-import type { GizmoDefinition, SceneGizmoConfig } from '@pixsim7/scene-gizmos';
-import { registerCustomGizmo } from '../../lib/gizmos/registry';
+Create a new gizmo definition and register it using the canonical registry:
 
-registerCustomGizmo({
-  id: 'custom-wheel',
+```typescript
+import { registerGizmo, type GizmoDefinition } from '@pixsim7/scene-gizmos';
+import { ColorWheelGizmo } from './ColorWheelGizmo';
+
+export const colorWheelGizmo: GizmoDefinition = {
+  id: 'color-wheel',
   name: 'Color Wheel',
-  component: ColorWheelGizmo,
   category: 'control',
+  component: ColorWheelGizmo,
+  description: 'Color-based zone selection with smooth transitions',
+  tags: ['color', 'selection', 'visual'],
+
   defaultConfig: {
-    zones: generateColorWheel(8),
     style: 'custom',
-  } as Partial<SceneGizmoConfig>,
-});
+    zones: generateColorWheel(8),
+    visual: {
+      baseColor: '#FFFFFF',
+      activeColor: '#FF00FF',
+      particleType: 'sparks',
+    },
+  },
+};
+
+// Auto-register on import
+registerGizmo(colorWheelGizmo);
+
+// Export for direct use if needed
+export { colorWheelGizmo };
+```
+
+**To use the gizmo**: Simply import the pack file anywhere in your app to register it:
+
+```typescript
+// In your app initialization or component
+import './lib/gizmos/custom-gizmos-pack';
 ```
 
 ### Adding Custom Tools
 
-```typescript
-import type { InteractiveTool } from '@pixsim7/scene-gizmos';
-import { registerCustomTool } from '../../lib/gizmos/registry';
+Define interactive tool metadata and register it at import time:
 
-registerCustomTool({
+```typescript
+import { registerTool, type InteractiveTool } from '@pixsim7/scene-gizmos';
+
+export const silkTool: InteractiveTool = {
   id: 'silk',
   type: 'caress',
+
   visual: {
     model: 'silk',
     baseColor: 'rgba(255, 200, 255, 0.5)',
-    particles: { type: 'petals', density: 0.6 },
+    activeColor: 'rgba(255, 150, 255, 0.8)',
+    glow: true,
+    trail: true,
+    particles: {
+      type: 'petals',
+      density: 0.6,
+      color: '#FFC0FF',
+      lifetime: 2000,
+    },
   },
-  // ... physics, feedback
-} as InteractiveTool);
+
+  physics: {
+    pressure: 0.3,
+    speed: 0.6,
+    pattern: 'wave',
+  },
+
+  feedback: {
+    haptic: {
+      type: 'wave',
+      intensity: 0.4,
+      duration: 150,
+    },
+    npcReaction: {
+      expression: 'pleasure',
+      vocalization: 'sigh',
+      intensity: 0.6,
+    },
+  },
+};
+
+// Auto-register on import
+registerTool(silkTool);
+```
+
+**The `InteractiveTool` component** automatically renders any tool based on its metadata - no per-tool components needed! The component reads `tool.visual.model` and renders the appropriate visual (hand, feather, water, banana, etc.).
+
+To add a new tool visual, add it to `InteractiveTool.tsx`:
+
+```typescript
+// In InteractiveTool.tsx
+function renderToolVisual() {
+  switch (tool.visual.model) {
+    case 'hand': return <HandVisual pressure={pressure} />;
+    case 'feather': return <FeatherVisual />;
+    case 'silk': return <SilkVisual />; // Add your new visual
+    // ...
+  }
+}
+```
+
+### Creating a Gizmo Pack
+
+Organize multiple gizmos/tools into a single pack file:
+
+```typescript
+// lib/gizmos/my-custom-pack.ts
+import {
+  registerGizmo,
+  registerTool,
+  type GizmoDefinition,
+  type InteractiveTool,
+} from '@pixsim7/scene-gizmos';
+
+// Define your gizmos
+export const customGizmo: GizmoDefinition = { /* ... */ };
+
+// Define your tools
+export const customTool: InteractiveTool = { /* ... */ };
+
+// Auto-register everything
+registerGizmo(customGizmo);
+registerTool(customTool);
+
+// Export collections for convenience
+export const customGizmos = [customGizmo];
+export const customTools = [customTool];
+```
+
+Then import the pack to activate it:
+
+```typescript
+import './lib/gizmos/my-custom-pack';
 ```
 
 ## Troubleshooting
@@ -282,11 +471,44 @@ registerCustomTool({
 - Use simpler gizmo types (orb < constellation)
 - Disable physics/magnetism if not needed
 
+## Gizmo Lab
+
+The **Gizmo Lab** (`/gizmo-lab`) is an interactive playground for exploring all registered gizmos and tools.
+
+### Features
+
+- **Browse Registry**: View all registered gizmos and tools with filters by category/type
+- **Gizmo Playground**: Test any gizmo with a live preview
+- **Tool Playground**: Interact with tools on a test canvas
+- **Real-time Info**: See pressure, patterns, and other tool metrics
+
+### Usage
+
+1. Navigate to `/gizmo-lab` in your browser
+2. Select a gizmo or tool from the sidebar
+3. Interact with it in the playground area
+4. Check console for detailed output
+
+The Lab automatically loads all packs using `loadDefaultPacks()` and queries the registry dynamically. It's perfect for:
+- Testing new gizmos/tools before integrating them
+- Understanding tool behaviors and visual properties
+- Debugging interaction patterns
+- Exploring what's available in the registry
+
+### For Developers
+
+The Gizmo Lab demonstrates best practices:
+- Loading packs via `import { getAllGizmos, getAllTools } from '../../lib/gizmos/loadDefaultPacks'`
+- Using registry queries to populate UI dynamically
+- Rendering gizmos via `SceneGizmoMiniGame` component
+- Rendering tools via generic `InteractiveTool` component
+
+Check the source at `frontend/src/routes/GizmoLab.tsx` for implementation details.
+
 ## Next Steps
 
 - Implement additional gizmo types (Rings, Helix)
 - Add sound effects for interactions
 - Create preset configurations
 - Build analytics for player interaction patterns
-
-For more examples, see `/components/examples/BrainShapeExample.tsx`
+- Explore gizmos in the Gizmo Lab: `/gizmo-lab`

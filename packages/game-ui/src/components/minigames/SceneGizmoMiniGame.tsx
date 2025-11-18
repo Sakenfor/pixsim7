@@ -4,9 +4,10 @@
  * Follows the same pattern as ReflexMiniGame
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { Panel } from '@pixsim7/ui';
-import type { SceneGizmoConfig, GizmoResult, GizmoAction } from './types';
+import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/scene-gizmos';
+import { getGizmoRenderer } from '../gizmos/renderers';
 
 interface SceneGizmoMiniGameProps {
   onResult: (result: GizmoResult) => void;
@@ -61,8 +62,8 @@ export function SceneGizmoMiniGame({
     });
   }, [currentSegment, intensity, onResult]);
 
-  // Dynamically import and render the appropriate gizmo component
-  const GizmoComponent = useGizmoComponent(config.style || 'orb');
+  // Get the appropriate gizmo component from the centralized renderer map
+  const GizmoComponent = getGizmoRenderer(config.style || 'orb');
 
   if (!GizmoComponent) {
     return (
@@ -76,55 +77,16 @@ export function SceneGizmoMiniGame({
 
   return (
     <div className="scene-gizmo-minigame relative w-full h-full flex items-center justify-center">
-      <GizmoComponent
-        config={config}
-        state={gizmoState}
-        onStateChange={handleStateChange}
-        onAction={handleAction}
-        videoElement={videoElement}
-        isActive={isActive}
-      />
+      <Suspense fallback={<div className="text-center">Loading gizmo...</div>}>
+        <GizmoComponent
+          config={config}
+          state={gizmoState}
+          onStateChange={handleStateChange}
+          onAction={handleAction}
+          videoElement={videoElement}
+          isActive={isActive}
+        />
+      </Suspense>
     </div>
   );
-}
-
-// Hook to dynamically load gizmo components
-function useGizmoComponent(gizmoType: string) {
-  const [Component, setComponent] = useState<any>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadComponent() {
-      try {
-        let module;
-        switch (gizmoType) {
-          case 'orb':
-            module = await import('../../../../../frontend/src/components/gizmos/OrbGizmo');
-            break;
-          case 'constellation':
-            module = await import('../../../../../frontend/src/components/gizmos/ConstellationGizmo');
-            break;
-          // Add more gizmo types as they're created
-          default:
-            console.warn(`Unknown gizmo type: ${gizmoType}`);
-            return;
-        }
-
-        if (mounted && module) {
-          setComponent(() => module.OrbGizmo || module.ConstellationGizmo || module.default);
-        }
-      } catch (error) {
-        console.error(`Failed to load gizmo component: ${gizmoType}`, error);
-      }
-    }
-
-    loadComponent();
-
-    return () => {
-      mounted = false;
-    };
-  }, [gizmoType]);
-
-  return Component;
 }

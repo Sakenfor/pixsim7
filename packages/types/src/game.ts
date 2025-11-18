@@ -68,6 +68,15 @@ export interface GameNpcSummary {
   name: string;
 }
 
+export interface GameNpcDetail extends GameNpcSummary {
+  /** NPC metadata including preferences, traits, etc. */
+  meta?: Record<string, unknown> | null;
+  /** Bio/description */
+  bio?: string | null;
+  /** Current relationship level with player (0-100) */
+  relationshipLevel?: number;
+}
+
 export interface NpcExpressionDTO {
   id?: number;
   state: string;

@@ -32,3 +32,34 @@ export type {
   ReactionType,
   TrailEffect,
 } from './tools';
+
+// Registry functions
+export {
+  registerGizmo,
+  getGizmo,
+  getGizmosByCategory,
+  getAllGizmos,
+  registerTool,
+  getTool,
+  getToolsByType,
+  getAllTools,
+  createToolInstance,
+  clearRegistry,
+} from './registry';
+
+// NPC Preference System
+export type {
+  ToolPreference,
+  PatternPreference,
+  SensitivityProfile,
+  ReactionThresholds,
+  NpcPreferences,
+} from './npc-preferences';
+
+export {
+  calculateFeedback,
+  isToolUnlocked,
+  getRecommendedTools,
+  createDefaultPreferences,
+  PREFERENCE_PRESETS,
+} from './npc-preferences';

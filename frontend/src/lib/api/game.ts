@@ -6,6 +6,7 @@ import type {
   NpcSlot2d,
   GameLocationDetail,
   GameNpcSummary,
+  GameNpcDetail,
   NpcExpressionDTO,
   NpcPresenceDTO,
   GameWorldSummary,
@@ -25,6 +26,7 @@ export type {
   NpcSlot2d,
   GameLocationDetail,
   GameNpcSummary,
+  GameNpcDetail,
   NpcExpressionDTO,
   NpcPresenceDTO,
   GameWorldSummary,
@@ -180,6 +182,19 @@ export async function saveNpcExpressions(
   const res = await apiClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
     expressions,
   });
+  return res.data;
+}
+
+export async function getNpcDetail(npcId: number): Promise<GameNpcDetail> {
+  const res = await apiClient.get<GameNpcDetail>(`/game/npcs/${npcId}`);
+  return res.data;
+}
+
+export async function saveNpcMeta(
+  npcId: number,
+  meta: Record<string, unknown>
+): Promise<GameNpcDetail> {
+  const res = await apiClient.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
   return res.data;
 }
 
