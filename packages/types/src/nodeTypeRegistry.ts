@@ -24,6 +24,9 @@ export interface NodeTypeDefinition<TData = any> {
   /** Category for grouping in UI */
   category?: 'media' | 'flow' | 'logic' | 'action' | 'custom';
 
+  /** Scope defines which graph system this node belongs to */
+  scope?: 'scene' | 'arc' | 'world';
+
   /** Default data when creating new node */
   defaultData: Partial<TData>;
 
@@ -104,6 +107,7 @@ class LRUCache<K, V> {
 export class NodeTypeRegistry {
   private types = new Map<string, NodeTypeDefinition>();
   private categoryIndex = new Map<string, Set<string>>(); // category -> type IDs
+  private scopeIndex = new Map<string, Set<string>>(); // scope -> type IDs
   private cache = new LRUCache<string, NodeTypeDefinition>(50);
   private loadingPromises = new Map<string, Promise<NodeTypeDefinition>>();
   private preloadedIds = new Set<string>();
@@ -112,8 +116,9 @@ export class NodeTypeRegistry {
   register<TData = any>(def: NodeTypeDefinition<TData>) {
     if (this.types.has(def.id)) {
       console.warn(`Node type ${def.id} already registered, overwriting`);
-      // Remove from old category index
+      // Remove from old category and scope indexes
       this.removeFromCategoryIndex(def.id);
+      this.removeFromScopeIndex(def.id);
     }
 
     this.types.set(def.id, def);
@@ -124,6 +129,14 @@ export class NodeTypeRegistry {
         this.categoryIndex.set(def.category, new Set());
       }
       this.categoryIndex.get(def.category)!.add(def.id);
+    }
+
+    // Update scope index
+    if (def.scope) {
+      if (!this.scopeIndex.has(def.scope)) {
+        this.scopeIndex.set(def.scope, new Set());
+      }
+      this.scopeIndex.get(def.scope)!.add(def.id);
     }
 
     // Clear cache for this ID (will be repopulated on next access)
@@ -259,6 +272,30 @@ export class NodeTypeRegistry {
         }
       }
     }
+  }
+
+  /** Remove type from scope index */
+  private removeFromScopeIndex(id: string): void {
+    for (const [scope, ids] of this.scopeIndex.entries()) {
+      if (ids.has(id)) {
+        ids.delete(id);
+        if (ids.size === 0) {
+          this.scopeIndex.delete(scope);
+        }
+      }
+    }
+  }
+
+  /** Get types by scope (optimized with index) */
+  getByScope(scope: string): NodeTypeDefinition[] {
+    const ids = this.scopeIndex.get(scope);
+    if (!ids) {
+      return [];
+    }
+
+    return Array.from(ids)
+      .map(id => this.types.get(id))
+      .filter((t): t is NodeTypeDefinition => t !== undefined);
   }
 
   /** Clear cache (useful for testing/debugging) */
