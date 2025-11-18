@@ -1031,3 +1031,182 @@ class PromptVersionService:
             parsed_defs = parse_variable_definitions(variable_defs)
 
         return substitute_variables(prompt_text, variables, parsed_defs, strict)
+
+    # ===== Provider Validation (Phase 4 - Modernization) =====
+
+    async def validate_prompt_for_provider(
+        self,
+        prompt_text: str,
+        provider_id: str,
+        operation_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Validate prompt against provider capabilities
+
+        BREAKING CHANGE: This will become mandatory for all prompt operations.
+
+        Args:
+            prompt_text: The prompt to validate
+            provider_id: Target provider ID
+            operation_type: Optional operation type for specific validation
+
+        Returns:
+            Validation result:
+            {
+                "valid": bool,
+                "errors": List[str],
+                "warnings": List[str],
+                "provider_id": str,
+                "char_count": int,
+                "char_limit": int,
+                "truncated": bool
+            }
+        """
+        # Known provider limits (will be replaced with dynamic capability registry)
+        PROVIDER_LIMITS = {
+            "pixverse": {
+                "prompt_limit": 800,
+                "supported_operations": ["text_to_video", "image_to_video"]
+            },
+            "runway": {
+                "prompt_limit": 2000,
+                "supported_operations": ["text_to_video", "image_to_video", "video_extend"]
+            },
+            "pika": {
+                "prompt_limit": 1000,
+                "supported_operations": ["text_to_video", "image_to_video"]
+            }
+        }
+
+        errors = []
+        warnings = []
+        char_count = len(prompt_text)
+
+        # Get provider limits
+        provider_limits = PROVIDER_LIMITS.get(provider_id)
+        if not provider_limits:
+            warnings.append(f"Unknown provider '{provider_id}', validation limited")
+            provider_limits = {"prompt_limit": 800}  # Conservative default
+
+        prompt_limit = provider_limits.get("prompt_limit", 800)
+
+        # Check prompt length
+        if char_count > prompt_limit:
+            errors.append(
+                f"Prompt exceeds {prompt_limit} character limit for {provider_id} "
+                f"({char_count} chars)"
+            )
+
+        # Warn if close to limit (90%)
+        elif char_count > prompt_limit * 0.9:
+            warnings.append(
+                f"Prompt is {char_count}/{prompt_limit} chars "
+                f"({int(char_count/prompt_limit*100)}% of limit)"
+            )
+
+        # Check operation type support
+        if operation_type and "supported_operations" in provider_limits:
+            if operation_type not in provider_limits["supported_operations"]:
+                errors.append(
+                    f"Operation '{operation_type}' not supported by {provider_id}"
+                )
+
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "provider_id": provider_id,
+            "char_count": char_count,
+            "char_limit": prompt_limit,
+            "truncated": False
+        }
+
+    async def validate_version_for_provider(
+        self,
+        version_id: UUID,
+        provider_id: str,
+        variables: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Validate a prompt version against provider capabilities
+
+        Args:
+            version_id: Prompt version to validate
+            provider_id: Target provider
+            variables: Variable values to render prompt
+
+        Returns:
+            Validation result with rendered prompt included
+        """
+        version = await self.get_version(version_id)
+        if not version:
+            return {
+                "valid": False,
+                "errors": [f"Version {version_id} not found"],
+                "warnings": [],
+                "provider_id": provider_id
+            }
+
+        # Render prompt with variables
+        try:
+            rendered_prompt = self.render_prompt(
+                version.prompt_text,
+                variables or {},
+                version.variables,
+                strict=False
+            )
+        except Exception as e:
+            return {
+                "valid": False,
+                "errors": [f"Failed to render prompt: {str(e)}"],
+                "warnings": [],
+                "provider_id": provider_id
+            }
+
+        # Validate rendered prompt
+        result = await self.validate_prompt_for_provider(
+            rendered_prompt,
+            provider_id
+        )
+
+        # Add rendered prompt to result
+        result["rendered_prompt"] = rendered_prompt
+        result["version_id"] = str(version_id)
+
+        return result
+
+    async def update_provider_compatibility(
+        self,
+        version_id: UUID,
+        provider_id: str,
+        validation_result: Dict[str, Any]
+    ) -> None:
+        """
+        Update provider_compatibility field on prompt version
+
+        Stores validation results for caching and analytics.
+
+        Args:
+            version_id: Prompt version to update
+            provider_id: Provider that was validated
+            validation_result: Validation result to store
+        """
+        version = await self.get_version(version_id)
+        if not version:
+            return
+
+        # Update provider_compatibility
+        if not version.provider_compatibility:
+            version.provider_compatibility = {}
+
+        version.provider_compatibility[provider_id] = {
+            "validated_at": datetime.utcnow().isoformat(),
+            "valid": validation_result["valid"],
+            "char_count": validation_result.get("char_count"),
+            "char_limit": validation_result.get("char_limit"),
+            "errors": validation_result.get("errors", []),
+            "warnings": validation_result.get("warnings", [])
+        }
+
+        self.db.add(version)
+        await self.db.commit()

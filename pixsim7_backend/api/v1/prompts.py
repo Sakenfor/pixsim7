@@ -961,3 +961,98 @@ async def render_template(
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ===== Provider Validation Endpoints (Phase 4 - Modernization) =====
+
+class ValidatePromptRequest(BaseModel):
+    prompt_text: str = Field(..., description="Prompt text to validate")
+    provider_id: str = Field(..., description="Target provider ID")
+    operation_type: Optional[str] = Field(None, description="Operation type for validation")
+
+
+class ValidateVersionRequest(BaseModel):
+    version_id: UUID = Field(..., description="Prompt version to validate")
+    provider_id: str = Field(..., description="Target provider ID")
+    variables: dict = Field(default_factory=dict, description="Variables to render prompt")
+
+
+@router.post("/validate")
+async def validate_prompt(
+    request: ValidatePromptRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """
+    Validate a prompt against provider capabilities
+
+    BREAKING CHANGE: This endpoint will become mandatory for prompt creation in Phase 2.
+
+    Validates:
+    - Character limit for provider
+    - Operation type support
+    - Provider-specific constraints
+
+    Returns validation result with errors/warnings.
+    """
+    service = PromptVersionService(db)
+
+    result = await service.validate_prompt_for_provider(
+        prompt_text=request.prompt_text,
+        provider_id=request.provider_id,
+        operation_type=request.operation_type
+    )
+
+    if not result["valid"]:
+        # Return 422 Unprocessable Entity for validation errors
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Prompt validation failed",
+                "validation": result
+            }
+        )
+
+    return result
+
+
+@router.post("/versions/{version_id}/validate")
+async def validate_version(
+    version_id: UUID,
+    request: ValidateVersionRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """
+    Validate a prompt version against provider capabilities
+
+    Renders the prompt with provided variables then validates against provider.
+
+    Returns validation result with rendered prompt included.
+    """
+    service = PromptVersionService(db)
+
+    result = await service.validate_version_for_provider(
+        version_id=request.version_id,
+        provider_id=request.provider_id,
+        variables=request.variables
+    )
+
+    # Update provider compatibility cache
+    if result["valid"]:
+        await service.update_provider_compatibility(
+            version_id=request.version_id,
+            provider_id=request.provider_id,
+            validation_result=result
+        )
+
+    if not result["valid"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Version validation failed",
+                "validation": result
+            }
+        )
+
+    return result
