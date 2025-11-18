@@ -100,16 +100,25 @@ export class PixSim7Core implements IPixSim7Core {
   getNpcRelationship(npcId: number): NpcRelationshipState | null {
     if (!this.session) return null;
 
+    const npcKey = `npc:${npcId}`;
+    const raw = this.session.relationships[npcKey] as Record<string, any> | undefined;
+
     const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
       this.session.relationships,
       npcId
     );
 
-    const tierId = compute_relationship_tier(affinity);
-    const intimacyLevelId = compute_intimacy_level({ affinity, trust, chemistry, tension });
+    // Prefer backend-computed tierId and intimacyLevelId
+    // Only compute as fallback if not provided
+    let tierId = typeof raw?.tierId === 'string' ? raw.tierId : undefined;
+    let intimacyLevelId = raw?.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
 
-    const npcKey = `npc:${npcId}`;
-    const raw = this.session.relationships[npcKey] as Record<string, any> | undefined;
+    if (!tierId) {
+      tierId = compute_relationship_tier(affinity);
+    }
+    if (intimacyLevelId === undefined) {
+      intimacyLevelId = compute_intimacy_level({ affinity, trust, chemistry, tension });
+    }
 
     return {
       affinity,

@@ -43,13 +43,23 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
           npcId
         );
 
-        const tier = compute_relationship_tier(affinity);
-        const intimacyLevel = compute_intimacy_level({
-          affinity,
-          trust,
-          chemistry,
-          tension,
-        });
+        // Prefer backend-computed tierId and intimacyLevelId
+        // Only compute as fallback if not provided
+        const rel = value as any;
+        let tier = typeof rel.tierId === 'string' ? rel.tierId : undefined;
+        let intimacyLevel = rel.intimacyLevelId !== undefined ? rel.intimacyLevelId : undefined;
+
+        if (!tier) {
+          tier = compute_relationship_tier(affinity);
+        }
+        if (intimacyLevel === undefined) {
+          intimacyLevel = compute_intimacy_level({
+            affinity,
+            trust,
+            chemistry,
+            tension,
+          });
+        }
 
         npcRelationships.push({
           npcId,
