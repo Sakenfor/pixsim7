@@ -180,6 +180,9 @@ importers:
 
   packages/game-ui:
     dependencies:
+      '@pixsim7/game-core':
+        specifier: workspace:*
+        version: link:../game-core
       '@pixsim7/types':
         specifier: workspace:*
         version: link:../types
@@ -214,6 +217,12 @@ importers:
       zustand:
         specifier: '>=4'
         version: 5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+
+  packages/scene-gizmos:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/semantic-shapes:
     dependencies:

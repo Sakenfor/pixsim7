@@ -73,3 +73,18 @@ export type {
 
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
+
+// ===== Scene Runtime =====
+export {
+  evaluateEdgeConditions,
+  applyEdgeEffects,
+  getPlayableEdges,
+  isProgression,
+  advanceProgression,
+  selectMediaSegment,
+  getDefaultNextEdge,
+} from './scene/runtime';
+
+// ===== Scene Call Stack =====
+export { callStackManager, bindParameters } from './scene/callStack';
+export type { CallStackManager } from './scene/callStack';

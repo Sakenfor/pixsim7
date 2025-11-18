@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@pixsim7/game-core": "workspace:*",
     "@pixsim7/types": "workspace:*",
     "@pixsim7/ui": "workspace:*"
   },

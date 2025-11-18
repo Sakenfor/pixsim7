@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, PlaybackMode, MediaSegment, SelectionStrategy } from '@pixsim7/types'
+import type { Scene, SceneNode, SceneEdge, SceneRuntimeState, MediaSegment } from '@pixsim7/types'
 import { Button, Panel } from '@pixsim7/ui'
 import { ReflexMiniGame } from './minigames/ReflexMiniGame'
-import { callStackManager, bindParameters } from '../lib/sceneCallStack'
+import {
+  applyEdgeEffects,
+  isProgression,
+  getPlayableEdges,
+  advanceProgression as advanceProgressionHelper,
+  selectMediaSegment,
+  getDefaultNextEdge,
+  callStackManager,
+  bindParameters,
+} from '@pixsim7/game-core'
 
 export interface ScenePlayerProps {
   scene: Scene  // Primary scene (for backwards compatibility)
@@ -10,45 +19,6 @@ export interface ScenePlayerProps {
   initialState?: Partial<SceneRuntimeState>
   autoAdvance?: boolean
   onStateChange?: (s: SceneRuntimeState) => void
-}
-
-function evaluateEdgeConditions(edge: SceneEdge, flags: Record<string, any>): boolean {
-  if (!edge.conditions || edge.conditions.length === 0) return true
-  return edge.conditions.every(c => {
-    const v = flags[c.key]
-    switch (c.op) {
-      case 'neq': return v !== c.value
-      case 'gt': return v > c.value
-      case 'lt': return v < c.value
-      case 'gte': return v >= c.value
-      case 'lte': return v <= c.value
-      case 'includes': return Array.isArray(v) && v.includes(c.value)
-      case 'eq':
-      default:
-        return v === c.value
-    }
-  })
-}
-
-function applyEffects(effects: SceneEdge['effects'], prev: Record<string, any>): Record<string, any> {
-  if (!effects || effects.length === 0) return prev
-  const next = { ...prev }
-  for (const eff of effects) {
-    const cur = next[eff.key]
-    switch (eff.op) {
-      case 'inc': next[eff.key] = (typeof cur === 'number' ? cur : 0) + (eff.value ?? 1); break
-      case 'dec': next[eff.key] = (typeof cur === 'number' ? cur : 0) - (eff.value ?? 1); break
-      case 'push': next[eff.key] = Array.isArray(cur) ? [...cur, eff.value] : [eff.value]; break
-      case 'flag': next[eff.key] = true; break
-      case 'set':
-      default: next[eff.key] = eff.value
-    }
-  }
-  return next
-}
-
-function isProgression(playback?: PlaybackMode): playback is Extract<PlaybackMode, { kind: 'progression' }> {
-  return playback?.kind === 'progression'
 }
 
 export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, onStateChange }: ScenePlayerProps) {
@@ -84,7 +54,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
   )
 
   const outgoingEdges = useMemo<SceneEdge[]>(() => currentScene.edges.filter(e => e.from === state.currentNodeId), [currentScene, state.currentNodeId])
-  const playableEdges = useMemo(() => outgoingEdges.filter(e => evaluateEdgeConditions(e, state.flags)), [outgoingEdges, state.flags])
+  const playableEdges = useMemo(() => getPlayableEdges(currentScene, state), [currentScene, state])
 
   // Handle progression playback (multi-step within a single node before choosing edges)
   const progression = isProgression(currentNode?.playback) ? currentNode?.playback : undefined
@@ -93,12 +63,12 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
 
   const advanceProgression = useCallback(() => {
     if (!progression) return
-    setState(s => ({ ...s, progressionIndex: s.progressionIndex == null ? 0 : Math.min(totalSegments - 1, s.progressionIndex + 1) }))
-  }, [progression, totalSegments])
+    setState(s => advanceProgressionHelper(currentNode?.playback, s))
+  }, [progression, currentNode?.playback])
 
   const chooseEdge = useCallback((edge: SceneEdge) => {
     setState(s => {
-      const flags = applyEffects(edge.effects, s.flags)
+      const flags = applyEdgeEffects(edge.effects, s.flags)
       return { ...s, currentNodeId: edge.to, flags, progressionIndex: undefined }
     })
   }, [])
@@ -161,50 +131,18 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
 
   // Auto advance if only one edge & no progression
   useEffect(() => {
-    if (!autoAdvance) return
-    if (progression && (state.progressionIndex ?? -1) < (totalSegments - 1)) return
-    if (playableEdges.length === 1 && !progression) {
-      chooseEdge(playableEdges[0])
+    const edge = getDefaultNextEdge({ scene: currentScene, state, autoAdvance, node: currentNode })
+    if (edge) {
+      chooseEdge(edge)
     }
-  }, [autoAdvance, playableEdges, chooseEdge, progression, state.progressionIndex, totalSegments])
+  }, [autoAdvance, currentScene, state, currentNode, chooseEdge])
 
   useEffect(() => { onStateChange?.(state) }, [state, onStateChange])
 
   // Select segment based on selection strategy
   const selectedSegment: MediaSegment | undefined = useMemo(() => {
-    const media = currentNode?.media
-    if (!media || media.length === 0) return undefined
-    const sel = currentNode?.selection || { kind: 'ordered' as const }
-    const pick = (list: MediaSegment[], idx = 0) => list[Math.max(0, Math.min(list.length - 1, idx))]
-
-    // If progression defines segmentIds for current step, honor that first
-    if (progression && (state.progressionIndex ?? -1) >= 0) {
-      const seg = progression.segments[state.progressionIndex!]
-      if (seg?.segmentIds && seg.segmentIds.length) {
-        // ordered within specified ids
-        const ids = seg.segmentIds
-        const idx = 0
-        const found = media.find(m => m.id === ids[idx])
-        return found || media[0]
-      }
-    }
-
-    switch (sel.kind) {
-      case 'random': {
-        const r = Math.floor(Math.random() * media.length)
-        return media[r]
-      }
-      case 'pool': {
-        const pool = sel.filterTags?.length ? media.filter(m => m.tags?.some(t => sel.filterTags!.includes(t))) : media
-        const count = Math.max(1, sel.count ?? 1)
-        const r = pool.length ? pool[Math.min(pool.length - 1, Math.floor(Math.random() * pool.length))] : media[0]
-        return r
-      }
-      case 'ordered':
-      default:
-        return pick(media, 0)
-    }
-  }, [currentNode?.media, currentNode?.selection, progression, state.progressionIndex])
+    return selectMediaSegment({ node: currentNode, state })
+  }, [currentNode, state])
 
   const sourceUrl = selectedSegment?.url || currentNode?.mediaUrl || ''
 
@@ -271,11 +209,11 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
     const v = videoRef.current
     if (!v) return
     const onEnded = () => {
-      if (progression && (state.progressionIndex ?? -1) < (totalSegments - 1)) return
-      const defaultEdge = playableEdges.find(e => e.isDefault)
-      const edge = defaultEdge || (playableEdges.length === 1 ? playableEdges[0] : undefined)
-      if (edge) chooseEdge(edge)
-      else {
+      // Use getDefaultNextEdge with autoAdvance=true to get edge if applicable
+      const edge = getDefaultNextEdge({ scene: currentScene, state, autoAdvance: true, node: currentNode })
+      if (edge) {
+        chooseEdge(edge)
+      } else {
         // if no edge, loop video
         v.currentTime = 0
         void v.play().catch(() => {})
@@ -283,7 +221,7 @@ export function ScenePlayer({ scene, scenes, initialState, autoAdvance = false, 
     }
     v.addEventListener('ended', onEnded)
     return () => v.removeEventListener('ended', onEnded)
-  }, [playableEdges, chooseEdge, progression, state.progressionIndex, totalSegments])
+  }, [currentScene, state, currentNode, chooseEdge])
 
   function togglePlay() {
     const v = videoRef.current
