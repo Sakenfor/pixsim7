@@ -1,7 +1,11 @@
 import { nodeTypeRegistry } from './nodeTypeRegistry';
+import { registerNpcResponseNode } from './npcResponseNode';
 
 /** Register all built-in node types */
 export function registerBuiltinNodeTypes() {
+  // Register NPC Response node
+  registerNpcResponseNode();
+
   // Video node
   nodeTypeRegistry.register({
     id: 'video',

@@ -80,3 +80,13 @@ export {
   hasMiniGame,
   clearMiniGameRegistry,
 } from './miniGames';
+
+// NPC Response Evaluator
+export type {
+  ToolInteractionEvent,
+  VideoGenerationOutput,
+} from './npcResponseEvaluator';
+
+export {
+  NpcResponseEvaluator,
+} from './npcResponseEvaluator';

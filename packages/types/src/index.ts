@@ -157,6 +157,7 @@ export * from './generation'
 export * from './nodeTypeRegistry'
 export * from './builtinNodeTypes'
 export * from './arcNodeTypes'
+export * from './npcResponseNode'
 
 // ===================
 // Game DTO Types
