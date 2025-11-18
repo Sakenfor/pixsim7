@@ -335,12 +335,20 @@ function mapNodeTypeToMeta(nodeType: NodeTypeDefinition): PluginMeta | null {
 
   // Infer consumed features from node scope
   const consumesFeatures: string[] = [];
+  const providesFeatures: string[] = [];
+
   if (nodeType.scope === 'world') {
     // World-scoped nodes integrate with game mechanics
     consumesFeatures.push('game');
-  } else if (nodeType.scope === 'scene' || nodeType.scope === 'arc') {
-    // Scene/arc builders integrate with workspace
+    providesFeatures.push('world-builder');
+  } else if (nodeType.scope === 'scene') {
+    // Scene builders integrate with workspace
     consumesFeatures.push('workspace');
+    providesFeatures.push('scene-builder');
+  } else if (nodeType.scope === 'arc') {
+    // Arc builders integrate with workspace
+    consumesFeatures.push('workspace');
+    providesFeatures.push('arc-builder');
   }
 
   return {
@@ -363,6 +371,7 @@ function mapNodeTypeToMeta(nodeType: NodeTypeDefinition): PluginMeta | null {
     configurable: false, // Node types aren't configurable in the same way
     enabled: true, // Node types are always enabled once registered
     consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
   };
 }
 
@@ -378,6 +387,18 @@ function mapGalleryToolToMeta(tool: GalleryToolPlugin): PluginMeta {
 
   // Gallery tools integrate with the assets feature
   const consumesFeatures: string[] = ['assets'];
+  const providesFeatures: string[] = [];
+
+  // Infer provided features based on tool category
+  if (tool.category === 'visualization') {
+    providesFeatures.push('gallery-visualization');
+  } else if (tool.category === 'automation') {
+    providesFeatures.push('gallery-automation');
+  } else if (tool.category === 'analysis') {
+    providesFeatures.push('gallery-analysis');
+  } else if (tool.category === 'utility') {
+    providesFeatures.push('gallery-utility');
+  }
 
   return {
     kind: 'gallery-tool',
@@ -397,6 +418,7 @@ function mapGalleryToolToMeta(tool: GalleryToolPlugin): PluginMeta {
     configurable: false, // Gallery tools aren't configurable
     enabled: true, // Gallery tools use whenVisible instead of enabled state
     consumesFeatures,
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
   };
 }
 
@@ -422,11 +444,14 @@ function mapUIPluginToMeta(pluginEntry: PluginEntry): PluginMeta {
   const consumesFeatures: string[] = [];
   const consumesActions: string[] = [];
   const consumesState: string[] = [];
+  const providesFeatures: string[] = [];
 
   // UI overlay plugins typically consume core features
   if (manifest.permissions?.includes('ui:overlay')) {
     // Most UI plugins need workspace features
     consumesFeatures.push('workspace');
+    // They also provide UI overlay capability
+    providesFeatures.push('ui-overlay');
   }
 
   // Session read access means they might use session-related actions/state
@@ -440,6 +465,17 @@ function mapUIPluginToMeta(pluginEntry: PluginEntry): PluginMeta {
     consumesFeatures.push('assets', 'workspace', 'generation');
     consumesActions.push('workspace.open-panel', 'generation.quick-generate');
     consumesState.push('workspace.panels');
+    // They provide control center capability
+    providesFeatures.push('control-center');
+  }
+
+  // Infer from manifest type
+  if (manifest.type === 'theme') {
+    providesFeatures.push('theme');
+  } else if (manifest.type === 'tool') {
+    providesFeatures.push('ui-tool');
+  } else if (manifest.type === 'enhancement') {
+    providesFeatures.push('ui-enhancement');
   }
 
   return {
@@ -460,6 +496,7 @@ function mapUIPluginToMeta(pluginEntry: PluginEntry): PluginMeta {
     configurable: true, // UI plugins have settings
     enabled: pluginEntry.state === 'enabled',
     // Capability references
+    providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
     consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
     consumesActions: consumesActions.length > 0 ? consumesActions : undefined,
     consumesState: consumesState.length > 0 ? consumesState : undefined,
@@ -478,6 +515,15 @@ function mapGenerationUIToMeta(plugin: GenerationUIPlugin): PluginMeta {
 
   // Generation UI plugins integrate with the generation feature
   const consumesFeatures: string[] = ['generation'];
+  const providesFeatures: string[] = [];
+
+  // Generation UI plugins provide provider-specific generation interfaces
+  if (plugin.providerId) {
+    providesFeatures.push(`generation-ui-${plugin.providerId}`);
+  }
+
+  // Also indicate they extend the generation UI system
+  providesFeatures.push('generation-ui');
 
   return {
     kind: 'generation-ui',
@@ -497,6 +543,7 @@ function mapGenerationUIToMeta(plugin: GenerationUIPlugin): PluginMeta {
     },
     configurable: false, // Generation UI plugins aren't user-configurable
     enabled: true, // Always enabled once registered
+    providesFeatures,
     consumesFeatures,
   };
 }
@@ -762,6 +809,32 @@ export function getRiskyPlugins(plugins: PluginMeta[] = listAllPlugins()): Plugi
 }
 
 /**
+ * Filter plugins by consumed feature
+ * Returns plugins that depend on a specific feature
+ */
+export function filterByConsumedFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) => plugin.consumesFeatures?.includes(featureId));
+}
+
+/**
+ * Filter plugins by provided feature
+ * Returns plugins that add/provide a specific feature
+ */
+export function filterByProvidedFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) => plugin.providesFeatures?.includes(featureId));
+}
+
+/**
+ * Filter plugins by any feature relationship (consumes OR provides)
+ */
+export function filterByFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) =>
+    plugin.consumesFeatures?.includes(featureId) ||
+    plugin.providesFeatures?.includes(featureId)
+  );
+}
+
+/**
  * Get unique categories across all plugins
  */
 export function getUniqueCategories(plugins: PluginMeta[] = listAllPlugins()): string[] {
@@ -783,6 +856,110 @@ export function getUniqueTags(plugins: PluginMeta[] = listAllPlugins()): string[
     plugin.tags?.forEach((tag) => tags.add(tag));
   });
   return Array.from(tags).sort();
+}
+
+/**
+ * Get unique consumed features across all plugins
+ */
+export function getUniqueConsumedFeatures(plugins: PluginMeta[] = listAllPlugins()): string[] {
+  const features = new Set<string>();
+  plugins.forEach((plugin) => {
+    plugin.consumesFeatures?.forEach((feature) => features.add(feature));
+  });
+  return Array.from(features).sort();
+}
+
+/**
+ * Get unique provided features across all plugins
+ */
+export function getUniqueProvidedFeatures(plugins: PluginMeta[] = listAllPlugins()): string[] {
+  const features = new Set<string>();
+  plugins.forEach((plugin) => {
+    plugin.providesFeatures?.forEach((feature) => features.add(feature));
+  });
+  return Array.from(features).sort();
+}
+
+/**
+ * Get all unique features (consumed or provided) across all plugins
+ */
+export function getUniqueFeatures(plugins: PluginMeta[] = listAllPlugins()): string[] {
+  const features = new Set<string>();
+  plugins.forEach((plugin) => {
+    plugin.consumesFeatures?.forEach((feature) => features.add(feature));
+    plugin.providesFeatures?.forEach((feature) => features.add(feature));
+  });
+  return Array.from(features).sort();
+}
+
+/**
+ * Get all plugins that use a specific feature (consume OR provide)
+ * Bidirectional lookup: feature -> plugins
+ */
+export function getPluginsByFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) =>
+    plugin.consumesFeatures?.includes(featureId) ||
+    plugin.providesFeatures?.includes(featureId)
+  );
+}
+
+/**
+ * Get all plugins that consume a specific feature
+ */
+export function getPluginsByConsumedFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) => plugin.consumesFeatures?.includes(featureId));
+}
+
+/**
+ * Get all plugins that provide a specific feature
+ */
+export function getPluginsByProvidedFeature(featureId: string, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((plugin) => plugin.providesFeatures?.includes(featureId));
+}
+
+/**
+ * Get feature usage statistics
+ * Returns a map of feature IDs to the number of plugins that use them
+ */
+export function getFeatureUsageStats(plugins: PluginMeta[] = listAllPlugins()): Record<string, { consumers: number; providers: number; total: number }> {
+  const stats: Record<string, { consumers: number; providers: number; total: number }> = {};
+
+  plugins.forEach((plugin) => {
+    plugin.consumesFeatures?.forEach((feature) => {
+      if (!stats[feature]) {
+        stats[feature] = { consumers: 0, providers: 0, total: 0 };
+      }
+      stats[feature].consumers++;
+      stats[feature].total++;
+    });
+
+    plugin.providesFeatures?.forEach((feature) => {
+      if (!stats[feature]) {
+        stats[feature] = { consumers: 0, providers: 0, total: 0 };
+      }
+      stats[feature].providers++;
+      stats[feature].total++;
+    });
+  });
+
+  return stats;
+}
+
+/**
+ * Get plugin dependency graph
+ * Returns a map of plugin IDs to their feature relationships
+ */
+export function getPluginDependencyGraph(plugins: PluginMeta[] = listAllPlugins()): Record<string, { consumes: string[]; provides: string[] }> {
+  const graph: Record<string, { consumes: string[]; provides: string[] }> = {};
+
+  plugins.forEach((plugin) => {
+    graph[plugin.id] = {
+      consumes: plugin.consumesFeatures || [],
+      provides: plugin.providesFeatures || [],
+    };
+  });
+
+  return graph;
 }
 
 /**

@@ -13,7 +13,9 @@ import {
   searchPlugins,
   filterByKind,
   filterByCategory,
+  filterByFeature,
   getUniqueCategories,
+  getUniqueFeatures,
   type PluginMeta,
   type PluginKind,
 } from '../../lib/plugins/catalog';
@@ -49,6 +51,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [featureFilter, setFeatureFilter] = useState<string>('all');
 
   // Load plugins
   useEffect(() => {
@@ -56,8 +59,9 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
     setPlugins(allPlugins);
   }, []);
 
-  // Get unique categories
+  // Get unique categories and features
   const categories = useMemo(() => getUniqueCategories(plugins), [plugins]);
+  const features = useMemo(() => getUniqueFeatures(plugins), [plugins]);
 
   // Apply filters
   const filteredPlugins = useMemo(() => {
@@ -78,8 +82,13 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
       filtered = filterByCategory(categoryFilter, filtered);
     }
 
+    // Feature filter
+    if (featureFilter !== 'all') {
+      filtered = filterByFeature(featureFilter, filtered);
+    }
+
     return filtered;
-  }, [plugins, searchQuery, kindFilter, categoryFilter]);
+  }, [plugins, searchQuery, kindFilter, categoryFilter, featureFilter]);
 
   return (
     <div className="space-y-4">
@@ -119,6 +128,23 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
             {categories.map((category) => (
               <option key={category} value={category}>
                 {category}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Feature filter */}
+        {features.length > 0 && (
+          <select
+            value={featureFilter}
+            onChange={(e) => setFeatureFilter(e.target.value)}
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            title="Filter by feature (consumed or provided)"
+          >
+            <option value="all">All Features</option>
+            {features.map((feature) => (
+              <option key={feature} value={feature}>
+                {feature}
               </option>
             ))}
           </select>

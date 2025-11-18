@@ -154,9 +154,22 @@ function FeatureItem({ id }: { id: string }) {
 
   if (!feature) {
     return (
-      <div className="p-2 rounded bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-        <code className="text-xs text-neutral-600 dark:text-neutral-400">{id}</code>
-        <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">(not found)</span>
+      <div className="p-3 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700">
+        <div className="flex items-start gap-2">
+          <span className="text-lg">⚠️</span>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm text-amber-900 dark:text-amber-100">
+              Feature Not Registered
+            </div>
+            <code className="text-xs text-amber-700 dark:text-amber-300 block mt-1">
+              {id}
+            </code>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+              This feature is not currently registered in the capability system.
+              The plugin may not work correctly until this feature is available.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -199,9 +212,21 @@ function ActionItem({ id }: { id: string }) {
 
   if (!action) {
     return (
-      <div className="p-2 rounded bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-        <code className="text-xs text-neutral-600 dark:text-neutral-400">{id}</code>
-        <span className="text-xs text-amber-600 dark:text-amber-400 ml-2">(not found)</span>
+      <div className="p-3 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700">
+        <div className="flex items-start gap-2">
+          <span className="text-lg">⚠️</span>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm text-amber-900 dark:text-amber-100">
+              Action Not Registered
+            </div>
+            <code className="text-xs text-amber-700 dark:text-amber-300 block mt-1">
+              {id}
+            </code>
+            <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+              This action is not currently registered. The plugin may not be able to execute this operation.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
