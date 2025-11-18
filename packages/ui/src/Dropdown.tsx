@@ -85,7 +85,7 @@ export function Dropdown({
     <div
       ref={dropdownRef}
       className={clsx(
-        'absolute bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-50',
+        'absolute bg-white dark:bg-neutral-800 border dark:border-neutral-700 rounded shadow-lg z-dropdown',
         positionClasses[position],
         className
       )}

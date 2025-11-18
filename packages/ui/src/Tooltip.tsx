@@ -89,7 +89,7 @@ export function Tooltip({
   return (
     <div
       className={clsx(
-        'absolute z-[10001] pointer-events-none',
+        'absolute z-tooltip pointer-events-none',
         'animate-in fade-in duration-200',
         POSITION_STYLES[position],
         className

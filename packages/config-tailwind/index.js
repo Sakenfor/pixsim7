@@ -61,6 +61,19 @@ const preset = {
         'elevation-4': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
         'elevation-5': '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
       },
+      zIndex: {
+        // Standardized z-index scale for consistent layering
+        // Use these instead of arbitrary values like z-[100]
+        'base': '0',
+        'dropdown': '50',         // Dropdowns, popovers
+        'sticky': '100',          // Sticky headers, toolbars
+        'fixed': '500',           // Fixed UI elements
+        'modal-backdrop': '1000', // Modal backdrops
+        'modal': '1001',          // Modal dialogs
+        'popover': '1002',        // Popovers over modals
+        'tooltip': '1003',        // Tooltips (highest UI layer)
+        'toast': '9999',          // Toast notifications (always on top)
+      },
     },
   },
   plugins: [
