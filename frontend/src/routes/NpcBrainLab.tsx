@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Panel, Button, Badge, Select, ProgressBar } from '@pixsim7/ui';
+import { Panel, Button, Select } from '@pixsim7/ui';
 import { parseNpcKey } from '@pixsim7/game-core';
 import type { NpcBrainState } from '@pixsim7/game-core';
 import type { BrainFace } from '@pixsim7/semantic-shapes';
 import { usePixSim7Core } from '../lib/game/usePixSim7Core';
 import { getGameSession, listGameSessions, type GameSessionSummary } from '../lib/api/game';
 import { BrainShape } from '../components/shapes/BrainShape';
+import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
+import { brainToolRegistry } from '../lib/brainTools/registry';
+import type { BrainToolContext } from '../lib/brainTools/types';
 
 export interface NpcBrainLabProps {
   npcId?: number;
@@ -310,39 +313,21 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
             )}
           </Panel>
 
-          {/* Right: Face Inspector */}
-          <Panel className="p-6 space-y-4">
-            <h2 className="text-lg font-semibold capitalize">
-              {activeFace} Analysis
-            </h2>
-
-            {activeFace === 'cortex' && (
-              <PersonalityInspector traits={brainState.traits} tags={brainState.personaTags} />
-            )}
-            {activeFace === 'memory' && (
-              <MemoryInspector memories={brainState.memories} />
-            )}
-            {activeFace === 'emotion' && (
-              <MoodInspector mood={brainState.mood} />
-            )}
-            {activeFace === 'logic' && (
-              <LogicInspector logic={brainState.logic} />
-            )}
-            {activeFace === 'instinct' && (
-              <InstinctInspector instincts={brainState.instincts} />
-            )}
-            {activeFace === 'social' && selectedNpcId && (
-              <SocialInspector
-                social={brainState.social}
-                onUpdate={(updates) => {
-                  core.updateNpcRelationship(selectedNpcId, updates);
-                  // Refresh brain state
-                  const updatedBrain = core.getNpcBrainState(selectedNpcId);
-                  if (updatedBrain) setBrainState(updatedBrain);
-                }}
-              />
-            )}
-          </Panel>
+          {/* Right: Brain Tools Panel */}
+          <div>
+            <BrainToolsPanel
+              context={{
+                npcId: selectedNpcId,
+                session: session,
+                brainState: brainState,
+              }}
+              tools={brainToolRegistry.getVisible({
+                npcId: selectedNpcId,
+                session: session,
+                brainState: brainState,
+              })}
+            />
+          </div>
         </div>
       )}
 
@@ -367,235 +352,3 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
   );
 }
 
-// ============================================================================
-// Inspector Components (adapted from BrainShapeExample)
-// ============================================================================
-
-const PersonalityInspector: React.FC<{
-  traits: Record<string, number>;
-  tags: string[];
-}> = ({ traits, tags }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-sm font-semibold mb-2">Personality Traits</h3>
-      <div className="space-y-2">
-        {Object.entries(traits).map(([trait, value]) => (
-          <div key={trait} className="space-y-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="capitalize">{trait}</span>
-              <span className="font-mono">{value.toFixed(0)}</span>
-            </div>
-            <ProgressBar value={value} max={100} variant="primary" />
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div>
-      <h3 className="text-sm font-semibold mb-2">Persona Tags</h3>
-      <div className="flex flex-wrap gap-2">
-        {tags.map((tag) => (
-          <Badge key={tag} color="blue">
-            {tag}
-          </Badge>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-const MemoryInspector: React.FC<{
-  memories: any[];
-}> = ({ memories }) => (
-  <div className="space-y-3">
-    <h3 className="text-sm font-semibold">Recent Memories</h3>
-    {memories.length === 0 ? (
-      <p className="text-xs text-neutral-500">No memories yet</p>
-    ) : (
-      <div className="space-y-2 max-h-96 overflow-y-auto">
-        {memories.slice(0, 10).map((memory) => (
-          <div
-            key={memory.id}
-            className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded border border-neutral-200 dark:border-neutral-700 space-y-1"
-          >
-            <p className="text-sm">{memory.summary}</p>
-            <div className="flex items-center gap-2 text-xs text-neutral-500">
-              <span>{new Date(memory.timestamp).toLocaleDateString()}</span>
-              {memory.tags.map((tag: string) => (
-                <Badge key={tag} color="blue" className="text-xs">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-);
-
-const MoodInspector: React.FC<{
-  mood: any;
-}> = ({ mood }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-sm font-semibold mb-2">
-        Current Mood: <span className="capitalize text-primary-500">{mood.label || 'Neutral'}</span>
-      </h3>
-    </div>
-
-    <div className="space-y-3">
-      <div>
-        <div className="flex items-center justify-between text-xs mb-1">
-          <span>Valence (Pleasure)</span>
-          <span className="font-mono">{mood.valence.toFixed(1)}</span>
-        </div>
-        <ProgressBar
-          value={mood.valence}
-          max={100}
-          variant={mood.valence >= 50 ? 'success' : 'warning'}
-        />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between text-xs mb-1">
-          <span>Arousal (Energy)</span>
-          <span className="font-mono">{mood.arousal.toFixed(1)}</span>
-        </div>
-        <ProgressBar value={mood.arousal} max={100} variant="primary" />
-      </div>
-    </div>
-  </div>
-);
-
-const LogicInspector: React.FC<{
-  logic: any;
-}> = ({ logic }) => (
-  <div className="space-y-3">
-    <h3 className="text-sm font-semibold">Decision Strategies</h3>
-    <div className="space-y-2">
-      {logic.strategies.map((strategy: string) => (
-        <div
-          key={strategy}
-          className="flex items-center gap-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded"
-        >
-          <Badge color="green">{strategy}</Badge>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-const InstinctInspector: React.FC<{
-  instincts: string[];
-}> = ({ instincts }) => (
-  <div className="space-y-3">
-    <h3 className="text-sm font-semibold">Base Instincts</h3>
-    <div className="flex flex-wrap gap-2">
-      {instincts.map((instinct) => (
-        <Badge key={instinct} color="orange">
-          {instinct}
-        </Badge>
-      ))}
-    </div>
-  </div>
-);
-
-const SocialInspector: React.FC<{
-  social: any;
-  onUpdate: (updates: any) => void;
-}> = ({ social, onUpdate }) => (
-  <div className="space-y-4">
-    <h3 className="text-sm font-semibold">Relationship Metrics</h3>
-
-    <div className="space-y-3">
-      <div>
-        <label className="text-xs flex items-center justify-between mb-1">
-          <span>Affinity</span>
-          <span className="font-mono">{social.affinity}</span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={social.affinity}
-          onChange={(e) => onUpdate({ affinity: Number(e.target.value) })}
-          className="w-full"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs flex items-center justify-between mb-1">
-          <span>Trust</span>
-          <span className="font-mono">{social.trust}</span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={social.trust}
-          onChange={(e) => onUpdate({ trust: Number(e.target.value) })}
-          className="w-full"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs flex items-center justify-between mb-1">
-          <span>Chemistry</span>
-          <span className="font-mono">{social.chemistry}</span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={social.chemistry}
-          onChange={(e) => onUpdate({ chemistry: Number(e.target.value) })}
-          className="w-full"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs flex items-center justify-between mb-1">
-          <span>Tension</span>
-          <span className="font-mono">{social.tension}</span>
-        </label>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={social.tension}
-          onChange={(e) => onUpdate({ tension: Number(e.target.value) })}
-          className="w-full"
-        />
-      </div>
-    </div>
-
-    <div className="pt-2 border-t border-neutral-200 dark:border-neutral-700 space-y-2">
-      <div className="flex items-center justify-between text-xs">
-        <span>Tier:</span>
-        <Badge color="blue">{social.tierId || 'unknown'}</Badge>
-      </div>
-      <div className="flex items-center justify-between text-xs">
-        <span>Intimacy:</span>
-        <Badge color="purple">
-          {social.intimacyLevelId !== null && social.intimacyLevelId !== undefined
-            ? social.intimacyLevelId
-            : 'none'}
-        </Badge>
-      </div>
-
-      {social.flags.length > 0 && (
-        <div className="pt-2">
-          <h4 className="text-xs font-semibold mb-1">Flags:</h4>
-          <div className="flex flex-wrap gap-1">
-            {social.flags.map((flag: string) => (
-              <Badge key={flag} color="gray" className="text-xs">
-                {flag}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
-);
