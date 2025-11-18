@@ -1,0 +1,14 @@
+{
+  "manifest": {
+    "id": "time-display",
+    "name": "Time Display",
+    "version": "1.0.0",
+    "author": "PixSim Team",
+    "description": "Shows current world time in a compact overlay",
+    "icon": "⏰",
+    "type": "ui-overlay",
+    "permissions": ["read:session", "ui:overlay"],
+    "main": "time-display.js"
+  },
+  "code": "const plugin = { async onEnable(api) { api.ui.addOverlay({ id: 'time-display', position: 'top-left', render: function() { const state = api.state.getGameState(); const time = state.worldTime || { day: 1, hour: 8 }; const div = document.createElement('div'); div.innerHTML = '<div style=\"background: rgba(0,0,0,0.8); color: white; padding: 8px 12px; border-radius: 4px; font-family: monospace; font-size: 14px;\"><strong>Day ' + time.day + '</strong> - ' + String(time.hour).padStart(2, \"0\") + ':00</div>'; return div.firstChild; } }); this.unsubscribe = api.state.subscribe(() => {}); console.info('Time Display plugin enabled'); }, async onDisable() { if (this.unsubscribe) { this.unsubscribe(); } console.info('Time Display plugin disabled'); } };"
+}
