@@ -17,6 +17,7 @@ import { generationModule } from './generation';
 import { gameModule } from './game';
 import { automationModule } from './automation';
 import { pluginsModule } from './plugins';
+import { appMapModule } from './app-map';
 
 // Register all modules
 export function registerModules() {
@@ -38,6 +39,7 @@ export function registerModules() {
   moduleRegistry.register(gameModule);
   moduleRegistry.register(automationModule);
   moduleRegistry.register(pluginsModule);
+  moduleRegistry.register(appMapModule);
 
   // Legacy gallery module (kept for compatibility)
   moduleRegistry.register(galleryModule);
@@ -61,3 +63,4 @@ export { generationModule } from './generation';
 export { gameModule } from './game';
 export { automationModule } from './automation';
 export { pluginsModule } from './plugins';
+export { appMapModule } from './app-map';
