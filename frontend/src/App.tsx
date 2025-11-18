@@ -5,6 +5,7 @@ import { useControlCenterStore } from './stores/controlCenterStore';
 import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { registerBuiltinNodeTypes } from '@pixsim7/types';
+import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -37,6 +38,9 @@ function App() {
   useEffect(() => {
     // Register builtin node types
     registerBuiltinNodeTypes();
+
+    // Register builtin node renderers
+    registerBuiltinRenderers();
 
     // Initialize modules
     registerModules();
