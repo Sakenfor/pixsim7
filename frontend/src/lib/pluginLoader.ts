@@ -1,18 +1,21 @@
 /**
- * Plugin Loader
+ * Plugin Loader (Refactored with Unified Plugin System)
  *
- * Automatically discovers and registers plugins from the plugins directory.
- * Supports:
- * - Helper plugins (session state management)
- * - Interaction plugins (NPC interactions)
- * - Node type plugins (custom scene/arc nodes)
+ * Automatically discovers and registers plugins from the plugins directory using
+ * the unified plugin system with consistent patterns, origin tracking, and metadata.
+ *
+ * New Features:
+ * - Consistent discovery patterns across all plugin families
+ * - Origin tracking (builtin, plugin-dir, ui-bundle, dev-project)
+ * - Unified catalog for querying all plugins
+ * - Metadata-driven registration
  *
  * Usage:
  * ```typescript
  * import { loadAllPlugins } from './lib/pluginLoader';
  *
  * // In App.tsx useEffect
- * loadAllPlugins();
+ * await loadAllPlugins();
  * ```
  *
  * Directory structure:
@@ -28,15 +31,38 @@
  * │   │   └── reputation.ts (exports registerReputationHelper)
  * │   └── skills/
  * │       └── skills.ts (exports registerSkillsHelper)
- * └── interactions/
- *     ├── trade/
- *     │   └── trade.ts (exports tradePlugin)
- *     └── romance/
- *         └── romance.ts (exports romancePlugin)
+ * ├── interactions/
+ * │   ├── trade/
+ * │   │   └── trade.ts (exports tradePlugin)
+ * │   └── romance/
+ * │       └── romance.ts (exports romancePlugin)
+ * ├── galleryTools/
+ * │   └── ...
+ * └── worldTools/
+ *     └── ...
  * ```
  */
 
 import { sessionHelperRegistry, interactionRegistry } from './registries';
+import {
+  PluginDiscovery,
+  pluginCatalog,
+  type DiscoveredPlugin,
+} from './plugins/pluginSystem';
+import {
+  registerHelper,
+  registerInteraction,
+  registerNodeType,
+  registerGalleryTool,
+  registerWorldTool,
+} from './plugins/registryBridge';
+import {
+  helperDiscoveryConfig,
+  interactionDiscoveryConfig,
+  galleryToolDiscoveryConfig,
+  nodeTypeDiscoveryConfig,
+  worldToolDiscoveryConfig,
+} from './plugins/discoveryConfigs';
 
 /**
  * Plugin loader configuration
@@ -61,7 +87,7 @@ export interface PluginLoadResult {
 
 /**
  * Load all plugins from the plugins directory
- * Uses Vite's import.meta.glob for automatic discovery
+ * Uses the unified plugin discovery system
  */
 export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<PluginLoadResult> {
   const { verbose = true, strict = false } = config;
@@ -75,12 +101,12 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   };
 
   if (verbose) {
-    console.log('🔌 Loading plugins...');
+    console.log('🔌 Loading plugins with unified discovery system...');
   }
 
   // Load node type plugins first (so they're available when scenes load)
   try {
-    const nodeResult = await loadNodeTypePlugins(verbose);
+    const nodeResult = await loadPluginFamily(nodeTypeDiscoveryConfig, verbose);
     result.nodes = nodeResult;
   } catch (error: any) {
     result.errors.push({ plugin: 'nodes', error: error.message });
@@ -89,7 +115,7 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
 
   // Load helper plugins
   try {
-    const helperResult = await loadHelperPlugins(verbose);
+    const helperResult = await loadPluginFamily(helperDiscoveryConfig, verbose);
     result.helpers = helperResult;
   } catch (error: any) {
     result.errors.push({ plugin: 'helpers', error: error.message });
@@ -98,7 +124,7 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
 
   // Load interaction plugins
   try {
-    const interactionResult = await loadInteractionPlugins(verbose);
+    const interactionResult = await loadPluginFamily(interactionDiscoveryConfig, verbose);
     result.interactions = interactionResult;
   } catch (error: any) {
     result.errors.push({ plugin: 'interactions', error: error.message });
@@ -107,10 +133,22 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
 
   // Load gallery tool plugins
   try {
-    const galleryToolResult = await loadGalleryToolPlugins(verbose);
+    const galleryToolResult = await loadPluginFamily(galleryToolDiscoveryConfig, verbose);
     result.galleryTools = galleryToolResult;
   } catch (error: any) {
     result.errors.push({ plugin: 'galleryTools', error: error.message });
+    if (strict) throw error;
+  }
+
+  // Load world tool plugins
+  try {
+    const worldToolResult = await loadPluginFamily(worldToolDiscoveryConfig, verbose);
+    // Add to result (reuse galleryTools for now, or extend PluginLoadResult)
+    if (verbose) {
+      console.log(`   World Tools: ${worldToolResult.loaded} loaded, ${worldToolResult.failed} failed`);
+    }
+  } catch (error: any) {
+    result.errors.push({ plugin: 'worldTools', error: error.message });
     if (strict) throw error;
   }
 
@@ -128,86 +166,53 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
         console.warn(`   - ${plugin}: ${error}`);
       });
     }
+
+    // Print catalog summary
+    console.log('\n📊 Plugin Catalog Summary:');
+    pluginCatalog.printSummary();
   }
 
   return result;
 }
 
 /**
- * Load helper plugins from plugins/helpers/**
+ * Generic plugin family loader using unified discovery system
+ *
+ * This replaces all the individual loader functions (loadHelperPlugins,
+ * loadInteractionPlugins, etc.) with a single unified implementation.
  */
-async function loadHelperPlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
+async function loadPluginFamily(
+  discoveryConfig: typeof helperDiscoveryConfig,
+  verbose: boolean
+): Promise<{ loaded: number; failed: number }> {
   let loaded = 0;
   let failed = 0;
 
-  // Use Vite's import.meta.glob to discover all helper plugin files
-  // Pattern: plugins/helpers/**/*.ts (any depth)
-  const helperModules = import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', {
-    eager: false, // Lazy load for better performance
-  });
+  if (verbose) {
+    console.log(`   Discovering ${discoveryConfig.family} plugins...`);
+  }
 
-  const helperPaths = Object.keys(helperModules);
+  // Use unified discovery
+  const discovered = await PluginDiscovery.discover(discoveryConfig);
 
-  if (helperPaths.length === 0) {
+  if (discovered.length === 0) {
     if (verbose) {
-      console.log('   ℹ️  No helper plugins found in /src/plugins/helpers/');
+      console.log(`   ℹ️  No ${discoveryConfig.family} plugins found`);
     }
     return { loaded, failed };
   }
 
   if (verbose) {
-    console.log(`   Loading ${helperPaths.length} helper plugin(s)...`);
+    console.log(`   Loading ${discovered.length} ${discoveryConfig.family} plugin(s)...`);
   }
 
-  for (const path of helperPaths) {
+  // Register each discovered plugin
+  for (const item of discovered) {
     try {
-      const module = await helperModules[path]();
-
-      // Look for registration function (convention: registerXxxHelper)
-      // or direct helper definitions
-      const registrationFn = Object.values(module).find(
-        (exp) => typeof exp === 'function' && exp.name?.startsWith('register')
-      );
-
-      if (registrationFn && typeof registrationFn === 'function') {
-        // Call the registration function
-        registrationFn();
-        loaded++;
-        if (verbose) {
-          console.log(`   ✓ ${path.replace('/src/plugins/helpers/', '')}`);
-        }
-      } else {
-        // Try to auto-register if module exports HelperDefinition objects
-        const definitions = Object.values(module).filter(
-          (exp) => exp && typeof exp === 'object' && 'name' in exp && 'fn' in exp
-        );
-
-        if (definitions.length > 0) {
-          definitions.forEach((def: any) => {
-            // Validate metadata (warn but don't fail)
-            if (!def.id && verbose) {
-              console.warn(`   ⚠️  Helper "${def.name}" has no id field`);
-            }
-            if (!def.description && verbose) {
-              console.warn(`   ⚠️  Helper "${def.name}" has no description field`);
-            }
-            if (!def.category && verbose) {
-              console.debug(`   ℹ️  Helper "${def.name}" has no category field`);
-            }
-
-            sessionHelperRegistry.register(def);
-          });
-          loaded++;
-          if (verbose) {
-            console.log(`   ✓ ${path.replace('/src/plugins/helpers/', '')} (${definitions.length} helpers)`);
-          }
-        } else {
-          console.warn(`   ⚠️  ${path}: No registration function or helper definitions found`);
-          failed++;
-        }
-      }
+      await registerDiscoveredPlugin(item, verbose);
+      loaded++;
     } catch (error: any) {
-      console.error(`   ✗ ${path}: ${error.message}`);
+      console.error(`   ✗ ${item.path}: ${error.message}`);
       failed++;
     }
   }
@@ -216,203 +221,74 @@ async function loadHelperPlugins(verbose: boolean): Promise<{ loaded: number; fa
 }
 
 /**
- * Load interaction plugins from plugins/interactions/**
+ * Register a discovered plugin using the appropriate bridge function
  */
-async function loadInteractionPlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
-  let loaded = 0;
-  let failed = 0;
+async function registerDiscoveredPlugin(item: DiscoveredPlugin, verbose: boolean): Promise<void> {
+  const { plugin, family, origin, path } = item;
 
-  // Use Vite's import.meta.glob to discover all interaction plugin files
-  const interactionModules = import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', {
-    eager: false,
-  });
-
-  const interactionPaths = Object.keys(interactionModules);
-
-  if (interactionPaths.length === 0) {
+  // Handle registration functions (for helpers, nodes, gallery tools)
+  if (typeof plugin === 'function') {
+    // Call the registration function
+    plugin();
     if (verbose) {
-      console.log('   ℹ️  No interaction plugins found in /src/plugins/interactions/');
+      const shortPath = path.replace('/src/', '').replace(/\.(ts|tsx|js|jsx)$/, '');
+      console.log(`   ✓ ${shortPath}`);
     }
-    return { loaded, failed };
+    return;
   }
 
-  if (verbose) {
-    console.log(`   Loading ${interactionPaths.length} interaction plugin(s)...`);
-  }
-
-  for (const path of interactionPaths) {
-    try {
-      const module = await interactionModules[path]();
-
-      // Look for InteractionPlugin exports (convention: xxxPlugin)
-      const plugins = Object.values(module).filter(
-        (exp) => exp && typeof exp === 'object' && 'id' in exp && 'execute' in exp
-      );
-
-      if (plugins.length > 0) {
-        plugins.forEach((plugin: any) => {
-          // Validate metadata before registration (registry will handle it too)
-          if (!plugin.name && verbose) {
-            console.warn(`   ⚠️  Interaction plugin "${plugin.id}" has no name field`);
-          }
-          if (!plugin.description && verbose) {
-            console.warn(`   ⚠️  Interaction plugin "${plugin.id}" has no description field`);
-          }
-          if (!plugin.category && verbose) {
-            console.debug(`   ℹ️  Interaction plugin "${plugin.id}" has no category field`);
-          }
-          if (plugin.experimental && verbose) {
-            console.debug(`   🧪 Interaction plugin "${plugin.id}" is marked experimental`);
-          }
-
-          interactionRegistry.register(plugin);
-        });
-        loaded++;
+  // Handle direct plugin objects (for interactions, world tools)
+  switch (family) {
+    case 'helper':
+      if ('name' in plugin && 'fn' in plugin) {
+        registerHelper(plugin, { origin });
         if (verbose) {
-          console.log(`   ✓ ${path.replace('/src/plugins/interactions/', '')} (${plugins.length} plugin(s))`);
+          console.log(`   ✓ ${plugin.name || plugin.id} (helper)`);
         }
-      } else {
-        console.warn(`   ⚠️  ${path}: No InteractionPlugin exports found`);
-        failed++;
       }
-    } catch (error: any) {
-      console.error(`   ✗ ${path}: ${error.message}`);
-      failed++;
-    }
-  }
+      break;
 
-  return { loaded, failed };
-}
-
-/**
- * Load node type plugins from lib/plugins (pattern: *Node.ts or *Node.tsx)
- * Discovers and registers custom node types for the scene/arc builders
- */
-async function loadNodeTypePlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
-  let loaded = 0;
-  let failed = 0;
-
-  // Use Vite's import.meta.glob to discover all node type plugin files
-  // Pattern: lib/plugins/**/*Node.{ts,tsx} (any file ending with "Node")
-  const nodeModules = import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', {
-    eager: false, // Lazy load for better performance
-  });
-
-  const nodePaths = Object.keys(nodeModules);
-
-  if (nodePaths.length === 0) {
-    if (verbose) {
-      console.log('   ℹ️  No node type plugins found in /src/lib/plugins/');
-    }
-    return { loaded, failed };
-  }
-
-  if (verbose) {
-    console.log(`   Loading ${nodePaths.length} node type plugin(s)...`);
-  }
-
-  for (const path of nodePaths) {
-    try {
-      const module = await nodeModules[path]();
-
-      // Look for registration functions (convention: register*Node)
-      // Example: registerSeductionNode, registerQuestTriggerNode
-      const registrationFunctions = Object.values(module).filter(
-        (exp) =>
-          typeof exp === 'function' &&
-          exp.name?.startsWith('register') &&
-          exp.name?.endsWith('Node')
-      );
-
-      if (registrationFunctions.length > 0) {
-        // Call all registration functions found in the module
-        registrationFunctions.forEach((fn: any) => {
-          fn();
-        });
-        loaded++;
+    case 'interaction':
+      if ('id' in plugin && 'execute' in plugin) {
+        registerInteraction(plugin, { origin });
         if (verbose) {
-          const pluginName = path.replace('/src/lib/plugins/', '');
-          console.log(
-            `   ✓ ${pluginName} (${registrationFunctions.length} node type(s))`
-          );
+          console.log(`   ✓ ${plugin.id} (interaction)`);
         }
-      } else {
-        console.warn(
-          `   ⚠️  ${path}: No register*Node function exports found`
-        );
-        failed++;
       }
-    } catch (error: any) {
-      console.error(`   ✗ ${path}: ${error.message}`);
-      failed++;
-    }
-  }
+      break;
 
-  return { loaded, failed };
-}
-
-/**
- * Load gallery tool plugins from plugins/galleryTools/**
- */
-async function loadGalleryToolPlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
-  let loaded = 0;
-  let failed = 0;
-
-  // Use Vite's import.meta.glob to discover all gallery tool plugin files
-  const galleryToolModules = import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', {
-    eager: false,
-  });
-
-  const galleryToolPaths = Object.keys(galleryToolModules);
-
-  if (galleryToolPaths.length === 0) {
-    if (verbose) {
-      console.log('   ℹ️  No gallery tool plugins found in /src/plugins/galleryTools/');
-    }
-    return { loaded, failed };
-  }
-
-  if (verbose) {
-    console.log(`   Loading ${galleryToolPaths.length} gallery tool plugin(s)...`);
-  }
-
-  for (const path of galleryToolPaths) {
-    try {
-      const module = await galleryToolModules[path]();
-
-      // Look for registration functions (convention: register*Tool)
-      const registrationFunctions = Object.values(module).filter(
-        (exp) =>
-          typeof exp === 'function' &&
-          exp.name?.startsWith('register') &&
-          exp.name?.endsWith('Tool')
-      );
-
-      if (registrationFunctions.length > 0) {
-        // Call all registration functions found in the module
-        registrationFunctions.forEach((fn: any) => {
-          fn();
-        });
-        loaded++;
+    case 'world-tool':
+      if ('id' in plugin && 'render' in plugin) {
+        registerWorldTool(plugin, { origin });
         if (verbose) {
-          const pluginName = path.replace('/src/plugins/galleryTools/', '');
-          console.log(
-            `   ✓ ${pluginName} (${registrationFunctions.length} tool(s))`
-          );
+          console.log(`   ✓ ${plugin.id} (world tool)`);
         }
-      } else {
-        console.warn(
-          `   ⚠️  ${path}: No register*Tool function exports found`
-        );
-        failed++;
       }
-    } catch (error: any) {
-      console.error(`   ✗ ${path}: ${error.message}`);
-      failed++;
-    }
-  }
+      break;
 
-  return { loaded, failed };
+    case 'gallery-tool':
+      if ('id' in plugin) {
+        registerGalleryTool(plugin, { origin });
+        if (verbose) {
+          console.log(`   ✓ ${plugin.id} (gallery tool)`);
+        }
+      }
+      break;
+
+    case 'node-type':
+      // Node types are typically registered via registerXxxNode functions
+      // This case handles direct objects if needed
+      if ('id' in plugin) {
+        registerNodeType(plugin, { origin });
+        if (verbose) {
+          console.log(`   ✓ ${plugin.id} (node type)`);
+        }
+      }
+      break;
+
+    default:
+      console.warn(`   ⚠️  Unknown plugin family: ${family}`);
+  }
 }
 
 /**
