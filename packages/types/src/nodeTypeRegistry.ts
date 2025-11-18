@@ -63,8 +63,8 @@ export interface NodeTypeDefinition<TData = any> {
   /** Category for grouping in UI */
   category?: 'media' | 'flow' | 'logic' | 'action' | 'custom';
 
-  /** Scope defines which graph system this node belongs to */
-  scope?: 'scene' | 'arc' | 'world';
+  /** Scope for multi-level graph organization */
+  scope?: 'scene' | 'arc' | 'world' | 'custom';
 
   /** Default data when creating new node */
   defaultData: Partial<TData>;
@@ -158,7 +158,7 @@ export class NodeTypeRegistry {
   register<TData = any>(def: NodeTypeDefinition<TData>) {
     if (this.types.has(def.id)) {
       console.warn(`Node type ${def.id} already registered, overwriting`);
-      // Remove from old category and scope indexes
+      // Remove from old indexes
       this.removeFromCategoryIndex(def.id);
       this.removeFromScopeIndex(def.id);
     }
@@ -294,6 +294,34 @@ export class NodeTypeRegistry {
       .filter((t): t is NodeTypeDefinition => t !== undefined);
   }
 
+  /** Get types by scope (optimized with index) */
+  getByScope(scope: string): NodeTypeDefinition[] {
+    const ids = this.scopeIndex.get(scope);
+    if (!ids) {
+      return [];
+    }
+
+    return Array.from(ids)
+      .map(id => this.types.get(id))
+      .filter((t): t is NodeTypeDefinition => t !== undefined);
+  }
+
+  /** Get types by multiple scopes */
+  getByScopes(scopes: string[]): NodeTypeDefinition[] {
+    const allIds = new Set<string>();
+
+    for (const scope of scopes) {
+      const ids = this.scopeIndex.get(scope);
+      if (ids) {
+        ids.forEach(id => allIds.add(id));
+      }
+    }
+
+    return Array.from(allIds)
+      .map(id => this.types.get(id))
+      .filter((t): t is NodeTypeDefinition => t !== undefined);
+  }
+
   /** Get user-creatable types */
   getUserCreatable(): NodeTypeDefinition[] {
     return this.getAll().filter(t => t.userCreatable !== false);
@@ -326,18 +354,6 @@ export class NodeTypeRegistry {
         }
       }
     }
-  }
-
-  /** Get types by scope (optimized with index) */
-  getByScope(scope: string): NodeTypeDefinition[] {
-    const ids = this.scopeIndex.get(scope);
-    if (!ids) {
-      return [];
-    }
-
-    return Array.from(ids)
-      .map(id => this.types.get(id))
-      .filter((t): t is NodeTypeDefinition => t !== undefined);
   }
 
   /** Clear cache (useful for testing/debugging) */

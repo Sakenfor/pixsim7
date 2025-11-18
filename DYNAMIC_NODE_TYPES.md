@@ -96,6 +96,29 @@ Node types are organized by category in the UI:
 - `action` - Effects, triggers
 - `custom` - User-defined types
 
+## Scopes (Multi-Level Organization)
+
+Node types can be scoped to different organizational levels:
+- `scene` - Scene-level nodes (video, choice, etc.)
+- `arc` - Arc-level nodes (quest triggers, story branches)
+- `world` - World-level nodes (global state changes, world events)
+- `custom` - Custom scoping for specialized use cases
+
+```typescript
+// Register an arc-level quest trigger
+nodeTypeRegistry.register({
+  id: 'quest-trigger',
+  name: 'Quest Trigger',
+  scope: 'arc', // Arc-level organization
+  category: 'action',
+  // ... other properties
+});
+
+// Filter nodes by scope
+const arcNodes = nodeTypeRegistry.getByScope('arc');
+const sceneAndArcNodes = nodeTypeRegistry.getByScopes(['scene', 'arc']);
+```
+
 ## Components Updated
 
 ### 1. InspectorPanel
@@ -119,11 +142,130 @@ Node types are organized by category in the UI:
 - Calls `registerBuiltinNodeTypes()` on startup
 - Ready for plugin loading system
 
-## Future Enhancements
+## Performance Optimization
 
-### Plugin System
+### Lazy Loading
+
+For heavy plugins with large dependencies, use lazy loading to improve initial load time:
+
 ```typescript
-// Future: Load plugins from external modules
+// Stub definition registered immediately (small bundle)
+nodeTypeRegistry.register({
+  id: 'heavy-plugin',
+  name: 'Heavy Plugin',
+  category: 'custom',
+  defaultData: {},
+
+  // Lazy load full definition when needed
+  loader: async () => {
+    const module = await import('./heavy-plugin.full');
+    return module.heavyPluginNodeTypeFull;
+  },
+
+  // Optional: Priority for preloading (0-10, higher = sooner)
+  preloadPriority: 5,
+});
+
+// Access with async get (loads if needed)
+const nodeType = await nodeTypeRegistry.get('heavy-plugin');
+```
+
+**When to use lazy loading:**
+- Large validation libraries
+- Heavy computation or parsing logic
+- Conditional logic that depends on runtime state
+- Plugins with large dependencies
+
+**When NOT to use lazy loading:**
+- Simple, lightweight nodes (overhead not worth it)
+- Frequently used core nodes (better to load upfront)
+
+### Preloading
+
+Improve UX by preloading important types before the user needs them:
+
+```typescript
+// Preload specific types
+await nodeTypeRegistry.preload(['quest-trigger', 'npc-interaction']);
+
+// Preload by priority (loads top 10 highest priority)
+await nodeTypeRegistry.preload();
+
+// In app initialization
+async function initializeNodeTypes() {
+  // Register all types (lightweight stubs)
+  registerBuiltinNodeTypes();
+  registerPluginNodeTypes();
+
+  // Preload high-priority types in background
+  nodeTypeRegistry.preload(); // Non-blocking
+}
+```
+
+### Caching
+
+The registry uses an LRU cache (max 50 entries) for frequently accessed types:
+
+```typescript
+// First access - cache miss
+const type1 = await nodeTypeRegistry.get('video'); // Loads from registry
+
+// Second access - cache hit (faster)
+const type2 = await nodeTypeRegistry.get('video'); // Returns from cache
+
+// Get cache statistics
+const stats = nodeTypeRegistry.getCacheStats();
+console.log(stats); // { size: 15, maxSize: 50 }
+
+// Clear cache if needed (e.g., during hot reload)
+nodeTypeRegistry.clearCache();
+```
+
+## Plugin System
+
+### Using create-plugin CLI
+
+Generate new node type plugins quickly:
+
+```bash
+# Interactive mode
+node scripts/create-plugin/index.js
+
+# Non-interactive mode
+node scripts/create-plugin/index.js \
+  --type node \
+  --name my-quest \
+  --description "Custom quest node type"
+```
+
+**Generated structure:**
+```
+plugins/my-quest/
+├── my-quest.ts          # Node type definition
+├── README.md            # Documentation
+└── example-config.json  # Configuration example
+```
+
+### Example: Quest Trigger Plugin
+
+See `examples/plugins/quest-trigger/` for a comprehensive plugin example demonstrating:
+- Rich data structure with validation
+- Scope-based organization (`arc` level)
+- Lazy loading patterns
+- Renderer integration
+- Preload priority
+
+```typescript
+import { questTriggerNodeType } from './examples/plugins/quest-trigger/quest-trigger';
+import { nodeTypeRegistry } from '@pixsim7/types';
+
+// Register the plugin
+nodeTypeRegistry.register(questTriggerNodeType);
+```
+
+### Loading Plugins from Directory
+
+```typescript
 async function loadNodeTypePlugins() {
   const plugins = await loadPluginsFromDirectory('./plugins/nodes');
 
@@ -134,8 +276,9 @@ async function loadNodeTypePlugins() {
 ```
 
 ### Runtime Registration
+
 ```typescript
-// Future: Register types at runtime via API
+// Register types dynamically via API
 fetch('/api/node-types/custom-mod')
   .then(res => res.json())
   .then(typeDef => nodeTypeRegistry.register(typeDef));

@@ -25,6 +25,7 @@ export const {{PLUGIN_NAME_CAMEL}}NodeType: NodeTypeDefinition<{{PLUGIN_NAME_PAS
   description: '{{PLUGIN_DESCRIPTION}}',
   icon: '🔲', // Replace with your icon
   category: 'custom', // Change to: 'media' | 'flow' | 'logic' | 'action' | 'custom'
+  scope: 'scene', // Optional: 'scene' | 'arc' | 'world' | 'custom' - for multi-level organization
 
   // Default data when creating a new node of this type
   defaultData: {
@@ -66,4 +67,13 @@ export const {{PLUGIN_NAME_CAMEL}}NodeType: NodeTypeDefinition<{{PLUGIN_NAME_PAS
   // UI styling hints
   color: '#3b82f6', // Border/text color
   bgColor: '#eff6ff', // Background color
+
+  // Lazy loading (optional) - useful for heavy plugins
+  // loader: async () => {
+  //   const module = await import('./{{PLUGIN_ID}}.full');
+  //   return module.{{PLUGIN_NAME_CAMEL}}NodeType;
+  // },
+
+  // Preload priority (optional) - higher = load sooner
+  // preloadPriority: 5, // 0-10, default 0
 };

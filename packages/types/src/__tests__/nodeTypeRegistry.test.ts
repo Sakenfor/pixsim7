@@ -278,5 +278,152 @@ describe('NodeTypeRegistry', () => {
       expect(loader1).toHaveBeenCalled();
       expect(loader2).toHaveBeenCalled();
     });
+
+    it('should preload specific IDs', async () => {
+      const loader1 = jest.fn(async () => ({
+        id: 'node1',
+        name: 'Node 1 (loaded)',
+        defaultData: {},
+      }));
+
+      const loader2 = jest.fn(async () => ({
+        id: 'node2',
+        name: 'Node 2 (loaded)',
+        defaultData: {},
+      }));
+
+      registry.register({
+        id: 'node1',
+        name: 'Node 1',
+        defaultData: {},
+        loader: loader1,
+      });
+
+      registry.register({
+        id: 'node2',
+        name: 'Node 2',
+        defaultData: {},
+        loader: loader2,
+      });
+
+      // Only preload node1
+      await registry.preload(['node1']);
+
+      expect(loader1).toHaveBeenCalled();
+      expect(loader2).not.toHaveBeenCalled();
+    });
+
+    it('should deduplicate concurrent load requests', async () => {
+      const loader = jest.fn(async () => {
+        // Simulate slow load
+        await new Promise(resolve => setTimeout(resolve, 10));
+        return {
+          id: 'slow-node',
+          name: 'Slow Node (loaded)',
+          defaultData: {},
+        };
+      });
+
+      registry.register({
+        id: 'slow-node',
+        name: 'Slow Node',
+        defaultData: {},
+        loader,
+      });
+
+      // Start multiple concurrent loads
+      const [result1, result2, result3] = await Promise.all([
+        registry.get('slow-node'),
+        registry.get('slow-node'),
+        registry.get('slow-node'),
+      ]);
+
+      // Loader should only be called once
+      expect(loader).toHaveBeenCalledTimes(1);
+
+      // All results should be the same
+      expect(result1).toBe(result2);
+      expect(result2).toBe(result3);
+    });
+  });
+
+  describe('Scope operations', () => {
+    it('should get types by scope', () => {
+      registry.register({ id: 'scene1', name: 'Scene 1', scope: 'scene', defaultData: {} });
+      registry.register({ id: 'scene2', name: 'Scene 2', scope: 'scene', defaultData: {} });
+      registry.register({ id: 'arc1', name: 'Arc 1', scope: 'arc', defaultData: {} });
+      registry.register({ id: 'world1', name: 'World 1', scope: 'world', defaultData: {} });
+
+      const sceneTypes = registry.getByScope('scene');
+      expect(sceneTypes.length).toBe(2);
+      expect(sceneTypes.every(t => t.scope === 'scene')).toBe(true);
+
+      const arcTypes = registry.getByScope('arc');
+      expect(arcTypes.length).toBe(1);
+      expect(arcTypes[0].id).toBe('arc1');
+    });
+
+    it('should return empty array for nonexistent scope', () => {
+      const types = registry.getByScope('nonexistent');
+      expect(types).toEqual([]);
+    });
+
+    it('should get types by multiple scopes', () => {
+      registry.register({ id: 'scene1', name: 'Scene 1', scope: 'scene', defaultData: {} });
+      registry.register({ id: 'arc1', name: 'Arc 1', scope: 'arc', defaultData: {} });
+      registry.register({ id: 'world1', name: 'World 1', scope: 'world', defaultData: {} });
+
+      const types = registry.getByScopes(['scene', 'arc']);
+      expect(types.length).toBe(2);
+      expect(types.map(t => t.id).sort()).toEqual(['arc1', 'scene1']);
+    });
+
+    it('should update scope index when re-registering', () => {
+      registry.register({ id: 'test', name: 'Test', scope: 'scene', defaultData: {} });
+      registry.register({ id: 'test', name: 'Test', scope: 'arc', defaultData: {} });
+
+      const sceneTypes = registry.getByScope('scene');
+      const arcTypes = registry.getByScope('arc');
+
+      expect(sceneTypes.length).toBe(0);
+      expect(arcTypes.length).toBe(1);
+    });
+
+    it('should filter by both category and scope', () => {
+      registry.register({
+        id: 'scene-action',
+        name: 'Scene Action',
+        category: 'action',
+        scope: 'scene',
+        defaultData: {},
+      });
+      registry.register({
+        id: 'arc-action',
+        name: 'Arc Action',
+        category: 'action',
+        scope: 'arc',
+        defaultData: {},
+      });
+      registry.register({
+        id: 'scene-media',
+        name: 'Scene Media',
+        category: 'media',
+        scope: 'scene',
+        defaultData: {},
+      });
+
+      // Get all action types
+      const actionTypes = registry.getByCategory('action');
+      expect(actionTypes.length).toBe(2);
+
+      // Get all scene types
+      const sceneTypes = registry.getByScope('scene');
+      expect(sceneTypes.length).toBe(2);
+
+      // Filter manually for scene + action
+      const sceneActions = sceneTypes.filter(t => t.category === 'action');
+      expect(sceneActions.length).toBe(1);
+      expect(sceneActions[0].id).toBe('scene-action');
+    });
   });
 });

@@ -82,4 +82,13 @@ export const {{PLUGIN_NAME_CAMEL}}Renderer: NodeRenderer = {
     height: 150,
   },
   customHeader: false, // Set to true if you want full control over the node appearance
+
+  // Lazy loading (optional) - useful for heavy renderer components
+  // loader: async () => {
+  //   const module = await import('./{{PLUGIN_ID}}.renderer.full');
+  //   return module.{{PLUGIN_NAME_PASCAL}}Renderer;
+  // },
+
+  // Preload priority (optional) - higher = load sooner
+  // preloadPriority: 5, // 0-10, default 0
 };

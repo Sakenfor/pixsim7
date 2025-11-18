@@ -198,6 +198,196 @@ nodeRendererRegistry.register({
 
 When `customHeader: true`, the renderer is responsible for the entire node appearance including header, badges, and wrapper styling.
 
+## Performance Optimization
+
+### Async Loading with getAsync
+
+Use `getAsync()` to load renderers asynchronously, enabling lazy loading for heavy components:
+
+```typescript
+// In SceneNode.tsx or graph component
+const SceneNode = ({ data }) => {
+  const [renderer, setRenderer] = useState(null);
+
+  useEffect(() => {
+    // Async load renderer (supports lazy loading)
+    nodeRendererRegistry.getAsync(data.nodeType).then(setRenderer);
+  }, [data.nodeType]);
+
+  if (!renderer) {
+    return <LoadingPlaceholder />;
+  }
+
+  const RendererComponent = renderer.component;
+  return <RendererComponent node={data} />;
+};
+```
+
+### Lazy Loading Renderers
+
+For heavy renderer components (large chart libraries, video players, etc.), use lazy loading:
+
+```typescript
+// Stub registration (lightweight, loaded immediately)
+nodeRendererRegistry.register({
+  nodeType: 'heavy-chart',
+  component: PlaceholderRenderer, // Lightweight placeholder
+  defaultSize: { width: 300, height: 250 },
+
+  // Lazy load full renderer on demand
+  loader: async () => {
+    // Heavy import (Chart.js, D3, etc.)
+    const module = await import('./HeavyChartRenderer.full');
+    return module.HeavyChartRenderer;
+  },
+
+  // Preload priority (0-10, higher = sooner)
+  preloadPriority: 6,
+});
+```
+
+**When to use lazy loading:**
+- Heavy visualization libraries (Chart.js, D3, Three.js)
+- Rich media players
+- Complex data transformations
+- Conditionally used renderers
+
+**When NOT to use lazy loading:**
+- Simple, frequently-used renderers (video preview, choice list)
+- Core built-in renderers
+- Lightweight components
+
+### Preloading Renderers
+
+Improve UX by preloading renderers before they're needed:
+
+```typescript
+// In graph editor initialization
+async function initializeGraphEditor() {
+  // Preload commonly used renderers
+  await nodeRendererRegistry.preload([
+    'video',
+    'choice',
+    'condition',
+    'quest-trigger'
+  ]);
+
+  // Or preload by priority (top 10 highest priority)
+  await nodeRendererRegistry.preload();
+}
+
+// In route/scene loading
+async function loadScene(sceneId) {
+  const scene = await fetchScene(sceneId);
+
+  // Preload renderers for node types in this scene
+  const nodeTypes = scene.nodes.map(n => n.type);
+  await nodeRendererRegistry.preload(nodeTypes);
+
+  return scene;
+}
+```
+
+### Caching
+
+The registry uses an LRU cache (max 50 entries) for frequently accessed renderers:
+
+```typescript
+// First access - loads from registry
+const renderer1 = await nodeRendererRegistry.getAsync('video');
+
+// Second access - returns from cache (instant)
+const renderer2 = await nodeRendererRegistry.getAsync('video');
+
+// Get cache statistics
+const stats = nodeRendererRegistry.getCacheStats();
+console.log(stats); // { size: 25, maxSize: 50 }
+
+// Clear cache if needed (e.g., hot reload during development)
+nodeRendererRegistry.clearCache();
+```
+
+## Plugin Flow Example
+
+Complete example showing node type + renderer plugin flow:
+
+### 1. Create Plugin with CLI
+
+```bash
+# Generate node type
+node scripts/create-plugin/index.js \
+  --type node \
+  --name quest-trigger
+
+# Generate renderer
+node scripts/create-plugin/index.js \
+  --type renderer \
+  --name quest-trigger
+```
+
+### 2. Implement Plugin
+
+See `examples/plugins/quest-trigger/` for full example:
+
+**Node Type (`quest-trigger.ts`):**
+```typescript
+export const questTriggerNodeType: NodeTypeDefinition = {
+  id: 'quest-trigger',
+  name: 'Quest Trigger',
+  icon: '📜',
+  category: 'action',
+  scope: 'arc', // Arc-level organization
+  defaultData: { /* ... */ },
+  preloadPriority: 7,
+};
+```
+
+**Renderer (`quest-trigger.tsx`):**
+```typescript
+export const questTriggerRenderer: NodeRenderer = {
+  nodeType: 'quest-trigger',
+  component: QuestTriggerRenderer,
+  defaultSize: { width: 280, height: 200 },
+  preloadPriority: 7,
+};
+```
+
+### 3. Register Plugin
+
+```typescript
+import { questTriggerNodeType } from './examples/plugins/quest-trigger/quest-trigger';
+import { questTriggerRenderer } from './examples/plugins/quest-trigger/quest-trigger.tsx';
+import { nodeTypeRegistry } from '@pixsim7/types';
+import { nodeRendererRegistry } from '@/lib/graph/nodeRendererRegistry';
+
+// Register node type
+nodeTypeRegistry.register(questTriggerNodeType);
+
+// Register renderer
+nodeRendererRegistry.register(questTriggerRenderer);
+```
+
+### 4. Use in Graph
+
+```typescript
+// SceneNode component automatically uses registry
+const SceneNode = ({ data }) => {
+  const renderer = await nodeRendererRegistry.getAsync(data.nodeType);
+  const RendererComponent = renderer?.component ?? DefaultNodeRenderer;
+
+  return (
+    <div className="scene-node">
+      <RendererComponent
+        node={data.draftNode}
+        isSelected={selected}
+        isStart={data.isStart}
+        hasErrors={hasErrors}
+      />
+    </div>
+  );
+};
+```
+
 ## Future Enhancements
 
 ### Runtime Registration
