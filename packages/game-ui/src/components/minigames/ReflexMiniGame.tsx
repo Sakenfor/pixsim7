@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Panel } from '@pixsim7/ui'
+import type { MiniGameResult } from '@pixsim7/scene-gizmos'
 
 interface ReflexMiniGameProps {
-  onResult: (success: boolean, score: number) => void
-  config?: { rounds?: number; windowMs?: number }
+  onResult: (result: MiniGameResult) => void
+  config: { rounds?: number; windowMs?: number }
+  videoElement?: HTMLVideoElement
+  gameState?: Record<string, any>
 }
 
 export function ReflexMiniGame({ onResult, config }: ReflexMiniGameProps) {
-  const rounds = config?.rounds ?? 3
-  const windowMs = config?.windowMs ?? 1000
+  const rounds = config.rounds ?? 3
+  const windowMs = config.windowMs ?? 1000
   const [round, setRound] = useState(0)
   const [cue, setCue] = useState(false)
   const [score, setScore] = useState(0)
@@ -37,7 +40,13 @@ export function ReflexMiniGame({ onResult, config }: ReflexMiniGameProps) {
       const passed = score >= Math.ceil(rounds * 0.6)
       setSuccess(passed)
       setGameOver(true)
-      onResult(passed, score)
+      // Return standardized stat result: add to focus based on success
+      onResult({
+        type: 'stat',
+        stat: 'focus',
+        value: passed ? 2 : 0,
+        operation: 'add'
+      })
     }
   }, [round, rounds, score, onResult])
 

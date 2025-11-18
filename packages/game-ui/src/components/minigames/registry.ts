@@ -5,7 +5,7 @@
  * Applications should call these functions during initialization to register mini-games.
  */
 
-import { registerMiniGame, type MiniGameDefinition } from '@pixsim7/scene-gizmos';
+import { registerMiniGame, type MiniGameDefinition, type MiniGameResult } from '@pixsim7/scene-gizmos';
 import { ReflexMiniGame } from './ReflexMiniGame';
 
 /**
@@ -14,7 +14,7 @@ import { ReflexMiniGame } from './ReflexMiniGame';
 export function registerReflexMiniGame() {
   const reflexDefinition: MiniGameDefinition<
     { rounds?: number; windowMs?: number },
-    { success: boolean; score: number }
+    MiniGameResult
   > = {
     id: 'reflex',
     name: 'Reflex Challenge',
@@ -25,7 +25,7 @@ export function registerReflexMiniGame() {
       rounds: 3,
       windowMs: 1000,
     },
-    component: ReflexMiniGame as any,
+    component: ReflexMiniGame,
   };
 
   registerMiniGame(reflexDefinition);

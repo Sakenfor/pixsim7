@@ -8,6 +8,26 @@
 // ============================================================================
 
 /**
+ * Standardized mini-game result types
+ *
+ * All mini-games should return one of these result types to ensure
+ * consistent handling in ScenePlayer and other consuming components.
+ */
+export type MiniGameResult =
+  | { type: 'stat'; stat: string; value: number; operation?: 'add' | 'set' | 'multiply' }
+  | { type: 'segment'; segmentId: string; intensity?: number; transition?: 'smooth' | 'cut' | 'fade' }
+  | { type: 'flag'; key: string; value: any }
+  | { type: 'flags'; flags: Record<string, any> }
+  | { type: 'none' }
+  | { type: 'error'; error: string; message?: string };
+
+/**
+ * Helper type for mini-games that return custom result types
+ * (backwards compatibility - prefer using MiniGameResult)
+ */
+export type CustomMiniGameResult<T = any> = T;
+
+/**
  * Base interface for all mini-game components
  */
 export interface MiniGameComponentProps<TConfig = any, TResult = any> {
@@ -46,6 +66,9 @@ export interface MiniGameDefinition<TConfig = any, TResult = any> {
   /** Component to render - generic to avoid React dependency */
   component: ComponentType<MiniGameComponentProps<TConfig, TResult>>;
 
+  /** Optional config validation function - returns error message if invalid, null if valid */
+  validate?: (config: TConfig) => string | null;
+
   /** Metadata */
   category?: 'timing' | 'spatial' | 'memory' | 'puzzle' | 'other';
   tags?: string[];
@@ -54,7 +77,10 @@ export interface MiniGameDefinition<TConfig = any, TResult = any> {
 }
 
 // Generic component type to avoid direct React dependency
-export type ComponentType<P = any> = (props: P) => any;
+// Compatible with React.ComponentType and React.FC
+export type ComponentType<P = any> =
+  | ((props: P) => any)
+  | { new (props: P): any };
 
 // ============================================================================
 // Registry Storage
