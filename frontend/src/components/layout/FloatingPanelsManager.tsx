@@ -7,6 +7,8 @@ import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
+import { GizmoLab } from '../../routes/GizmoLab';
+import { NpcBrainLab } from '../../routes/NpcBrainLab';
 import { useRef, useEffect } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
@@ -34,7 +36,7 @@ function GameIframePanel() {
   );
 }
 
-const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType }> = {
+const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType<any> }> = {
   gallery: { title: 'Gallery', Component: AssetsRoute },
   scene: { title: 'Scene Builder', Component: SceneBuilderPanel },
   graph: { title: 'Graph', Component: GraphPanelWithProvider },
@@ -42,6 +44,9 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   health: { title: 'Health', Component: HealthPanel },
   game: { title: 'Game', Component: GameIframePanel },
   providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
+  settings: { title: 'Settings', Component: () => <div>Settings (placeholder)</div> },
+  'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
+  'npc-brain-lab': { title: 'NPC Brain Lab', Component: NpcBrainLab },
 };
 
 export function FloatingPanelsManager() {
@@ -179,7 +184,7 @@ export function FloatingPanelsManager() {
 
               {/* Content */}
               <div className="flex-1 overflow-auto">
-                <Component />
+                <Component {...(panel.context || {})} />
               </div>
             </div>
           </Rnd>

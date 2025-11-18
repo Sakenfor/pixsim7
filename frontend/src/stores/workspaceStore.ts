@@ -10,7 +10,9 @@ export type PanelId =
   | 'health'
   | 'game'
   | 'providers'
-  | 'settings';
+  | 'settings'
+  | 'gizmo-lab'
+  | 'npc-brain-lab';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;
@@ -29,6 +31,7 @@ export interface FloatingPanelState {
   width: number;
   height: number;
   zIndex: number;
+  context?: Record<string, any>; // Optional context data to pass to the panel component
 }
 
 export interface WorkspacePreset {
@@ -59,7 +62,7 @@ export interface WorkspaceActions {
   loadPreset: (id: string) => void;
   deletePreset: (id: string) => void;
   reset: () => void;
-  openFloatingPanel: (panelId: PanelId, x?: number, y?: number, width?: number, height?: number) => void;
+  openFloatingPanel: (panelId: PanelId, options?: { x?: number; y?: number; width?: number; height?: number; context?: Record<string, any> }) => void;
   closeFloatingPanel: (panelId: PanelId) => void;
   minimizeFloatingPanel: (panelId: PanelId) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
@@ -241,14 +244,15 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           floatingPanels: [],
         }),
 
-      openFloatingPanel: (panelId, x, y, width, height) => {
+      openFloatingPanel: (panelId, options = {}) => {
+        const { x, y, width, height, context } = options;
         const existing = get().floatingPanels.find(p => p.id === panelId);
         if (existing) {
-          // Panel already floating, bring to front
+          // Panel already floating, update context and bring to front
           const maxZ = Math.max(...get().floatingPanels.map(p => p.zIndex), 0);
           set({
             floatingPanels: get().floatingPanels.map(p =>
-              p.id === panelId ? { ...p, zIndex: maxZ + 1 } : p
+              p.id === panelId ? { ...p, zIndex: maxZ + 1, context: context ?? p.context } : p
             ),
           });
           return;
@@ -264,7 +268,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         set({
           floatingPanels: [
             ...get().floatingPanels,
-            { id: panelId, x: finalX, y: finalY, width: finalWidth, height: finalHeight, zIndex: maxZ + 1 },
+            { id: panelId, x: finalX, y: finalY, width: finalWidth, height: finalHeight, zIndex: maxZ + 1, context },
           ],
         });
       },

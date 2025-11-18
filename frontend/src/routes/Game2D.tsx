@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { Scene } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
 import { Button, Panel, Badge, Select } from '@pixsim7/ui';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 import {
   listGameLocations,
   getGameLocation,
@@ -83,6 +84,8 @@ export function Game2D() {
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
+
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
   useEffect(() => {
     (async () => {
@@ -671,6 +674,14 @@ export function Game2D() {
               onClick={() => setShowInventory(!showInventory)}
             >
               Inventory
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openFloatingPanel('gizmo-lab', { context: { sceneId: currentScene?.id, locationId: selectedLocationId } })}
+              title="Open Gizmo Lab to explore gizmos and tools"
+            >
+              🎮 Gizmo Lab
             </Button>
           </div>
         </div>
