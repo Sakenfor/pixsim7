@@ -16,6 +16,7 @@ export type {
   ApiClient,
   StorageProvider,
   AuthProvider,
+  NpcPersonaProvider,
 } from './core/types';
 
 // ===== Relationships =====
@@ -73,6 +74,7 @@ export type {
 
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
+export type { NpcPersona } from './npcs/brain';
 
 // ===== Scene Runtime =====
 export {
@@ -88,3 +90,47 @@ export {
 // ===== Scene Call Stack =====
 export { callStackManager, bindParameters } from './scene/callStack';
 export type { CallStackManager } from './scene/callStack';
+
+// ===== Session Helpers =====
+export {
+  // Generic flags
+  getFlag,
+  setFlag,
+  deleteFlag,
+  // Arcs
+  getArcState,
+  setArcState,
+  updateArcStage,
+  markSceneSeen,
+  hasSeenScene,
+  // Quests
+  getQuestState,
+  setQuestState,
+  updateQuestStatus,
+  updateQuestSteps,
+  incrementQuestSteps,
+  // Inventory
+  getInventoryItems,
+  getInventoryItem,
+  addInventoryItem,
+  removeInventoryItem,
+  hasInventoryItem,
+  // Events
+  getEventState,
+  setEventState,
+  triggerEvent,
+  endEvent,
+  isEventActive,
+  // Session kind
+  getSessionKind,
+  setSessionKind,
+  getWorldBlock,
+  setWorldBlock,
+} from './session/helpers';
+
+export type {
+  ArcState,
+  QuestState,
+  InventoryItem,
+  EventState,
+} from './session/helpers';

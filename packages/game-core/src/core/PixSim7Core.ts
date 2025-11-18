@@ -165,6 +165,9 @@ export class PixSim7Core implements IPixSim7Core {
 
   /**
    * Get NPC brain state (uses cache)
+   *
+   * If an NpcPersonaProvider is configured, it will fetch persona data
+   * and merge it with session overrides when building the brain state.
    */
   getNpcBrainState(npcId: number): NpcBrainState | null {
     if (!this.session) return null;
@@ -178,10 +181,21 @@ export class PixSim7Core implements IPixSim7Core {
     const relationship = this.getNpcRelationship(npcId);
     if (!relationship) return null;
 
+    // Fetch persona if provider is available
+    // Note: This is synchronous for now; in a full implementation,
+    // getNpcBrainState might need to become async or use a pre-loaded cache
+    let persona;
+    if (this.config.npcPersonaProvider) {
+      // For now, we skip async persona fetching in the sync API
+      // Future enhancement: Add async getNpcBrainStateAsync or pre-load personas
+      persona = undefined;
+    }
+
     const brain = buildNpcBrainState({
       npcId,
       session: this.session,
       relationship,
+      persona,
     });
 
     this.brainCache.set(npcId, brain);

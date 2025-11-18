@@ -2,27 +2,161 @@ import type { GameSessionDTO } from '@pixsim7/types';
 import type { NpcBrainState, NpcRelationshipState } from '../core/types';
 
 /**
+ * NPC persona data structure (matches GameNPC.personality schema)
+ */
+export interface NpcPersona {
+  traits?: Record<string, number>;
+  tags?: string[];
+  conversation_style?: string;
+  [key: string]: any; // Allow additional fields
+}
+
+/**
+ * Merged persona result with normalized fields
+ */
+interface MergedPersona {
+  traits: Record<string, number>;
+  tags: string[];
+  conversation_style?: string;
+}
+
+/**
+ * Merge base NPC persona with session-specific overrides
+ *
+ * Follows backend's merge_npc_persona convention:
+ * - Base: persona parameter (from GameNPC.personality)
+ * - Overrides: session.flags.npcs["npc:ID"]
+ * - Session can override personality.traits, personality.tags, conversation_style, etc.
+ *
+ * @param basePersona - Base persona data (from GameNPC.personality or null)
+ * @param npcId - NPC ID for session lookup
+ * @param session - Game session with potential overrides in flags
+ * @returns Merged persona with traits, tags, and conversation_style
+ */
+function mergeNpcPersona(
+  basePersona: NpcPersona | undefined,
+  npcId: number,
+  session: GameSessionDTO
+): MergedPersona {
+  // Start with base persona or empty defaults
+  const base = basePersona || {};
+  const baseTraits = base.traits || {};
+  const baseTags = base.tags || [];
+  const baseConversationStyle = base.conversation_style;
+
+  // Extract session overrides from flags.npcs["npc:ID"]
+  const flags = session.flags as any;
+  const npcOverrides = flags?.npcs?.[`npc:${npcId}`];
+
+  if (!npcOverrides || typeof npcOverrides !== 'object') {
+    // No overrides, return base with defaults
+    return {
+      traits: Object.keys(baseTraits).length > 0 ? baseTraits : getDefaultTraits(),
+      tags: baseTags.length > 0 ? baseTags : getDefaultTags(),
+      conversation_style: baseConversationStyle,
+    };
+  }
+
+  // Merge traits (session overrides win)
+  let mergedTraits = { ...baseTraits };
+  if (npcOverrides.personality?.traits && typeof npcOverrides.personality.traits === 'object') {
+    mergedTraits = { ...mergedTraits, ...npcOverrides.personality.traits };
+  } else if (npcOverrides.traits && typeof npcOverrides.traits === 'object') {
+    // Also support direct .traits key for convenience
+    mergedTraits = { ...mergedTraits, ...npcOverrides.traits };
+  }
+
+  // Merge tags (combine and deduplicate)
+  let mergedTags = [...baseTags];
+  if (npcOverrides.personality?.tags && Array.isArray(npcOverrides.personality.tags)) {
+    mergedTags = [...new Set([...mergedTags, ...npcOverrides.personality.tags])];
+  } else if (npcOverrides.personaTags && Array.isArray(npcOverrides.personaTags)) {
+    // Support legacy personaTags key
+    mergedTags = [...new Set([...mergedTags, ...npcOverrides.personaTags])];
+  } else if (npcOverrides.tags && Array.isArray(npcOverrides.tags)) {
+    // Also support direct .tags key
+    mergedTags = [...new Set([...mergedTags, ...npcOverrides.tags])];
+  }
+
+  // Override conversation_style if provided
+  let conversationStyle = baseConversationStyle;
+  if (npcOverrides.personality?.conversation_style) {
+    conversationStyle = npcOverrides.personality.conversation_style;
+  } else if (npcOverrides.conversationStyle) {
+    conversationStyle = npcOverrides.conversationStyle;
+  } else if (npcOverrides.conversation_style) {
+    conversationStyle = npcOverrides.conversation_style;
+  }
+
+  // Use defaults if still empty
+  if (Object.keys(mergedTraits).length === 0) {
+    mergedTraits = getDefaultTraits();
+  }
+  if (mergedTags.length === 0) {
+    mergedTags = getDefaultTags();
+  }
+
+  return {
+    traits: mergedTraits,
+    tags: mergedTags,
+    conversation_style: conversationStyle,
+  };
+}
+
+/**
+ * Default personality traits (Big Five model, 0-100 scale)
+ */
+function getDefaultTraits(): Record<string, number> {
+  return {
+    openness: 50,
+    conscientiousness: 50,
+    extraversion: 50,
+    agreeableness: 50,
+    neuroticism: 50,
+  };
+}
+
+/**
+ * Default persona tags
+ */
+function getDefaultTags(): string[] {
+  return ['friendly', 'curious'];
+}
+
+/**
  * Build NPC brain state from session data and relationship state
  *
- * This is a first-pass implementation that combines:
- * - NPC personality data (would come from GameNPC.personality in a full implementation)
+ * This implementation combines:
+ * - Base NPC persona (from GameNPC.personality or other sources)
+ * - Per-session overrides from GameSession.flags.npcs["npc:ID"]
  * - Relationship state (affinity, trust, chemistry, tension, flags)
  * - Derived mood based on relationship values
  *
- * @param params - NPC ID, session, and relationship state
+ * Merging follows backend's merge_npc_persona convention:
+ * - Base traits/tags/conversation_style from persona parameter
+ * - Session overrides from flags.npcs["npc:ID"].personality
+ * - Session-level traits/tags can override or extend base values
+ *
+ * @param params - NPC ID, session, relationship state, and optional persona
  * @returns Complete NPC brain state
  */
 export function buildNpcBrainState(params: {
   npcId: number;
   session: GameSessionDTO;
   relationship: NpcRelationshipState;
+  persona?: NpcPersona;
 }): NpcBrainState {
-  const { npcId, session, relationship } = params;
+  const { npcId, session, relationship, persona } = params;
 
-  // TODO: In a full implementation, fetch GameNPC data from backend or cache
-  // For now, use placeholder personality data
-  const traits = extractTraitsFromSession(npcId, session);
-  const personaTags = extractPersonaTagsFromSession(npcId, session);
+  // Merge base persona with session overrides
+  const mergedPersona = mergeNpcPersona(persona, npcId, session);
+
+  // Extract traits, tags, and conversation style from merged persona
+  const traits = mergedPersona.traits;
+  const personaTags = mergedPersona.tags;
+  const conversationStyle = mergedPersona.conversation_style;
+
+  // Extract memories from session
   const memories = extractMemoriesFromSession(npcId, session);
 
   // Compute mood based on relationship state
@@ -50,57 +184,13 @@ export function buildNpcBrainState(params: {
   return {
     traits,
     personaTags,
-    conversationStyle: deriveConversationStyle(traits, relationship),
+    conversationStyle: conversationStyle || deriveConversationStyle(traits, relationship),
     memories,
     mood,
     logic,
     instincts,
     social,
   };
-}
-
-/**
- * Extract NPC traits from session data
- * In the future, this would read from GameNPC.personality or world overrides
- */
-function extractTraitsFromSession(
-  npcId: number,
-  session: GameSessionDTO
-): Record<string, number> {
-  // Check session flags for NPC-specific trait overrides
-  const flags = session.flags as any;
-  const npcTraits = flags?.npcs?.[`npc:${npcId}`]?.traits;
-
-  if (npcTraits && typeof npcTraits === 'object') {
-    return npcTraits;
-  }
-
-  // Default traits (placeholder)
-  return {
-    openness: 50,
-    conscientiousness: 50,
-    extraversion: 50,
-    agreeableness: 50,
-    neuroticism: 50,
-  };
-}
-
-/**
- * Extract persona tags from session data
- */
-function extractPersonaTagsFromSession(
-  npcId: number,
-  session: GameSessionDTO
-): string[] {
-  const flags = session.flags as any;
-  const npcPersona = flags?.npcs?.[`npc:${npcId}`]?.personaTags;
-
-  if (Array.isArray(npcPersona)) {
-    return npcPersona;
-  }
-
-  // Default persona tags (placeholder)
-  return ['friendly', 'curious'];
 }
 
 /**

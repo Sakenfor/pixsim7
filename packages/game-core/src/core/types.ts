@@ -1,4 +1,5 @@
 import type { GameSessionDTO } from '@pixsim7/types';
+import type { NpcPersona } from '../npcs/brain';
 
 /**
  * Core event map for the PixSim7Core event bus
@@ -39,6 +40,16 @@ export interface StorageProvider {
  */
 export interface AuthProvider {
   getAccessToken(): Promise<string | null>;
+}
+
+/**
+ * NPC persona provider interface
+ *
+ * Allows injecting NPC personality data (from GameNPC.personality or other sources)
+ * into brain state computation.
+ */
+export interface NpcPersonaProvider {
+  getNpcPersona(npcId: number): Promise<NpcPersona | null>;
 }
 
 /**
@@ -106,6 +117,7 @@ export interface PixSim7CoreConfig {
   apiClient?: ApiClient;
   storageProvider?: StorageProvider;
   authProvider?: AuthProvider;
+  npcPersonaProvider?: NpcPersonaProvider;
 }
 
 /**
