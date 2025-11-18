@@ -105,7 +105,11 @@
       "Bash(packages/game-core/src/session/builtinHelpers.ts)",
       "Bash(packages/game-core/src/session/generateDocs.ts)",
       "Bash(frontend/src/lib/game/customHelpers.ts)",
-      "Bash(pnpm:*)"
+      "Bash(pnpm:*)",
+      "Bash(frontend/src/lib/plugins/seductionNode.ts)",
+      "Bash(frontend/src/components/inspector/SeductionNodeEditor.tsx)",
+      "Bash(docs/SEDUCTION_NODE_PLUGIN.md)",
+      "Bash(git cherry-pick:*)"
     ],
     "deny": [],
     "ask": []

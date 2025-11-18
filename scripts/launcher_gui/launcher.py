@@ -656,19 +656,19 @@ class LauncherWindow(QWidget):
 
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
-        self._startup_trace(f"_select_service start ({key})")
+        _startup_trace(f"_select_service start ({key})")
         # Deselect previous card
         if self.selected_service_key and self.selected_service_key in self.cards:
             self.cards[self.selected_service_key].set_selected(False)
-            self._startup_trace("_select_service previous deselected")
+            _startup_trace("_select_service previous deselected")
 
         # Select new card
         self.selected_service_key = key
         if key in self.cards:
             self.cards[key].set_selected(True)
-            self._startup_trace("_select_service card selected")
+            _startup_trace("_select_service card selected")
             self._refresh_console_logs()
-            self._startup_trace("_select_service console refreshed")
+            _startup_trace("_select_service console refreshed")
 
         # Keep database log viewer in sync with selected service for quick pivots
         if hasattr(self, 'db_log_viewer') and self.db_log_viewer:
@@ -681,8 +681,8 @@ class LauncherWindow(QWidget):
                 idx = self.db_log_viewer.service_combo.findText(svc_name.upper())
             if idx >= 0:
                 self.db_log_viewer.service_combo.setCurrentIndex(idx)
-                self._startup_trace("_select_service db viewer synced")
-        self._startup_trace(f"_select_service end ({key})")
+                _startup_trace("_select_service db viewer synced")
+        _startup_trace(f"_select_service end ({key})")
 
     def _start_service(self, key: str):
         """Start a specific service."""
@@ -1206,14 +1206,14 @@ class LauncherWindow(QWidget):
 
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
-        self._startup_trace("_refresh_console_logs start")
+        _startup_trace("_refresh_console_logs start")
         if not self.selected_service_key:
-            self._startup_trace("_refresh_console_logs skipped (no selection)")
+            _startup_trace("_refresh_console_logs skipped (no selection)")
             return
 
         sp = self.processes.get(self.selected_service_key)
         if not sp:
-            self._startup_trace("_refresh_console_logs skipped (no service)")
+            _startup_trace("_refresh_console_logs skipped (no service)")
             return
 
         # Update service label
@@ -1222,11 +1222,11 @@ class LauncherWindow(QWidget):
 
         # Calculate hash of current log buffer to detect changes
         if sp.log_buffer:
-            self._startup_trace(f"_refresh_console_logs buffer size={len(sp.log_buffer)}")
+            _startup_trace(f"_refresh_console_logs buffer size={len(sp.log_buffer)}")
             if getattr(self, "_startup_tracing", False):
                 try:
                     max_line = max((len(str(line)) for line in sp.log_buffer), default=0)
-                    self._startup_trace(f"_refresh_console_logs max_line_len={max_line}")
+                    _startup_trace(f"_refresh_console_logs max_line_len={max_line}")
                 except Exception:
                     pass
             # Efficient hash: use buffer length + hash of last 10 lines
@@ -1237,11 +1237,11 @@ class LauncherWindow(QWidget):
             buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
         filter_signature = self._console_filter_signature()
         current_hash = (buffer_signature, filter_signature)
-        self._startup_trace("_refresh_console_logs hash computed")
+        _startup_trace("_refresh_console_logs hash computed")
 
         # Only update UI if logs changed
         if not force and self.last_log_hash.get(self.selected_service_key) == current_hash:
-            self._startup_trace("_refresh_console_logs no changes")
+            _startup_trace("_refresh_console_logs no changes")
             return
 
         self.last_log_hash[self.selected_service_key] = current_hash
@@ -1258,16 +1258,16 @@ class LauncherWindow(QWidget):
 
             # Get logs from buffer
             if sp.log_buffer:
-                self._startup_trace("_refresh_console_logs applying filter")
+                _startup_trace("_refresh_console_logs applying filter")
                 # Apply in-memory filtering based on console filter controls
                 filtered_buffer = self._filter_console_buffer(sp.log_buffer)
-                self._startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
+                _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
                 # Format as HTML with syntax highlighting
                 log_html = self._format_console_log_html(filtered_buffer)
-                self._startup_trace("_refresh_console_logs formatted html")
+                _startup_trace("_refresh_console_logs formatted html")
                 self.log_view.setHtml(log_html)
-                self._startup_trace("_refresh_console_logs html applied")
+                _startup_trace("_refresh_console_logs html applied")
 
                 # Scroll behavior based on auto-scroll setting
                 if self.autoscroll_enabled:
@@ -1376,7 +1376,7 @@ class LauncherWindow(QWidget):
             self.db_log_viewer.refresh_logs()
         except Exception:
             pass
-        self._startup_trace("_refresh_console_logs end")
+        _startup_trace("_refresh_console_logs end")
 
     def _open_settings(self):
         updated = show_settings_dialog(self, self.ui_state)
