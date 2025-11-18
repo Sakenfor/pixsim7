@@ -14,6 +14,7 @@ import type {
   WorldUiConfig,
   HudVisibilityCondition,
 } from './types';
+import { applyPlayerPreferences } from './playerHudPreferences';
 
 /**
  * Tools grouped by HUD region
@@ -73,6 +74,57 @@ function checkVisibilityCondition(
       // Check if session exists
       return context.session != null;
 
+    case 'location':
+      // Check if at specific location
+      if (!context.selectedLocationId) return false;
+      const targetLocationIds = condition.id.split(',').map(id => parseInt(id.trim(), 10));
+      return targetLocationIds.includes(context.selectedLocationId);
+
+    case 'time':
+      // Check world time conditions
+      if (!context.worldTime) return false;
+      const { day, hour } = context.worldTime;
+
+      // Check day of week (if specified)
+      if (condition.dayOfWeek !== undefined && condition.dayOfWeek !== 'any') {
+        if (day !== condition.dayOfWeek) return false;
+      }
+
+      // Check hour range (if specified)
+      if (condition.hourRange) {
+        const [startHour, endHour] = condition.hourRange;
+        if (hour < startHour || hour > endHour) return false;
+      }
+
+      return true;
+
+    case 'quest':
+      // Check if specific quest is active
+      const questFlags = context.sessionFlags.quests as any;
+      if (!questFlags) return false;
+      const questId = condition.id;
+      const questStatus = questFlags[questId]?.status;
+      return questStatus === 'active' || questStatus === 'completed';
+
+    case 'relationship':
+      // Check NPC relationship level
+      if (!condition.id || !context.relationships) return false;
+      const npcRelationship = context.relationships[condition.id] as any;
+      if (!npcRelationship?.level) return false;
+      const minLevel = condition.minRelationship || 0;
+      return npcRelationship.level >= minLevel;
+
+    case 'composite':
+      // Evaluate composite conditions with AND/OR logic
+      if (!condition.conditions || condition.conditions.length === 0) return true;
+      const operator = condition.operator || 'AND';
+
+      if (operator === 'AND') {
+        return condition.conditions.every(c => checkVisibilityCondition(c, context));
+      } else {
+        return condition.conditions.some(c => checkVisibilityCondition(c, context));
+      }
+
     default:
       console.warn(`Unknown visibility condition kind: ${(condition as any).kind}`);
       return false;
@@ -100,9 +152,14 @@ export function buildHudLayout(
   const hudConfig = getHudConfig(worldDetail) || getDefaultLayout(tools);
 
   // Filter placements by visibility conditions
-  const visiblePlacements = hudConfig.filter((placement) =>
+  let visiblePlacements = hudConfig.filter((placement) =>
     checkVisibilityCondition(placement.visibleWhen, context)
   );
+
+  // Apply player preferences (hide tools, apply overrides)
+  if (context.selectedWorldId != null) {
+    visiblePlacements = applyPlayerPreferences(visiblePlacements, context.selectedWorldId);
+  }
 
   // Create a map of tool ID to tool
   const toolMap = new Map(tools.map((tool) => [tool.id, tool]));

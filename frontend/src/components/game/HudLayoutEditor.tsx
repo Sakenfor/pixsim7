@@ -16,6 +16,14 @@ import type {
   WorldUiConfig,
 } from '../../lib/worldTools/types';
 import { getHudConfig } from '../../lib/worldTools/hudLayout';
+import {
+  loadPresets,
+  createPreset,
+  deletePreset,
+  exportPreset,
+  importPreset,
+  type HudLayoutPreset,
+} from '../../lib/worldTools/hudPresets';
 
 interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;
@@ -28,6 +36,24 @@ interface ToolPlacementRow extends HudToolPlacement {
   description: string;
   icon?: string;
 }
+
+const VISIBILITY_CONDITION_KINDS = [
+  { value: '', label: 'Always visible' },
+  { value: 'session', label: 'Only when session exists' },
+  { value: 'flag', label: 'When session flag is set' },
+  { value: 'capability', label: 'When capability is enabled' },
+  { value: 'location', label: 'At specific locations' },
+  { value: 'time', label: 'During specific time' },
+  { value: 'quest', label: 'When quest is active' },
+  { value: 'relationship', label: 'Based on NPC relationship' },
+];
+
+const TOOL_SIZES = [
+  { value: '', label: 'Default' },
+  { value: 'compact', label: 'Compact' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'expanded', label: 'Expanded' },
+];
 
 const REGIONS: { value: HudRegion; label: string }[] = [
   { value: 'top', label: 'Top' },
@@ -52,9 +78,25 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [presets, setPresets] = useState<HudLayoutPreset[]>([]);
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [presetDescription, setPresetDescription] = useState('');
+
+  // Undo/Redo state
+  const [history, setHistory] = useState<ToolPlacementRow[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Validation warnings
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   // Get all available tools
   const availableTools = useMemo(() => worldToolRegistry.getAll(), []);
+
+  // Load presets on mount
+  useEffect(() => {
+    setPresets(loadPresets());
+  }, []);
 
   // Initialize placements from world config
   const [placements, setPlacements] = useState<ToolPlacementRow[]>(() => {
@@ -158,6 +200,219 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
     setPlacements((prev) => [...prev, newPlacement]);
   };
 
+  // Handle visibility condition change
+  const handleConditionKindChange = (toolId: string, kind: string) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) => {
+        if (p.toolId !== toolId) return p;
+        if (!kind) {
+          // Remove condition
+          const { visibleWhen, ...rest } = p;
+          return rest as ToolPlacementRow;
+        }
+        // Add or update condition
+        return {
+          ...p,
+          visibleWhen: {
+            kind: kind as any,
+            id: p.visibleWhen?.id || '',
+          },
+        };
+      })
+    );
+  };
+
+  // Handle time condition changes
+  const handleTimeConditionChange = (toolId: string, field: 'dayOfWeek' | 'hourStart' | 'hourEnd', value: any) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) => {
+        if (p.toolId !== toolId || !p.visibleWhen) return p;
+
+        if (field === 'dayOfWeek') {
+          return {
+            ...p,
+            visibleWhen: {
+              ...p.visibleWhen,
+              dayOfWeek: value === 'any' ? 'any' : parseInt(value, 10),
+            },
+          };
+        } else if (field === 'hourStart') {
+          const current = p.visibleWhen.hourRange || [0, 23];
+          return {
+            ...p,
+            visibleWhen: {
+              ...p.visibleWhen,
+              hourRange: [parseInt(value, 10), current[1]],
+            },
+          };
+        } else if (field === 'hourEnd') {
+          const current = p.visibleWhen.hourRange || [0, 23];
+          return {
+            ...p,
+            visibleWhen: {
+              ...p.visibleWhen,
+              hourRange: [current[0], parseInt(value, 10)],
+            },
+          };
+        }
+
+        return p;
+      })
+    );
+  };
+
+  // Handle relationship condition change
+  const handleRelationshipConditionChange = (toolId: string, minLevel: number) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) => {
+        if (p.toolId !== toolId || !p.visibleWhen) return p;
+        return {
+          ...p,
+          visibleWhen: {
+            ...p.visibleWhen,
+            minRelationship: minLevel,
+          },
+        };
+      })
+    );
+  };
+
+  // Handle visibility condition ID change
+  const handleConditionIdChange = (toolId: string, id: string) => {
+    setPlacements((prev) =>
+      prev.map((p) =>
+        p.toolId === toolId && p.visibleWhen
+          ? { ...p, visibleWhen: { ...p.visibleWhen, id } }
+          : p
+      )
+    );
+  };
+
+  // Phase 6: Enhanced layout control handlers
+  const handleSizeChange = (toolId: string, size: string) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) =>
+        p.toolId === toolId ? { ...p, size: size as any || undefined } : p
+      )
+    );
+  };
+
+  const handleCollapsedChange = (toolId: string, collapsed: boolean) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) =>
+        p.toolId === toolId ? { ...p, defaultCollapsed: collapsed } : p
+      )
+    );
+  };
+
+  const handleZIndexChange = (toolId: string, zIndex: number) => {
+    saveToHistory();
+    setPlacements((prev) =>
+      prev.map((p) =>
+        p.toolId === toolId
+          ? { ...p, zIndex: isNaN(zIndex) ? undefined : zIndex }
+          : p
+      )
+    );
+  };
+
+  // Undo/Redo functionality
+  const saveToHistory = () => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(placements)));
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      setHistoryIndex(historyIndex - 1);
+      setPlacements(history[historyIndex - 1]);
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      setHistoryIndex(historyIndex + 1);
+      setPlacements(history[historyIndex + 1]);
+    }
+  };
+
+  // Validation
+  const validateLayout = (): string[] => {
+    const warnings: string[] = [];
+
+    // Check for tools with impossible conditions
+    placements.forEach((p) => {
+      if (
+        p.visibleWhen?.kind === 'composite' &&
+        (!p.visibleWhen.conditions || p.visibleWhen.conditions.length === 0)
+      ) {
+        warnings.push(`Tool "${p.name}" has composite condition with no sub-conditions`);
+      }
+
+      if (p.visibleWhen?.kind === 'time' && !p.visibleWhen.hourRange && p.visibleWhen.dayOfWeek === undefined) {
+        warnings.push(`Tool "${p.name}" has time condition but no time range or day specified`);
+      }
+
+      if ((p.visibleWhen?.kind === 'location' || p.visibleWhen?.kind === 'quest' || p.visibleWhen?.kind === 'relationship') && !p.visibleWhen.id) {
+        warnings.push(`Tool "${p.name}" has ${p.visibleWhen.kind} condition but no ID specified`);
+      }
+    });
+
+    // Check for duplicate orders in same region
+    const regionOrders = new Map<HudRegion, Set<number>>();
+    placements.forEach((p) => {
+      if (!regionOrders.has(p.region)) {
+        regionOrders.set(p.region, new Set());
+      }
+      if (p.order !== undefined && regionOrders.get(p.region)!.has(p.order)) {
+        warnings.push(`Duplicate order ${p.order} in ${p.region} region`);
+      }
+      regionOrders.get(p.region)!.add(p.order || 0);
+    });
+
+    return warnings;
+  };
+
+  // Update warnings when placements change
+  useEffect(() => {
+    const newWarnings = validateLayout();
+    setWarnings(newWarnings);
+  }, [placements]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 's') {
+          e.preventDefault();
+          handleSave();
+        }
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+        }
+        if (e.key === 'z' && e.shiftKey) {
+          e.preventDefault();
+          redo();
+        }
+        if (e.key === 'y') {
+          e.preventDefault();
+          redo();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history]);
+
   // Handle save
   const handleSave = async () => {
     setIsSaving(true);
@@ -197,6 +452,119 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
     }
   };
 
+  // Preset management handlers
+  const handleSaveAsPreset = () => {
+    if (!presetName.trim()) {
+      setError('Preset name is required');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    try {
+      const hudConfig: HudToolPlacement[] = placements.map((p) => ({
+        toolId: p.toolId,
+        region: p.region,
+        order: p.order,
+        visibleWhen: p.visibleWhen,
+      }));
+
+      createPreset(presetName.trim(), hudConfig, presetDescription.trim() || undefined);
+      setPresets(loadPresets());
+      setSuccessMessage(`Preset "${presetName}" created successfully!`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      setShowPresetModal(false);
+      setPresetName('');
+      setPresetDescription('');
+    } catch (err: any) {
+      setError(`Failed to create preset: ${err.message || String(err)}`);
+    }
+  };
+
+  const handleLoadPreset = (presetId: string) => {
+    const preset = presets.find((p) => p.id === presetId);
+    if (!preset) {
+      setError('Preset not found');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    // Map preset placements to tool rows
+    const toolMap = new Map(availableTools.map((t) => [t.id, t]));
+    const newPlacements: ToolPlacementRow[] = preset.placements.map((placement) => {
+      const tool = toolMap.get(placement.toolId);
+      return {
+        ...placement,
+        name: tool?.name || placement.toolId,
+        description: tool?.description || '',
+        icon: tool?.icon,
+      };
+    });
+
+    setPlacements(newPlacements);
+    setSuccessMessage(`Loaded preset: ${preset.name}`);
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  const handleDeletePreset = (presetId: string) => {
+    if (!confirm('Are you sure you want to delete this preset?')) return;
+
+    try {
+      deletePreset(presetId);
+      setPresets(loadPresets());
+      setSuccessMessage('Preset deleted successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(`Failed to delete preset: ${err.message || String(err)}`);
+    }
+  };
+
+  const handleExportPreset = (presetId: string) => {
+    const json = exportPreset(presetId);
+    if (!json) {
+      setError('Failed to export preset');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    // Copy to clipboard
+    navigator.clipboard.writeText(json).then(
+      () => {
+        setSuccessMessage('Preset copied to clipboard!');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      },
+      () => {
+        // Fallback: download as file
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hud-preset-${presetId}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    );
+  };
+
+  const handleImportPreset = () => {
+    const json = prompt('Paste preset JSON:');
+    if (!json) return;
+
+    try {
+      const preset = importPreset(json);
+      if (!preset) {
+        setError('Invalid preset format');
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+
+      setPresets(loadPresets());
+      setSuccessMessage(`Imported preset: ${preset.name}`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(`Failed to import preset: ${err.message || String(err)}`);
+    }
+  };
+
   return (
     <Panel className="space-y-4">
       <div className="flex items-center justify-between">
@@ -227,6 +595,44 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
         </div>
       )}
 
+      {warnings.length > 0 && (
+        <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded">
+          <h4 className="font-semibold text-sm text-yellow-800 dark:text-yellow-200 mb-1">
+            ⚠️ Layout Warnings
+          </h4>
+          <ul className="list-disc pl-5 text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
+            {warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Undo/Redo Controls */}
+      <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={undo}
+          disabled={historyIndex <= 0}
+          title="Undo (Ctrl+Z)"
+        >
+          ↶ Undo
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={redo}
+          disabled={historyIndex >= history.length - 1}
+          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+        >
+          ↷ Redo
+        </Button>
+        <span className="ml-auto">
+          💡 Tip: Use Ctrl+S to save, Ctrl+Z to undo
+        </span>
+      </div>
+
       <div className="space-y-4">
         {/* Tool Placement Table */}
         <div className="overflow-x-auto">
@@ -236,13 +642,16 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
                 <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Tool</th>
                 <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Region</th>
                 <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Order</th>
+                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Size</th>
+                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Options</th>
+                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Visibility</th>
                 <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
               {placements.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-neutral-500 dark:text-neutral-400">
+                  <td colSpan={7} className="py-4 text-center text-neutral-500 dark:text-neutral-400">
                     No tools in layout. Click "Add Tool" to add one.
                   </td>
                 </tr>
@@ -286,6 +695,151 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
                       />
                     </td>
                     <td className="py-2">
+                      <Select
+                        size="sm"
+                        value={placement.size || ''}
+                        onChange={(e) => handleSizeChange(placement.toolId, e.target.value)}
+                        title="Tool size variant"
+                      >
+                        {TOOL_SIZES.map((size) => (
+                          <option key={size.value} value={size.value}>
+                            {size.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="flex items-center gap-1 text-xs cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={placement.defaultCollapsed || false}
+                            onChange={(e) => handleCollapsedChange(placement.toolId, e.target.checked)}
+                            className="cursor-pointer"
+                          />
+                          <span>Start collapsed</span>
+                        </label>
+                        {placement.region === 'overlay' && (
+                          <input
+                            type="number"
+                            placeholder="Z-index"
+                            value={placement.zIndex || ''}
+                            onChange={(e) => handleZIndexChange(placement.toolId, parseInt(e.target.value, 10))}
+                            className="w-20 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            title="Stacking order (higher = on top)"
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2">
+                      <div className="space-y-1">
+                        <Select
+                          size="sm"
+                          value={placement.visibleWhen?.kind || ''}
+                          onChange={(e) => handleConditionKindChange(placement.toolId, e.target.value)}
+                          title="Visibility condition"
+                        >
+                          {VISIBILITY_CONDITION_KINDS.map((kind) => (
+                            <option key={kind.value} value={kind.value}>
+                              {kind.label}
+                            </option>
+                          ))}
+                        </Select>
+                        {/* Condition-specific inputs */}
+                        {placement.visibleWhen && placement.visibleWhen.kind === 'location' && (
+                          <input
+                            type="text"
+                            placeholder="Location IDs (e.g., 1,3,5)"
+                            value={placement.visibleWhen.id || ''}
+                            onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            title="Comma-separated location IDs"
+                          />
+                        )}
+                        {placement.visibleWhen && placement.visibleWhen.kind === 'time' && (
+                          <>
+                            <select
+                              value={placement.visibleWhen.dayOfWeek || 'any'}
+                              onChange={(e) => handleTimeConditionChange(placement.toolId, 'dayOfWeek', e.target.value)}
+                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            >
+                              <option value="any">Any Day</option>
+                              <option value="1">Monday</option>
+                              <option value="2">Tuesday</option>
+                              <option value="3">Wednesday</option>
+                              <option value="4">Thursday</option>
+                              <option value="5">Friday</option>
+                              <option value="6">Saturday</option>
+                              <option value="0">Sunday</option>
+                            </select>
+                            <div className="flex gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                max="23"
+                                placeholder="Start hour"
+                                value={placement.visibleWhen.hourRange?.[0] || ''}
+                                onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourStart', e.target.value)}
+                                className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                              />
+                              <span className="text-xs">to</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="23"
+                                placeholder="End hour"
+                                value={placement.visibleWhen.hourRange?.[1] || ''}
+                                onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourEnd', e.target.value)}
+                                className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                              />
+                            </div>
+                          </>
+                        )}
+                        {placement.visibleWhen && placement.visibleWhen.kind === 'quest' && (
+                          <input
+                            type="text"
+                            placeholder="Quest ID"
+                            value={placement.visibleWhen.id || ''}
+                            onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                          />
+                        )}
+                        {placement.visibleWhen && placement.visibleWhen.kind === 'relationship' && (
+                          <>
+                            <input
+                              type="text"
+                              placeholder="NPC ID"
+                              value={placement.visibleWhen.id || ''}
+                              onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              placeholder="Min level (0-100)"
+                              value={placement.visibleWhen.minRelationship || ''}
+                              onChange={(e) => handleRelationshipConditionChange(placement.toolId, parseInt(e.target.value, 10))}
+                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            />
+                          </>
+                        )}
+                        {placement.visibleWhen && (placement.visibleWhen.kind === 'flag' || placement.visibleWhen.kind === 'capability') && (
+                          <input
+                            type="text"
+                            placeholder={
+                              placement.visibleWhen.kind === 'flag'
+                                ? 'e.g., world.mode'
+                                : 'e.g., game'
+                            }
+                            value={placement.visibleWhen.id || ''}
+                            onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2">
                       <Button
                         size="sm"
                         variant="ghost"
@@ -308,6 +862,140 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
             Add Tool
           </Button>
         </div>
+
+        {/* Preset Management */}
+        <div className="space-y-3 pt-4 border-t border-neutral-300 dark:border-neutral-700">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+              Layout Presets
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowPresetModal(true)}
+                title="Save current layout as a reusable preset"
+              >
+                Save as Preset
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleImportPreset}
+                title="Import preset from JSON"
+              >
+                Import
+              </Button>
+            </div>
+          </div>
+
+          {presets.length === 0 ? (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
+              No presets saved yet. Save your current layout to create a preset.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {presets.map((preset) => (
+                <div
+                  key={preset.id}
+                  className="flex items-center justify-between p-2 border border-neutral-300 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800/50"
+                >
+                  <div className="flex-1">
+                    <div className="font-medium text-sm text-neutral-800 dark:text-neutral-200">
+                      {preset.name}
+                    </div>
+                    {preset.description && (
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {preset.description}
+                      </div>
+                    )}
+                    <div className="text-xs text-neutral-400 dark:text-neutral-500">
+                      {preset.placements.length} tools
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => handleLoadPreset(preset.id)}
+                      title="Load this preset"
+                    >
+                      Load
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleExportPreset(preset.id)}
+                      title="Export to clipboard"
+                    >
+                      Export
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleDeletePreset(preset.id)}
+                      title="Delete this preset"
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Save Preset Modal */}
+        {showPresetModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <Panel className="w-full max-w-md space-y-3">
+              <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                Save Layout as Preset
+              </h3>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Preset Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(e) => setPresetName(e.target.value)}
+                    placeholder="e.g., Minimal HUD"
+                    className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    value={presetDescription}
+                    onChange={(e) => setPresetDescription(e.target.value)}
+                    placeholder="Describe this layout..."
+                    rows={3}
+                    className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowPresetModal(false);
+                    setPresetName('');
+                    setPresetDescription('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={handleSaveAsPreset}>
+                  Save Preset
+                </Button>
+              </div>
+            </Panel>
+          </div>
+        )}
 
         {/* Region Preview */}
         <div className="space-y-2">
