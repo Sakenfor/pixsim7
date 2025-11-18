@@ -7,10 +7,10 @@ import type { Vector3D } from './core';
 
 export interface InteractiveTool {
   id: string;
-  type: 'touch' | 'caress' | 'tease' | 'pleasure' | 'temperature' | 'energy';
+  type: 'touch' | 'caress' | 'tease' | 'pleasure' | 'temperature' | 'energy' | 'liquid' | 'object';
 
   visual: {
-    model: 'hand' | 'feather' | 'ice' | 'flame' | 'silk' | 'electric' | 'water';
+    model: 'hand' | 'feather' | 'ice' | 'flame' | 'silk' | 'electric' | 'water' | 'banana';
     baseColor: string;
     activeColor: string;
     glow?: boolean;
@@ -25,6 +25,9 @@ export interface InteractiveTool {
     temperature?: number; // 0 (cold) to 1 (hot)
     pattern?: TouchPattern;
     vibration?: number; // 0-1, intensity
+    viscosity?: number; // 0-1, for liquids
+    elasticity?: number; // 0-1, for objects
+    bendFactor?: number; // 0-1, how much it bends
   };
 
   feedback: {
@@ -32,6 +35,11 @@ export interface InteractiveTool {
     audio?: AudioFeedback;
     npcReaction?: ReactionType;
     trail?: TrailEffect;
+    impact?: {
+      type: 'squish' | 'bounce' | 'splash';
+      intensity: number;
+      ripples?: boolean;
+    };
   };
 
   constraints?: {
@@ -50,10 +58,11 @@ export type TouchPattern =
   | 'zigzag'
   | 'spiral'
   | 'wave'
-  | 'pulse';
+  | 'pulse'
+  | 'flow';
 
 export interface ParticleEffect {
-  type: 'hearts' | 'sparks' | 'droplets' | 'steam' | 'frost' | 'petals' | 'energy';
+  type: 'hearts' | 'sparks' | 'droplets' | 'steam' | 'frost' | 'petals' | 'energy' | 'banana';
   density: number; // 0-1
   color?: string;
   size?: number;
@@ -62,9 +71,10 @@ export interface ParticleEffect {
 }
 
 export interface HapticPattern {
-  type: 'pulse' | 'vibrate' | 'wave' | 'heartbeat';
+  type: 'pulse' | 'vibrate' | 'wave' | 'heartbeat' | 'tickle' | 'thump';
   intensity: number; // 0-1
   duration: number; // ms
+  frequency?: number; // Hz, for periodic patterns
 }
 
 export interface AudioFeedback {
@@ -75,14 +85,14 @@ export interface AudioFeedback {
 }
 
 export interface ReactionType {
-  expression?: 'pleasure' | 'surprise' | 'anticipation' | 'satisfaction';
-  vocalization?: 'moan' | 'gasp' | 'giggle' | 'sigh';
+  expression?: 'pleasure' | 'surprise' | 'anticipation' | 'satisfaction' | 'delight' | 'refreshed' | 'amused';
+  vocalization?: 'moan' | 'gasp' | 'giggle' | 'sigh' | 'laugh';
   animation?: string;
   intensity: number; // 0-1
 }
 
 export interface TrailEffect {
-  type: 'fade' | 'sparkle' | 'ripple' | 'heat';
+  type: 'fade' | 'sparkle' | 'ripple' | 'heat' | 'wet';
   color: string;
   width: number;
   lifetime: number; // ms

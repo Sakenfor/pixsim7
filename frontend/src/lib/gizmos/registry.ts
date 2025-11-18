@@ -1,16 +1,19 @@
 /**
- * Gizmo Registry - Extensible system for scene control gizmos and tools
- * Register new gizmos and tools at runtime
+ * Base Gizmo Pack - Core gizmos and tools
+ * Registers fundamental gizmo definitions and interactive tools
  */
 
-import { GizmoDefinition, InteractiveTool } from './types';
+import {
+  registerGizmo,
+  registerTool,
+  type GizmoDefinition,
+  type InteractiveTool,
+} from '@pixsim7/scene-gizmos';
 import { OrbGizmo } from '../../components/gizmos/OrbGizmo';
 import { ConstellationGizmo } from '../../components/gizmos/ConstellationGizmo';
-// import { RingsGizmo } from '../../components/gizmos/RingsGizmo'; // TODO: Implement
-// import { HelixGizmo } from '../../components/gizmos/HelixGizmo'; // TODO: Implement
 
 // ============================================================================
-// Built-in Gizmo Definitions
+// Gizmo Definitions
 // ============================================================================
 
 export const orbGizmo: GizmoDefinition = {
@@ -62,7 +65,7 @@ export const constellationGizmo: GizmoDefinition = {
 };
 
 // ============================================================================
-// Built-in Interactive Tools
+// Interactive Tools
 // ============================================================================
 
 export const touchTool: InteractiveTool = {
@@ -188,130 +191,19 @@ export const energyTool: InteractiveTool = {
 };
 
 // ============================================================================
-// Registry Class
+// Auto-register all definitions
 // ============================================================================
 
-class GizmoRegistryClass {
-  private gizmos: Map<string, GizmoDefinition> = new Map();
-  private tools: Map<string, InteractiveTool> = new Map();
-  private categories: Map<string, Set<string>> = new Map();
+registerGizmo(orbGizmo);
+registerGizmo(constellationGizmo);
 
-  constructor() {
-    // Register built-in gizmos
-    this.registerGizmo(orbGizmo);
-    this.registerGizmo(constellationGizmo);
-
-    // Register built-in tools
-    this.registerTool(touchTool);
-    this.registerTool(temperatureTool);
-    this.registerTool(energyTool);
-  }
-
-  // ===== Gizmo Management =====
-
-  registerGizmo(gizmo: GizmoDefinition): void {
-    this.gizmos.set(gizmo.id, gizmo);
-
-    if (!this.categories.has(gizmo.category)) {
-      this.categories.set(gizmo.category, new Set());
-    }
-    this.categories.get(gizmo.category)!.add(gizmo.id);
-
-    console.log(`Registered gizmo: ${gizmo.name} (${gizmo.id})`);
-  }
-
-  getGizmo(id: string): GizmoDefinition | undefined {
-    return this.gizmos.get(id);
-  }
-
-  getGizmosByCategory(category: string): GizmoDefinition[] {
-    const ids = this.categories.get(category) || new Set();
-    return Array.from(ids)
-      .map(id => this.gizmos.get(id))
-      .filter(Boolean) as GizmoDefinition[];
-  }
-
-  getAllGizmos(): GizmoDefinition[] {
-    return Array.from(this.gizmos.values());
-  }
-
-  // ===== Tool Management =====
-
-  registerTool(tool: InteractiveTool): void {
-    this.tools.set(tool.id, tool);
-    console.log(`Registered tool: ${tool.type} (${tool.id})`);
-  }
-
-  getTool(id: string): InteractiveTool | undefined {
-    return this.tools.get(id);
-  }
-
-  getToolsByType(type: string): InteractiveTool[] {
-    return Array.from(this.tools.values()).filter(tool => tool.type === type);
-  }
-
-  getAllTools(): InteractiveTool[] {
-    return Array.from(this.tools.values());
-  }
-
-  // ===== Utility Methods =====
-
-  createGizmoConfig(gizmoId: string, overrides?: any): any {
-    const gizmo = this.getGizmo(gizmoId);
-    if (!gizmo) return null;
-
-    return {
-      ...gizmo.defaultConfig,
-      ...overrides,
-    };
-  }
-
-  createToolInstance(toolId: string, overrides?: Partial<InteractiveTool>): InteractiveTool | null {
-    const tool = this.getTool(toolId);
-    if (!tool) return null;
-
-    return {
-      ...tool,
-      ...overrides,
-    };
-  }
-}
+registerTool(touchTool);
+registerTool(temperatureTool);
+registerTool(energyTool);
 
 // ============================================================================
-// Singleton Instance
+// Helper exports
 // ============================================================================
 
-export const GizmoRegistry = new GizmoRegistryClass();
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Register a custom gizmo at runtime
- */
-export function registerCustomGizmo(gizmo: GizmoDefinition): void {
-  GizmoRegistry.registerGizmo(gizmo);
-}
-
-/**
- * Register a custom tool at runtime
- */
-export function registerCustomTool(tool: InteractiveTool): void {
-  GizmoRegistry.registerTool(tool);
-}
-
-/**
- * Create a gizmo preset (configuration template)
- */
-export function createGizmoPreset(name: string, gizmoId: string, config: any): void {
-  const presetId = `${gizmoId}_${name}`;
-  const preset: GizmoDefinition = {
-    id: presetId,
-    name: `${name} (Preset)`,
-    category: 'preset',
-    component: GizmoRegistry.getGizmo(gizmoId)!.component,
-    defaultConfig: config,
-  };
-  GizmoRegistry.registerGizmo(preset);
-}
+export const defaultGizmos = [orbGizmo, constellationGizmo];
+export const defaultTools = [touchTool, temperatureTool, energyTool];

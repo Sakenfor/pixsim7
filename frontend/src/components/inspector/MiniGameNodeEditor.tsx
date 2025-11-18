@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@pixsim7/ui';
 import type { DraftSceneNode } from '../../modules/scene-builder';
+import { getAllGizmos } from '../../lib/gizmos/loadDefaultPacks';
 
 interface MiniGameNodeEditorProps {
   node: DraftSceneNode;
@@ -13,8 +14,11 @@ export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) 
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [timeLimit, setTimeLimit] = useState(30);
 
+  // Get available gizmos from registry
+  const availableGizmos = useMemo(() => getAllGizmos(), []);
+
   // Scene Gizmo specific settings
-  const [gizmoType, setGizmoType] = useState<'orb' | 'constellation' | 'rings'>('orb');
+  const [gizmoType, setGizmoType] = useState<string>(availableGizmos[0]?.id || 'orb');
   const [zoneCount, setZoneCount] = useState(6);
 
   useEffect(() => {
@@ -90,13 +94,21 @@ export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) 
             <label className="block text-sm font-medium mb-1">Gizmo Type</label>
             <select
               value={gizmoType}
-              onChange={(e) => setGizmoType(e.target.value as any)}
+              onChange={(e) => setGizmoType(e.target.value)}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             >
-              <option value="orb">Crystal Orb (Rotation)</option>
-              <option value="constellation">Star Field (Navigation)</option>
-              <option value="rings">Orbital Rings</option>
+              {availableGizmos.map(gizmo => (
+                <option key={gizmo.id} value={gizmo.id}>
+                  {gizmo.name}
+                  {gizmo.tags && gizmo.tags.length > 0 && ` (${gizmo.tags[0]})`}
+                </option>
+              ))}
             </select>
+            {availableGizmos.length === 0 && (
+              <div className="text-xs text-red-500 mt-1">
+                No gizmos found in registry
+              </div>
+            )}
           </div>
 
           <div>

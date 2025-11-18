@@ -1,10 +1,18 @@
 /**
- * Interactive Tool - Diegetic interaction tools for scenes
- * Touch, temperature, energy - beautiful and responsive
+ * Interactive Tool - Universal diegetic interaction tool renderer
+ * Handles all tool types: touch, temperature, energy, liquid, objects
+ * Beautiful and responsive - data-driven visuals
+ * Now with NPC preference support!
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { InteractiveTool as ToolType, Vector3D, TouchPattern } from '@pixsim7/scene-gizmos';
+import {
+  InteractiveTool as ToolType,
+  Vector3D,
+  TouchPattern,
+  NpcPreferences,
+  calculateFeedback,
+} from '@pixsim7/scene-gizmos';
 import './InteractiveTool.css';
 
 interface InteractiveToolProps {
@@ -15,6 +23,26 @@ interface InteractiveToolProps {
   onPatternDetected: (pattern: TouchPattern) => void;
   isActive: boolean;
   targetElement?: HTMLElement;
+  /** Optional NPC preferences for feedback calculation */
+  npcPreferences?: NpcPreferences;
+  /** Callback for NPC feedback events */
+  onNpcFeedback?: (feedback: {
+    intensity: number;
+    reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
+    message?: string;
+  }) => void;
+  /** Whether this tool is locked (requires unlock) */
+  isLocked?: boolean;
+  /** Level required to unlock this tool */
+  unlockLevel?: number;
+}
+
+interface Particle {
+  id: number;
+  position: Vector3D;
+  velocity: Vector3D;
+  lifetime: number;
+  type: string;
 }
 
 export const InteractiveTool: React.FC<InteractiveToolProps> = ({
@@ -25,6 +53,10 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   onPatternDetected,
   isActive,
   targetElement,
+  npcPreferences,
+  onNpcFeedback,
+  isLocked = false,
+  unlockLevel,
 }) => {
   const toolRef = useRef<HTMLDivElement>(null);
   const trailCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,24 +65,20 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [trail, setTrail] = useState<Vector3D[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
-
-  interface Particle {
-    id: number;
-    position: Vector3D;
-    velocity: Vector3D;
-    lifetime: number;
-    type: string;
-  }
+  const [currentPattern, setCurrentPattern] = useState<TouchPattern | undefined>();
+  const [feedbackGlow, setFeedbackGlow] = useState(0); // 0-1, visual feedback intensity
 
   // Handle pressure from mouse/touch
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isLocked) return; // Prevent interaction when locked
     setIsDragging(true);
-    const newPressure = e.shiftKey ? 1.0 : 0.5; // Shift for max pressure
+    const newPressure = 'shiftKey' in e && e.shiftKey ? 1.0 : 0.5;
     setPressure(newPressure);
     onPressureChange(newPressure);
   };
 
   const handleMouseUp = () => {
+    if (isLocked) return;
     setIsDragging(false);
     setPressure(0);
     onPressureChange(0);
@@ -58,7 +86,7 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDragging || isLocked) return;
 
     const newPosition = {
       x: e.clientX,
@@ -67,19 +95,14 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
     };
 
     onPositionChange(newPosition);
-
-    // Add to trail
     setTrail(prev => [...prev.slice(-30), newPosition]);
 
-    // Generate particles based on tool type
     if (tool.visual.particles) {
       generateParticles(newPosition);
     }
 
     // Adjust pressure based on speed
-    const speed = Math.sqrt(
-      Math.pow(e.movementX, 2) + Math.pow(e.movementY, 2)
-    );
+    const speed = Math.sqrt(Math.pow(e.movementX, 2) + Math.pow(e.movementY, 2));
     const speedPressure = Math.min(1, speed / 20);
     const newPressure = 0.3 + speedPressure * 0.7;
     setPressure(newPressure);
@@ -112,7 +135,6 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   const analyzePattern = () => {
     if (trail.length < 5) return;
 
-    // Simplified pattern detection
     const lastPoints = trail.slice(-10);
     const deltaX = lastPoints[lastPoints.length - 1].x - lastPoints[0].x;
     const deltaY = lastPoints[lastPoints.length - 1].y - lastPoints[0].y;
@@ -127,29 +149,56 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
       pattern = 'zigzag';
     }
 
+    setCurrentPattern(pattern);
     onPatternDetected(pattern);
+
+    // Calculate NPC feedback if preferences provided
+    if (npcPreferences) {
+      calculateNpcFeedback(pattern);
+    }
+  };
+
+  // Calculate NPC feedback based on current tool usage
+  const calculateNpcFeedback = (pattern?: TouchPattern) => {
+    if (!npcPreferences) return;
+
+    const speed = tool.physics.speed;
+    const feedback = calculateFeedback(
+      npcPreferences,
+      tool.id,
+      pressure,
+      speed,
+      pattern
+    );
+
+    // Update visual feedback
+    setFeedbackGlow(feedback.intensity);
+
+    // Emit feedback event
+    if (onNpcFeedback) {
+      onNpcFeedback(feedback);
+    }
+
+    // Auto-fade feedback glow
+    setTimeout(() => {
+      setFeedbackGlow(prev => prev * 0.5);
+    }, 1000);
   };
 
   const isCircular = (points: Vector3D[]): boolean => {
-    // Simplified circular detection
     if (points.length < 8) return false;
     const center = points[Math.floor(points.length / 2)];
     const radius = Math.sqrt(
-      Math.pow(points[0].x - center.x, 2) +
-      Math.pow(points[0].y - center.y, 2)
+      Math.pow(points[0].x - center.x, 2) + Math.pow(points[0].y - center.y, 2)
     );
 
     return points.every(p => {
-      const dist = Math.sqrt(
-        Math.pow(p.x - center.x, 2) +
-        Math.pow(p.y - center.y, 2)
-      );
+      const dist = Math.sqrt(Math.pow(p.x - center.x, 2) + Math.pow(p.y - center.y, 2));
       return Math.abs(dist - radius) < radius * 0.3;
     });
   };
 
   const isZigzag = (points: Vector3D[]): boolean => {
-    // Check for direction changes
     let directionChanges = 0;
     for (let i = 2; i < points.length; i++) {
       const prev = points[i - 1].x - points[i - 2].x;
@@ -167,11 +216,9 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear with fade effect
     ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw trail
     ctx.strokeStyle = tool.visual.activeColor;
     ctx.lineWidth = 2 + pressure * 3;
     ctx.lineCap = 'round';
@@ -188,7 +235,6 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
     });
     ctx.stroke();
 
-    // Add glow effect
     ctx.shadowBlur = 20;
     ctx.shadowColor = tool.visual.activeColor;
     ctx.stroke();
@@ -197,31 +243,52 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   // Update particles
   useEffect(() => {
     const interval = setInterval(() => {
-      setParticles(prev => prev
-        .map(p => ({
-          ...p,
-          position: {
-            x: p.position.x + p.velocity.x,
-            y: p.position.y + p.velocity.y,
-            z: p.position.z,
-          },
-          velocity: {
-            x: p.velocity.x * 0.95,
-            y: p.velocity.y * 0.95 + 0.5, // Gravity for some types
-            z: 0,
-          },
-          lifetime: p.lifetime - 50,
-        }))
-        .filter(p => p.lifetime > 0)
+      setParticles(prev =>
+        prev
+          .map(p => ({
+            ...p,
+            position: {
+              x: p.position.x + p.velocity.x,
+              y: p.position.y + p.velocity.y,
+              z: p.position.z,
+            },
+            velocity: {
+              x: p.velocity.x * 0.95,
+              y: p.velocity.y * 0.95 + 0.5,
+              z: 0,
+            },
+            lifetime: p.lifetime - 50,
+          }))
+          .filter(p => p.lifetime > 0)
       );
     }, 50);
 
     return () => clearInterval(interval);
   }, []);
 
+  function renderToolVisual() {
+    switch (tool.visual.model) {
+      case 'hand':
+        return <HandVisual pressure={pressure} />;
+      case 'feather':
+        return <FeatherVisual />;
+      case 'water':
+        return <WaterVisual pressure={pressure} />;
+      case 'banana':
+        return <BananaVisual pressure={pressure} />;
+      case 'ice':
+        return <IceVisual temperature={temperature} />;
+      case 'flame':
+        return <FlameVisual temperature={temperature} />;
+      case 'electric':
+        return <ElectricVisual intensity={pressure} />;
+      default:
+        return <EnergyVisual />;
+    }
+  }
+
   return (
     <>
-      {/* Trail canvas */}
       <canvas
         ref={trailCanvasRef}
         className="tool-trail-canvas"
@@ -229,34 +296,45 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
         height={window.innerHeight}
       />
 
-      {/* Tool cursor */}
       <div
         ref={toolRef}
-        className={`interactive-tool tool-${tool.type} tool-model-${tool.visual.model} ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
-        style={{
-          transform: `translate(${position.x}px, ${position.y}px)`,
-          '--pressure': pressure,
-          '--temperature': temperature,
-          '--tool-color': tool.visual.baseColor,
-          '--tool-active-color': tool.visual.activeColor,
-        } as any}
+        className={`interactive-tool tool-${tool.type} tool-model-${tool.visual.model} ${
+          isActive ? 'active' : ''
+        } ${isDragging ? 'dragging' : ''} ${feedbackGlow > 0.5 ? 'feedback-positive' : ''} ${
+          isLocked ? 'tool-locked' : ''
+        }`}
+        style={
+          {
+            transform: `translate(${position.x}px, ${position.y}px)`,
+            '--pressure': pressure,
+            '--temperature': temperature,
+            '--tool-color': tool.visual.baseColor,
+            '--tool-active-color': tool.visual.activeColor,
+            '--feedback-glow': feedbackGlow,
+          } as any
+        }
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseUp}
       >
-        {/* Tool visual representation */}
-        <div className="tool-visual">
-          {renderToolVisual()}
-        </div>
+        <div className="tool-visual">{renderToolVisual()}</div>
 
-        {/* Pressure indicator */}
+        {/* Locked overlay */}
+        {isLocked && (
+          <div className="tool-locked-overlay">
+            <div className="lock-icon">🔒</div>
+            {unlockLevel && (
+              <div className="unlock-level">Lv. {unlockLevel}</div>
+            )}
+          </div>
+        )}
+
         <div className="pressure-indicator">
           <div className="pressure-ring" style={{ scale: `${0.5 + pressure * 0.5}` }} />
           <div className="pressure-pulse" />
         </div>
 
-        {/* Temperature effect (for temperature tools) */}
         {tool.type === 'temperature' && (
           <div className="temperature-effect">
             {temperature < 0.3 && <div className="frost-effect" />}
@@ -265,7 +343,6 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
         )}
       </div>
 
-      {/* Particles */}
       <div className="tool-particles">
         {particles.map(particle => (
           <div
@@ -280,26 +357,11 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
       </div>
     </>
   );
-
-  function renderToolVisual() {
-    switch (tool.visual.model) {
-      case 'hand':
-        return <HandVisual pressure={pressure} />;
-      case 'feather':
-        return <FeatherVisual />;
-      case 'ice':
-        return <IceVisual temperature={temperature} />;
-      case 'flame':
-        return <FlameVisual temperature={temperature} />;
-      case 'electric':
-        return <ElectricVisual intensity={pressure} />;
-      default:
-        return <EnergyVisual />;
-    }
-  }
 };
 
+// ============================================================================
 // Tool Visual Components
+// ============================================================================
 
 const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => (
   <div className="hand-visual">
@@ -319,7 +381,6 @@ const FeatherVisual: React.FC = () => {
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      // Create subtle flutter based on mouse movement
       setMovement({
         x: e.movementX * 0.3,
         y: e.movementY * 0.3,
@@ -333,52 +394,157 @@ const FeatherVisual: React.FC = () => {
   return (
     <div
       className="feather-visual"
-      style={{
-        '--flutter-x': `${movement.x}deg`,
-        '--flutter-y': `${movement.y}deg`,
-      } as any}
+      style={
+        {
+          '--flutter-x': `${movement.x}deg`,
+          '--flutter-y': `${movement.y}deg`,
+        } as any
+      }
     >
       <div className="feather-shaft">
         <div className="shaft-highlight" />
       </div>
 
-      {/* Left vane with individual barbs */}
       <div className="feather-vane feather-vane-left">
         {Array.from({ length: 12 }, (_, i) => (
           <div
             key={`left-${i}`}
             className="feather-barb"
-            style={{
-              '--barb-index': i,
-              '--barb-delay': `${i * 0.02}s`,
-            } as any}
+            style={
+              {
+                '--barb-index': i,
+                '--barb-delay': `${i * 0.02}s`,
+              } as any
+            }
           />
         ))}
       </div>
 
-      {/* Right vane with individual barbs */}
       <div className="feather-vane feather-vane-right">
         {Array.from({ length: 12 }, (_, i) => (
           <div
             key={`right-${i}`}
             className="feather-barb"
-            style={{
-              '--barb-index': i,
-              '--barb-delay': `${i * 0.02}s`,
-            } as any}
+            style={
+              {
+                '--barb-index': i,
+                '--barb-delay': `${i * 0.02}s`,
+              } as any
+            }
           />
         ))}
       </div>
 
-      {/* Feather tip */}
       <div className="feather-tip" />
 
-      {/* Floating particles */}
       <div className="feather-particles">
         <div className="petal petal-1" />
         <div className="petal petal-2" />
         <div className="petal petal-3" />
       </div>
+    </div>
+  );
+};
+
+const WaterVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  const [ripples, setRipples] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (pressure > 0.3) {
+      const newRipple = Date.now();
+      setRipples(prev => [...prev.slice(-3), newRipple]);
+    }
+  }, [pressure]);
+
+  return (
+    <div className="water-visual">
+      <div className="water-droplet" style={{ scale: `${1 + pressure * 0.3}` }}>
+        <div className="droplet-highlight" />
+        <div className="droplet-refraction" />
+      </div>
+
+      <div className="water-stream" style={{ opacity: pressure }}>
+        <div className="stream-flow stream-1" />
+        <div className="stream-flow stream-2" />
+        <div className="stream-flow stream-3" />
+      </div>
+
+      <div className="water-ripples">
+        {ripples.map(rippleId => (
+          <div key={rippleId} className="ripple" />
+        ))}
+      </div>
+
+      <div className="water-splash">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div
+            key={i}
+            className="splash-drop"
+            style={
+              {
+                '--splash-index': i,
+                '--splash-delay': `${i * 0.1}s`,
+              } as any
+            }
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const BananaVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  const bendAngle = pressure * 30;
+  const squishScale = 1 - pressure * 0.2;
+
+  return (
+    <div
+      className="banana-visual"
+      style={
+        {
+          '--bend-angle': `${bendAngle}deg`,
+          '--squish-scale': squishScale,
+          '--pressure': pressure,
+        } as any
+      }
+    >
+      <div className="banana-body">
+        <div className="banana-segment segment-top">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+        </div>
+
+        <div className="banana-segment segment-middle">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+        </div>
+
+        <div className="banana-segment segment-bottom">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+          <div className="banana-tip" />
+        </div>
+      </div>
+
+      <div className="banana-stem" />
+
+      <div
+        className="banana-shadow"
+        style={{
+          scale: `${1 + pressure * 0.5} 1`,
+          opacity: 0.3 + pressure * 0.4,
+        }}
+      />
+
+      {pressure > 0.7 && (
+        <div className="impact-waves">
+          <div className="impact-wave wave-1" />
+          <div className="impact-wave wave-2" />
+        </div>
+      )}
     </div>
   );
 };
