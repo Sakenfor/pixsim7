@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
+    "build:deps": "pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "lint": "echo 'add lint script per package'",
     "generate-docs": "tsx packages/game-core/src/utils/generatePluginDocs.ts"

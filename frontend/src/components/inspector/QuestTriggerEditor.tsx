@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
+import { nodeTypeRegistry } from '@pixsim7/types';
 import type { DraftSceneNode } from '../../modules/scene-builder';
 import type { QuestTriggerNodeData, QuestObjective } from '../../lib/plugins/questTriggerNode';
 
@@ -32,6 +33,7 @@ export function QuestTriggerEditor({ node, onUpdate }: QuestTriggerEditorProps) 
   const [experience, setExperience] = useState(100);
   const [requiredFlags, setRequiredFlags] = useState<string[]>([]);
   const [forbiddenFlags, setForbiddenFlags] = useState<string[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Load configuration from node metadata
   useEffect(() => {
@@ -47,6 +49,13 @@ export function QuestTriggerEditor({ node, onUpdate }: QuestTriggerEditorProps) 
       setForbiddenFlags(config.conditions?.forbiddenFlags || []);
     }
   }, [node]);
+
+  // Clear validation error when key fields change
+  useEffect(() => {
+    if (validationError) {
+      setValidationError(null);
+    }
+  }, [questId, questTitle, objectives]);
 
   // Objective management
   function handleAddObjective() {
@@ -91,6 +100,19 @@ export function QuestTriggerEditor({ node, onUpdate }: QuestTriggerEditorProps) 
         unlockFlags: [],
       },
     };
+
+    // Validate before saving
+    const nodeTypeDef = nodeTypeRegistry.getSync('quest-trigger');
+    if (nodeTypeDef?.validate) {
+      const error = nodeTypeDef.validate(config);
+      if (error) {
+        setValidationError(error);
+        return; // Don't save if validation fails
+      }
+    }
+
+    // Clear validation error on success
+    setValidationError(null);
 
     onUpdate({
       metadata: {
@@ -321,6 +343,14 @@ export function QuestTriggerEditor({ node, onUpdate }: QuestTriggerEditorProps) 
           <li>Rewards are granted when the quest completes</li>
         </ul>
       </div>
+
+      {/* Validation Error */}
+      {validationError && (
+        <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3">
+          <div className="font-medium">⚠️ Validation Error</div>
+          <div className="mt-1">{validationError}</div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2">

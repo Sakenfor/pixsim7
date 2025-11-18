@@ -111,6 +111,7 @@ export function registerSeductionNode() {
     description: 'Multi-stage NPC seduction with affinity checks',
     icon: '💕',
     category: 'custom',
+    scope: 'scene', // Scene-level interaction node
 
     // Behavior
     userCreatable: true,

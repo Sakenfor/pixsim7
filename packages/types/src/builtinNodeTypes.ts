@@ -9,6 +9,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Play video/audio media',
     icon: '🎬',
     category: 'media',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-blue-700 dark:text-blue-300',
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
@@ -28,6 +29,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Player makes a choice',
     icon: '🔀',
     category: 'flow',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-purple-700 dark:text-purple-300',
     bgColor: 'bg-purple-100 dark:bg-purple-900/30',
@@ -44,6 +46,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Branch based on flags',
     icon: '❓',
     category: 'logic',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-amber-700 dark:text-amber-300',
     bgColor: 'bg-amber-100 dark:bg-amber-900/30',
@@ -62,6 +65,7 @@ export function registerBuiltinNodeTypes() {
     description: 'End scene',
     icon: '🏁',
     category: 'flow',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-red-700 dark:text-red-300',
     bgColor: 'bg-red-100 dark:bg-red-900/30',
@@ -79,6 +83,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Call another scene',
     icon: '📞',
     category: 'flow',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-cyan-700 dark:text-cyan-300',
     bgColor: 'bg-cyan-100 dark:bg-cyan-900/30',
@@ -97,6 +102,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Return from scene call',
     icon: '🔙',
     category: 'flow',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-orange-700 dark:text-orange-300',
     bgColor: 'bg-orange-100 dark:bg-orange-900/30',
@@ -114,6 +120,7 @@ export function registerBuiltinNodeTypes() {
     description: 'AI content generation',
     icon: '🤖',
     category: 'custom',
+    scope: 'scene', // Scene-level node
     userCreatable: false, // Hidden from UI for now
     color: 'text-violet-700 dark:text-violet-300',
     bgColor: 'bg-violet-100 dark:bg-violet-900/30',
@@ -127,6 +134,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Trigger actions/effects',
     icon: '⚡',
     category: 'action',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-yellow-700 dark:text-yellow-300',
     bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
@@ -143,6 +151,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Interactive gameplay segment',
     icon: '🎮',
     category: 'media',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-green-700 dark:text-green-300',
     bgColor: 'bg-green-100 dark:bg-green-900/30',
@@ -165,6 +174,7 @@ export function registerBuiltinNodeTypes() {
     description: 'Visual container for organizing nodes',
     icon: '📦',
     category: 'custom',
+    scope: 'scene', // Scene-level node
     userCreatable: true,
     color: 'text-neutral-700 dark:text-neutral-300',
     bgColor: 'bg-neutral-100 dark:bg-neutral-900/30',

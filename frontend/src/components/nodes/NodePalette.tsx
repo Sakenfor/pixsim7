@@ -29,7 +29,14 @@ function toNodePaletteItem(def: NodeTypeDefinition): NodePaletteItem {
 interface NodePaletteProps {
   onNodeCreate: (nodeType: NodeType, position?: { x: number; y: number }) => void;
   compact?: boolean;
-  scope?: 'scene' | 'arc' | 'world'; // Filter by node scope
+  /**
+   * Filter node types by scope.
+   * - 'scene': Show only scene-level nodes (video, choice, condition, etc.)
+   * - 'arc': Show only arc-level nodes (quest triggers, story beats, etc.)
+   * - 'world': Show only world-level nodes (global state, etc.)
+   * - undefined: Show all node types
+   */
+  scope?: 'scene' | 'arc' | 'world';
 }
 
 export function NodePalette({ onNodeCreate, compact = false, scope }: NodePaletteProps) {
@@ -40,8 +47,12 @@ export function NodePalette({ onNodeCreate, compact = false, scope }: NodePalett
     let types = nodeTypeRegistry.getUserCreatable();
 
     // Filter by scope if specified
+    // NOTE: All node types should now have an explicit scope defined.
+    // - scope: 'scene' - Scene-level nodes (video, choice, condition, etc.)
+    // - scope: 'arc' - Arc-level nodes (quest triggers, story beats, etc.)
+    // - scope: 'world' - World-level nodes (global state, etc.)
     if (scope) {
-      types = types.filter(def => !def.scope || def.scope === scope);
+      types = types.filter(def => def.scope === scope);
     }
 
     return types
