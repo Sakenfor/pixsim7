@@ -38,7 +38,7 @@ If you prefer to create plugins manually:
 Create a file in `plugins/helpers/<plugin-name>/<plugin-name>.ts`:
 
 ```typescript
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '../../lib/registries';
 import type { GameSessionDTO } from '@pixsim7/types';
 
 export function registerMyHelper() {
@@ -62,7 +62,7 @@ export function registerMyHelper() {
 Create a file in `plugins/interactions/<plugin-name>/<plugin-name>.ts`:
 
 ```typescript
-import type { InteractionPlugin } from '../../lib/game/interactions/types';
+import type { InteractionPlugin } from '../../lib/registries';
 
 interface MyConfig {
   enabled: boolean;
