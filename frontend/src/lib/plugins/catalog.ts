@@ -175,6 +175,32 @@ export interface PluginMeta {
 
   /** UI mode (for interactions) */
   uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
+
+  /** Enhanced metadata fields */
+
+  /** Timestamp when plugin was loaded (milliseconds since epoch) */
+  loadedAt?: number;
+
+  /** Mark plugin as deprecated (will be removed in future version) */
+  deprecated?: boolean;
+
+  /** Deprecation message explaining what to use instead */
+  deprecationMessage?: string;
+
+  /** ID of plugin this replaces (for migration/upgrade paths) */
+  replaces?: string;
+
+  /** Homepage/documentation URL */
+  homepage?: string;
+
+  /** Source code repository URL */
+  repository?: string;
+
+  /** Plugin dependencies (IDs of required plugins) */
+  dependencies?: string[];
+
+  /** Optional plugin dependencies (enhance functionality but not required) */
+  optionalDependencies?: string[];
 }
 
 /**
@@ -539,6 +565,24 @@ export function getPluginCounts(): Record<PluginKind, number> {
 }
 
 /**
+ * Get plugin count by origin
+ */
+export function getOriginCounts(plugins: PluginMeta[] = listAllPlugins()): Record<PluginOrigin, number> {
+  const counts: Record<PluginOrigin, number> = {
+    'builtin': 0,
+    'plugins-dir': 0,
+    'ui-bundle': 0,
+    'dev': 0,
+  };
+
+  plugins.forEach((plugin) => {
+    counts[plugin.origin]++;
+  });
+
+  return counts;
+}
+
+/**
  * Filter plugins by search query
  * Searches in: label, description, tags, category, id
  */
@@ -593,6 +637,14 @@ export function filterByKind(kind: PluginKind | PluginKind[], plugins: PluginMet
 }
 
 /**
+ * Filter plugins by origin
+ */
+export function filterByOrigin(origin: PluginOrigin | PluginOrigin[], plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  const origins = Array.isArray(origin) ? origin : [origin];
+  return plugins.filter((plugin) => origins.includes(plugin.origin));
+}
+
+/**
  * Filter plugins by category
  */
 export function filterByCategory(category: string | string[], plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
@@ -605,6 +657,48 @@ export function filterByCategory(category: string | string[], plugins: PluginMet
  */
 export function filterByEnabled(enabled: boolean, plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
   return plugins.filter((plugin) => plugin.enabled === enabled);
+}
+
+/**
+ * Filter plugins by capability
+ * Returns plugins that have the specified capability set to true
+ */
+export function filterByCapability(
+  capability: keyof PluginCapabilities,
+  plugins: PluginMeta[] = listAllPlugins()
+): PluginMeta[] {
+  return plugins.filter((plugin) => {
+    if (!plugin.capabilities) return false;
+    return plugin.capabilities[capability] === true;
+  });
+}
+
+/**
+ * Get plugins that modify session state
+ */
+export function getSessionModifyingPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('modifiesSession', plugins);
+}
+
+/**
+ * Get plugins that modify inventory
+ */
+export function getInventoryModifyingPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('modifiesInventory', plugins);
+}
+
+/**
+ * Get plugins that add UI overlays
+ */
+export function getUIOverlayPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('addsUIOverlay', plugins);
+}
+
+/**
+ * Get plugins that have risk mechanics
+ */
+export function getRiskyPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('hasRisk', plugins);
 }
 
 /**
@@ -638,6 +732,67 @@ export function getUniqueTags(plugins: PluginMeta[] = listAllPlugins()): string[
 export function getPluginById(id: string, kind?: PluginKind): PluginMeta | undefined {
   const plugins = kind ? filterByKind(kind) : listAllPlugins();
   return plugins.find((plugin) => plugin.id === id);
+}
+
+// =====================================================
+// Kind-Specific Type-Safe Getters
+// =====================================================
+
+/**
+ * Get a session helper plugin by ID
+ * Returns typed plugin metadata for session helpers
+ */
+export function getHelperPlugin(id: string): PluginMeta | undefined {
+  const helpers = listHelperPlugins();
+  return helpers.find((p) => p.id === id);
+}
+
+/**
+ * Get an interaction plugin by ID
+ */
+export function getInteractionPlugin(id: string): PluginMeta | undefined {
+  const interactions = listInteractionPlugins();
+  return interactions.find((p) => p.id === id);
+}
+
+/**
+ * Get a node type plugin by ID
+ */
+export function getNodeTypePlugin(id: string): PluginMeta | undefined {
+  const nodeTypes = listNodeTypePlugins();
+  return nodeTypes.find((p) => p.id === id);
+}
+
+/**
+ * Get a gallery tool plugin by ID
+ */
+export function getGalleryToolPlugin(id: string): PluginMeta | undefined {
+  const tools = listGalleryToolPlugins();
+  return tools.find((p) => p.id === id);
+}
+
+/**
+ * Get a world tool plugin by ID
+ */
+export function getWorldToolPlugin(id: string): PluginMeta | undefined {
+  const tools = listWorldToolPlugins();
+  return tools.find((p) => p.id === id);
+}
+
+/**
+ * Get a UI plugin by ID
+ */
+export function getUIPlugin(id: string): PluginMeta | undefined {
+  const plugins = listUIPlugins();
+  return plugins.find((p) => p.id === id);
+}
+
+/**
+ * Get a generation UI plugin by ID
+ */
+export function getGenerationUIPlugin(id: string): PluginMeta | undefined {
+  const plugins = listGenerationUIPlugins();
+  return plugins.find((p) => p.id === id);
 }
 
 /**
@@ -676,4 +831,265 @@ export function groupByCategory(plugins: PluginMeta[] = listAllPlugins()): Recor
   });
 
   return groups;
+}
+
+/**
+ * Group plugins by origin
+ */
+export function groupByOrigin(plugins: PluginMeta[] = listAllPlugins()): Record<PluginOrigin, PluginMeta[]> {
+  const groups: Record<PluginOrigin, PluginMeta[]> = {
+    'builtin': [],
+    'plugins-dir': [],
+    'ui-bundle': [],
+    'dev': [],
+  };
+
+  plugins.forEach((plugin) => {
+    groups[plugin.origin].push(plugin);
+  });
+
+  return groups;
+}
+
+// =====================================================
+// Badge & Display Utilities
+// =====================================================
+
+/**
+ * Get color for origin badge
+ * Returns a semantic color that can be used in UI components
+ */
+export function getOriginBadgeColor(origin: PluginOrigin): string {
+  switch (origin) {
+    case 'builtin':
+      return 'blue';
+    case 'plugins-dir':
+      return 'green';
+    case 'ui-bundle':
+      return 'purple';
+    case 'dev':
+      return 'orange';
+    default:
+      return 'gray';
+  }
+}
+
+/**
+ * Get display label for origin
+ */
+export function getOriginLabel(origin: PluginOrigin): string {
+  switch (origin) {
+    case 'builtin':
+      return 'Built-in';
+    case 'plugins-dir':
+      return 'Plugin Directory';
+    case 'ui-bundle':
+      return 'UI Bundle';
+    case 'dev':
+      return 'Development';
+    default:
+      return 'Unknown';
+  }
+}
+
+/**
+ * Get display label for kind
+ */
+export function getKindLabel(kind: PluginKind): string {
+  switch (kind) {
+    case 'session-helper':
+      return 'Session Helper';
+    case 'interaction':
+      return 'Interaction';
+    case 'node-type':
+      return 'Node Type';
+    case 'gallery-tool':
+      return 'Gallery Tool';
+    case 'world-tool':
+      return 'World Tool';
+    case 'ui-plugin':
+      return 'UI Plugin';
+    case 'generation-ui':
+      return 'Generation UI';
+    default:
+      return 'Unknown';
+  }
+}
+
+/**
+ * Check if a plugin can be uninstalled based on origin
+ */
+export function canUninstallPlugin(plugin: PluginMeta): boolean {
+  // Only UI bundles can be uninstalled
+  return plugin.origin === 'ui-bundle';
+}
+
+/**
+ * Check if a plugin can be disabled based on origin
+ */
+export function canDisablePlugin(plugin: PluginMeta): boolean {
+  // Plugins-dir and UI bundles can be disabled
+  return plugin.origin === 'plugins-dir' || plugin.origin === 'ui-bundle';
+}
+
+// =====================================================
+// Consistency Check & Health Utilities
+// =====================================================
+
+/**
+ * Get plugins with missing metadata
+ * Helps identify plugins that need better documentation
+ */
+export function getMissingMetadata(plugins: PluginMeta[] = listAllPlugins()): {
+  missingDescription: PluginMeta[];
+  missingIcon: PluginMeta[];
+  missingCategory: PluginMeta[];
+  missingVersion: PluginMeta[];
+} {
+  return {
+    missingDescription: plugins.filter((p) => !p.description),
+    missingIcon: plugins.filter((p) => !p.icon),
+    missingCategory: plugins.filter((p) => !p.category),
+    missingVersion: plugins.filter((p) => !p.version),
+  };
+}
+
+/**
+ * Get deprecated plugins
+ */
+export function getDeprecatedPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((p) => p.deprecated);
+}
+
+/**
+ * Find plugins with missing dependencies
+ * Returns plugins that declare dependencies that don't exist in the catalog
+ */
+export function getMissingDependencies(plugins: PluginMeta[] = listAllPlugins()): Array<{
+  plugin: PluginMeta;
+  missingDeps: string[];
+}> {
+  const allPluginIds = new Set(plugins.map((p) => p.id));
+  const results: Array<{ plugin: PluginMeta; missingDeps: string[] }> = [];
+
+  plugins.forEach((plugin) => {
+    if (!plugin.dependencies || plugin.dependencies.length === 0) {
+      return;
+    }
+
+    const missingDeps = plugin.dependencies.filter((depId) => !allPluginIds.has(depId));
+
+    if (missingDeps.length > 0) {
+      results.push({ plugin, missingDeps });
+    }
+  });
+
+  return results;
+}
+
+/**
+ * Get plugin health summary
+ * Provides an overview of catalog quality and potential issues
+ */
+export function getPluginHealth(plugins: PluginMeta[] = listAllPlugins()): {
+  totalPlugins: number;
+  byKind: Record<PluginKind, number>;
+  byOrigin: Record<PluginOrigin, number>;
+  enabled: number;
+  disabled: number;
+  deprecated: number;
+  experimental: number;
+  missingMetadata: {
+    description: number;
+    icon: number;
+    category: number;
+    version: number;
+  };
+  dependencyIssues: number;
+} {
+  const missing = getMissingMetadata(plugins);
+  const depIssues = getMissingDependencies(plugins);
+
+  return {
+    totalPlugins: plugins.length,
+    byKind: getPluginCounts(),
+    byOrigin: getOriginCounts(plugins),
+    enabled: plugins.filter((p) => p.enabled).length,
+    disabled: plugins.filter((p) => p.enabled === false).length,
+    deprecated: getDeprecatedPlugins(plugins).length,
+    experimental: plugins.filter((p) => p.experimental).length,
+    missingMetadata: {
+      description: missing.missingDescription.length,
+      icon: missing.missingIcon.length,
+      category: missing.missingCategory.length,
+      version: missing.missingVersion.length,
+    },
+    dependencyIssues: depIssues.length,
+  };
+}
+
+/**
+ * Print plugin health report to console
+ * Useful for debugging and development
+ */
+export function printPluginHealth(): void {
+  const health = getPluginHealth();
+
+  console.group('📊 Plugin Catalog Health Report');
+
+  console.log(`Total Plugins: ${health.totalPlugins}`);
+
+  console.group('By Kind:');
+  Object.entries(health.byKind).forEach(([kind, count]) => {
+    if (count > 0) {
+      console.log(`  ${kind}: ${count}`);
+    }
+  });
+  console.groupEnd();
+
+  console.group('By Origin:');
+  Object.entries(health.byOrigin).forEach(([origin, count]) => {
+    if (count > 0) {
+      console.log(`  ${origin}: ${count}`);
+    }
+  });
+  console.groupEnd();
+
+  console.log(`Enabled: ${health.enabled}`);
+  console.log(`Disabled: ${health.disabled}`);
+  console.log(`Deprecated: ${health.deprecated}`);
+  console.log(`Experimental: ${health.experimental}`);
+
+  const totalMissing =
+    health.missingMetadata.description +
+    health.missingMetadata.icon +
+    health.missingMetadata.category +
+    health.missingMetadata.version;
+
+  if (totalMissing > 0) {
+    console.group('⚠️ Missing Metadata:');
+    if (health.missingMetadata.description > 0) {
+      console.warn(`  ${health.missingMetadata.description} plugins missing description`);
+    }
+    if (health.missingMetadata.icon > 0) {
+      console.warn(`  ${health.missingMetadata.icon} plugins missing icon`);
+    }
+    if (health.missingMetadata.category > 0) {
+      console.warn(`  ${health.missingMetadata.category} plugins missing category`);
+    }
+    if (health.missingMetadata.version > 0) {
+      console.warn(`  ${health.missingMetadata.version} plugins missing version`);
+    }
+    console.groupEnd();
+  }
+
+  if (health.dependencyIssues > 0) {
+    console.warn(`⚠️ ${health.dependencyIssues} plugins have missing dependencies`);
+    const issues = getMissingDependencies();
+    issues.forEach(({ plugin, missingDeps }) => {
+      console.warn(`  ${plugin.id} is missing: ${missingDeps.join(', ')}`);
+    });
+  }
+
+  console.groupEnd();
 }
