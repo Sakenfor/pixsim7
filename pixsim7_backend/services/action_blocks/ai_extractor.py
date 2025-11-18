@@ -18,6 +18,7 @@ except ImportError:
 
 from pixsim7_backend.domain.action_block import ActionBlockDB
 from pixsim7_backend.services.action_blocks.action_block_service import ActionBlockService
+from pixsim7_backend.services.action_blocks.concept_registry_service import ConceptRegistry
 
 
 class AIActionBlockExtractor:
@@ -26,6 +27,7 @@ class AIActionBlockExtractor:
     def __init__(self, db: AsyncSession, api_key: Optional[str] = None):
         self.db = db
         self.service = ActionBlockService(db)
+        self.concept_registry = ConceptRegistry(db)
 
         if not ANTHROPIC_AVAILABLE:
             raise ImportError("anthropic package not installed. Run: pip install anthropic")
@@ -319,6 +321,82 @@ Return JSON array of block definitions."""
 
         self.db.add(db_block)
         return db_block
+
+    async def extract_blocks_with_concepts(
+        self,
+        prompt_text: str,
+        extraction_mode: str = "auto",
+        source_prompt_version_id: Optional[UUID] = None,
+        created_by: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Extract blocks AND discover new concepts interactively
+
+        This enhanced version returns both extracted blocks and concept suggestions
+        for the user to confirm which concepts should be formalized.
+
+        Args:
+            prompt_text: The complex prompt to break down
+            extraction_mode: "auto", "aggressive", or "conservative"
+            source_prompt_version_id: Link to source PromptVersion if available
+            created_by: User who requested extraction
+
+        Returns:
+            {
+                "extraction_result": {...},  # Standard extraction result
+                "concept_discovery": {
+                    "new_concepts": [...],  # Newly discovered concepts
+                    "existing_concepts": [...],  # Already known concepts
+                    "suggestions": [...]  # Recommendations for user
+                },
+                "requires_confirmation": bool  # True if user should confirm concepts
+            }
+        """
+        # First, perform standard extraction
+        extraction_result = await self.extract_blocks_from_prompt(
+            prompt_text=prompt_text,
+            extraction_mode=extraction_mode,
+            source_prompt_version_id=source_prompt_version_id,
+            created_by=created_by
+        )
+
+        # If extraction was not performed, no concept discovery needed
+        if not extraction_result.get("extraction_performed"):
+            return {
+                "extraction_result": extraction_result,
+                "concept_discovery": None,
+                "requires_confirmation": False
+            }
+
+        # Get the raw extracted blocks data (before DB creation)
+        # We need to re-extract for concept analysis
+        analysis = extraction_result["analysis"]
+        extracted_blocks_raw = await self._call_ai_extractor(
+            prompt_text,
+            extraction_mode,
+            analysis
+        )
+
+        # Discover concepts from the extraction
+        concept_discovery = await self.concept_registry.discover_concepts_from_extraction(
+            extracted_blocks=extracted_blocks_raw,
+            prompt_text=prompt_text
+        )
+
+        # Check if there are new concepts that need confirmation
+        requires_confirmation = len(concept_discovery["new_concepts"]) > 0
+
+        return {
+            "extraction_result": extraction_result,
+            "concept_discovery": concept_discovery,
+            "requires_confirmation": requires_confirmation,
+            "message": (
+                f"Extracted {extraction_result['total_blocks']} blocks. "
+                f"Found {len(concept_discovery['new_concepts'])} new concepts for your review."
+                if requires_confirmation else
+                f"Extracted {extraction_result['total_blocks']} blocks. "
+                "No new concepts requiring confirmation."
+            )
+        }
 
     async def suggest_variables_for_block(
         self,

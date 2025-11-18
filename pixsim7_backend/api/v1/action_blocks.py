@@ -18,8 +18,11 @@ from pixsim7_backend.services.action_blocks import (
     ActionBlockService,
     ActionBlockMigrationService,
     AIActionBlockExtractor,
-    BlockCompositionEngine
+    BlockCompositionEngine,
+    ExtractionConfigService,
+    ExtractionConfig
 )
+from pixsim7_backend.services.action_blocks.concept_registry_service import ConceptRegistry
 from pixsim7_backend.domain.action_block import ActionBlockDB
 from pixsim7_backend.domain.user import User
 
@@ -53,6 +56,7 @@ class UpdateActionBlockRequest(BaseModel):
 class ExtractBlocksRequest(BaseModel):
     prompt_text: str = Field(..., description="Complex prompt to extract blocks from")
     extraction_mode: str = Field(default="auto", description="'auto', 'aggressive', or 'conservative'")
+    config_id: Optional[str] = Field(None, description="Extraction config to use (balanced, aggressive, conservative, etc)")
     source_prompt_version_id: Optional[UUID] = None
 
 
@@ -61,6 +65,11 @@ class ComposeBlocksRequest(BaseModel):
     composition_strategy: str = Field(default="sequential", description="'sequential', 'layered', or 'merged'")
     custom_separators: Optional[Dict[int, str]] = None
     validate_compatibility: bool = True
+
+
+class ConfirmConceptsRequest(BaseModel):
+    concepts: List[Dict[str, Any]] = Field(..., description="Concepts to confirm and formalize")
+    confirmed_by: Optional[str] = None
 
 
 class ActionBlockResponse(BaseModel):
@@ -291,6 +300,155 @@ async def suggest_variables(
 
     result = await extractor.suggest_variables_for_block(block_id)
     return result
+
+
+@router.post("/extract/with-concepts", response_model=Dict[str, Any])
+async def extract_blocks_with_concept_discovery(
+    request: ExtractBlocksRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Extract blocks AND discover new concepts interactively
+
+    This enhanced extraction endpoint returns both:
+    1. Extracted action blocks (standard extraction result)
+    2. Concept discovery analysis with suggestions for user confirmation
+
+    When new concepts are discovered, the user can review them and decide
+    which ones to formalize as reusable tags/concepts for future prompts.
+    """
+    try:
+        extractor = AIActionBlockExtractor(db)
+    except (ImportError, ValueError) as e:
+        raise HTTPException(500, f"AI extractor initialization failed: {str(e)}")
+
+    result = await extractor.extract_blocks_with_concepts(
+        prompt_text=request.prompt_text,
+        extraction_mode=request.extraction_mode,
+        source_prompt_version_id=request.source_prompt_version_id,
+        created_by=current_user.username if current_user else None
+    )
+
+    return result
+
+
+# ===== Concept Management Endpoints =====
+
+@router.post("/concepts/confirm", response_model=Dict[str, Any])
+async def confirm_concepts(
+    request: ConfirmConceptsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Confirm and formalize new concepts discovered during extraction
+
+    After receiving concept suggestions from /extract/with-concepts,
+    use this endpoint to confirm which concepts should be formalized
+    as reusable tags/concepts in the system.
+    """
+    registry = ConceptRegistry(db)
+
+    result = await registry.confirm_concepts(
+        concepts=request.concepts,
+        confirmed_by=current_user.username if current_user else None
+    )
+
+    return result
+
+
+@router.get("/concepts/stats", response_model=Dict[str, Any])
+async def get_concept_stats(
+    db: AsyncSession = Depends(get_db)
+):
+    """Get statistics about discovered concepts
+
+    Returns:
+    - Total unique block types
+    - Total unique tags
+    - Top used tags
+    - Concept cache size
+    """
+    registry = ConceptRegistry(db)
+    stats = await registry.get_concept_stats()
+    return stats
+
+
+@router.get("/concepts/suggestions", response_model=List[Dict[str, Any]])
+async def get_concept_suggestions(
+    prompt_text: str = Query(..., description="Prompt to analyze for concept suggestions"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get concept suggestions for a new prompt based on similar prompts
+
+    Analyzes the given prompt and suggests relevant concepts/tags
+    based on similar prompts in the database.
+    """
+    registry = ConceptRegistry(db)
+
+    suggestions = await registry.get_concept_suggestions(
+        prompt_text=prompt_text
+    )
+
+    return suggestions
+
+
+# ===== Extraction Config Endpoints =====
+
+@router.get("/configs", response_model=List[Dict[str, Any]])
+async def list_extraction_configs():
+    """List all available extraction configurations
+
+    Returns predefined system configs for different extraction strategies:
+    - balanced: Default (4-6 blocks)
+    - aggressive: Maximum granularity (8-12 blocks)
+    - conservative: Minimal extraction (2-4 blocks)
+    - narrative: Story-focused
+    - technical: Camera/visual-focused
+    - mixed: Comprehensive extraction
+    """
+    config_service = ExtractionConfigService()
+    configs = config_service.list_configs()
+
+    return [config.model_dump() for config in configs]
+
+
+@router.get("/configs/{config_id}", response_model=Dict[str, Any])
+async def get_extraction_config(
+    config_id: str
+):
+    """Get details of a specific extraction config"""
+    config_service = ExtractionConfigService()
+    config = config_service.get_config(config_id)
+
+    if not config:
+        raise HTTPException(404, f"Config '{config_id}' not found")
+
+    return config.model_dump()
+
+
+@router.post("/configs/recommend", response_model=Dict[str, Any])
+async def recommend_extraction_config(
+    prompt_text: str = Query(..., description="Prompt to analyze"),
+    preferred_config: Optional[str] = Query(None, description="Preferred config (optional)")
+):
+    """Recommend best extraction config for a given prompt
+
+    Analyzes the prompt and suggests the most appropriate extraction
+    strategy based on content (narrative vs technical), length, and complexity.
+    """
+    config_service = ExtractionConfigService()
+
+    config = config_service.get_config_for_prompt(
+        prompt_text=prompt_text,
+        preferred_config=preferred_config
+    )
+
+    return {
+        "recommended_config": config.model_dump(),
+        "reason": "Based on prompt analysis",
+        "prompt_length": len(prompt_text),
+        "prompt_preview": prompt_text[:100] + "..." if len(prompt_text) > 100 else prompt_text
+    }
 
 
 # ===== Composition Endpoints =====
