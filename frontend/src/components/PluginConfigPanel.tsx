@@ -22,6 +22,7 @@ import {
   togglePluginEnabled,
   isPluginEnabled,
 } from '../stores/pluginConfigStore';
+import { pluginCatalog, type PluginOrigin } from '../lib/plugins/pluginSystem';
 
 type PluginType = 'helper' | 'interaction';
 
@@ -36,6 +37,7 @@ interface PluginInfo {
   experimental?: boolean;
   configFields?: ConfigField[];
   defaultConfig?: Record<string, any>;
+  origin?: PluginOrigin;
 }
 
 export function PluginConfigPanel() {
@@ -67,9 +69,12 @@ export function PluginConfigPanel() {
         ? Object.values(helper.configSchema)
         : [];
 
+      const pluginId = helper.id || helper.name;
+      const catalogEntry = pluginCatalog.get(pluginId);
+
       allPlugins.push({
         type: 'helper',
-        id: helper.id || helper.name,
+        id: pluginId,
         name: helper.name,
         description: helper.description,
         category: helper.category,
@@ -85,6 +90,7 @@ export function PluginConfigPanel() {
               ])
             )
           : undefined,
+        origin: catalogEntry?.origin || 'builtin',
       });
     });
 
@@ -92,6 +98,7 @@ export function PluginConfigPanel() {
     const interactions = interactionRegistry.getAll();
     interactions.forEach((plugin: InteractionPlugin<any>) => {
       const configFields = plugin.configFields || [];
+      const catalogEntry = pluginCatalog.get(plugin.id);
 
       allPlugins.push({
         type: 'interaction',
@@ -104,6 +111,7 @@ export function PluginConfigPanel() {
         experimental: plugin.experimental,
         configFields,
         defaultConfig: plugin.defaultConfig,
+        origin: catalogEntry?.origin || 'builtin',
       });
     });
 
@@ -237,6 +245,23 @@ function PluginListItem({
   onClick: () => void;
   onToggle: () => void;
 }) {
+  // Format origin label
+  const getOriginLabel = (origin?: PluginOrigin): string => {
+    if (!origin) return 'Builtin';
+    switch (origin) {
+      case 'builtin': return 'Builtin';
+      case 'plugin-dir': return 'Plugin';
+      case 'dev-project': return 'Dev';
+      case 'ui-bundle': return 'UI Bundle';
+      default: return origin;
+    }
+  };
+
+  // Format kind label
+  const getKindLabel = (type: PluginType): string => {
+    return type === 'helper' ? 'Helper' : 'Interaction';
+  };
+
   return (
     <div
       onClick={onClick}
@@ -248,7 +273,7 @@ function PluginListItem({
     >
       <div className="flex items-start justify-between mb-1">
         <div className="flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-medium">{plugin.name}</h3>
             {plugin.experimental && (
               <span className="text-xs px-1.5 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded">
@@ -256,9 +281,21 @@ function PluginListItem({
               </span>
             )}
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            {plugin.category || plugin.type}
-          </p>
+          <div className="flex items-center gap-1.5 mt-1">
+            {/* Kind Badge */}
+            <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-medium">
+              {getKindLabel(plugin.type)}
+            </span>
+            {/* Origin Badge */}
+            <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-medium">
+              {getOriginLabel(plugin.origin)}
+            </span>
+          </div>
+          {plugin.category && (
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+              {plugin.category}
+            </p>
+          )}
         </div>
         <button
           onClick={(e) => {
