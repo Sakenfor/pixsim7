@@ -2,6 +2,7 @@ import { nodeRendererRegistry } from './nodeRendererRegistry';
 import { ArcNodeRenderer } from '../../components/graph/ArcNodeRenderer';
 import { QuestNodeRenderer } from '../../components/graph/QuestNodeRenderer';
 import { MilestoneNodeRenderer } from '../../components/graph/MilestoneNodeRenderer';
+import { QuestTriggerRenderer } from '../../components/graph/QuestTriggerRenderer';
 import { DefaultNodeRenderer } from '../../components/graph/DefaultNodeRenderer';
 
 /**
@@ -35,6 +36,14 @@ export function registerArcRenderers() {
     nodeType: 'arc_group',
     component: DefaultNodeRenderer,
     defaultSize: { width: 200, height: 120 },
+  });
+
+  // Quest trigger node - shows quest trigger information
+  nodeRendererRegistry.register({
+    nodeType: 'quest-trigger',
+    component: QuestTriggerRenderer,
+    defaultSize: { width: 280, height: 200 },
+    preloadPriority: 7,
   });
 
   console.log('✓ Registered arc node renderers');

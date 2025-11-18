@@ -9,6 +9,7 @@ import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { registerSeductionNode } from './lib/plugins/seductionNode';
+import { registerQuestTriggerNode } from './lib/plugins/questTriggerNode';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
@@ -47,6 +48,7 @@ function App() {
 
     // Register custom node type plugins
     registerSeductionNode();
+    registerQuestTriggerNode();
 
     // Register builtin node renderers
     registerBuiltinRenderers();
