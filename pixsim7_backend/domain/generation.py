@@ -77,15 +77,35 @@ class Generation(SQLModel, table=True):
         index=True,
     )
 
-    # Prompt versioning
+    # Prompt versioning (legacy + new structured config)
     prompt_version_id: Optional[UUID] = Field(
         default=None,
         foreign_key="prompt_versions.id",
         index=True,
+        description="LEGACY: Direct version reference (use prompt_config instead)"
     )
     final_prompt: Optional[str] = Field(
         default=None,
         description="Final prompt after variable substitution",
+    )
+
+    # Structured prompt configuration (added 2025-11-18)
+    prompt_config: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="""Structured prompt configuration:
+        {
+            "versionId": "uuid",         // Specific version ID
+            "familyId": "uuid",          // Family with auto-select
+            "autoSelectLatest": true,    // Use latest version from family
+            "variables": {...},          // Template variables
+            "inlinePrompt": "..."        // DEPRECATED: inline prompt for testing
+        }"""
+    )
+    prompt_source_type: Optional[str] = Field(
+        default=None,
+        max_length=20,
+        description="Prompt source: 'versioned', 'inline', 'generated', 'unknown'"
     )
 
     # Lifecycle

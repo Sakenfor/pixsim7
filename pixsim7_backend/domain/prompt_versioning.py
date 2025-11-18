@@ -224,6 +224,27 @@ class PromptVersion(SQLModel, table=True):
         description="Cached text diff from parent version"
     )
 
+    # Strategy-aware fields (added 2025-11-18)
+    compatible_strategies: List[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="Generation strategies this prompt supports: ['once', 'per_playthrough', 'always']"
+    )
+    allow_randomization: bool = Field(
+        default=False,
+        description="Whether this prompt supports randomized variations"
+    )
+    randomization_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Randomization configuration: variable pools, weights, selection rules"
+    )
+    provider_compatibility: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Provider-specific validation results and constraints"
+    )
+
     __table_args__ = (
         Index("idx_prompt_version_family_number", "family_id", "version_number", unique=True),
         Index("idx_prompt_version_created", "created_at"),
