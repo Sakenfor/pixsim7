@@ -164,3 +164,9 @@ export * from './npcResponseNode'
 // ===================
 
 export * from './game'
+
+// ===================
+// User Preferences Types
+// ===================
+
+export * from './userPreferences'

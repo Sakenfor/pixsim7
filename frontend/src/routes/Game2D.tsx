@@ -56,6 +56,7 @@ import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
 import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
+import { UserPreferencesPanel } from '../components/game/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import type { WorldToolContext } from '../lib/worldTools/types';
@@ -145,6 +146,7 @@ export function Game2D() {
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
   const [showHudEditor, setShowHudEditor] = useState(false);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
+  const [showUserPreferences, setShowUserPreferences] = useState(false);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -869,6 +871,14 @@ export function Game2D() {
               />
             </>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowUserPreferences(true)}
+            title="Manage user accessibility and UI preferences"
+          >
+            ⚙️ Preferences
+          </Button>
         </div>
       </div>
 
@@ -1151,6 +1161,17 @@ export function Game2D() {
                 setWorldDetail(updatedWorld);
               }}
               onClose={() => setShowPresetEditor(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* User Preferences Panel */}
+      {showUserPreferences && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-auto">
+            <UserPreferencesPanel
+              onClose={() => setShowUserPreferences(false)}
             />
           </div>
         </div>
