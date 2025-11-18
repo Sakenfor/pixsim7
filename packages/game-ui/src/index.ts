@@ -15,3 +15,11 @@ export type { ScenePlayerProps } from './components/ScenePlayer';
 
 // Mini-games
 export { ReflexMiniGame } from './components/minigames/ReflexMiniGame';
+export { MiniGameHost } from './components/minigames/MiniGameHost';
+export type { MiniGameHostProps } from './components/minigames/MiniGameHost';
+
+// Mini-game registration
+export {
+  registerReflexMiniGame,
+  registerBuiltInMiniGames,
+} from './components/minigames/registry';

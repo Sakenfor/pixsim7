@@ -199,6 +199,9 @@ importers:
       '@pixsim7/game-core':
         specifier: workspace:*
         version: link:../game-core
+      '@pixsim7/scene-gizmos':
+        specifier: workspace:*
+        version: link:../scene-gizmos
       '@pixsim7/types':
         specifier: workspace:*
         version: link:../types

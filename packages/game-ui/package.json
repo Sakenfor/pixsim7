@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pixsim7/game-core": "workspace:*",
+    "@pixsim7/scene-gizmos": "workspace:*",
     "@pixsim7/types": "workspace:*",
     "@pixsim7/ui": "workspace:*"
   },
