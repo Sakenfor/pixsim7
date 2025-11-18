@@ -3,6 +3,11 @@
  *
  * This package contains reusable game UI components and utilities
  * that can be used in both the editor and standalone game player.
+ *
+ * Architecture:
+ * - This package provides GENERIC, reusable UI components
+ * - Application-specific components (like gizmo renderers) belong in the consuming app
+ * - No imports from parent applications (maintains clean package boundaries)
  */
 
 export { ScenePlayer } from './components/ScenePlayer';
@@ -10,7 +15,3 @@ export type { ScenePlayerProps } from './components/ScenePlayer';
 
 // Mini-games
 export { ReflexMiniGame } from './components/minigames/ReflexMiniGame';
-
-// Scene runtime utilities
-// TODO: Fix missing sceneCallStack module
-// export { callStackManager, bindParameters } from './lib/sceneCallStack';

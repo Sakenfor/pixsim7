@@ -24,8 +24,7 @@ import { AutomationRoute } from './routes/Automation';
 import { NpcPortraits } from './routes/NpcPortraits';
 import { Game2D } from './routes/Game2D';
 import { NpcBrainLab } from './routes/NpcBrainLab';
-// TODO: Re-enable when SceneGizmoMiniGame is fixed
-// import { GizmoLab } from './routes/GizmoLab';
+import { GizmoLab } from './routes/GizmoLab';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -90,8 +89,7 @@ function App() {
           <Route path="/game-world" element={<ProtectedRoute><GameWorld /></ProtectedRoute>} />
           <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
           <Route path="/npc-brain-lab" element={<ProtectedRoute><NpcBrainLab /></ProtectedRoute>} />
-          {/* TODO: Re-enable when SceneGizmoMiniGame is fixed */}
-          {/* <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} /> */}
+          <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

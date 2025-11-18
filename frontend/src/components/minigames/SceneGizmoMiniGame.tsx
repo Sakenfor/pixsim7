@@ -1,13 +1,17 @@
 /**
  * Scene Gizmo Mini-Game
  * Interactive control system for scene progression
- * Follows the same pattern as ReflexMiniGame
+ *
+ * Architecture Note: This component lives in frontend (not game-ui) because:
+ * - It's tightly coupled to frontend's gizmo implementations
+ * - Uses frontend-specific gizmo renderer registry
+ * - Keeps package boundaries clean
  */
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { Panel } from '@pixsim7/ui';
 import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/scene-gizmos';
-import { getGizmoRenderer } from '../gizmos/renderers';
+import { getGizmoRenderer } from '../../lib/gizmos/renderers';
 
 interface SceneGizmoMiniGameProps {
   onResult: (result: GizmoResult) => void;

@@ -1,164 +1,73 @@
 # @pixsim7/game-ui
 
-Shared game UI components and utilities for PixSim7.
+Generic, reusable game UI components for the Pixsim7 project.
 
-## Overview
+## Purpose
 
-This package contains reusable game UI components that can be used in both the editor and standalone game player. It eliminates the need for iframe-based embedding and postMessage communication.
+This package provides **application-agnostic** UI components that can be reused across different parts of the Pixsim7 ecosystem (editor, game player, etc.).
 
-## Components
+## Architecture Principles
+
+1. **Generic and Reusable**: Components in this package should not be tightly coupled to any specific application
+2. **No Parent Dependencies**: This package **never** imports from consuming applications (like `frontend`)
+3. **Clean Package Boundaries**: Maintains clear separation between reusable library code and application-specific code
+
+## What Belongs Here
+
+✅ **Should be in game-ui:**
+- Generic scene player components
+- Reusable mini-game frameworks (like ReflexMiniGame)
+- Shared game UI utilities
+- Components that could be used in multiple applications
+
+❌ **Should NOT be in game-ui:**
+- Application-specific implementations (belongs in `frontend`)
+- Components that import from `frontend` or other consuming apps
+- Highly specialized components tied to specific game mechanics
+
+## Exported Components
 
 ### ScenePlayer
+Main component for playing game scenes.
 
-The main scene playback component that handles:
-- Video playback and scene graph navigation
-- Edge condition evaluation
-- Effect application (flags, state management)
-- Multi-scene support with call stacks
-- Mini-game integration
-- Progression mode (multi-step within nodes)
-
-**Usage:**
 ```tsx
 import { ScenePlayer } from '@pixsim7/game-ui';
-import type { Scene } from '@pixsim7/types';
 
-function MyComponent({ scene }: { scene: Scene }) {
-  return (
-    <ScenePlayer
-      scene={scene}
-      autoAdvance={false}
-      onStateChange={(state) => console.log('State updated:', state)}
-    />
-  );
-}
+<ScenePlayer
+  sceneData={sceneData}
+  onComplete={handleComplete}
+/>
 ```
 
-**Props:**
-- `scene: Scene` - Primary scene to play
-- `scenes?: Record<string, Scene>` - Scene bundle for multi-scene support
-- `initialState?: Partial<SceneRuntimeState>` - Initial runtime state
-- `autoAdvance?: boolean` - Auto-advance through edges (default: false)
-- `onStateChange?: (state: SceneRuntimeState) => void` - State change callback
-
-### Mini-Games
-
-#### ReflexMiniGame
-
-A simple reflex test mini-game that measures reaction time.
+### ReflexMiniGame
+Generic reflex-based mini-game component.
 
 ```tsx
 import { ReflexMiniGame } from '@pixsim7/game-ui';
 
 <ReflexMiniGame
-  onComplete={(score) => console.log('Score:', score)}
+  onSuccess={handleSuccess}
+  difficulty="medium"
 />
-```
-
-## Utilities
-
-### Scene Call Stack Manager
-
-Manages scene call stacks for multi-scene navigation.
-
-```tsx
-import { callStackManager, bindParameters } from '@pixsim7/game-ui';
-
-// Push a scene call
-callStackManager.pushCall(stack, sceneId, returnNodeId, params);
-
-// Pop a scene call
-const call = callStackManager.popCall(stack);
-
-// Bind parameters
-const boundNode = bindParameters(node, params);
 ```
 
 ## Dependencies
 
-- `@pixsim7/types` - Shared TypeScript types
-- `@pixsim7/ui` - Base UI components (Button, Panel, etc.)
-- `react` >= 18 (peer dependency)
-
-## Integration
-
-### In game-frontend
-
-Replace direct imports:
-```tsx
-// Before
-import { ScenePlayer } from '../components/ScenePlayer';
-
-// After
-import { ScenePlayer } from '@pixsim7/game-ui';
-```
-
-### In main frontend (editor)
-
-Use ScenePlayer directly instead of iframe:
-
-**Before (iframe approach):**
-```tsx
-<iframe
-  ref={iframeRef}
-  src="http://localhost:5174"
-  title="Game Player"
-/>
-// + postMessage bridge
-```
-
-**After (direct integration):**
-```tsx
-import { ScenePlayer } from '@pixsim7/game-ui';
-
-<ScenePlayer
-  scene={currentScene}
-  autoAdvance={false}
-/>
-```
-
-## Benefits
-
-✅ **No iframe overhead** - Direct React component rendering
-✅ **No postMessage complexity** - Direct prop passing and callbacks
-✅ **Shared codebase** - Single source of truth for game UI
-✅ **Type safety** - Full TypeScript support across packages
-✅ **Easier debugging** - All code in same context
-✅ **Better performance** - No cross-window communication
-
-## Architecture
-
-```
-packages/game-ui/
-├── src/
-│   ├── components/
-│   │   ├── ScenePlayer.tsx         # Main scene player component
-│   │   └── minigames/
-│   │       └── ReflexMiniGame.tsx  # Reflex test mini-game
-│   ├── lib/
-│   │   └── sceneCallStack.ts       # Scene call stack utilities
-│   └── index.ts                     # Public exports
-├── package.json
-├── tsconfig.json
-└── README.md
-```
+- `@pixsim7/game-core` - Core game logic and types
+- `@pixsim7/types` - Shared type definitions
+- `@pixsim7/ui` - Base UI components
+- `react` / `react-dom` - UI framework (peer dependencies)
 
 ## Development
 
-Build the package:
 ```bash
-cd packages/game-ui
+# Build the package
 pnpm build
+
+# Watch mode
+pnpm dev
 ```
 
-The package is part of the pnpm workspace and will be linked automatically to other packages.
+## Architecture Decision
 
-## Migration Guide
-
-See `docs/PHASE3_FRONTEND_SIMPLIFICATION_SUMMARY.md` for full migration details.
-
-## Related
-
-- Phase 3 of `ARCHITECTURE_SIMPLIFICATION_PLAN.md`
-- Simplifies frontend architecture
-- Removes iframe + postMessage patterns
+See [docs/ADR-GIZMO-ARCHITECTURE.md](../../docs/ADR-GIZMO-ARCHITECTURE.md) for the decision to move gizmo-specific components to the frontend application.

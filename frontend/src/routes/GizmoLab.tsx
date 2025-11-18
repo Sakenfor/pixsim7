@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { Panel, Button } from '@pixsim7/ui';
-import { SceneGizmoMiniGame } from '@pixsim7/game-ui';
+import { SceneGizmoMiniGame } from '../components/minigames/SceneGizmoMiniGame';
 import { InteractiveTool } from '../components/gizmos/InteractiveTool';
 import type {
   GizmoDefinition,
