@@ -8,8 +8,6 @@ import { registerBuiltinNodeTypes, registerArcNodeTypes, registerBuiltinHelpers 
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerCustomHelpers } from './lib/game/customHelpers';
-import { registerSeductionNode } from './lib/plugins/seductionNode';
-import { registerQuestTriggerNode } from './lib/plugins/questTriggerNode';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
@@ -46,10 +44,6 @@ function App() {
     registerBuiltinNodeTypes();
     registerArcNodeTypes();
 
-    // Register custom node type plugins
-    registerSeductionNode();
-    registerQuestTriggerNode();
-
     // Register builtin node renderers
     registerBuiltinRenderers();
     registerArcRenderers();
@@ -58,7 +52,11 @@ function App() {
     registerBuiltinHelpers();
     registerCustomHelpers();
 
-    // Load all plugins (helpers and interactions) from plugins directory
+    // Load all plugins (node types, helpers, and interactions) from plugins directory
+    // Note: This automatically discovers and registers:
+    // - Node type plugins from lib/plugins/**/*Node.{ts,tsx} (e.g., seductionNode, questTriggerNode)
+    // - Helper plugins from plugins/helpers/**/*.{ts,tsx}
+    // - Interaction plugins from plugins/interactions/**/*.{ts,tsx}
     loadAllPlugins({
       verbose: true, // Log plugin loading progress
       strict: false, // Don't throw on individual plugin errors

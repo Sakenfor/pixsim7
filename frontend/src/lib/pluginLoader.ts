@@ -5,6 +5,7 @@
  * Supports:
  * - Helper plugins (session state management)
  * - Interaction plugins (NPC interactions)
+ * - Node type plugins (custom scene/arc nodes)
  *
  * Usage:
  * ```typescript
@@ -16,6 +17,11 @@
  *
  * Directory structure:
  * ```
+ * frontend/src/lib/plugins/
+ * ├── seductionNode.ts (exports registerSeductionNode)
+ * ├── questTriggerNode.ts (exports registerQuestTriggerNode)
+ * └── ... (other *Node.ts files with register*Node exports)
+ *
  * frontend/src/plugins/
  * ├── helpers/
  * │   ├── reputation/
@@ -48,6 +54,7 @@ export interface PluginLoaderConfig {
 export interface PluginLoadResult {
   helpers: { loaded: number; failed: number };
   interactions: { loaded: number; failed: number };
+  nodes: { loaded: number; failed: number };
   errors: Array<{ plugin: string; error: string }>;
 }
 
@@ -61,11 +68,21 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   const result: PluginLoadResult = {
     helpers: { loaded: 0, failed: 0 },
     interactions: { loaded: 0, failed: 0 },
+    nodes: { loaded: 0, failed: 0 },
     errors: [],
   };
 
   if (verbose) {
     console.log('🔌 Loading plugins...');
+  }
+
+  // Load node type plugins first (so they're available when scenes load)
+  try {
+    const nodeResult = await loadNodeTypePlugins(verbose);
+    result.nodes = nodeResult;
+  } catch (error: any) {
+    result.errors.push({ plugin: 'nodes', error: error.message });
+    if (strict) throw error;
   }
 
   // Load helper plugins
@@ -89,6 +106,7 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   // Summary
   if (verbose) {
     console.log(`✅ Plugins loaded:`);
+    console.log(`   Node Types: ${result.nodes.loaded} loaded, ${result.nodes.failed} failed`);
     console.log(`   Helpers: ${result.helpers.loaded} loaded, ${result.helpers.failed} failed`);
     console.log(`   Interactions: ${result.interactions.loaded} loaded, ${result.interactions.failed} failed`);
 
@@ -218,6 +236,73 @@ async function loadInteractionPlugins(verbose: boolean): Promise<{ loaded: numbe
         }
       } else {
         console.warn(`   ⚠️  ${path}: No InteractionPlugin exports found`);
+        failed++;
+      }
+    } catch (error: any) {
+      console.error(`   ✗ ${path}: ${error.message}`);
+      failed++;
+    }
+  }
+
+  return { loaded, failed };
+}
+
+/**
+ * Load node type plugins from lib/plugins/**/*Node.{ts,tsx}
+ * Discovers and registers custom node types for the scene/arc builders
+ */
+async function loadNodeTypePlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
+  let loaded = 0;
+  let failed = 0;
+
+  // Use Vite's import.meta.glob to discover all node type plugin files
+  // Pattern: lib/plugins/**/*Node.{ts,tsx} (any file ending with "Node")
+  const nodeModules = import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', {
+    eager: false, // Lazy load for better performance
+  });
+
+  const nodePaths = Object.keys(nodeModules);
+
+  if (nodePaths.length === 0) {
+    if (verbose) {
+      console.log('   ℹ️  No node type plugins found in /src/lib/plugins/');
+    }
+    return { loaded, failed };
+  }
+
+  if (verbose) {
+    console.log(`   Loading ${nodePaths.length} node type plugin(s)...`);
+  }
+
+  for (const path of nodePaths) {
+    try {
+      const module = await nodeModules[path]();
+
+      // Look for registration functions (convention: register*Node)
+      // Example: registerSeductionNode, registerQuestTriggerNode
+      const registrationFunctions = Object.values(module).filter(
+        (exp) =>
+          typeof exp === 'function' &&
+          exp.name?.startsWith('register') &&
+          exp.name?.endsWith('Node')
+      );
+
+      if (registrationFunctions.length > 0) {
+        // Call all registration functions found in the module
+        registrationFunctions.forEach((fn: any) => {
+          fn();
+        });
+        loaded++;
+        if (verbose) {
+          const pluginName = path.replace('/src/lib/plugins/', '');
+          console.log(
+            `   ✓ ${pluginName} (${registrationFunctions.length} node type(s))`
+          );
+        }
+      } else {
+        console.warn(
+          `   ⚠️  ${path}: No register*Node function exports found`
+        );
         failed++;
       }
     } catch (error: any) {
