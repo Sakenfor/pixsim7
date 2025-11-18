@@ -72,7 +72,7 @@ def upgrade() -> None:
         'idx_prompt_version_strategies',
         'prompt_versions',
         ['family_id'],
-        postgresql_where=sa.text("compatible_strategies != '[]'")
+        postgresql_where=sa.text("compatible_strategies::text != '[]'")
     )
 
 
