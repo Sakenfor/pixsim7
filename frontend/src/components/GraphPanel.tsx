@@ -29,6 +29,10 @@ import { previewBridge } from '../lib/preview-bridge';
 import { ValidationPanel } from './validation/ValidationPanel';
 import { WorldContextSelector } from './WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/types';
+import { GraphTemplatePalette } from './graph/GraphTemplatePalette';
+import { useTemplateStore } from '../lib/graph/templatesStore';
+import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
+import type { GraphTemplate } from '../lib/graph/graphTemplates';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -38,7 +42,7 @@ const defaultEdgeOptions = {
 
 export function GraphPanel() {
   const toast = useToast();
-  const { selectedNodeId, setSelectedNodeId } = useSelectionStore();
+  const { selectedNodeId, selectedNodeIds, setSelectedNodeId, setSelectedNodeIds } = useSelectionStore();
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const createScene = useGraphStore((s: GraphState) => s.createScene);
@@ -52,12 +56,14 @@ export function GraphPanel() {
   const toRuntimeScene = useGraphStore((s: GraphState) => s.toRuntimeScene);
   const getCurrentZoomLevel = useGraphStore((s: GraphState) => s.getCurrentZoomLevel);
   const navigationStack = useGraphStore((s: GraphState) => s.navigationStack);
+  const addTemplate = useTemplateStore((state) => state.addTemplate);
 
   // Get current scene (derived from currentSceneId)
   const currentScene = getCurrentScene();
 
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
+  const [showTemplatePalette, setShowTemplatePalette] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 
@@ -202,13 +208,20 @@ export function GraphPanel() {
   );
 
   // Handle selection
-  const onSelectionChange = useCallback(({ nodes }: { nodes: Node[] }) => {
-    if (nodes.length === 1) {
-      setSelectedNodeId(nodes[0].id);
-    } else {
-      setSelectedNodeId(null);
-    }
-  }, []);
+  const onSelectionChange = useCallback(
+    ({ nodes }: { nodes: Node[] }) => {
+      const nodeIds = nodes.map((n) => n.id);
+      setSelectedNodeIds(nodeIds);
+
+      // Maintain backward compatibility with single selection
+      if (nodes.length === 1) {
+        setSelectedNodeId(nodes[0].id);
+      } else {
+        setSelectedNodeId(null);
+      }
+    },
+    [setSelectedNodeId, setSelectedNodeIds]
+  );
 
   // Add node (generic helper)
   const handleAddNode = useCallback(
@@ -422,6 +435,98 @@ export function GraphPanel() {
     input.click();
   }, [toast, importScene, getCurrentScene]);
 
+  // Save selection as template
+  const handleSaveAsTemplate = useCallback(() => {
+    if (!currentScene) {
+      toast.error('No active scene');
+      return;
+    }
+
+    if (selectedNodeIds.length === 0) {
+      toast.warning('Select nodes to save as template');
+      return;
+    }
+
+    // Get selected nodes
+    const selectedNodes = currentScene.nodes.filter((n) =>
+      selectedNodeIds.includes(n.id)
+    );
+
+    if (selectedNodes.length === 0) {
+      toast.error('No valid nodes selected');
+      return;
+    }
+
+    // Get edges between selected nodes
+    const selectedNodeIdSet = new Set(selectedNodeIds);
+    const selectedEdges = currentScene.edges.filter(
+      (edge) => selectedNodeIdSet.has(edge.from) && selectedNodeIdSet.has(edge.to)
+    );
+
+    // Prompt for template name and description
+    const name = prompt('Enter template name:');
+    if (!name || name.trim() === '') {
+      toast.info('Template save cancelled');
+      return;
+    }
+
+    const description = prompt('Enter template description (optional):');
+
+    try {
+      // Create template
+      const template = captureTemplate(
+        { nodes: selectedNodes, edges: selectedEdges },
+        { name: name.trim(), description: description?.trim() }
+      );
+
+      // Save to store
+      addTemplate(template);
+
+      toast.success(`Template "${name}" saved with ${selectedNodes.length} nodes`);
+    } catch (error) {
+      toast.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [currentScene, selectedNodeIds, toast, addTemplate]);
+
+  // Insert template into current scene
+  const handleInsertTemplate = useCallback(
+    (template: GraphTemplate) => {
+      if (!currentScene) {
+        toast.error('No active scene');
+        return;
+      }
+
+      try {
+        // Apply template with offset
+        const result = applyTemplate(template, {
+          offsetPosition: { x: 150, y: 150 },
+        });
+
+        // Show warnings if any
+        if (result.warnings.length > 0) {
+          result.warnings.forEach((warning) => toast.warning(warning));
+        }
+
+        // Add nodes
+        result.nodes.forEach((node) => {
+          addNode(node);
+        });
+
+        // Add edges
+        result.edges.forEach((edge) => {
+          connectNodes(edge.from, edge.to, edge.meta);
+        });
+
+        toast.success(
+          `Inserted template: ${result.nodes.length} nodes, ${result.edges.length} edges`
+        );
+      } catch (error) {
+        toast.error(`Failed to insert template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [currentScene, toast, addNode, connectNodes]
+  );
+
   return (
     <div className="h-full w-full flex flex-col">
       {/* Breadcrumbs - appears when zoomed into a group */}
@@ -445,6 +550,24 @@ export function GraphPanel() {
         </Button>
         <Button size="sm" variant="secondary" onClick={handleDeleteNode} disabled={!selectedNodeId}>
           Delete
+        </Button>
+        <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleSaveAsTemplate}
+          disabled={selectedNodeIds.length === 0}
+          title="Save selected nodes as template"
+        >
+          💾 Template
+        </Button>
+        <Button
+          size="sm"
+          variant={showTemplatePalette ? 'primary' : 'secondary'}
+          onClick={() => setShowTemplatePalette(!showTemplatePalette)}
+          title="Show/hide template palette"
+        >
+          {showTemplatePalette ? '✓ Templates' : 'Templates'}
         </Button>
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <Button size="sm" variant="primary" onClick={handlePreview} disabled={!currentScene?.startNodeId}>
@@ -483,6 +606,13 @@ export function GraphPanel() {
         {showPalette && (
           <div className="w-64 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
             <NodePalette onNodeCreate={handleAddNode} />
+          </div>
+        )}
+
+        {/* Template Palette Sidebar */}
+        {showTemplatePalette && (
+          <div className="w-80 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
+            <GraphTemplatePalette onInsertTemplate={handleInsertTemplate} />
           </div>
         )}
 
