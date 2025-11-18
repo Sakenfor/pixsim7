@@ -111,6 +111,29 @@ export interface GameWorldDetail {
 // Session Types
 // ===================
 
+export type SessionKind = 'world' | 'scene';
+export type WorldMode = 'turn_based' | 'real_time';
+
+export interface WorldSessionFlags {
+  /** Unique identifier for the conceptual world */
+  id?: string;
+  /** Turn-based or real-time mode */
+  mode?: WorldMode;
+  /** Current location ID in the world */
+  currentLocationId?: number;
+  /** For turn-based: delta seconds per turn (default: 3600 = 1 hour) */
+  turnDeltaSeconds?: number;
+}
+
+export interface SessionFlags {
+  /** Type of session: world (life-sim) or scene (story-based) */
+  sessionKind?: SessionKind;
+  /** World-specific configuration */
+  world?: WorldSessionFlags;
+  /** Additional custom flags */
+  [key: string]: unknown;
+}
+
 export interface GameSessionDTO {
   id: number;
   user_id: number;

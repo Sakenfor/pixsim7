@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Scene } from '@pixsim7/types';
+import type { Scene, SessionFlags } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
 import { Button, Panel, Badge, Select } from '@pixsim7/ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
@@ -53,6 +53,24 @@ import { GameNotifications, type GameNotification } from '../components/game/Gam
 interface WorldTime {
   day: number;
   hour: number;
+}
+
+/**
+ * Helper to check if session is in turn-based world mode
+ */
+function isTurnBasedMode(sessionFlags?: Record<string, unknown>): boolean {
+  if (!sessionFlags) return false;
+  const flags = sessionFlags as SessionFlags;
+  return flags.sessionKind === 'world' && flags.world?.mode === 'turn_based';
+}
+
+/**
+ * Get configured turn delta in seconds (default: 3600 = 1 hour)
+ */
+function getTurnDelta(sessionFlags?: Record<string, unknown>): number {
+  if (!sessionFlags) return 3600;
+  const flags = sessionFlags as SessionFlags;
+  return flags.world?.turnDeltaSeconds ?? 3600;
 }
 
 export function Game2D() {
@@ -387,10 +405,13 @@ export function Game2D() {
   }, [locationDetail, locationNpcs, worldDetail]);
 
   const advanceTime = () => {
+    // Get turn delta from session flags (supports turn-based mode)
+    const deltaSeconds = getTurnDelta(gameSession?.flags);
+
     if (selectedWorldId) {
       (async () => {
         try {
-          const updated = await advanceGameWorldTime(selectedWorldId, 3600);
+          const updated = await advanceGameWorldTime(selectedWorldId, deltaSeconds);
           setWorldDetail(updated);
           const totalHours = Math.floor(updated.world_time / 3600);
           const totalDays = Math.floor(totalHours / 24);
@@ -410,14 +431,15 @@ export function Game2D() {
       })();
     } else {
       setWorldTime((prev) => {
-        let hour = prev.hour + 1;
+        const deltaHours = deltaSeconds / 3600;
+        let hour = prev.hour + deltaHours;
         let day = prev.day;
-        if (hour >= 24) {
-          hour = 0;
-          day = prev.day + 1;
+        while (hour >= 24) {
+          hour -= 24;
+          day += 1;
           if (day > 7) day = 1;
         }
-        const next = { day, hour };
+        const next = { day, hour: Math.floor(hour) };
         const worldTimeSeconds = ((next.day - 1) * 24 + next.hour) * 3600;
         const sessionId = gameSession?.id;
         saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId });
@@ -630,7 +652,10 @@ export function Game2D() {
         <div>
           <h1 className="text-2xl font-semibold">PixSim7 2D Game</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Turn-based day cycle with locations and interactions, rendered in 2D using existing scenes.
+            {isTurnBasedMode(gameSession?.flags) ? 'Turn-based' : 'Real-time'} world with locations, NPCs, and interactions.
+            {isTurnBasedMode(gameSession?.flags) && (
+              <Badge className="ml-2 text-xs">Turn-Based Mode</Badge>
+            )}
           </p>
         </div>
         <div className="flex flex-col md:flex-row gap-2 md:items-center">
@@ -640,7 +665,11 @@ export function Game2D() {
               <span>{worldTime.hour.toString().padStart(2, '0')}:00</span>
             </div>
             <Button size="sm" variant="primary" onClick={advanceTime}>
-              Next Hour
+              {isTurnBasedMode(gameSession?.flags) ? (
+                <>End Turn ({getTurnDelta(gameSession?.flags) / 3600}h)</>
+              ) : (
+                <>Next Hour</>
+              )}
             </Button>
           </Panel>
           <Panel className="flex items-center gap-2 py-2 px-3">

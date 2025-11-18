@@ -1,3 +1,5 @@
+import type { SessionFlags, WorldMode } from '@pixsim7/types';
+
 export interface WorldSessionState {
   /**
    * Canonical world time in seconds.
@@ -44,4 +46,45 @@ export function saveWorldSession(state: WorldSessionState): void {
   } catch {
     // ignore storage errors in editor/preview contexts
   }
+}
+
+/**
+ * Create session flags for turn-based world mode
+ * @param worldId - Unique identifier for the world
+ * @param turnDeltaSeconds - Time advancement per turn in seconds (default: 3600 = 1 hour)
+ * @param currentLocationId - Optional starting location ID
+ */
+export function createTurnBasedSessionFlags(
+  worldId: string,
+  turnDeltaSeconds: number = 3600,
+  currentLocationId?: number
+): SessionFlags {
+  return {
+    sessionKind: 'world',
+    world: {
+      id: worldId,
+      mode: 'turn_based',
+      turnDeltaSeconds,
+      currentLocationId,
+    },
+  };
+}
+
+/**
+ * Create session flags for real-time world mode
+ * @param worldId - Unique identifier for the world
+ * @param currentLocationId - Optional starting location ID
+ */
+export function createRealTimeSessionFlags(
+  worldId: string,
+  currentLocationId?: number
+): SessionFlags {
+  return {
+    sessionKind: 'world',
+    world: {
+      id: worldId,
+      mode: 'real_time',
+      currentLocationId,
+    },
+  };
 }
