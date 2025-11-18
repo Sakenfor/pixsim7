@@ -7,6 +7,7 @@ import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { registerBuiltinNodeTypes, registerArcNodeTypes, registerBuiltinHelpers } from './lib/registries';
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerArcRenderers } from './lib/graph/arcRenderers';
+import { registerPluginRenderers } from './lib/graph/pluginRenderers';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { registerSeductionNode } from './lib/plugins/seductionNode';
 import { registerQuestTriggerNode } from './lib/plugins/questTriggerNode';
@@ -53,6 +54,9 @@ function App() {
     // Register builtin node renderers
     registerBuiltinRenderers();
     registerArcRenderers();
+
+    // Register plugin node renderers
+    registerPluginRenderers();
 
     // Register session helpers (built-in and custom)
     registerBuiltinHelpers();

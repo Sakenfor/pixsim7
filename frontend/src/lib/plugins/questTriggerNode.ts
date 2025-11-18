@@ -118,6 +118,9 @@ export function registerQuestTriggerNode() {
     // Editor component (will be loaded from InspectorPanel)
     editorComponent: 'QuestTriggerEditor',
 
+    // Renderer component for graph view
+    rendererComponent: 'QuestTriggerRenderer',
+
     // Custom validation
     validate(data: QuestTriggerNodeData): string | null {
       if (!data.questId || data.questId.trim() === '') {
