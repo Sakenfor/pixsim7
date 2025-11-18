@@ -116,6 +116,22 @@ export {
 
 export type { TurnDeltaPreset, TurnDeltaOption } from './world/turnPresets';
 
+export {
+  getWorldManifest,
+  setWorldManifest,
+  updateWorldManifest,
+  getManifestTurnPreset,
+  getManifestTurnDelta,
+  setManifestTurnPreset,
+  getManifestEnabledArcGraphs,
+  setManifestEnabledArcGraphs,
+  isArcGraphEnabled,
+  getManifestEnabledPlugins,
+  setManifestEnabledPlugins,
+  isPluginEnabled,
+  createDefaultManifest,
+} from './world/manifest';
+
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
 export type { NpcPersona } from './npcs/brain';

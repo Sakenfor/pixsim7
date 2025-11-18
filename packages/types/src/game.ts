@@ -107,6 +107,33 @@ export interface GameWorldDetail {
   world_time: number;
 }
 
+/**
+ * World Manifest structure stored in GameWorld.meta.manifest
+ * Defines per-world configuration for gameplay features
+ *
+ * Example:
+ * ```typescript
+ * world.meta = {
+ *   manifest: {
+ *     turn_preset: "ONE_HOUR",
+ *     enabled_arc_graphs: ["main_romance", "side_heist"],
+ *     enabled_plugins: ["quest-trigger"]
+ *   },
+ *   npcRoles: { ... }  // Other meta fields preserved
+ * }
+ * ```
+ */
+export interface WorldManifest {
+  /** Default turn preset for turn-based mode (e.g., "ONE_HOUR") */
+  turn_preset?: string;
+  /** List of arc graph IDs enabled in this world */
+  enabled_arc_graphs?: string[];
+  /** List of plugin IDs enabled in this world */
+  enabled_plugins?: string[];
+  /** Additional custom configuration */
+  [key: string]: unknown;
+}
+
 // ===================
 // Session Types
 // ===================
