@@ -8,6 +8,45 @@
  * - Category indexing for fast lookups
  */
 
+/**
+ * Port definition for a single input or output port
+ */
+export interface PortDefinition {
+  id: string;
+  label: string;
+  position?: 'top' | 'bottom' | 'left' | 'right';
+  color?: string;
+  required?: boolean;
+  description?: string;
+}
+
+/**
+ * Port configuration for custom node types
+ * Allows node types to define their own input/output ports
+ */
+export interface PortConfig {
+  /** Input port definitions */
+  inputs?: PortDefinition[];
+
+  /** Output port definitions */
+  outputs?: PortDefinition[];
+
+  /**
+   * Dynamic port generator function
+   * Allows ports to be generated based on node data/metadata
+   *
+   * @example
+   * dynamic: (node) => ({
+   *   inputs: [{ id: 'input', label: 'In', position: 'top', color: '#3b82f6' }],
+   *   outputs: [{ id: 'output', label: 'Out', position: 'bottom', color: '#10b981' }]
+   * })
+   */
+  dynamic?: (nodeData: any) => {
+    inputs: PortDefinition[];
+    outputs: PortDefinition[];
+  };
+}
+
 export interface NodeTypeDefinition<TData = any> {
   /** Unique node type ID */
   id: string;
@@ -48,6 +87,9 @@ export interface NodeTypeDefinition<TData = any> {
   /** UI styling hints */
   color?: string;
   bgColor?: string;
+
+  /** Port configuration for this node type */
+  ports?: PortConfig;
 
   /** Lazy loading: function to load the definition on demand */
   loader?: () => Promise<NodeTypeDefinition<TData>>;
