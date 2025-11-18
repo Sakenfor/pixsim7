@@ -17,6 +17,8 @@ from pixsim7_backend.domain.game.models import (
 from pixsim7_backend.domain.narrative import NarrativeEngine
 from pixsim7_backend.services.llm import LLMService, LLMRequest, LLMCacheStats, CacheInvalidationRequest
 from pixsim7_backend.infrastructure.redis.client import get_redis
+from pixsim7_backend.services.npc import MemoryService, EmotionalStateService
+from pixsim7_backend.domain.npc_memory import MemoryImportance, MemoryType
 from pixsim7_backend.domain.narrative.action_blocks import (
     ActionEngine,
     ActionSelectionContext,
@@ -497,6 +499,27 @@ async def execute_dialogue_generation(
         player_input=req.player_input
     )
 
+    # Initialize memory and emotional state services
+    memory_service = MemoryService(db)
+    emotion_service = EmotionalStateService(db)
+
+    # Recall relevant memories
+    recent_memories = await memory_service.get_recent_conversation(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        session_id=req.session_id,
+        limit=5
+    )
+
+    # Get current emotional state
+    current_emotions = await emotion_service.get_current_emotions(
+        npc_id=req.npc_id,
+        session_id=req.session_id
+    )
+
+    # Get emotional modifiers for dialogue
+    emotion_modifiers = emotion_service.get_emotion_modifiers(current_emotions)
+
     # Generate the dialogue request
     result = engine.build_dialogue_request(
         context=context,
@@ -513,10 +536,37 @@ async def execute_dialogue_generation(
         "intimacy_level": context.relationship.intimacy_level
     }
 
+    # Enhance prompt with memory and emotional context
+    enhanced_prompt = result["llm_prompt"]
+
+    # Add memory context
+    if recent_memories:
+        memory_context = "\n\nRecent conversation history:"
+        for mem in recent_memories[:3]:  # Last 3 exchanges
+            if mem.player_said:
+                memory_context += f"\nPlayer said: {mem.player_said}"
+            if mem.npc_said:
+                memory_context += f"\nYou responded: {mem.npc_said}"
+        enhanced_prompt += memory_context
+
+    # Add emotional context
+    if current_emotions:
+        emotion_context = f"\n\nCurrent emotional state: You are feeling {emotion_modifiers['primary_emotion']} "
+        emotion_context += f"(intensity: {emotion_modifiers['emotion_intensity']:.1%}). "
+        emotion_context += f"Your tone should be {emotion_modifiers['tone']}."
+        if emotion_modifiers.get('dialogue_adjustments'):
+            emotion_context += f" Context: {', '.join(emotion_modifiers['dialogue_adjustments'])}."
+        enhanced_prompt += emotion_context
+
+    # System prompt with character context
+    system_prompt = f"You are roleplaying as {npc_data['name']}, an NPC in a game. "
+    system_prompt += "Respond naturally in character, taking into account your personality, emotional state, and conversation history. "
+    system_prompt += "Keep responses concise and conversational (2-3 sentences maximum)."
+
     # Execute LLM call with caching
     llm_request = LLMRequest(
-        prompt=result["llm_prompt"],
-        system_prompt="You are roleplaying as an NPC in a game. Respond naturally in character.",
+        prompt=enhanced_prompt,
+        system_prompt=system_prompt,
         max_tokens=500,
         temperature=0.8,
         use_cache=True,
@@ -526,7 +576,9 @@ async def execute_dialogue_generation(
             "npc_id": req.npc_id,
             "program_id": req.program_id,
             "relationship_tier": context.relationship.relationship_tier,
-            "intimacy_level": context.relationship.intimacy_level
+            "intimacy_level": context.relationship.intimacy_level,
+            "has_memories": len(recent_memories) > 0,
+            "has_emotions": len(current_emotions) > 0
         }
     )
 
@@ -546,6 +598,37 @@ async def execute_dialogue_generation(
     # Generate dialogue
     llm_response = await llm_service.generate(llm_request, context=cache_context)
 
+    # Store this conversation as a memory
+    # Determine importance based on context
+    importance = MemoryImportance.NORMAL
+    if context.relationship.relationship_tier in ["close_friend", "lover"]:
+        importance = MemoryImportance.IMPORTANT
+    elif req.player_input and len(req.player_input) > 100:  # Long player input = important
+        importance = MemoryImportance.IMPORTANT
+
+    # Determine memory type (short-term for now, can be promoted later)
+    memory_type = MemoryType.SHORT_TERM
+    if importance == MemoryImportance.IMPORTANT:
+        memory_type = MemoryType.LONG_TERM
+
+    # Create memory
+    await memory_service.create_memory(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        session_id=req.session_id,
+        topic="general_conversation",  # Can be enhanced with topic detection
+        summary=f"Player: {req.player_input or 'initiated conversation'}. NPC responded.",
+        player_said=req.player_input,
+        npc_said=llm_response.text,
+        importance=importance,
+        memory_type=memory_type,
+        location_id=req.location_id,
+        world_time=session.world_time if session else None,
+        npc_emotion=current_emotions[0].emotion if current_emotions else None,
+        relationship_tier=context.relationship.relationship_tier,
+        tags=["conversation", context.relationship.relationship_tier]
+    )
+
     return DialogueExecuteResponse(
         text=llm_response.text,
         llm_prompt=result["llm_prompt"],
@@ -557,7 +640,12 @@ async def execute_dialogue_generation(
         usage=llm_response.usage,
         estimated_cost=llm_response.estimated_cost,
         generation_time_ms=llm_response.generation_time_ms,
-        meta=result.get("metadata", {})
+        meta={
+            **result.get("metadata", {}),
+            "memory_created": True,
+            "current_emotion": emotion_modifiers.get('primary_emotion') if current_emotions else None,
+            "recent_memories_count": len(recent_memories)
+        }
     )
 
 
@@ -1386,4 +1474,214 @@ async def clear_llm_cache_stats(
     return {
         "success": True,
         "message": "Cache statistics cleared"
+    }
+
+
+# ============================================================================
+# NPC MEMORY & EMOTIONAL STATE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+
+@router.get("/npcs/{npc_id}/memories")
+async def get_npc_memories(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    topic: Optional[str] = None,
+    limit: int = 20,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Get conversation memories for an NPC
+
+    Args:
+        npc_id: NPC ID
+        topic: Filter by topic
+        limit: Maximum results
+        session_id: Filter by session
+
+    Returns:
+        List of memories
+    """
+    memory_service = MemoryService(db)
+
+    memories = await memory_service.recall_memories(
+        npc_id=npc_id,
+        user_id=user.id,
+        topic=topic,
+        session_id=session_id,
+        limit=limit
+    )
+
+    return {
+        "memories": [
+            {
+                "id": m.id,
+                "topic": m.topic,
+                "summary": m.summary,
+                "player_said": m.player_said,
+                "npc_said": m.npc_said,
+                "importance": m.importance.value,
+                "memory_type": m.memory_type.value,
+                "strength": m.strength,
+                "created_at": m.created_at.isoformat(),
+                "tags": m.tags
+            }
+            for m in memories
+        ],
+        "total": len(memories)
+    }
+
+
+@router.get("/npcs/{npc_id}/memories/summary")
+async def get_npc_memory_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get memory summary statistics for an NPC
+
+    Returns count by type and importance
+    """
+    memory_service = MemoryService(db)
+    summary = await memory_service.get_memory_summary(npc_id, user.id)
+
+    return summary
+
+
+@router.get("/npcs/{npc_id}/emotions")
+async def get_npc_emotions(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Get current emotional states for an NPC
+
+    Returns active emotions with intensities
+    """
+    emotion_service = EmotionalStateService(db)
+
+    emotions = await emotion_service.get_current_emotions(
+        npc_id=npc_id,
+        session_id=session_id
+    )
+
+    modifiers = emotion_service.get_emotion_modifiers(emotions)
+
+    return {
+        "current_emotions": [
+            {
+                "id": e.id,
+                "emotion": e.emotion.value,
+                "intensity": e.intensity,
+                "triggered_by": e.triggered_by,
+                "started_at": e.started_at.isoformat(),
+                "expires_at": e.expires_at.isoformat() if e.expires_at else None
+            }
+            for e in emotions
+        ],
+        "modifiers": modifiers,
+        "total_active": len(emotions)
+    }
+
+
+class SetEmotionRequest(BaseModel):
+    """Request to set NPC emotion"""
+    emotion: str = Field(..., description="Emotion type (happy, sad, angry, etc.)")
+    intensity: float = Field(default=0.7, ge=0.0, le=1.0, description="Intensity (0.0-1.0)")
+    duration_seconds: Optional[float] = Field(None, description="How long it lasts")
+    triggered_by: Optional[str] = Field(None, description="What caused this")
+    session_id: Optional[int] = Field(None, description="Session this is part of")
+
+
+@router.post("/npcs/{npc_id}/emotions")
+async def set_npc_emotion(
+    npc_id: int,
+    req: SetEmotionRequest,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Set an emotional state for an NPC
+
+    Triggers a new emotion with specified intensity and duration
+    """
+    from pixsim7_backend.domain.npc_memory import EmotionType
+
+    # Validate emotion type
+    try:
+        emotion = EmotionType(req.emotion)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid emotion type. Valid types: {[e.value for e in EmotionType]}"
+        )
+
+    emotion_service = EmotionalStateService(db)
+
+    state = await emotion_service.set_emotion(
+        npc_id=npc_id,
+        emotion=emotion,
+        intensity=req.intensity,
+        duration_seconds=req.duration_seconds,
+        triggered_by=req.triggered_by or f"manual_trigger_by_user_{user.id}",
+        session_id=req.session_id
+    )
+
+    return {
+        "success": True,
+        "emotion_id": state.id,
+        "emotion": state.emotion.value,
+        "intensity": state.intensity,
+        "expires_at": state.expires_at.isoformat() if state.expires_at else None
+    }
+
+
+@router.delete("/npcs/{npc_id}/emotions/{emotion_id}")
+async def clear_npc_emotion(
+    npc_id: int,
+    emotion_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Clear a specific emotional state
+    """
+    emotion_service = EmotionalStateService(db)
+
+    success = await emotion_service.clear_emotion(emotion_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Emotion not found")
+
+    return {
+        "success": True,
+        "message": "Emotion cleared"
+    }
+
+
+@router.delete("/npcs/{npc_id}/emotions")
+async def clear_all_npc_emotions(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Clear all active emotions for an NPC
+    """
+    emotion_service = EmotionalStateService(db)
+
+    count = await emotion_service.clear_all_emotions(
+        npc_id=npc_id,
+        session_id=session_id
+    )
+
+    return {
+        "success": True,
+        "cleared_count": count,
+        "message": f"Cleared {count} emotions"
     }
