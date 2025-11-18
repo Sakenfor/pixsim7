@@ -214,6 +214,16 @@ export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
   return res.data;
 }
 
+export async function saveGameWorldMeta(
+  worldId: number,
+  meta: Record<string, unknown>,
+): Promise<GameWorldDetail> {
+  const res = await apiClient.patch<GameWorldDetail>(`/game/worlds/${worldId}`, {
+    meta,
+  });
+  return res.data;
+}
+
 export async function advanceGameWorldTime(
   worldId: number,
   deltaSeconds: number,

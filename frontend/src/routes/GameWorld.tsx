@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Button, Panel, Input, Select } from '@pixsim7/ui';
-import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO } from '../lib/api/game';
-import { listGameLocations, getGameLocation, saveGameLocationHotspots } from '../lib/api/game';
+import type { GameLocationSummary, GameLocationDetail, GameHotspotDTO, GameWorldSummary, GameWorldDetail } from '../lib/api/game';
+import { listGameLocations, getGameLocation, saveGameLocationHotspots, listGameWorlds, getGameWorld } from '../lib/api/game';
 import type { HotspotActionType } from '@pixsim7/game-core';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
+import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
@@ -12,16 +13,26 @@ export function GameWorld() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
-  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout'>('hotspots');
+  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'presets'>('hotspots');
+  const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
+  const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
+  const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
         setError(null);
-        const locs = await listGameLocations();
+        const [locs, worldsList] = await Promise.all([
+          listGameLocations(),
+          listGameWorlds(),
+        ]);
         setLocations(locs);
+        setWorlds(worldsList);
         if (!selectedId && locs.length > 0) {
           setSelectedId(locs[0].id);
+        }
+        if (!selectedWorldId && worldsList.length > 0) {
+          setSelectedWorldId(worldsList[0].id);
         }
       } catch (e: any) {
         setError(String(e?.message ?? e));
@@ -47,6 +58,22 @@ export function GameWorld() {
       }
     })();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedWorldId) {
+      setWorldDetail(null);
+      return;
+    }
+    (async () => {
+      try {
+        const w = await getGameWorld(selectedWorldId);
+        setWorldDetail(w);
+      } catch (e: any) {
+        console.error('Failed to load world:', e);
+        setWorldDetail(null);
+      }
+    })();
+  }, [selectedWorldId]);
 
   const handleHotspotChange = (index: number, patch: Partial<GameHotspotDTO>) => {
     if (!detail) return;
@@ -124,17 +151,31 @@ export function GameWorld() {
       <h1 className="text-2xl font-semibold">Game World Editor</h1>
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
       <Panel className="space-y-3">
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium">Location</label>
-          <Select
-            value={selectedId ? String(selectedId) : ''}
-            onChange={(e: any) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">Select location...</option>
-            {locations.map(loc => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </Select>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Location</label>
+            <Select
+              value={selectedId ? String(selectedId) : ''}
+              onChange={(e: any) => setSelectedId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Select location...</option>
+              {locations.map(loc => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">World</label>
+            <Select
+              value={selectedWorldId ? String(selectedWorldId) : ''}
+              onChange={(e: any) => setSelectedWorldId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Select world...</option>
+              {worlds.map(world => (
+                <option key={world.id} value={world.id}>{world.name}</option>
+              ))}
+            </Select>
+          </div>
           {activeTab === 'hotspots' && (
             <Button size="sm" variant="primary" onClick={handleSave} disabled={!detail || isLoading}>
               {isLoading ? 'Saving…' : 'Save Hotspots'}
@@ -168,6 +209,16 @@ export function GameWorld() {
                 onClick={() => setActiveTab('2d-layout')}
               >
                 2D Layout
+              </button>
+              <button
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'presets'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                }`}
+                onClick={() => setActiveTab('presets')}
+              >
+                Interaction Presets
               </button>
             </div>
 
@@ -340,12 +391,25 @@ export function GameWorld() {
                   )}
                 </div>
               </>
-            ) : (
+            ) : activeTab === '2d-layout' ? (
               /* 2D Layout Tab */
               <NpcSlotEditor
                 location={detail}
+                world={worldDetail}
                 onLocationUpdate={(updatedLocation) => setDetail(updatedLocation)}
               />
+            ) : activeTab === 'presets' && worldDetail ? (
+              /* Interaction Presets Tab */
+              <InteractionPresetEditor
+                world={worldDetail}
+                onWorldUpdate={(updatedWorld) => setWorldDetail(updatedWorld)}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-64">
+                <p className="text-sm text-neutral-500">
+                  Select a world to manage interaction presets
+                </p>
+              </div>
             )}
           </div>
         )}
