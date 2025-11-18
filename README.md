@@ -98,6 +98,9 @@ cd /g/code/pixsim7
 - `/docs/NODE_EDITOR_DEVELOPMENT.md` - Scene editor development
 - `/docs/GAME_BACKEND_SIM_SPEC.md` - Game backend spec
 - `/chrome-extension/README.md` - Chrome extension guide
+- `/docs/generated/SESSION_HELPERS.md` - Auto-generated session helper reference
+- `/docs/generated/NODE_TYPES.md` - Auto-generated node type registry
+- `/docs/generated/INTERACTIONS.md` - Auto-generated interaction plugins
 
 **🔧 Operations:**
 - `/docs/LAUNCHER.md` - Single-click launcher guide
@@ -398,6 +401,7 @@ See `docs/ADMIN_PANEL.md` for detailed usage.
 3. **Structured logging** - Use logger, include context (user_id, job_id)
 4. **Test incrementally** - Test each change before moving on
 5. **Document when needed** - Follow docs guidelines above
+6. **Regenerate docs** - After adding helpers/nodes/interactions: `npm run generate-registry-docs`
 
 ---
 
