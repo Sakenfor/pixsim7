@@ -115,3 +115,6 @@ export function ArcNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRe
     </div>
   );
 }
+
+// Default export for auto-wire system (import.meta.glob)
+export default ArcNodeRenderer;

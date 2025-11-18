@@ -65,3 +65,6 @@ export function ChoiceNodeRenderer({ node, isSelected, isStart, hasErrors }: Nod
     </div>
   );
 }
+
+// Default export for auto-wire system (import.meta.glob)
+export default ChoiceNodeRenderer;

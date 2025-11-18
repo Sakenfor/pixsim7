@@ -87,3 +87,6 @@ export function MilestoneNodeRenderer({ node, isSelected, isStart, hasErrors }: 
     </div>
   );
 }
+
+// Default export for auto-wire system (import.meta.glob)
+export default MilestoneNodeRenderer;
