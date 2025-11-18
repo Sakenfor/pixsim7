@@ -1,9 +1,5 @@
 import type { DraftSceneNode } from './index';
 import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@pixsim7/types';
-import type {
-  ChoiceNodeMetadata,
-  SceneCallNodeMetadata,
-} from './nodeMetadataTypes';
 
 // Re-export DSL helpers and types for convenience
 export {
@@ -46,26 +42,8 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
         { description: 'Continue to next node' }
       );
 
-    case 'choice': {
-      // Read choices from node metadata (type-safe)
-      const metadata = node.metadata as ChoiceNodeMetadata | undefined;
-      const choices = metadata?.choices || [];
-
-      // Default choices if none configured
-      const choicesData = choices.length > 0
-        ? choices.map((choice, index) => ({
-            id: choice.id,
-            label: choice.text || `Choice ${index + 1}`,
-            color: choice.color,
-            description: `Player chooses: ${choice.text}`,
-          }))
-        : [
-            { id: 'choice_1', label: 'Choice 1' },
-            { id: 'choice_2', label: 'Choice 2' },
-          ];
-
-      return multiChoiceOutputs(choicesData);
-    }
+    // choice and scene_call are now defined in the registry (builtinNodeTypes.ts)
+    // and are handled by getCustomPortConfig() above
 
     case 'condition':
       return branchOutputs(
@@ -80,31 +58,6 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
           description: 'Condition evaluates to false',
         }
       );
-
-    case 'scene_call': {
-      // Read return points from node metadata (type-safe)
-      const metadata = node.metadata as SceneCallNodeMetadata | undefined;
-      const returnPoints = metadata?.returnPoints || [];
-
-      // Default return point if none configured
-      if (returnPoints.length === 0) {
-        return singleInOut(
-          undefined,
-          { id: 'default', label: 'Return' }
-        );
-      }
-
-      const returnData = returnPoints.map((rp, index) => ({
-        id: rp.id,
-        label: rp.label || `Return ${index + 1}`,
-        color: rp.color || '#a855f7', // purple variants
-        description: rp.description,
-      }));
-
-      return multiChoiceOutputs(returnData, {
-        defaultColor: '#a855f7',
-      });
-    }
 
     case 'return':
       return terminalNode();
