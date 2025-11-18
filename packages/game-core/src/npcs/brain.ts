@@ -2,7 +2,17 @@ import type { GameSessionDTO } from '@pixsim7/types';
 import type { NpcBrainState, NpcRelationshipState } from '../core/types';
 
 /**
- * NPC persona data structure (matches GameNPC.personality schema)
+ * NPC persona data structure
+ *
+ * Matches the schema of GameNPC.personality in the backend database.
+ * This data typically comes from:
+ * - Backend API when fetching NPC data
+ * - GameNPC.personality field (JSON column)
+ * - NpcPersonaProvider when configured in PixSim7CoreConfig
+ *
+ * @property traits - Personality traits (e.g., Big Five model: openness, conscientiousness, etc.)
+ * @property tags - Descriptive tags (e.g., "playful", "romantic", "adventurous")
+ * @property conversation_style - How NPC speaks (e.g., "warm", "distant", "playful")
  */
 export interface NpcPersona {
   traits?: Record<string, number>;
@@ -124,21 +134,55 @@ function getDefaultTags(): string[] {
 }
 
 /**
- * Build NPC brain state from session data and relationship state
+ * Build comprehensive NPC brain state projection
  *
- * This implementation combines:
- * - Base NPC persona (from GameNPC.personality or other sources)
- * - Per-session overrides from GameSession.flags.npcs["npc:ID"]
- * - Relationship state (affinity, trust, chemistry, tension, flags)
- * - Derived mood based on relationship values
+ * Constructs a complete NPC brain state by merging multiple data sources:
  *
- * Merging follows backend's merge_npc_persona convention:
- * - Base traits/tags/conversation_style from persona parameter
- * - Session overrides from flags.npcs["npc:ID"].personality
- * - Session-level traits/tags can override or extend base values
+ * **Data Sources:**
+ * 1. Base persona (optional): From GameNPC.personality in backend database
+ * 2. Session overrides: From GameSession.flags.npcs["npc:ID"]
+ * 3. Relationship state: From GameSession.relationships["npc:ID"]
  *
- * @param params - NPC ID, session, relationship state, and optional persona
- * @returns Complete NPC brain state
+ * **Merging Logic (follows backend's merge_npc_persona):**
+ * - Base traits/tags/conversation_style from `persona` parameter
+ * - Session overrides from `flags.npcs["npc:ID"].personality`
+ * - Session-level overrides win over base values
+ * - Tags are combined and deduplicated
+ *
+ * **Backend Relationship:**
+ * - Relationship tierId and intimacyLevelId should be backend-computed (authoritative)
+ * - Mood is derived from relationship numeric axes (affinity, chemistry, tension)
+ * - Social state includes backend-computed tier/intimacy when available
+ *
+ * **No Schema Changes:**
+ * All data comes from existing JSON fields (GameNPC.personality, GameSession.flags,
+ * GameSession.relationships). No new database columns required.
+ *
+ * @param params.npcId - NPC ID to build brain state for
+ * @param params.session - Game session with flags and relationships
+ * @param params.relationship - Pre-extracted relationship state for this NPC
+ * @param params.persona - Optional base persona from GameNPC.personality
+ * @returns Complete NPC brain state with traits, mood, social, and memories
+ *
+ * @example
+ * ```ts
+ * const persona: NpcPersona = {
+ *   traits: { openness: 75, extraversion: 80 },
+ *   tags: ['playful', 'romantic'],
+ *   conversation_style: 'warm'
+ * };
+ *
+ * const relationship = getNpcRelationshipState(session, 12);
+ * const brain = buildNpcBrainState({
+ *   npcId: 12,
+ *   session,
+ *   relationship,
+ *   persona
+ * });
+ *
+ * console.log(brain.mood.label); // e.g., "excited"
+ * console.log(brain.social.tierId); // e.g., "close_friend"
+ * ```
  */
 export function buildNpcBrainState(params: {
   npcId: number;

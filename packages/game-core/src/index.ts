@@ -91,33 +91,52 @@ export {
 export { callStackManager, bindParameters } from './scene/callStack';
 export type { CallStackManager } from './scene/callStack';
 
-// ===== Session Helpers =====
+// ===== Session State (Immutable API) =====
+export {
+  // Relationships
+  getNpcRelationshipState,
+  setNpcRelationshipState,
+  // Arcs
+  getArcState,
+  setArcState,
+  // Quests
+  getQuestState,
+  setQuestState,
+  // Inventory
+  getInventory,
+  addInventoryItem,
+  removeInventoryItem,
+  // Events
+  getEventState,
+  setEventState,
+} from './session/state';
+
+export type {
+  ArcState,
+  QuestState,
+  InventoryItem,
+  EventState,
+} from './session/state';
+
+// ===== Session Helpers (Mutable API - for convenience) =====
 export {
   // Generic flags
   getFlag,
   setFlag,
   deleteFlag,
-  // Arcs
-  getArcState,
-  setArcState,
+  // Arcs (mutable)
   updateArcStage,
   markSceneSeen,
   hasSeenScene,
-  // Quests
-  getQuestState,
-  setQuestState,
+  // Quests (mutable)
   updateQuestStatus,
   updateQuestSteps,
   incrementQuestSteps,
-  // Inventory
+  // Inventory (mutable)
   getInventoryItems,
   getInventoryItem,
-  addInventoryItem,
-  removeInventoryItem,
   hasInventoryItem,
-  // Events
-  getEventState,
-  setEventState,
+  // Events (mutable)
   triggerEvent,
   endEvent,
   isEventActive,
@@ -126,11 +145,4 @@ export {
   setSessionKind,
   getWorldBlock,
   setWorldBlock,
-} from './session/helpers';
-
-export type {
-  ArcState,
-  QuestState,
-  InventoryItem,
-  EventState,
 } from './session/helpers';
