@@ -71,3 +71,28 @@ class GameWorldService:
         await self.db.refresh(state)
         return state
 
+    async def update_world_meta(
+        self,
+        world_id: int,
+        meta: dict,
+    ) -> GameWorld:
+        """
+        Update the metadata for a game world.
+
+        Args:
+            world_id: ID of the world to update
+            meta: New metadata dictionary
+
+        Returns:
+            Updated GameWorld instance
+        """
+        world = await self.db.get(GameWorld, world_id)
+        if not world:
+            raise ValueError("world_not_found")
+
+        world.meta = meta
+        self.db.add(world)
+        await self.db.commit()
+        await self.db.refresh(world)
+        return world
+

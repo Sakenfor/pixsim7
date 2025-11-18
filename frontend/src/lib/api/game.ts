@@ -224,6 +224,17 @@ export async function advanceGameWorldTime(
   return res.data;
 }
 
+/**
+ * Update GameWorld metadata
+ */
+export async function updateGameWorldMeta(
+  worldId: number,
+  meta: Record<string, unknown>,
+): Promise<GameWorldDetail> {
+  const res = await apiClient.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, { meta });
+  return res.data;
+}
+
 export async function listGameNpcs(): Promise<GameNpcSummary[]> {
   const res = await apiClient.get<GameNpcSummary[]>('/game/npcs');
   return res.data;
