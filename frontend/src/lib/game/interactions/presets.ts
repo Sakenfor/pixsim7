@@ -1,161 +1,271 @@
 /**
- * Interaction Presets System
+ * Interaction Preset System
  *
- * Provides reusable interaction configurations for designers.
- * Presets can be stored per-world in GameWorld.meta.interactionPresets.
+ * Provides reusable interaction configurations that designers can apply
+ * to NPC slots without manually configuring raw values each time.
+ *
+ * Presets are stored in GameWorld.meta.interactionPresets for per-world customization.
  */
 
+import type { GameWorldDetail } from '../../api/game';
+import { updateGameWorldMeta, saveGameWorldMeta } from '../../api/game';
 import type { BaseInteractionConfig } from './types';
-import type { GameWorldDetail } from '../../../lib/api/game';
 
 /**
- * A reusable interaction configuration preset
+ * Interaction preset configuration
  */
 export interface InteractionPreset {
-  /** Unique identifier for this preset */
+  /** Unique preset ID (e.g., 'flirt_friendly') */
   id: string;
 
-  /** Display name for designers */
+  /** Display name (e.g., 'Flirt (Friendly)') */
   name: string;
 
-  /** The interaction plugin ID this preset applies to */
+  /** Plugin/interaction type this preset configures (e.g., 'persuade') */
   interactionId: string;
 
-  /** The full configuration for the interaction plugin */
+  /** Plugin-specific configuration */
   config: Record<string, any>;
 
-  /** Optional category for organizing presets */
+  /** Category for organization/filtering */
   category?: string;
 
-  /** Optional tags for filtering/searching */
+  /** Description of what this preset does */
+  description?: string;
+
+  /** Tags for searching/filtering */
   tags?: string[];
 
-  /** Optional description */
-  description?: string;
+  /** Icon/emoji for visual identification */
+  icon?: string;
 }
 
 /**
- * Load interaction presets from a world's meta
+ * Preset category definitions
  */
-export function loadWorldInteractionPresets(world: GameWorldDetail): InteractionPreset[] {
-  if (!world.meta) {
-    return [];
-  }
-  const meta = world.meta as any;
-  return (meta.interactionPresets as InteractionPreset[]) || [];
+export const PRESET_CATEGORIES = {
+  romance: 'Romance',
+  trade: 'Trade',
+  combat: 'Combat',
+  stealth: 'Stealth',
+  social: 'Social',
+  quest: 'Quest',
+  utility: 'Utility',
+  custom: 'Custom',
+} as const;
+
+export type PresetCategory = keyof typeof PRESET_CATEGORIES;
+
+/**
+ * Get interaction presets from world metadata
+ */
+export function getWorldInteractionPresets(world: GameWorldDetail | null): InteractionPreset[] {
+  if (!world?.meta) return [];
+
+  const presets = (world.meta as any).interactionPresets;
+  if (!Array.isArray(presets)) return [];
+
+  return presets;
 }
 
 /**
- * Set interaction presets in a world's meta (immutable update)
+ * Save interaction presets to world metadata
  */
-export function setWorldInteractionPresets(
-  world: GameWorldDetail,
-  presets: InteractionPreset[]
-): GameWorldDetail {
-  return {
-    ...world,
-    meta: {
-      ...(world.meta || {}),
-      interactionPresets: presets,
-    },
+export async function saveWorldInteractionPresets(
+  worldId: number,
+  presets: InteractionPreset[],
+  currentMeta: Record<string, unknown>
+): Promise<GameWorldDetail> {
+  const updatedMeta = {
+    ...currentMeta,
+    interactionPresets: presets,
   };
+
+  return await updateGameWorldMeta(worldId, updatedMeta);
 }
 
 /**
- * Add a new preset to a world (immutable)
+ * Add a new preset to a world
  */
-export function addInteractionPreset(
-  world: GameWorldDetail,
-  preset: InteractionPreset
-): GameWorldDetail {
-  const existingPresets = loadWorldInteractionPresets(world);
+export async function addInteractionPreset(
+  worldId: number,
+  preset: InteractionPreset,
+  currentWorld: GameWorldDetail
+): Promise<GameWorldDetail> {
+  const existingPresets = getWorldInteractionPresets(currentWorld);
 
-  // Check for duplicate IDs
-  if (existingPresets.some(p => p.id === preset.id)) {
+  // Check for duplicate ID
+  if (existingPresets.some((p) => p.id === preset.id)) {
     throw new Error(`Preset with ID "${preset.id}" already exists`);
   }
 
-  return setWorldInteractionPresets(world, [...existingPresets, preset]);
+  const updatedPresets = [...existingPresets, preset];
+  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
 }
 
 /**
- * Update an existing preset in a world (immutable)
+ * Update an existing preset
  */
-export function updateInteractionPreset(
-  world: GameWorldDetail,
+export async function updateInteractionPreset(
+  worldId: number,
   presetId: string,
-  updates: Partial<Omit<InteractionPreset, 'id'>>
-): GameWorldDetail {
-  const existingPresets = loadWorldInteractionPresets(world);
-  const index = existingPresets.findIndex(p => p.id === presetId);
+  updates: Partial<InteractionPreset>,
+  currentWorld: GameWorldDetail
+): Promise<GameWorldDetail> {
+  const existingPresets = getWorldInteractionPresets(currentWorld);
+  const presetIndex = existingPresets.findIndex((p) => p.id === presetId);
 
-  if (index === -1) {
+  if (presetIndex === -1) {
     throw new Error(`Preset with ID "${presetId}" not found`);
   }
 
   const updatedPresets = [...existingPresets];
-  updatedPresets[index] = { ...updatedPresets[index], ...updates };
+  updatedPresets[presetIndex] = {
+    ...updatedPresets[presetIndex],
+    ...updates,
+  };
 
-  return setWorldInteractionPresets(world, updatedPresets);
+  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
 }
 
 /**
- * Remove a preset from a world (immutable)
+ * Delete a preset from a world
  */
-export function removeInteractionPreset(
-  world: GameWorldDetail,
-  presetId: string
-): GameWorldDetail {
-  const existingPresets = loadWorldInteractionPresets(world);
-  const filteredPresets = existingPresets.filter(p => p.id !== presetId);
+export async function deleteInteractionPreset(
+  worldId: number,
+  presetId: string,
+  currentWorld: GameWorldDetail
+): Promise<GameWorldDetail> {
+  const existingPresets = getWorldInteractionPresets(currentWorld);
+  const updatedPresets = existingPresets.filter((p) => p.id !== presetId);
 
-  if (filteredPresets.length === existingPresets.length) {
-    throw new Error(`Preset with ID "${presetId}" not found`);
-  }
-
-  return setWorldInteractionPresets(world, filteredPresets);
+  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
 }
 
 /**
- * Get a single preset by ID
- */
-export function getInteractionPreset(
-  world: GameWorldDetail,
-  presetId: string
-): InteractionPreset | null {
-  const presets = loadWorldInteractionPresets(world);
-  return presets.find(p => p.id === presetId) || null;
-}
-
-/**
- * Filter presets by interaction ID
+ * Find presets by interaction ID
  */
 export function getPresetsForInteraction(
-  world: GameWorldDetail,
+  presets: InteractionPreset[],
   interactionId: string
 ): InteractionPreset[] {
-  const presets = loadWorldInteractionPresets(world);
-  return presets.filter(p => p.interactionId === interactionId);
+  return presets.filter((p) => p.interactionId === interactionId);
 }
 
 /**
- * Filter presets by category
+ * Find presets by category
  */
 export function getPresetsByCategory(
-  world: GameWorldDetail,
+  presets: InteractionPreset[],
   category: string
 ): InteractionPreset[] {
-  const presets = loadWorldInteractionPresets(world);
-  return presets.filter(p => p.category === category);
+  return presets.filter((p) => p.category === category);
 }
 
 /**
- * Generate a unique preset ID based on name
+ * Search presets by name or tags
+ */
+export function searchPresets(presets: InteractionPreset[], query: string): InteractionPreset[] {
+  const lowerQuery = query.toLowerCase();
+  return presets.filter(
+    (p) =>
+      p.name.toLowerCase().includes(lowerQuery) ||
+      p.description?.toLowerCase().includes(lowerQuery) ||
+      p.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))
+  );
+}
+
+/**
+ * Apply a preset to a slot's interaction config
+ */
+export function applyPresetToSlot(preset: InteractionPreset): BaseInteractionConfig {
+  return {
+    enabled: true,
+    ...preset.config,
+  };
+}
+
+/**
+ * Validate preset structure
+ */
+export function validatePreset(preset: Partial<InteractionPreset>): string | null {
+  if (!preset.id || preset.id.trim().length === 0) {
+    return 'Preset ID is required';
+  }
+
+  if (!preset.name || preset.name.trim().length === 0) {
+    return 'Preset name is required';
+  }
+
+  if (!preset.interactionId || preset.interactionId.trim().length === 0) {
+    return 'Interaction ID is required';
+  }
+
+  if (!preset.config || typeof preset.config !== 'object') {
+    return 'Preset config must be an object';
+  }
+
+  return null;
+}
+
+/**
+ * Generate a unique preset ID from name
  */
 export function generatePresetId(name: string): string {
-  const slug = name
+  const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
-  return `${slug}_${Date.now()}`;
+
+  return `${base}_${Date.now().toString(36)}`;
 }
+
+/**
+ * Built-in preset examples (can be used as templates)
+ */
+export const EXAMPLE_PRESETS: InteractionPreset[] = [
+  {
+    id: 'flirt_friendly',
+    name: 'Flirt (Friendly)',
+    interactionId: 'persuade',
+    category: 'romance',
+    description: 'A friendly, low-pressure flirtation attempt',
+    icon: '💕',
+    tags: ['romance', 'friendly', 'low-risk'],
+    config: {
+      persuasionType: 'flirt',
+      difficulty: 'easy',
+      baseSuccessChance: 0.7,
+      relationshipChange: 5,
+    },
+  },
+  {
+    id: 'trade_basic',
+    name: 'Trade (Basic)',
+    interactionId: 'trade',
+    category: 'trade',
+    description: 'Basic item trading with fair prices',
+    icon: '🛒',
+    tags: ['trade', 'shop', 'merchant'],
+    config: {
+      priceMultiplier: 1.0,
+      canBuyBack: true,
+      acceptedItemTypes: ['common', 'uncommon'],
+    },
+  },
+  {
+    id: 'pickpocket_novice',
+    name: 'Pickpocket (Novice)',
+    interactionId: 'pickpocket',
+    category: 'stealth',
+    description: 'Easy pickpocket attempt for beginners',
+    icon: '🤏',
+    tags: ['stealth', 'theft', 'easy'],
+    config: {
+      baseSuccessChance: 0.5,
+      detectionChance: 0.3,
+      onSuccessFlags: ['pickpocket_success'],
+      onFailFlags: ['pickpocket_fail'],
+    },
+  },
+];
