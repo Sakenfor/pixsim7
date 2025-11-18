@@ -26,6 +26,7 @@ import {
   triggerEvent as triggerEventCore,
   endEvent as endEventCore,
   isEventActive,
+  sessionHelperRegistry,
 } from '@pixsim7/game-core';
 
 /**
@@ -122,7 +123,12 @@ export function createSessionHelpers(
     return resolved;
   };
 
+  // Build dynamic helpers from registry (allows custom extensions)
+  const dynamicHelpers = sessionHelperRegistry.buildHelpersObject(gameSession);
+
   // Return real helpers bound to this session
+  // Explicit typed helpers come first for IDE autocomplete
+  // Dynamic helpers are spread at the end to allow custom extensions
   return {
     getNpcRelationship: (npcId) => getNpcRelationshipState(gameSession, npcId),
 
@@ -200,5 +206,8 @@ export function createSessionHelpers(
     },
 
     isEventActive: (eventId) => isEventActive(gameSession, eventId),
-  };
+
+    // Spread dynamic helpers from registry (allows custom extensions)
+    ...dynamicHelpers,
+  } as SessionHelpers;
 }

@@ -146,3 +146,19 @@ export {
   getWorldBlock,
   setWorldBlock,
 } from './session/helpers';
+
+// ===== Session Helper Registry =====
+export {
+  SessionHelperRegistry,
+  sessionHelperRegistry,
+} from './session/helperRegistry';
+
+export type {
+  HelperFunction,
+  HelperDefinition,
+} from './session/helperRegistry';
+
+export { registerBuiltinHelpers } from './session/builtinHelpers';
+export { generateHelper } from './session/helperBuilder';
+export type { HelperSchema } from './session/helperBuilder';
+export { generateHelperDocs } from './session/generateDocs';

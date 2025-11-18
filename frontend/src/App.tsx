@@ -6,6 +6,8 @@ import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { registerBuiltinNodeTypes } from '@pixsim7/types';
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
+import { registerBuiltinHelpers } from '@pixsim7/game-core';
+import { registerCustomHelpers } from './lib/game/customHelpers';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -41,6 +43,10 @@ function App() {
 
     // Register builtin node renderers
     registerBuiltinRenderers();
+
+    // Register session helpers (built-in and custom)
+    registerBuiltinHelpers();
+    registerCustomHelpers();
 
     // Initialize modules
     registerModules();
