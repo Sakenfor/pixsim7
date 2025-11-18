@@ -5,6 +5,7 @@ import { listGameLocations, getGameLocation, saveGameLocationHotspots, listGameW
 import type { HotspotActionType } from '@pixsim7/game-core';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
+import { InteractionPresetUsagePanel } from '../components/game/InteractionPresetUsagePanel';
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);
@@ -13,7 +14,7 @@ export function GameWorld() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
-  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'presets'>('hotspots');
+  const [activeTab, setActiveTab] = useState<'hotspots' | '2d-layout' | 'presets' | 'usage'>('hotspots');
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
@@ -220,6 +221,16 @@ export function GameWorld() {
               >
                 Interaction Presets
               </button>
+              <button
+                className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'usage'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200'
+                }`}
+                onClick={() => setActiveTab('usage')}
+              >
+                Usage Stats (Dev)
+              </button>
             </div>
 
             {/* Tab Content */}
@@ -404,6 +415,9 @@ export function GameWorld() {
                 world={worldDetail}
                 onWorldUpdate={(updatedWorld) => setWorldDetail(updatedWorld)}
               />
+            ) : activeTab === 'usage' ? (
+              /* Usage Statistics Tab */
+              <InteractionPresetUsagePanel world={worldDetail} />
             ) : (
               <div className="flex items-center justify-center h-64">
                 <p className="text-sm text-neutral-500">

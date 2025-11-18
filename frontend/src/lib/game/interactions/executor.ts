@@ -9,6 +9,7 @@ import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game-core';
 import type { InteractionContext } from './types';
 import { executeInteraction } from './index';
+import { trackPresetUsage } from './presets';
 
 export interface SlotInteractionConfig {
   [key: string]: any;
@@ -112,6 +113,11 @@ export async function executeSlotInteractions(
     if (!config || !config.enabled) continue;
 
     hasInteraction = true;
+
+    // Track preset usage if this interaction was created from a preset
+    if (config.__presetId) {
+      trackPresetUsage(config.__presetId, config.__presetName);
+    }
 
     // Get the plugin to check its UI mode
     const plugin = (await import('./index')).interactionRegistry.get(interactionId);

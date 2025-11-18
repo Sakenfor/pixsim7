@@ -69,6 +69,29 @@ export function getWorldInteractionPresets(world: GameWorldDetail | null): Inter
 }
 
 /**
+ * Load interaction presets from world (alias for getWorldInteractionPresets)
+ */
+export function loadWorldInteractionPresets(world: GameWorldDetail | null): InteractionPreset[] {
+  return getWorldInteractionPresets(world);
+}
+
+/**
+ * Set interaction presets on a world (returns updated world object without saving)
+ */
+export function setWorldInteractionPresets(
+  world: GameWorldDetail,
+  presets: InteractionPreset[]
+): GameWorldDetail {
+  return {
+    ...world,
+    meta: {
+      ...world.meta,
+      interactionPresets: presets,
+    },
+  };
+}
+
+/**
  * Save interaction presets to world metadata
  */
 export async function saveWorldInteractionPresets(
@@ -177,11 +200,14 @@ export function searchPresets(presets: InteractionPreset[], query: string): Inte
 
 /**
  * Apply a preset to a slot's interaction config
+ * Attaches preset ID for usage tracking
  */
 export function applyPresetToSlot(preset: InteractionPreset): BaseInteractionConfig {
   return {
     enabled: true,
     ...preset.config,
+    __presetId: preset.id, // Metadata for usage tracking
+    __presetName: preset.name, // Store name for reference
   };
 }
 
@@ -218,6 +244,244 @@ export function generatePresetId(name: string): string {
     .replace(/^_+|_+$/g, '');
 
   return `${base}_${Date.now().toString(36)}`;
+}
+
+/**
+ * Preset with scope information
+ */
+export interface PresetWithScope extends InteractionPreset {
+  scope: 'global' | 'world';
+}
+
+/**
+ * PHASE 4: Global Preset Support
+ * Global presets are stored in localStorage and available across all worlds
+ */
+
+const GLOBAL_PRESETS_KEY = 'pixsim7:global-interaction-presets';
+
+/**
+ * Get global presets from localStorage
+ */
+export function getGlobalInteractionPresets(): InteractionPreset[] {
+  try {
+    const stored = localStorage.getItem(GLOBAL_PRESETS_KEY);
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed;
+  } catch (e) {
+    console.error('Failed to load global presets:', e);
+    return [];
+  }
+}
+
+/**
+ * Save global presets to localStorage
+ */
+export function saveGlobalInteractionPresets(presets: InteractionPreset[]): void {
+  try {
+    localStorage.setItem(GLOBAL_PRESETS_KEY, JSON.stringify(presets));
+  } catch (e) {
+    console.error('Failed to save global presets:', e);
+    throw new Error('Failed to save global presets');
+  }
+}
+
+/**
+ * Add a global preset
+ */
+export function addGlobalPreset(preset: InteractionPreset): void {
+  const existing = getGlobalInteractionPresets();
+
+  if (existing.some((p) => p.id === preset.id)) {
+    throw new Error(`Global preset with ID "${preset.id}" already exists`);
+  }
+
+  saveGlobalInteractionPresets([...existing, preset]);
+}
+
+/**
+ * Update a global preset
+ */
+export function updateGlobalPreset(
+  presetId: string,
+  updates: Partial<InteractionPreset>
+): void {
+  const existing = getGlobalInteractionPresets();
+  const index = existing.findIndex((p) => p.id === presetId);
+
+  if (index === -1) {
+    throw new Error(`Global preset with ID "${presetId}" not found`);
+  }
+
+  const updated = [...existing];
+  updated[index] = { ...updated[index], ...updates };
+
+  saveGlobalInteractionPresets(updated);
+}
+
+/**
+ * Delete a global preset
+ */
+export function deleteGlobalPreset(presetId: string): void {
+  const existing = getGlobalInteractionPresets();
+  const filtered = existing.filter((p) => p.id !== presetId);
+
+  saveGlobalInteractionPresets(filtered);
+}
+
+/**
+ * Get combined presets (global + world) with scope information
+ */
+export function getCombinedPresets(world: GameWorldDetail | null): PresetWithScope[] {
+  const globalPresets = getGlobalInteractionPresets().map((p) => ({
+    ...p,
+    scope: 'global' as const,
+  }));
+
+  const worldPresets = getWorldInteractionPresets(world).map((p) => ({
+    ...p,
+    scope: 'world' as const,
+  }));
+
+  return [...globalPresets, ...worldPresets];
+}
+
+/**
+ * Copy a world preset to global
+ */
+export function promotePresetToGlobal(preset: InteractionPreset): void {
+  const global = getGlobalInteractionPresets();
+
+  // Check for conflicts
+  if (global.some((p) => p.id === preset.id)) {
+    // Generate new ID to avoid conflicts
+    const newId = generatePresetId(preset.name);
+    addGlobalPreset({ ...preset, id: newId });
+  } else {
+    addGlobalPreset(preset);
+  }
+}
+
+/**
+ * Copy a global preset to world
+ */
+export async function copyPresetToWorld(
+  preset: InteractionPreset,
+  worldId: number,
+  currentWorld: GameWorldDetail
+): Promise<GameWorldDetail> {
+  const worldPresets = getWorldInteractionPresets(currentWorld);
+
+  // Check for conflicts
+  if (worldPresets.some((p) => p.id === preset.id)) {
+    // Generate new ID to avoid conflicts
+    const newId = generatePresetId(preset.name);
+    return await addInteractionPreset(worldId, { ...preset, id: newId }, currentWorld);
+  } else {
+    return await addInteractionPreset(worldId, preset, currentWorld);
+  }
+}
+
+/**
+ * PHASE 5: Preset Usage Tracking (Dev-Only)
+ * Tracks how often presets are used in interactions
+ */
+
+const PRESET_USAGE_KEY = 'pixsim7:preset-usage-stats';
+
+export interface PresetUsageStats {
+  [presetId: string]: {
+    count: number;
+    lastUsed: number; // timestamp
+    presetName?: string;
+  };
+}
+
+/**
+ * Get preset usage statistics
+ */
+export function getPresetUsageStats(): PresetUsageStats {
+  try {
+    const stored = localStorage.getItem(PRESET_USAGE_KEY);
+    if (!stored) return {};
+
+    return JSON.parse(stored);
+  } catch (e) {
+    console.error('Failed to load preset usage stats:', e);
+    return {};
+  }
+}
+
+/**
+ * Save preset usage statistics
+ */
+function savePresetUsageStats(stats: PresetUsageStats): void {
+  try {
+    localStorage.setItem(PRESET_USAGE_KEY, JSON.stringify(stats));
+  } catch (e) {
+    console.error('Failed to save preset usage stats:', e);
+  }
+}
+
+/**
+ * Track a preset usage
+ */
+export function trackPresetUsage(presetId: string, presetName?: string): void {
+  const stats = getPresetUsageStats();
+
+  if (!stats[presetId]) {
+    stats[presetId] = {
+      count: 0,
+      lastUsed: Date.now(),
+      presetName,
+    };
+  }
+
+  stats[presetId].count += 1;
+  stats[presetId].lastUsed = Date.now();
+  if (presetName) {
+    stats[presetId].presetName = presetName;
+  }
+
+  savePresetUsageStats(stats);
+}
+
+/**
+ * Clear preset usage statistics
+ */
+export function clearPresetUsageStats(): void {
+  try {
+    localStorage.removeItem(PRESET_USAGE_KEY);
+  } catch (e) {
+    console.error('Failed to clear preset usage stats:', e);
+  }
+}
+
+/**
+ * Get preset usage statistics with preset details
+ */
+export function getPresetUsageStatsWithDetails(
+  world: GameWorldDetail | null
+): Array<{ presetId: string; presetName: string; count: number; lastUsed: number; scope?: 'global' | 'world' }> {
+  const stats = getPresetUsageStats();
+  const presets = getCombinedPresets(world);
+
+  return Object.entries(stats)
+    .map(([presetId, data]) => {
+      const preset = presets.find(p => p.id === presetId);
+      return {
+        presetId,
+        presetName: preset?.name || data.presetName || presetId,
+        count: data.count,
+        lastUsed: data.lastUsed,
+        scope: preset?.scope,
+      };
+    })
+    .sort((a, b) => b.count - a.count); // Sort by usage count descending
 }
 
 /**

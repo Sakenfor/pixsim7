@@ -14,9 +14,10 @@ import type { HotspotActionType } from '@pixsim7/game-core';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 import {
-  getWorldInteractionPresets,
+  getCombinedPresets,
   applyPresetToSlot,
   type InteractionPreset,
+  type PresetWithScope,
 } from '../lib/game/interactions/presets';
 
 interface HotspotEditorProps {
@@ -40,9 +41,9 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
   const [showAdvanced, setShowAdvanced] = useState<Record<number, boolean>>({});
   const [expandedInteractions, setExpandedInteractions] = useState<Record<number, boolean>>({});
 
-  // Load presets from world
+  // Load presets from world and global storage
   const availablePresets = useMemo(
-    () => (worldDetail ? getWorldInteractionPresets(worldDetail) : []),
+    () => getCombinedPresets(worldDetail),
     [worldDetail]
   );
 
@@ -255,28 +256,37 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
                         </Badge>
                       </div>
                       <div className="space-y-1">
-                        {availablePresets.slice(0, 5).map((preset) => (
-                          <button
-                            key={preset.id}
-                            onClick={() => applyPreset(idx, preset)}
-                            className="w-full text-left px-2 py-1.5 text-xs bg-white dark:bg-neutral-800 border border-blue-200 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
-                                {preset.icon && <span>{preset.icon}</span>}
-                                <span className="font-medium">{preset.name}</span>
+                        {availablePresets.slice(0, 5).map((preset) => {
+                          const scopedPreset = preset as PresetWithScope;
+                          return (
+                            <button
+                              key={preset.id}
+                              onClick={() => applyPreset(idx, preset)}
+                              className="w-full text-left px-2 py-1.5 text-xs bg-white dark:bg-neutral-800 border border-blue-200 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  {preset.icon && <span>{preset.icon}</span>}
+                                  <span className="font-medium">{preset.name}</span>
+                                  <Badge
+                                    color={scopedPreset.scope === 'global' ? 'blue' : 'purple'}
+                                    className="text-[10px]"
+                                  >
+                                    {scopedPreset.scope === 'global' ? '🌍' : '🗺️'}
+                                  </Badge>
+                                </div>
+                                <Badge color="gray" className="text-[10px]">
+                                  {preset.interactionId}
+                                </Badge>
                               </div>
-                              <Badge color="gray" className="text-[10px]">
-                                {preset.interactionId}
-                              </Badge>
-                            </div>
-                            {preset.description && (
-                              <div className="text-[10px] text-neutral-600 dark:text-neutral-400 mt-0.5">
-                                {preset.description}
-                              </div>
-                            )}
-                          </button>
-                        ))}
+                              {preset.description && (
+                                <div className="text-[10px] text-neutral-600 dark:text-neutral-400 mt-0.5">
+                                  {preset.description}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
                         {availablePresets.length > 5 && (
                           <div className="text-[10px] text-neutral-500 dark:text-neutral-400 text-center pt-1">
                             +{availablePresets.length - 5} more presets available
