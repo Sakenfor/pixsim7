@@ -9,11 +9,12 @@ import os
 import sys
 from pathlib import Path
 
-# Fix Windows asyncio subprocess support
+# Fix Windows asyncio + asyncpg compatibility
 if sys.platform == 'win32':
     import asyncio
-    # Set ProactorEventLoop policy for Windows to support subprocess operations
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # Use SelectorEventLoop for asyncpg compatibility on Windows
+    # Note: ProactorEventLoop has issues with asyncpg connections
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # Load .env file BEFORE any other imports that need env vars
 from dotenv import load_dotenv

@@ -110,7 +110,8 @@
       "Bash(frontend/src/components/inspector/SeductionNodeEditor.tsx)",
       "Bash(docs/SEDUCTION_NODE_PLUGIN.md)",
       "Bash(git cherry-pick:*)",
-      "Bash(1)"
+      "Bash(1)",
+      "Bash(docker restart:*)"
     ],
     "deny": [],
     "ask": []
