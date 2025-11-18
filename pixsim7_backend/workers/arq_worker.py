@@ -18,7 +18,7 @@ load_dotenv()
 
 from arq import cron
 from arq.connections import RedisSettings
-from pixsim7_backend.workers.job_processor import process_job
+from pixsim7_backend.workers.job_processor import process_generation
 from pixsim7_backend.workers.automation import process_automation, run_automation_loops
 from pixsim7_backend.workers.status_poller import poll_job_statuses
 from pixsim7_backend.workers.health import update_heartbeat, get_health_tracker
@@ -39,7 +39,7 @@ async def startup(ctx: dict) -> None:
     health = get_health_tracker()
 
     logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
-    logger.info("worker_component_registered", component="process_job")
+    logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
@@ -78,7 +78,7 @@ class WorkerSettings:
 
     # Task functions that can be queued
     functions = [
-        process_job,
+        process_generation,
         process_automation,
         poll_job_statuses,
         run_automation_loops,

@@ -181,7 +181,7 @@ class GenerationService:
             from pixsim7_backend.infrastructure.redis import get_arq_pool
             arq_pool = await get_arq_pool()
             await arq_pool.enqueue_job(
-                "process_generation",  # New worker function name
+                "process_generation",  # ARQ worker function (see workers/job_processor.py)
                 generation_id=generation.id,
                 _queue_name="default",
             )

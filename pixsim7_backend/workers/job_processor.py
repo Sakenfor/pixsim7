@@ -1,10 +1,10 @@
 """
-Job processor worker - executes pending jobs
+Generation processor worker - executes pending generations
 
-Listens for "job:created" events and processes jobs:
+Processes generations created via GenerationService:
 1. Select provider account
-2. Submit job to provider
-3. Update job status
+2. Submit generation to provider
+3. Update generation status
 """
 import os
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,20 +38,21 @@ def _get_worker_logger():
 logger = _get_worker_logger()
 
 
-async def process_job(job_id: int) -> dict:
+async def process_generation(generation_id: int) -> dict:
     """
-    Process a single job (now unified as Generation)
+    Process a single generation
 
     This is the main ARQ task that gets queued when a generation is created.
 
     Args:
-        job_id: ID of the generation to process (kept as job_id for backward compatibility)
+        generation_id: ID of the generation to process
 
     Returns:
         dict with status and message
     """
     # Bind generation context for all logs in this function
-    gen_logger = bind_job_context(logger, job_id=job_id, generation_id=job_id)
+    # Keep job_id in logs for backward compatibility with log analysis tools
+    gen_logger = bind_job_context(logger, job_id=generation_id, generation_id=generation_id)
     gen_logger.info("pipeline:start", msg="generation_processing_started")
 
     async for db in get_db():
@@ -60,10 +61,10 @@ async def process_job(job_id: int) -> dict:
             try:
                 pipeline = GenerationSubmissionPipeline(db)
                 generation_service = pipeline.generation_service
-                generation = await generation_service.get_generation(job_id)
+                generation = await generation_service.get_generation(generation_id)
                 result = await pipeline.run(generation)
 
-                # Track successful job
+                # Track successful generation
                 if result.status in ("submitted", "processing"):
                     get_health_tracker().increment_processed()
 
@@ -82,7 +83,7 @@ async def process_job(job_id: int) -> dict:
 
                 # Attempt to mark failed
                 try:
-                    await GenerationService(db, UserService(db)).mark_failed(job_id, str(e))
+                    await GenerationService(db, UserService(db)).mark_failed(generation_id, str(e))
                 except Exception:
                     pass
                 raise
@@ -99,7 +100,7 @@ async def process_job(job_id: int) -> dict:
             provider_service = ProviderService(db)
 
             # Get generation
-            generation = await generation_service.get_generation(job_id)
+            generation = await generation_service.get_generation(generation_id)
 
             if generation.status != "pending":
                 gen_logger.warning("generation_not_pending", status=generation.status)
@@ -124,7 +125,7 @@ async def process_job(job_id: int) -> dict:
                 raise
 
             # Mark generation as started
-            await generation_service.mark_started(job_id)
+            await generation_service.mark_started(generation_id)
             gen_logger.info("generation_started")
 
             # Execute generation via provider
@@ -152,12 +153,12 @@ async def process_job(job_id: int) -> dict:
                 return {
                     "status": "submitted",
                     "provider_job_id": submission.provider_job_id,
-                    "generation_id": job_id,
+                    "generation_id": generation_id,
                 }
 
             except ProviderError as e:
                 gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
-                await generation_service.mark_failed(job_id, str(e))
+                await generation_service.mark_failed(generation_id, str(e))
 
                 # Track failed generation
                 get_health_tracker().increment_failed()
@@ -172,7 +173,7 @@ async def process_job(job_id: int) -> dict:
 
             # Try to mark generation as failed
             try:
-                await generation_service.mark_failed(job_id, str(e))
+                await generation_service.mark_failed(generation_id, str(e))
             except Exception as mark_error:
                 gen_logger.error("mark_failed_error", error=str(mark_error))
 
@@ -185,18 +186,18 @@ async def process_job(job_id: int) -> dict:
 
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
-    logger.info("worker_started", component="job_processor")
+    logger.info("worker_started", component="generation_processor")
 
 
 async def on_shutdown(ctx: dict) -> None:
     """ARQ worker shutdown"""
-    logger.info("worker_shutdown", component="job_processor")
+    logger.info("worker_shutdown", component="generation_processor")
 
 
 # ARQ task configuration
 class WorkerSettings:
-    """ARQ worker settings for job processor"""
-    functions = [process_job]
+    """ARQ worker settings for generation processor"""
+    functions = [process_generation]
     on_startup = on_startup
     on_shutdown = on_shutdown
     redis_settings = "redis://localhost:6379/0"  # Will be overridden by env
