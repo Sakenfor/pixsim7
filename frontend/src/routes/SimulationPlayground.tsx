@@ -42,6 +42,23 @@ import {
   createDefaultScenario,
   type SimulationScenario,
 } from '../lib/simulation/scenarios';
+import {
+  simulationHooksRegistry,
+  registerBuiltinHooks,
+  unregisterBuiltinHooks,
+  type SimulationEvent,
+  type SimulationTickContext,
+} from '../lib/simulation/hooks';
+import {
+  createHistory,
+  addSnapshot,
+  saveHistory,
+  loadHistory,
+  clearHistory,
+  getHistoryStats,
+  type SimulationHistory,
+  type SimulationSnapshot,
+} from '../lib/simulation/history';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -68,6 +85,31 @@ export function SimulationPlayground() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [tickSize, setTickSize] = useState<number>(SECONDS_PER_HOUR);
+
+  // Phase 2: Simulation hooks and history
+  const [simulationHistory, setSimulationHistory] = useState<SimulationHistory | null>(null);
+  const [simulationEvents, setSimulationEvents] = useState<SimulationEvent[]>([]);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+  const [autoPlayInterval, setAutoPlayInterval] = useState<number>(2000); // ms between ticks
+  const [showEventsLog, setShowEventsLog] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Register simulation hooks on mount
+  useEffect(() => {
+    registerBuiltinHooks();
+
+    // Load or create simulation history
+    const savedHistory = loadHistory();
+    if (savedHistory) {
+      setSimulationHistory(savedHistory);
+    } else {
+      setSimulationHistory(createHistory(null, null));
+    }
+
+    return () => {
+      unregisterBuiltinHooks();
+    };
+  }, []);
 
   // Load initial data
   useEffect(() => {
@@ -113,7 +155,7 @@ export function SimulationPlayground() {
   };
 
   const handleAdvanceTime = async (deltaSeconds: number) => {
-    if (!selectedWorldId) {
+    if (!selectedWorldId || !worldDetail) {
       setError('No world selected');
       return;
     }
@@ -135,6 +177,35 @@ export function SimulationPlayground() {
           setGameSession(updated.session);
         }
       }
+
+      // Phase 2: Run simulation hooks
+      const tickContext: SimulationTickContext = {
+        worldId: selectedWorldId,
+        worldDetail: updatedWorld,
+        worldTime: updatedWorld.world_time,
+        deltaSeconds,
+        session: gameSession,
+        selectedNpcIds,
+      };
+
+      const events = await simulationHooksRegistry.runAll(tickContext);
+      setSimulationEvents((prev) => [...prev, ...events].slice(-100)); // Keep last 100 events
+
+      // Phase 2: Add snapshot to history
+      if (simulationHistory) {
+        const newHistory = addSnapshot(simulationHistory, {
+          timestamp: Date.now(),
+          worldTime: updatedWorld.world_time,
+          worldId: selectedWorldId,
+          sessionSnapshot: {
+            flags: gameSession?.flags || {},
+            relationships: gameSession?.relationships || {},
+          },
+          events,
+        });
+        setSimulationHistory(newHistory);
+        saveHistory(newHistory);
+      }
     } catch (e: any) {
       setError(String(e?.message ?? e));
     } finally {
@@ -145,6 +216,34 @@ export function SimulationPlayground() {
   const handleRunTicks = async (numTicks: number) => {
     const totalDelta = tickSize * numTicks;
     await handleAdvanceTime(totalDelta);
+  };
+
+  // Phase 2: Auto-play functionality
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+
+    const interval = setInterval(async () => {
+      if (!isLoading && selectedWorldId) {
+        await handleAdvanceTime(tickSize);
+      }
+    }, autoPlayInterval);
+
+    return () => clearInterval(interval);
+  }, [isAutoPlaying, autoPlayInterval, tickSize, selectedWorldId, isLoading]);
+
+  const handleClearHistory = () => {
+    if (confirm('Clear simulation history? This cannot be undone.')) {
+      if (simulationHistory) {
+        const newHistory = clearHistory(simulationHistory);
+        setSimulationHistory(newHistory);
+        saveHistory(newHistory);
+      }
+      setSimulationEvents([]);
+    }
+  };
+
+  const handleClearEvents = () => {
+    setSimulationEvents([]);
   };
 
   const handleCreateScenario = () => {
@@ -412,6 +511,161 @@ export function SimulationPlayground() {
           </div>
         </Panel>
       </div>
+
+      {/* Phase 2: Auto-Play Controls */}
+      <Panel className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Auto-Play & History</h2>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={showEventsLog ? 'primary' : 'secondary'}
+              onClick={() => setShowEventsLog(!showEventsLog)}
+            >
+              Events ({simulationEvents.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={showHistory ? 'primary' : 'secondary'}
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              History ({simulationHistory?.snapshots.length || 0})
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant={isAutoPlaying ? 'danger' : 'primary'}
+            onClick={() => setIsAutoPlaying(!isAutoPlaying)}
+            disabled={!selectedWorldId}
+          >
+            {isAutoPlaying ? '⏸ Pause' : '▶ Auto-Play'}
+          </Button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-neutral-600 dark:text-neutral-400">
+              Interval:
+            </label>
+            <Select
+              size="sm"
+              value={autoPlayInterval}
+              onChange={(e) => setAutoPlayInterval(Number(e.target.value))}
+              className="w-auto"
+              disabled={isAutoPlaying}
+            >
+              <option value={1000}>1s</option>
+              <option value={2000}>2s</option>
+              <option value={5000}>5s</option>
+              <option value={10000}>10s</option>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleClearEvents}
+            disabled={simulationEvents.length === 0}
+          >
+            Clear Events
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleClearHistory}
+            disabled={!simulationHistory || simulationHistory.snapshots.length === 0}
+          >
+            Clear History
+          </Button>
+        </div>
+      </Panel>
+
+      {/* Phase 2: Events Log */}
+      {showEventsLog && (
+        <Panel className="p-4 space-y-3">
+          <h2 className="text-sm font-semibold">Simulation Events</h2>
+          {simulationEvents.length === 0 ? (
+            <p className="text-xs text-neutral-500">No events yet. Advance time to generate events.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {simulationEvents.slice().reverse().map((event, idx) => (
+                <div
+                  key={event.id}
+                  className={`p-2 rounded text-xs border ${
+                    event.type === 'error'
+                      ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                      : event.type === 'warning'
+                      ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-300 dark:border-yellow-700'
+                      : event.type === 'success'
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
+                      : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{event.title}</span>
+                        <span className="text-[10px] px-1 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700">
+                          {event.category}
+                        </span>
+                      </div>
+                      <p className="text-neutral-600 dark:text-neutral-400 mt-1">
+                        {event.message}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-neutral-500">
+                      {formatWorldTime(event.worldTime, { shortDay: true })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Phase 2: History View */}
+      {showHistory && simulationHistory && (
+        <Panel className="p-4 space-y-3">
+          <h2 className="text-sm font-semibold">Simulation History</h2>
+          {simulationHistory.snapshots.length === 0 ? (
+            <p className="text-xs text-neutral-500">No history yet. Advance time to create snapshots.</p>
+          ) : (
+            <>
+              <div className="text-xs text-neutral-500 space-y-1">
+                <p>Total Snapshots: {simulationHistory.snapshots.length}</p>
+                <p>Events: {getHistoryStats(simulationHistory).totalEvents}</p>
+                <p>Duration: {Math.floor(getHistoryStats(simulationHistory).duration / 1000)}s</p>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-1">
+                {simulationHistory.snapshots.slice().reverse().map((snapshot, idx) => {
+                  const realIdx = simulationHistory.snapshots.length - 1 - idx;
+                  return (
+                    <div
+                      key={snapshot.id}
+                      className={`p-2 rounded text-xs border ${
+                        realIdx === simulationHistory.currentIndex
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                          : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-semibold">Snapshot #{realIdx + 1}</span>
+                          <span className="ml-2 text-neutral-500">
+                            {formatWorldTime(snapshot.worldTime, { shortDay: true })}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-neutral-500">
+                          {snapshot.events.length} events
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </Panel>
+      )}
 
       {/* Scenario Management */}
       <Panel className="p-4 space-y-3">
