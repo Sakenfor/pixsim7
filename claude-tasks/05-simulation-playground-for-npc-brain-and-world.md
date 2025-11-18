@@ -155,3 +155,81 @@ Once the Simulation Playground exists as a basic visualizer + time controls, the
    - Ensure the playground’s simulation state is isolated from “real” Game2D sessions:
      - Use cloned state objects for simulation.
      - Only call backend APIs when explicitly desired (e.g. when simulating real GameSession updates; otherwise keep it local).
+
+---
+
+## Phase 3: Advanced Simulation Mechanics & AI Behaviors
+
+Add sophisticated simulation logic and emergent behaviors.
+
+**Phase 3 Goals**
+- Implement **NPC routine simulation** with daily schedules.
+- Add **relationship dynamics** that evolve over time.
+- Create **economic simulation** for resources and trade.
+- Build **faction politics** simulation.
+
+**Key Features**
+- NPC behaviors:
+  - Need-based actions (hunger, sleep, social).
+  - Goal-oriented planning.
+  - Emergent interactions.
+- Social dynamics:
+  - Relationship decay/growth.
+  - Gossip propagation.
+  - Group formation.
+- Economic systems:
+  - Supply and demand.
+  - Trade routes.
+  - Market fluctuations.
+
+---
+
+## Phase 4: Simulation Analysis & Optimization Tools
+
+Build tools to understand and optimize simulation outcomes.
+
+**Phase 4 Goals**
+- Create **simulation profiler** for performance analysis.
+- Add **butterfly effect tracker** for causality chains.
+- Implement **equilibrium finder** for stable states.
+- Build **scenario comparison** tools.
+
+**Key Features**
+- Performance tools:
+  - Bottleneck identification.
+  - Memory profiling.
+  - Optimization suggestions.
+- Causality analysis:
+  - Event chain visualization.
+  - Impact assessment.
+  - Critical path finding.
+- Comparison engine:
+  - Side-by-side scenarios.
+  - Differential analysis.
+  - Statistical testing.
+
+---
+
+## Phase 5: Cloud Simulation & Distributed Processing
+
+Scale simulation to handle massive worlds and scenarios.
+
+**Phase 5 Goals**
+- Implement **cloud-based simulation** for heavy processing.
+- Add **distributed simulation** across multiple servers.
+- Create **simulation-as-a-service** API.
+- Build **machine learning** integration for behavior prediction.
+
+**Key Features**
+- Cloud infrastructure:
+  - Auto-scaling compute.
+  - Result caching.
+  - Cost optimization.
+- Distributed system:
+  - World partitioning.
+  - Synchronized updates.
+  - Fault tolerance.
+- ML integration:
+  - Behavior prediction models.
+  - Anomaly detection.
+  - Pattern learning.

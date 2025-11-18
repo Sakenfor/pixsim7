@@ -135,3 +135,81 @@ After basic per-world themes and view modes work, the next step is to make theme
      ```
    - Extend `PluginAPI` (for UI plugins) or a helper to allow plugins with the right permission to register theme contributions into `worldThemePresetsStore` when enabled, and remove them on disable.
    - This enables “theme plugins” that add new theme presets without touching core code.
+
+---
+
+## Phase 3: Dynamic Theme Engine & Mood-Based Adaptation
+
+Create themes that respond to game state and emotional context.
+
+**Phase 3 Goals**
+- Implement **mood-responsive themes** that shift with narrative tone.
+- Add **time-of-day theming** with smooth transitions.
+- Create **weather-based theme variations**.
+- Build **emotion color mapping** for character states.
+
+**Key Features**
+- Mood system:
+  - Analyze scene emotional tags.
+  - Gradual theme transitions.
+  - Color temperature adjustments.
+- Environmental theming:
+  - Day/night cycles.
+  - Weather effects on UI.
+  - Location-specific palettes.
+- Character emotions:
+  - NPC mood influences UI.
+  - Relationship colors.
+  - Tension indicators.
+
+---
+
+## Phase 4: Accessibility & Inclusive Design System
+
+Make themes work for all players with comprehensive accessibility.
+
+**Phase 4 Goals**
+- Build **colorblind-safe palettes** with automatic validation.
+- Add **high contrast modes** for visual impairments.
+- Implement **dyslexia-friendly** typography options.
+- Create **motion sensitivity** settings.
+
+**Key Features**
+- Accessibility modes:
+  - Multiple colorblind filters.
+  - Contrast analyzers.
+  - Text scaling systems.
+- Typography options:
+  - Dyslexia fonts.
+  - Letter spacing controls.
+  - Reading guides.
+- Motion controls:
+  - Reduced animations.
+  - Motion-free alternatives.
+  - Pause capabilities.
+
+---
+
+## Phase 5: Theme Ecosystem & Designer Marketplace
+
+Create a thriving ecosystem for theme creation and distribution.
+
+**Phase 5 Goals**
+- Launch **theme marketplace** for buying/selling themes.
+- Add **theme creation tools** with visual editors.
+- Implement **brand system** integration.
+- Build **white-label theming** for publishers.
+
+**Key Features**
+- Marketplace:
+  - Theme store with previews.
+  - Revenue sharing model.
+  - Quality certification.
+- Creation tools:
+  - Visual theme editor.
+  - Live preview system.
+  - Export/import formats.
+- Enterprise features:
+  - Brand guidelines enforcement.
+  - Multi-brand management.
+  - Compliance checking.

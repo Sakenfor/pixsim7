@@ -151,3 +151,81 @@ Once basic archetypes and relationship editing work, add deeper systems:
 - Production-ready NPC management with faction-aware relationships.
 - Designers can simulate relationship evolution before committing to story arcs.
 - Rich archetype library enables rapid NPC creation without repetitive configuration.
+
+---
+
+## Phase 3: Behavioral AI & Personality Systems
+
+Add sophisticated AI-driven personality and behavior modeling.
+
+**Phase 3 Goals**
+- Implement **personality engine** with traits affecting behavior.
+- Add **emotional state machines** for NPCs.
+- Create **memory systems** for NPC experiences.
+- Build **social AI** for group dynamics.
+
+**Key Features**
+- Personality modeling:
+  - Big Five personality traits.
+  - Trait-based decision making.
+  - Personality evolution.
+- Emotional systems:
+  - Multi-dimensional emotions.
+  - Emotional contagion.
+  - Mood persistence.
+- Memory:
+  - Short/long-term memory.
+  - Emotional memory coloring.
+  - Memory-based relationships.
+
+---
+
+## Phase 4: Procedural NPC Generation & Evolution
+
+Create systems for automatic NPC creation and development.
+
+**Phase 4 Goals**
+- Build **procedural NPC generator** with coherent backgrounds.
+- Add **life simulation** for NPC histories.
+- Implement **genetic algorithms** for NPC traits.
+- Create **cultural systems** affecting NPC behavior.
+
+**Key Features**
+- Procedural generation:
+  - Name generation with etymology.
+  - Backstory creation.
+  - Appearance generation.
+- Life simulation:
+  - Birth to present history.
+  - Major life events.
+  - Relationship formation.
+- Cultural modeling:
+  - Cultural traits and values.
+  - Language differences.
+  - Cultural evolution.
+
+---
+
+## Phase 5: Advanced Social Simulation Platform
+
+Create a comprehensive social simulation system.
+
+**Phase 5 Goals**
+- Implement **society-level simulation** with institutions.
+- Add **political systems** and power dynamics.
+- Create **economic roles** and class systems.
+- Build **generational changes** and inheritance.
+
+**Key Features**
+- Social structures:
+  - Institutions and organizations.
+  - Social networks.
+  - Power hierarchies.
+- Political simulation:
+  - Faction dynamics.
+  - Leadership changes.
+  - Policy impacts.
+- Economic integration:
+  - Job systems.
+  - Wealth distribution.
+  - Social mobility.
