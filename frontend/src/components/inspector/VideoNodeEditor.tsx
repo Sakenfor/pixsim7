@@ -1,155 +1,174 @@
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import { useNodeEditor } from './useNodeEditor';
+import type { NodeEditorProps, VideoConfig } from './editorTypes';
+import { validateVideoConfig, logValidationError } from './editorValidation';
 import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
 import { useAssetPickerStore, type SelectedAsset } from '../../stores/assetPickerStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useToast } from '../../stores/toastStore';
 
-interface VideoNodeEditorProps {
-  node: DraftSceneNode;
-  onUpdate: (patch: Partial<DraftSceneNode>) => void;
-}
-
-export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
+export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const toast = useToast();
   const enterSelectionMode = useAssetPickerStore((s) => s.enterSelectionMode);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
-  const [selectionKind, setSelectionKind] = useState<'ordered' | 'random' | 'pool'>('ordered');
-  const [filterTags, setFilterTags] = useState('');
-  const [progressionSteps, setProgressionSteps] = useState<Array<{ label: string; segmentIds: string }>>([
-    { label: 'Step 1', segmentIds: '' }
-  ]);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const { formState, setFormState, handleApply } = useNodeEditor<VideoConfig>({
+    node,
+    onUpdate,
+    initialState: {
+      selectionKind: 'ordered',
+      filterTags: '',
+      progressionSteps: [{ label: 'Step 1', segmentIds: '' }],
+      selectedAssetIds: [],
+      advanceMinutes: undefined,
+      npcId: undefined,
+      speakerRole: '',
+      npcState: '',
+    },
+    loadFromNode: (node) => {
+      const metadata = node.metadata as Record<string, unknown> | undefined;
 
-  // Life Sim metadata fields
-  const [advanceMinutes, setAdvanceMinutes] = useState<number | ''>('');
-  const [npcId, setNpcId] = useState<number | ''>('');
-  const [speakerRole, setSpeakerRole] = useState<string>('');
-  const [npcState, setNpcState] = useState<string>('');
-
-  // Load node data
-  useEffect(() => {
-    if (node.selection) {
-      setSelectionKind(node.selection.kind);
-      if (node.selection.kind === 'pool' && node.selection.filterTags) {
-        setFilterTags(node.selection.filterTags.join(', '));
-      } else {
-        setFilterTags('');
+      // Try new standardized field first
+      const savedConfig = metadata?.videoConfig as VideoConfig | undefined;
+      if (savedConfig) {
+        return savedConfig;
       }
+
+      // Fallback: construct from old scattered fields
+      const result: Partial<VideoConfig> = {};
+
+      // Selection
+      if (node.selection) {
+        result.selectionKind = node.selection.kind as VideoConfig['selectionKind'];
+        if (node.selection.kind === 'pool' && node.selection.filterTags) {
+          result.filterTags = (node.selection.filterTags as string[]).join(', ');
+        }
+      }
+
+      // Progression
+      if (node.playback?.kind === 'progression' && node.playback.segments) {
+        result.progressionSteps = node.playback.segments.map((seg: any) => ({
+          label: seg.label,
+          segmentIds: seg.segmentIds?.join(', ') || '',
+        }));
+      }
+
+      // Asset IDs
+      if (node.assetIds) {
+        result.selectedAssetIds = node.assetIds as string[];
+      }
+
+      // Life Sim metadata
+      const lifeSim = metadata?.lifeSim as Record<string, unknown> | undefined;
+      if (lifeSim?.advanceMinutes !== undefined) {
+        result.advanceMinutes = lifeSim.advanceMinutes as number;
+      }
+
+      // Handle both snake_case (old) and camelCase (new) field names
+      result.npcId = (metadata?.npcId ?? metadata?.npc_id) as number | undefined;
+      result.speakerRole = (metadata?.speakerRole ?? '') as string;
+      result.npcState = (metadata?.npcState ?? metadata?.npc_state ?? '') as string;
+
+      return result;
+    },
+    saveToNode: (formState, node) => {
+      // Build selection strategy
+      let selection: SelectionStrategy;
+      if (formState.selectionKind === 'pool') {
+        const tags = formState.filterTags.split(',').map(t => t.trim()).filter(Boolean);
+        selection = { kind: 'pool', filterTags: tags.length > 0 ? tags : undefined };
+      } else {
+        selection = { kind: formState.selectionKind };
+      }
+
+      // Build playback mode
+      const playback: PlaybackMode = {
+        kind: 'progression',
+        segments: formState.progressionSteps.map(step => ({
+          label: step.label,
+          segmentIds: step.segmentIds ? step.segmentIds.split(',').map(s => s.trim()) : undefined
+        })),
+        ...(node.metadata?.isMiniGame ? { miniGame: { id: 'reflex', config: { rounds: 3 } } } : {})
+      };
+
+      // Build Life Sim metadata
+      const lifeSim: Record<string, unknown> = {};
+      if (formState.advanceMinutes !== undefined) {
+        lifeSim.advanceMinutes = formState.advanceMinutes;
+      }
+
+      const metadata: Record<string, unknown> = { ...(node.metadata || {}) };
+      if (Object.keys(lifeSim).length > 0) {
+        metadata.lifeSim = lifeSim;
+      }
+      if (formState.npcId !== undefined) {
+        metadata.npcId = formState.npcId;
+      }
+      if (formState.speakerRole) {
+        metadata.speakerRole = formState.speakerRole;
+      }
+      if (formState.npcState) {
+        metadata.npcState = formState.npcState;
+      }
+
+      // Store complete config for future loads
+      metadata.videoConfig = formState;
+
+      return {
+        selection,
+        playback,
+        metadata,
+        assetIds: formState.selectedAssetIds.length > 0 ? formState.selectedAssetIds : undefined
+      };
     }
-
-    if (node.playback?.kind === 'progression' && node.playback.segments) {
-      const steps = node.playback.segments.map((seg) => ({
-        label: seg.label,
-        segmentIds: seg.segmentIds?.join(', ') || '',
-      }));
-      setProgressionSteps(steps.length > 0 ? steps : [{ label: 'Step 1', segmentIds: '' }]);
-    }
-
-    // Load asset IDs if they exist
-    if (node.assetIds) {
-      setSelectedAssetIds(node.assetIds);
-    }
-
-    // Load Life Sim metadata
-    const metadata = node.metadata as Record<string, unknown> | undefined;
-    const lifeSim = metadata?.lifeSim as Record<string, unknown> | undefined;
-
-    setAdvanceMinutes(
-      typeof lifeSim?.advanceMinutes === 'number' ? lifeSim.advanceMinutes : ''
-    );
-    setNpcId(
-      typeof metadata?.npc_id === 'number' ? metadata.npc_id : ''
-    );
-    setSpeakerRole(
-      typeof metadata?.speakerRole === 'string' ? metadata.speakerRole : ''
-    );
-    setNpcState(
-      typeof metadata?.npc_state === 'string' ? metadata.npc_state : ''
-    );
-  }, [node]);
+  });
 
   // Handle browsing assets
   const handleBrowseAssets = () => {
-    // Open gallery in floating mode
     openFloatingPanel('gallery', 100, 100, 800, 600);
-
-    // Enter selection mode with callback
     enterSelectionMode((asset: SelectedAsset) => {
-      // Add asset ID to the list
-      setSelectedAssetIds(prev => [...prev, asset.id]);
+      setFormState({
+        ...formState,
+        selectedAssetIds: [...formState.selectedAssetIds, asset.id]
+      });
       toast.success(`Added asset: ${asset.id}`);
     });
   };
 
   function handleAddStep() {
-    setProgressionSteps([...progressionSteps, { label: `Step ${progressionSteps.length + 1}`, segmentIds: '' }]);
+    setFormState({
+      ...formState,
+      progressionSteps: [...formState.progressionSteps, { label: `Step ${formState.progressionSteps.length + 1}`, segmentIds: '' }]
+    });
   }
 
   function handleUpdateStep(index: number, field: 'label' | 'segmentIds', value: string) {
-    const updated = [...progressionSteps];
+    const updated = [...formState.progressionSteps];
     updated[index][field] = value;
-    setProgressionSteps(updated);
+    setFormState({ ...formState, progressionSteps: updated });
   }
 
   function handleRemoveStep(index: number) {
-    setProgressionSteps(progressionSteps.filter((_, i) => i !== index));
-  }
-
-  function handleApply() {
-    // Build selection strategy
-    let selection: SelectionStrategy;
-    if (selectionKind === 'pool') {
-      const tags = filterTags.split(',').map(t => t.trim()).filter(Boolean);
-      selection = { kind: 'pool', filterTags: tags.length > 0 ? tags : undefined };
-    } else {
-      selection = { kind: selectionKind };
-    }
-
-    // Build playback mode (progression)
-    const playback: PlaybackMode = {
-      kind: 'progression',
-      segments: progressionSteps.map(step => ({
-        label: step.label,
-        segmentIds: step.segmentIds ? step.segmentIds.split(',').map(s => s.trim()) : undefined
-      })),
-      // Only include miniGame if this node is configured as a mini-game
-      // Note: This should be configured via UI in the future
-      ...(node.metadata?.isMiniGame ? { miniGame: { id: 'reflex', config: { rounds: 3 } } } : {})
-    };
-
-    // Build Life Sim metadata
-    const lifeSim: Record<string, unknown> = {};
-    if (advanceMinutes !== '') {
-      lifeSim.advanceMinutes = advanceMinutes;
-    }
-
-    const metadata: Record<string, unknown> = { ...(node.metadata || {}) };
-    if (Object.keys(lifeSim).length > 0) {
-      metadata.lifeSim = lifeSim;
-    }
-    if (npcId !== '') {
-      metadata.npc_id = npcId;
-    }
-    if (speakerRole) {
-      metadata.speakerRole = speakerRole;
-    }
-    if (npcState) {
-      metadata.npc_state = npcState;
-    }
-
-    onUpdate({
-      selection,
-      playback,
-      metadata,
-      assetIds: selectedAssetIds.length > 0 ? selectedAssetIds : undefined
+    setFormState({
+      ...formState,
+      progressionSteps: formState.progressionSteps.filter((_, i) => i !== index)
     });
   }
 
   function handleRemoveAsset(assetId: string) {
-    setSelectedAssetIds(prev => prev.filter(id => id !== assetId));
+    setFormState({
+      ...formState,
+      selectedAssetIds: formState.selectedAssetIds.filter(id => id !== assetId)
+    });
+  }
+
+  function handleApplyWithValidation() {
+    const validation = validateVideoConfig(formState);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => logValidationError('VideoNodeEditor', error));
+      return;
+    }
+    handleApply();
   }
 
   return (
@@ -163,9 +182,9 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
           </Button>
         </div>
 
-        {selectedAssetIds.length > 0 ? (
+        {formState.selectedAssetIds.length > 0 ? (
           <div className="space-y-1">
-            {selectedAssetIds.map((assetId) => (
+            {formState.selectedAssetIds.map((assetId) => (
               <div key={assetId} className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm">
                 <span className="font-mono text-blue-700 dark:text-blue-300">{assetId}</span>
                 <button
@@ -188,11 +207,11 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
       <div>
         <label className="block text-sm font-medium mb-1">Selection Strategy</label>
         <select
-          value={selectionKind}
+          value={formState.selectionKind}
           onChange={(e) => {
             const value = e.target.value;
             if (value === 'ordered' || value === 'random' || value === 'pool') {
-              setSelectionKind(value);
+              setFormState({ ...formState, selectionKind: value });
             }
           }}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
@@ -204,13 +223,13 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
       </div>
 
       {/* Filter Tags (only for pool) */}
-      {selectionKind === 'pool' && (
+      {formState.selectionKind === 'pool' && (
         <div>
           <label className="block text-sm font-medium mb-1">Filter Tags (comma-separated)</label>
           <input
             type="text"
-            value={filterTags}
-            onChange={(e) => setFilterTags(e.target.value)}
+            value={formState.filterTags}
+            onChange={(e) => setFormState({ ...formState, filterTags: e.target.value })}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             placeholder="e.g., intro, cafe, morning"
           />
@@ -230,7 +249,7 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
         </div>
 
         <div className="space-y-2">
-          {progressionSteps.map((step, index) => (
+          {formState.progressionSteps.map((step, index) => (
             <div key={index} className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700">
               <div className="flex items-start gap-2">
                 <div className="flex-1 space-y-2">
@@ -252,7 +271,7 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
                 <button
                   onClick={() => handleRemoveStep(index)}
                   className="text-red-600 hover:text-red-700 text-xs px-2 py-1"
-                  disabled={progressionSteps.length === 1}
+                  disabled={formState.progressionSteps.length === 1}
                 >
                   Remove
                 </button>
@@ -277,14 +296,15 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
             </label>
             <input
               type="number"
-              value={advanceMinutes}
-              onChange={(e) => setAdvanceMinutes(e.target.value ? Number(e.target.value) : '')}
+              value={formState.advanceMinutes ?? ''}
+              onChange={(e) => setFormState({ ...formState, advanceMinutes: e.target.value ? Number(e.target.value) : undefined })}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="e.g., 15 (leave empty for no time change)"
               min="0"
+              max="1440"
             />
             <p className="text-xs text-neutral-500 mt-1">
-              Number of in-game minutes to advance when this node is entered
+              Number of in-game minutes to advance when this node is entered (0-1440)
             </p>
           </div>
 
@@ -295,8 +315,8 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
             </label>
             <input
               type="number"
-              value={npcId}
-              onChange={(e) => setNpcId(e.target.value ? Number(e.target.value) : '')}
+              value={formState.npcId ?? ''}
+              onChange={(e) => setFormState({ ...formState, npcId: e.target.value ? Number(e.target.value) : undefined })}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="e.g., 12 (NPC ID for identity-specific clips)"
               min="0"
@@ -314,8 +334,8 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
             </label>
             <input
               type="text"
-              value={speakerRole}
-              onChange={(e) => setSpeakerRole(e.target.value)}
+              value={formState.speakerRole}
+              onChange={(e) => setFormState({ ...formState, speakerRole: e.target.value })}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="e.g., lead, bartender, friend"
             />
@@ -330,8 +350,8 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
               NPC Expression State (optional)
             </label>
             <select
-              value={npcState}
-              onChange={(e) => setNpcState(e.target.value)}
+              value={formState.npcState}
+              onChange={(e) => setFormState({ ...formState, npcState: e.target.value })}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             >
               <option value="">None</option>
@@ -352,7 +372,7 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
       </div>
 
       {/* Apply Button */}
-      <Button variant="primary" onClick={handleApply} className="w-full">
+      <Button variant="primary" onClick={handleApplyWithValidation} className="w-full">
         Apply Changes
       </Button>
     </div>

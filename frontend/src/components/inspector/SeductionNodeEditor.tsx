@@ -5,88 +5,97 @@
  * Allows designers to create multi-stage seduction scenarios with affinity checks.
  */
 
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
-import type { DraftSceneNode } from '../../modules/scene-builder';
-import type { SeductionStage, SeductionNodeData } from '../../lib/plugins/seductionNode';
+import { useNodeEditor } from './useNodeEditor';
+import type { NodeEditorProps, SeductionStage, SeductionConfig } from './editorTypes';
+import { validateSeductionConfig, logValidationError } from './editorValidation';
 import { DEFAULT_SEDUCTION_STAGES } from '../../lib/plugins/seductionNode';
 
-interface SeductionNodeEditorProps {
-  node: DraftSceneNode;
-  onUpdate: (patch: Partial<DraftSceneNode>) => void;
-}
+export function SeductionNodeEditor({ node, onUpdate }: NodeEditorProps) {
+  const { formState, setFormState, handleApply } = useNodeEditor<SeductionConfig>({
+    node,
+    onUpdate,
+    initialState: {
+      stages: DEFAULT_SEDUCTION_STAGES,
+      currentStage: 0,
+      affinityCheckFlag: 'npc_affinity',
+      allowRetry: false,
+    },
+    loadFromNode: (node) => {
+      const metadata = node.metadata as Record<string, unknown> | undefined;
+      const savedConfig = metadata?.seductionConfig as SeductionConfig | undefined;
 
-export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps) {
-  // Form state
-  const [stages, setStages] = useState<SeductionStage[]>(DEFAULT_SEDUCTION_STAGES);
-  const [affinityCheckFlag, setAffinityCheckFlag] = useState('npc_affinity');
-  const [allowRetry, setAllowRetry] = useState(false);
+      if (savedConfig) {
+        return {
+          stages: savedConfig.stages && savedConfig.stages.length > 0
+            ? savedConfig.stages
+            : DEFAULT_SEDUCTION_STAGES,
+          currentStage: savedConfig.currentStage ?? 0,
+          affinityCheckFlag: savedConfig.affinityCheckFlag || 'npc_affinity',
+          allowRetry: savedConfig.allowRetry ?? false,
+        };
+      }
 
-  // Load configuration from node metadata
-  useEffect(() => {
-    const config = (node.metadata as any)?.seductionConfig as SeductionNodeData | undefined;
-    if (config) {
-      if (config.stages && config.stages.length > 0) {
-        setStages(config.stages);
+      return {};
+    },
+    saveToNode: (formState, node) => ({
+      metadata: {
+        ...node.metadata,
+        seductionConfig: formState,
       }
-      if (config.affinityCheckFlag) {
-        setAffinityCheckFlag(config.affinityCheckFlag);
-      }
-      if (config.allowRetry !== undefined) {
-        setAllowRetry(config.allowRetry);
-      }
-    }
-  }, [node]);
+    })
+  });
 
   // Stage management
   function handleAddStage() {
-    const prevStage = stages[stages.length - 1];
+    const prevStage = formState.stages[formState.stages.length - 1];
     const nextAffinity = prevStage ? prevStage.requiredAffinity + 20 : 20;
 
-    setStages([
-      ...stages,
-      {
-        id: `stage_${stages.length + 1}`,
-        name: `Stage ${stages.length + 1}`,
-        description: '',
-        requiredAffinity: Math.min(nextAffinity, 100),
-      },
-    ]);
+    setFormState({
+      ...formState,
+      stages: [
+        ...formState.stages,
+        {
+          id: `stage_${formState.stages.length + 1}`,
+          name: `Stage ${formState.stages.length + 1}`,
+          description: '',
+          requiredAffinity: Math.min(nextAffinity, 100),
+        },
+      ],
+    });
   }
 
   function handleUpdateStage(index: number, field: keyof SeductionStage, value: any) {
-    const updated = [...stages];
+    const updated = [...formState.stages];
     updated[index] = { ...updated[index], [field]: value };
-    setStages(updated);
+    setFormState({ ...formState, stages: updated });
   }
 
   function handleRemoveStage(index: number) {
-    if (stages.length > 1) {
-      setStages(stages.filter((_, i) => i !== index));
+    if (formState.stages.length > 1) {
+      setFormState({
+        ...formState,
+        stages: formState.stages.filter((_, i) => i !== index),
+      });
     }
   }
 
   function handleResetToDefaults() {
-    setStages(DEFAULT_SEDUCTION_STAGES);
-    setAffinityCheckFlag('npc_affinity');
-    setAllowRetry(false);
+    setFormState({
+      stages: DEFAULT_SEDUCTION_STAGES,
+      currentStage: 0,
+      affinityCheckFlag: 'npc_affinity',
+      allowRetry: false,
+    });
   }
 
-  // Save configuration
-  function handleApply() {
-    const config: SeductionNodeData = {
-      stages,
-      currentStage: 0,
-      affinityCheckFlag,
-      allowRetry,
-    };
-
-    onUpdate({
-      metadata: {
-        ...node.metadata,
-        seductionConfig: config,
-      },
-    });
+  function handleApplyWithValidation() {
+    const validation = validateSeductionConfig(formState);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => logValidationError('SeductionNodeEditor', error));
+      return;
+    }
+    handleApply();
   }
 
   return (
@@ -101,8 +110,8 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
         <label className="block text-sm font-medium mb-1">Affinity Flag</label>
         <input
           type="text"
-          value={affinityCheckFlag}
-          onChange={(e) => setAffinityCheckFlag(e.target.value)}
+          value={formState.affinityCheckFlag}
+          onChange={(e) => setFormState({ ...formState, affinityCheckFlag: e.target.value })}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           placeholder="e.g., npc_emma_affinity"
         />
@@ -116,8 +125,8 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
         <input
           type="checkbox"
           id="allowRetry"
-          checked={allowRetry}
-          onChange={(e) => setAllowRetry(e.target.checked)}
+          checked={formState.allowRetry}
+          onChange={(e) => setFormState({ ...formState, allowRetry: e.target.checked })}
           className="rounded border-neutral-300 dark:border-neutral-600"
         />
         <label htmlFor="allowRetry" className="text-sm">
@@ -135,7 +144,7 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
         </div>
 
         <div className="space-y-3">
-          {stages.map((stage, index) => (
+          {formState.stages.map((stage, index) => (
             <div
               key={index}
               className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700"
@@ -148,7 +157,7 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
                 <button
                   onClick={() => handleRemoveStage(index)}
                   className="text-red-600 hover:text-red-700 text-xs px-2 py-1"
-                  disabled={stages.length === 1}
+                  disabled={formState.stages.length === 1}
                 >
                   Remove
                 </button>
@@ -261,7 +270,7 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
         <Button variant="secondary" onClick={handleResetToDefaults} className="flex-1">
           Reset to Defaults
         </Button>
-        <Button variant="primary" onClick={handleApply} className="flex-1">
+        <Button variant="primary" onClick={handleApplyWithValidation} className="flex-1">
           Apply Changes
         </Button>
       </div>
