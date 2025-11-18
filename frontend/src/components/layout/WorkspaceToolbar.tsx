@@ -53,15 +53,14 @@ export function WorkspaceToolbar() {
         >
           📐 Presets
         </button>
-        {showPresets && (
-          <PresetsDropdown
-            presets={presets}
-            onLoadPreset={loadPreset}
-            onDeletePreset={deletePreset}
-            onSaveClick={() => setShowSaveDialog(true)}
-            onClose={() => setShowPresets(false)}
-          />
-        )}
+        <PresetsDropdown
+          isOpen={showPresets}
+          presets={presets}
+          onLoadPreset={loadPreset}
+          onDeletePreset={deletePreset}
+          onSaveClick={() => setShowSaveDialog(true)}
+          onClose={() => setShowPresets(false)}
+        />
       </div>
 
       {/* Add Panel */}
