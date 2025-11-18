@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from pixsim7.launcher_core import create_container, __version__
+from launcher.core import create_container, __version__
 
 from .routes import services_router, logs_router, events_router, health_router
 from .dependencies import set_container
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     print()
 
     # Load service definitions
-    from scripts.launcher_gui.services import build_services
+    from launcher.gui.services import build_services
 
     services_list = build_services()
     print(f"Loaded {len(services_list)} service definitions")

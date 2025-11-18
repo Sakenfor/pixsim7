@@ -7,8 +7,8 @@ Provides endpoints for checking API health and getting system statistics.
 from fastapi import APIRouter, Depends
 import time
 
-from pixsim7.launcher_core import ProcessManager, HealthManager, LogManager, EventBus
-from pixsim7.launcher_core.types import ServiceStatus, HealthStatus
+from launcher.core import ProcessManager, HealthManager, LogManager, EventBus
+from launcher.core.types import ServiceStatus, HealthStatus
 
 from ..models import APIHealthResponse, StatisticsResponse
 from ..dependencies import (
@@ -39,7 +39,7 @@ async def api_health(
     Returns:
         API health including manager status and event bus stats
     """
-    from pixsim7.launcher_core import __version__
+    from launcher.core import __version__
 
     # Get manager statuses
     managers = {

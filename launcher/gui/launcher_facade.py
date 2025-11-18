@@ -20,24 +20,24 @@ except ImportError:
     from config import ROOT, UIState, load_ui_state
 
 try:
-    from pixsim7.launcher_core import (
+    from launcher.core import (
         ServiceDefinition,
         ProcessManager,
         HealthManager,
         LogManager,
     )
-    from pixsim7.launcher_core.types import HealthStatus, ServiceStatus
+    from launcher.core.types import HealthStatus, ServiceStatus
 except ImportError:
     # For development/testing
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from pixsim7.launcher_core import (
+    from launcher.core import (
         ServiceDefinition,
         ProcessManager,
         HealthManager,
         LogManager,
     )
-    from pixsim7.launcher_core.types import HealthStatus, ServiceStatus
+    from launcher.core.types import HealthStatus, ServiceStatus
 
 
 def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
@@ -58,7 +58,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
 
         def db_start(state):
             """Custom start for docker-compose."""
-            from pixsim7.launcher_core.types import ServiceStatus, HealthStatus
+            from launcher.core.types import ServiceStatus, HealthStatus
             try:
                 from scripts.launcher_gui.docker_utils import compose_up_detached
                 compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
@@ -80,7 +80,7 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
 
         def db_stop(state):
             """Custom stop for docker-compose."""
-            from pixsim7.launcher_core.types import ServiceStatus, HealthStatus
+            from launcher.core.types import ServiceStatus, HealthStatus
             try:
                 from scripts.launcher_gui.docker_utils import compose_down
                 compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')

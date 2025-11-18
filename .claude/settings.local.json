@@ -112,7 +112,8 @@
       "Bash(git cherry-pick:*)",
       "Bash(1)",
       "Bash(docker restart:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

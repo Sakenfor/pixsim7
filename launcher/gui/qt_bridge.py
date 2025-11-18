@@ -9,15 +9,15 @@ from PySide6.QtCore import QObject, Signal
 from typing import Optional
 
 try:
-    from pixsim7.launcher_core import ProcessEvent, HealthEvent
-    from pixsim7.launcher_core.types import HealthStatus
+    from launcher.core import ProcessEvent, HealthEvent
+    from launcher.core.types import HealthStatus
 except ImportError:
     # For development/testing
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from pixsim7.launcher_core import ProcessEvent, HealthEvent
-    from pixsim7.launcher_core.types import HealthStatus
+    from launcher.core import ProcessEvent, HealthEvent
+    from launcher.core.types import HealthStatus
 
 
 class QtEventBridge(QObject):

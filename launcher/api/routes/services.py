@@ -7,8 +7,8 @@ Provides REST API for starting, stopping, and querying services.
 from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from typing import List
 
-from pixsim7.launcher_core import ProcessManager, HealthManager
-from pixsim7.launcher_core.types import ServiceStatus, HealthStatus
+from launcher.core import ProcessManager, HealthManager
+from launcher.core.types import ServiceStatus, HealthStatus
 
 from ..models import (
     ServiceStateResponse,

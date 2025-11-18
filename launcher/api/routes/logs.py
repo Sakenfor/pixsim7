@@ -7,7 +7,7 @@ Provides REST API for fetching and clearing service logs.
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from typing import Optional
 
-from pixsim7.launcher_core import LogManager
+from launcher.core import LogManager
 
 from ..models import LogsResponse, LogLevelEnum
 from ..dependencies import get_log_manager

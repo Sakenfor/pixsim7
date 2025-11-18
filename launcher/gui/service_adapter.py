@@ -18,12 +18,12 @@ except ImportError:
     from launcher_facade import LauncherFacade
 
 try:
-    from pixsim7.launcher_core.types import HealthStatus, ServiceStatus
+    from launcher.core.types import HealthStatus, ServiceStatus
 except ImportError:
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-    from pixsim7.launcher_core.types import HealthStatus, ServiceStatus
+    from launcher.core.types import HealthStatus, ServiceStatus
 
 
 class ServiceProcessAdapter(QObject):

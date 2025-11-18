@@ -9,8 +9,8 @@ import asyncio
 import json
 from typing import Set
 
-from pixsim7.launcher_core import EventBus
-from pixsim7.launcher_core.event_bus import Event
+from launcher.core import EventBus
+from launcher.core.event_bus import Event
 
 from ..dependencies import get_event_bus
 from ..models import EventMessage
@@ -113,7 +113,7 @@ def _serialize_event_data(data: any) -> dict:
 
     Handles conversion of custom types to primitives.
     """
-    from pixsim7.launcher_core.types import ProcessEvent, HealthEvent
+    from launcher.core.types import ProcessEvent, HealthEvent
 
     if isinstance(data, ProcessEvent):
         return {

@@ -287,9 +287,9 @@ graph LR
 To continue the refactoring:
 
 1. ✅ Create `ProcessManager`, `HealthManager`, `LogManager`
-2. ⏳ Update `scripts/launcher_gui/processes.py` to use `ProcessManager`
-3. ⏳ Update `scripts/launcher_gui/health_worker.py` to use `HealthManager`
-4. ⏳ Update `scripts/launcher_gui/launcher.py` to use `LogManager`
+2. ⏳ Update `launcher/gui/processes.py` to use `ProcessManager`
+3. ⏳ Update `launcher/gui/health_worker.py` to use `HealthManager`
+4. ⏳ Update `launcher/gui/launcher.py` to use `LogManager`
 5. ⏳ Test existing launcher works with new managers
 6. ⏳ Remove Qt dependencies from managers (QProcess, QThread, QTimer)
 7. ⏳ Build REST API using managers

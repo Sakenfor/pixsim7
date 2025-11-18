@@ -7,7 +7,7 @@ Provides access to launcher managers via FastAPI's dependency injection.
 from fastapi import Depends, HTTPException
 from typing import Optional
 
-from pixsim7.launcher_core import (
+from launcher.core import (
     LauncherContainer,
     ProcessManager,
     HealthManager,

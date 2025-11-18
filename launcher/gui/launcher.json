@@ -1,0 +1,13 @@
+{
+  "window_x": 553,
+  "window_y": 236,
+  "window_width": 1388,
+  "window_height": 687,
+  "selected_service": "worker",
+  "stop_services_on_exit": false,
+  "auto_refresh_logs": true,
+  "health_check_interval": 5.0,
+  "health_check_adaptive": true,
+  "health_check_startup_interval": 2.0,
+  "health_check_stable_interval": 10.0
+}
