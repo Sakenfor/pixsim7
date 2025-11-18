@@ -2,12 +2,16 @@
   "name": "pixcubes",
   "version": "0.1.0",
   "private": true,
-  "main": "../../pixcubes/dist/index.js",
-  "module": "../../pixcubes/dist/index.js",
-  "types": "../../pixcubes/dist/index.d.ts",
-  "files": [],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
   "scripts": {
-    "build": "cd ../../pixcubes && npm run build"
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
   },
   "peerDependencies": {
     "react": ">=18",

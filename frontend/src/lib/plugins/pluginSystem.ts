@@ -190,34 +190,75 @@ export interface DiscoveredPlugin {
 export class PluginDiscovery {
   /**
    * Discover plugins matching the given configuration
+   * Note: Vite requires glob patterns to be static string literals, so we use a map of predefined globs
    */
   static async discover(config: PluginDiscoveryConfig): Promise<DiscoveredPlugin[]> {
     const discovered: DiscoveredPlugin[] = [];
 
-    for (const pattern of config.patterns) {
-      const modules = import.meta.glob<any>(pattern, { eager: config.eager ?? false });
+    // Get the appropriate glob modules based on the config family
+    const globModules = this.getGlobModules(config);
 
-      for (const [path, moduleLoader] of Object.entries(modules)) {
-        try {
-          const module = config.eager ? moduleLoader : await moduleLoader();
-          const plugins = this.extractPlugins(module, config);
+    for (const [path, moduleLoader] of Object.entries(globModules)) {
+      try {
+        const module = config.eager ? moduleLoader : await moduleLoader();
+        const plugins = this.extractPlugins(module, config);
 
-          for (const plugin of plugins) {
-            discovered.push({
-              path,
-              family: config.family,
-              origin: config.origin,
-              plugin,
-              metadata: this.extractMetadata(plugin, config),
-            });
-          }
-        } catch (error) {
-          console.warn(`Failed to load plugin from ${path}:`, error);
+        for (const plugin of plugins) {
+          discovered.push({
+            path,
+            family: config.family,
+            origin: config.origin,
+            plugin,
+            metadata: this.extractMetadata(plugin, config),
+          });
         }
+      } catch (error) {
+        console.warn(`Failed to load plugin from ${path}:`, error);
       }
     }
 
     return discovered;
+  }
+
+  /**
+   * Get glob modules for a config using static patterns
+   * Vite requires these to be compile-time constants (no variables allowed)
+   */
+  private static getGlobModules(config: PluginDiscoveryConfig): Record<string, any> {
+    // We need separate eager and non-eager branches because Vite requires completely static glob calls
+    if (config.eager) {
+      switch (config.family) {
+        case 'helper':
+          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: true });
+        case 'interaction':
+          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: true });
+        case 'node-type':
+          return import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: true });
+        case 'gallery-tool':
+          return import.meta.glob<any>('/src/lib/galleryTools/*.{ts,tsx,js,jsx}', { eager: true });
+        case 'world-tool':
+          return import.meta.glob<any>('/src/lib/worldTools/*.{ts,tsx,js,jsx}', { eager: true });
+        default:
+          console.warn(`Unknown plugin family: ${config.family}`);
+          return {};
+      }
+    } else {
+      switch (config.family) {
+        case 'helper':
+          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: false });
+        case 'interaction':
+          return import.meta.glob<any>('/src/plugins/**/*.{ts,tsx,js,jsx}', { eager: false });
+        case 'node-type':
+          return import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: false });
+        case 'gallery-tool':
+          return import.meta.glob<any>('/src/lib/galleryTools/*.{ts,tsx,js,jsx}', { eager: false });
+        case 'world-tool':
+          return import.meta.glob<any>('/src/lib/worldTools/*.{ts,tsx,js,jsx}', { eager: false });
+        default:
+          console.warn(`Unknown plugin family: ${config.family}`);
+          return {};
+      }
+    }
   }
 
   /**

@@ -1,22 +1,22 @@
 /**
- * Cube Formation V1 Plugin
+ * Dock Control Center Plugin
  *
- * Original cube-based control center with multiple formation patterns.
- * Features: arc, circle, grid, constellation, dock, scattered formations.
+ * Traditional sliding panel control center - the default interface.
+ * Familiar, lightweight, and works on all edges (bottom, top, left, right, floating).
  */
 
 import type { ControlCenterPluginManifest, ControlCenterPlugin } from '../../../lib/plugins/controlCenterPlugin';
 import { controlCenterRegistry } from '../../../lib/plugins/controlCenterPlugin';
-import { CubeFormationControlCenter } from '../../../components/control/CubeFormationControlCenter';
+import { ControlCenterDock } from '../../../components/control/ControlCenterDock';
 import { useControlCenterStore } from '../../../stores/controlCenterStore';
 
 export const manifest: ControlCenterPluginManifest = {
-  id: 'cube-formation-v1',
-  name: 'Cube Formation Control Center V1',
+  id: 'dock-control-center',
+  name: 'Dock Control Center',
   version: '1.0.0',
   author: 'PixSim7 Team',
-  description: 'Animated cube formation system with multiple patterns and spatial organization',
-  icon: '🎲',
+  description: 'Traditional sliding panel interface with multi-position docking',
+  icon: '🪟',
 
   type: 'ui-overlay',
 
@@ -25,26 +25,26 @@ export const manifest: ControlCenterPluginManifest = {
     'storage',
   ],
 
-  main: 'plugin.ts',
+  main: 'plugin.tsx',
 
   controlCenter: {
-    id: 'cubes-v1',
-    displayName: 'Cube Formation (Original)',
-    description: 'Spatial cube system with 6 formation patterns and drag-and-drop',
+    id: 'dock',
+    displayName: 'Dock Mode',
+    description: 'Traditional sliding panel that can dock to any edge or float',
+    default: true, // This is the default control center
     features: [
-      '6 Formations',
-      'Animated',
-      'Draggable',
-      'Standalone cubes',
-      'Panel minimization',
-      'Keyboard shortcuts',
+      'Multi-position',
+      'Floating mode',
+      'Keyboard resize',
+      'Auto-hide',
+      'Lightweight',
     ],
   },
 };
 
 export const plugin: ControlCenterPlugin = {
   render() {
-    return <CubeFormationControlCenter />;
+    return <ControlCenterDock />;
   },
 
   open() {
@@ -64,7 +64,8 @@ export const plugin: ControlCenterPlugin = {
   },
 
   cleanup() {
-    console.log('[CubeFormationV1] Cleanup');
+    // Cleanup if needed
+    console.log('[DockControlCenter] Cleanup');
   },
 };
 

@@ -28,7 +28,8 @@
  * ```
  */
 
-import { writable } from 'svelte/store';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 /**
  * Plugin configuration map (plugin ID -> config object)
@@ -40,40 +41,90 @@ export type PluginConfigMap = Record<string, Record<string, any>>;
  */
 const STORAGE_KEY = 'pixsim7_plugin_configs';
 
+interface PluginConfigStoreState {
+  configs: PluginConfigMap;
+  setConfig: (pluginId: string, config: Record<string, any>) => void;
+  replaceConfig: (pluginId: string, config: Record<string, any>) => void;
+  resetConfig: (pluginId: string, defaultConfig?: Record<string, any>) => void;
+  clearAll: () => void;
+  batchSet: (updates: Record<string, Record<string, any>>) => void;
+}
+
 /**
- * Load initial config from localStorage
+ * Create the plugin config store using Zustand
  */
-function loadFromStorage(): PluginConfigMap {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return parsed;
-      }
+const usePluginConfigStoreInternal = create<PluginConfigStoreState>()(
+  persist(
+    (set) => ({
+      configs: {},
+
+      setConfig: (pluginId: string, partialConfig: Record<string, any>) =>
+        set((state) => ({
+          configs: {
+            ...state.configs,
+            [pluginId]: {
+              ...(state.configs[pluginId] || {}),
+              ...partialConfig,
+            },
+          },
+        })),
+
+      replaceConfig: (pluginId: string, config: Record<string, any>) =>
+        set((state) => ({
+          configs: {
+            ...state.configs,
+            [pluginId]: config,
+          },
+        })),
+
+      resetConfig: (pluginId: string, defaultConfig?: Record<string, any>) =>
+        set((state) => {
+          const newConfigs = { ...state.configs };
+          if (defaultConfig) {
+            newConfigs[pluginId] = { ...defaultConfig };
+          } else {
+            delete newConfigs[pluginId];
+          }
+          return { configs: newConfigs };
+        }),
+
+      clearAll: () => set({ configs: {} }),
+
+      batchSet: (updates: Record<string, Record<string, any>>) =>
+        set((state) => {
+          const newConfigs = { ...state.configs };
+          for (const [pluginId, config] of Object.entries(updates)) {
+            newConfigs[pluginId] = {
+              ...(newConfigs[pluginId] || {}),
+              ...config,
+            };
+          }
+          return { configs: newConfigs };
+        }),
+    }),
+    {
+      name: STORAGE_KEY,
     }
-  } catch (error) {
-    console.error('Failed to load plugin configs from localStorage:', error);
-  }
-  return {};
-}
+  )
+);
 
 /**
- * Save config to localStorage
- */
-function saveToStorage(config: PluginConfigMap): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  } catch (error) {
-    console.error('Failed to save plugin configs to localStorage:', error);
-  }
-}
-
-/**
- * Create the plugin config store
+ * Create the plugin config store API
  */
 function createPluginConfigStore() {
-  const { subscribe, set, update } = writable<PluginConfigMap>(loadFromStorage());
+  const { subscribe, set, update } = {
+    subscribe: (callback: (state: PluginConfigMap) => void) => {
+      return usePluginConfigStoreInternal.subscribe((state) => callback(state.configs));
+    },
+    set: (configs: PluginConfigMap) => {
+      usePluginConfigStoreInternal.setState({ configs });
+    },
+    update: (updater: (state: PluginConfigMap) => PluginConfigMap) => {
+      const currentConfigs = usePluginConfigStoreInternal.getState().configs;
+      const newConfigs = updater(currentConfigs);
+      usePluginConfigStoreInternal.setState({ configs: newConfigs });
+    },
+  };
 
   return {
     subscribe,
@@ -82,108 +133,59 @@ function createPluginConfigStore() {
      * Get config for a specific plugin
      */
     get: (pluginId: string): Record<string, any> => {
-      let config: Record<string, any> = {};
-      const unsubscribe = subscribe(($store) => {
-        config = $store[pluginId] || {};
-      });
-      unsubscribe();
-      return config;
+      const state = usePluginConfigStoreInternal.getState();
+      return state.configs[pluginId] || {};
     },
 
     /**
      * Set/update config for a specific plugin (merges with existing)
      */
     set: (pluginId: string, partialConfig: Record<string, any>): void => {
-      update(($store) => {
-        const newStore = {
-          ...$store,
-          [pluginId]: {
-            ...($store[pluginId] || {}),
-            ...partialConfig,
-          },
-        };
-        saveToStorage(newStore);
-        return newStore;
-      });
+      usePluginConfigStoreInternal.getState().setConfig(pluginId, partialConfig);
     },
 
     /**
      * Replace entire config for a plugin (no merge)
      */
     replace: (pluginId: string, config: Record<string, any>): void => {
-      update(($store) => {
-        const newStore = {
-          ...$store,
-          [pluginId]: config,
-        };
-        saveToStorage(newStore);
-        return newStore;
-      });
+      usePluginConfigStoreInternal.getState().replaceConfig(pluginId, config);
     },
 
     /**
      * Reset plugin config to empty (or provide default)
      */
     reset: (pluginId: string, defaultConfig?: Record<string, any>): void => {
-      update(($store) => {
-        const newStore = { ...$store };
-        if (defaultConfig) {
-          newStore[pluginId] = { ...defaultConfig };
-        } else {
-          delete newStore[pluginId];
-        }
-        saveToStorage(newStore);
-        return newStore;
-      });
+      usePluginConfigStoreInternal.getState().resetConfig(pluginId, defaultConfig);
     },
 
     /**
      * Check if plugin has any config
      */
     has: (pluginId: string): boolean => {
-      let has = false;
-      const unsubscribe = subscribe(($store) => {
-        has = pluginId in $store;
-      });
-      unsubscribe();
-      return has;
+      const state = usePluginConfigStoreInternal.getState();
+      return pluginId in state.configs;
     },
 
     /**
      * Get all plugin IDs that have config
      */
     getPluginIds: (): string[] => {
-      let ids: string[] = [];
-      const unsubscribe = subscribe(($store) => {
-        ids = Object.keys($store);
-      });
-      unsubscribe();
-      return ids;
+      const state = usePluginConfigStoreInternal.getState();
+      return Object.keys(state.configs);
     },
 
     /**
      * Clear all plugin configs
      */
     clear: (): void => {
-      set({});
-      saveToStorage({});
+      usePluginConfigStoreInternal.getState().clearAll();
     },
 
     /**
      * Batch update multiple plugins at once
      */
     batchSet: (updates: Record<string, Record<string, any>>): void => {
-      update(($store) => {
-        const newStore = { ...$store };
-        for (const [pluginId, config] of Object.entries(updates)) {
-          newStore[pluginId] = {
-            ...(newStore[pluginId] || {}),
-            ...config,
-          };
-        }
-        saveToStorage(newStore);
-        return newStore;
-      });
+      usePluginConfigStoreInternal.getState().batchSet(updates);
     },
   };
 }

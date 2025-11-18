@@ -7,8 +7,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Point pixcubes imports at the local source package
-      pixcubes: path.resolve(__dirname, '../../pixcubes/src'),
+      // Point pixcubes imports at the workspace package
+      pixcubes: path.resolve(__dirname, '../packages/pixcubes/src'),
     },
   },
 });

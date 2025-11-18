@@ -170,14 +170,14 @@ export function ControlCenterDock() {
 
   // Transform classes based on position and open state (for docked modes)
   const transformClasses = clsx({
-    'translate-y-0 opacity-100': open && dockPosition === 'bottom',
-    'translate-y-[calc(100%-6px)] opacity-90': !open && dockPosition === 'bottom',
-    'translate-y-0 opacity-100': open && dockPosition === 'top',
-    '-translate-y-[calc(100%-6px)] opacity-90': !open && dockPosition === 'top',
-    'translate-x-0 opacity-100': open && dockPosition === 'left',
-    '-translate-x-[calc(100%-6px)] opacity-90': !open && dockPosition === 'left',
-    'translate-x-0 opacity-100': open && dockPosition === 'right',
-    'translate-x-[calc(100%-6px)] opacity-90': !open && dockPosition === 'right',
+    'translate-y-0': open && (dockPosition === 'bottom' || dockPosition === 'top'),
+    'translate-y-[calc(100%-6px)]': !open && dockPosition === 'bottom',
+    '-translate-y-[calc(100%-6px)]': !open && dockPosition === 'top',
+    'translate-x-0': open && (dockPosition === 'left' || dockPosition === 'right'),
+    '-translate-x-[calc(100%-6px)]': !open && dockPosition === 'left',
+    'translate-x-[calc(100%-6px)]': !open && dockPosition === 'right',
+    'opacity-100': open,
+    'opacity-90': !open,
   });
 
   const containerStyle = isVertical
