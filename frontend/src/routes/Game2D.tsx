@@ -56,6 +56,9 @@ import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
+import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
+import type { WorldToolContext } from '../lib/worldTools/types';
+import { worldToolRegistry } from '../lib/worldTools/registry';
 
 interface WorldTime {
   day: number;
@@ -134,9 +137,6 @@ export function Game2D() {
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
   const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
-  const [showRelationshipDashboard, setShowRelationshipDashboard] = useState(false);
-  const [showQuestLog, setShowQuestLog] = useState(false);
-  const [showInventory, setShowInventory] = useState(false);
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
@@ -560,6 +560,40 @@ export function Game2D() {
     [gameSession, sessionAPI]
   );
 
+  // Memoize WorldToolContext for plugin system
+  const worldToolContext = useMemo<WorldToolContext>(
+    () => ({
+      session: gameSession,
+      sessionFlags: gameSession?.flags || {},
+      relationships: gameSession?.relationships || {},
+      worldDetail,
+      worldTime,
+      locationDetail,
+      locationNpcs,
+      npcSlotAssignments,
+      selectedWorldId,
+      selectedLocationId,
+      activeNpcId,
+    }),
+    [
+      gameSession,
+      worldDetail,
+      worldTime,
+      locationDetail,
+      locationNpcs,
+      npcSlotAssignments,
+      selectedWorldId,
+      selectedLocationId,
+      activeNpcId,
+    ]
+  );
+
+  // Get visible world tools based on current context
+  const visibleWorldTools = useMemo(
+    () => worldToolRegistry.getVisible(worldToolContext),
+    [worldToolContext]
+  );
+
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;
 
@@ -781,69 +815,21 @@ export function Game2D() {
               New World
             </Button>
           </Panel>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={showRelationshipDashboard ? "primary" : "secondary"}
-              onClick={() => setShowRelationshipDashboard(!showRelationshipDashboard)}
-            >
-              Relationships
-            </Button>
-            <Button
-              size="sm"
-              variant={showQuestLog ? "primary" : "secondary"}
-              onClick={() => setShowQuestLog(!showQuestLog)}
-            >
-              Quests
-            </Button>
-            <Button
-              size="sm"
-              variant={showInventory ? "primary" : "secondary"}
-              onClick={() => setShowInventory(!showInventory)}
-            >
-              Inventory
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => openFloatingPanel('gizmo-lab', { context: { sceneId: currentScene?.id, locationId: selectedLocationId } })}
-              title="Open Gizmo Lab to explore gizmos and tools"
-            >
-              🎮 Gizmo Lab
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => openFloatingPanel('gizmo-lab', { context: { sceneId: currentScene?.id, locationId: selectedLocationId } })}
+            title="Open Gizmo Lab to explore gizmos and tools"
+          >
+            🎮 Gizmo Lab
+          </Button>
         </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
 
-      {/* Game UI Overlays */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {showRelationshipDashboard && (
-          <div className="lg:col-span-1">
-            <RelationshipDashboard
-              session={gameSession}
-              onClose={() => setShowRelationshipDashboard(false)}
-            />
-          </div>
-        )}
-        {showQuestLog && (
-          <div className="lg:col-span-1">
-            <QuestLog
-              session={gameSession}
-              onClose={() => setShowQuestLog(false)}
-            />
-          </div>
-        )}
-        {showInventory && (
-          <div className="lg:col-span-1">
-            <InventoryPanel
-              session={gameSession}
-              onClose={() => setShowInventory(false)}
-            />
-          </div>
-        )}
-      </div>
+      {/* World Tools Panel - replaces hard-coded tool panels */}
+      <WorldToolsPanel context={worldToolContext} tools={visibleWorldTools} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel className="space-y-3">
