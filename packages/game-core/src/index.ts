@@ -151,11 +151,13 @@ export {
 export {
   SessionHelperRegistry,
   sessionHelperRegistry,
+  VALID_HELPER_CATEGORIES,
 } from './session/helperRegistry';
 
 export type {
   HelperFunction,
   HelperDefinition,
+  RegistryOptions,
 } from './session/helperRegistry';
 
 export { registerBuiltinHelpers } from './session/builtinHelpers';

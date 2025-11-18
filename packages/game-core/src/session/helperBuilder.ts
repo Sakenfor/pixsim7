@@ -39,13 +39,13 @@ export function generateHelper(schema: HelperSchema) {
         return getFlag(session, key);
       case 'set':
         setFlag(session, key, value);
-        break;
+        return session;
       case 'inc':
         setFlag(session, key, (getFlag(session, key) ?? 0) + (value ?? 1));
-        break;
+        return session;
       case 'dec':
         setFlag(session, key, (getFlag(session, key) ?? 0) - (value ?? 1));
-        break;
+        return session;
       case 'push':
         const currentArray = getFlag(session, key);
         if (!Array.isArray(currentArray)) {
@@ -53,10 +53,10 @@ export function generateHelper(schema: HelperSchema) {
         } else {
           currentArray.push(value);
         }
-        break;
+        return session;
       case 'toggle':
         setFlag(session, key, !getFlag(session, key));
-        break;
+        return session;
     }
   };
 
