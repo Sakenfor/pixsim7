@@ -5,7 +5,7 @@ import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '../lib/api/
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
-import { loadWorldInteractionPresets } from '../lib/game/interactions/presets';
+import { getCombinedPresets, applyPresetToSlot, type PresetWithScope } from '../lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -22,9 +22,9 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load presets from world if available
+  // Load presets from world and global storage
   const presets = useMemo(() => {
-    return world ? loadWorldInteractionPresets(world) : [];
+    return getCombinedPresets(world);
   }, [world]);
 
   // Load slots from location meta
@@ -393,12 +393,16 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                               className="flex-1"
                             >
                               <option value="">Choose a preset...</option>
-                              {pluginPresets.map(preset => (
-                                <option key={preset.id} value={preset.id}>
-                                  {preset.name}
-                                  {preset.category ? ` [${preset.category}]` : ''}
-                                </option>
-                              ))}
+                              {pluginPresets.map(preset => {
+                                const scopedPreset = preset as PresetWithScope;
+                                return (
+                                  <option key={preset.id} value={preset.id}>
+                                    {scopedPreset.scope === 'global' ? '🌍 ' : '🗺️ '}
+                                    {preset.name}
+                                    {preset.category ? ` [${preset.category}]` : ''}
+                                  </option>
+                                );
+                              })}
                             </Select>
                             <Button
                               size="sm"
@@ -413,7 +417,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                                   updateSlot(selectedSlot.id, {
                                     interactions: {
                                       ...selectedSlot.interactions,
-                                      [plugin.id]: { ...preset.config, enabled: true },
+                                      [plugin.id]: applyPresetToSlot(preset),
                                     },
                                   });
                                 }
@@ -422,6 +426,9 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                               Apply
                             </Button>
                           </div>
+                          <p className="text-xs text-neutral-400 mt-1">
+                            🌍 = Global preset, 🗺️ = World preset
+                          </p>
                         </div>
                       )}
 
