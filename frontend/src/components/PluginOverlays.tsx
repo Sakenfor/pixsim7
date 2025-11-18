@@ -2,30 +2,38 @@
  * Plugin Overlays Renderer
  *
  * Renders all active plugin overlays on the game screen.
- * Integrate this into Game2D or main game component.
+ * This component should be mounted at the App level to ensure overlays appear above all content.
  */
 
 import { useState, useEffect } from 'react';
-import { pluginManager } from '../lib/plugins/PluginManager';
+import { pluginManager } from '../lib/plugins';
 import type { PluginOverlay } from '../lib/plugins/types';
-import { useToast } from '../stores/toastStore';
 
 export function PluginOverlays() {
   const [overlays, setOverlays] = useState<PluginOverlay[]>([]);
-  const toast = useToast();
+  const [updateCounter, setUpdateCounter] = useState(0);
 
   useEffect(() => {
-    // Setup callbacks
+    // Initial load
+    setOverlays(pluginManager.getOverlays());
+
+    // Force re-render when overlays change
+    const handleOverlaysChange = () => {
+      setOverlays(pluginManager.getOverlays());
+      setUpdateCounter(c => c + 1);
+    };
+
+    // Register callback
     pluginManager.setUICallbacks({
-      onOverlaysChange: () => setOverlays(pluginManager.getOverlays()),
-      onNotification: (notification) => {
-        const type = notification.type || 'info';
-        toast[type](notification.message, notification.duration);
-      },
+      onOverlaysChange: handleOverlaysChange,
     });
 
-    // Load initial overlays
-    setOverlays(pluginManager.getOverlays());
+    return () => {
+      // Cleanup: unset our callback
+      pluginManager.setUICallbacks({
+        onOverlaysChange: undefined,
+      });
+    };
   }, []);
 
   if (overlays.length === 0) {
@@ -45,7 +53,7 @@ export function PluginOverlays() {
 
         return (
           <div
-            key={overlay.id}
+            key={`${overlay.id}-${updateCounter}`}
             className={`fixed ${positionClass}`}
             style={{ zIndex: overlay.zIndex ?? 1000 }}
           >

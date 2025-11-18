@@ -10,7 +10,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button, Panel, Badge } from '@pixsim7/ui';
-import { pluginManager } from '../lib/plugins/PluginManager';
+import { pluginManager } from '../lib/plugins';
 import type { PluginEntry } from '../lib/plugins/types';
 
 export function PluginManagerUI() {
