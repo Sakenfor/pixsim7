@@ -15,12 +15,46 @@ interface GraphTemplatePaletteProps {
   compact?: boolean;
 }
 
+/**
+ * Export a template to a JSON file
+ */
+function exportTemplate(template: GraphTemplate): void {
+  const filename = `graph-template-${template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.json`;
+  const jsonString = JSON.stringify(template, null, 2);
+
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Validate that an imported object is a valid GraphTemplate
+ */
+function isValidTemplateJSON(obj: any): obj is GraphTemplate {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    typeof obj.id === 'string' &&
+    typeof obj.name === 'string' &&
+    typeof obj.createdAt === 'number' &&
+    Array.isArray(obj.nodeTypes) &&
+    typeof obj.data === 'object' &&
+    Array.isArray(obj.data.nodes) &&
+    Array.isArray(obj.data.edges)
+  );
+}
+
 export function GraphTemplatePalette({
   onInsertTemplate,
   worldId,
   compact = false,
 }: GraphTemplatePaletteProps) {
   const templates = useTemplateStore((state) => state.getTemplates(worldId));
+  const addTemplate = useTemplateStore((state) => state.addTemplate);
   const removeTemplate = useTemplateStore((state) => state.removeTemplate);
   const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -49,6 +83,77 @@ export function GraphTemplatePalette({
         alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+  };
+
+  const handleExport = (template: GraphTemplate) => {
+    try {
+      exportTemplate(template);
+    } catch (error) {
+      alert(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        // Validate the JSON structure
+        if (!isValidTemplateJSON(parsed)) {
+          alert('Invalid template file format. Please select a valid graph template JSON file.');
+          return;
+        }
+
+        // Check for ID collision
+        const existingTemplate = templates.find((t) => t.id === parsed.id);
+        if (existingTemplate) {
+          const shouldReplace = confirm(
+            `A template with ID "${parsed.id}" already exists.\n\n` +
+            `Click OK to generate a new ID, or Cancel to abort import.`
+          );
+
+          if (!shouldReplace) {
+            return;
+          }
+
+          // Generate new ID to avoid collision
+          parsed.id = `template_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        }
+
+        // Determine source based on current context
+        let source: 'user' | 'world' = 'user';
+        if (worldId !== null && worldId !== undefined) {
+          const saveToWorld = confirm(
+            `Import template to current world (World #${worldId})?\n\n` +
+            'Click OK to import to world (shared with all scenes in this world)\n' +
+            'Click Cancel to import to your user templates (available everywhere)'
+          );
+          source = saveToWorld ? 'world' : 'user';
+        }
+
+        // Set source and worldId
+        parsed.source = source;
+        parsed.worldId = source === 'world' ? worldId : undefined;
+
+        // Add the template
+        await addTemplate(parsed, worldId);
+
+        const scopeLabel = source === 'world' ? `world #${worldId}` : 'user templates';
+        alert(`Successfully imported template "${parsed.name}" to ${scopeLabel}`);
+      } catch (error) {
+        alert(`Failed to import template: ${error instanceof Error ? error.message : 'Invalid JSON file'}`);
+      }
+    };
+
+    input.click();
   };
 
   const toggleExpanded = (templateId: string) => {
@@ -83,8 +188,18 @@ export function GraphTemplatePalette({
   return (
     <div className="space-y-2">
       {!compact && (
-        <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
-          Graph Templates ({templates.length})
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
+            Graph Templates ({templates.length})
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleImport}
+            title="Import template from JSON file"
+          >
+            ↑ Import
+          </Button>
         </div>
       )}
 
@@ -158,6 +273,15 @@ export function GraphTemplatePalette({
                   className="flex-1"
                 >
                   ➕ Insert
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleExport(template)}
+                  className="px-3"
+                  title="Export template to JSON"
+                >
+                  ↓
                 </Button>
                 {!isReadOnly && (
                   <Button
