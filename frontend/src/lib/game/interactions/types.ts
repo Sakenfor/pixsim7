@@ -165,15 +165,47 @@ export interface InteractionResult {
 }
 
 /**
- * Core plugin interface
+ * Configuration field definition for plugin settings (extended)
+ */
+export interface ConfigField extends FormField {
+  /** Default value */
+  default?: any;
+}
+
+/**
+ * Plugin configuration schema
+ */
+export interface ConfigSchema {
+  [key: string]: ConfigField;
+}
+
+/**
+ * Core plugin interface with enhanced metadata
  */
 export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
   id: string; // Unique ID (e.g., 'pickpocket')
   name: string; // Display name
   description: string; // Short description
   icon?: string; // Emoji or icon
+
+  /** Category for organization/filtering */
+  category?: string;
+
+  /** Version string (semver recommended) */
+  version?: string;
+
+  /** Tags for filtering/searching */
+  tags?: string[];
+
+  /** Mark as experimental/beta */
+  experimental?: boolean;
+
   defaultConfig: TConfig; // Default values when enabled
   configFields: FormField[]; // Auto-generates UI forms
+
+  /** Optional configuration schema (can be derived from configFields) */
+  configSchema?: ConfigSchema;
+
   execute: (config: TConfig, context: InteractionContext) => Promise<InteractionResult>;
   validate?: (config: TConfig) => string | null;
   isAvailable?: (context: InteractionContext) => boolean;
@@ -240,6 +272,25 @@ export class InteractionRegistry {
   private preloadedIds = new Set<string>();
 
   register<TConfig extends BaseInteractionConfig>(plugin: InteractionPlugin<TConfig>) {
+    // Validate required fields
+    if (!plugin.id || plugin.id.trim().length === 0) {
+      throw new Error('Interaction plugin must have a non-empty id');
+    }
+    if (!plugin.name || plugin.name.trim().length === 0) {
+      throw new Error(`Interaction plugin "${plugin.id}" must have a non-empty name`);
+    }
+    if (typeof plugin.execute !== 'function') {
+      throw new Error(`Interaction plugin "${plugin.id}" must have an execute function`);
+    }
+
+    // Warn if metadata is missing (not an error, just helpful)
+    if (!plugin.description) {
+      console.warn(`⚠️ Interaction plugin "${plugin.id}" has no description`);
+    }
+    if (!plugin.category) {
+      console.debug(`Interaction plugin "${plugin.id}" has no category`);
+    }
+
     this.plugins.set(plugin.id, plugin);
 
     // Update cache if already cached

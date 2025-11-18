@@ -43,9 +43,13 @@ import type { GameSessionDTO } from '@pixsim7/types';
 
 export function registerMyHelper() {
   sessionHelperRegistry.register({
-    name: 'myCustomHelper',
-    category: 'custom',
+    id: 'my-custom-helper',          // Unique identifier
+    name: 'myCustomHelper',           // Function name for access
+    category: 'custom',               // Category for organization
     description: 'Does something useful',
+    version: '1.0.0',                 // Semver version
+    tags: ['utility', 'custom'],      // Tags for filtering
+    experimental: false,              // Mark as stable
     fn: (session: GameSessionDTO, ...args: any[]) => {
       // Your implementation here
     },
@@ -53,6 +57,14 @@ export function registerMyHelper() {
       { name: 'session', type: 'GameSessionDTO' },
       { name: 'arg1', type: 'string' },
     ],
+    configSchema: {                   // Optional configuration
+      enabled: {
+        key: 'enabled',
+        label: 'Enable Plugin',
+        type: 'boolean',
+        default: true,
+      },
+    },
   });
 }
 ```
@@ -70,10 +82,16 @@ interface MyConfig {
 }
 
 export const myInteractionPlugin: InteractionPlugin<MyConfig> = {
-  id: 'my-interaction',
-  name: 'My Interaction',
+  id: 'my-interaction',               // Unique identifier
+  name: 'My Interaction',             // Display name
   description: 'A custom interaction',
   icon: '⚡',
+
+  // Metadata for organization and discovery
+  category: 'social',                 // Category for filtering
+  version: '1.0.0',                   // Semver version
+  tags: ['custom', 'npc'],            // Tags for search
+  experimental: false,                // Mark as stable
 
   defaultConfig: {
     enabled: true,

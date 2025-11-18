@@ -172,6 +172,17 @@ async function loadHelperPlugins(verbose: boolean): Promise<{ loaded: number; fa
 
         if (definitions.length > 0) {
           definitions.forEach((def: any) => {
+            // Validate metadata (warn but don't fail)
+            if (!def.id && verbose) {
+              console.warn(`   ⚠️  Helper "${def.name}" has no id field`);
+            }
+            if (!def.description && verbose) {
+              console.warn(`   ⚠️  Helper "${def.name}" has no description field`);
+            }
+            if (!def.category && verbose) {
+              console.debug(`   ℹ️  Helper "${def.name}" has no category field`);
+            }
+
             sessionHelperRegistry.register(def);
           });
           loaded++;
@@ -228,6 +239,20 @@ async function loadInteractionPlugins(verbose: boolean): Promise<{ loaded: numbe
 
       if (plugins.length > 0) {
         plugins.forEach((plugin: any) => {
+          // Validate metadata before registration (registry will handle it too)
+          if (!plugin.name && verbose) {
+            console.warn(`   ⚠️  Interaction plugin "${plugin.id}" has no name field`);
+          }
+          if (!plugin.description && verbose) {
+            console.warn(`   ⚠️  Interaction plugin "${plugin.id}" has no description field`);
+          }
+          if (!plugin.category && verbose) {
+            console.debug(`   ℹ️  Interaction plugin "${plugin.id}" has no category field`);
+          }
+          if (plugin.experimental && verbose) {
+            console.debug(`   🧪 Interaction plugin "${plugin.id}" is marked experimental`);
+          }
+
           interactionRegistry.register(plugin);
         });
         loaded++;
