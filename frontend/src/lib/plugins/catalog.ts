@@ -175,6 +175,32 @@ export interface PluginMeta {
 
   /** UI mode (for interactions) */
   uiMode?: 'dialogue' | 'notification' | 'silent' | 'custom';
+
+  /** Enhanced metadata fields */
+
+  /** Timestamp when plugin was loaded (milliseconds since epoch) */
+  loadedAt?: number;
+
+  /** Mark plugin as deprecated (will be removed in future version) */
+  deprecated?: boolean;
+
+  /** Deprecation message explaining what to use instead */
+  deprecationMessage?: string;
+
+  /** ID of plugin this replaces (for migration/upgrade paths) */
+  replaces?: string;
+
+  /** Homepage/documentation URL */
+  homepage?: string;
+
+  /** Source code repository URL */
+  repository?: string;
+
+  /** Plugin dependencies (IDs of required plugins) */
+  dependencies?: string[];
+
+  /** Optional plugin dependencies (enhance functionality but not required) */
+  optionalDependencies?: string[];
 }
 
 /**
@@ -512,6 +538,24 @@ export function getPluginCounts(): Record<PluginKind, number> {
 }
 
 /**
+ * Get plugin count by origin
+ */
+export function getOriginCounts(plugins: PluginMeta[] = listAllPlugins()): Record<PluginOrigin, number> {
+  const counts: Record<PluginOrigin, number> = {
+    'builtin': 0,
+    'plugins-dir': 0,
+    'ui-bundle': 0,
+    'dev': 0,
+  };
+
+  plugins.forEach((plugin) => {
+    counts[plugin.origin]++;
+  });
+
+  return counts;
+}
+
+/**
  * Filter plugins by search query
  * Searches in: label, description, tags, category, id
  */
@@ -563,6 +607,14 @@ export function searchPlugins(query: string, plugins: PluginMeta[] = listAllPlug
 export function filterByKind(kind: PluginKind | PluginKind[], plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
   const kinds = Array.isArray(kind) ? kind : [kind];
   return plugins.filter((plugin) => kinds.includes(plugin.kind));
+}
+
+/**
+ * Filter plugins by origin
+ */
+export function filterByOrigin(origin: PluginOrigin | PluginOrigin[], plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  const origins = Array.isArray(origin) ? origin : [origin];
+  return plugins.filter((plugin) => origins.includes(plugin.origin));
 }
 
 /**
@@ -649,4 +701,184 @@ export function groupByCategory(plugins: PluginMeta[] = listAllPlugins()): Recor
   });
 
   return groups;
+}
+
+/**
+ * Group plugins by origin
+ */
+export function groupByOrigin(plugins: PluginMeta[] = listAllPlugins()): Record<PluginOrigin, PluginMeta[]> {
+  const groups: Record<PluginOrigin, PluginMeta[]> = {
+    'builtin': [],
+    'plugins-dir': [],
+    'ui-bundle': [],
+    'dev': [],
+  };
+
+  plugins.forEach((plugin) => {
+    groups[plugin.origin].push(plugin);
+  });
+
+  return groups;
+}
+
+// =====================================================
+// Consistency Check & Health Utilities
+// =====================================================
+
+/**
+ * Get plugins with missing metadata
+ * Helps identify plugins that need better documentation
+ */
+export function getMissingMetadata(plugins: PluginMeta[] = listAllPlugins()): {
+  missingDescription: PluginMeta[];
+  missingIcon: PluginMeta[];
+  missingCategory: PluginMeta[];
+  missingVersion: PluginMeta[];
+} {
+  return {
+    missingDescription: plugins.filter((p) => !p.description),
+    missingIcon: plugins.filter((p) => !p.icon),
+    missingCategory: plugins.filter((p) => !p.category),
+    missingVersion: plugins.filter((p) => !p.version),
+  };
+}
+
+/**
+ * Get deprecated plugins
+ */
+export function getDeprecatedPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return plugins.filter((p) => p.deprecated);
+}
+
+/**
+ * Find plugins with missing dependencies
+ * Returns plugins that declare dependencies that don't exist in the catalog
+ */
+export function getMissingDependencies(plugins: PluginMeta[] = listAllPlugins()): Array<{
+  plugin: PluginMeta;
+  missingDeps: string[];
+}> {
+  const allPluginIds = new Set(plugins.map((p) => p.id));
+  const results: Array<{ plugin: PluginMeta; missingDeps: string[] }> = [];
+
+  plugins.forEach((plugin) => {
+    if (!plugin.dependencies || plugin.dependencies.length === 0) {
+      return;
+    }
+
+    const missingDeps = plugin.dependencies.filter((depId) => !allPluginIds.has(depId));
+
+    if (missingDeps.length > 0) {
+      results.push({ plugin, missingDeps });
+    }
+  });
+
+  return results;
+}
+
+/**
+ * Get plugin health summary
+ * Provides an overview of catalog quality and potential issues
+ */
+export function getPluginHealth(plugins: PluginMeta[] = listAllPlugins()): {
+  totalPlugins: number;
+  byKind: Record<PluginKind, number>;
+  byOrigin: Record<PluginOrigin, number>;
+  enabled: number;
+  disabled: number;
+  deprecated: number;
+  experimental: number;
+  missingMetadata: {
+    description: number;
+    icon: number;
+    category: number;
+    version: number;
+  };
+  dependencyIssues: number;
+} {
+  const missing = getMissingMetadata(plugins);
+  const depIssues = getMissingDependencies(plugins);
+
+  return {
+    totalPlugins: plugins.length,
+    byKind: getPluginCounts(),
+    byOrigin: getOriginCounts(plugins),
+    enabled: plugins.filter((p) => p.enabled).length,
+    disabled: plugins.filter((p) => p.enabled === false).length,
+    deprecated: getDeprecatedPlugins(plugins).length,
+    experimental: plugins.filter((p) => p.experimental).length,
+    missingMetadata: {
+      description: missing.missingDescription.length,
+      icon: missing.missingIcon.length,
+      category: missing.missingCategory.length,
+      version: missing.missingVersion.length,
+    },
+    dependencyIssues: depIssues.length,
+  };
+}
+
+/**
+ * Print plugin health report to console
+ * Useful for debugging and development
+ */
+export function printPluginHealth(): void {
+  const health = getPluginHealth();
+
+  console.group('📊 Plugin Catalog Health Report');
+
+  console.log(`Total Plugins: ${health.totalPlugins}`);
+
+  console.group('By Kind:');
+  Object.entries(health.byKind).forEach(([kind, count]) => {
+    if (count > 0) {
+      console.log(`  ${kind}: ${count}`);
+    }
+  });
+  console.groupEnd();
+
+  console.group('By Origin:');
+  Object.entries(health.byOrigin).forEach(([origin, count]) => {
+    if (count > 0) {
+      console.log(`  ${origin}: ${count}`);
+    }
+  });
+  console.groupEnd();
+
+  console.log(`Enabled: ${health.enabled}`);
+  console.log(`Disabled: ${health.disabled}`);
+  console.log(`Deprecated: ${health.deprecated}`);
+  console.log(`Experimental: ${health.experimental}`);
+
+  const totalMissing =
+    health.missingMetadata.description +
+    health.missingMetadata.icon +
+    health.missingMetadata.category +
+    health.missingMetadata.version;
+
+  if (totalMissing > 0) {
+    console.group('⚠️ Missing Metadata:');
+    if (health.missingMetadata.description > 0) {
+      console.warn(`  ${health.missingMetadata.description} plugins missing description`);
+    }
+    if (health.missingMetadata.icon > 0) {
+      console.warn(`  ${health.missingMetadata.icon} plugins missing icon`);
+    }
+    if (health.missingMetadata.category > 0) {
+      console.warn(`  ${health.missingMetadata.category} plugins missing category`);
+    }
+    if (health.missingMetadata.version > 0) {
+      console.warn(`  ${health.missingMetadata.version} plugins missing version`);
+    }
+    console.groupEnd();
+  }
+
+  if (health.dependencyIssues > 0) {
+    console.warn(`⚠️ ${health.dependencyIssues} plugins have missing dependencies`);
+    const issues = getMissingDependencies();
+    issues.forEach(({ plugin, missingDeps }) => {
+      console.warn(`  ${plugin.id} is missing: ${missingDeps.join(', ')}`);
+    });
+  }
+
+  console.groupEnd();
 }
