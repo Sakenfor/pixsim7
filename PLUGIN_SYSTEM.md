@@ -403,6 +403,269 @@ export class ReputationHelper {
 
 ---
 
+### 5. Session Helper Registry
+
+The **Session Helper Registry** provides a dynamic, extensible system for managing session state helpers. Unlike static helper classes, registered helpers can be:
+
+- **Dynamically discovered** - Query all helpers by name or category
+- **Auto-generated** - Create helpers from simple schemas using `generateHelper()`
+- **Self-documenting** - Automatically generate markdown documentation
+- **Runtime accessible** - Execute helpers by name at runtime
+
+**Key Components:**
+
+1. `SessionHelperRegistry` - Central registry for all helpers
+2. `generateHelper()` - Generate helpers from schemas
+3. `generateHelperDocs()` - Auto-generate documentation
+4. `registerBuiltinHelpers()` - Register core helpers
+5. `registerCustomHelpers()` - Register game-specific helpers
+
+**Example Use Cases:**
+- Dynamic helper execution (for scripting, interactions)
+- Auto-generated helpers from configuration
+- Plugin-based helper extensions
+- Documentation generation
+
+#### Basic Usage
+
+**Registering a Manual Helper:**
+```typescript
+import { sessionHelperRegistry } from '@pixsim7/game-core';
+import type { GameSessionDTO } from '@pixsim7/types';
+
+sessionHelperRegistry.register({
+  name: 'addSkillPoints',
+  category: 'custom',
+  description: 'Add skill points to a skill tree',
+  fn: (session: GameSessionDTO, skillTree: string, points: number) => {
+    if (!session.flags.skills) session.flags.skills = {};
+    if (!session.flags.skills[skillTree]) {
+      session.flags.skills[skillTree] = { points: 0, level: 1 };
+    }
+    session.flags.skills[skillTree].points += points;
+
+    // Level up logic
+    while (
+      session.flags.skills[skillTree].points >=
+      getPointsForNextLevel(session.flags.skills[skillTree].level)
+    ) {
+      session.flags.skills[skillTree].level++;
+    }
+  },
+  params: [
+    { name: 'session', type: 'GameSessionDTO' },
+    { name: 'skillTree', type: 'string' },
+    { name: 'points', type: 'number' },
+  ],
+});
+```
+
+**Auto-Generating Helpers:**
+```typescript
+import { generateHelper } from '@pixsim7/game-core';
+
+// Generate a helper for getting/setting guild reputation
+generateHelper({
+  name: 'setGuildReputation',
+  category: 'custom',
+  keyPattern: 'guilds.{guildId}.reputation',
+  operation: 'set',
+});
+
+generateHelper({
+  name: 'incrementGuildReputation',
+  category: 'custom',
+  keyPattern: 'guilds.{guildId}.reputation',
+  operation: 'inc',
+});
+
+// Now you can use them:
+// sessionHelperRegistry.execute('setGuildReputation', session, 'thieves-guild', 50);
+// sessionHelperRegistry.execute('incrementGuildReputation', session, 'thieves-guild', 10);
+```
+
+**Supported Operations:**
+- `get` - Get a flag value
+- `set` - Set a flag value
+- `inc` - Increment a numeric value
+- `dec` - Decrement a numeric value
+- `push` - Add to an array
+- `toggle` - Toggle a boolean
+
+**Executing Helpers at Runtime:**
+```typescript
+import { sessionHelperRegistry } from '@pixsim7/game-core';
+
+// Execute by name
+const result = sessionHelperRegistry.execute('getCurrency', session, 'gold');
+
+// Get all helpers for a category
+const inventoryHelpers = sessionHelperRegistry.getByCategory('inventory');
+
+// Build a helpers object (for convenience)
+const helpers = sessionHelperRegistry.buildHelpersObject(session);
+helpers.addCurrency('gold', 100);
+```
+
+#### Integration with App
+
+Helpers should be registered once during app initialization:
+
+```typescript
+// frontend/src/App.tsx
+import { registerBuiltinHelpers } from '@pixsim7/game-core';
+import { registerCustomHelpers } from './lib/game/customHelpers';
+
+useEffect(() => {
+  // Register builtin helpers (arcs, quests, inventory, events, etc.)
+  registerBuiltinHelpers();
+
+  // Register game-specific custom helpers
+  registerCustomHelpers();
+}, []);
+```
+
+#### Generating Documentation
+
+Generate a comprehensive markdown reference of all helpers:
+
+```typescript
+import { generateHelperDocs } from '@pixsim7/game-core';
+import fs from 'fs';
+
+const docs = generateHelperDocs();
+fs.writeFileSync('SESSION_HELPER_REFERENCE.md', docs);
+```
+
+Or use the provided script:
+```bash
+node scripts/generate-helper-docs.cjs
+```
+
+This generates documentation grouped by category with parameter types, descriptions, and return values.
+
+**Example Output:**
+```markdown
+# Session Helpers Reference
+
+## arcs
+
+### getArcState
+
+Get arc state from session
+
+**Parameters:**
+- `session`: `GameSessionDTO`
+- `arcId`: `string`
+
+**Returns:** `ArcState | null`
+
+---
+
+### updateArcStage
+
+Update arc stage (mutates session)
+
+**Parameters:**
+- `session`: `GameSessionDTO`
+- `arcId`: `string`
+- `stage`: `number`
+
+**Returns:** `void`
+```
+
+#### Creating Helper Plugins
+
+Use the CLI to scaffold new helper plugins:
+
+```bash
+node scripts/create-plugin/index.js --type helper --name reputation
+```
+
+This generates:
+- `plugins/reputation/reputation.ts` - Helper class with CRUD methods
+- `plugins/reputation/README.md` - Usage documentation
+- `plugins/reputation/example-config.json` - Config example
+
+Then register your helper:
+
+```typescript
+import { ReputationHelper } from './plugins/reputation/reputation';
+import { sessionHelperRegistry } from '@pixsim7/game-core';
+
+// Option 1: Register as a class (for static use)
+// Use ReputationHelper.adjustReputation(session, 'thieves', 10);
+
+// Option 2: Register individual methods
+sessionHelperRegistry.register({
+  name: 'adjustReputation',
+  fn: ReputationHelper.adjustReputation,
+  category: 'custom',
+  description: 'Adjust faction reputation',
+  params: [
+    { name: 'session', type: 'GameSessionDTO' },
+    { name: 'factionId', type: 'string' },
+    { name: 'change', type: 'number' },
+  ],
+});
+```
+
+#### Best Practices
+
+1. **Use nested flag paths** - `generateHelper` automatically uses `getFlag`/`setFlag` for nested paths like `guilds.{guildId}.reputation`
+2. **Register at startup** - Register all helpers in `App.tsx` before creating sessions
+3. **Document with metadata** - Provide `description`, `params`, and `returns` for auto-generated docs
+4. **Categorize helpers** - Use categories (`arcs`, `quests`, `inventory`, `events`, `custom`) for organization
+5. **Generate docs** - Run `generateHelperDocs()` to keep documentation in sync
+
+#### Example: Complete Custom Helper System
+
+```typescript
+// frontend/src/lib/game/customHelpers.ts
+import { sessionHelperRegistry, generateHelper } from '@pixsim7/game-core';
+
+export function registerCustomHelpers() {
+  // Manual helper with complex logic
+  sessionHelperRegistry.register({
+    name: 'addSkillPoints',
+    category: 'custom',
+    description: 'Add skill points with auto-leveling',
+    fn: (session, skillTree, points) => {
+      // Custom leveling logic...
+    },
+    params: [
+      { name: 'session', type: 'GameSessionDTO' },
+      { name: 'skillTree', type: 'string' },
+      { name: 'points', type: 'number' },
+    ],
+  });
+
+  // Auto-generated helpers for simple CRUD
+  generateHelper({
+    name: 'getCurrency',
+    category: 'custom',
+    keyPattern: 'currency.{currencyType}',
+    operation: 'get',
+  });
+
+  generateHelper({
+    name: 'addCurrency',
+    category: 'custom',
+    keyPattern: 'currency.{currencyType}',
+    operation: 'inc',
+  });
+
+  generateHelper({
+    name: 'unlockAchievement',
+    category: 'custom',
+    keyPattern: 'achievements.{achievementId}',
+    operation: 'set',
+  });
+}
+```
+
+---
+
 ## CLI Tool
 
 ### create-pixsim-plugin
