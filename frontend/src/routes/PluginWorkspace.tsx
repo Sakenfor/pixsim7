@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PluginBrowser } from '../components/plugins/PluginBrowser';
 import { CapabilityBrowser } from '../components/capabilities/CapabilityBrowser';
+import { CapabilityAutocomplete } from '../components/capabilities/CapabilityAutocomplete';
 import type { PluginMeta } from '../lib/plugins/catalog';
 import {
   loadProjects,
@@ -1006,13 +1007,17 @@ function MetadataEditor({ label, fields }: { label: string; fields: MetadataFiel
 function CodeEditor({ code, onChange }: { code: string; onChange: (code: string) => void }) {
   return (
     <div className="space-y-3">
-      <h3 className="font-medium text-neutral-900 dark:text-neutral-100">Code</h3>
-      <textarea
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium text-neutral-900 dark:text-neutral-100">Code</h3>
+        <div className="text-xs text-neutral-600 dark:text-neutral-400">
+          💡 Type in arrays like consumesFeatures, consumesActions, or permissions for autocomplete
+        </div>
+      </div>
+      <CapabilityAutocomplete
         value={code}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
         rows={20}
-        className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-        spellCheck={false}
+        placeholder="// Enter your plugin code here..."
       />
     </div>
   );
