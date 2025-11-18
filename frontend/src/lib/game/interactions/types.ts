@@ -1,5 +1,9 @@
 import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
-import type { NpcSlotAssignment } from '@pixsim7/game-core';
+import type {
+  NpcSlotAssignment,
+  NpcRelationshipState,
+  InventoryItem,
+} from '@pixsim7/game-core';
 
 /**
  * Base config interface all interaction plugins extend
@@ -26,11 +30,60 @@ export interface FormField {
 }
 
 /**
+ * Session helpers interface - provides clean API for session manipulation
+ * Plugins can use this instead of importing from @pixsim7/game-core
+ */
+export interface SessionHelpers {
+  /** Get NPC relationship state */
+  getNpcRelationship: (npcId: number) => NpcRelationshipState | null;
+
+  /** Update NPC relationship (returns updated session for chaining) */
+  updateNpcRelationship: (
+    npcId: number,
+    patch: Partial<NpcRelationshipState>
+  ) => GameSessionDTO;
+
+  /** Get current inventory */
+  getInventory: () => InventoryItem[];
+
+  /** Add item to inventory */
+  addInventoryItem: (itemId: string, quantity?: number) => GameSessionDTO;
+
+  /** Remove item from inventory */
+  removeInventoryItem: (itemId: string, quantity?: number) => GameSessionDTO;
+
+  /** Update arc stage */
+  updateArcStage: (arcId: string, stage: number) => GameSessionDTO;
+
+  /** Mark scene as seen */
+  markSceneSeen: (arcId: string, sceneId: number) => GameSessionDTO;
+
+  /** Update quest status */
+  updateQuestStatus: (
+    questId: string,
+    status: 'pending' | 'active' | 'completed' | 'failed'
+  ) => GameSessionDTO;
+
+  /** Increment quest steps */
+  incrementQuestSteps: (questId: string, increment?: number) => GameSessionDTO;
+
+  /** Trigger event */
+  triggerEvent: (eventId: string) => GameSessionDTO;
+
+  /** End event */
+  endEvent: (eventId: string) => GameSessionDTO;
+
+  /** Check if event is active */
+  isEventActive: (eventId: string) => boolean;
+}
+
+/**
  * Interaction execution context - everything a plugin needs
  */
 export interface InteractionContext {
   state: InteractionState;
   api: InteractionAPI;
+  session: SessionHelpers;
   onSceneOpen: (sceneId: number, npcId: number) => Promise<void>;
   onSessionUpdate?: (session: GameSessionDTO) => void;
   onError: (msg: string) => void;

@@ -34,12 +34,15 @@ import {
   assignNpcsToSlots,
   parseHotspotAction,
   deriveScenePlaybackPhase,
+  getNpcRelationshipState,
   type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
 } from '@pixsim7/game-core';
 import { loadWorldSession, saveWorldSession } from '../lib/game/session';
-import { executeInteraction, type InteractionContext } from '../lib/game/interactions';
+import { type InteractionContext } from '../lib/game/interactions';
+import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
+import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
 import { QuestLog } from '../components/game/QuestLog';
 import { InventoryPanel } from '../components/game/InventoryPanel';
@@ -441,9 +444,6 @@ export function Game2D() {
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;
 
-    const slot = assignment.slot;
-    const interactions = slot.interactions || {};
-
     // Build context once - everything a plugin needs
     const context: InteractionContext = {
       state: {
@@ -462,6 +462,7 @@ export function Game2D() {
         attemptPickpocket: (req) => attemptPickpocket(req),
         getScene: (id) => getGameScene(id),
       },
+      session: createSessionHelpers(gameSession),
       onSceneOpen: async (sceneId, npcId) => {
         setIsLoadingScene(true);
         try {
@@ -486,66 +487,16 @@ export function Game2D() {
       onSuccess: (msg) => addNotification('success', 'Success', msg),
     };
 
-    // Handle old format (backward compatibility)
-    const normalizedInteractions: Record<string, any> = {};
-
-    if ((interactions as any).canTalk) {
-      normalizedInteractions.talk = {
-        enabled: true,
-        ...(interactions as any).npcTalk,
-      };
-    } else if ((interactions as any).talk) {
-      normalizedInteractions.talk = (interactions as any).talk;
-    }
-
-    if ((interactions as any).canPickpocket) {
-      normalizedInteractions.pickpocket = {
-        enabled: true,
-        ...(interactions as any).pickpocket,
-      };
-    } else if ((interactions as any).pickpocket) {
-      normalizedInteractions.pickpocket = (interactions as any).pickpocket;
-    }
-
-    // Copy over any other plugin-based interactions
-    for (const [key, value] of Object.entries(interactions)) {
-      if (key !== 'canTalk' && key !== 'npcTalk' && key !== 'canPickpocket' && key !== 'pickpocket') {
-        normalizedInteractions[key] = value;
-      }
-    }
-
-    // Execute all enabled interactions
-    let hasInteraction = false;
-    let hasTalkInteraction = false;
-
-    for (const [interactionId, config] of Object.entries(normalizedInteractions)) {
-      if (!config || !config.enabled) continue;
-
-      hasInteraction = true;
-
-      if (interactionId === 'talk') {
-        hasTalkInteraction = true;
-        // Show dialogue UI for talk interactions
-        setDialogueNpcId(assignment.npcId);
+    // Execute all enabled interactions using the executor
+    await executeSlotInteractions(assignment, context, {
+      onDialogue: (npcId) => {
+        setDialogueNpcId(npcId);
         setShowDialogue(true);
-        continue;
-      }
-
-      try {
-        const result = await executeInteraction(interactionId, config, context);
-        if (result.success && result.message) {
-          addNotification('success', `${interactionId} Success`, result.message);
-        }
-      } catch (e: any) {
-        addNotification('error', 'Interaction Failed', String(e?.message ?? e));
-      }
-    }
-
-    if (!hasInteraction) {
-      // No interactions configured, show simple dialogue
-      setDialogueNpcId(assignment.npcId);
-      setShowDialogue(true);
-    }
+      },
+      onNotification: (type, title, message) => {
+        addNotification(type, title, message);
+      },
+    });
   };
 
   const handlePlayHotspot = async (hotspot: GameHotspotDTO) => {
