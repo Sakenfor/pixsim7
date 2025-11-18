@@ -179,6 +179,9 @@ function mapHelperToMeta(helper: any): PluginMeta {
     capabilities.triggersEvents = true;
   }
 
+  // Session helpers are "world tools" - they integrate with the game session
+  const consumesFeatures: string[] = ['game'];
+
   return {
     kind: 'session-helper',
     id: helper.id || helper.name,
@@ -194,6 +197,7 @@ function mapHelperToMeta(helper: any): PluginMeta {
     capabilities,
     configurable: !!helper.configSchema || (helper.schema && Object.keys(helper.schema).length > 0),
     enabled: isPluginEnabled(helper.id || helper.name, true),
+    consumesFeatures,
   };
 }
 
@@ -214,6 +218,9 @@ function mapInteractionToMeta(interaction: any): PluginMeta {
     canBeDetected: interaction.capabilities?.canBeDetected,
   };
 
+  // Interactions are in-game actions - they integrate with the game session
+  const consumesFeatures: string[] = ['game'];
+
   return {
     kind: 'interaction',
     id: interaction.id,
@@ -231,6 +238,7 @@ function mapInteractionToMeta(interaction: any): PluginMeta {
     capabilities,
     configurable: !!(interaction.configFields && interaction.configFields.length > 0),
     enabled: isPluginEnabled(interaction.id, true),
+    consumesFeatures,
   };
 }
 
@@ -243,6 +251,16 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
   // This avoids flooding the catalog with built-in node types
   if (nodeType.userCreatable === false && nodeType.scope !== 'custom') {
     return null;
+  }
+
+  // Infer consumed features from node scope
+  const consumesFeatures: string[] = [];
+  if (nodeType.scope === 'world') {
+    // World-scoped nodes integrate with game mechanics
+    consumesFeatures.push('game');
+  } else if (nodeType.scope === 'scene' || nodeType.scope === 'arc') {
+    // Scene/arc builders integrate with workspace
+    consumesFeatures.push('workspace');
   }
 
   return {
@@ -263,6 +281,7 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
     },
     configurable: false, // Node types aren't configurable in the same way
     enabled: true, // Node types are always enabled once registered
+    consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
   };
 }
 
@@ -270,6 +289,9 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
  * Map gallery tool to PluginMeta
  */
 function mapGalleryToolToMeta(tool: any): PluginMeta {
+  // Gallery tools integrate with the assets feature
+  const consumesFeatures: string[] = ['assets'];
+
   return {
     kind: 'gallery-tool',
     id: tool.id,
@@ -286,6 +308,7 @@ function mapGalleryToolToMeta(tool: any): PluginMeta {
     },
     configurable: false, // Gallery tools aren't configurable
     enabled: true, // Gallery tools use whenVisible instead of enabled state
+    consumesFeatures,
   };
 }
 
@@ -352,6 +375,9 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
  * Map generation UI plugin to PluginMeta
  */
 function mapGenerationUIToMeta(plugin: any): PluginMeta {
+  // Generation UI plugins integrate with the generation feature
+  const consumesFeatures: string[] = ['generation'];
+
   return {
     kind: 'generation-ui',
     id: plugin.id,
@@ -369,6 +395,7 @@ function mapGenerationUIToMeta(plugin: any): PluginMeta {
     },
     configurable: false, // Generation UI plugins aren't user-configurable
     enabled: true, // Always enabled once registered
+    consumesFeatures,
   };
 }
 
