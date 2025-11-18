@@ -35,6 +35,44 @@ export function registerBuiltinNodeTypes() {
       choices: [],
     },
     editorComponent: 'ChoiceNodeEditor',
+    ports: {
+      dynamic: (node) => {
+        // Read choices from node metadata
+        const metadata = node.metadata;
+        const choices = metadata?.choices || [];
+
+        // Default choices if none configured
+        const choicesData = choices.length > 0
+          ? choices.map((choice: any, index: number) => ({
+              id: choice.id,
+              label: choice.text || `Choice ${index + 1}`,
+              color: choice.color || '#a855f7',
+              description: `Player chooses: ${choice.text}`,
+            }))
+          : [
+              { id: 'choice_1', label: 'Choice 1', color: '#a855f7' },
+              { id: 'choice_2', label: 'Choice 2', color: '#a855f7' },
+            ];
+
+        return {
+          inputs: [
+            {
+              id: 'input',
+              label: 'In',
+              position: 'top',
+              color: '#3b82f6',
+            },
+          ],
+          outputs: choicesData.map((choice: any) => ({
+            id: choice.id,
+            label: choice.label,
+            position: 'bottom',
+            color: choice.color,
+            description: choice.description,
+          })),
+        };
+      },
+    },
   });
 
   // Condition node
@@ -88,6 +126,55 @@ export function registerBuiltinNodeTypes() {
       returnRouting: {},
     },
     editorComponent: 'SceneCallNodeEditor',
+    ports: {
+      dynamic: (node) => {
+        // Read return points from node metadata
+        const metadata = node.metadata;
+        const returnPoints = metadata?.returnPoints || [];
+
+        // Default return point if none configured
+        if (returnPoints.length === 0) {
+          return {
+            inputs: [
+              {
+                id: 'input',
+                label: 'In',
+                position: 'top',
+                color: '#3b82f6',
+              },
+            ],
+            outputs: [
+              {
+                id: 'default',
+                label: 'Return',
+                position: 'bottom',
+                color: '#a855f7',
+              },
+            ],
+          };
+        }
+
+        const returnData = returnPoints.map((rp: any, index: number) => ({
+          id: rp.id,
+          label: rp.label || `Return ${index + 1}`,
+          position: 'bottom',
+          color: rp.color || '#a855f7',
+          description: rp.description,
+        }));
+
+        return {
+          inputs: [
+            {
+              id: 'input',
+              label: 'In',
+              position: 'top',
+              color: '#3b82f6',
+            },
+          ],
+          outputs: returnData,
+        };
+      },
+    },
   });
 
   // Return node
