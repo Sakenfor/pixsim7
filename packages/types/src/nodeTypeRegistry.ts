@@ -8,6 +8,40 @@
  * - Category indexing for fast lookups
  */
 
+/**
+ * Port configuration for custom node types
+ * Allows node types to define their own input/output ports
+ */
+export interface PortConfig {
+  /** Input port definitions */
+  inputs?: Array<{
+    id: string;
+    label: string;
+    position?: 'top' | 'bottom' | 'left' | 'right';
+    color?: string;
+    required?: boolean;
+    description?: string;
+  }>;
+
+  /** Output port definitions */
+  outputs?: Array<{
+    id: string;
+    label: string;
+    position?: 'top' | 'bottom' | 'left' | 'right';
+    color?: string;
+    description?: string;
+  }>;
+
+  /**
+   * Dynamic port generator function
+   * Allows ports to be generated based on node data/metadata
+   */
+  dynamic?: (nodeData: any) => {
+    inputs: PortConfig['inputs'];
+    outputs: PortConfig['outputs'];
+  };
+}
+
 export interface NodeTypeDefinition<TData = any> {
   /** Unique node type ID */
   id: string;
@@ -45,6 +79,9 @@ export interface NodeTypeDefinition<TData = any> {
   /** UI styling hints */
   color?: string;
   bgColor?: string;
+
+  /** Port configuration for this node type */
+  ports?: PortConfig;
 
   /** Lazy loading: function to load the definition on demand */
   loader?: () => Promise<NodeTypeDefinition<TData>>;
