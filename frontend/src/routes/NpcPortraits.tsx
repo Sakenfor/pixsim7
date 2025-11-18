@@ -11,6 +11,7 @@ import {
   type NpcExpressionDTO,
 } from '../lib/api/game';
 import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 
 type TabType = 'expressions' | 'preferences';
 
@@ -22,6 +23,8 @@ export function NpcPortraits() {
   const [activeTab, setActiveTab] = useState<TabType>('expressions');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
   useEffect(() => {
     (async () => {
@@ -117,14 +120,25 @@ export function NpcPortraits() {
             Configure NPC portraits, expressions, and interaction preferences.
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="primary"
-          onClick={activeTab === 'expressions' ? handleSave : handleSavePreferences}
-          disabled={!selectedNpcId || isLoading}
-        >
-          {isLoading ? 'Saving…' : activeTab === 'expressions' ? 'Save Expressions' : 'Save Preferences'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => selectedNpcId && openFloatingPanel('npc-brain-lab', { context: { npcId: selectedNpcId } })}
+            disabled={!selectedNpcId}
+            title="Open NPC Brain Lab to inspect brain state"
+          >
+            🧠 Open Brain Lab
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={activeTab === 'expressions' ? handleSave : handleSavePreferences}
+            disabled={!selectedNpcId || isLoading}
+          >
+            {isLoading ? 'Saving…' : activeTab === 'expressions' ? 'Save Expressions' : 'Save Preferences'}
+          </Button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}

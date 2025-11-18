@@ -8,6 +8,12 @@ import { usePixSim7Core } from '../lib/game/usePixSim7Core';
 import { getGameSession, listGameSessions, type GameSessionSummary } from '../lib/api/game';
 import { BrainShape } from '../components/shapes/BrainShape';
 
+export interface NpcBrainLabProps {
+  npcId?: number;
+  sessionId?: number;
+  // Additional context can be added here as needed
+}
+
 /**
  * NPC Brain Lab - Dev UI for inspecting NPC brain state
  *
@@ -21,7 +27,7 @@ import { BrainShape } from '../components/shapes/BrainShape';
  * - Social state (affinity/trust/chemistry/tension + tier/intimacy)
  * - Memories
  */
-export function NpcBrainLab() {
+export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }: NpcBrainLabProps = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { core, session, loadSession } = usePixSim7Core();
 
@@ -36,8 +42,15 @@ export function NpcBrainLab() {
   const [visualStyle, setVisualStyle] = useState<'holographic' | 'organic' | 'circuit'>('holographic');
   const [showConnections, setShowConnections] = useState(true);
 
-  // Load session from URL or default
+  // Load session from context, URL, or default
   useEffect(() => {
+    // Priority: contextSessionId > URL param > auto-select first
+    if (contextSessionId && contextSessionId !== selectedSessionId) {
+      setSelectedSessionId(contextSessionId);
+      handleLoadSession(contextSessionId);
+      return;
+    }
+
     const sessionIdParam = searchParams.get('sessionId');
     if (sessionIdParam) {
       const sid = Number(sessionIdParam);
@@ -46,7 +59,7 @@ export function NpcBrainLab() {
         handleLoadSession(sid);
       }
     }
-  }, []);
+  }, [contextSessionId]);
 
   // Load available sessions
   useEffect(() => {
@@ -79,12 +92,18 @@ export function NpcBrainLab() {
     }
   }
 
-  // Auto-select first NPC if none selected
+  // Auto-select NPC from context or first available
   useEffect(() => {
+    // Priority: contextNpcId > first available NPC
+    if (contextNpcId && availableNpcIds.includes(contextNpcId) && selectedNpcId !== contextNpcId) {
+      setSelectedNpcId(contextNpcId);
+      return;
+    }
+
     if (availableNpcIds.length > 0 && !selectedNpcId) {
       setSelectedNpcId(availableNpcIds[0]);
     }
-  }, [availableNpcIds.length]);
+  }, [availableNpcIds.length, contextNpcId]);
 
   // Load brain state when NPC selection changes
   useEffect(() => {
@@ -149,7 +168,19 @@ export function NpcBrainLab() {
       {/* Header */}
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">NPC Brain Lab</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">NPC Brain Lab</h1>
+            {contextNpcId && (
+              <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded">
+                NPC #{contextNpcId}
+              </span>
+            )}
+            {contextSessionId && (
+              <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 rounded">
+                Session #{contextSessionId}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Inspect NPC brain state: traits, mood, social, and memories
           </p>

@@ -22,7 +22,12 @@ import {
   getAllTools,
 } from '../lib/gizmos/loadDefaultPacks';
 
-export function GizmoLab() {
+export interface GizmoLabProps {
+  sceneId?: number;
+  // Additional context can be added here as needed
+}
+
+export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
   const [selectedGizmo, setSelectedGizmo] = useState<GizmoDefinition | null>(null);
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
   const [gizmoFilter, setGizmoFilter] = useState<string>('all');
@@ -98,7 +103,14 @@ export function GizmoLab() {
       <header className="border-b border-neutral-200 dark:border-neutral-800 p-4 bg-white dark:bg-neutral-900">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold">Gizmo & Tool Lab</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold">Gizmo & Tool Lab</h1>
+              {sceneId && (
+                <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded">
+                  Scene #{sceneId}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               Explore {allGizmos.length} gizmos and {allTools.length} tools from the registry
             </p>
