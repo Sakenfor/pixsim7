@@ -633,6 +633,48 @@ export function filterByEnabled(enabled: boolean, plugins: PluginMeta[] = listAl
 }
 
 /**
+ * Filter plugins by capability
+ * Returns plugins that have the specified capability set to true
+ */
+export function filterByCapability(
+  capability: keyof PluginCapabilities,
+  plugins: PluginMeta[] = listAllPlugins()
+): PluginMeta[] {
+  return plugins.filter((plugin) => {
+    if (!plugin.capabilities) return false;
+    return plugin.capabilities[capability] === true;
+  });
+}
+
+/**
+ * Get plugins that modify session state
+ */
+export function getSessionModifyingPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('modifiesSession', plugins);
+}
+
+/**
+ * Get plugins that modify inventory
+ */
+export function getInventoryModifyingPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('modifiesInventory', plugins);
+}
+
+/**
+ * Get plugins that add UI overlays
+ */
+export function getUIOverlayPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('addsUIOverlay', plugins);
+}
+
+/**
+ * Get plugins that have risk mechanics
+ */
+export function getRiskyPlugins(plugins: PluginMeta[] = listAllPlugins()): PluginMeta[] {
+  return filterByCapability('hasRisk', plugins);
+}
+
+/**
  * Get unique categories across all plugins
  */
 export function getUniqueCategories(plugins: PluginMeta[] = listAllPlugins()): string[] {
@@ -663,6 +705,67 @@ export function getUniqueTags(plugins: PluginMeta[] = listAllPlugins()): string[
 export function getPluginById(id: string, kind?: PluginKind): PluginMeta | undefined {
   const plugins = kind ? filterByKind(kind) : listAllPlugins();
   return plugins.find((plugin) => plugin.id === id);
+}
+
+// =====================================================
+// Kind-Specific Type-Safe Getters
+// =====================================================
+
+/**
+ * Get a session helper plugin by ID
+ * Returns typed plugin metadata for session helpers
+ */
+export function getHelperPlugin(id: string): PluginMeta | undefined {
+  const helpers = listHelperPlugins();
+  return helpers.find((p) => p.id === id);
+}
+
+/**
+ * Get an interaction plugin by ID
+ */
+export function getInteractionPlugin(id: string): PluginMeta | undefined {
+  const interactions = listInteractionPlugins();
+  return interactions.find((p) => p.id === id);
+}
+
+/**
+ * Get a node type plugin by ID
+ */
+export function getNodeTypePlugin(id: string): PluginMeta | undefined {
+  const nodeTypes = listNodeTypePlugins();
+  return nodeTypes.find((p) => p.id === id);
+}
+
+/**
+ * Get a gallery tool plugin by ID
+ */
+export function getGalleryToolPlugin(id: string): PluginMeta | undefined {
+  const tools = listGalleryToolPlugins();
+  return tools.find((p) => p.id === id);
+}
+
+/**
+ * Get a world tool plugin by ID
+ */
+export function getWorldToolPlugin(id: string): PluginMeta | undefined {
+  const tools = listWorldToolPlugins();
+  return tools.find((p) => p.id === id);
+}
+
+/**
+ * Get a UI plugin by ID
+ */
+export function getUIPlugin(id: string): PluginMeta | undefined {
+  const plugins = listUIPlugins();
+  return plugins.find((p) => p.id === id);
+}
+
+/**
+ * Get a generation UI plugin by ID
+ */
+export function getGenerationUIPlugin(id: string): PluginMeta | undefined {
+  const plugins = listGenerationUIPlugins();
+  return plugins.find((p) => p.id === id);
 }
 
 /**
@@ -719,6 +822,87 @@ export function groupByOrigin(plugins: PluginMeta[] = listAllPlugins()): Record<
   });
 
   return groups;
+}
+
+// =====================================================
+// Badge & Display Utilities
+// =====================================================
+
+/**
+ * Get color for origin badge
+ * Returns a semantic color that can be used in UI components
+ */
+export function getOriginBadgeColor(origin: PluginOrigin): string {
+  switch (origin) {
+    case 'builtin':
+      return 'blue';
+    case 'plugins-dir':
+      return 'green';
+    case 'ui-bundle':
+      return 'purple';
+    case 'dev':
+      return 'orange';
+    default:
+      return 'gray';
+  }
+}
+
+/**
+ * Get display label for origin
+ */
+export function getOriginLabel(origin: PluginOrigin): string {
+  switch (origin) {
+    case 'builtin':
+      return 'Built-in';
+    case 'plugins-dir':
+      return 'Plugin Directory';
+    case 'ui-bundle':
+      return 'UI Bundle';
+    case 'dev':
+      return 'Development';
+    default:
+      return 'Unknown';
+  }
+}
+
+/**
+ * Get display label for kind
+ */
+export function getKindLabel(kind: PluginKind): string {
+  switch (kind) {
+    case 'session-helper':
+      return 'Session Helper';
+    case 'interaction':
+      return 'Interaction';
+    case 'node-type':
+      return 'Node Type';
+    case 'gallery-tool':
+      return 'Gallery Tool';
+    case 'world-tool':
+      return 'World Tool';
+    case 'ui-plugin':
+      return 'UI Plugin';
+    case 'generation-ui':
+      return 'Generation UI';
+    default:
+      return 'Unknown';
+  }
+}
+
+/**
+ * Check if a plugin can be uninstalled based on origin
+ */
+export function canUninstallPlugin(plugin: PluginMeta): boolean {
+  // Only UI bundles can be uninstalled
+  return plugin.origin === 'ui-bundle';
+}
+
+/**
+ * Check if a plugin can be disabled based on origin
+ */
+export function canDisablePlugin(plugin: PluginMeta): boolean {
+  // Plugins-dir and UI bundles can be disabled
+  return plugin.origin === 'plugins-dir' || plugin.origin === 'ui-bundle';
 }
 
 // =====================================================
