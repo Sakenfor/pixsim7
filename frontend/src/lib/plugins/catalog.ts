@@ -23,12 +23,30 @@
  * ```
  */
 
-import { sessionHelperRegistry, interactionRegistry, nodeTypeRegistry } from '../registries';
-import { galleryToolRegistry } from '../gallery/types';
-import { worldToolRegistry } from '../worldTools/types';
+import {
+  sessionHelperRegistry,
+  interactionRegistry,
+  nodeTypeRegistry,
+  type HelperDefinition,
+  type InteractionPlugin,
+  type BaseInteractionConfig,
+  type NodeTypeDefinition,
+} from '../registries';
+import { galleryToolRegistry, type GalleryToolPlugin } from '../gallery/types';
+import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/types';
 import { pluginManager } from './PluginManager';
-import { generationUIPluginRegistry } from '../providers/generationPlugins';
+import { generationUIPluginRegistry, type GenerationUIPlugin } from '../providers/generationPlugins';
 import { isPluginEnabled } from '../../stores/pluginConfigStore';
+import type { PluginEntry } from './types';
+import {
+  isValidHelperDefinition,
+  isValidInteractionPlugin,
+  isValidNodeTypeDefinition,
+  isValidGalleryToolPlugin,
+  isValidWorldToolPlugin,
+  isValidGenerationUIPlugin,
+  isValidPluginEntry,
+} from './typeGuards';
 
 /**
  * Plugin kind discriminator
@@ -180,7 +198,13 @@ export interface PluginMeta {
 /**
  * Map session helper to PluginMeta
  */
-function mapHelperToMeta(helper: any): PluginMeta {
+function mapHelperToMeta(helper: HelperDefinition): PluginMeta {
+  // Validate helper shape
+  if (!isValidHelperDefinition(helper)) {
+    console.warn('Invalid helper definition:', helper);
+    throw new Error(`Invalid helper: ${helper?.name || helper?.id || 'unknown'}`);
+  }
+
   // Extract capabilities from category and helper metadata
   const capabilities: PluginCapabilities = {
     modifiesSession: true, // All helpers modify session in some way
@@ -221,7 +245,13 @@ function mapHelperToMeta(helper: any): PluginMeta {
 /**
  * Map interaction plugin to PluginMeta
  */
-function mapInteractionToMeta(interaction: any): PluginMeta {
+function mapInteractionToMeta(interaction: InteractionPlugin<BaseInteractionConfig>): PluginMeta {
+  // Validate interaction shape
+  if (!isValidInteractionPlugin(interaction)) {
+    console.warn('Invalid interaction plugin:', interaction);
+    throw new Error(`Invalid interaction: ${interaction?.id || 'unknown'}`);
+  }
+
   // Map interaction capabilities to catalog capabilities
   const capabilities: PluginCapabilities = {
     modifiesSession: true, // Interactions modify session by definition
@@ -264,7 +294,13 @@ function mapInteractionToMeta(interaction: any): PluginMeta {
  * Map node type to PluginMeta
  * Only includes user-creatable or plugin-like node types to avoid flooding catalog
  */
-function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
+function mapNodeTypeToMeta(nodeType: NodeTypeDefinition): PluginMeta | null {
+  // Validate node type shape
+  if (!isValidNodeTypeDefinition(nodeType)) {
+    console.warn('Invalid node type definition:', nodeType);
+    return null; // Skip invalid node types instead of throwing
+  }
+
   // Filter: only include user-creatable or custom scope nodes
   // This avoids flooding the catalog with built-in node types
   if (nodeType.userCreatable === false && nodeType.scope !== 'custom') {
@@ -307,7 +343,13 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
 /**
  * Map gallery tool to PluginMeta
  */
-function mapGalleryToolToMeta(tool: any): PluginMeta {
+function mapGalleryToolToMeta(tool: GalleryToolPlugin): PluginMeta {
+  // Validate gallery tool shape
+  if (!isValidGalleryToolPlugin(tool)) {
+    console.warn('Invalid gallery tool plugin:', tool);
+    throw new Error(`Invalid gallery tool: ${tool?.id || 'unknown'}`);
+  }
+
   // Gallery tools integrate with the assets feature
   const consumesFeatures: string[] = ['assets'];
 
@@ -335,7 +377,13 @@ function mapGalleryToolToMeta(tool: any): PluginMeta {
 /**
  * Map UI plugin to PluginMeta
  */
-function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
+function mapUIPluginToMeta(pluginEntry: PluginEntry): PluginMeta {
+  // Validate plugin entry shape
+  if (!isValidPluginEntry(pluginEntry)) {
+    console.warn('Invalid plugin entry:', pluginEntry);
+    throw new Error(`Invalid UI plugin entry: ${pluginEntry?.manifest?.id || 'unknown'}`);
+  }
+
   const manifest = pluginEntry.manifest;
 
   // Map permissions to capabilities
@@ -395,7 +443,13 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
 /**
  * Map generation UI plugin to PluginMeta
  */
-function mapGenerationUIToMeta(plugin: any): PluginMeta {
+function mapGenerationUIToMeta(plugin: GenerationUIPlugin): PluginMeta {
+  // Validate generation UI plugin shape
+  if (!isValidGenerationUIPlugin(plugin)) {
+    console.warn('Invalid generation UI plugin:', plugin);
+    throw new Error(`Invalid generation UI plugin: ${plugin?.id || 'unknown'}`);
+  }
+
   // Generation UI plugins integrate with the generation feature
   const consumesFeatures: string[] = ['generation'];
 
@@ -424,7 +478,13 @@ function mapGenerationUIToMeta(plugin: any): PluginMeta {
 /**
  * Map world tool to PluginMeta
  */
-function mapWorldToolToMeta(tool: any): PluginMeta {
+function mapWorldToolToMeta(tool: WorldToolPlugin): PluginMeta {
+  // Validate world tool shape
+  if (!isValidWorldToolPlugin(tool)) {
+    console.warn('Invalid world tool plugin:', tool);
+    throw new Error(`Invalid world tool: ${tool?.id || 'unknown'}`);
+  }
+
   return {
     kind: 'world-tool',
     origin: 'builtin', // World tools are currently all built-in

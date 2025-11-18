@@ -19,11 +19,12 @@ import type {
 import { pluginCatalog } from './pluginSystem';
 
 // Import existing registries
-import { sessionHelperRegistry } from '@pixsim7/game-core';
-import { interactionRegistry } from '../game/interactions/types';
-import { nodeTypeRegistry } from '@pixsim7/types';
+import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game-core';
+import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@pixsim7/types';
 import { nodeRendererRegistry } from '../graph/types';
-import { worldToolRegistry } from '../worldTools/registry';
+import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/registry';
+import type { GalleryToolPlugin } from '../gallery/types';
 
 // ============================================================================
 // Registry Bridge Base
@@ -49,7 +50,7 @@ export interface RegisterWithMetadataOptions {
 /**
  * Extract common metadata from a plugin object
  */
-function extractCommonMetadata(plugin: any): Partial<PluginMetadata> {
+function extractCommonMetadata(plugin: { id?: string; name?: string; description?: string; version?: string; author?: string }): Partial<PluginMetadata> {
   return {
     id: plugin.id,
     name: plugin.name || plugin.id,
@@ -67,7 +68,7 @@ function extractCommonMetadata(plugin: any): Partial<PluginMetadata> {
  * Register a helper with metadata tracking
  */
 export function registerHelper(
-  helper: any,
+  helper: HelperDefinition,
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Register with existing registry
@@ -79,8 +80,8 @@ export function registerHelper(
   // Register in catalog
   pluginCatalog.register({
     ...metadata,
-    id: helper.id,
-    name: helper.name || helper.id,
+    id: helper.id || helper.name,
+    name: helper.name || helper.id || 'unknown',
     family: 'helper',
     origin: options.origin ?? 'plugin-dir',
     activationState: options.activationState ?? 'active',
@@ -93,7 +94,7 @@ export function registerHelper(
 /**
  * Register built-in helpers with origin tracking
  */
-export function registerBuiltinHelper(helper: any): void {
+export function registerBuiltinHelper(helper: HelperDefinition): void {
   registerHelper(helper, { origin: 'builtin', canDisable: false });
 }
 
@@ -105,7 +106,7 @@ export function registerBuiltinHelper(helper: any): void {
  * Register an interaction with metadata tracking
  */
 export function registerInteraction(
-  interaction: any,
+  interaction: InteractionPlugin<BaseInteractionConfig>,
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Register with existing registry
@@ -132,7 +133,7 @@ export function registerInteraction(
 /**
  * Register built-in interaction with origin tracking
  */
-export function registerBuiltinInteraction(interaction: any): void {
+export function registerBuiltinInteraction(interaction: InteractionPlugin<BaseInteractionConfig>): void {
   registerInteraction(interaction, { origin: 'builtin', canDisable: false });
 }
 
@@ -144,7 +145,7 @@ export function registerBuiltinInteraction(interaction: any): void {
  * Register a node type with metadata tracking
  */
 export function registerNodeType(
-  nodeType: any,
+  nodeType: NodeTypeDefinition,
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Register with existing registry
@@ -173,7 +174,7 @@ export function registerNodeType(
 /**
  * Register built-in node type with origin tracking
  */
-export function registerBuiltinNodeType(nodeType: any): void {
+export function registerBuiltinNodeType(nodeType: NodeTypeDefinition): void {
   registerNodeType(nodeType, { origin: 'builtin', canDisable: false });
 }
 
@@ -185,7 +186,7 @@ export function registerBuiltinNodeType(nodeType: any): void {
  * Register a renderer with metadata tracking
  */
 export function registerRenderer(
-  renderer: any,
+  renderer: { nodeType: string; preloadPriority?: number },
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Register with existing registry
@@ -211,7 +212,7 @@ export function registerRenderer(
 /**
  * Register built-in renderer with origin tracking
  */
-export function registerBuiltinRenderer(renderer: any): void {
+export function registerBuiltinRenderer(renderer: { nodeType: string; preloadPriority?: number }): void {
   registerRenderer(renderer, { origin: 'builtin', canDisable: false });
 }
 
@@ -223,7 +224,7 @@ export function registerBuiltinRenderer(renderer: any): void {
  * Register a world tool with metadata tracking
  */
 export function registerWorldTool(
-  tool: any,
+  tool: WorldToolPlugin,
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Register with existing registry
@@ -250,7 +251,7 @@ export function registerWorldTool(
 /**
  * Register built-in world tool with origin tracking
  */
-export function registerBuiltinWorldTool(tool: any): void {
+export function registerBuiltinWorldTool(tool: WorldToolPlugin): void {
   registerWorldTool(tool, { origin: 'builtin', canDisable: false });
 }
 
@@ -264,7 +265,7 @@ export function registerBuiltinWorldTool(tool: any): void {
  */
 
 export function registerGalleryTool(
-  tool: any,
+  tool: GalleryToolPlugin,
   options: RegisterWithMetadataOptions = {}
 ): void {
   // Gallery tools don't have a centralized registry yet
@@ -287,7 +288,7 @@ export function registerGalleryTool(
 /**
  * Register built-in gallery tool with origin tracking
  */
-export function registerBuiltinGalleryTool(tool: any): void {
+export function registerBuiltinGalleryTool(tool: GalleryToolPlugin): void {
   registerGalleryTool(tool, { origin: 'builtin', canDisable: false });
 }
 

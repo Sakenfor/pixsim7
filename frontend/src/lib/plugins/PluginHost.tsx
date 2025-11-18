@@ -7,9 +7,85 @@
  * - Handles plugin menu items and notifications
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
 import { pluginManager } from './PluginManager';
 import type { PluginGameState, PluginOverlay, PluginMenuItem, PluginNotification } from './types';
+
+/**
+ * Error Boundary for Plugin Components
+ *
+ * Prevents plugin errors from crashing the entire application
+ */
+interface PluginErrorBoundaryProps {
+  children: ReactNode;
+  pluginId: string;
+  fallback?: ReactNode;
+}
+
+interface PluginErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+}
+
+class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, PluginErrorBoundaryState> {
+  constructor(props: PluginErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): Partial<PluginErrorBoundaryState> {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    console.error(`[Plugin ${this.props.pluginId}] Error caught by boundary:`, error, errorInfo);
+    this.setState({
+      error,
+      errorInfo,
+    });
+
+    // Optionally notify the plugin manager about the error
+    // This could be used to disable the plugin or show a notification
+  }
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      // Default error UI
+      return (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg shadow-lg p-4">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">❌</span>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-red-900 dark:text-red-100">
+                Plugin Error: {this.props.pluginId}
+              </h3>
+              <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                {this.state.error?.message || 'An unknown error occurred'}
+              </p>
+              <button
+                onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
+                className="text-xs text-red-600 dark:text-red-400 hover:underline mt-2"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 /**
  * Context for plugins to interact with the host
@@ -125,7 +201,18 @@ export function PluginHostProvider({ children, gameState }: PluginHostProviderPr
               <button
                 key={item.id}
                 className="w-full text-left px-3 py-1 text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
-                onClick={item.onClick}
+                onClick={() => {
+                  try {
+                    item.onClick();
+                  } catch (error) {
+                    console.error(`[Plugin Menu Item ${item.id}] Error in onClick handler:`, error);
+                    handleNotification({
+                      message: `Plugin menu item "${item.label}" failed: ${error instanceof Error ? error.message : String(error)}`,
+                      type: 'error',
+                      duration: 5000,
+                    });
+                  }
+                }}
               >
                 {item.icon && <span>{item.icon}</span>}
                 <span>{item.label}</span>
@@ -154,9 +241,11 @@ function PluginOverlayContainer({ overlay }: { overlay: PluginOverlay }) {
   const style = overlay.zIndex ? { zIndex: overlay.zIndex } : undefined;
 
   return (
-    <div className={className} style={style}>
-      {overlay.render()}
-    </div>
+    <PluginErrorBoundary pluginId={overlay.id}>
+      <div className={className} style={style}>
+        {overlay.render()}
+      </div>
+    </PluginErrorBoundary>
   );
 }
 
