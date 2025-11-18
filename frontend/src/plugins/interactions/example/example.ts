@@ -43,6 +43,12 @@ export const exampleInteractionPlugin: InteractionPlugin<ExampleInteractionConfi
   // Icon/emoji shown in UI
   icon: '⚡',
 
+  // Metadata for organization and filtering
+  category: 'social',
+  version: '1.0.0',
+  tags: ['example', 'demo', 'tutorial'],
+  experimental: true,
+
   // Default configuration when first enabled
   defaultConfig: {
     enabled: true,

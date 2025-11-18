@@ -22,11 +22,15 @@ import type { GameSessionDTO } from '@pixsim7/types';
  * Convention: Function name should start with 'register'
  */
 export function registerExampleHelper() {
-  // Example 1: Manual helper registration
+  // Example 1: Manual helper registration with metadata
   sessionHelperRegistry.register({
+    id: 'example-helper',
     name: 'exampleHelper',
     category: 'custom',
     description: 'An example helper that demonstrates the plugin system',
+    version: '1.0.0',
+    tags: ['example', 'demo', 'tutorial'],
+    experimental: true,
     fn: (session: GameSessionDTO, message: string) => {
       console.log('Example helper called with:', message);
 
@@ -46,6 +50,25 @@ export function registerExampleHelper() {
       { name: 'message', type: 'string', description: 'A message to log' },
     ],
     returns: 'GameSessionDTO',
+    configSchema: {
+      enableLogging: {
+        key: 'enableLogging',
+        label: 'Enable Logging',
+        type: 'boolean',
+        description: 'Log messages to console',
+        default: true,
+      },
+      maxMessages: {
+        key: 'maxMessages',
+        label: 'Max Messages',
+        type: 'number',
+        description: 'Maximum number of messages to store',
+        default: 100,
+        min: 1,
+        max: 1000,
+        step: 10,
+      },
+    },
   });
 
   // Example 2: Auto-generated helpers using generateHelper

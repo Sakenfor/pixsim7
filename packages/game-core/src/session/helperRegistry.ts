@@ -5,14 +5,55 @@ export type HelperFunction = (
   ...args: any[]
 ) => GameSessionDTO | any;
 
+/**
+ * Configuration field types for plugin config UI
+ */
+export type ConfigFieldType = 'boolean' | 'number' | 'string' | 'select' | 'slider' | 'text';
+
+/**
+ * Configuration field definition for plugin settings
+ */
+export interface ConfigField {
+  /** Field key (matches config property name) */
+  key: string;
+  /** Display label */
+  label: string;
+  /** Field type for UI rendering */
+  type: ConfigFieldType;
+  /** Help text/description */
+  description?: string;
+  /** Default value */
+  default?: any;
+  /** Min value (for number/slider) */
+  min?: number;
+  /** Max value (for number/slider) */
+  max?: number;
+  /** Step value (for number/slider) */
+  step?: number;
+  /** Options for select fields */
+  options?: Array<{ value: string | number | boolean; label: string }>;
+  /** Placeholder text (for text/string fields) */
+  placeholder?: string;
+}
+
+/**
+ * Plugin configuration schema
+ */
+export interface ConfigSchema {
+  [key: string]: ConfigField;
+}
+
 export interface HelperDefinition {
+  /** Unique identifier for the helper (if not provided, uses name) */
+  id?: string;
+
   /** Helper name (will be accessible as helpers[name]) */
   name: string;
 
   /** Helper function */
   fn: HelperFunction;
 
-  /** Description for docs */
+  /** Description for docs and UI */
   description?: string;
 
   /** Parameter names for documentation */
@@ -23,6 +64,18 @@ export interface HelperDefinition {
 
   /** Category for organization */
   category?: 'relationships' | 'inventory' | 'quests' | 'arcs' | 'events' | 'custom';
+
+  /** Version string (semver recommended) */
+  version?: string;
+
+  /** Tags for filtering/searching */
+  tags?: string[];
+
+  /** Mark as experimental/beta */
+  experimental?: boolean;
+
+  /** Configuration schema for plugin settings */
+  configSchema?: ConfigSchema;
 }
 
 /** Valid helper categories */
@@ -64,6 +117,14 @@ export class SessionHelperRegistry {
     // Validate function is provided
     if (typeof def.fn !== 'function') {
       throw new Error(`Helper "${def.name}" must have a function (fn)`);
+    }
+
+    // Warn if metadata is missing (not an error, just helpful)
+    if (!def.id) {
+      console.debug(`Helper "${def.name}" has no id, using name as id`);
+    }
+    if (!def.description) {
+      console.debug(`Helper "${def.name}" has no description`);
     }
 
     // Check for duplicates
