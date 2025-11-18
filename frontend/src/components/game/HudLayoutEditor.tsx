@@ -42,6 +42,17 @@ const VISIBILITY_CONDITION_KINDS = [
   { value: 'session', label: 'Only when session exists' },
   { value: 'flag', label: 'When session flag is set' },
   { value: 'capability', label: 'When capability is enabled' },
+  { value: 'location', label: 'At specific locations' },
+  { value: 'time', label: 'During specific time' },
+  { value: 'quest', label: 'When quest is active' },
+  { value: 'relationship', label: 'Based on NPC relationship' },
+];
+
+const TOOL_SIZES = [
+  { value: '', label: 'Default' },
+  { value: 'compact', label: 'Compact' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'expanded', label: 'Expanded' },
 ];
 
 const REGIONS: { value: HudRegion; label: string }[] = [
