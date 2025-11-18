@@ -266,7 +266,7 @@ This allows arcs like:
 
 ### 6.4 UI and Editor Implications
 
-- World settings UI can offer a “Relationship scales” editor:
+- World settings UI can offer a "Relationship scales" editor:
   - Add/Edit tiers with `id`, `min`, `max`, optional label/icon.
 - Arc/quest editors can:
   - Let authors choose a numeric threshold *or* a tier name for conditions.
@@ -275,3 +275,44 @@ This allows arcs like:
 All of this remains backend-agnostic and compatible with the existing numeric
 `GameSession.relationships` structure; tiers are a per-world, data-driven
 overlay that world creators control.
+
+### 6.5 Backend-Authoritative Tier/Intimacy Computation
+
+**Since version 1.0**, the backend is the authoritative source for relationship tier and intimacy level computation:
+
+- **Backend computes and stores**: When a `GameSession` is created, retrieved, or updated (especially when `relationships` are modified), the backend:
+  - Iterates over all NPC relationship entries (e.g., `"npc:12"`).
+  - Extracts the numeric values (`affinity`, `trust`, `chemistry`, `tension`).
+  - Computes the `tierId` (e.g., `"friend"`, `"lover"`) using the world's relationship schemas (or default logic).
+  - Computes the `intimacyLevelId` (e.g., `"intimate"`, `"light_flirt"`, or `null`) based on multi-axis thresholds.
+  - Stores these computed values directly in the relationship JSON:
+    ```jsonc
+    {
+      "npc:12": {
+        "affinity": 72,
+        "trust": 40,
+        "chemistry": 55,
+        "tension": 10,
+        "flags": ["kissed_once"],
+        "tierId": "close_friend",          // ← Backend-computed
+        "intimacyLevelId": "light_flirt"   // ← Backend-computed
+      }
+    }
+    ```
+
+- **Frontends consume, don't recompute**:
+  - `@pixsim7/game-core` and frontend code (React, 3D, CLI) **read** `tierId` and `intimacyLevelId` from the session data.
+  - They only compute these values as a **fallback** if the fields are missing (e.g., in offline tools, editor previews, or when working with legacy sessions).
+  - This ensures consistency: all clients see the same tier/intimacy as determined by the backend using the authoritative world schema.
+
+- **Implementation details**:
+  - Backend: `pixsim7_backend/services/game/game_session_service.py` calls `_normalize_session_relationships()` before returning sessions.
+  - Computation logic: `pixsim7_backend/domain/narrative/relationships.py` provides `compute_relationship_tier()` and `compute_intimacy_level()`.
+  - TypeScript: `packages/game-core/src/core/PixSim7Core.ts` and frontends prefer backend-provided values.
+  - Fallback computation functions in `@pixsim7/game-core` (and `frontend/src/lib/game/relationshipComputation.ts`) are documented as **preview/offline tools only**.
+
+This approach:
+- Keeps the single source of truth on the backend.
+- Eliminates drift between frontend and backend tier calculations.
+- Allows the backend to evolve tier/intimacy logic (e.g., adding world-specific schemas) without requiring frontend redeployment.
+- Maintains backward compatibility: if `tierId`/`intimacyLevelId` are absent, frontends fall back to local computation.

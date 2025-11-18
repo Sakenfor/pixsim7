@@ -10,12 +10,60 @@ from pixsim7_backend.domain.game.models import (
     GameScene,
     GameSceneEdge,
     GameSessionEvent,
+    GameWorld,
+)
+from pixsim7_backend.domain.narrative.relationships import (
+    extract_relationship_values,
+    compute_relationship_tier,
+    compute_intimacy_level,
 )
 
 
 class GameSessionService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def _normalize_session_relationships(self, session: GameSession) -> None:
+        """
+        Compute and store tierId and intimacyLevelId for all NPC relationships.
+
+        This makes the backend the authoritative source for relationship tiers/intimacy,
+        with frontends consuming these pre-computed values.
+        """
+        if not session.relationships:
+            return
+
+        # TODO: Fetch world metadata for relationship schemas
+        # For now, use default schemas (will fall back to hardcoded defaults)
+        relationship_schemas: Dict[str, Any] = {}
+        intimacy_schema: Optional[Dict[str, Any]] = None
+
+        # Normalize each NPC relationship
+        for npc_key in list(session.relationships.keys()):
+            if not npc_key.startswith("npc:"):
+                continue
+
+            try:
+                npc_id = int(npc_key.split(":", 1)[1])
+            except (ValueError, IndexError):
+                continue
+
+            # Extract values
+            affinity, trust, chemistry, tension, flags = extract_relationship_values(
+                session.relationships, npc_id
+            )
+
+            # Compute tier and intimacy
+            tier_id = compute_relationship_tier(affinity, relationship_schemas)
+            intimacy_id = compute_intimacy_level(
+                {"affinity": affinity, "trust": trust, "chemistry": chemistry, "tension": tension},
+                intimacy_schema
+            )
+
+            # Store computed values back into the relationship JSON
+            if npc_key in session.relationships:
+                session.relationships[npc_key]["tierId"] = tier_id
+                session.relationships[npc_key]["intimacyLevelId"] = intimacy_id
 
     async def _get_scene(self, scene_id: int) -> GameScene:
         result = await self.db.execute(
@@ -48,10 +96,16 @@ class GameSessionService:
         self.db.add(event)
         await self.db.commit()
 
+        # Normalize relationships before returning
+        await self._normalize_session_relationships(session)
+
         return session
 
     async def get_session(self, session_id: int) -> Optional[GameSession]:
-        return await self.db.get(GameSession, session_id)
+        session = await self.db.get(GameSession, session_id)
+        if session:
+            await self._normalize_session_relationships(session)
+        return session
 
     async def advance_session(self, *, session_id: int, edge_id: int) -> GameSession:
         session = await self.db.get(GameSession, session_id)
@@ -79,6 +133,10 @@ class GameSessionService:
 
         await self.db.commit()
         await self.db.refresh(session)
+
+        # Normalize relationships before returning
+        await self._normalize_session_relationships(session)
+
         return session
 
     async def update_session(
@@ -103,4 +161,8 @@ class GameSessionService:
         self.db.add(session)
         await self.db.commit()
         await self.db.refresh(session)
+
+        # Normalize relationships before returning (especially important after relationship updates)
+        await self._normalize_session_relationships(session)
+
         return session
