@@ -15,7 +15,9 @@ import type {
   PluginMenuItem,
   PluginNotification,
   PluginPermission,
+  PluginBundle,
 } from './types';
+import { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 
 /**
  * Plugin manager singleton
@@ -61,9 +63,11 @@ export class PluginManager {
   }
 
   /**
-   * Install a plugin
+   * Install a plugin from a bundle
    */
-  async installPlugin(manifest: PluginManifest, code: string): Promise<void> {
+  async installPlugin(bundle: PluginBundle): Promise<void> {
+    const { manifest } = bundle;
+
     if (this.plugins.has(manifest.id)) {
       throw new Error(`Plugin ${manifest.id} is already installed`);
     }
@@ -71,12 +75,20 @@ export class PluginManager {
     // Validate manifest
     this.validateManifest(manifest);
 
+    // Validate code (basic check)
+    if (!bundle.code || bundle.code.trim().length === 0) {
+      throw new Error('Plugin bundle must contain code');
+    }
+
     // Create entry
     const entry: PluginEntry = {
       manifest,
       state: 'disabled',
       installedAt: Date.now(),
     };
+
+    // Store bundle
+    this.savePluginBundle(manifest.id, bundle);
 
     // Store in registry
     this.plugins.set(manifest.id, entry);
@@ -101,16 +113,10 @@ export class PluginManager {
     }
 
     try {
-      // Create plugin API
-      const api = this.createPluginAPI(pluginId);
+      // Load plugin code in sandbox
+      const plugin = await this.loadPluginCode(pluginId, entry.manifest);
 
-      // Load plugin code (TODO: implement safe loading)
-      const plugin = await this.loadPluginCode(entry.manifest);
-
-      // Call onEnable
-      await plugin.onEnable(api);
-
-      // Store instance
+      // Store instance (onEnable already called in sandbox)
       this.instances.set(pluginId, plugin);
 
       // Update state
@@ -191,11 +197,19 @@ export class PluginManager {
       }
     }
 
+    // Cleanup sandbox if it's a sandboxed plugin
+    if (plugin instanceof SandboxedPlugin) {
+      plugin.destroy();
+    }
+
     // Remove from registry
     this.plugins.delete(pluginId);
 
     // Clear storage
     this.clearPluginStorage(pluginId);
+
+    // Delete bundle
+    this.deletePluginBundle(pluginId);
 
     this.savePluginRegistry();
     console.info(`Plugin ${pluginId} uninstalled`);
@@ -371,21 +385,54 @@ export class PluginManager {
   }
 
   /**
-   * Load plugin code safely
-   * TODO: Implement actual sandboxing (iframe, VM, etc.)
+   * Load plugin code safely in iframe sandbox
    */
-  private async loadPluginCode(manifest: PluginManifest): Promise<Plugin> {
-    // For now, this is a stub
-    // Real implementation would load code from URL or file
-    // and execute in sandbox
+  private async loadPluginCode(pluginId: string, manifest: PluginManifest): Promise<Plugin> {
+    // Load bundle from storage
+    const bundle = this.loadPluginBundle(pluginId);
+    if (!bundle) {
+      throw new Error(`Plugin bundle not found: ${pluginId}`);
+    }
 
-    throw new Error('Plugin code loading not yet implemented');
+    // Create plugin API
+    const api = this.createPluginAPI(pluginId);
 
-    // Future implementation:
-    // 1. Load code from manifest.main
-    // 2. Create sandbox (iframe, worker, or VM)
-    // 3. Execute code in sandbox
-    // 4. Return plugin instance
+    // Load in sandbox
+    const plugin = await loadPluginInSandbox(pluginId, manifest, bundle.code, api);
+
+    return plugin;
+  }
+
+  /**
+   * Load plugin bundle from storage
+   */
+  private loadPluginBundle(pluginId: string): PluginBundle | null {
+    const key = `plugin-bundle:${pluginId}`;
+    const data = localStorage.getItem(key);
+    if (!data) return null;
+
+    try {
+      return JSON.parse(data) as PluginBundle;
+    } catch (e) {
+      console.error(`Failed to parse plugin bundle: ${pluginId}`, e);
+      return null;
+    }
+  }
+
+  /**
+   * Save plugin bundle to storage
+   */
+  private savePluginBundle(pluginId: string, bundle: PluginBundle): void {
+    const key = `plugin-bundle:${pluginId}`;
+    localStorage.setItem(key, JSON.stringify(bundle));
+  }
+
+  /**
+   * Delete plugin bundle from storage
+   */
+  private deletePluginBundle(pluginId: string): void {
+    const key = `plugin-bundle:${pluginId}`;
+    localStorage.removeItem(key);
   }
 
   /**

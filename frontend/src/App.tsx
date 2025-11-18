@@ -46,18 +46,10 @@ function App() {
   useTheme();
 
   useEffect(() => {
-    // Setup plugin system UI callbacks
-    pluginManager.setUICallbacks({
-      onNotification: (notification) => {
-        const type = notification.type || 'info';
-        toast[type](notification.message, notification.duration);
-      },
-    });
-
     // Load plugin registry from localStorage
     pluginManager.loadPluginRegistry();
 
-    // Bootstrap example plugins (installs RelationshipTracker)
+    // Bootstrap plugins (re-enables previously enabled plugins)
     bootstrapExamplePlugins().catch(error => {
       console.error('Failed to bootstrap plugins:', error);
     });

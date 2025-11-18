@@ -54,6 +54,8 @@ import { QuestLog } from '../components/game/QuestLog';
 import { InventoryPanel } from '../components/game/InventoryPanel';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
+import { pluginManager } from '../lib/plugins';
+import type { PluginGameState } from '../lib/plugins/types';
 
 interface WorldTime {
   day: number;
@@ -140,6 +142,21 @@ export function Game2D() {
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  // Sync game state with plugin manager
+  useEffect(() => {
+    const pluginGameState: PluginGameState = {
+      session: gameSession,
+      flags: gameSession?.flags || {},
+      relationships: gameSession?.relationships || {},
+      world: worldDetail,
+      worldTime: worldTime,
+      currentLocation: locationDetail,
+      locationNpcs: locationNpcs,
+    };
+
+    pluginManager.updateGameState(pluginGameState);
+  }, [gameSession, worldDetail, worldTime, locationDetail, locationNpcs]);
 
   useEffect(() => {
     (async () => {

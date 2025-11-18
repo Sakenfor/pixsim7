@@ -7,5 +7,6 @@
 export { pluginManager } from './PluginManager';
 export { bootstrapExamplePlugins } from './bootstrap';
 export { updatePluginGameState } from './gameStateSync';
+export { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 
 export type * from './types';

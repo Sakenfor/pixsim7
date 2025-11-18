@@ -60,11 +60,116 @@ export function PluginManagerUI() {
     // Demo: Install the example relationship tracker
     try {
       const { manifest } = await import('../lib/plugins/examples/RelationshipTracker.plugin');
-      await pluginManager.installPlugin(manifest, '// Plugin code would go here');
+
+      // Create a proper bundle with the plugin code
+      const pluginCode = `
+        // Relationship Tracker Plugin
+        const plugin = {
+          async onEnable(api) {
+            // Add overlay
+            api.ui.addOverlay({
+              id: 'relationship-overlay',
+              position: 'top-right',
+              render: function() {
+                const state = api.state.getGameState();
+                const relationships = state.relationships || {};
+
+                // Get top 3 relationships
+                const entries = Object.entries(relationships)
+                  .filter(([key]) => key.startsWith('npc:'))
+                  .map(([key, value]) => ({
+                    npcId: key.split(':')[1],
+                    score: (value && value.score) || 0,
+                  }))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 3);
+
+                if (entries.length === 0) {
+                  return null;
+                }
+
+                // Return HTML string since we're in iframe sandbox
+                const html = \`
+                  <div style="background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 12px; min-width: 200px;">
+                    <h3 style="font-size: 12px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
+                      ❤️ Relationships
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      \${entries.map(({ npcId, score }) => \`
+                        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px;">
+                          <span style="color: #374151;">NPC #\${npcId}</span>
+                          <div style="display: flex; align-items: center; gap: 4px;">
+                            <div style="width: 64px; height: 8px; background: #e5e7eb; border-radius: 9999px; overflow: hidden;">
+                              <div style="height: 100%; background: #ec4899; width: \${Math.min(100, score)}%;"></div>
+                            </div>
+                            <span style="color: #6b7280; font-size: 10px;">\${score}</span>
+                          </div>
+                        </div>
+                      \`).join('')}
+                    </div>
+                  </div>
+                \`;
+
+                const container = document.createElement('div');
+                container.innerHTML = html;
+                return container.firstElementChild;
+              },
+            });
+
+            // Subscribe to state changes
+            this.unsubscribe = api.state.subscribe((state) => {
+              console.debug('Relationship tracker: state updated', state);
+            });
+
+            console.info('Relationship Tracker enabled');
+          },
+
+          async onDisable() {
+            if (this.unsubscribe) {
+              this.unsubscribe();
+            }
+            console.info('Relationship Tracker disabled');
+          }
+        };
+      `;
+
+      const bundle = {
+        manifest,
+        code: pluginCode,
+      };
+
+      await pluginManager.installPlugin(bundle);
       loadPlugins();
     } catch (e: any) {
       setError(String(e?.message ?? e));
     }
+  };
+
+  const handleUploadBundle = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e: any) => {
+      const file = e.target?.files?.[0];
+      if (!file) return;
+
+      setError(null);
+      try {
+        const text = await file.text();
+        const bundle = JSON.parse(text);
+
+        // Validate bundle structure
+        if (!bundle.manifest || !bundle.code) {
+          throw new Error('Invalid plugin bundle: missing manifest or code');
+        }
+
+        await pluginManager.installPlugin(bundle);
+        loadPlugins();
+      } catch (e: any) {
+        setError(String(e?.message ?? e));
+      }
+    };
+    input.click();
   };
 
   const selected = plugins.find(p => p.manifest.id === selectedPlugin);
@@ -73,9 +178,14 @@ export function PluginManagerUI() {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Plugin Manager</h1>
-        <Button size="sm" variant="primary" onClick={handleInstallDemo}>
-          Install Demo Plugin
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" onClick={handleUploadBundle}>
+            📁 Upload Bundle
+          </Button>
+          <Button size="sm" variant="primary" onClick={handleInstallDemo}>
+            Install Demo Plugin
+          </Button>
+        </div>
       </div>
 
       {error && (
