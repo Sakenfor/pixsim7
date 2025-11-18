@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { PluginBrowser } from '../components/plugins/PluginBrowser';
+import { CapabilityBrowser } from '../components/capabilities/CapabilityBrowser';
 import type { PluginMeta } from '../lib/plugins/catalog';
 import {
   loadProjects,
@@ -42,7 +43,7 @@ import {
   WorldToolTestHarness,
 } from '../components/plugins/PluginTestHarnesses';
 
-type TabView = 'installed' | 'projects';
+type TabView = 'installed' | 'projects' | 'capabilities';
 
 // ============================================================================
 // Plugin Kind Configuration (Single Source of Truth)
@@ -202,6 +203,16 @@ export function PluginWorkspaceRoute() {
           >
             Projects ({projects.length})
           </button>
+          <button
+            onClick={() => setActiveTab('capabilities')}
+            className={`px-4 py-2 font-medium transition-colors border-b-2 ${
+              activeTab === 'capabilities'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+            }`}
+          >
+            Capabilities
+          </button>
         </div>
       </div>
 
@@ -311,6 +322,13 @@ export function PluginWorkspaceRoute() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab: Capabilities */}
+        {activeTab === 'capabilities' && (
+          <div className="flex-1 overflow-y-auto">
+            <CapabilityBrowser />
           </div>
         )}
       </div>
