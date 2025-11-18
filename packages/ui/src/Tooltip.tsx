@@ -1,10 +1,31 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { clsx } from 'clsx';
 
-export interface CubeTooltipProps {
+/**
+ * Tooltip — canonical tooltip component.
+ * REUSE this component for any tooltip across the app.
+ *
+ * Features:
+ * - Positioning (top, bottom, left, right)
+ * - Variants (default, info, warning, success)
+ * - Delay support
+ * - Keyboard shortcut display
+ * - Arrow pointing to target
+ * - Dismissal management with localStorage
+ *
+ * Usage:
+ * <Tooltip content="Hello!" position="top" show={isHovered}>
+ *   <button>Hover me</button>
+ * </Tooltip>
+ *
+ * With shortcut:
+ * <Tooltip content="Save" shortcut="⌘S" show={true} />
+ */
+
+export interface TooltipProps {
   /** Tooltip content */
   content: ReactNode;
-  /** Position relative to cube */
+  /** Position relative to target */
   position?: 'top' | 'bottom' | 'left' | 'right';
   /** Whether to show the tooltip */
   show?: boolean;
@@ -39,11 +60,7 @@ const ARROW_STYLES = {
   right: 'right-full top-1/2 -translate-y-1/2 border-t-transparent border-b-transparent border-l-transparent',
 };
 
-/**
- * Context-aware tooltip component for cubes
- * Displays helpful hints based on cube state and user interactions
- */
-export function CubeTooltip({
+export function Tooltip({
   content,
   position = 'top',
   show = false,
@@ -51,7 +68,7 @@ export function CubeTooltip({
   variant = 'default',
   className,
   shortcut,
-}: CubeTooltipProps) {
+}: TooltipProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -127,6 +144,12 @@ export function CubeTooltip({
 
 /**
  * Hook to manage tooltip dismissal state with localStorage
+ *
+ * Usage:
+ * const { dismissed, dismiss } = useTooltipDismissal('welcome-tooltip');
+ * if (!dismissed) {
+ *   return <Tooltip content="Welcome!" />;
+ * }
  */
 export function useTooltipDismissal(tooltipId: string) {
   const [dismissed, setDismissed] = useState(() => {
@@ -157,3 +180,7 @@ export function useTooltipDismissal(tooltipId: string) {
 
   return { dismissed, dismiss, reset };
 }
+
+// Legacy export for backward compatibility
+export const CubeTooltip = Tooltip;
+export type CubeTooltipProps = TooltipProps;

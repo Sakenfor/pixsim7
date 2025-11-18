@@ -8,7 +8,7 @@ import { useControlCubeStore, type CubeFace } from '../../stores/controlCubeStor
 import { useCubeSettingsStore } from '../../stores/cubeSettingsStore';
 import { cubeExpansionRegistry } from '../../lib/cubeExpansionRegistry';
 import { CubeExpansionOverlay } from './CubeExpansionOverlay';
-import { CubeTooltip, useTooltipDismissal } from '../ui/CubeTooltip';
+import { CubeTooltip, useTooltipDismissal } from '@pixsim7/ui';
 import { Icon } from '../../lib/icons';
 import type { ReactNode } from 'react';
 
