@@ -13,6 +13,94 @@
 
 ---
 
+## Architecture Overview
+
+The scene editor has a clear separation of concerns:
+
+### SceneBuilderPanel (`frontend/src/components/SceneBuilderPanel.tsx`)
+**Purpose:** Scene-level context and actions
+- **Displays:** World/location context, current scene info
+- **Actions:** Preview in Game, Play from Here in 2D
+- **Embeds:** InspectorPanel for node editing
+
+**DO NOT** add node-specific configuration here. Use InspectorPanel instead.
+
+### InspectorPanel (`frontend/src/components/inspector/InspectorPanel.tsx`)
+**Purpose:** Node-specific configuration (PRIMARY EXTENSION POINT)
+- Dynamic, registry-based editor loading
+- Type-specific editors for each node type
+- Shared header with node info and label editing
+
+### Node Type Registry (`@pixsim7/types`)
+**Purpose:** Define node types with metadata
+- Node type definitions with `editorComponent` and `rendererComponent` properties
+- Canonical registry for all node types in the system
+
+### Node Editor Registry (`frontend/src/lib/nodeEditorRegistry.ts`)
+**Purpose:** Lazy-load editor components
+- Auto-discovers editors in `frontend/src/components/inspector/`
+- Provides dynamic import for editor components
+
+---
+
+## How to Add a New Node Type
+
+### Step 1: Define Node Type in Registry
+
+Add your node type to `@pixsim7/types/src/nodeTypeRegistry.ts`:
+
+```typescript
+nodeTypeRegistry.register({
+  type: 'my-node',
+  name: 'My Custom Node',
+  description: 'Does something cool',
+  icon: '🚀',
+  color: 'text-purple-700',
+  bgColor: 'bg-purple-100',
+  editorComponent: 'MyNodeEditor',  // Editor component name
+  rendererComponent: 'MyNodeRenderer' // Renderer component name (optional)
+});
+```
+
+### Step 2: Create Node Editor Component
+
+Create `frontend/src/components/inspector/MyNodeEditor.tsx`:
+
+```typescript
+import type { DraftSceneNode } from '../../modules/scene-builder';
+
+interface MyNodeEditorProps {
+  node: DraftSceneNode;
+  onUpdate: (patch: Partial<DraftSceneNode>) => void;
+}
+
+export function MyNodeEditor({ node, onUpdate }: MyNodeEditorProps) {
+  // Your editor UI here
+  return (
+    <div className="space-y-3">
+      {/* Add your form fields */}
+    </div>
+  );
+}
+
+// IMPORTANT: Default export for dynamic loading
+export default MyNodeEditor;
+```
+
+### Step 3: That's It!
+
+The editor will be automatically discovered by `nodeEditorRegistry` and loaded when needed.
+
+**Key Points:**
+- ✅ File must be in `frontend/src/components/inspector/`
+- ✅ File must have default export
+- ✅ Component receives `node` and `onUpdate` props
+- ✅ Use `onUpdate()` to apply changes to the node
+- ❌ DO NOT add fields to SceneBuilderPanel
+- ❌ DO NOT modify InspectorPanel directly
+
+---
+
 ## Vision
 
 Visual authoring of branching, modular video scenes with:
@@ -36,11 +124,15 @@ Visual authoring of branching, modular video scenes with:
 **Reference Files:**
 - Frontend:
   - `frontend/src/components/GraphPanel.tsx` (React Flow wiring)
-  - `frontend/src/components/SceneBuilderPanel.tsx` (form inspector stub)
+  - `frontend/src/components/SceneBuilderPanel.tsx` (scene-level actions, embeds InspectorPanel)
+  - `frontend/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
+  - `frontend/src/lib/nodeEditorRegistry.ts` (editor auto-discovery)
+  - `frontend/src/components/inspector/VideoNodeEditor.tsx` (example editor)
   - `frontend/src/components/nodes/SceneNode.tsx` (node component with handles)
   - `frontend/src/modules/scene-builder/index.ts` (draft model + toRuntimeScene)
 - Types:
   - `packages/types/src/index.ts` (Scene, SceneNode, SceneEdge, SelectionStrategy, PlaybackMode)
+  - `packages/types/src/nodeTypeRegistry.ts` (node type definitions)
 - Game Frontend:
   - `game-frontend/src/components/ScenePlayer.tsx`
   - `game-frontend/src/components/minigames/ReflexMiniGame.tsx`
@@ -100,30 +192,31 @@ Visual authoring of branching, modular video scenes with:
 
 ---
 
-### Phase 3: Property Inspector (Right Sidebar)
+### Phase 3: Property Inspector (Right Sidebar) ✅ COMPLETED
 
-**Goal:** Contextual inspector for selected node with type-specific fields.
+**Status:** IMPLEMENTED - InspectorPanel is now the primary node configuration system.
 
-**Deliverables:**
-- Inspector UI bound to draft
-- Type-specific fields:
-  - **Video**: Selection strategy (ordered/random/pool + tags), progression steps (labels, step-specific segmentIds), mini-game config
-  - **Choice/Condition**: Flag checks, comparisons
-  - **MiniGame**: Prefab configs (e.g., reflex rounds)
-- Shared controls using `@pixsim7/ui`
+**Current Implementation:**
+- ✅ InspectorPanel with dynamic editor loading
+- ✅ Node Editor Registry with auto-discovery
+- ✅ Type-specific editors (10+ editors implemented)
+- ✅ Shared UI components from `@pixsim7/ui`
+- ✅ SceneBuilderPanel refactored to embed InspectorPanel
 
-**Implementation:**
-1. Create `PropertyInspector` component
-2. Render different forms based on selected node type
-3. Bind inputs to draft via `sceneBuilderModule`
-4. Add validation for required fields
-5. Auto-save on input change (debounced)
+**Extension Point:**
+To add a new node type configuration UI:
+1. Register node type in `@pixsim7/types` with `editorComponent` property
+2. Create editor component in `frontend/src/components/inspector/`
+3. Export component as default export
+4. Done! Auto-discovery handles the rest.
 
-**Acceptance:**
-- Changing inputs updates draft immediately
-- Switching nodes reflects correct values
-- No stray state between selections
-- Validation errors clearly displayed
+**Example Editors:**
+- `VideoNodeEditor.tsx` - Selection strategy, progression, Life Sim metadata
+- `ChoiceNodeEditor.tsx` - Player choice configuration
+- `ConditionNodeEditor.tsx` - Conditional branching logic
+- `MiniGameNodeEditor.tsx` - Mini-game configuration
+- `SeductionNodeEditor.tsx` - Seduction mechanics
+- And more...
 
 ---
 
@@ -366,13 +459,83 @@ Visual authoring of branching, modular video scenes with:
 
 ---
 
+## Best Practices
+
+### For Node Editor Components
+
+1. **Use the standard interface:**
+   ```typescript
+   interface EditorProps {
+     node: DraftSceneNode;
+     onUpdate: (patch: Partial<DraftSceneNode>) => void;
+   }
+   ```
+
+2. **Load node data in useEffect:**
+   ```typescript
+   useEffect(() => {
+     // Load fields from node.metadata, node.selection, etc.
+     setMyField(node.metadata?.myField ?? '');
+   }, [node]);
+   ```
+
+3. **Apply changes with onUpdate:**
+   ```typescript
+   function handleApply() {
+     onUpdate({
+       metadata: { ...node.metadata, myField: myFieldValue }
+     });
+   }
+   ```
+
+4. **Use `@pixsim7/ui` components:** Button, Select, Input, etc.
+
+5. **Default export required:** `export default MyNodeEditor;`
+
+### Common Patterns
+
+- **Selection Strategy:** See `VideoNodeEditor.tsx`
+- **Progression Steps:** See `VideoNodeEditor.tsx`
+- **Flag Checks:** See `ConditionNodeEditor.tsx`
+- **Choice Options:** See `ChoiceNodeEditor.tsx`
+- **Asset Picking:** See `VideoNodeEditor.tsx` (uses `useAssetPickerStore`)
+
+---
+
 ## Resources
 
+- **InspectorPanel:** `frontend/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
+- **Node Editor Registry:** `frontend/src/lib/nodeEditorRegistry.ts`
+- **Example Editors:** `frontend/src/components/inspector/` (10+ examples)
+- **Node Type Registry:** `packages/types/src/nodeTypeRegistry.ts`
 - React Flow Docs: https://reactflow.dev/
 - Types Package: `packages/types/src/index.ts`
 - UI Primitives: `packages/ui/`
 - Scene Player: `game-frontend/src/components/ScenePlayer.tsx`
 - Backend API: `http://localhost:8001/docs`
+
+---
+
+## Quick Start: Adding a Node Type
+
+1. **Define in registry** (`@pixsim7/types/src/nodeTypeRegistry.ts`):
+   ```typescript
+   nodeTypeRegistry.register({
+     type: 'my-node',
+     editorComponent: 'MyNodeEditor',
+     // ... other metadata
+   });
+   ```
+
+2. **Create editor** (`frontend/src/components/inspector/MyNodeEditor.tsx`):
+   ```typescript
+   export function MyNodeEditor({ node, onUpdate }) {
+     return <div>...</div>;
+   }
+   export default MyNodeEditor;
+   ```
+
+3. **Done!** Editor auto-discovered and loaded when needed.
 
 ---
 
