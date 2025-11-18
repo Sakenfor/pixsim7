@@ -133,6 +133,9 @@ export function registerSeductionNode() {
     // Editor component (will be loaded from InspectorPanel)
     editorComponent: 'SeductionNodeEditor',
 
+    // Renderer component for graph view
+    rendererComponent: 'SeductionNodeRenderer',
+
     // Optional: Validation
     validate: (data: SeductionNodeData) => {
       if (!data.stages || data.stages.length === 0) {
