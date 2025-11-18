@@ -47,7 +47,7 @@ export interface FallbackConfig {
 }
 
 export interface GenerationNodeConfig {
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment'
+  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
   purpose: 'gap_fill' | 'variation' | 'adaptive' | 'ambient'
   style: StyleRules
   duration: DurationRule
@@ -85,7 +85,7 @@ export interface GenerationEdgeMeta {
 
 // Backend Request & Response Contracts
 export interface GenerateContentRequest {
-  type: 'transition' | 'variation' | 'dialogue' | 'environment'
+  type: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
   from_scene?: SceneRef
   to_scene?: SceneRef
   style?: StyleRules
@@ -97,6 +97,8 @@ export interface GenerateContentRequest {
   template_id?: string
   cache_key?: string
   player_context?: PlayerContextSnapshot
+  // NPC response specific params
+  npc_params?: NpcResponseParams
 }
 
 export interface GeneratedContentMetadata {
@@ -106,12 +108,16 @@ export interface GeneratedContentMetadata {
 }
 
 export interface GeneratedContentPayload {
-  type: 'video' | 'dialogue' | 'choices' | 'environment'
+  type: 'video' | 'dialogue' | 'choices' | 'environment' | 'npc_response'
   url?: string // video or audio asset
   duration?: number // seconds
   dialogue?: string[] // optional for dialogue
   choices?: Array<{ id: string; text: string }>
   metadata?: GeneratedContentMetadata
+  // NPC response specific fields
+  expression?: string
+  emotion?: string
+  intensity?: number
 }
 
 export interface GenerateContentResponse {
@@ -128,6 +134,64 @@ export interface GenerationValidationResult {
   errors: string[]
   warnings: string[]
   suggestions: string[]
+}
+
+// ============================================================================
+// NPC Response Video Generation
+// ============================================================================
+
+/**
+ * Parameters for NPC response video generation
+ * Integrates with existing Jobs API for video generation
+ */
+export interface NpcResponseParams {
+  // NPC Context
+  npc_id: string
+  npc_name: string
+  npc_base_image?: string  // Base image for img2vid
+
+  // Response Parameters (from NpcResponseEvaluator)
+  expression: string       // e.g., "interested", "aroused", "giggling"
+  emotion: string          // e.g., "pleased", "flustered", "excited"
+  animation: string        // e.g., "idle", "giggle", "blush"
+  intensity: number        // 0.0-1.0
+
+  // Video Style
+  art_style?: 'anime' | 'realistic' | 'semi-realistic'
+  loras?: string[]
+
+  // Prompt (can use prompt versioning)
+  prompt?: string
+  negative_prompt?: string
+
+  // Quality preset (maps to generation speed/quality)
+  quality_preset?: 'realtime' | 'fast' | 'balanced' | 'quality'
+
+  // Generation settings (override preset defaults)
+  width?: number
+  height?: number
+  fps?: number
+  duration?: number        // seconds
+  steps?: number
+  cfg?: number
+  seed?: number
+}
+
+/**
+ * NPC response content in GeneratedContentPayload
+ */
+export interface NpcResponseContent {
+  type: 'npc_response'
+  url: string              // Video URL
+  duration: number         // seconds
+  expression: string
+  emotion: string
+  intensity: number
+  metadata?: {
+    quality_preset?: string
+    cache_key?: string
+    generation_time_ms?: number
+  }
 }
 
 // Utility to compute a cache key (implementation to be provided in a util package later)
