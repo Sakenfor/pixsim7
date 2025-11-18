@@ -1,85 +1,97 @@
-import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import { useNodeEditor } from './useNodeEditor';
+import type { NodeEditorProps, Condition, ConditionConfig } from './editorTypes';
+import { validateConditionConfig, isValidConditionArray, logValidationError } from './editorValidation';
 
-interface ConditionNodeEditorProps {
-  node: DraftSceneNode;
-  onUpdate: (patch: Partial<DraftSceneNode>) => void;
-}
+export function ConditionNodeEditor({ node, onUpdate }: NodeEditorProps) {
+  const { formState, setFormState, handleApply } = useNodeEditor<ConditionConfig>({
+    node,
+    onUpdate,
+    initialState: {
+      conditions: [{ variable: '', operator: '==', value: '' }],
+      logicMode: 'AND'
+    },
+    loadFromNode: (node) => {
+      const metadata = node.metadata as Record<string, unknown> | undefined;
 
-interface Condition {
-  variable: string;
-  operator: '==' | '!=' | '>' | '<' | '>=' | '<=';
-  value: string;
-}
+      // Try new standardized field first
+      const savedConfig = metadata?.conditionConfig as ConditionConfig | undefined;
+      if (savedConfig) {
+        const result: Partial<ConditionConfig> = {};
 
-export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps) {
-  const [conditions, setConditions] = useState<Condition[]>([
-    { variable: '', operator: '==', value: '' }
-  ]);
-  const [logicMode, setLogicMode] = useState<'AND' | 'OR'>('AND');
+        if (savedConfig.conditions && isValidConditionArray(savedConfig.conditions)) {
+          result.conditions = savedConfig.conditions;
+        }
 
-  useEffect(() => {
-    // Load conditions from node metadata
-    const metadata = node.metadata as Record<string, unknown> | undefined;
-    const savedConditions = metadata?.conditions;
-    const savedLogicMode = metadata?.logicMode;
+        if (savedConfig.logicMode === 'AND' || savedConfig.logicMode === 'OR') {
+          result.logicMode = savedConfig.logicMode;
+        }
 
-    // Validate savedConditions is an array of the expected type
-    if (Array.isArray(savedConditions) && savedConditions.length > 0) {
-      const isValidConditionArray = savedConditions.every(
-        (cond) =>
-          typeof cond === 'object' &&
-          cond !== null &&
-          'variable' in cond &&
-          'operator' in cond &&
-          'value' in cond
-      );
-
-      if (isValidConditionArray) {
-        setConditions(savedConditions as Condition[]);
-      } else {
-        console.warn('[ConditionNodeEditor] Saved conditions have invalid structure, using defaults');
+        if (Object.keys(result).length > 0) {
+          return result;
+        }
       }
-    }
 
-    // Validate savedLogicMode
-    if (savedLogicMode === 'AND' || savedLogicMode === 'OR') {
-      setLogicMode(savedLogicMode);
-    }
-  }, [node]);
+      // Fallback to old fields for backward compatibility
+      const legacyConditions = metadata?.conditions;
+      const legacyLogicMode = metadata?.logicMode;
+      const result: Partial<ConditionConfig> = {};
+
+      if (Array.isArray(legacyConditions) && legacyConditions.length > 0) {
+        if (isValidConditionArray(legacyConditions)) {
+          result.conditions = legacyConditions;
+        } else {
+          logValidationError('ConditionNodeEditor', 'Saved conditions have invalid structure, using defaults');
+        }
+      }
+
+      if (legacyLogicMode === 'AND' || legacyLogicMode === 'OR') {
+        result.logicMode = legacyLogicMode;
+      }
+
+      return result;
+    },
+    saveToNode: (formState, node) => ({
+      metadata: {
+        ...node.metadata,
+        conditionConfig: formState,
+      }
+    })
+  });
+
+  const validOperators: Condition['operator'][] = ['==', '!=', '>', '<', '>=', '<='];
 
   function handleAddCondition() {
-    setConditions([...conditions, { variable: '', operator: '==', value: '' }]);
+    setFormState({
+      ...formState,
+      conditions: [...formState.conditions, { variable: '', operator: '==', value: '' }]
+    });
   }
 
   function handleUpdateCondition(index: number, field: keyof Condition, value: string) {
-    const updated = [...conditions];
-    if (field === 'operator') {
-      // Validate operator value
-      const validOperators = ['==', '!=', '>', '<', '>=', '<='];
-      if (validOperators.includes(value)) {
-        updated[index][field] = value as Condition['operator'];
-      }
-    } else {
-      // For 'variable' and 'value' fields, direct assignment is safe
+    const updated = [...formState.conditions];
+    if (field === 'operator' && validOperators.includes(value as Condition['operator'])) {
+      updated[index][field] = value as Condition['operator'];
+    } else if (field !== 'operator') {
       updated[index][field] = value;
     }
-    setConditions(updated);
+    setFormState({ ...formState, conditions: updated });
   }
 
   function handleRemoveCondition(index: number) {
-    setConditions(conditions.filter((_, i) => i !== index));
+    setFormState({
+      ...formState,
+      conditions: formState.conditions.filter((_, i) => i !== index)
+    });
   }
 
-  function handleApply() {
-    onUpdate({
-      metadata: {
-        ...node.metadata,
-        conditions: conditions,
-        logicMode: logicMode,
-      }
-    });
+  function handleApplyWithValidation() {
+    const validation = validateConditionConfig(formState);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => logValidationError('ConditionNodeEditor', error));
+      return;
+    }
+    handleApply();
   }
 
   return (
@@ -92,17 +104,17 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
       <div>
         <label className="block text-sm font-medium mb-1">Logic Mode</label>
         <select
-          value={logicMode}
+          value={formState.logicMode}
           onChange={(e) => {
             const value = e.target.value;
             if (value === 'AND' || value === 'OR') {
-              setLogicMode(value);
+              setFormState({ ...formState, logicMode: value });
             }
           }}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
         >
-          <option value="AND">AND (all conditions must be true)</option>
-          <option value="OR">OR (any condition can be true)</option>
+          <option value="AND">AND (all must be true)</option>
+          <option value="OR">OR (any can be true)</option>
         </select>
       </div>
 
@@ -116,43 +128,41 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
         </div>
 
         <div className="space-y-2">
-          {conditions.map((condition, index) => (
+          {formState.conditions.map((condition, index) => (
             <div key={index} className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700">
               <div className="flex items-start gap-2">
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 grid grid-cols-3 gap-2">
                   <input
                     type="text"
                     value={condition.variable}
                     onChange={(e) => handleUpdateCondition(index, 'variable', e.target.value)}
-                    className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-                    placeholder="Variable name (e.g., 'score', 'hasKey')"
+                    className="px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                    placeholder="Variable"
                   />
-                  <div className="flex gap-2">
-                    <select
-                      value={condition.operator}
-                      onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
-                      className="px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-                    >
-                      <option value="==">==</option>
-                      <option value="!=">!=</option>
-                      <option value=">">&gt;</option>
-                      <option value="<">&lt;</option>
-                      <option value=">=">&gt;=</option>
-                      <option value="<=">&lt;=</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={condition.value}
-                      onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                      className="flex-1 px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-                      placeholder="Value"
-                    />
-                  </div>
+                  <select
+                    value={condition.operator}
+                    onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
+                    className="px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                  >
+                    <option value="==">==</option>
+                    <option value="!=">!=</option>
+                    <option value=">">&gt;</option>
+                    <option value="<">&lt;</option>
+                    <option value=">=">&gt;=</option>
+                    <option value="<=">&lt;=</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={condition.value}
+                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                    className="px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                    placeholder="Value"
+                  />
                 </div>
                 <button
                   onClick={() => handleRemoveCondition(index)}
                   className="text-red-600 hover:text-red-700 text-xs px-2 py-1"
-                  disabled={conditions.length === 1}
+                  disabled={formState.conditions.length === 1}
                 >
                   Remove
                 </button>
@@ -163,10 +173,10 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
       </div>
 
       <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
-        💡 Use success handle for condition true, failure handle for condition false
+        💡 Two output ports: "true" if condition(s) pass, "false" otherwise
       </div>
 
-      <Button variant="primary" onClick={handleApply} className="w-full">
+      <Button variant="primary" onClick={handleApplyWithValidation} className="w-full">
         Apply Changes
       </Button>
     </div>

@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { NodeEditorProps } from './editorTypes';
 
-export interface NodeEditorProps {
-  node: DraftSceneNode;
-  onUpdate: (patch: Partial<DraftSceneNode>) => void;
-}
+// Re-export for convenience
+export type { NodeEditorProps } from './editorTypes';
 
 export interface UseNodeEditorOptions<T> {
   /** Initial form state */

@@ -33,6 +33,26 @@ class MediaSegment(BaseModel):
 
 
 class SceneNode(BaseModel):
+    """Scene node model for API responses.
+
+    Node configurations are stored in the `meta` field using standardized naming:
+    - meta.choiceConfig: Choice node configuration (choices array)
+    - meta.conditionConfig: Condition node configuration (conditions array, logicMode)
+    - meta.endConfig: End node configuration (endType, message)
+    - meta.videoConfig: Video node configuration (selectionKind, progressionSteps, etc.)
+    - meta.miniGameConfig: Mini-game configuration (gameType, rounds, difficulty, timeLimit)
+    - meta.seductionConfig: Seduction node configuration (stages, affinityCheckFlag, allowRetry)
+    - meta.generationConfig: Generation node configuration (generationType, purpose, strategy)
+
+    Additional metadata fields:
+    - meta.lifeSim: Life simulation metadata (advanceMinutes)
+    - meta.npcId: Hard NPC binding (camelCase, not snake_case)
+    - meta.speakerRole: Role-based NPC binding
+    - meta.npcState: NPC expression state
+
+    Legacy note: Some fields (choices, condition, endType, endMessage) may exist at root level
+    for backward compatibility, but new code should use the standardized meta.<type>Config pattern.
+    """
     id: str
     type: str
     label: Optional[str] = None
@@ -40,8 +60,8 @@ class SceneNode(BaseModel):
     media: Optional[List[MediaSegment]] = None
     selection: Optional[Dict[str, Any]] = None
     playback: Optional[Dict[str, Any]] = None
-    choices: Optional[List[Dict[str, Any]]] = None
-    condition: Optional[Dict[str, Any]] = None
+    choices: Optional[List[Dict[str, Any]]] = None  # Legacy - use meta.choiceConfig instead
+    condition: Optional[Dict[str, Any]] = None  # Legacy - use meta.conditionConfig instead
     trueTargetNodeId: Optional[str] = None
     falseTargetNodeId: Optional[str] = None
     targetSceneId: Optional[str] = None
@@ -49,8 +69,8 @@ class SceneNode(BaseModel):
     returnRouting: Optional[Dict[str, Any]] = None
     returnPointId: Optional[str] = None
     returnValues: Optional[Dict[str, Any]] = None
-    endType: Optional[str] = None
-    endMessage: Optional[str] = None
+    endType: Optional[str] = None  # Legacy - use meta.endConfig instead
+    endMessage: Optional[str] = None  # Legacy - use meta.endConfig instead
     meta: Optional[Dict[str, Any]] = None
 
 

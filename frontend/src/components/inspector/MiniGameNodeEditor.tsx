@@ -1,69 +1,60 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Button } from '@pixsim7/ui';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import { useNodeEditor } from './useNodeEditor';
+import type { NodeEditorProps, MiniGameConfig } from './editorTypes';
+import { validateMiniGameConfig, logValidationError } from './editorValidation';
 import { getAllGizmos } from '../../lib/gizmos/loadDefaultPacks';
 
-interface MiniGameNodeEditorProps {
-  node: DraftSceneNode;
-  onUpdate: (patch: Partial<DraftSceneNode>) => void;
-}
-
-export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) {
-  const [gameType, setGameType] = useState<'reflex' | 'memory' | 'puzzle' | 'sceneGizmo'>('reflex');
-  const [rounds, setRounds] = useState(3);
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
-  const [timeLimit, setTimeLimit] = useState(30);
-
-  // Get available gizmos from registry
+export function MiniGameNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const availableGizmos = useMemo(() => getAllGizmos(), []);
 
-  // Scene Gizmo specific settings
-  const [gizmoType, setGizmoType] = useState<string>(availableGizmos[0]?.id || 'orb');
-  const [zoneCount, setZoneCount] = useState(6);
+  const { formState, updateField, setFormState, handleApply } = useNodeEditor<MiniGameConfig>({
+    node,
+    onUpdate,
+    initialState: {
+      gameType: 'reflex',
+      rounds: 3,
+      difficulty: 'medium',
+      timeLimit: 30,
+      gizmoConfig: {
+        type: availableGizmos[0]?.id || 'orb',
+        zoneCount: 6,
+      },
+    },
+    loadFromNode: (node) => {
+      const metadata = node.metadata as Record<string, unknown> | undefined;
+      const savedConfig = metadata?.miniGameConfig as MiniGameConfig | undefined;
 
-  useEffect(() => {
-    // Load mini-game config from node metadata
-    const config = (node.metadata as any)?.miniGameConfig;
-    if (config) {
-      setGameType(config.gameType || 'reflex');
-      setRounds(config.rounds || 3);
-      setDifficulty(config.difficulty || 'medium');
-      setTimeLimit(config.timeLimit || 30);
-
-      // Gizmo-specific config
-      if (config.gizmoConfig) {
-        setGizmoType(config.gizmoConfig.type || 'orb');
-        setZoneCount(config.gizmoConfig.zoneCount || 6);
+      if (savedConfig) {
+        return {
+          gameType: savedConfig.gameType || 'reflex',
+          rounds: savedConfig.rounds || 3,
+          difficulty: savedConfig.difficulty || 'medium',
+          timeLimit: savedConfig.timeLimit || 30,
+          gizmoConfig: savedConfig.gizmoConfig || {
+            type: availableGizmos[0]?.id || 'orb',
+            zoneCount: 6,
+          },
+        };
       }
-    }
-  }, [node]);
 
-  function handleApply() {
-    const baseConfig = {
-      gameType,
-      rounds,
-      difficulty,
-      timeLimit,
-    };
-
-    // Add gizmo-specific config if applicable
-    const miniGameConfig =
-      gameType === 'sceneGizmo'
-        ? {
-            ...baseConfig,
-            gizmoConfig: {
-              type: gizmoType,
-              zoneCount,
-            },
-          }
-        : baseConfig;
-
-    onUpdate({
+      return {};
+    },
+    saveToNode: (formState, node) => ({
       metadata: {
         ...node.metadata,
-        miniGameConfig,
-      },
-    });
+        miniGameConfig: formState,
+      }
+    })
+  });
+
+  function handleApplyWithValidation() {
+    const validation = validateMiniGameConfig(formState);
+    if (!validation.isValid) {
+      validation.errors.forEach(error => logValidationError('MiniGameNodeEditor', error));
+      return;
+    }
+    handleApply();
   }
 
   return (
@@ -76,8 +67,8 @@ export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) 
       <div>
         <label className="block text-sm font-medium mb-1">Game Type</label>
         <select
-          value={gameType}
-          onChange={(e) => setGameType(e.target.value as any)}
+          value={formState.gameType}
+          onChange={(e) => updateField('gameType', e.target.value as MiniGameConfig['gameType'])}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
         >
           <option value="reflex">Reflex Test</option>
@@ -88,113 +79,97 @@ export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) 
       </div>
 
       {/* Scene Gizmo Settings */}
-      {gameType === 'sceneGizmo' && (
+      {formState.gameType === 'sceneGizmo' && (
         <>
           <div>
             <label className="block text-sm font-medium mb-1">Gizmo Type</label>
             <select
-              value={gizmoType}
-              onChange={(e) => setGizmoType(e.target.value)}
+              value={formState.gizmoConfig?.type || 'orb'}
+              onChange={(e) => setFormState({
+                ...formState,
+                gizmoConfig: { ...formState.gizmoConfig!, type: e.target.value }
+              })}
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             >
               {availableGizmos.map(gizmo => (
                 <option key={gizmo.id} value={gizmo.id}>
                   {gizmo.name}
-                  {gizmo.tags && gizmo.tags.length > 0 && ` (${gizmo.tags[0]})`}
                 </option>
               ))}
             </select>
-            {availableGizmos.length === 0 && (
-              <div className="text-xs text-red-500 mt-1">
-                No gizmos found in registry
-              </div>
-            )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Control Zones: {zoneCount}</label>
+            <label className="block text-sm font-medium mb-1">Zone Count</label>
             <input
-              type="range"
-              min="3"
-              max="12"
-              value={zoneCount}
-              onChange={(e) => setZoneCount(parseInt(e.target.value))}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-neutral-500">
-              <span>3</span>
-              <span>12</span>
-            </div>
-            <div className="text-xs text-neutral-500 mt-1">
-              Number of selectable zones/segments in the gizmo
-            </div>
-          </div>
-
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded p-2">
-            💡 Gizmo controls let players interact with scenes through 3D spatial controls
-          </div>
-        </>
-      )}
-
-      {/* Standard Settings (for non-gizmo games) */}
-      {gameType !== 'sceneGizmo' && (
-        <>
-          {/* Rounds */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Rounds: {rounds}</label>
-            <input
-              type="range"
+              type="number"
+              value={formState.gizmoConfig?.zoneCount || 6}
+              onChange={(e) => setFormState({
+                ...formState,
+                gizmoConfig: { ...formState.gizmoConfig!, zoneCount: Number(e.target.value) }
+              })}
               min="1"
-              max="10"
-              value={rounds}
-              onChange={(e) => setRounds(parseInt(e.target.value))}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-neutral-500">
-              <span>1</span>
-              <span>10</span>
-            </div>
-          </div>
-
-          {/* Difficulty */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Difficulty</label>
-            <select
-              value={difficulty}
-              onChange={(e) => setDifficulty(e.target.value as any)}
+              max="20"
               className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-            >
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
-          </div>
-
-          {/* Time Limit */}
-          <div>
-            <label className="block text-sm font-medium mb-1">Time Limit (seconds): {timeLimit}</label>
-            <input
-              type="range"
-              min="10"
-              max="120"
-              step="5"
-              value={timeLimit}
-              onChange={(e) => setTimeLimit(parseInt(e.target.value))}
-              className="w-full"
             />
-            <div className="flex justify-between text-xs text-neutral-500">
-              <span>10s</span>
-              <span>120s</span>
-            </div>
-          </div>
-
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
-            💡 Use success handle for win, failure handle for lose/timeout
+            <p className="text-xs text-neutral-500 mt-1">
+              Number of zones around the circumference (1-20)
+            </p>
           </div>
         </>
       )}
 
-      <Button variant="primary" onClick={handleApply} className="w-full">
+      {/* Rounds */}
+      <div>
+        <label className="block text-sm font-medium mb-1">Rounds</label>
+        <input
+          type="number"
+          value={formState.rounds}
+          onChange={(e) => updateField('rounds', Number(e.target.value))}
+          min="1"
+          max="100"
+          className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+        />
+        <p className="text-xs text-neutral-500 mt-1">
+          Number of rounds to play (1-100)
+        </p>
+      </div>
+
+      {/* Difficulty */}
+      <div>
+        <label className="block text-sm font-medium mb-1">Difficulty</label>
+        <select
+          value={formState.difficulty}
+          onChange={(e) => updateField('difficulty', e.target.value as MiniGameConfig['difficulty'])}
+          className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+        >
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
+      {/* Time Limit */}
+      <div>
+        <label className="block text-sm font-medium mb-1">Time Limit (seconds)</label>
+        <input
+          type="number"
+          value={formState.timeLimit}
+          onChange={(e) => updateField('timeLimit', Number(e.target.value))}
+          min="1"
+          max="600"
+          className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+        />
+        <p className="text-xs text-neutral-500 mt-1">
+          Time allowed per round (1-600 seconds)
+        </p>
+      </div>
+
+      <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
+        💡 Mini-games can branch based on success/failure outcome
+      </div>
+
+      <Button variant="primary" onClick={handleApplyWithValidation} className="w-full">
         Apply Changes
       </Button>
     </div>
