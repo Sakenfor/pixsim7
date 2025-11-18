@@ -56,6 +56,7 @@ import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import type { WorldToolContext } from '../lib/worldTools/types';
 import { worldToolRegistry } from '../lib/worldTools/registry';
+import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
 
 interface WorldTime {
   day: number;
@@ -139,6 +140,12 @@ export function Game2D() {
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  // Apply per-world theme when world changes
+  useWorldTheme(worldDetail);
+
+  // Get current view mode from world configuration
+  const viewMode = useViewMode(worldDetail);
 
   // Sync game state with plugin manager
   useEffect(() => {
@@ -585,11 +592,11 @@ export function Game2D() {
     ]
   );
 
-  // Get visible world tools based on current context
-  const visibleWorldTools = useMemo(
-    () => worldToolRegistry.getVisible(worldToolContext),
-    [worldToolContext]
-  );
+  // Get visible world tools based on current context and view mode
+  const visibleWorldTools = useMemo(() => {
+    const contextFilteredTools = worldToolRegistry.getVisible(worldToolContext);
+    return filterToolsByViewMode(contextFilteredTools, viewMode);
+  }, [worldToolContext, viewMode]);
 
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;

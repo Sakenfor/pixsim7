@@ -132,6 +132,22 @@ export {
   createDefaultManifest,
 } from './world/manifest';
 
+export {
+  getWorldUiConfig,
+  setWorldUiConfig,
+  updateWorldUiConfig,
+  getWorldTheme,
+  setWorldTheme,
+  getWorldViewMode,
+  setWorldViewMode,
+  getThemePreset,
+  getThemePresetIds,
+  createDefaultWorldUiConfig,
+  hasCustomTheme,
+  resetWorldUiConfig,
+  THEME_PRESETS,
+} from './world/worldUiConfig';
+
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
 export type { NpcPersona } from './npcs/brain';
