@@ -6,7 +6,7 @@ React hooks for consuming the capability registry with automatic reactivity.
 
 The capability registry provides simple React hooks that make it easy to access features, routes, and actions from any component. These hooks use Zustand's selector pattern to provide automatic subscriptions and re-renders when data changes.
 
-## Available Hooks
+## Core Hooks
 
 ### `useFeatures()`
 
@@ -85,9 +85,206 @@ function ActionButtons() {
 
 **Reactivity**: Component re-renders when actions are registered/unregistered or when action properties change.
 
-## Additional Hooks
+## Advanced Hooks
 
-The capability system also provides several bonus hooks for specific use cases:
+### `useStateValue<T>(id: string)`
+
+Reactively consume a state's value with automatic subscriptions.
+
+```tsx
+import { useStateValue } from '@/lib/capabilities';
+
+function SessionDisplay() {
+  const sessionState = useStateValue<SessionState>('session-state');
+
+  return <div>{sessionState?.playerName}</div>;
+}
+```
+
+**Benefits**:
+- Automatically subscribes to state changes
+- Returns undefined if state not found
+- Type-safe with TypeScript generics
+- Auto-cleanup on unmount
+
+### `useExecuteAction(actionId: string)`
+
+Execute actions with built-in loading and error state management.
+
+```tsx
+import { useExecuteAction } from '@/lib/capabilities';
+
+function CreateSceneButton() {
+  const { execute, loading, error, reset, isEnabled } = useExecuteAction('create-scene');
+
+  return (
+    <div>
+      <button onClick={() => execute()} disabled={loading || !isEnabled}>
+        {loading ? 'Creating...' : 'Create Scene'}
+      </button>
+      {error && <div>Error: {error.message} <button onClick={reset}>Clear</button></div>}
+    </div>
+  );
+}
+```
+
+**Returns**:
+- `execute(...args)`: Execute the action with arguments
+- `loading`: Boolean indicating if action is running
+- `error`: Error object if execution failed
+- `reset()`: Clear error state
+- `isEnabled`: Whether action is currently enabled
+- `action`: The action capability object
+
+### `useSearchCapabilities(query?: string)`
+
+Search across all capabilities (features, routes, actions, states).
+
+```tsx
+import { useSearchCapabilities } from '@/lib/capabilities';
+
+function CapabilitySearch() {
+  const [query, setQuery] = useState('');
+  const results = useSearchCapabilities(query);
+
+  return (
+    <div>
+      <input value={query} onChange={e => setQuery(e.target.value)} />
+      {results.map(result => (
+        <div key={result.id}>
+          {result.icon} {result.name} <span>({result.type})</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Result Type**:
+```tsx
+interface CapabilitySearchResult {
+  type: 'feature' | 'route' | 'action' | 'state';
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  data: FeatureCapability | RouteCapability | ActionCapability | StateCapability;
+}
+```
+
+### `useCommandPalette(query?: string)`
+
+VS Code-style command palette for actions.
+
+```tsx
+import { useCommandPalette } from '@/lib/capabilities';
+
+function CommandPalette() {
+  const [query, setQuery] = useState('');
+  const { commands, executeCommand } = useCommandPalette(query);
+
+  return (
+    <div>
+      <input placeholder="Type a command..." value={query} onChange={e => setQuery(e.target.value)} />
+      {commands.map(cmd => (
+        <button key={cmd.id} onClick={() => executeCommand(cmd.id)} disabled={!cmd.enabled}>
+          {cmd.icon} {cmd.name}
+          {cmd.shortcut && <kbd>{cmd.shortcut}</kbd>}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+**Returns**:
+- `commands`: Filtered commands based on query
+- `allCommands`: All available commands
+- `executeCommand(id)`: Execute a command by ID
+
+### `useCapabilityPermission(featureId: string, userPermissions?: string[])`
+
+Check if user has permission to access a capability.
+
+```tsx
+import { useCapabilityPermission } from '@/lib/capabilities';
+
+function ProtectedFeature({ featureId }: { featureId: string }) {
+  const userPermissions = ['read:session', 'ui:overlay'];
+  const hasAccess = useCapabilityPermission(featureId, userPermissions);
+
+  if (!hasAccess) {
+    return <div>Access Denied</div>;
+  }
+
+  return <FeatureContent />;
+}
+```
+
+### `useAllowedFeatures(userPermissions?: string[])`
+
+Filter features by user permissions.
+
+```tsx
+import { useAllowedFeatures } from '@/lib/capabilities';
+
+function FeatureList() {
+  const userPermissions = ['read:session', 'read:world'];
+  const features = useAllowedFeatures(userPermissions);
+
+  return <div>{features.map(f => <Feature key={f.id} {...f} />)}</div>;
+}
+```
+
+### `useAllowedActions(userPermissions?: string[])`
+
+Filter actions by user permissions (checks feature-level permissions).
+
+```tsx
+import { useAllowedActions } from '@/lib/capabilities';
+
+function ActionList() {
+  const userPermissions = ['read:session', 'ui:overlay'];
+  const actions = useAllowedActions(userPermissions);
+
+  return <div>{actions.map(a => <ActionButton key={a.id} {...a} />)}</div>;
+}
+```
+
+### `useRegisterCapabilities(config, deps)`
+
+Declaratively register capabilities with automatic cleanup on unmount.
+
+```tsx
+import { useRegisterCapabilities } from '@/lib/capabilities';
+
+function MyPlugin() {
+  useRegisterCapabilities({
+    features: [{
+      id: 'my-feature',
+      name: 'My Feature',
+      description: 'A custom feature',
+      category: 'utility',
+    }],
+    actions: [{
+      id: 'my-action',
+      name: 'My Action',
+      execute: () => console.log('Executed!'),
+      featureId: 'my-feature',
+    }],
+  }, []); // Empty deps = register once
+
+  return <div>My Plugin UI</div>;
+}
+```
+
+**Benefits**:
+- Automatic registration on mount
+- Automatic cleanup on unmount
+- Supports features, routes, actions, and states
+- Dependencies array for conditional registration
+
+## Additional Helper Hooks
 
 ### Feature Hooks
 
