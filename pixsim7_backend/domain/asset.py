@@ -192,7 +192,8 @@ class Asset(SQLModel, table=True):
     source_generation_id: Optional[int] = Field(
         default=None,
         foreign_key="generations.id",
-        index=True
+        index=True,
+        sa_column_kwargs={"deferrable": True, "initially": "DEFERRED"}
     )
 
     # ===== TIMESTAMPS =====
