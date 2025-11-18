@@ -9,6 +9,7 @@ import { registerBuiltinNodeTypes, registerArcNodeTypes, registerBuiltinHelpers 
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerPluginRenderers } from './lib/graph/pluginRenderers';
+import { registerRenderersFromNodeTypes } from './lib/graph/autoRegisterRenderers';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { pluginManager, bootstrapExamplePlugins } from './lib/plugins';
@@ -77,6 +78,14 @@ function App() {
     loadAllPlugins({
       verbose: true, // Log plugin loading progress
       strict: false, // Don't throw on individual plugin errors
+    });
+
+    // Auto-register renderers from node types (after plugins are loaded)
+    // This discovers renderer components and registers them based on the
+    // rendererComponent field in NodeTypeDefinition
+    registerRenderersFromNodeTypes({
+      verbose: true,
+      strict: false, // Don't fail if a renderer is missing
     });
 
     // Initialize modules
