@@ -117,6 +117,24 @@ export interface NpcResponseMetadata {
       steps?: number;
       cfg?: number;
     };
+
+    // Real-time generation settings
+    realtime?: {
+      /** Quality/speed preset for gameplay */
+      preset: 'realtime' | 'fast' | 'balanced' | 'quality';
+      /** Max wait time before showing fallback (ms) */
+      maxWaitTime: number;
+      /** Fallback strategy */
+      fallback: 'placeholder' | 'procedural' | 'cached' | 'freeze';
+      /** Enable predictive pre-generation */
+      predictive: boolean;
+      /** Cache size */
+      cacheSize: number;
+      /** Progressive loading (low → high quality) */
+      progressive: boolean;
+      /** Pre-generate common states on scene load */
+      preGenerate: boolean;
+    };
   };
 
   // Interaction settings
@@ -520,6 +538,15 @@ export function registerNpcResponseNode() {
         style: {
           artStyle: 'anime',
           quality: 'standard',
+        },
+        realtime: {
+          preset: 'fast',
+          maxWaitTime: 5000,
+          fallback: 'placeholder',
+          predictive: true,
+          cacheSize: 50,
+          progressive: true,
+          preGenerate: true,
         },
       },
       interaction: {

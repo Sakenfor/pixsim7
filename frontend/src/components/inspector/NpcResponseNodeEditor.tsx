@@ -232,6 +232,154 @@ export function NpcResponseNodeEditor({
         </div>
       </Panel>
 
+      {/* Real-Time Generation Settings */}
+      {metadata.videoGen.enabled && (
+        <Panel title="⚡ Real-Time Generation (Gameplay)">
+          <div className="space-y-4">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                These settings control how videos are generated during gameplay. Lower quality = faster generation.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Quality/Speed Preset</label>
+              <Select
+                value={metadata.videoGen.realtime?.preset || 'fast'}
+                onChange={(value) => handleVideoGenUpdate({
+                  realtime: { ...metadata.videoGen.realtime, preset: value as any } as any,
+                })}
+                options={[
+                  { value: 'realtime', label: '⚡ Real-time (2-3s) - 256x256, 8fps, 4 steps' },
+                  { value: 'fast', label: '🚀 Fast (3-5s) - 512x512, 12fps, 8 steps' },
+                  { value: 'balanced', label: '⚖️ Balanced (5-10s) - 512x512, 24fps, 15 steps' },
+                  { value: 'quality', label: '💎 Quality (10-20s) - 768x768, 30fps, 25 steps' },
+                ]}
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Uses LCM/Lightning models for fast generation. Times are estimates.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Max Wait Time (ms)
+              </label>
+              <Input
+                type="number"
+                value={metadata.videoGen.realtime?.maxWaitTime || 5000}
+                onChange={(e) => handleVideoGenUpdate({
+                  realtime: {
+                    ...metadata.videoGen.realtime,
+                    maxWaitTime: parseInt(e.target.value) || 5000,
+                  } as any,
+                })}
+                min={1000}
+                step={500}
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Show fallback if generation exceeds this time
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Fallback Strategy</label>
+              <Select
+                value={metadata.videoGen.realtime?.fallback || 'placeholder'}
+                onChange={(value) => handleVideoGenUpdate({
+                  realtime: { ...metadata.videoGen.realtime, fallback: value as any } as any,
+                })}
+                options={[
+                  { value: 'placeholder', label: '📄 Placeholder - Show text overlay' },
+                  { value: 'procedural', label: '🎨 Procedural - Use animated sprites' },
+                  { value: 'cached', label: '💾 Cached - Show similar cached video' },
+                  { value: 'freeze', label: '❄️ Freeze - Keep current frame' },
+                ]}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="predictive"
+                checked={metadata.videoGen.realtime?.predictive !== false}
+                onChange={(e) => handleVideoGenUpdate({
+                  realtime: {
+                    ...metadata.videoGen.realtime,
+                    predictive: e.target.checked,
+                  } as any,
+                })}
+                className="rounded"
+              />
+              <label htmlFor="predictive" className="text-sm">
+                🔮 Enable predictive pre-generation
+              </label>
+            </div>
+            <p className="text-xs text-neutral-500 ml-6">
+              AI predicts next likely states and generates them in background
+            </p>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="progressive"
+                checked={metadata.videoGen.realtime?.progressive !== false}
+                onChange={(e) => handleVideoGenUpdate({
+                  realtime: {
+                    ...metadata.videoGen.realtime,
+                    progressive: e.target.checked,
+                  } as any,
+                })}
+                className="rounded"
+              />
+              <label htmlFor="progressive" className="text-sm">
+                📈 Progressive loading (low → high quality)
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="pregenerate"
+                checked={metadata.videoGen.realtime?.preGenerate !== false}
+                onChange={(e) => handleVideoGenUpdate({
+                  realtime: {
+                    ...metadata.videoGen.realtime,
+                    preGenerate: e.target.checked,
+                  } as any,
+                })}
+                className="rounded"
+              />
+              <label htmlFor="pregenerate" className="text-sm">
+                ⏱️ Pre-generate common states on scene load
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Cache Size (videos)
+              </label>
+              <Input
+                type="number"
+                value={metadata.videoGen.realtime?.cacheSize || 50}
+                onChange={(e) => handleVideoGenUpdate({
+                  realtime: {
+                    ...metadata.videoGen.realtime,
+                    cacheSize: parseInt(e.target.value) || 50,
+                  } as any,
+                })}
+                min={10}
+                max={200}
+                step={10}
+              />
+              <p className="text-xs text-neutral-500 mt-1">
+                Number of generated videos to keep in memory
+              </p>
+            </div>
+          </div>
+        </Panel>
+      )}
+
       {/* Interaction Settings */}
       <Panel title="Interaction Settings">
         <div className="space-y-4">

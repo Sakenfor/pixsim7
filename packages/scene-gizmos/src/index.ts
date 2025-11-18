@@ -90,3 +90,19 @@ export type {
 export {
   NpcResponseEvaluator,
 } from './npcResponseEvaluator';
+
+// Video Generation Manager (Real-time)
+export type {
+  VideoGenerationConfig,
+  QualityPreset,
+  GenerationRequest,
+  GeneratedVideo,
+  FallbackVideo,
+} from './videoGenerationManager';
+
+export {
+  VideoGenerationManager,
+  ProgressiveVideoLoader,
+  getCommonNpcStates,
+  QUALITY_PRESETS,
+} from './videoGenerationManager';
