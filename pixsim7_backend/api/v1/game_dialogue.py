@@ -15,6 +15,8 @@ from pixsim7_backend.domain.game.models import (
     GameScene, GameSceneNode
 )
 from pixsim7_backend.domain.narrative import NarrativeEngine
+from pixsim7_backend.services.llm import LLMService, LLMRequest, LLMCacheStats, CacheInvalidationRequest
+from pixsim7_backend.infrastructure.redis.client import get_redis
 from pixsim7_backend.domain.narrative.action_blocks import (
     ActionEngine,
     ActionSelectionContext,
@@ -35,6 +37,7 @@ router = APIRouter()
 _narrative_engine = None
 _action_engine = None
 _block_generator = None
+_llm_service = None
 
 
 def get_narrative_engine() -> NarrativeEngine:
@@ -60,6 +63,15 @@ def get_block_generator() -> DynamicBlockGenerator:
     if _block_generator is None:
         _block_generator = DynamicBlockGenerator(use_claude_api=False)
     return _block_generator
+
+
+async def get_llm_service() -> LLMService:
+    """Get or create the LLM service singleton."""
+    global _llm_service
+    if _llm_service is None:
+        redis_client = await get_redis()
+        _llm_service = LLMService(redis_client, provider="anthropic")
+    return _llm_service
 
 
 def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[PreviousSegmentSnapshot]:
@@ -149,6 +161,29 @@ class DialogueNextLineResponse(BaseModel):
     llm_prompt: str
     visual_prompt: Optional[str] = None
     meta: Dict[str, Any] = {}
+
+
+class DialogueExecuteResponse(BaseModel):
+    """Response containing executed dialogue text with caching info."""
+    text: str = Field(..., description="Generated dialogue text")
+    llm_prompt: str = Field(..., description="The prompt used")
+    visual_prompt: Optional[str] = Field(None, description="Visual generation prompt if available")
+
+    # Cache info
+    cached: bool = Field(..., description="Whether this was a cached response")
+    cache_key: Optional[str] = Field(None, description="Cache key used")
+
+    # LLM info
+    provider: str = Field(..., description="LLM provider used")
+    model: str = Field(..., description="Model used")
+
+    # Usage stats
+    usage: Optional[Dict[str, int]] = Field(None, description="Token usage")
+    estimated_cost: Optional[float] = Field(None, description="Estimated cost in USD")
+    generation_time_ms: Optional[float] = Field(None, description="Generation time in milliseconds")
+
+    # Context metadata
+    meta: Dict[str, Any] = Field(default_factory=dict, description="Narrative context metadata")
 
 
 class DialogueDebugResponse(BaseModel):
@@ -324,6 +359,204 @@ async def generate_next_line(
     return DialogueNextLineResponse(
         llm_prompt=result["llm_prompt"],
         visual_prompt=result.get("visual_prompt"),
+        meta=result.get("metadata", {})
+    )
+
+
+@router.post("/next-line/execute", response_model=DialogueExecuteResponse)
+async def execute_dialogue_generation(
+    req: DialogueNextLineRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    engine: NarrativeEngine = Depends(get_narrative_engine),
+    llm_service: LLMService = Depends(get_llm_service)
+) -> DialogueExecuteResponse:
+    """
+    Generate and execute NPC dialogue using the LLM service.
+
+    This endpoint:
+    1. Builds the dialogue prompt using the narrative engine
+    2. Executes the LLM call with smart caching
+    3. Returns the generated text with cache/usage statistics
+
+    Caching behavior:
+    - Uses smart cache keys based on NPC personality + relationship state
+    - Default freshness threshold: 0.0 (always use cache if available)
+    - Cache TTL: 1 hour by default
+    """
+    # Load required data (same as generate_next_line)
+    session = None
+    if req.session_id:
+        session = await db.get(GameSession, req.session_id)
+        if not session or session.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+    elif req.scene_id:
+        session = GameSession(
+            id=0,
+            user_id=user.id,
+            scene_id=req.scene_id,
+            current_node_id=req.node_id or 0,
+            flags={},
+            relationships={},
+            world_time=0.0
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either session_id or scene_id must be provided"
+        )
+
+    # Load world data
+    world = None
+    world_data = {}
+    if req.world_id:
+        world = await db.get(GameWorld, req.world_id)
+        if world:
+            world_data = {
+                "id": world.id,
+                "name": world.name,
+                "meta": world.meta or {}
+            }
+    elif session and session.flags.get("world", {}).get("id"):
+        world_id = session.flags["world"]["id"]
+        if isinstance(world_id, int):
+            world = await db.get(GameWorld, world_id)
+            if world:
+                world_data = {
+                    "id": world.id,
+                    "name": world.name,
+                    "meta": world.meta or {}
+                }
+
+    if not world_data:
+        world_data = {
+            "id": 0,
+            "name": "Default World",
+            "meta": {}
+        }
+
+    # Load NPC data
+    npc = await db.get(GameNPC, req.npc_id)
+    if not npc:
+        raise HTTPException(status_code=404, detail="NPC not found")
+
+    npc_data = {
+        "id": npc.id,
+        "name": npc.name,
+        "personality": npc.personality or {},
+        "home_location_id": npc.home_location_id
+    }
+
+    # Load location data if provided
+    location_data = None
+    if req.location_id:
+        location = await db.get(GameLocation, req.location_id)
+        if location:
+            location_data = {
+                "id": location.id,
+                "name": location.name,
+                "meta": location.meta or {}
+            }
+
+    # Load scene/node data if provided
+    scene_data = None
+    if req.scene_id:
+        scene = await db.get(GameScene, req.scene_id)
+        if scene:
+            scene_data = {
+                "scene_id": scene.id,
+                "node_id": req.node_id,
+                "node_meta": {},
+                "speaker_role": None
+            }
+
+            if req.node_id:
+                node = await db.get(GameSceneNode, req.node_id)
+                if node:
+                    scene_data["node_meta"] = node.meta or {}
+                    scene_data["speaker_role"] = node.meta.get("speakerRole") if node.meta else None
+
+    # Prepare session data
+    session_data = {
+        "id": session.id if session else 0,
+        "world_time": session.world_time if session else 0.0,
+        "flags": session.flags if session else {},
+        "relationships": session.relationships if session else {}
+    }
+
+    # Build context using the engine
+    context = engine.build_context(
+        world_id=world_data["id"],
+        session_id=session_data["id"],
+        npc_id=req.npc_id,
+        world_data=world_data,
+        session_data=session_data,
+        npc_data=npc_data,
+        location_data=location_data,
+        scene_data=scene_data,
+        player_input=req.player_input
+    )
+
+    # Generate the dialogue request
+    result = engine.build_dialogue_request(
+        context=context,
+        program_id=req.program_id
+    )
+
+    # Add computed relationship info to metadata
+    result["meta"]["relationship_state"] = {
+        "affinity": context.relationship.affinity,
+        "trust": context.relationship.trust,
+        "chemistry": context.relationship.chemistry,
+        "tension": context.relationship.tension,
+        "relationship_tier": context.relationship.relationship_tier,
+        "intimacy_level": context.relationship.intimacy_level
+    }
+
+    # Execute LLM call with caching
+    llm_request = LLMRequest(
+        prompt=result["llm_prompt"],
+        system_prompt="You are roleplaying as an NPC in a game. Respond naturally in character.",
+        max_tokens=500,
+        temperature=0.8,
+        use_cache=True,
+        cache_ttl=3600,  # 1 hour
+        cache_freshness=0.0,  # Always use cache if available
+        metadata={
+            "npc_id": req.npc_id,
+            "program_id": req.program_id,
+            "relationship_tier": context.relationship.relationship_tier,
+            "intimacy_level": context.relationship.intimacy_level
+        }
+    )
+
+    # Build cache context for smart key generation
+    cache_context = {
+        "npc_id": req.npc_id,
+        "npc_personality": npc_data["personality"],
+        "relationship_state": {
+            "affinity": context.relationship.affinity,
+            "trust": context.relationship.trust,
+            "chemistry": context.relationship.chemistry,
+            "tension": context.relationship.tension
+        },
+        "player_input_hash": hash(req.player_input) if req.player_input else None
+    }
+
+    # Generate dialogue
+    llm_response = await llm_service.generate(llm_request, context=cache_context)
+
+    return DialogueExecuteResponse(
+        text=llm_response.text,
+        llm_prompt=result["llm_prompt"],
+        visual_prompt=result.get("visual_prompt"),
+        cached=llm_response.cached,
+        cache_key=llm_response.cache_key,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        usage=llm_response.usage,
+        estimated_cost=llm_response.estimated_cost,
+        generation_time_ms=llm_response.generation_time_ms,
         meta=result.get("metadata", {})
     )
 
@@ -1084,3 +1317,73 @@ async def list_available_concepts(
         response["camera_patterns"] = concept_library.camera_patterns
 
     return response
+
+
+# ============================================================================
+# LLM CACHE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+
+@router.get("/llm/cache/stats", response_model=LLMCacheStats)
+async def get_llm_cache_stats(
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> LLMCacheStats:
+    """
+    Get LLM cache statistics.
+
+    Returns cache hit rate, total keys, estimated cost savings, etc.
+    Useful for monitoring cache performance and cost optimization.
+    """
+    return await llm_service.get_cache_stats()
+
+
+@router.post("/llm/cache/invalidate")
+async def invalidate_llm_cache(
+    req: CacheInvalidationRequest,
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> Dict[str, Any]:
+    """
+    Invalidate LLM cache entries.
+
+    Supports:
+    - Invalidating by pattern (e.g., 'npc:*', '*relationship*')
+    - Invalidating specific cache keys
+    - Invalidating all LLM cache entries
+
+    Use cases:
+    - Clear cache for specific NPC when personality changes
+    - Clear cache when relationship reaches milestone
+    - Clear all cache during development/testing
+    """
+    deleted_count = await llm_service.invalidate_cache(
+        pattern=req.pattern,
+        cache_keys=req.cache_keys,
+        invalidate_all=req.invalidate_all
+    )
+
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Invalidated {deleted_count} cache entries"
+    }
+
+
+@router.post("/llm/cache/clear-stats")
+async def clear_llm_cache_stats(
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> Dict[str, Any]:
+    """
+    Clear LLM cache statistics.
+
+    Resets hit/miss counters and cost savings tracking.
+    Does NOT delete cached responses - use /invalidate for that.
+    """
+    await llm_service.clear_cache_stats()
+
+    return {
+        "success": True,
+        "message": "Cache statistics cleared"
+    }

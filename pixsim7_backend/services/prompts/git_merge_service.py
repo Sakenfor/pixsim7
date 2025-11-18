@@ -13,32 +13,20 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-try:
-    import anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
-
 from pixsim7_backend.domain.prompt_versioning import PromptVersion, PromptFamily
 from pixsim7_backend.services.prompts import PromptVersionService
 from pixsim7_backend.services.prompts.diff_utils import generate_unified_diff
+from pixsim7_backend.services.llm import LLMService, LLMRequest
 
 
 class GitMergeService:
     """Git-like merge support with AI conflict resolution"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, llm_service: Optional[LLMService] = None):
         self.db = db
         self.version_service = PromptVersionService(db)
-
-        # Initialize AI client if available
-        self.ai_available = ANTHROPIC_AVAILABLE
-        if self.ai_available:
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-            if api_key:
-                self.ai_client = anthropic.Anthropic(api_key=api_key)
-            else:
-                self.ai_available = False
+        self.llm_service = llm_service
+        self.ai_available = llm_service is not None
 
     async def merge(
         self,
@@ -354,15 +342,22 @@ TARGET VERSION:
 
 Please create an intelligent merge that combines the best of both versions."""
 
-        response = self.ai_client.messages.create(
+        request = LLMRequest(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             temperature=0.3,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            use_cache=False,  # Don't cache merges (unique operations)
+            metadata={
+                "operation": "prompt_merge",
+                "source_version_id": str(source.id),
+                "target_version_id": str(target.id)
+            }
         )
 
-        response_text = response.content[0].text
+        response = await self.llm_service.generate(request)
+        response_text = response.text
 
         # Parse JSON response
         import json

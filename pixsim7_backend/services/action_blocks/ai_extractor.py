@@ -1,6 +1,6 @@
 """AI-Powered Action Block Extractor
 
-Uses Claude API to intelligently extract reusable action blocks from complex prompts.
+Uses LLM service to intelligently extract reusable action blocks from complex prompts.
 Breaks down complex prompts (1000+ chars) into modular components that can be mixed and matched.
 """
 import json
@@ -9,34 +9,22 @@ from typing import List, Dict, Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-
-try:
-    import anthropic
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    ANTHROPIC_AVAILABLE = False
+from redis.asyncio import Redis
 
 from pixsim7_backend.domain.action_block import ActionBlockDB
 from pixsim7_backend.services.action_blocks.action_block_service import ActionBlockService
 from pixsim7_backend.services.action_blocks.concept_registry_service import ConceptRegistry
+from pixsim7_backend.services.llm import LLMService, LLMRequest
 
 
 class AIActionBlockExtractor:
     """AI-powered extractor for creating ActionBlocks from complex prompts"""
 
-    def __init__(self, db: AsyncSession, api_key: Optional[str] = None):
+    def __init__(self, db: AsyncSession, llm_service: LLMService):
         self.db = db
         self.service = ActionBlockService(db)
         self.concept_registry = ConceptRegistry(db)
-
-        if not ANTHROPIC_AVAILABLE:
-            raise ImportError("anthropic package not installed. Run: pip install anthropic")
-
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not set")
-
-        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.llm_service = llm_service
 
     async def extract_blocks_from_prompt(
         self,
@@ -236,17 +224,20 @@ Complexity Analysis:
 
 Return JSON array of block definitions."""
 
-        # Call Claude API
-        response = self.client.messages.create(
+        # Call LLM service
+        request = LLMRequest(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
             max_tokens=4000,
             temperature=0.3,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            use_cache=True,  # Cache extraction results
+            cache_ttl=7200,  # 2 hours
+            metadata={"operation": "action_block_extraction"}
         )
 
-        # Parse response
-        response_text = response.content[0].text
+        response = await self.llm_service.generate(request)
+        response_text = response.text
 
         # Extract JSON (handle potential markdown formatting)
         if "```json" in response_text:
@@ -439,15 +430,19 @@ Return JSON with:
 
 Suggest which parts could be parametrized for reusability."""
 
-        response = self.client.messages.create(
+        request = LLMRequest(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             temperature=0.3,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            use_cache=True,
+            cache_key=f"variable_suggestions:{block_id}",
+            metadata={"operation": "variable_suggestion", "block_id": str(block_id)}
         )
 
-        response_text = response.content[0].text
+        response = await self.llm_service.generate(request)
+        response_text = response.text
 
         # Parse JSON
         if "```json" in response_text:
