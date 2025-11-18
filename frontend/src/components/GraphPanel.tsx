@@ -33,6 +33,7 @@ import { GraphTemplatePalette } from './graph/GraphTemplatePalette';
 import { useTemplateStore } from '../lib/graph/templatesStore';
 import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../lib/graph/graphTemplates';
+import { useWorldContextStore } from '../stores/worldContextStore';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -43,6 +44,7 @@ const defaultEdgeOptions = {
 export function GraphPanel() {
   const toast = useToast();
   const { selectedNodeId, selectedNodeIds, setSelectedNodeId, setSelectedNodeIds } = useSelectionStore();
+  const { worldId } = useWorldContextStore();
   const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
   const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
   const createScene = useGraphStore((s: GraphState) => s.createScene);
@@ -436,7 +438,7 @@ export function GraphPanel() {
   }, [toast, importScene, getCurrentScene]);
 
   // Save selection as template
-  const handleSaveAsTemplate = useCallback(() => {
+  const handleSaveAsTemplate = useCallback(async () => {
     if (!currentScene) {
       toast.error('No active scene');
       return;
@@ -472,21 +474,38 @@ export function GraphPanel() {
 
     const description = prompt('Enter template description (optional):');
 
+    // Prompt for template scope
+    let source: 'user' | 'world' = 'user';
+    if (worldId !== null && worldId !== undefined) {
+      const saveToWorld = confirm(
+        `Save template to current world (World #${worldId})?\n\n` +
+        'Click OK to save to world (shared with all scenes in this world)\n' +
+        'Click Cancel to save to your user templates (available everywhere)'
+      );
+      source = saveToWorld ? 'world' : 'user';
+    }
+
     try {
       // Create template
       const template = captureTemplate(
         { nodes: selectedNodes, edges: selectedEdges },
-        { name: name.trim(), description: description?.trim() }
+        {
+          name: name.trim(),
+          description: description?.trim(),
+          source,
+          worldId: source === 'world' ? worldId : undefined,
+        }
       );
 
       // Save to store
-      addTemplate(template);
+      await addTemplate(template, worldId);
 
-      toast.success(`Template "${name}" saved with ${selectedNodes.length} nodes`);
+      const scopeLabel = source === 'world' ? `world #${worldId}` : 'user templates';
+      toast.success(`Template "${name}" saved to ${scopeLabel} with ${selectedNodes.length} nodes`);
     } catch (error) {
       toast.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  }, [currentScene, selectedNodeIds, toast, addTemplate]);
+  }, [currentScene, selectedNodeIds, worldId, toast, addTemplate]);
 
   // Insert template into current scene
   const handleInsertTemplate = useCallback(
@@ -612,7 +631,7 @@ export function GraphPanel() {
         {/* Template Palette Sidebar */}
         {showTemplatePalette && (
           <div className="w-80 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
-            <GraphTemplatePalette onInsertTemplate={handleInsertTemplate} />
+            <GraphTemplatePalette onInsertTemplate={handleInsertTemplate} worldId={worldId} />
           </div>
         )}
 

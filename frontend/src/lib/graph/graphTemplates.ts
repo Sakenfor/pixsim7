@@ -2,6 +2,14 @@ import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
 import { nodeTypeRegistry } from '@pixsim7/types';
 
 /**
+ * Template source type
+ * - 'builtin': Shipped with the application (read-only)
+ * - 'user': Created by the user (stored in localStorage)
+ * - 'world': Stored in world metadata (per-world templates)
+ */
+export type TemplateSource = 'builtin' | 'user' | 'world';
+
+/**
  * Graph Template - Reusable pattern of nodes and edges
  *
  * Templates allow designers to save and reuse common graph patterns
@@ -13,6 +21,8 @@ export interface GraphTemplate {
   description?: string;
   createdAt: number;
   nodeTypes: string[]; // Involved node types for validation
+  source?: TemplateSource; // Where the template comes from
+  worldId?: number; // For world-scoped templates
   data: {
     nodes: DraftSceneNode[];
     edges: DraftEdge[];
@@ -32,7 +42,7 @@ export interface TemplateSelection {
  */
 export function captureTemplate(
   selection: TemplateSelection,
-  metadata: { name: string; description?: string }
+  metadata: { name: string; description?: string; source?: TemplateSource; worldId?: number }
 ): GraphTemplate {
   const { nodes, edges } = selection;
 
@@ -46,6 +56,8 @@ export function captureTemplate(
     description: metadata.description,
     createdAt: Date.now(),
     nodeTypes,
+    source: metadata.source || 'user',
+    worldId: metadata.worldId,
     data: {
       nodes: JSON.parse(JSON.stringify(nodes)), // Deep clone
       edges: JSON.parse(JSON.stringify(edges)), // Deep clone
