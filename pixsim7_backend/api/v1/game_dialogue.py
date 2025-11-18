@@ -17,7 +17,10 @@ from pixsim7_backend.domain.game.models import (
 from pixsim7_backend.domain.narrative import NarrativeEngine
 from pixsim7_backend.services.llm import LLMService, LLMRequest, LLMCacheStats, CacheInvalidationRequest
 from pixsim7_backend.infrastructure.redis.client import get_redis
-from pixsim7_backend.services.npc import MemoryService, EmotionalStateService
+from pixsim7_backend.services.npc import (
+    MemoryService, EmotionalStateService, MilestoneService,
+    WorldAwarenessService, PersonalityEvolutionService, DialogueAnalyticsService
+)
 from pixsim7_backend.domain.npc_memory import MemoryImportance, MemoryType
 from pixsim7_backend.domain.narrative.action_blocks import (
     ActionEngine,
@@ -499,9 +502,13 @@ async def execute_dialogue_generation(
         player_input=req.player_input
     )
 
-    # Initialize memory and emotional state services
+    # Initialize all NPC services
     memory_service = MemoryService(db)
     emotion_service = EmotionalStateService(db)
+    milestone_service = MilestoneService(db)
+    world_awareness_service = WorldAwarenessService(db)
+    personality_service = PersonalityEvolutionService(db)
+    analytics_service = DialogueAnalyticsService(db)
 
     # Recall relevant memories
     recent_memories = await memory_service.get_recent_conversation(
@@ -519,6 +526,20 @@ async def execute_dialogue_generation(
 
     # Get emotional modifiers for dialogue
     emotion_modifiers = emotion_service.get_emotion_modifiers(current_emotions)
+
+    # Get relevant world events
+    relevant_world_events = await world_awareness_service.get_relevant_events(
+        npc_id=req.npc_id,
+        min_relevance=0.5,
+        limit=3
+    )
+
+    # Get recent milestones for context
+    recent_milestones = await milestone_service.get_recent_milestones(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        limit=2
+    )
 
     # Generate the dialogue request
     result = engine.build_dialogue_request(
@@ -557,6 +578,18 @@ async def execute_dialogue_generation(
         if emotion_modifiers.get('dialogue_adjustments'):
             emotion_context += f" Context: {', '.join(emotion_modifiers['dialogue_adjustments'])}."
         enhanced_prompt += emotion_context
+
+    # Add world events context
+    if relevant_world_events:
+        world_context = world_awareness_service.format_events_for_dialogue(relevant_world_events)
+        enhanced_prompt += f"\n\n{world_context}"
+
+    # Add milestone context
+    if recent_milestones:
+        milestone_context = "\n\nRecent relationship milestones:"
+        for milestone in recent_milestones:
+            milestone_context += f"\n- {milestone.milestone_name} (achieved {milestone.achieved_at.strftime('%Y-%m-%d')})"
+        enhanced_prompt += milestone_context
 
     # System prompt with character context
     system_prompt = f"You are roleplaying as {npc_data['name']}, an NPC in a game. "
@@ -612,7 +645,7 @@ async def execute_dialogue_generation(
         memory_type = MemoryType.LONG_TERM
 
     # Create memory
-    await memory_service.create_memory(
+    created_memory = await memory_service.create_memory(
         npc_id=req.npc_id,
         user_id=user.id,
         session_id=req.session_id,
@@ -629,6 +662,93 @@ async def execute_dialogue_generation(
         tags=["conversation", context.relationship.relationship_tier]
     )
 
+    # Record analytics for this dialogue generation
+    analytics_record = await analytics_service.record_dialogue_generation(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        program_id=req.program_id,
+        prompt_hash=llm_response.cache_key or "",
+        relationship_tier=context.relationship.relationship_tier,
+        model_used=llm_response.model,
+        generation_time_ms=llm_response.generation_time_ms or 0.0,
+        dialogue_length=len(llm_response.text),
+        session_id=req.session_id,
+        memory_id=created_memory.id,
+        intimacy_level=context.relationship.intimacy_level,
+        npc_emotion=current_emotions[0].emotion.value if current_emotions else None,
+        was_cached=llm_response.cached,
+        tokens_used=llm_response.usage.get("total_tokens") if llm_response.usage else None,
+        estimated_cost=llm_response.estimated_cost,
+        contains_memory_reference=len(recent_memories) > 0,
+        emotional_consistency=True,
+        metadata={
+            "world_events_count": len(relevant_world_events),
+            "milestones_count": len(recent_milestones)
+        }
+    )
+
+    # Check for relationship milestones
+    # Get previous relationship tier from recent memories
+    previous_tier = None
+    if recent_memories:
+        previous_tier = recent_memories[0].relationship_tier_at_time
+
+    # If tier changed, create milestone
+    current_tier = context.relationship.relationship_tier
+    if previous_tier and previous_tier != current_tier:
+        relationship_values = {
+            "affinity": context.relationship.affinity,
+            "trust": context.relationship.trust,
+            "chemistry": context.relationship.chemistry,
+            "tension": context.relationship.tension
+        }
+
+        milestone = await milestone_service.check_and_create_tier_milestone(
+            npc_id=req.npc_id,
+            user_id=user.id,
+            new_tier=current_tier,
+            relationship_values=relationship_values,
+            session_id=req.session_id,
+            triggered_by="relationship_change_during_conversation"
+        )
+
+        # If milestone created, trigger emotional response
+        if milestone:
+            emotion_trigger = milestone_service.get_milestone_emotion_trigger(milestone.milestone_type)
+            if emotion_trigger:
+                emotion_type, intensity = emotion_trigger
+                await emotion_service.set_emotion(
+                    npc_id=req.npc_id,
+                    emotion=emotion_type,
+                    intensity=intensity,
+                    duration_seconds=1800,  # 30 minutes
+                    triggered_by=f"milestone_{milestone.milestone_type.value}",
+                    session_id=req.session_id
+                )
+
+            # Consider personality evolution from milestone
+            personality_changes = personality_service.suggest_trait_changes_from_milestone(
+                milestone_type=milestone.milestone_type.value,
+                current_traits=npc_data.get("personality", {})
+            )
+
+            for trait, change_amount, reason in personality_changes:
+                # Apply small personality changes over time
+                # Note: This would need NPC personality tracking in the database
+                # For now, just record the evolution event
+                if npc_data.get("personality", {}).get(trait.value):
+                    current_value = npc_data["personality"][trait.value]
+                    await personality_service.apply_trait_change(
+                        npc_id=req.npc_id,
+                        trait=trait,
+                        current_value=current_value,
+                        change_amount=change_amount,
+                        triggered_by=reason,
+                        user_id=user.id,
+                        trigger_event_id=milestone.id,
+                        relationship_tier=current_tier
+                    )
+
     return DialogueExecuteResponse(
         text=llm_response.text,
         llm_prompt=result["llm_prompt"],
@@ -644,7 +764,11 @@ async def execute_dialogue_generation(
             **result.get("metadata", {}),
             "memory_created": True,
             "current_emotion": emotion_modifiers.get('primary_emotion') if current_emotions else None,
-            "recent_memories_count": len(recent_memories)
+            "recent_memories_count": len(recent_memories),
+            "world_events_count": len(relevant_world_events),
+            "milestones_count": len(recent_milestones),
+            "analytics_recorded": True,
+            "milestone_created": previous_tier and previous_tier != current_tier
         }
     )
 
@@ -1685,3 +1809,371 @@ async def clear_all_npc_emotions(
         "cleared_count": count,
         "message": f"Cleared {count} emotions"
     }
+
+# ===== Relationship Milestone Endpoints =====
+
+@router.get("/npcs/{npc_id}/milestones")
+async def get_npc_milestones(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Get all relationship milestones for an NPC
+
+    Returns milestone history in chronological order
+    """
+    milestone_service = MilestoneService(db)
+
+    milestones = await milestone_service.get_all_milestones(
+        npc_id=npc_id,
+        user_id=user.id,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(milestones),
+        "milestones": [
+            {
+                "id": m.id,
+                "type": m.milestone_type.value,
+                "name": m.milestone_name,
+                "relationship_tier": m.relationship_tier,
+                "achieved_at": m.achieved_at.isoformat(),
+                "triggered_by": m.triggered_by,
+                "emotional_impact": m.emotional_impact.value if m.emotional_impact else None
+            }
+            for m in milestones
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/milestones/summary")
+async def get_milestone_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of relationship milestones
+    """
+    milestone_service = MilestoneService(db)
+
+    summary = await milestone_service.get_milestone_summary(
+        npc_id=npc_id,
+        user_id=user.id
+    )
+
+    return summary
+
+
+# ===== World Context Endpoints =====
+
+class RegisterWorldEventRequest(BaseModel):
+    """Request to register a world event"""
+    event_type: str = Field(..., description="Type of event (time_of_day, weather, story_event, etc.)")
+    event_name: str = Field(..., description="Event identifier")
+    event_description: str = Field(..., description="What happened")
+    relevance_score: float = Field(default=0.5, ge=0.0, le=1.0, description="How relevant to NPC")
+    duration_hours: Optional[float] = Field(None, description="How long event is relevant")
+    opinion: Optional[str] = Field(None, description="NPC's opinion on the event")
+
+
+@router.post("/npcs/{npc_id}/world-events")
+async def register_world_event(
+    npc_id: int,
+    req: RegisterWorldEventRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    world_id: Optional[int] = None,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Register a world event that an NPC is aware of
+
+    This allows NPCs to reference recent events in dialogue
+    """
+    from pixsim7_backend.domain.npc_memory import WorldEventType
+
+    # Validate event type
+    try:
+        event_type = WorldEventType(req.event_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event type. Valid types: {[e.value for e in WorldEventType]}"
+        )
+
+    world_awareness_service = WorldAwarenessService(db)
+
+    context = await world_awareness_service.register_event(
+        npc_id=npc_id,
+        event_type=event_type,
+        event_name=req.event_name,
+        event_description=req.event_description,
+        world_id=world_id,
+        session_id=session_id,
+        relevance_score=req.relevance_score,
+        duration_hours=req.duration_hours,
+        opinion=req.opinion
+    )
+
+    return {
+        "success": True,
+        "event_id": context.id,
+        "event_name": context.event_name,
+        "relevance_score": context.relevance_score,
+        "expires_at": context.expires_at.isoformat() if context.expires_at else None
+    }
+
+
+@router.get("/npcs/{npc_id}/world-events")
+async def get_world_events(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    min_relevance: float = 0.3,
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Get relevant world events that an NPC is aware of
+    """
+    world_awareness_service = WorldAwarenessService(db)
+
+    events = await world_awareness_service.get_relevant_events(
+        npc_id=npc_id,
+        min_relevance=min_relevance,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(events),
+        "events": [
+            {
+                "id": e.id,
+                "type": e.event_type.value,
+                "name": e.event_name,
+                "description": e.event_description,
+                "relevance_score": e.relevance_score,
+                "occurred_at": e.occurred_at.isoformat(),
+                "opinion": e.opinion,
+                "emotional_response": e.emotional_response.value if e.emotional_response else None
+            }
+            for e in events
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/world-events/summary")
+async def get_world_context_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of NPC's world awareness
+    """
+    world_awareness_service = WorldAwarenessService(db)
+
+    summary = await world_awareness_service.get_world_context_summary(
+        npc_id=npc_id
+    )
+
+    return summary
+
+
+# ===== Personality Evolution Endpoints =====
+
+@router.get("/npcs/{npc_id}/personality/history")
+async def get_personality_history(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Get personality evolution history for an NPC
+    """
+    personality_service = PersonalityEvolutionService(db)
+
+    history = await personality_service.get_all_personality_history(
+        npc_id=npc_id,
+        user_id=user.id,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(history),
+        "changes": [
+            {
+                "id": e.id,
+                "trait": e.trait_changed.value,
+                "old_value": e.old_value,
+                "new_value": e.new_value,
+                "change_amount": e.change_amount,
+                "triggered_by": e.triggered_by,
+                "changed_at": e.changed_at.isoformat()
+            }
+            for e in history
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/personality/summary")
+async def get_personality_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of personality evolution
+    """
+    personality_service = PersonalityEvolutionService(db)
+
+    summary = await personality_service.get_personality_summary(
+        npc_id=npc_id
+    )
+
+    return summary
+
+
+@router.get("/npcs/{npc_id}/personality/trajectory/{trait}")
+async def get_trait_trajectory(
+    npc_id: int,
+    trait: str,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get trajectory/trend for a specific personality trait
+    """
+    from pixsim7_backend.domain.npc_memory import PersonalityTrait
+
+    # Validate trait
+    try:
+        trait_enum = PersonalityTrait(trait)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid trait. Valid traits: {[t.value for t in PersonalityTrait]}"
+        )
+
+    personality_service = PersonalityEvolutionService(db)
+
+    trajectory = await personality_service.calculate_trait_trajectory(
+        npc_id=npc_id,
+        trait=trait_enum
+    )
+
+    return trajectory
+
+
+# ===== Dialogue Analytics Endpoints =====
+
+@router.get("/analytics/cost-summary")
+async def get_cost_summary(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get cost summary for dialogue generation
+
+    Shows LLM costs, cache savings, and usage statistics
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    summary = await analytics_service.get_cost_summary(
+        npc_id=npc_id,
+        user_id=user.id,
+        days=days
+    )
+
+    return summary
+
+
+@router.get("/analytics/engagement")
+async def get_engagement_metrics(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get player engagement metrics
+
+    Shows response rates, conversation continuation, and sentiment
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    metrics = await analytics_service.get_engagement_metrics(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return metrics
+
+
+@router.get("/analytics/quality")
+async def get_quality_metrics(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get dialogue quality metrics
+
+    Shows memory reference rate, emotional consistency, and dialogue length
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    metrics = await analytics_service.get_quality_metrics(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return metrics
+
+
+@router.get("/analytics/model-performance")
+async def get_model_performance(
+    db: DatabaseSession,
+    user: CurrentUser,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Compare performance across different LLM models
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    performance = await analytics_service.get_model_performance(
+        days=days
+    )
+
+    return performance
+
+
+@router.get("/analytics/program-performance")
+async def get_program_performance(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Analyze performance by prompt program
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    performance = await analytics_service.get_program_performance(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return performance
