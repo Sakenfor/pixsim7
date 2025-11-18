@@ -31,6 +31,8 @@ export type {
   InteractionResult,
   BaseInteractionConfig,
   FormField,
+  InteractionUIMode,
+  InteractionCapabilities,
 } from './types';
 
 // Export specific configs for type safety

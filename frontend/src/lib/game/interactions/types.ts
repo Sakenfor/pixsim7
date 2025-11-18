@@ -180,6 +180,44 @@ export interface ConfigSchema {
 }
 
 /**
+ * UI behavior modes for interactions
+ */
+export type InteractionUIMode =
+  | 'dialogue'      // Opens dialogue UI
+  | 'notification'  // Shows notification only
+  | 'silent'        // No UI feedback
+  | 'custom';       // Plugin handles its own UI
+
+/**
+ * Interaction capabilities/effects for UI hints
+ */
+export interface InteractionCapabilities {
+  /** Opens dialogue interface */
+  opensDialogue?: boolean;
+
+  /** Modifies inventory */
+  modifiesInventory?: boolean;
+
+  /** Affects relationship values */
+  affectsRelationship?: boolean;
+
+  /** Triggers game events */
+  triggersEvents?: boolean;
+
+  /** Has success/failure states */
+  hasRisk?: boolean;
+
+  /** Requires items */
+  requiresItems?: boolean;
+
+  /** Consumes items */
+  consumesItems?: boolean;
+
+  /** Can be detected (stealth) */
+  canBeDetected?: boolean;
+}
+
+/**
  * Core plugin interface with enhanced metadata
  */
 export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
@@ -199,6 +237,12 @@ export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
 
   /** Mark as experimental/beta */
   experimental?: boolean;
+
+  /** UI behavior mode (how the 2D UI should respond) */
+  uiMode?: InteractionUIMode;
+
+  /** Capabilities/effects for UI hints */
+  capabilities?: InteractionCapabilities;
 
   defaultConfig: TConfig; // Default values when enabled
   configFields: FormField[]; // Auto-generates UI forms

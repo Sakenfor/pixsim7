@@ -157,6 +157,20 @@ export const persuadePlugin: InteractionPlugin<PersuadeConfig> = {
   name: 'Persuade/Seduce',
   description: 'Attempt to persuade or seduce the NPC',
   icon: '💋',
+  category: 'social',
+  version: '1.0.0',
+  tags: ['social', 'persuasion', 'seduction', 'risky'],
+
+  // UI behavior: may open dialogue scenes
+  uiMode: 'custom',
+
+  // Capabilities for UI hints
+  capabilities: {
+    opensDialogue: true, // Can open success/failure scenes
+    affectsRelationship: true,
+    hasRisk: true,
+    triggersEvents: true,
+  },
 
   defaultConfig: {
     enabled: true,

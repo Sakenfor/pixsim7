@@ -23,6 +23,20 @@ export const pickpocketPlugin: InteractionPlugin<PickpocketConfig> = {
   name: 'Pickpocket',
   description: 'Attempt to steal from the NPC',
   icon: '🤏',
+  category: 'stealth',
+  version: '1.0.0',
+  tags: ['stealth', 'theft', 'risky'],
+
+  // UI behavior: shows notification only
+  uiMode: 'notification',
+
+  // Capabilities for UI hints
+  capabilities: {
+    modifiesInventory: true,
+    affectsRelationship: true,
+    hasRisk: true,
+    canBeDetected: true,
+  },
 
   defaultConfig: {
     enabled: true,
