@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAssets } from '../hooks/useAssets';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
@@ -9,6 +9,8 @@ import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
+import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
+import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -109,6 +111,48 @@ export function AssetsRoute() {
   // View toggle between remote assets and local folders panel
   const [view, setView] = useState<'remote' | 'local'>('remote');
 
+  // Gallery tools state
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [showToolsPanel, setShowToolsPanel] = useState(false);
+
+  // Convert selected IDs to GalleryAsset objects
+  const selectedAssets: GalleryAsset[] = useMemo(() => {
+    return items.filter(a => selectedAssetIds.has(a.id));
+  }, [items, selectedAssetIds]);
+
+  // Gallery tool context
+  const galleryContext: GalleryToolContext = useMemo(() => ({
+    assets: items,
+    selectedAssets,
+    filters,
+    refresh: () => {
+      // Trigger a refresh by clearing and reloading
+      window.location.reload();
+    },
+    updateFilters: setAndPersist,
+    isSelectionMode,
+  }), [items, selectedAssets, filters, isSelectionMode]);
+
+  // Handle asset selection for gallery tools
+  const toggleAssetSelection = (assetId: string) => {
+    const newSelection = new Set(selectedAssetIds);
+    if (newSelection.has(assetId)) {
+      newSelection.delete(assetId);
+    } else {
+      newSelection.add(assetId);
+    }
+    setSelectedAssetIds(newSelection);
+
+    // Auto-show tools panel when assets are selected
+    if (newSelection.size > 0 && !showToolsPanel) {
+      setShowToolsPanel(true);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedAssetIds(new Set());
+  };
+
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
       {/* Selection Mode Banner */}
@@ -130,6 +174,25 @@ export function AssetsRoute() {
         </div>
       )}
 
+      {/* Gallery Tools Selection Banner */}
+      {!isSelectionMode && selectedAssetIds.size > 0 && (
+        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100">
+                🛠️ {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
+              </h2>
+              <p className="text-sm text-purple-700 dark:text-purple-300">
+                Use the tools panel below to perform actions on selected assets
+              </p>
+            </div>
+            <Button variant="secondary" onClick={clearSelection}>
+              Clear Selection
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Assets</h1>
         <div className="flex items-center gap-4">
@@ -143,6 +206,18 @@ export function AssetsRoute() {
               onClick={() => setView('local')}
             >Local</button>
           </div>
+          {!isSelectionMode && (
+            <button
+              className={`px-3 py-1 text-xs rounded border transition-colors ${
+                showToolsPanel
+                  ? 'bg-purple-500 text-white border-purple-600'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
+              }`}
+              onClick={() => setShowToolsPanel(!showToolsPanel)}
+            >
+              🛠️ Tools {showToolsPanel ? '▼' : '▶'}
+            </button>
+          )}
           <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${
               jobsSocket.connected
@@ -202,12 +277,61 @@ export function AssetsRoute() {
               </select>
             </div>
           </div>
+
+          {/* Gallery Tools Panel */}
+          {showToolsPanel && !isSelectionMode && (
+            <div className="mb-4">
+              <GalleryToolsPanel context={galleryContext} />
+            </div>
+          )}
+
           <MasonryGrid
-            items={items.map(a => (
-              <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
-                {isSelectionMode ? (
-                  <div className="relative group">
-                    <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+            items={items.map(a => {
+              const isSelected = selectedAssetIds.has(a.id);
+
+              return (
+                <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
+                  {isSelectionMode ? (
+                    <div className="relative group">
+                      <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+                        <MediaCard
+                          id={a.id}
+                          mediaType={a.media_type}
+                          providerId={a.provider_id}
+                          providerAssetId={a.provider_asset_id}
+                          thumbUrl={a.thumbnail_url}
+                          remoteUrl={a.remote_url}
+                          width={a.width}
+                          height={a.height}
+                          durationSec={a.duration_sec}
+                          tags={a.tags}
+                          description={a.description}
+                          createdAt={a.created_at}
+                          status={a.sync_status}
+                        />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <Button
+                          variant="primary"
+                          onClick={() => handleSelectAsset(a)}
+                          className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                        >
+                          ✓ Select Asset
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className={`relative cursor-pointer group ${
+                        isSelected ? 'ring-4 ring-purple-500 rounded' : ''
+                      }`}
+                      onClick={(e) => {
+                        // Allow selection via click when not in picker mode
+                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                          toggleAssetSelection(a.id);
+                        }
+                      }}
+                    >
                       <MediaCard
                         id={a.id}
                         mediaType={a.media_type}
@@ -223,36 +347,23 @@ export function AssetsRoute() {
                         createdAt={a.created_at}
                         status={a.sync_status}
                       />
+                      {/* Selection indicator */}
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 bg-purple-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
+                          ✓
+                        </div>
+                      )}
+                      {/* Selection hint on hover */}
+                      <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="bg-black/70 text-white text-xs px-2 py-1 rounded text-center">
+                          {isSelected ? 'Ctrl+Click to deselect' : 'Ctrl+Click to select'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <Button
-                        variant="primary"
-                        onClick={() => handleSelectAsset(a)}
-                        className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                      >
-                        ✓ Select Asset
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <MediaCard
-                    id={a.id}
-                    mediaType={a.media_type}
-                    providerId={a.provider_id}
-                    providerAssetId={a.provider_asset_id}
-                    thumbUrl={a.thumbnail_url}
-                    remoteUrl={a.remote_url}
-                    width={a.width}
-                    height={a.height}
-                    durationSec={a.duration_sec}
-                    tags={a.tags}
-                    description={a.description}
-                    createdAt={a.created_at}
-                    status={a.sync_status}
-                  />
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
           />
           <div className="pt-4">
             {hasMore && (

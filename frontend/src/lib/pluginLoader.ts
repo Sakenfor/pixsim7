@@ -55,6 +55,7 @@ export interface PluginLoadResult {
   helpers: { loaded: number; failed: number };
   interactions: { loaded: number; failed: number };
   nodes: { loaded: number; failed: number };
+  galleryTools: { loaded: number; failed: number };
   errors: Array<{ plugin: string; error: string }>;
 }
 
@@ -69,6 +70,7 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
     helpers: { loaded: 0, failed: 0 },
     interactions: { loaded: 0, failed: 0 },
     nodes: { loaded: 0, failed: 0 },
+    galleryTools: { loaded: 0, failed: 0 },
     errors: [],
   };
 
@@ -103,12 +105,22 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
     if (strict) throw error;
   }
 
+  // Load gallery tool plugins
+  try {
+    const galleryToolResult = await loadGalleryToolPlugins(verbose);
+    result.galleryTools = galleryToolResult;
+  } catch (error: any) {
+    result.errors.push({ plugin: 'galleryTools', error: error.message });
+    if (strict) throw error;
+  }
+
   // Summary
   if (verbose) {
     console.log(`✅ Plugins loaded:`);
     console.log(`   Node Types: ${result.nodes.loaded} loaded, ${result.nodes.failed} failed`);
     console.log(`   Helpers: ${result.helpers.loaded} loaded, ${result.helpers.failed} failed`);
     console.log(`   Interactions: ${result.interactions.loaded} loaded, ${result.interactions.failed} failed`);
+    console.log(`   Gallery Tools: ${result.galleryTools.loaded} loaded, ${result.galleryTools.failed} failed`);
 
     if (result.errors.length > 0) {
       console.warn(`⚠️  ${result.errors.length} plugin(s) failed to load:`);
@@ -327,6 +339,70 @@ async function loadNodeTypePlugins(verbose: boolean): Promise<{ loaded: number; 
       } else {
         console.warn(
           `   ⚠️  ${path}: No register*Node function exports found`
+        );
+        failed++;
+      }
+    } catch (error: any) {
+      console.error(`   ✗ ${path}: ${error.message}`);
+      failed++;
+    }
+  }
+
+  return { loaded, failed };
+}
+
+/**
+ * Load gallery tool plugins from plugins/galleryTools/**
+ */
+async function loadGalleryToolPlugins(verbose: boolean): Promise<{ loaded: number; failed: number }> {
+  let loaded = 0;
+  let failed = 0;
+
+  // Use Vite's import.meta.glob to discover all gallery tool plugin files
+  const galleryToolModules = import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', {
+    eager: false,
+  });
+
+  const galleryToolPaths = Object.keys(galleryToolModules);
+
+  if (galleryToolPaths.length === 0) {
+    if (verbose) {
+      console.log('   ℹ️  No gallery tool plugins found in /src/plugins/galleryTools/');
+    }
+    return { loaded, failed };
+  }
+
+  if (verbose) {
+    console.log(`   Loading ${galleryToolPaths.length} gallery tool plugin(s)...`);
+  }
+
+  for (const path of galleryToolPaths) {
+    try {
+      const module = await galleryToolModules[path]();
+
+      // Look for registration functions (convention: register*Tool)
+      const registrationFunctions = Object.values(module).filter(
+        (exp) =>
+          typeof exp === 'function' &&
+          exp.name?.startsWith('register') &&
+          exp.name?.endsWith('Tool')
+      );
+
+      if (registrationFunctions.length > 0) {
+        // Call all registration functions found in the module
+        registrationFunctions.forEach((fn: any) => {
+          fn();
+        });
+        loaded++;
+        if (verbose) {
+          const pluginName = path.replace('/src/plugins/galleryTools/', '');
+          console.log(
+            `   ✓ ${pluginName} (${registrationFunctions.length} tool(s))`
+          );
+        }
+      } else {
+        console.warn(
+          `   ⚠️  ${path}: No register*Tool function exports found`
         );
         failed++;
       }
