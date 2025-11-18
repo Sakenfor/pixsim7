@@ -119,7 +119,8 @@
       "Bash(if ! grep -q \"Phase 3:\" \"$file\")",
       "Bash(then)",
       "Bash(else)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(npx vite build)"
     ],
     "deny": [],
     "ask": []
