@@ -1,0 +1,21 @@
+{
+  "name": "@pixsim7/create-plugin",
+  "version": "1.0.0",
+  "description": "CLI tool to scaffold PixSim7 plugins",
+  "main": "index.js",
+  "bin": {
+    "create-pixsim-plugin": "./index.js"
+  },
+  "keywords": [
+    "pixsim7",
+    "plugin",
+    "generator",
+    "cli",
+    "scaffold"
+  ],
+  "author": "PixSim7",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

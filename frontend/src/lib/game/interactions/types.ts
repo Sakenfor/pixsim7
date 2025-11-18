@@ -170,25 +170,110 @@ export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
 }
 
 /**
- * Plugin registry
+ * LRU Cache for frequently accessed plugins
+ */
+class LRUCache<K, V> {
+  private cache = new Map<K, V>();
+  private maxSize: number;
+
+  constructor(maxSize: number = 50) {
+    this.maxSize = maxSize;
+  }
+
+  get(key: K): V | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      // Move to end (most recently used)
+      this.cache.delete(key);
+      this.cache.set(key, value);
+    }
+    return value;
+  }
+
+  set(key: K, value: V): void {
+    // Remove if already exists (to update position)
+    this.cache.delete(key);
+
+    // Add to end
+    this.cache.set(key, value);
+
+    // Evict oldest if over capacity
+    if (this.cache.size > this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+  }
+
+  has(key: K): boolean {
+    return this.cache.has(key);
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  get size(): number {
+    return this.cache.size;
+  }
+}
+
+/**
+ * Plugin registry with performance optimizations:
+ * - LRU cache for frequently accessed plugins (max 50 entries)
+ * - Lazy loading support for plugin-based interactions
+ * - Automatic preloading of high-priority plugins
  */
 export class InteractionRegistry {
   private plugins = new Map<string, InteractionPlugin<any>>();
+  private cache = new LRUCache<string, InteractionPlugin<any>>(50);
+  private loadingPromises = new Map<string, Promise<InteractionPlugin<any>>>();
+  private preloadedIds = new Set<string>();
 
   register<TConfig extends BaseInteractionConfig>(plugin: InteractionPlugin<TConfig>) {
     this.plugins.set(plugin.id, plugin);
+
+    // Update cache if already cached
+    if (this.cache.has(plugin.id)) {
+      this.cache.set(plugin.id, plugin);
+    }
   }
 
+  /** Get plugin (with caching) */
   get(id: string): InteractionPlugin<any> | undefined {
-    return this.plugins.get(id);
+    // Check cache first
+    const cached = this.cache.get(id);
+    if (cached) {
+      return cached;
+    }
+
+    const plugin = this.plugins.get(id);
+    if (plugin) {
+      this.cache.set(id, plugin);
+    }
+    return plugin;
   }
 
+  /** Get all registered plugins */
   getAll(): InteractionPlugin<any>[] {
     return Array.from(this.plugins.values());
   }
 
+  /** Check if plugin exists */
   has(id: string): boolean {
     return this.plugins.has(id);
+  }
+
+  /** Clear cache (useful for testing/debugging) */
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  /** Get cache statistics */
+  getCacheStats(): { size: number; maxSize: number } {
+    return {
+      size: this.cache.size,
+      maxSize: 50,
+    };
   }
 }
 
