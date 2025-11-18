@@ -125,16 +125,38 @@ export async function getGameSession(sessionId: number): Promise<GameSessionDTO>
   return res.data;
 }
 
+export interface SessionUpdateResponse {
+  session?: GameSessionDTO;
+  conflict?: boolean;
+  serverSession?: GameSessionDTO;
+}
+
 export async function updateGameSession(
   sessionId: number,
   payload: {
     world_time?: number;
     flags?: Record<string, unknown>;
     relationships?: Record<string, unknown>;
+    expected_version?: number;
   },
-): Promise<GameSessionDTO> {
-  const res = await apiClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
-  return res.data;
+): Promise<SessionUpdateResponse> {
+  try {
+    const res = await apiClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
+    return { session: res.data, conflict: false };
+  } catch (error: any) {
+    // Handle 409 Conflict responses
+    if (error.response?.status === 409) {
+      const detail = error.response.data?.detail;
+      if (detail?.error === 'version_conflict' && detail?.current_session) {
+        return {
+          conflict: true,
+          serverSession: detail.current_session as GameSessionDTO,
+        };
+      }
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {

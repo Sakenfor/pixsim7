@@ -147,9 +147,12 @@ class GameSessionService:
         return session
 
     async def get_session(self, session_id: int) -> Optional[GameSession]:
+        """
+        Get session without normalization.
+        Normalization only happens on write operations to avoid redundant work.
+        Frontend will use cached normalized values or compute locally as fallback.
+        """
         session = await self.db.get(GameSession, session_id)
-        if session:
-            await self._normalize_session_relationships(session)
         return session
 
     async def advance_session(self, *, session_id: int, edge_id: int) -> GameSession:
@@ -191,10 +194,15 @@ class GameSessionService:
         world_time: Optional[float] = None,
         flags: Optional[Dict[str, Any]] = None,
         relationships: Optional[Dict[str, Any]] = None,
+        expected_version: Optional[int] = None,
     ) -> GameSession:
         session = await self.db.get(GameSession, session_id)
         if not session:
             raise ValueError("session_not_found")
+
+        # Check version for optimistic locking
+        if expected_version is not None and session.version != expected_version:
+            raise ValueError("version_conflict")
 
         if world_time is not None:
             session.world_time = float(world_time)
@@ -202,6 +210,9 @@ class GameSessionService:
             session.flags = flags
         if relationships is not None:
             session.relationships = relationships
+
+        # Increment version on update
+        session.version += 1
 
         self.db.add(session)
         await self.db.commit()

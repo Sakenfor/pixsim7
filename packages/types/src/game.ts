@@ -119,6 +119,7 @@ export interface GameSessionDTO {
   flags: Record<string, unknown>;
   relationships: Record<string, unknown>;
   world_time: number;
+  version: number; // Optimistic locking version, incremented on each update
 }
 
 // ===================

@@ -22,6 +22,7 @@ class SessionUpdateRequest(BaseModel):
     world_time: Optional[float] = None
     flags: Optional[Dict[str, Any]] = None
     relationships: Optional[Dict[str, Any]] = None
+    expected_version: Optional[int] = None  # For optimistic locking
 
 
 class GameSessionResponse(BaseModel):
@@ -32,6 +33,7 @@ class GameSessionResponse(BaseModel):
     flags: Dict[str, Any]
     relationships: Dict[str, Any]
     world_time: float
+    version: int  # Optimistic locking version
 
     @classmethod
     def from_model(cls, gs: Any) -> "GameSessionResponse":
@@ -43,6 +45,7 @@ class GameSessionResponse(BaseModel):
             flags=gs.flags,
             relationships=gs.relationships,
             world_time=gs.world_time,
+            version=gs.version,
         )
 
 
@@ -113,6 +116,9 @@ async def update_session(
     This is intended for world/life-sim style sessions that track
     continuous time and coarse-grained world state, independent of
     the scene graph progression.
+
+    Supports optimistic locking: if expected_version is provided and doesn't
+    match the current version, returns 409 Conflict with the current session state.
     """
     gs = await game_session_service.get_session(session_id)
     if not gs or gs.user_id != user.id:
@@ -124,11 +130,23 @@ async def update_session(
             world_time=req.world_time,
             flags=req.flags,
             relationships=req.relationships,
+            expected_version=req.expected_version,
         )
     except ValueError as e:
         msg = str(e)
         if msg == "session_not_found":
             raise HTTPException(status_code=404, detail="Session not found")
+        elif msg == "version_conflict":
+            # Get current session state for conflict resolution
+            current_session = await game_session_service.get_session(session_id)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "version_conflict",
+                    "message": "Session was modified by another process",
+                    "current_session": GameSessionResponse.from_model(current_session).model_dump(),
+                },
+            )
         raise
 
     return GameSessionResponse.from_model(gs)

@@ -41,7 +41,7 @@ import {
   type ScenePlaybackPhase,
 } from '@pixsim7/game-core';
 import { loadWorldSession, saveWorldSession } from '../lib/game/session';
-import { type InteractionContext } from '../lib/game/interactions';
+import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
@@ -465,7 +465,13 @@ export function Game2D() {
         attemptPickpocket: (req) => attemptPickpocket(req),
         getScene: (id) => getGameScene(id),
       },
-      session: createSessionHelpers(gameSession),
+      session: createSessionHelpers(
+        gameSession,
+        (updatedSession) => setGameSession(updatedSession),
+        {
+          updateSession: (sessionId, updates) => updateGameSession(sessionId, updates),
+        } satisfies SessionAPI
+      ),
       onSceneOpen: async (sceneId, npcId) => {
         setIsLoadingScene(true);
         try {

@@ -110,13 +110,22 @@ export interface InteractionState {
 }
 
 /**
+ * Session update response with conflict detection
+ */
+export interface SessionUpdateResponse {
+  session?: GameSessionDTO;
+  conflict?: boolean;
+  serverSession?: GameSessionDTO;
+}
+
+/**
  * Session API for optimistic updates (backend sync)
  */
 export interface SessionAPI {
   updateSession: (
     sessionId: number,
     updates: Partial<GameSessionDTO> & { expectedVersion?: number }
-  ) => Promise<GameSessionDTO & { conflict?: boolean; serverSession?: GameSessionDTO }>;
+  ) => Promise<SessionUpdateResponse>;
 }
 
 /**

@@ -78,29 +78,36 @@ export function createSessionHelpers(
         // Include version for optimistic locking
         const response = await api.updateSession(gameSession.id, {
           ...backendUpdate,
-          expectedVersion: (gameSession as any).version,
+          expectedVersion: gameSession.version,
         });
 
         // 3a. Handle version conflicts
         if (response.conflict && response.serverSession) {
+          console.log('[SessionAdapter] Version conflict detected, resolving...');
+
           // Server session is newer - apply conflict resolution
           const resolved = await resolveConflict(gameSession, response.serverSession, localUpdate);
 
-          // Retry update with resolved state
+          // Retry update with resolved state and new version
           const retryResponse = await api.updateSession(gameSession.id, {
             ...backendUpdate,
-            expectedVersion: (response.serverSession as any).version,
+            expectedVersion: response.serverSession.version,
           });
 
-          onUpdate?.(retryResponse);
-          return retryResponse;
+          if (retryResponse.session) {
+            onUpdate?.(retryResponse.session);
+            return retryResponse.session;
+          }
         }
 
         // 3b. No conflict - apply server truth
-        onUpdate?.(response);
-        return response;
+        if (response.session) {
+          onUpdate?.(response.session);
+          return response.session;
+        }
       } catch (err) {
         // 3c. Rollback on error
+        console.error('[SessionAdapter] Update failed, rolling back:', err);
         onUpdate?.(gameSession);
         throw err;
       }
