@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { useControlCenterStore } from './stores/controlCenterStore';
+import { useToast } from './stores/toastStore';
 import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
 import { registerBuiltinNodeTypes, registerArcNodeTypes, registerBuiltinHelpers } from './lib/registries';
@@ -10,6 +11,7 @@ import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerPluginRenderers } from './lib/graph/pluginRenderers';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { loadAllPlugins } from './lib/pluginLoader';
+import { pluginManager, bootstrapExamplePlugins } from './lib/plugins';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -28,6 +30,8 @@ import { GizmoLab } from './routes/GizmoLab';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
+import { PluginOverlays } from './components/PluginOverlays';
+import { PluginManagerUI } from './components/PluginManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer } from './components/common/ToastContainer';
 import { useTheme } from '@pixsim7/ui';
@@ -36,11 +40,28 @@ function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const controlCenterMode = useControlCenterStore((s) => s.mode);
+  const toast = useToast();
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();
 
   useEffect(() => {
+    // Setup plugin system UI callbacks
+    pluginManager.setUICallbacks({
+      onNotification: (notification) => {
+        const type = notification.type || 'info';
+        toast[type](notification.message, notification.duration);
+      },
+    });
+
+    // Load plugin registry from localStorage
+    pluginManager.loadPluginRegistry();
+
+    // Bootstrap example plugins (installs RelationshipTracker)
+    bootstrapExamplePlugins().catch(error => {
+      console.error('Failed to bootstrap plugins:', error);
+    });
+
     // Register builtin node types
     registerBuiltinNodeTypes();
     registerArcNodeTypes();
@@ -80,7 +101,7 @@ function App() {
     return () => {
       moduleRegistry.cleanupAll();
     };
-  }, [initialize]);
+  }, [initialize, toast]);
 
   return (
     <BrowserRouter>
@@ -100,6 +121,7 @@ function App() {
           <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
           <Route path="/npc-brain-lab" element={<ProtectedRoute><NpcBrainLab /></ProtectedRoute>} />
           <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
+          <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
@@ -121,6 +143,12 @@ function App() {
       )}
       {/* Global toast notifications */}
       <ToastContainer />
+      {/* Plugin overlays (only when authenticated) */}
+      {isAuthenticated && (
+        <ErrorBoundary>
+          <PluginOverlays />
+        </ErrorBoundary>
+      )}
     </BrowserRouter>
   );
 }
