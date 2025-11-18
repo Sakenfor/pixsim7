@@ -52,6 +52,12 @@ async def add_asset(
     3) remote_url + provider_id + user_id (best-effort)
     """
 
+    # Track which dedup strategy matched for conflict detection
+    dedup_strategy = None
+    existing_by_provider = None
+    existing_by_sha256 = None
+    existing_by_url = None
+
     # 1) Provider tuple
     result = await db.execute(
         select(Asset).where(
@@ -60,7 +66,10 @@ async def add_asset(
             Asset.user_id == user_id,
         )
     )
-    existing = result.scalar_one_or_none()
+    existing_by_provider = result.scalar_one_or_none()
+    if existing_by_provider:
+        existing = existing_by_provider
+        dedup_strategy = "provider_tuple"
 
     # 2) sha256
     if not existing and sha256:
@@ -70,7 +79,10 @@ async def add_asset(
                 Asset.user_id == user_id,
             )
         )
-        existing = result.scalar_one_or_none()
+        existing_by_sha256 = result.scalar_one_or_none()
+        if existing_by_sha256:
+            existing = existing_by_sha256
+            dedup_strategy = "sha256"
 
     # 3) remote_url
     if not existing and remote_url:
@@ -81,7 +93,37 @@ async def add_asset(
                 Asset.user_id == user_id,
             )
         )
-        existing = result.scalar_one_or_none()
+        existing_by_url = result.scalar_one_or_none()
+        if existing_by_url:
+            existing = existing_by_url
+            dedup_strategy = "remote_url"
+
+    # Conflict detection: warn if multiple strategies match different assets
+    if existing:
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        conflicts = []
+        if existing_by_provider and existing_by_sha256 and existing_by_provider.id != existing_by_sha256.id:
+            conflicts.append(("provider_tuple", existing_by_provider.id, "sha256", existing_by_sha256.id))
+        if existing_by_provider and existing_by_url and existing_by_provider.id != existing_by_url.id:
+            conflicts.append(("provider_tuple", existing_by_provider.id, "remote_url", existing_by_url.id))
+        if existing_by_sha256 and existing_by_url and existing_by_sha256.id != existing_by_url.id:
+            conflicts.append(("sha256", existing_by_sha256.id, "remote_url", existing_by_url.id))
+
+        if conflicts:
+            logger.warning(
+                "asset_deduplication_conflict",
+                user_id=user_id,
+                provider_id=provider_id,
+                provider_asset_id=provider_asset_id,
+                sha256=sha256,
+                remote_url=remote_url,
+                conflicts=conflicts,
+                used_strategy=dedup_strategy,
+                matched_asset_id=existing.id,
+                detail="Multiple deduplication strategies matched different assets, using first match"
+            )
 
     if existing:
         # Non-destructive updates: only fill in missing fields

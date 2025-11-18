@@ -14,6 +14,18 @@ from pathlib import Path
 from pixsim7_backend.shared.errors import InvalidOperationError
 
 
+def _check_ffmpeg_available() -> bool:
+    """Check if ffmpeg is available in PATH"""
+    import shutil
+    return shutil.which("ffmpeg") is not None
+
+
+def _check_ffprobe_available() -> bool:
+    """Check if ffprobe is available in PATH"""
+    import shutil
+    return shutil.which("ffprobe") is not None
+
+
 def extract_frame_ffmpeg(
     video_path: str,
     timestamp: float,
@@ -43,6 +55,13 @@ def extract_frame_ffmpeg(
     """
     if not os.path.exists(video_path):
         raise InvalidOperationError(f"Video file not found: {video_path}")
+
+    # Check if ffmpeg is available
+    if not _check_ffmpeg_available():
+        raise InvalidOperationError(
+            "ffmpeg is not installed or not available in PATH. "
+            "Please install ffmpeg to enable frame extraction functionality."
+        )
 
     # Create output path if not provided
     if output_path is None:
@@ -154,6 +173,13 @@ def get_image_dimensions(image_path: str) -> Tuple[int, int]:
     Returns:
         Tuple of (width, height)
     """
+    # Check if ffprobe is available
+    if not _check_ffprobe_available():
+        raise InvalidOperationError(
+            "ffprobe is not installed or not available in PATH. "
+            "Please install ffmpeg (includes ffprobe) to enable dimension extraction."
+        )
+
     try:
         cmd = [
             "ffprobe",

@@ -545,21 +545,66 @@ class AssetService:
         await self.db.commit()
         await self.db.refresh(asset)
 
-        # Prepare storage path
-        storage_root = f"data/storage/user/{user.id}/assets"
-        os.makedirs(storage_root, exist_ok=True)
+        # Prepare storage path (use pathlib for cross-platform compatibility)
+        from pathlib import Path
+        import shutil as shutil_module
+        storage_base = os.getenv("PIXSIM_STORAGE_PATH", "data/storage")
+        storage_root = Path(storage_base) / "user" / str(user.id) / "assets"
+        storage_root.mkdir(parents=True, exist_ok=True)
+
+        # Check available disk space before download
+        disk_usage = shutil_module.disk_usage(storage_root)
+        min_free_gb = float(os.getenv("PIXSIM_MIN_FREE_DISK_GB", "1.0"))
+        free_gb = disk_usage.free / (1024 ** 3)
+        if free_gb < min_free_gb:
+            from pixsim_logging import get_logger
+            logger = get_logger()
+            logger.error(
+                "insufficient_disk_space",
+                asset_id=asset.id,
+                free_gb=f"{free_gb:.2f}",
+                min_required_gb=min_free_gb,
+                detail="Insufficient disk space for asset download"
+            )
+            raise InvalidOperationError(f"Insufficient disk space: {free_gb:.2f}GB free, need at least {min_free_gb}GB")
 
         # Determine extension (basic heuristic)
         ext = ".mp4" if asset.media_type == MediaType.VIDEO else ".jpg"
-        local_path = f"{storage_root}/{asset.id}{ext}"
+        local_path = str(storage_root / f"{asset.id}{ext}")
 
         try:
-            # Download
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.get(asset.remote_url, follow_redirects=True)
-                resp.raise_for_status()
-                with open(local_path, "wb") as f:
-                    f.write(resp.content)
+            # Download with retry logic for transient failures
+            max_retries = 3
+            retry_delay = 2.0  # seconds
+            last_error = None
+
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        resp = await client.get(asset.remote_url, follow_redirects=True)
+                        resp.raise_for_status()
+                        with open(local_path, "wb") as f:
+                            f.write(resp.content)
+                    break  # Success, exit retry loop
+                except (httpx.TimeoutException, httpx.NetworkError) as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        from pixsim_logging import get_logger
+                        logger = get_logger()
+                        logger.warning(
+                            "asset_download_retry",
+                            asset_id=asset.id,
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            error=str(e),
+                            detail=f"Retrying download after {retry_delay}s delay"
+                        )
+                        import asyncio
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        # All retries exhausted
+                        raise InvalidOperationError(f"Failed to download after {max_retries} attempts: {e}")
 
             file_size = os.path.getsize(local_path)
             sha256 = self._compute_sha256(local_path)
@@ -596,11 +641,33 @@ class AssetService:
         register them as provider-agnostic Asset rows (REMOTE).
         """
         from pixsim7_backend.services.provider.registry import registry
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
         provider = registry.get(asset.provider_id)
 
         try:
             embedded = await provider.extract_embedded_assets(asset.provider_asset_id)
-        except Exception:
+        except AttributeError as e:
+            # Provider doesn't implement extract_embedded_assets method
+            logger.debug(
+                "embedded_extraction_not_supported",
+                provider_id=asset.provider_id,
+                asset_id=asset.id,
+                detail=f"Provider {asset.provider_id} does not support embedded asset extraction"
+            )
+            embedded = []
+        except Exception as e:
+            # Extraction failed for other reasons
+            logger.error(
+                "embedded_extraction_failed",
+                provider_id=asset.provider_id,
+                asset_id=asset.id,
+                provider_asset_id=asset.provider_asset_id,
+                error=str(e),
+                exc_info=True,
+                detail="Failed to extract embedded assets from provider"
+            )
             embedded = []
 
         if not embedded:
@@ -718,13 +785,52 @@ class AssetService:
 
         # Check if already uploaded to this provider
         if target_provider_id in asset.provider_uploads:
-            await self.db.commit()  # Save last_accessed_at
-            return asset.provider_uploads[target_provider_id]
+            cached_id = asset.provider_uploads[target_provider_id]
+
+            # Verify the cached upload is still valid (optional verification)
+            verify_uploads = os.getenv("PIXSIM_VERIFY_PROVIDER_UPLOADS", "false").lower() == "true"
+            if verify_uploads:
+                from pixsim_logging import get_logger
+                logger = get_logger()
+                try:
+                    # TODO: Add provider verification method
+                    # For now, just log that we're using cached upload
+                    logger.debug(
+                        "using_cached_provider_upload",
+                        asset_id=asset.id,
+                        target_provider_id=target_provider_id,
+                        cached_provider_asset_id=cached_id
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "cached_upload_verification_failed",
+                        asset_id=asset.id,
+                        target_provider_id=target_provider_id,
+                        error=str(e),
+                        detail="Cached upload may be invalid, will re-upload"
+                    )
+                    # Remove invalid cache and re-upload
+                    asset.provider_uploads.pop(target_provider_id, None)
+                    await self.db.commit()
+
+            if target_provider_id in asset.provider_uploads:
+                await self.db.commit()  # Save last_accessed_at
+                return cached_id
 
         # Need to upload to target provider
         provider_asset_id = await self._upload_to_provider(asset, target_provider_id)
 
         # Cache the result
+        from pixsim_logging import get_logger
+        logger = get_logger()
+        logger.info(
+            "cached_provider_upload",
+            asset_id=asset.id,
+            target_provider_id=target_provider_id,
+            provider_asset_id=provider_asset_id,
+            detail="Successfully uploaded and cached asset to provider"
+        )
+
         asset.provider_uploads[target_provider_id] = provider_asset_id
         await self.db.commit()
         await self.db.refresh(asset)
@@ -778,7 +884,7 @@ class AssetService:
 
     async def _download_asset_to_temp(self, asset: Asset) -> str:
         """
-        Download asset to temporary file
+        Download asset to temporary file with retry logic
 
         Args:
             asset: Asset to download
@@ -792,6 +898,8 @@ class AssetService:
         import httpx
         import tempfile
         import os
+        from pixsim_logging import get_logger
+        logger = get_logger()
 
         # Determine file extension
         ext = ".mp4" if asset.media_type == MediaType.VIDEO else ".jpg"
@@ -801,21 +909,48 @@ class AssetService:
         os.close(fd)
 
         try:
-            # Download from provider URL
-            async with httpx.AsyncClient() as client:
-                response = await client.get(asset.remote_url, follow_redirects=True)
-                response.raise_for_status()
+            # Download with retry logic
+            max_retries = 3
+            retry_delay = 2.0
 
-                # Write to temp file
-                with open(temp_path, "wb") as f:
-                    f.write(response.content)
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        response = await client.get(asset.remote_url, follow_redirects=True)
+                        response.raise_for_status()
+
+                        # Write to temp file
+                        with open(temp_path, "wb") as f:
+                            f.write(response.content)
+                    break  # Success
+                except (httpx.TimeoutException, httpx.NetworkError) as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            "temp_download_retry",
+                            asset_id=asset.id,
+                            attempt=attempt + 1,
+                            max_retries=max_retries,
+                            error=str(e)
+                        )
+                        import asyncio
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                    else:
+                        raise
 
             return temp_path
 
         except Exception as e:
             # Cleanup temp file on error
             if os.path.exists(temp_path):
-                os.remove(temp_path)
+                try:
+                    os.remove(temp_path)
+                except Exception as cleanup_error:
+                    logger.warning(
+                        "temp_file_cleanup_failed",
+                        file_path=temp_path,
+                        error=str(cleanup_error)
+                    )
 
             raise InvalidOperationError(
                 f"Failed to download asset from {asset.remote_url}: {e}"
@@ -965,13 +1100,15 @@ class AssetService:
             # Create new image asset
             file_size = os.path.getsize(frame_path)
 
-            # Determine storage path
-            storage_root = f"data/storage/user/{user.id}/assets"
-            os.makedirs(storage_root, exist_ok=True)
+            # Determine storage path (use pathlib for cross-platform compatibility)
+            from pathlib import Path
+            storage_base = os.getenv("PIXSIM_STORAGE_PATH", "data/storage")
+            storage_root = Path(storage_base) / "user" / str(user.id) / "assets"
+            storage_root.mkdir(parents=True, exist_ok=True)
 
             # Move frame to permanent storage
             frame_filename = f"frame_{video_asset_id}_{timestamp:.2f}s.jpg"
-            permanent_path = f"{storage_root}/{frame_filename}"
+            permanent_path = str(storage_root / frame_filename)
 
             # Move file (or copy if cross-device)
             import shutil
