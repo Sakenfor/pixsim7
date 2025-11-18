@@ -17,6 +17,7 @@ import {
   type PluginMeta,
   type PluginKind,
 } from '../../lib/plugins/catalog';
+import { PluginDependencies } from '../capabilities/PluginDependencies';
 
 // Plugin kind labels
 const PLUGIN_KIND_LABELS: Record<PluginKind, string> = {
@@ -160,62 +161,73 @@ function PluginListItem({
   onClick: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left p-4 rounded-lg border transition-colors ${
+    <div
+      className={`rounded-lg border transition-colors ${
         selected
           ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-          : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'
+          : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800'
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
-            <h3 className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
-              {plugin.label}
-            </h3>
-            {plugin.experimental && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
-                Experimental
-              </span>
+      <button
+        onClick={onClick}
+        className="w-full text-left p-4 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 transition-colors"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
+              <h3 className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                {plugin.label}
+              </h3>
+              {plugin.experimental && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                  Experimental
+                </span>
+              )}
+            </div>
+            {plugin.description && (
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 line-clamp-2">
+                {plugin.description}
+              </p>
             )}
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
+                {PLUGIN_KIND_ICONS[plugin.kind]} {PLUGIN_KIND_LABELS[plugin.kind]}
+              </span>
+              {plugin.category && (
+                <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
+                  {plugin.category}
+                </span>
+              )}
+              {plugin.version && (
+                <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
+                  v{plugin.version}
+                </span>
+              )}
+            </div>
           </div>
-          {plugin.description && (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 line-clamp-2">
-              {plugin.description}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-              {PLUGIN_KIND_ICONS[plugin.kind]} {PLUGIN_KIND_LABELS[plugin.kind]}
-            </span>
-            {plugin.category && (
-              <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-                {plugin.category}
-              </span>
-            )}
-            {plugin.version && (
-              <span className="px-2 py-0.5 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-                v{plugin.version}
+          <div className="flex flex-col items-end gap-1">
+            {plugin.enabled !== undefined && (
+              <span
+                className={`px-2 py-1 text-xs font-medium rounded ${
+                  plugin.enabled
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                    : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
+                {plugin.enabled ? 'Enabled' : 'Disabled'}
               </span>
             )}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          {plugin.enabled !== undefined && (
-            <span
-              className={`px-2 py-1 text-xs font-medium rounded ${
-                plugin.enabled
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
-                  : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
-              }`}
-            >
-              {plugin.enabled ? 'Enabled' : 'Disabled'}
-            </span>
-          )}
+      </button>
+
+      {/* Dependencies panel - shown when selected */}
+      {selected && (
+        <div className="px-4 pb-4 border-t border-neutral-200 dark:border-neutral-700 pt-4 mt-2">
+          <PluginDependencies plugin={plugin} />
         </div>
-      </div>
-    </button>
+      )}
+    </div>
   );
 }
