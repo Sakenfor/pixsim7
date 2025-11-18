@@ -122,3 +122,19 @@ export {
   validateZone,
   validateSegmentZones,
 } from './zoneUtils';
+
+// Zone Tracking Utilities
+export {
+  generateZonesFromCorrespondences,
+  getTrackedZonesForSegment,
+  updateTrackedZone,
+  removeTrackedZone,
+  toPersistedFormat,
+  fromPersistedFormat,
+  saveZoneTrackingJSON,
+  loadZoneTrackingJSON,
+  loadZoneTrackingURL,
+  validateZoneTracking,
+  getZoneTrackingStats,
+  getTrackingCompleteness,
+} from './zoneTrackingUtils';
