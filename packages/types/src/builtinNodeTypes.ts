@@ -20,6 +20,8 @@ export function registerBuiltinNodeTypes() {
       playback: { kind: 'normal' },
     },
     editorComponent: 'VideoNodeEditor',
+    rendererComponent: 'VideoNodeRenderer',
+    preloadPriority: 10, // Very common, preload eagerly
   });
 
   // Choice node
@@ -37,6 +39,8 @@ export function registerBuiltinNodeTypes() {
       choices: [],
     },
     editorComponent: 'ChoiceNodeEditor',
+    rendererComponent: 'ChoiceNodeRenderer',
+    preloadPriority: 9, // Very common, preload eagerly
     ports: {
       dynamic: (node) => {
         // Read choices from node metadata
@@ -94,6 +98,8 @@ export function registerBuiltinNodeTypes() {
       falseTargetNodeId: '',
     },
     editorComponent: 'ConditionNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 7, // Common, but uses default renderer
   });
 
   // End node
@@ -112,6 +118,8 @@ export function registerBuiltinNodeTypes() {
       endMessage: '',
     },
     editorComponent: 'EndNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 5, // Common but simple
   });
 
   // Scene call node
@@ -131,6 +139,8 @@ export function registerBuiltinNodeTypes() {
       returnRouting: {},
     },
     editorComponent: 'SceneCallNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 8, // Common in complex scenes
     ports: {
       dynamic: (node) => {
         // Read return points from node metadata
@@ -198,6 +208,8 @@ export function registerBuiltinNodeTypes() {
       returnValues: {},
     },
     editorComponent: 'ReturnNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 5, // Moderate frequency
   });
 
   // Generation node (experimental)
@@ -231,6 +243,8 @@ export function registerBuiltinNodeTypes() {
       },
     },
     editorComponent: 'GenerationNodeEditor',
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 2, // Experimental, rare
   });
 
   // Action node
@@ -248,6 +262,8 @@ export function registerBuiltinNodeTypes() {
       effects: [],
     },
     editorComponent: 'ActionNodeEditor', // TODO: create this
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 6, // Moderately common
   });
 
   // Mini-Game node (special video node with mini-game metadata)
@@ -271,6 +287,8 @@ export function registerBuiltinNodeTypes() {
       },
     },
     editorComponent: 'MiniGameNodeEditor',
+    rendererComponent: 'VideoNodeRenderer',
+    preloadPriority: 3, // Less common
   });
 
   // Node Group (organizational)
@@ -287,5 +305,7 @@ export function registerBuiltinNodeTypes() {
     defaultData: {
       collapsed: false,
     },
+    rendererComponent: 'DefaultNodeRenderer',
+    preloadPriority: 1, // Organizational, less critical
   });
 }

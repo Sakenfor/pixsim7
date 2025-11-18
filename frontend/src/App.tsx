@@ -10,6 +10,7 @@ import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerPluginRenderers } from './lib/graph/pluginRenderers';
 import { registerRenderersFromNodeTypes } from './lib/graph/autoRegisterRenderers';
+import { preloadHighPriorityRenderers } from './lib/graph/rendererBootstrap';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { loadAllPlugins } from './lib/pluginLoader';
 import { pluginManager, bootstrapExamplePlugins } from './lib/plugins';
@@ -65,6 +66,13 @@ function App() {
 
     // Register plugin node renderers
     registerPluginRenderers();
+
+    // Preload high-priority renderers (priority > 7)
+    // This eagerly loads core renderers (video, choice, scene_call, etc.)
+    // while leaving rare/heavy renderers lazy-loaded
+    preloadHighPriorityRenderers().catch(error => {
+      console.error('Failed to preload high-priority renderers:', error);
+    });
 
     // Register session helpers (built-in and custom)
     registerBuiltinHelpers();

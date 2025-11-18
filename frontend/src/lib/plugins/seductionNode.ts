@@ -136,6 +136,10 @@ export function registerSeductionNode() {
     // Renderer component for graph view
     rendererComponent: 'SeductionNodeRenderer',
 
+    // Performance optimization: Preload priority
+    // Seduction is a common plugin node in scene graphs
+    preloadPriority: 8,
+
     // Optional: Validation
     validate: (data: SeductionNodeData) => {
       if (!data.stages || data.stages.length === 0) {
