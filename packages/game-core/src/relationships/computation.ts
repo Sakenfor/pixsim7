@@ -11,6 +11,10 @@
  * Compute relationship tier based on affinity value.
  * Default tiers if no world schema is provided.
  *
+ * @authority CLIENT_FALLBACK
+ * @backend_authoritative Use session.relationships["npc:X"].tierId at runtime
+ * @use_cases Editor previews, offline tools, tests
+ *
  * NOTE: This is a fallback computation. The backend computes and stores tierId
  * in GameSession.relationships["npc:ID"].tierId, which should be preferred at runtime.
  * Use this function only for:
@@ -37,6 +41,10 @@ export function compute_relationship_tier(affinity: number): string {
 
 /**
  * Compute intimacy level based on multiple relationship axes.
+ *
+ * @authority CLIENT_FALLBACK
+ * @backend_authoritative Use session.relationships["npc:X"].intimacyLevelId at runtime
+ * @use_cases Editor previews, offline tools, tests
  *
  * NOTE: This is a fallback computation. The backend computes and stores intimacyLevelId
  * in GameSession.relationships["npc:ID"].intimacyLevelId, which should be preferred at runtime.

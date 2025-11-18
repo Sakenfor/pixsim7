@@ -32,46 +32,51 @@ export interface FormField {
 /**
  * Session helpers interface - provides clean API for session manipulation
  * Plugins can use this instead of importing from @pixsim7/game-core
+ *
+ * Methods that modify state use optimistic updates:
+ * 1. Apply change immediately (instant UI feedback)
+ * 2. Send to backend for validation
+ * 3. Apply server truth or rollback on error
  */
 export interface SessionHelpers {
   /** Get NPC relationship state */
   getNpcRelationship: (npcId: number) => NpcRelationshipState | null;
 
-  /** Update NPC relationship (returns updated session for chaining) */
+  /** Update NPC relationship (optimistic, async validated) */
   updateNpcRelationship: (
     npcId: number,
     patch: Partial<NpcRelationshipState>
-  ) => GameSessionDTO;
+  ) => Promise<GameSessionDTO>;
 
   /** Get current inventory */
   getInventory: () => InventoryItem[];
 
-  /** Add item to inventory */
-  addInventoryItem: (itemId: string, quantity?: number) => GameSessionDTO;
+  /** Add item to inventory (optimistic, async validated) */
+  addInventoryItem: (itemId: string, quantity?: number) => Promise<GameSessionDTO>;
 
-  /** Remove item from inventory */
-  removeInventoryItem: (itemId: string, quantity?: number) => GameSessionDTO;
+  /** Remove item from inventory (optimistic, async validated) */
+  removeInventoryItem: (itemId: string, quantity?: number) => Promise<GameSessionDTO>;
 
-  /** Update arc stage */
-  updateArcStage: (arcId: string, stage: number) => GameSessionDTO;
+  /** Update arc stage (optimistic, async validated) */
+  updateArcStage: (arcId: string, stage: number) => Promise<GameSessionDTO>;
 
-  /** Mark scene as seen */
-  markSceneSeen: (arcId: string, sceneId: number) => GameSessionDTO;
+  /** Mark scene as seen (optimistic, async validated) */
+  markSceneSeen: (arcId: string, sceneId: number) => Promise<GameSessionDTO>;
 
-  /** Update quest status */
+  /** Update quest status (optimistic, async validated) */
   updateQuestStatus: (
     questId: string,
     status: 'pending' | 'active' | 'completed' | 'failed'
-  ) => GameSessionDTO;
+  ) => Promise<GameSessionDTO>;
 
-  /** Increment quest steps */
-  incrementQuestSteps: (questId: string, increment?: number) => GameSessionDTO;
+  /** Increment quest steps (optimistic, async validated) */
+  incrementQuestSteps: (questId: string, increment?: number) => Promise<GameSessionDTO>;
 
-  /** Trigger event */
-  triggerEvent: (eventId: string) => GameSessionDTO;
+  /** Trigger event (optimistic, async validated) */
+  triggerEvent: (eventId: string) => Promise<GameSessionDTO>;
 
-  /** End event */
-  endEvent: (eventId: string) => GameSessionDTO;
+  /** End event (optimistic, async validated) */
+  endEvent: (eventId: string) => Promise<GameSessionDTO>;
 
   /** Check if event is active */
   isEventActive: (eventId: string) => boolean;
@@ -102,6 +107,16 @@ export interface InteractionState {
   worldTime: { day: number; hour: number };
   locationId: number;
   locationNpcs: NpcPresenceDTO[];
+}
+
+/**
+ * Session API for optimistic updates (backend sync)
+ */
+export interface SessionAPI {
+  updateSession: (
+    sessionId: number,
+    updates: Partial<GameSessionDTO> & { expectedVersion?: number }
+  ) => Promise<GameSessionDTO & { conflict?: boolean; serverSession?: GameSessionDTO }>;
 }
 
 /**
