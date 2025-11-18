@@ -1,82 +1,30 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { nodeTypeRegistry, type NodeTypeDefinition } from '@pixsim7/types';
 
-export type NodeType = 'video' | 'choice' | 'condition' | 'miniGame' | 'end' | 'scene_call' | 'return' | 'node_group';
+export type NodeType = string; // Now accepts any registered node type
 
-export interface NodeTypeDefinition {
-  type: NodeType;
+interface NodePaletteItem {
+  type: string;
   label: string;
   description: string;
   icon: string;
   color: string;
   bgColor: string;
+  category?: string;
 }
 
-export const NODE_TYPES: NodeTypeDefinition[] = [
-  {
-    type: 'video',
-    label: 'Video',
-    description: 'Play video segments with selection strategy',
-    icon: '🎬',
-    color: 'text-blue-700 dark:text-blue-300',
-    bgColor: 'bg-blue-100 dark:bg-blue-900/30',
-  },
-  {
-    type: 'choice',
-    label: 'Choice',
-    description: 'Present choices to the player',
-    icon: '🔀',
-    color: 'text-purple-700 dark:text-purple-300',
-    bgColor: 'bg-purple-100 dark:bg-purple-900/30',
-  },
-  {
-    type: 'condition',
-    label: 'Condition',
-    description: 'Branch based on game state',
-    icon: '❓',
-    color: 'text-amber-700 dark:text-amber-300',
-    bgColor: 'bg-amber-100 dark:bg-amber-900/30',
-  },
-  {
-    type: 'miniGame',
-    label: 'Mini-Game',
-    description: 'Interactive gameplay segment',
-    icon: '🎮',
-    color: 'text-green-700 dark:text-green-300',
-    bgColor: 'bg-green-100 dark:bg-green-900/30',
-  },
-  {
-    type: 'end',
-    label: 'End',
-    description: 'Terminal node',
-    icon: '🏁',
-    color: 'text-red-700 dark:text-red-300',
-    bgColor: 'bg-red-100 dark:bg-red-900/30',
-  },
-  {
-    type: 'scene_call',
-    label: 'Scene Call',
-    description: 'Call another scene as a function',
-    icon: '📞',
-    color: 'text-cyan-700 dark:text-cyan-300',
-    bgColor: 'bg-cyan-100 dark:bg-cyan-900/30',
-  },
-  {
-    type: 'return',
-    label: 'Return',
-    description: 'Exit scene through return point',
-    icon: '🔙',
-    color: 'text-orange-700 dark:text-orange-300',
-    bgColor: 'bg-orange-100 dark:bg-orange-900/30',
-  },
-  {
-    type: 'node_group',
-    label: 'Group',
-    description: 'Visual container for organizing nodes',
-    icon: '📦',
-    color: 'text-neutral-700 dark:text-neutral-300',
-    bgColor: 'bg-neutral-100 dark:bg-neutral-900/30',
-  },
-];
+// Helper to convert registry definition to palette item
+function toNodePaletteItem(def: NodeTypeDefinition): NodePaletteItem {
+  return {
+    type: def.id,
+    label: def.name,
+    description: def.description || '',
+    icon: def.icon || '📦',
+    color: def.color || 'text-neutral-700 dark:text-neutral-300',
+    bgColor: def.bgColor || 'bg-neutral-100 dark:bg-neutral-900/30',
+    category: def.category,
+  };
+}
 
 interface NodePaletteProps {
   onNodeCreate: (nodeType: NodeType, position?: { x: number; y: number }) => void;
@@ -85,6 +33,20 @@ interface NodePaletteProps {
 
 export function NodePalette({ onNodeCreate, compact = false }: NodePaletteProps) {
   const [draggedType, setDraggedType] = useState<NodeType | null>(null);
+
+  // Get creatable node types from registry
+  const nodeTypes = useMemo(() => {
+    return nodeTypeRegistry
+      .getUserCreatable()
+      .map(toNodePaletteItem)
+      .sort((a, b) => {
+        // Sort by category, then by label
+        const catA = a.category || 'zz';
+        const catB = b.category || 'zz';
+        if (catA !== catB) return catA.localeCompare(catB);
+        return a.label.localeCompare(b.label);
+      });
+  }, []);
 
   const handleDragStart = (e: React.DragEvent, nodeType: NodeType) => {
     setDraggedType(nodeType);
@@ -103,7 +65,7 @@ export function NodePalette({ onNodeCreate, compact = false }: NodePaletteProps)
   if (compact) {
     return (
       <div className="flex gap-1 flex-wrap">
-        {NODE_TYPES.map((nodeDef) => (
+        {nodeTypes.map((nodeDef) => (
           <button
             key={nodeDef.type}
             className={`
@@ -126,33 +88,60 @@ export function NodePalette({ onNodeCreate, compact = false }: NodePaletteProps)
     );
   }
 
+  // Group by category
+  const byCategory = useMemo(() => {
+    const groups: Record<string, NodePaletteItem[]> = {};
+    nodeTypes.forEach((item) => {
+      const cat = item.category || 'custom';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+    return groups;
+  }, [nodeTypes]);
+
+  const categoryOrder = ['media', 'flow', 'logic', 'action', 'custom'];
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
         Node Types
       </div>
-      {NODE_TYPES.map((nodeDef) => (
-        <div
-          key={nodeDef.type}
-          className={`
-            p-3 rounded-lg cursor-pointer border-2
-            transition-all duration-150 hover:scale-105 hover:shadow-md
-            ${nodeDef.bgColor} ${nodeDef.color}
-            ${draggedType === nodeDef.type ? 'opacity-50 scale-95' : ''}
-            border-transparent hover:border-current
-          `}
-          onClick={() => handleClick(nodeDef.type)}
-          draggable
-          onDragStart={(e) => handleDragStart(e, nodeDef.type)}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xl">{nodeDef.icon}</span>
-            <span className="font-semibold text-sm">{nodeDef.label}</span>
+      {categoryOrder.map((category) => {
+        const items = byCategory[category];
+        if (!items || items.length === 0) return null;
+
+        return (
+          <div key={category} className="space-y-2">
+            {/* Category label */}
+            <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+              {category}
+            </div>
+            {/* Category items */}
+            {items.map((nodeDef) => (
+              <div
+                key={nodeDef.type}
+                className={`
+                  p-3 rounded-lg cursor-pointer border-2
+                  transition-all duration-150 hover:scale-105 hover:shadow-md
+                  ${nodeDef.bgColor} ${nodeDef.color}
+                  ${draggedType === nodeDef.type ? 'opacity-50 scale-95' : ''}
+                  border-transparent hover:border-current
+                `}
+                onClick={() => handleClick(nodeDef.type)}
+                draggable
+                onDragStart={(e) => handleDragStart(e, nodeDef.type)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">{nodeDef.icon}</span>
+                  <span className="font-semibold text-sm">{nodeDef.label}</span>
+                </div>
+                <div className="text-xs opacity-80">{nodeDef.description}</div>
+              </div>
+            ))}
           </div>
-          <div className="text-xs opacity-80">{nodeDef.description}</div>
-        </div>
-      ))}
+        );
+      })}
       <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t dark:border-neutral-700">
         💡 Click to add or drag onto canvas
       </div>

@@ -28,6 +28,7 @@ import { NodePalette, type NodeType } from './nodes/NodePalette';
 import { previewBridge } from '../lib/preview-bridge';
 import { ValidationPanel } from './validation/ValidationPanel';
 import { WorldContextSelector } from './WorldContextSelector';
+import { nodeTypeRegistry } from '@pixsim7/types';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -224,6 +225,9 @@ export function GraphPanel() {
         return;
       }
 
+      // Get node type definition from registry
+      const nodeTypeDef = nodeTypeRegistry.get(nodeType);
+
       const nextIndex = currentScene.nodes.length + 1;
       const id = `${nodeType}_${nextIndex}`;
 
@@ -233,14 +237,22 @@ export function GraphPanel() {
         y: 120 + nextIndex * 20,
       };
 
-      addNode({
+      // Create node with default data from registry
+      const newNode: Partial<DraftSceneNode> = {
         id,
-        type: nodeType === 'miniGame' ? 'video' : nodeType, // Map miniGame to video for now
+        type: nodeType === 'miniGame' ? 'video' : nodeType, // Map miniGame to video for backwards compatibility
         metadata: {
-          label: `${nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} ${nextIndex}`,
+          label: `${nodeTypeDef?.name || nodeType} ${nextIndex}`,
           position: nodePosition,
+          ...(nodeTypeDef?.defaultData?.metadata || {}),
         },
-      });
+        // Merge in default data from registry (excluding metadata which we handle separately)
+        ...(nodeTypeDef?.defaultData ? Object.fromEntries(
+          Object.entries(nodeTypeDef.defaultData).filter(([key]) => key !== 'metadata')
+        ) : {}),
+      };
+
+      addNode(newNode);
 
       toast.success(`Added ${id}`);
     },

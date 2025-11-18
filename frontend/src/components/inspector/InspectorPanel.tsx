@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { type DraftSceneNode } from '../../modules/scene-builder';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useToast } from '../../stores/toastStore';
+import { nodeTypeRegistry } from '@pixsim7/types';
 import { VideoNodeEditor } from './VideoNodeEditor';
 import { ChoiceNodeEditor } from './ChoiceNodeEditor';
 import { ConditionNodeEditor } from './ConditionNodeEditor';
@@ -10,6 +11,17 @@ import { MiniGameNodeEditor } from './MiniGameNodeEditor';
 import { EndNodeEditor } from './EndNodeEditor';
 import { SceneCallNodeEditor } from './SceneCallNodeEditor';
 import { ReturnNodeEditor } from './ReturnNodeEditor';
+
+// Dynamic editor component map
+const EDITOR_COMPONENTS: Record<string, React.ComponentType<any>> = {
+  VideoNodeEditor,
+  ChoiceNodeEditor,
+  ConditionNodeEditor,
+  EndNodeEditor,
+  SceneCallNodeEditor,
+  ReturnNodeEditor,
+  MiniGameNodeEditor,
+};
 
 export function InspectorPanel() {
   const { selectedNodeId } = useSelectionStore();
@@ -76,6 +88,9 @@ export function InspectorPanel() {
     );
   }
 
+  // Get node type definition from registry
+  const nodeTypeDef = nodeTypeRegistry.get(selectedNode.type);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -84,6 +99,17 @@ export function InspectorPanel() {
           INSPECTOR
         </div>
         <div className="space-y-2">
+          {/* Node info with icon */}
+          <div className="flex items-center gap-2">
+            {nodeTypeDef?.icon && <span className="text-2xl">{nodeTypeDef.icon}</span>}
+            <div className="flex-1">
+              <div className="text-sm font-medium">{nodeTypeDef?.name ?? selectedNode.type}</div>
+              {nodeTypeDef?.description && (
+                <div className="text-xs text-neutral-500">{nodeTypeDef.description}</div>
+              )}
+            </div>
+          </div>
+
           {/* Node ID Badge */}
           <div className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-mono inline-block">
             {selectedNodeId}
@@ -110,48 +136,47 @@ export function InspectorPanel() {
           {/* Node Type Badge */}
           <div>
             <span className="text-xs text-neutral-500 dark:text-neutral-400">Type: </span>
-            <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs font-medium">
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${nodeTypeDef?.bgColor || 'bg-purple-100 dark:bg-purple-900/30'} ${nodeTypeDef?.color || 'text-purple-700 dark:text-purple-300'}`}>
               {selectedNode.type}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Type-specific Editor */}
+      {/* Dynamic Editor */}
       <div className="flex-1 overflow-y-auto p-4">
-        {selectedNode.type === 'video' && (
-          <VideoNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'choice' && (
-          <ChoiceNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'condition' && (
-          <ConditionNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {(selectedNode.type === 'video' && (selectedNode.metadata as any)?.isMiniGame) && (
-          <MiniGameNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'end' && (
-          <EndNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'scene_call' && (
-          <SceneCallNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'return' && (
-          <ReturnNodeEditor node={selectedNode} onUpdate={handleUpdateNode} />
-        )}
-        {selectedNode.type === 'node_group' && (
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">
-            <p className="mb-2">Node group for visual organization</p>
-            <p className="text-xs">Configure group properties like label, color, and description using the label field above.</p>
-          </div>
-        )}
-        {selectedNode.type === 'generation' && (
-          <div className="text-sm text-neutral-600 dark:text-neutral-400">
-            <p className="mb-2">Generation node (experimental)</p>
-            <p className="text-xs">This node type is under development.</p>
-          </div>
-        )}
+        {(() => {
+          // Special case: mini-game is detected by metadata, not node type
+          if (selectedNode.type === 'video' && (selectedNode.metadata as any)?.isMiniGame) {
+            const EditorComponent = EDITOR_COMPONENTS['MiniGameNodeEditor'];
+            return EditorComponent ? <EditorComponent node={selectedNode} onUpdate={handleUpdateNode} /> : null;
+          }
+
+          // Get editor component name from registry
+          const editorComponentName = nodeTypeDef?.editorComponent;
+          const EditorComponent = editorComponentName
+            ? EDITOR_COMPONENTS[editorComponentName]
+            : null;
+
+          if (EditorComponent) {
+            return <EditorComponent node={selectedNode} onUpdate={handleUpdateNode} />;
+          }
+
+          // Fallback: show generic info for nodes without editors
+          return (
+            <div className="text-sm text-neutral-600 dark:text-neutral-400">
+              <p className="mb-2">
+                {nodeTypeDef?.name ?? 'Custom node'}: <code className="px-1 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs">{selectedNode.type}</code>
+              </p>
+              {nodeTypeDef?.description && (
+                <p className="text-xs mb-4">{nodeTypeDef.description}</p>
+              )}
+              <p className="text-xs text-neutral-500">
+                No editor registered for this node type.
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

@@ -21,7 +21,27 @@ export interface ProviderCapabilitySummary {
 // Scene Graph Types
 // ===================
 
-export type SceneNodeType = 'video' | 'action' | 'choice' | 'condition' | 'end' | 'scene_call' | 'return' | 'generation'
+/**
+ * Base node types that always exist
+ * Custom types are registered via nodeTypeRegistry
+ */
+export type BaseSceneNodeType =
+  | 'video'
+  | 'action'
+  | 'choice'
+  | 'condition'
+  | 'end'
+  | 'scene_call'
+  | 'return'
+  | 'generation'
+  | 'miniGame'
+  | 'node_group';
+
+/**
+ * SceneNodeType can be any string, but base types are type-safe
+ * Custom types: 'my_plugin:custom_node', 'mod:special_node', etc.
+ */
+export type SceneNodeType = BaseSceneNodeType | string;
 
 export interface MediaSegment {
   id: string
@@ -129,6 +149,13 @@ export interface SceneRuntimeState {
 // ===================
 
 export * from './generation'
+
+// ===================
+// Node Type Registry
+// ===================
+
+export * from './nodeTypeRegistry'
+export * from './builtinNodeTypes'
 
 // ===================
 // Game DTO Types

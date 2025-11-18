@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/authStore';
 import { useControlCenterStore } from './stores/controlCenterStore';
 import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
+import { registerBuiltinNodeTypes } from '@pixsim7/types';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -34,6 +35,9 @@ function App() {
   useTheme();
 
   useEffect(() => {
+    // Register builtin node types
+    registerBuiltinNodeTypes();
+
     // Initialize modules
     registerModules();
     moduleRegistry.initializeAll();
@@ -43,6 +47,9 @@ function App() {
 
     // Initialize auth state
     initialize();
+
+    // Load custom node type plugins (future)
+    // await loadNodeTypePlugins();
 
     // Cleanup on unmount
     return () => {
