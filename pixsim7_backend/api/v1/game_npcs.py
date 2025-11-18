@@ -141,6 +141,11 @@ async def get_npc_presence(
       omitted, the server will use the global world_time from game_world_states.
     - location_id: optional filter; if provided, only NPCs at this location
       are returned.
+
+    TODO: Add Redis caching for performance optimization
+    Cache key format: f"npc_presence:{world_id}:{location_id}:{round(world_time/3600)}"
+    This would group by hour to maximize cache hits while maintaining accuracy.
+    Suggested TTL: Until next turn in turn-based mode, or 60s in real-time mode.
     """
     effective_world_time: float
     if world_time is not None:

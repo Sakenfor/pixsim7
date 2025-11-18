@@ -12,6 +12,7 @@ router = APIRouter()
 
 class CreateSessionRequest(BaseModel):
     scene_id: int
+    flags: Optional[Dict[str, Any]] = None
 
 
 class SessionAdvanceRequest(BaseModel):
@@ -55,9 +56,13 @@ async def create_session(
     game_session_service: GameSessionSvc,
     user: CurrentUser,
 ):
-    """Create a new game session for the current user"""
+    """Create a new game session for the current user with optional initial flags"""
     try:
-        gs = await game_session_service.create_session(user_id=user.id, scene_id=req.scene_id)
+        gs = await game_session_service.create_session(
+            user_id=user.id,
+            scene_id=req.scene_id,
+            flags=req.flags,
+        )
     except ValueError as e:
         msg = str(e)
         if msg == "scene_not_found":
@@ -147,6 +152,8 @@ async def update_session(
                     "current_session": GameSessionResponse.from_model(current_session).model_dump(),
                 },
             )
+        elif msg.startswith("turn_based_validation_failed"):
+            raise HTTPException(status_code=400, detail=msg)
         raise
 
     return GameSessionResponse.from_model(gs)

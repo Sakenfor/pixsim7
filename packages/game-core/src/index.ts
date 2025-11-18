@@ -72,6 +72,50 @@ export type {
   NpcRoleMap,
 } from './world/slotAssignment';
 
+export {
+  parseWorldTime,
+  composeWorldTime,
+  formatWorldTime,
+  addWorldTime,
+  isWithinSchedule,
+  getNextOccurrence,
+  worldTimeDiff,
+  formatDuration,
+  SECONDS_PER_MINUTE,
+  SECONDS_PER_HOUR,
+  SECONDS_PER_DAY,
+  SECONDS_PER_WEEK,
+  DAY_NAMES,
+  DAY_NAMES_SHORT,
+} from './world/worldTime';
+
+export type { WorldTimeComponents } from './world/worldTime';
+
+export {
+  compareNpcPresence,
+  compareRelationships,
+  formatTurnSummary,
+  createEmptyTurnSummary,
+} from './world/turnSummary';
+
+export type {
+  TurnSummary,
+  NpcArrival,
+  NpcDeparture,
+  RelationshipChange,
+  EventTriggered,
+  NpcPresenceSnapshot,
+} from './world/turnSummary';
+
+export {
+  TURN_DELTAS,
+  getTurnDeltaOptions,
+  getTurnDeltaLabel,
+  findClosestPreset,
+} from './world/turnPresets';
+
+export type { TurnDeltaPreset, TurnDeltaOption } from './world/turnPresets';
+
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
 export type { NpcPersona } from './npcs/brain';

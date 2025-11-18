@@ -133,12 +133,15 @@ class GameSessionService:
             raise ValueError("scene_missing_entry_node")
         return scene
 
-    async def create_session(self, *, user_id: int, scene_id: int) -> GameSession:
+    async def create_session(
+        self, *, user_id: int, scene_id: int, flags: Optional[Dict[str, Any]] = None
+    ) -> GameSession:
         scene = await self._get_scene(scene_id)
         session = GameSession(
             user_id=user_id,
             scene_id=scene.id,
             current_node_id=scene.entry_node_id,
+            flags=flags or {},
         )
         self.db.add(session)
         await self.db.commit()
@@ -218,6 +221,22 @@ class GameSessionService:
         # Check version for optimistic locking
         if expected_version is not None and session.version != expected_version:
             raise ValueError("version_conflict")
+
+        # Validate turn-based mode constraints
+        if world_time is not None:
+            effective_flags = flags if flags is not None else session.flags
+            if effective_flags and effective_flags.get('sessionKind') == 'world':
+                world_config = effective_flags.get('world', {})
+                if world_config.get('mode') == 'turn_based':
+                    turn_delta = world_config.get('turnDeltaSeconds', 3600)
+                    actual_delta = world_time - session.world_time
+
+                    # Allow turn delta advancement or no change (e.g., updating other fields)
+                    # Tolerance of 1 second for floating point precision
+                    if abs(actual_delta) > 1 and abs(actual_delta - turn_delta) > 1:
+                        raise ValueError(
+                            f"turn_based_validation_failed: expected delta of {turn_delta}s, got {actual_delta}s"
+                        )
 
         if world_time is not None:
             session.world_time = float(world_time)

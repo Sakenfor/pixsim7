@@ -115,9 +115,13 @@ export async function attemptPickpocket(req: PickpocketRequest): Promise<Pickpoc
   return res.data;
 }
 
-export async function createGameSession(sceneId: number): Promise<GameSessionDTO> {
+export async function createGameSession(
+  sceneId: number,
+  flags?: Record<string, unknown>
+): Promise<GameSessionDTO> {
   const res = await apiClient.post<GameSessionDTO>('/game/sessions', {
     scene_id: sceneId,
+    flags,
   });
   return res.data;
 }

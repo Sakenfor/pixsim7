@@ -36,6 +36,7 @@ import {
   parseHotspotAction,
   deriveScenePlaybackPhase,
   getNpcRelationshipState,
+  getTurnDeltaLabel,
   type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
@@ -407,6 +408,7 @@ export function Game2D() {
   const advanceTime = () => {
     // Get turn delta from session flags (supports turn-based mode)
     const deltaSeconds = getTurnDelta(gameSession?.flags);
+    const isTurnBased = isTurnBasedMode(gameSession?.flags);
 
     if (selectedWorldId) {
       (async () => {
@@ -422,7 +424,35 @@ export function Game2D() {
           const worldTimeSeconds = updated.world_time;
           const sessionId = gameSession?.id;
           saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId, worldId: selectedWorldId });
-          if (sessionId) {
+
+          // Update turn counter in turn-based mode
+          if (sessionId && isTurnBased && gameSession) {
+            const flags = gameSession.flags as SessionFlags;
+            const currentTurnNumber = flags.world?.turnNumber ?? 0;
+            const newTurnNumber = currentTurnNumber + 1;
+
+            // Update flags with incremented turn number and history
+            const updatedFlags: SessionFlags = {
+              ...flags,
+              world: {
+                ...flags.world,
+                turnNumber: newTurnNumber,
+                turnHistory: [
+                  ...(flags.world?.turnHistory || []).slice(-9), // Keep last 10 turns
+                  {
+                    turnNumber: newTurnNumber,
+                    worldTime: worldTimeSeconds,
+                    timestamp: Date.now(),
+                    locationId: selectedLocationId ?? undefined,
+                  },
+                ],
+              },
+            };
+
+            updateGameSession(sessionId, { world_time: worldTimeSeconds, flags: updatedFlags })
+              .then((updated) => setGameSession(updated))
+              .catch(() => {});
+          } else if (sessionId) {
             updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
           }
         } catch (e: any) {
@@ -443,9 +473,37 @@ export function Game2D() {
         const worldTimeSeconds = ((next.day - 1) * 24 + next.hour) * 3600;
         const sessionId = gameSession?.id;
         saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId });
-        if (sessionId) {
+
+        // Update turn counter in turn-based mode
+        if (sessionId && isTurnBased && gameSession) {
+          const flags = gameSession.flags as SessionFlags;
+          const currentTurnNumber = flags.world?.turnNumber ?? 0;
+          const newTurnNumber = currentTurnNumber + 1;
+
+          const updatedFlags: SessionFlags = {
+            ...flags,
+            world: {
+              ...flags.world,
+              turnNumber: newTurnNumber,
+              turnHistory: [
+                ...(flags.world?.turnHistory || []).slice(-9),
+                {
+                  turnNumber: newTurnNumber,
+                  worldTime: worldTimeSeconds,
+                  timestamp: Date.now(),
+                  locationId: selectedLocationId ?? undefined,
+                },
+              ],
+            },
+          };
+
+          updateGameSession(sessionId, { world_time: worldTimeSeconds, flags: updatedFlags })
+            .then((updated) => setGameSession(updated))
+            .catch(() => {});
+        } else if (sessionId) {
           updateGameSession(sessionId, { world_time: worldTimeSeconds }).catch(() => {});
         }
+
         return next;
       });
     }
@@ -663,10 +721,15 @@ export function Game2D() {
             <div className="flex flex-col text-xs">
               <span className="font-semibold">Day {worldTime.day}</span>
               <span>{worldTime.hour.toString().padStart(2, '0')}:00</span>
+              {isTurnBasedMode(gameSession?.flags) && (
+                <span className="text-[10px] text-neutral-500">
+                  Turn {((gameSession?.flags as SessionFlags)?.world?.turnNumber ?? 0) + 1}
+                </span>
+              )}
             </div>
             <Button size="sm" variant="primary" onClick={advanceTime}>
               {isTurnBasedMode(gameSession?.flags) ? (
-                <>End Turn ({getTurnDelta(gameSession?.flags) / 3600}h)</>
+                <>End Turn ({getTurnDeltaLabel(getTurnDelta(gameSession?.flags))})</>
               ) : (
                 <>Next Hour</>
               )}

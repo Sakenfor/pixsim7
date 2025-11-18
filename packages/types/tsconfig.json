@@ -14,5 +14,11 @@
     "skipLibCheck": true,
     "strict": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.bench.ts",
+    "src/__tests__/**/*"
+  ]
 }

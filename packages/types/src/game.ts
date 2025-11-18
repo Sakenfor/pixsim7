@@ -114,6 +114,17 @@ export interface GameWorldDetail {
 export type SessionKind = 'world' | 'scene';
 export type WorldMode = 'turn_based' | 'real_time';
 
+export interface TurnRecord {
+  /** Turn number */
+  turnNumber: number;
+  /** World time at the start of this turn */
+  worldTime: number;
+  /** Real-world timestamp when turn was taken */
+  timestamp: number;
+  /** Location ID where turn was taken */
+  locationId?: number;
+}
+
 export interface WorldSessionFlags {
   /** Unique identifier for the conceptual world */
   id?: string;
@@ -123,6 +134,10 @@ export interface WorldSessionFlags {
   currentLocationId?: number;
   /** For turn-based: delta seconds per turn (default: 3600 = 1 hour) */
   turnDeltaSeconds?: number;
+  /** Current turn number (for turn-based mode) */
+  turnNumber?: number;
+  /** Turn history (limited to last N turns) */
+  turnHistory?: TurnRecord[];
 }
 
 export interface SessionFlags {
