@@ -11,14 +11,22 @@ class GameScene(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(max_length=128)
     description: Optional[str] = None
-    entry_node_id: Optional[int] = Field(default=None, foreign_key="game_scene_nodes.id")
+    entry_node_id: Optional[int] = Field(
+        default=None,
+        foreign_key="game_scene_nodes.id",
+        sa_column_kwargs={"deferrable": True, "initially": "DEFERRED"}
+    )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 class GameSceneNode(SQLModel, table=True):
     __tablename__ = "game_scene_nodes"
     id: Optional[int] = Field(default=None, primary_key=True)
-    scene_id: int = Field(foreign_key="game_scenes.id", index=True)
+    scene_id: int = Field(
+        foreign_key="game_scenes.id",
+        index=True,
+        sa_column_kwargs={"deferrable": True, "initially": "DEFERRED"}
+    )
     asset_id: int = Field(index=True, description="References content service assets.id")
     label: Optional[str] = Field(default=None, max_length=128)
     loopable: bool = Field(default=False)
