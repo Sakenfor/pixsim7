@@ -13,6 +13,7 @@ import {
   type HelperDefinition,
   type InteractionPlugin,
   type ConfigField,
+  type InteractionCapabilities,
 } from '../lib/registries';
 import {
   pluginConfigStore,
@@ -38,6 +39,8 @@ interface PluginInfo {
   configFields?: ConfigField[];
   defaultConfig?: Record<string, any>;
   origin?: PluginOrigin;
+  capabilities?: InteractionCapabilities;
+  hasCustomConfig?: boolean;
 }
 
 export function PluginConfigPanel() {
@@ -45,6 +48,7 @@ export function PluginConfigPanel() {
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
   const [configs, setConfigs] = useState<Record<string, Record<string, any>>>({});
   const [filter, setFilter] = useState<'all' | 'helpers' | 'interactions'>('all');
+  const [originFilter, setOriginFilter] = useState<'all' | PluginOrigin>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Load plugins from registries
@@ -59,6 +63,11 @@ export function PluginConfigPanel() {
     return () => unsubscribe();
   }, []);
 
+  // Reload plugins when configs change (to update hasCustomConfig)
+  useEffect(() => {
+    loadPlugins();
+  }, [configs]);
+
   const loadPlugins = () => {
     const allPlugins: PluginInfo[] = [];
 
@@ -71,6 +80,7 @@ export function PluginConfigPanel() {
 
       const pluginId = helper.id || helper.name;
       const catalogEntry = pluginCatalog.get(pluginId);
+      const hasCustomConfig = configs[pluginId] && Object.keys(configs[pluginId]).length > 0;
 
       allPlugins.push({
         type: 'helper',
@@ -91,6 +101,7 @@ export function PluginConfigPanel() {
             )
           : undefined,
         origin: catalogEntry?.origin || 'builtin',
+        hasCustomConfig,
       });
     });
 
@@ -99,6 +110,7 @@ export function PluginConfigPanel() {
     interactions.forEach((plugin: InteractionPlugin<any>) => {
       const configFields = plugin.configFields || [];
       const catalogEntry = pluginCatalog.get(plugin.id);
+      const hasCustomConfig = configs[plugin.id] && Object.keys(configs[plugin.id]).length > 0;
 
       allPlugins.push({
         type: 'interaction',
@@ -112,15 +124,23 @@ export function PluginConfigPanel() {
         configFields,
         defaultConfig: plugin.defaultConfig,
         origin: catalogEntry?.origin || 'builtin',
+        capabilities: plugin.capabilities,
+        hasCustomConfig,
       });
     });
 
     setPlugins(allPlugins);
   };
 
-  // Filter plugins based on type and search
+  // Filter plugins based on type, origin, and search
   const filteredPlugins = plugins.filter((plugin) => {
+    // Type filter
     if (filter !== 'all' && plugin.type !== filter.slice(0, -1)) return false;
+
+    // Origin filter
+    if (originFilter !== 'all' && plugin.origin !== originFilter) return false;
+
+    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
@@ -153,46 +173,91 @@ export function PluginConfigPanel() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              filter === 'all'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setFilter('helpers')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              filter === 'helpers'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-            }`}
-          >
-            Helpers
-          </button>
-          <button
-            onClick={() => setFilter('interactions')}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              filter === 'interactions'
-                ? 'bg-blue-600 text-white'
-                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-            }`}
-          >
-            Interactions
-          </button>
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                filter === 'all'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilter('helpers')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                filter === 'helpers'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              Helpers
+            </button>
+            <button
+              onClick={() => setFilter('interactions')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                filter === 'interactions'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              Interactions
+            </button>
+          </div>
+          <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-700" />
+          <div className="flex gap-2">
+            <button
+              onClick={() => setOriginFilter('all')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                originFilter === 'all'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              All Sources
+            </button>
+            <button
+              onClick={() => setOriginFilter('builtin')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                originFilter === 'builtin'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              Builtin
+            </button>
+            <button
+              onClick={() => setOriginFilter('plugin-dir')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                originFilter === 'plugin-dir'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              Plugins
+            </button>
+            <button
+              onClick={() => setOriginFilter('dev-project')}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                originFilter === 'dev-project'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              Dev
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Search plugins..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Search plugins..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
       </div>
 
       {/* Main Grid */}
@@ -262,6 +327,33 @@ function PluginListItem({
     return type === 'helper' ? 'Helper' : 'Interaction';
   };
 
+  // Get capability badges for interactions
+  const getCapabilityBadges = () => {
+    if (plugin.type !== 'interaction' || !plugin.capabilities) return null;
+
+    const badges: Array<{ label: string; icon: string; color: string }> = [];
+
+    if (plugin.capabilities.opensDialogue) {
+      badges.push({ label: 'Dialogue', icon: '💬', color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400' });
+    }
+    if (plugin.capabilities.modifiesInventory) {
+      badges.push({ label: 'Inventory', icon: '🎒', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' });
+    }
+    if (plugin.capabilities.affectsRelationship) {
+      badges.push({ label: 'Relationship', icon: '💕', color: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' });
+    }
+    if (plugin.capabilities.hasRisk) {
+      badges.push({ label: 'Risk', icon: '⚠️', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' });
+    }
+    if (plugin.capabilities.canBeDetected) {
+      badges.push({ label: 'Stealth', icon: '👁️', color: 'bg-slate-100 dark:bg-slate-900/30 text-slate-700 dark:text-slate-400' });
+    }
+
+    return badges.length > 0 ? badges : null;
+  };
+
+  const capabilityBadges = getCapabilityBadges();
+
   return (
     <div
       onClick={onClick}
@@ -280,8 +372,13 @@ function PluginListItem({
                 BETA
               </span>
             )}
+            {plugin.hasCustomConfig && (
+              <span className="text-xs px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-medium">
+                ⚙️ Custom
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             {/* Kind Badge */}
             <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-medium">
               {getKindLabel(plugin.type)}
@@ -290,6 +387,16 @@ function PluginListItem({
             <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-medium">
               {getOriginLabel(plugin.origin)}
             </span>
+            {/* Capability Badges */}
+            {capabilityBadges && capabilityBadges.map((badge) => (
+              <span
+                key={badge.label}
+                className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.color}`}
+                title={badge.label}
+              >
+                {badge.icon}
+              </span>
+            ))}
           </div>
           {plugin.category && (
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
@@ -339,21 +446,101 @@ function PluginDetailPanel({
     }
   };
 
+  // Format origin label
+  const getOriginLabel = (origin?: PluginOrigin): string => {
+    if (!origin) return 'Builtin';
+    switch (origin) {
+      case 'builtin': return 'Builtin';
+      case 'plugin-dir': return 'Plugin';
+      case 'dev-project': return 'Dev';
+      case 'ui-bundle': return 'UI Bundle';
+      default: return origin;
+    }
+  };
+
+  // Get capability badges for interactions
+  const getCapabilityBadges = () => {
+    if (plugin.type !== 'interaction' || !plugin.capabilities) return null;
+
+    const badges: Array<{ label: string; icon: string; color: string }> = [];
+
+    if (plugin.capabilities.opensDialogue) {
+      badges.push({ label: 'Opens Dialogue', icon: '💬', color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400' });
+    }
+    if (plugin.capabilities.modifiesInventory) {
+      badges.push({ label: 'Modifies Inventory', icon: '🎒', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' });
+    }
+    if (plugin.capabilities.affectsRelationship) {
+      badges.push({ label: 'Affects Relationship', icon: '💕', color: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400' });
+    }
+    if (plugin.capabilities.triggersEvents) {
+      badges.push({ label: 'Triggers Events', icon: '⚡', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' });
+    }
+    if (plugin.capabilities.hasRisk) {
+      badges.push({ label: 'Has Risk', icon: '⚠️', color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' });
+    }
+    if (plugin.capabilities.canBeDetected) {
+      badges.push({ label: 'Can Be Detected', icon: '👁️', color: 'bg-slate-100 dark:bg-slate-900/30 text-slate-700 dark:text-slate-400' });
+    }
+    if (plugin.capabilities.requiresItems) {
+      badges.push({ label: 'Requires Items', icon: '📦', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400' });
+    }
+    if (plugin.capabilities.consumesItems) {
+      badges.push({ label: 'Consumes Items', icon: '🔥', color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' });
+    }
+
+    return badges.length > 0 ? badges : null;
+  };
+
+  const capabilityBadges = getCapabilityBadges();
+
   return (
     <div className="bg-white dark:bg-neutral-800 rounded-lg border border-neutral-300 dark:border-neutral-700 p-6 space-y-6">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
           <h2 className="text-xl font-semibold">{plugin.name}</h2>
           {plugin.experimental && (
             <span className="px-2 py-1 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded font-medium">
               EXPERIMENTAL
             </span>
           )}
+          {plugin.hasCustomConfig && (
+            <span className="px-2 py-1 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded font-medium">
+              ⚙️ Custom Config
+            </span>
+          )}
         </div>
         {plugin.description && (
           <p className="text-sm text-neutral-600 dark:text-neutral-400">{plugin.description}</p>
         )}
+      </div>
+
+      {/* Badges */}
+      <div>
+        <h3 className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-2">
+          Details
+        </h3>
+        <div className="flex flex-wrap gap-1.5">
+          {/* Type Badge */}
+          <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded font-medium">
+            {plugin.type === 'helper' ? 'Helper' : 'Interaction'}
+          </span>
+          {/* Origin Badge */}
+          <span className="px-2 py-1 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded font-medium">
+            {getOriginLabel(plugin.origin)}
+          </span>
+          {/* Capability Badges */}
+          {capabilityBadges && capabilityBadges.map((badge) => (
+            <span
+              key={badge.label}
+              className={`px-2 py-1 text-xs rounded font-medium ${badge.color}`}
+              title={badge.label}
+            >
+              {badge.icon} {badge.label}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Metadata */}
