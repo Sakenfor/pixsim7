@@ -8,6 +8,7 @@
 import { registerCompleteFeature, useCapabilityStore } from './index';
 import { useControlCenterStore } from '../../stores/controlCenterStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { ROUTES, navigateTo } from './routeConstants';
 
 /**
  * Register all core features
@@ -40,7 +41,7 @@ function registerAssetsFeature() {
     },
     routes: [
       {
-        path: '/assets',
+        path: ROUTES.ASSETS,
         name: 'Asset Gallery',
         description: 'Browse all assets',
         icon: '📦',
@@ -48,7 +49,7 @@ function registerAssetsFeature() {
         showInNav: true,
       },
       {
-        path: '/assets/:id',
+        path: ROUTES.ASSET_DETAIL,
         name: 'Asset Detail',
         description: 'View asset details',
         icon: '🔍',
@@ -64,7 +65,7 @@ function registerAssetsFeature() {
         icon: '📦',
         shortcut: 'Ctrl+Shift+A',
         execute: () => {
-          window.location.href = '/assets';
+          navigateTo(ROUTES.ASSETS);
         },
       },
       {
@@ -118,7 +119,7 @@ function registerWorkspaceFeature() {
     },
     routes: [
       {
-        path: '/workspace',
+        path: ROUTES.WORKSPACE,
         name: 'Workspace',
         description: 'Main editing workspace',
         icon: '🎬',
@@ -133,7 +134,7 @@ function registerWorkspaceFeature() {
         icon: '🎬',
         shortcut: 'Ctrl+Shift+W',
         execute: () => {
-          window.location.href = '/workspace';
+          navigateTo(ROUTES.WORKSPACE);
         },
       },
       {
@@ -189,7 +190,7 @@ function registerGenerationFeature() {
     },
     routes: [
       {
-        path: '/generate',
+        path: ROUTES.GENERATE,
         name: 'Generate',
         description: 'Quick generation interface',
         icon: '✨',
@@ -256,28 +257,28 @@ function registerGameFeature() {
     },
     routes: [
       {
-        path: '/game-world',
+        path: ROUTES.GAME_WORLD,
         name: 'Game World',
         icon: '🌍',
         protected: true,
         showInNav: true,
       },
       {
-        path: '/game-2d',
+        path: ROUTES.GAME_2D,
         name: '2D Game',
         icon: '🎮',
         protected: true,
         showInNav: true,
       },
       {
-        path: '/npc-portraits',
+        path: ROUTES.NPC_PORTRAITS,
         name: 'NPC Portraits',
         icon: '👤',
         protected: true,
         showInNav: true,
       },
       {
-        path: '/npc-brain-lab',
+        path: ROUTES.NPC_BRAIN_LAB,
         name: 'NPC Brain Lab',
         icon: '🧠',
         protected: true,
@@ -290,7 +291,7 @@ function registerGameFeature() {
         name: 'Enter Game World',
         icon: '🌍',
         execute: () => {
-          window.location.href = '/game-world';
+          navigateTo(ROUTES.GAME_WORLD);
         },
       },
       {
@@ -298,7 +299,7 @@ function registerGameFeature() {
         name: 'NPC Editor',
         icon: '🧠',
         execute: () => {
-          window.location.href = '/npc-brain-lab';
+          navigateTo(ROUTES.NPC_BRAIN_LAB);
         },
       },
     ],
@@ -320,7 +321,7 @@ function registerAutomationFeature() {
     },
     routes: [
       {
-        path: '/automation',
+        path: ROUTES.AUTOMATION,
         name: 'Automation',
         icon: '⚡',
         protected: true,
@@ -333,7 +334,7 @@ function registerAutomationFeature() {
         name: 'Open Automation',
         icon: '⚡',
         execute: () => {
-          window.location.href = '/automation';
+          navigateTo(ROUTES.AUTOMATION);
         },
       },
     ],
@@ -355,7 +356,7 @@ function registerPluginsFeature() {
     },
     routes: [
       {
-        path: '/plugins',
+        path: ROUTES.PLUGINS,
         name: 'Plugin Manager',
         icon: '🔌',
         protected: true,
@@ -369,7 +370,7 @@ function registerPluginsFeature() {
         icon: '🔌',
         shortcut: 'Ctrl+Shift+P',
         execute: () => {
-          window.location.href = '/plugins';
+          navigateTo(ROUTES.PLUGINS);
         },
       },
     ],

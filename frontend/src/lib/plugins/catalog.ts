@@ -148,6 +148,12 @@ export interface PluginMeta {
   /** Author (for UI plugins) */
   author?: string;
 
+  /** Capability references - what features this plugin provides or consumes */
+  providesFeatures?: string[];      // Feature IDs this plugin adds (e.g., ["debug-overlay"])
+  consumesFeatures?: string[];      // Feature IDs this plugin depends on (e.g., ["assets", "workspace"])
+  consumesActions?: string[];       // Action IDs this plugin uses (e.g., ["workspace.open-panel"])
+  consumesState?: string[];         // State IDs this plugin reads (e.g., ["workspace.panels"])
+
   /** Plugin scope (for node types) */
   scope?: 'scene' | 'arc' | 'world' | 'custom';
 
@@ -295,6 +301,30 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
     modifiesSession: false, // UI plugins are read-only by design
   };
 
+  // Infer consumed features/actions/state from permissions and plugin type
+  const consumesFeatures: string[] = [];
+  const consumesActions: string[] = [];
+  const consumesState: string[] = [];
+
+  // UI overlay plugins typically consume core features
+  if (manifest.permissions?.includes('ui:overlay')) {
+    // Most UI plugins need workspace features
+    consumesFeatures.push('workspace');
+  }
+
+  // Session read access means they might use session-related actions/state
+  if (manifest.permissions?.includes('read:session')) {
+    consumesState.push('generation.active');
+  }
+
+  // Control center plugins specifically
+  if (manifest.controlCenter) {
+    // Control center plugins consume multiple features
+    consumesFeatures.push('assets', 'workspace', 'generation');
+    consumesActions.push('workspace.open-panel', 'generation.quick-generate');
+    consumesState.push('workspace.panels');
+  }
+
   return {
     kind: 'ui-plugin',
     id: manifest.id,
@@ -311,6 +341,10 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
     capabilities,
     configurable: true, // UI plugins have settings
     enabled: pluginEntry.state === 'enabled',
+    // Capability references
+    consumesFeatures: consumesFeatures.length > 0 ? consumesFeatures : undefined,
+    consumesActions: consumesActions.length > 0 ? consumesActions : undefined,
+    consumesState: consumesState.length > 0 ? consumesState : undefined,
   };
 }
 

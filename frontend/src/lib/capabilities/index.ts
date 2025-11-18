@@ -10,6 +10,11 @@
 
 import { create } from 'zustand';
 
+// Re-export modules
+export * from './routeConstants';
+export * from './pluginAdapter';
+export * from './securityFilter';
+
 /**
  * Feature Capability
  * Represents a high-level feature of the app
@@ -343,6 +348,13 @@ export function useFeatures() {
 }
 
 /**
+ * Hook to get a specific feature by ID
+ */
+export function useFeature(id: string) {
+  return useCapabilityStore((s) => s.getFeature(id));
+}
+
+/**
  * Hook to get features by category
  */
 export function useFeaturesByCategory(category: string) {
@@ -357,10 +369,54 @@ export function useRoutes() {
 }
 
 /**
+ * Hook to get routes for a specific feature
+ */
+export function useFeatureRoutes(featureId: string) {
+  return useCapabilityStore((s) => s.getRoutesForFeature(featureId));
+}
+
+/**
+ * Hook to get navigation routes (showInNav = true)
+ */
+export function useNavRoutes() {
+  return useCapabilityStore((s) => s.getAllRoutes().filter(r => r.showInNav));
+}
+
+/**
  * Hook to get all actions
  */
 export function useActions() {
   return useCapabilityStore((s) => s.getAllActions());
+}
+
+/**
+ * Hook to get a specific action by ID
+ */
+export function useAction(id: string) {
+  return useCapabilityStore((s) => s.getAction(id));
+}
+
+/**
+ * Hook to get actions for a specific feature
+ */
+export function useFeatureActions(featureId: string) {
+  return useCapabilityStore((s) =>
+    s.getAllActions().filter(a => a.featureId === featureId)
+  );
+}
+
+/**
+ * Hook to get all states
+ */
+export function useStates() {
+  return useCapabilityStore((s) => s.getAllStates());
+}
+
+/**
+ * Hook to get a specific state by ID
+ */
+export function useState(id: string) {
+  return useCapabilityStore((s) => s.getState(id));
 }
 
 /**
