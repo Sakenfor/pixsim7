@@ -2,6 +2,11 @@
  * Gizmo Component Renderers
  * Centralized mapping of gizmo IDs to React components
  * Single source of truth for gizmo rendering
+ *
+ * Architecture Note: This file lives in frontend (not game-ui) because:
+ * - Gizmo implementations are application-specific
+ * - game-ui should remain generic and reusable
+ * - Keeps package boundaries clean (no packages importing from frontend)
  */
 
 import { lazy, type ComponentType } from 'react';
@@ -10,17 +15,17 @@ import type { GizmoComponentProps } from '@pixsim7/scene-gizmos';
 // Lazy load gizmo components for code splitting
 const gizmoRenderers: Record<string, ComponentType<GizmoComponentProps>> = {
   orb: lazy(() =>
-    import('../../../../../frontend/src/components/gizmos/OrbGizmo').then(m => ({
+    import('../../components/gizmos/OrbGizmo').then(m => ({
       default: m.OrbGizmo,
     }))
   ),
   constellation: lazy(() =>
-    import('../../../../../frontend/src/components/gizmos/ConstellationGizmo').then(m => ({
+    import('../../components/gizmos/ConstellationGizmo').then(m => ({
       default: m.ConstellationGizmo,
     }))
   ),
   rings: lazy(() =>
-    import('../../../../../frontend/src/components/gizmos/RingsGizmo').then(m => ({
+    import('../../components/gizmos/RingsGizmo').then(m => ({
       default: m.RingsGizmo,
     }))
   ),
