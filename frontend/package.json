@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "build:check": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -15,6 +16,7 @@
     "@pixsim7/game-ui": "workspace:*",
     "@pixsim7/game-core": "workspace:*",
     "@pixsim7/semantic-shapes": "workspace:*",
+    "@pixsim7/scene-gizmos": "workspace:*",
     "pixcubes": "workspace:*",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",

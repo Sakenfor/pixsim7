@@ -7,7 +7,8 @@ import { GraphPanelWithProvider } from '../GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
-import { GizmoLab } from '../../routes/GizmoLab';
+// TODO: Re-enable when SceneGizmoMiniGame is fixed
+// import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
 import { useRef, useEffect } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
@@ -45,7 +46,8 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   game: { title: 'Game', Component: GameIframePanel },
   providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
   settings: { title: 'Settings', Component: () => <div>Settings (placeholder)</div> },
-  'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
+  // TODO: Re-enable when SceneGizmoMiniGame is fixed
+  // 'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
   'npc-brain-lab': { title: 'NPC Brain Lab', Component: NpcBrainLab },
 };
 

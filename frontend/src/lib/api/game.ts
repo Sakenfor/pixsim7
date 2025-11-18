@@ -115,6 +115,18 @@ export async function attemptPickpocket(req: PickpocketRequest): Promise<Pickpoc
   return res.data;
 }
 
+export interface GameSessionSummary {
+  id: number;
+  scene_id: number;
+  world_time: number;
+  created_at: string;
+}
+
+export async function listGameSessions(): Promise<GameSessionSummary[]> {
+  // TODO: Implement backend endpoint for listing sessions
+  return [];
+}
+
 export async function createGameSession(
   sceneId: number,
   flags?: Record<string, unknown>

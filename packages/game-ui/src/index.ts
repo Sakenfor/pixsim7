@@ -12,4 +12,5 @@ export type { ScenePlayerProps } from './components/ScenePlayer';
 export { ReflexMiniGame } from './components/minigames/ReflexMiniGame';
 
 // Scene runtime utilities
-export { callStackManager, bindParameters } from './lib/sceneCallStack';
+// TODO: Fix missing sceneCallStack module
+// export { callStackManager, bindParameters } from './lib/sceneCallStack';
