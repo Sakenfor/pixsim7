@@ -25,6 +25,7 @@
 
 import { sessionHelperRegistry, interactionRegistry, nodeTypeRegistry } from '../registries';
 import { galleryToolRegistry } from '../gallery/types';
+import { worldToolRegistry } from '../worldTools/types';
 import { pluginManager } from './PluginManager';
 import { generationUIPluginRegistry } from '../providers/generationPlugins';
 import { isPluginEnabled } from '../../stores/pluginConfigStore';
@@ -38,6 +39,7 @@ export type PluginKind =
   | 'interaction'
   | 'node-type'
   | 'gallery-tool'
+  | 'world-tool'
   | 'ui-plugin'
   | 'generation-ui';
 
@@ -50,8 +52,19 @@ export type PluginRegistrySource =
   | 'interactionRegistry'
   | 'nodeTypeRegistry'
   | 'galleryToolRegistry'
+  | 'worldToolRegistry'
   | 'uiPluginManager'
   | 'generationUIPluginRegistry';
+
+/**
+ * Plugin origin discriminator
+ * Tracks where the plugin was loaded from
+ */
+export type PluginOrigin =
+  | 'builtin'        // Built-in plugins shipped with the application
+  | 'plugins-dir'    // Loaded from plugins directory
+  | 'ui-bundle'      // User-installed UI plugin bundle
+  | 'dev';           // Development/local plugin
 
 /**
  * Plugin capability hints
@@ -105,6 +118,9 @@ export interface PluginCapabilities {
 export interface PluginMeta {
   /** Plugin kind (discriminator) */
   kind: PluginKind;
+
+  /** Plugin origin (where it was loaded from) */
+  origin: PluginOrigin;
 
   /** Unique plugin ID */
   id: string;
@@ -181,6 +197,7 @@ function mapHelperToMeta(helper: any): PluginMeta {
 
   return {
     kind: 'session-helper',
+    origin: 'builtin', // Session helpers are currently all built-in
     id: helper.id || helper.name,
     label: helper.name,
     description: helper.description,
@@ -216,6 +233,7 @@ function mapInteractionToMeta(interaction: any): PluginMeta {
 
   return {
     kind: 'interaction',
+    origin: 'builtin', // Interaction plugins are currently all built-in
     id: interaction.id,
     label: interaction.name,
     description: interaction.description,
@@ -247,6 +265,7 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
 
   return {
     kind: 'node-type',
+    origin: nodeType.scope === 'custom' ? 'plugins-dir' : 'builtin', // Custom scope indicates user plugin
     id: nodeType.id,
     label: nodeType.name,
     description: nodeType.description,
@@ -272,6 +291,7 @@ function mapNodeTypeToMeta(nodeType: any): PluginMeta | null {
 function mapGalleryToolToMeta(tool: any): PluginMeta {
   return {
     kind: 'gallery-tool',
+    origin: 'builtin', // Gallery tools are currently all built-in
     id: tool.id,
     label: tool.name,
     description: tool.description,
@@ -327,6 +347,7 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
 
   return {
     kind: 'ui-plugin',
+    origin: 'ui-bundle', // UI plugins are user-installed bundles
     id: manifest.id,
     label: manifest.name,
     description: manifest.description,
@@ -354,6 +375,7 @@ function mapUIPluginToMeta(pluginEntry: any): PluginMeta {
 function mapGenerationUIToMeta(plugin: any): PluginMeta {
   return {
     kind: 'generation-ui',
+    origin: 'builtin', // Generation UI plugins are currently all built-in
     id: plugin.id,
     label: plugin.metadata?.name || plugin.id,
     description: plugin.metadata?.description,
@@ -369,6 +391,30 @@ function mapGenerationUIToMeta(plugin: any): PluginMeta {
     },
     configurable: false, // Generation UI plugins aren't user-configurable
     enabled: true, // Always enabled once registered
+  };
+}
+
+/**
+ * Map world tool to PluginMeta
+ */
+function mapWorldToolToMeta(tool: any): PluginMeta {
+  return {
+    kind: 'world-tool',
+    origin: 'builtin', // World tools are currently all built-in
+    id: tool.id,
+    label: tool.name,
+    description: tool.description,
+    category: tool.category, // character | world | quest | inventory | debug | utility
+    icon: tool.icon,
+    experimental: false, // World tools don't have experimental flag
+    source: {
+      registry: 'worldToolRegistry',
+    },
+    capabilities: {
+      addsUIOverlay: true, // World tools add UI to the game
+    },
+    configurable: false, // World tools aren't configurable
+    enabled: true, // World tools use whenVisible instead of enabled state
   };
 }
 
@@ -427,6 +473,14 @@ export function listGenerationUIPlugins(): PluginMeta[] {
 }
 
 /**
+ * List all world tool plugins
+ */
+export function listWorldToolPlugins(): PluginMeta[] {
+  const tools = worldToolRegistry.getAll();
+  return tools.map(mapWorldToolToMeta);
+}
+
+/**
  * List all plugins across all registries
  * Returns a unified array of PluginMeta
  */
@@ -436,6 +490,7 @@ export function listAllPlugins(): PluginMeta[] {
     ...listInteractionPlugins(),
     ...listNodeTypePlugins(),
     ...listGalleryToolPlugins(),
+    ...listWorldToolPlugins(),
     ...listUIPlugins(),
     ...listGenerationUIPlugins(),
   ];
@@ -450,6 +505,7 @@ export function getPluginCounts(): Record<PluginKind, number> {
     'interaction': listInteractionPlugins().length,
     'node-type': listNodeTypePlugins().length,
     'gallery-tool': listGalleryToolPlugins().length,
+    'world-tool': listWorldToolPlugins().length,
     'ui-plugin': listUIPlugins().length,
     'generation-ui': listGenerationUIPlugins().length,
   };
@@ -566,6 +622,7 @@ export function groupByKind(plugins: PluginMeta[] = listAllPlugins()): Record<Pl
     'interaction': [],
     'node-type': [],
     'gallery-tool': [],
+    'world-tool': [],
     'ui-plugin': [],
     'generation-ui': [],
   };
