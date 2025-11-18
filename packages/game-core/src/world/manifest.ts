@@ -2,26 +2,28 @@
  * World Manifest Configuration
  *
  * Utilities for reading and writing world manifest configuration
- * stored in GameWorld.meta.
+ * stored in GameWorld.meta.manifest (nested under a 'manifest' key).
  */
 
 import type { GameWorldDetail, WorldManifest } from '@pixsim7/types';
 import { TURN_DELTAS, type TurnDeltaPreset } from './turnPresets';
 
 /**
- * Get the world manifest from GameWorld.meta
+ * Get the world manifest from GameWorld.meta.manifest
  * Returns empty object if no manifest is configured
  */
 export function getWorldManifest(world: GameWorldDetail): WorldManifest {
   if (!world.meta) {
     return {};
   }
-  // The manifest is stored in the meta object
-  return (world.meta as WorldManifest) || {};
+  // The manifest is stored under meta.manifest key
+  const meta = world.meta as any;
+  return (meta.manifest as WorldManifest) || {};
 }
 
 /**
- * Set/update the world manifest in GameWorld.meta
+ * Set/update the world manifest in GameWorld.meta.manifest
+ * Preserves other meta fields (e.g., npcRoles)
  * Returns a new GameWorldDetail with updated manifest
  */
 export function setWorldManifest(
@@ -31,7 +33,8 @@ export function setWorldManifest(
   return {
     ...world,
     meta: {
-      ...manifest,
+      ...(world.meta || {}),
+      manifest,
     },
   };
 }

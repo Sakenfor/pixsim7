@@ -108,8 +108,20 @@ export interface GameWorldDetail {
 }
 
 /**
- * World Manifest structure stored in GameWorld.meta
+ * World Manifest structure stored in GameWorld.meta.manifest
  * Defines per-world configuration for gameplay features
+ *
+ * Example:
+ * ```typescript
+ * world.meta = {
+ *   manifest: {
+ *     turn_preset: "ONE_HOUR",
+ *     enabled_arc_graphs: ["main_romance", "side_heist"],
+ *     enabled_plugins: ["quest-trigger"]
+ *   },
+ *   npcRoles: { ... }  // Other meta fields preserved
+ * }
+ * ```
  */
 export interface WorldManifest {
   /** Default turn preset for turn-based mode (e.g., "ONE_HOUR") */

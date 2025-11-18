@@ -107,27 +107,24 @@ export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, s
   };
 }
 
-// Helper to get world manifest from world meta
+// Helper to get world manifest from world meta.manifest
 export function getWorldManifest(world: GameWorldDetail): WorldManifest {
   if (!world.meta) {
     return {};
   }
-  // Extract manifest fields from meta (manifest is stored directly in meta)
+  // The manifest is stored under meta.manifest key
   const meta = world.meta as any;
-  return {
-    turn_preset: meta.turn_preset,
-    enabled_arc_graphs: meta.enabled_arc_graphs,
-    enabled_plugins: meta.enabled_plugins,
-  };
+  return (meta.manifest as WorldManifest) || {};
 }
 
-// Helper to set world manifest in world meta
+// Helper to set world manifest in world meta.manifest
+// Preserves other meta fields (e.g., npcRoles)
 export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest): GameWorldDetail {
   return {
     ...world,
     meta: {
       ...(world.meta || {}),
-      ...manifest,
+      manifest,
     },
   };
 }
