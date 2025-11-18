@@ -361,3 +361,6 @@ export function QuestTriggerEditor({ node, onUpdate }: QuestTriggerEditorProps) 
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default QuestTriggerEditor;

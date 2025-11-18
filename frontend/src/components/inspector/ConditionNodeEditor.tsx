@@ -141,3 +141,6 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default ConditionNodeEditor;

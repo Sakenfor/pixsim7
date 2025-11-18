@@ -218,3 +218,6 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default VideoNodeEditor;

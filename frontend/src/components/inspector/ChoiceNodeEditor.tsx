@@ -131,3 +131,6 @@ export function ChoiceNodeEditor({ node, onUpdate }: ChoiceNodeEditorProps) {
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default ChoiceNodeEditor;

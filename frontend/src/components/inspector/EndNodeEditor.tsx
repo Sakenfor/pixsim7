@@ -66,3 +66,6 @@ export function EndNodeEditor({ node, onUpdate }: NodeEditorProps) {
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default EndNodeEditor;

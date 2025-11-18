@@ -1,31 +1,88 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import type { ComponentType } from 'react';
 import { type DraftSceneNode } from '../../modules/scene-builder';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { useSelectionStore } from '../../stores/selectionStore';
 import { useToast } from '../../stores/toastStore';
 import { nodeTypeRegistry } from '@pixsim7/types';
-import { VideoNodeEditor } from './VideoNodeEditor';
-import { ChoiceNodeEditor } from './ChoiceNodeEditor';
-import { ConditionNodeEditor } from './ConditionNodeEditor';
-import { MiniGameNodeEditor } from './MiniGameNodeEditor';
-import { EndNodeEditor } from './EndNodeEditor';
-import { SceneCallNodeEditor } from './SceneCallNodeEditor';
-import { ReturnNodeEditor } from './ReturnNodeEditor';
-import { SeductionNodeEditor } from './SeductionNodeEditor';
-import { QuestTriggerEditor } from './QuestTriggerEditor';
+import { nodeEditorRegistry } from '../../lib/nodeEditorRegistry';
 
-// Dynamic editor component map
-const EDITOR_COMPONENTS: Record<string, React.ComponentType<any>> = {
-  VideoNodeEditor,
-  ChoiceNodeEditor,
-  ConditionNodeEditor,
-  EndNodeEditor,
-  SceneCallNodeEditor,
-  ReturnNodeEditor,
-  MiniGameNodeEditor,
-  SeductionNodeEditor,
-  QuestTriggerEditor,
-};
+/**
+ * Dynamic Editor Loader Component
+ * Handles lazy loading of editor components from the registry
+ */
+function DynamicEditor({
+  editorId,
+  node,
+  onUpdate,
+}: {
+  editorId: string;
+  node: DraftSceneNode;
+  onUpdate: (patch: Partial<DraftSceneNode>) => void;
+}) {
+  const [EditorComponent, setEditorComponent] = useState<ComponentType<any> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Reset state when editor changes
+    setIsLoading(true);
+    setError(null);
+    setEditorComponent(null);
+
+    // Get editor loader from registry
+    const loader = nodeEditorRegistry.getEditor(editorId);
+    if (!loader) {
+      setError(`Editor "${editorId}" not found in registry`);
+      setIsLoading(false);
+      console.error(
+        `[InspectorPanel] Editor "${editorId}" not found. Available editors:`,
+        nodeEditorRegistry.getAllEditorIds()
+      );
+      return;
+    }
+
+    // Load the editor module
+    loader()
+      .then((module) => {
+        setEditorComponent(() => module.default);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        console.error(`[InspectorPanel] Failed to load editor "${editorId}":`, err);
+        setError(`Failed to load editor: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setIsLoading(false);
+      });
+  }, [editorId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-sm text-neutral-500 dark:text-neutral-400">
+          Loading editor...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+        <p className="font-medium text-red-700 dark:text-red-300">Editor Error</p>
+        <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+          Check the console for more details.
+        </p>
+      </div>
+    );
+  }
+
+  if (!EditorComponent) {
+    return null;
+  }
+
+  return <EditorComponent node={node} onUpdate={onUpdate} />;
+}
 
 export function InspectorPanel() {
   const { selectedNodeId } = useSelectionStore();
@@ -152,32 +209,39 @@ export function InspectorPanel() {
         {(() => {
           // Special case: mini-game is detected by metadata, not node type
           if (selectedNode.type === 'video' && (selectedNode.metadata as any)?.isMiniGame) {
-            const EditorComponent = EDITOR_COMPONENTS['MiniGameNodeEditor'];
-            return EditorComponent ? <EditorComponent node={selectedNode} onUpdate={handleUpdateNode} /> : null;
+            return (
+              <DynamicEditor
+                editorId="MiniGameNodeEditor"
+                node={selectedNode}
+                onUpdate={handleUpdateNode}
+              />
+            );
           }
 
           // Get editor component name from registry
           const editorComponentName = nodeTypeDef?.editorComponent;
-          const EditorComponent = editorComponentName
-            ? EDITOR_COMPONENTS[editorComponentName]
-            : null;
 
-          if (EditorComponent) {
-            return <EditorComponent node={selectedNode} onUpdate={handleUpdateNode} />;
+          if (editorComponentName) {
+            return (
+              <DynamicEditor
+                editorId={editorComponentName}
+                node={selectedNode}
+                onUpdate={handleUpdateNode}
+              />
+            );
           }
 
           // Fallback: show generic info for nodes without editors
           return (
             <div className="text-sm text-neutral-600 dark:text-neutral-400">
               <p className="mb-2">
-                {nodeTypeDef?.name ?? 'Custom node'}: <code className="px-1 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs">{selectedNode.type}</code>
+                {nodeTypeDef?.name ?? 'Custom node'}:{' '}
+                <code className="px-1 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs">
+                  {selectedNode.type}
+                </code>
               </p>
-              {nodeTypeDef?.description && (
-                <p className="text-xs mb-4">{nodeTypeDef.description}</p>
-              )}
-              <p className="text-xs text-neutral-500">
-                No editor registered for this node type.
-              </p>
+              {nodeTypeDef?.description && <p className="text-xs mb-4">{nodeTypeDef.description}</p>}
+              <p className="text-xs text-neutral-500">No editor registered for this node type.</p>
             </div>
           );
         })()}

@@ -235,3 +235,6 @@ export function SceneCallNodeEditor({ node, onUpdate }: NodeEditorProps) {
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default SceneCallNodeEditor;
