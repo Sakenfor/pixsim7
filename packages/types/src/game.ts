@@ -122,6 +122,17 @@ export interface GameSessionDTO {
   version: number; // Optimistic locking version, incremented on each update
 }
 
+/**
+ * Type-safe session update payload - only includes mutable fields
+ * Prevents accidentally updating readonly fields like id, user_id, etc.
+ */
+export interface SessionUpdatePayload {
+  world_time?: number;
+  flags?: Record<string, unknown>;
+  relationships?: Record<string, unknown>;
+  expected_version?: number; // For optimistic locking
+}
+
 // ===================
 // Stealth/Interaction Types
 // ===================

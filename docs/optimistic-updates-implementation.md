@@ -400,14 +400,44 @@ If issues arise, rollback is safe:
 - [Conflict-Free Replicated Data Types (CRDTs)](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type)
 - [Optimistic Locking vs Pessimistic Locking](https://stackoverflow.com/questions/129329/optimistic-vs-pessimistic-locking)
 
+## Recent Improvements (Latest Update)
+
+### 1. Retry Limit with Exponential Backoff
+- **Problem**: Infinite retry loops possible on persistent conflicts
+- **Solution**: Max 3 retries with exponential backoff (100ms, 200ms, 400ms)
+- **Benefit**: Prevents resource exhaustion while allowing legitimate retries
+
+### 2. Performance Optimization via Memoization
+- **Problem**: `sessionHelpers` recreated on every render in Game2D
+- **Solution**: Added `useMemo` for `sessionAPI` and `sessionHelpers`
+- **Benefit**: Reduces unnecessary object creation and re-renders
+
+### 3. Type Safety for Updates
+- **Problem**: `Partial<GameSessionDTO>` allows updating readonly fields (id, user_id, etc.)
+- **Solution**: Created `SessionUpdatePayload` type with only mutable fields
+- **Benefit**: Compile-time prevention of invalid updates
+
+### 4. Improved Logging
+- **Problem**: Raw `console.log` everywhere, not production-ready
+- **Solution**: Created structured logger with dev/prod awareness
+- **Benefit**: Better debugging, ready for integration with logging services
+
+### 5. Explicit Cache Invalidation
+- **Problem**: Redis cache could become stale from external updates
+- **Solution**: Invalidate cache explicitly before re-normalization on writes
+- **Benefit**: Guarantees fresh computation after updates
+
 ## Summary
 
 This implementation provides:
 - ✅ Instant UI feedback (optimistic updates)
 - ✅ Backend authority (version checking)
-- ✅ Automatic conflict resolution
+- ✅ Automatic conflict resolution with retry limits
 - ✅ Error handling with rollback
-- ✅ Performance optimization (write-only normalization)
+- ✅ Performance optimization (write-only normalization + memoization)
+- ✅ Type safety (SessionUpdatePayload prevents invalid updates)
+- ✅ Explicit cache invalidation (prevents stale data)
+- ✅ Production-ready logging
 - ✅ Graceful degradation (works without backend support)
 - ✅ Future-ready (offline support foundation)
 

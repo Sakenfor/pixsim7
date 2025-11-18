@@ -1,4 +1,4 @@
-import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
+import type { GameSessionDTO, SessionUpdatePayload, NpcPresenceDTO } from '../../api/game';
 import type {
   NpcSlotAssignment,
   NpcRelationshipState,
@@ -120,11 +120,12 @@ export interface SessionUpdateResponse {
 
 /**
  * Session API for optimistic updates (backend sync)
+ * Uses SessionUpdatePayload for type safety (prevents updating readonly fields)
  */
 export interface SessionAPI {
   updateSession: (
     sessionId: number,
-    updates: Partial<GameSessionDTO> & { expectedVersion?: number }
+    updates: SessionUpdatePayload
   ) => Promise<SessionUpdateResponse>;
 }
 

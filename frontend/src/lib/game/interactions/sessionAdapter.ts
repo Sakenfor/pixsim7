@@ -29,6 +29,35 @@ import {
   sessionHelperRegistry,
 } from '@pixsim7/game-core';
 
+/** Maximum number of retry attempts for conflict resolution */
+const MAX_RETRIES = 3;
+
+/** Base delay in ms for exponential backoff (doubles each retry) */
+const BASE_RETRY_DELAY_MS = 100;
+
+/**
+ * Simple logger for session operations
+ * In production, could be replaced with proper logging service
+ */
+const logger = {
+  info: (msg: string, data?: any) => {
+    if (import.meta.env?.DEV) {
+      console.log(`[SessionAdapter] ${msg}`, data ?? '');
+    }
+  },
+  warn: (msg: string, data?: any) => {
+    console.warn(`[SessionAdapter] ${msg}`, data ?? '');
+  },
+  error: (msg: string, err?: any) => {
+    console.error(`[SessionAdapter] ${msg}`, err ?? '');
+  },
+};
+
+/**
+ * Sleep utility for exponential backoff
+ */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Create session helpers bound to a specific game session
  *
@@ -60,17 +89,21 @@ export function createSessionHelpers(
   }
 
   /**
-   * Generic optimistic update pattern with conflict resolution
+   * Generic optimistic update pattern with conflict resolution and retry logic
    * @param localUpdate - Function to apply change optimistically
    * @param backendUpdate - Partial session update to send to backend
+   * @param retryCount - Internal retry counter (starts at 0)
    */
   const applyOptimisticUpdate = async (
     localUpdate: (session: GameSessionDTO) => GameSessionDTO,
-    backendUpdate: Partial<GameSessionDTO>
+    backendUpdate: Partial<GameSessionDTO>,
+    retryCount = 0
   ): Promise<GameSessionDTO> => {
-    // 1. Optimistic update (instant UI)
-    const optimistic = localUpdate(gameSession);
-    onUpdate?.(optimistic);
+    // 1. Optimistic update (instant UI) - only on first attempt
+    if (retryCount === 0) {
+      const optimistic = localUpdate(gameSession);
+      onUpdate?.(optimistic);
+    }
 
     // 2. Backend validation (if API available)
     if (api) {
@@ -81,39 +114,63 @@ export function createSessionHelpers(
           expectedVersion: gameSession.version,
         });
 
-        // 3a. Handle version conflicts
+        // 3a. Handle version conflicts with retry limit
         if (response.conflict && response.serverSession) {
-          console.log('[SessionAdapter] Version conflict detected, resolving...');
-
-          // Server session is newer - apply conflict resolution
-          const resolved = await resolveConflict(gameSession, response.serverSession, localUpdate);
-
-          // Retry update with resolved state and new version
-          const retryResponse = await api.updateSession(gameSession.id, {
-            ...backendUpdate,
-            expectedVersion: response.serverSession.version,
-          });
-
-          if (retryResponse.session) {
-            onUpdate?.(retryResponse.session);
-            return retryResponse.session;
+          if (retryCount >= MAX_RETRIES) {
+            logger.error(
+              `Max retries (${MAX_RETRIES}) exceeded for session update. Giving up.`,
+              { sessionId: gameSession.id, retryCount }
+            );
+            // Rollback to original state
+            onUpdate?.(gameSession);
+            throw new Error('Session update failed: too many conflicts');
           }
+
+          logger.info(
+            `Version conflict detected (attempt ${retryCount + 1}/${MAX_RETRIES}), resolving...`,
+            { sessionId: gameSession.id, expectedVersion: gameSession.version, serverVersion: response.serverSession.version }
+          );
+
+          // Exponential backoff: wait before retrying
+          const delayMs = BASE_RETRY_DELAY_MS * Math.pow(2, retryCount);
+          await sleep(delayMs);
+
+          // Re-apply local changes on top of server state
+          const serverState = response.serverSession;
+          const resolvedUpdate = localUpdate(serverState);
+
+          // Update our local reference to server state
+          const newBackendUpdate = {
+            ...backendUpdate,
+            // Extract only the fields we're updating from the resolved state
+            ...(backendUpdate.flags && { flags: resolvedUpdate.flags }),
+            ...(backendUpdate.relationships && { relationships: resolvedUpdate.relationships }),
+            ...(backendUpdate.world_time && { world_time: resolvedUpdate.world_time }),
+          };
+
+          // Recursively retry with incremented counter
+          return applyOptimisticUpdate(
+            (s) => resolvedUpdate, // Use pre-resolved update
+            newBackendUpdate,
+            retryCount + 1
+          );
         }
 
         // 3b. No conflict - apply server truth
         if (response.session) {
+          logger.info('Session update successful', { sessionId: gameSession.id, version: response.session.version });
           onUpdate?.(response.session);
           return response.session;
         }
       } catch (err) {
         // 3c. Rollback on error
-        console.error('[SessionAdapter] Update failed, rolling back:', err);
+        logger.error('Update failed, rolling back', err);
         onUpdate?.(gameSession);
         throw err;
       }
     }
 
-    return optimistic;
+    return localUpdate(gameSession);
   };
 
   /**
