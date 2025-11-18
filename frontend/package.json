@@ -8,7 +8,7 @@
     "predev": "pnpm run build:deps",
     "build": "vite build",
     "prebuild": "pnpm run build:deps",
-    "build:deps": "pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
+    "build:deps": "pnpm --filter pixcubes build && pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
     "build:check": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

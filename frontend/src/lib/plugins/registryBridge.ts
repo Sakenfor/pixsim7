@@ -22,7 +22,7 @@ import { pluginCatalog } from './pluginSystem';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game-core';
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 import { nodeTypeRegistry, type NodeTypeDefinition } from '@pixsim7/types';
-import { nodeRendererRegistry } from '../graph/types';
+import { nodeRendererRegistry } from '../graph/nodeRendererRegistry';
 import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/registry';
 import type { GalleryToolPlugin } from '../gallery/types';
 

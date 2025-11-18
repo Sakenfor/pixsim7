@@ -52,7 +52,7 @@ export const galleryToolDiscoveryConfig: PluginDiscoveryConfig = {
 /**
  * Node type plugins discovery config
  *
- * Looks for registerXxxNode functions in lib/plugins/**/*Node.{ts,tsx}
+ * Looks for registerXxxNode functions in lib/plugins matching *Node.{ts,tsx}
  */
 export const nodeTypeDiscoveryConfig: PluginDiscoveryConfig = {
   family: 'node-type',
