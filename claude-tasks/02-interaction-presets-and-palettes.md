@@ -122,3 +122,81 @@ After the basic preset system is working, the next step is to make presets riche
    - In the interaction executor (`executeSlotInteractions` or `executeInteraction`), add a dev-only hook that:
      - If an interaction came from a preset (store preset ID on the config metadata when applied), increment a counter for that preset ID in a small in-memory or localStorage store.
    - Add a simple dev panel (later) to view preset usage counts, helping designers see which presets are actually used.
+
+---
+
+## Phase 3: Smart Presets & Contextual Suggestions
+
+Build intelligence into the preset system to reduce manual configuration.
+
+**Phase 3 Goals**
+- Add **AI-powered preset suggestions** based on NPC type and context.
+- Implement **conditional presets** that change based on game state.
+- Create **preset variations** for different relationship levels.
+- Enable **preset inheritance** and composition.
+
+**Key Features**
+- Smart suggestions:
+  - Analyze NPC traits to suggest appropriate presets.
+  - Consider location and time for context-aware presets.
+  - Learn from designer choices to improve suggestions.
+- Conditional logic:
+  - Different presets for first meeting vs familiar NPC.
+  - Relationship-based preset selection.
+  - Quest state influences available presets.
+- Preset families:
+  - Base preset + variations.
+  - Inheritance chains (generic → specific).
+  - Composite presets from multiple sources.
+
+---
+
+## Phase 4: Interaction Balancing & Tuning Dashboard
+
+Add sophisticated tools for balancing and optimizing interaction gameplay.
+
+**Phase 4 Goals**
+- Build **interaction simulator** to test preset outcomes.
+- Create **balance dashboard** with success/failure analytics.
+- Add **difficulty scaling** for interactions.
+- Implement **player skill tracking** for adaptive difficulty.
+
+**Key Features**
+- Simulation engine:
+  - Run 1000s of simulated interactions.
+  - Monte Carlo analysis of outcomes.
+  - Identify edge cases and exploits.
+- Balance metrics:
+  - Success rate distribution.
+  - Resource consumption analysis.
+  - Time-to-complete tracking.
+- Adaptive difficulty:
+  - Player skill estimation.
+  - Dynamic parameter adjustment.
+  - Fairness algorithms.
+
+---
+
+## Phase 5: Production Interaction System
+
+Enterprise-grade interaction management with full lifecycle support.
+
+**Phase 5 Goals**
+- Implement **interaction versioning** with migration paths.
+- Add **multiplayer interaction** support.
+- Create **interaction marketplace** for sharing presets.
+- Build **interaction debugger** with replay capability.
+
+**Key Features**
+- Version control:
+  - Track preset evolution.
+  - Automated migration scripts.
+  - Compatibility testing.
+- Multiplayer:
+  - Synchronized interactions.
+  - Turn-based negotiation.
+  - Group interactions.
+- Marketplace:
+  - Share presets between projects.
+  - Rate and review system.
+  - Curated collections.

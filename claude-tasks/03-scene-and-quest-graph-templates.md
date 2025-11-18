@@ -132,3 +132,81 @@ Once basic graph templates exist, the next step is to make them more powerful an
    - Add support to store templates in `GameWorld.meta.graphTemplates` for templates that are specific to a given world.
    - When loading templates, show a combined view:
      - Global templates + world-specific templates, with a badge indicating origin.
+
+---
+
+## Phase 3: Parameterized Templates & Smart Instantiation
+
+Make templates more flexible and intelligent in their application.
+
+**Phase 3 Goals**
+- Add **template parameters** for customizable instantiation.
+- Implement **smart positioning** when inserting templates.
+- Create **template validation** to ensure compatibility.
+- Build **template preview** before insertion.
+
+**Key Features**
+- Parameterization:
+  - Variable nodes (NPC names, item types).
+  - Configurable edge conditions.
+  - Dynamic property injection.
+- Smart placement:
+  - Auto-connect to existing nodes.
+  - Intelligent spacing and layout.
+  - Collision detection and resolution.
+- Validation system:
+  - Check node type availability.
+  - Verify edge compatibility.
+  - Resource requirement checking.
+
+---
+
+## Phase 4: Graph Pattern Recognition & Optimization
+
+Add AI-powered analysis and optimization of graph structures.
+
+**Phase 4 Goals**
+- Build **pattern recognition** to identify common structures.
+- Implement **graph optimization** algorithms.
+- Create **complexity analysis** tools.
+- Add **auto-suggestion** for graph improvements.
+
+**Key Features**
+- Pattern detection:
+  - Identify repeated subgraphs.
+  - Detect anti-patterns.
+  - Find optimization opportunities.
+- Optimization engine:
+  - Reduce redundant paths.
+  - Simplify complex branches.
+  - Balance narrative flow.
+- Analysis tools:
+  - Complexity metrics.
+  - Player choice impact.
+  - Reachability analysis.
+
+---
+
+## Phase 5: Enterprise Graph Management
+
+Production-ready graph template system with advanced features.
+
+**Phase 5 Goals**
+- Implement **distributed template libraries** across teams.
+- Add **template versioning** and dependency management.
+- Create **procedural generation** from templates.
+- Build **template analytics** for usage tracking.
+
+**Key Features**
+- Distributed system:
+  - Central template repository.
+  - Team-specific collections.
+  - Cross-project sharing.
+- Dependency management:
+  - Template prerequisites.
+  - Version compatibility.
+  - Automated updates.
+- Procedural generation:
+  - Rule-based template selection.
+  - Parametric instantiation.
+  - Emergent narrative creation.

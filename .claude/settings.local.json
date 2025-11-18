@@ -113,7 +113,13 @@
       "Bash(1)",
       "Bash(docker restart:*)",
       "Bash(git reset:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(for file in claude-tasks/{02..11}*.md)",
+      "Bash(do)",
+      "Bash(if ! grep -q \"Phase 3:\" \"$file\")",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
