@@ -1,20 +1,21 @@
-# Prompt System Review & Modernization Recommendations
+# Prompt System Review & Modernization Plan
 
 **Date**: 2025-11-18
-**Status**: Analysis Complete
+**Status**: Active Development - Breaking Changes Allowed
 **Priority**: High
 
 ## Executive Summary
 
-The PixSim7 prompt system has **strong backend foundations** (prompt versioning, action blocks, narrative programs) but has **not been integrated with recent architectural changes**. The system is functionally complete but isolated from:
+The PixSim7 prompt system has **strong backend foundations** (prompt versioning, action blocks, narrative programs) but is **completely disconnected from recent architecture**. Since we're in active development, we can make breaking changes to properly integrate everything.
 
+**Disconnected Systems**:
 1. Plugin system (UI plugins, node type plugins, generation plugins)
 2. Provider capability registry
 3. Frontend generation workflows
 4. Dynamic node type system
 5. Generation strategy modes
 
-This document identifies gaps and provides actionable recommendations.
+**Approach**: Aggressive refactoring and integration - no backward compatibility constraints.
 
 ---
 
@@ -222,13 +223,17 @@ block.prompt = "From this existing shot of {{lead}}..."
 
 ---
 
-## Modernization Recommendations
+## Modernization Plan
+
+**Development Philosophy**: Make breaking changes now while we can. Focus on proper architecture over preservation.
 
 ### Phase 1: Critical Integrations (1-2 weeks)
 
-#### 1.1 Provider Capability Validation
+#### 1.1 Provider Capability Validation ⚠️ BREAKING CHANGE
 
 **File**: `pixsim7_backend/services/prompts/prompt_version_service.py`
+
+**Change**: Make provider validation **mandatory** for all prompt operations
 
 **Add**:
 ```python
@@ -261,7 +266,10 @@ async def validate_prompt_for_provider(
     return ValidationResult(valid=True)
 ```
 
-**Update API**: Add `/api/v1/prompts/validate` endpoint
+**Update API**:
+- Add `/api/v1/prompts/validate` endpoint
+- **BREAKING**: All prompt creation/update endpoints now require `provider_id` parameter
+- **BREAKING**: Reject prompts that exceed provider limits (no silent truncation)
 
 ---
 
@@ -283,35 +291,54 @@ async def validate_prompt_for_provider(
 
 ---
 
-#### 1.3 Generation Node → Prompt Linkage
+#### 1.3 Generation Node → Prompt Linkage ⚠️ BREAKING CHANGE
 
 **File**: `packages/types/src/generation.ts`
 
-**Add to GenerationNodeConfig**:
+**BREAKING**: Replace free-form prompt with structured prompt references
+
+**Change GenerationNodeConfig**:
 ```typescript
 interface GenerationNodeConfig {
   // ... existing fields
 
-  promptConfig?: {
-    familyId?: string;
+  // REMOVED: freeform 'prompt' field
+  // REQUIRED: Structured prompt reference
+  promptConfig: {
+    // Option 1: Reference specific version
     versionId?: string;
+
+    // Option 2: Reference family + auto-select
+    familyId?: string;
     autoSelectLatest?: boolean;
-    variables?: Record<string, any>;
+
+    // Option 3: Inline for testing only (marked deprecated)
+    inlinePrompt?: string;  // Shows warning in UI
+
+    // Always required: variable values
+    variables: Record<string, any>;
   }
 }
+
+// Migration: Convert existing inline prompts to prompt versions automatically
 ```
 
-**Backend**: Update generation service to pull from prompt versioning
+**Backend Changes**:
+1. Update generation service to **require** prompt versioning
+2. Add migration script to convert existing inline prompts
+3. Remove support for unversioned prompts in production mode
 
 ---
 
 ### Phase 2: Plugin Integration (2-3 weeks)
 
-#### 2.1 Plugin Prompt Hooks
+#### 2.1 Plugin Prompt Hooks ⚠️ BREAKING CHANGE
 
 **File**: `frontend/src/lib/plugins/PluginAPI.ts`
 
-**Add**:
+**BREAKING**: Plugins MUST declare their prompt requirements upfront
+
+**Replace** ad-hoc prompt handling with structured API:
 ```typescript
 interface PluginAPI {
   // ... existing
@@ -344,16 +371,19 @@ plugin.api.prompts.addVariableSource({
 
 ---
 
-#### 2.2 Node Type Prompt Extensions
+#### 2.2 Node Type Prompt Extensions ⚠️ BREAKING CHANGE
 
 **File**: `packages/types/src/nodeTypeRegistry.ts`
 
-**Add to NodeTypeDefinition**:
+**BREAKING**: All node types with generation MUST declare prompt requirements
+
+**Make promptExtensions required for generation nodes**:
 ```typescript
 interface NodeTypeDefinition<TData> {
   // ... existing
 
-  promptExtensions?: {
+  // CHANGED: Required for generation nodes
+  promptExtensions?: {  // Will become required in v2
     // Suggested prompt families for this node type
     recommendedFamilies?: string[];
 
@@ -370,11 +400,13 @@ interface NodeTypeDefinition<TData> {
 
 ### Phase 3: Advanced Features (3-4 weeks)
 
-#### 3.1 Strategy-Aware Prompts
+#### 3.1 Strategy-Aware Prompts ⚠️ SCHEMA CHANGE
 
 **File**: `pixsim7_backend/domain/prompt_versioning.py`
 
-**Add**:
+**Database Migration Required**
+
+**Add new columns**:
 ```python
 class PromptVersion(SQLModel, table=True):
     # ... existing fields
@@ -409,11 +441,13 @@ version = PromptVersion(
 
 ---
 
-#### 3.2 Action Block Versioning Bridge
+#### 3.2 Action Block Versioning Bridge ⚠️ BREAKING CHANGE
 
 **File**: `pixsim7_backend/domain/narrative/action_blocks/engine.py`
 
-**Add**:
+**BREAKING**: Action blocks will ALWAYS create prompt versions
+
+**Replace** standalone action blocks with versioned system:
 ```python
 class ActionEngine:
     async def create_versioned_block(
@@ -616,40 +650,51 @@ class NPCPromptContext:
 
 ## Migration Strategy
 
-### Backward Compatibility
+### Breaking Changes Allowed
 
-**Principle**: All changes should be **additive**, not breaking
+**Principle**: Fix the architecture now, not later
 
-**Safeguards**:
-1. New fields in `PromptVersion` are optional
-2. Existing prompt workflows continue unchanged
-3. Provider validation is opt-in initially
-4. Plugin hooks are optional extensions
+**Approach**:
+1. **Database migrations** will add required columns
+2. **One-time script** converts existing inline prompts to versions
+3. **API breaking changes** documented in changelog
+4. **Frontend refactor** to use new prompt system
+5. **No legacy mode** - clean cut to new system
 
 ---
 
 ### Rollout Plan
 
-#### Week 1-2: Foundation
-- [ ] Add provider capability validation
-- [ ] Create basic frontend UI (family list, version history)
-- [ ] Add node type linkage to prompt families
+#### Week 1: Database & Backend Breaking Changes
+- [ ] Add required columns to `PromptVersion` (migration)
+- [ ] Add required columns to `Generation` (migration)
+- [ ] Run conversion script: inline prompts → prompt versions
+- [ ] Update all backend APIs (breaking changes)
+- [ ] Remove legacy prompt handling code
 
-#### Week 3-4: Integration
-- [ ] Implement plugin prompt hooks
-- [ ] Update generation service to use prompt versioning
-- [ ] Add prompt picker to node inspector
+#### Week 2: Frontend Foundation
+- [ ] Create prompt management UI (required before generation works)
+- [ ] Update generation node inspector (breaking: requires prompt selection)
+- [ ] Add provider capability checks to UI
+- [ ] Remove inline prompt inputs
+
+#### Week 3-4: Plugin Integration
+- [ ] Implement mandatory plugin prompt declarations
+- [ ] Update all existing plugins (seduction, quest, etc.)
+- [ ] Add prompt variable registry
+- [ ] Break old plugin API for prompts
 
 #### Week 5-6: Advanced Features
-- [ ] Action block versioning bridge
+- [ ] Action block versioning (breaking: changes action block API)
 - [ ] NPC-aware templates
 - [ ] Strategy-aware prompts
+- [ ] Migration for existing action blocks
 
-#### Week 7-8: Polish
+#### Week 7-8: Optimization
 - [ ] Analytics dashboard
 - [ ] Smart suggestions
-- [ ] Documentation updates
-- [ ] User testing
+- [ ] Performance tuning
+- [ ] Documentation
 
 ---
 
@@ -671,58 +716,66 @@ class NPCPromptContext:
 
 ## Risks & Mitigation
 
-### Risk 1: Performance Impact
-**Concern**: Provider capability lookups slow down generation
+### Risk 1: Breaking Changes Impact
+**Concern**: Existing scenes/nodes will break
 
 **Mitigation**:
-- Cache capabilities (5 min TTL)
-- Async validation
-- Fail gracefully if validation times out
+- **One-time migration script** handles conversion
+- Clear error messages pointing to migration path
+- Helper tool to bulk-update scenes
+- We're in development - acceptable breakage window
 
 ---
 
-### Risk 2: Plugin API Complexity
-**Concern**: Prompt hooks too complex for plugin authors
+### Risk 2: Data Loss During Migration
+**Concern**: Conversion script fails and loses prompts
 
 **Mitigation**:
-- Provide high-level helpers
-- Create example plugins
-- Comprehensive documentation
-- TypeScript types for safety
+- **Backup database before migration**
+- Dry-run mode shows what would change
+- Rollback script available
+- Manual verification for critical prompts
 
 ---
 
-### Risk 3: Data Migration
-**Concern**: Linking existing generations to prompt versions
+### Risk 3: Performance Regression
+**Concern**: Provider capability checks slow everything down
 
-**Mitigation**:
-- Historical inference endpoint already exists
-- Run batch inference during low-traffic period
-- Make linkage optional (nullable foreign key)
+**Solution** (not mitigation - we're fixing this properly):
+- Aggressive caching (10 min TTL minimum)
+- Preload capabilities on app start
+- Background refresh
+- If this is slow, we fix the capability API, not work around it
 
 ---
 
 ## Conclusion
 
-The PixSim7 prompt system has **excellent foundations** but is **disconnected from recent architecture**. The modernization plan is:
+The PixSim7 prompt system has **excellent foundations** but is **completely isolated** from the rest of the app. Time to integrate properly.
 
-1. **Connect existing systems** (provider capabilities, frontend)
-2. **Integrate with new features** (plugins, node types, strategies)
-3. **Add missing bridges** (action blocks, analytics)
-4. **Optimize for usability** (suggestions, validation, UI)
+**Modernization Approach**:
+1. **Break things that need breaking** (inline prompts, loose coupling)
+2. **Require proper structure** (all prompts versioned, validated)
+3. **Integrate deeply** (plugins, node types, providers, strategies)
+4. **No backward compatibility** (we're in development, let's do this right)
 
-**Estimated Effort**: 8-10 weeks full-time
-**Priority**: High (affects generation quality and user workflows)
-**Risk**: Low (all changes are additive)
+**Estimated Effort**: 8 weeks full-time
+**Priority**: Critical (blocks proper generation workflows)
+**Risk**: Medium (breaking changes + migration), but acceptable in dev phase
+**Reward**: Proper architecture that scales
 
 ---
 
 **Next Steps**:
-1. Review this analysis with team
-2. Prioritize phases based on user needs
-3. Assign technical leads for each phase
-4. Create detailed implementation tickets
-5. Begin Phase 1 development
+1. ✅ Analysis complete
+2. **Create migration scripts** for database changes
+3. **Back up database** before any migrations
+4. **Start Week 1**: Database migrations + backend breaking changes
+5. **Run conversion**: Transform all inline prompts to versions
+6. **Build frontend**: Prompt management UI (blocks Week 2)
+7. **Update plugins**: Make them prompt-aware (blocks Week 3)
+
+**Decision Point**: Ready to start breaking changes? If yes, begin Week 1. If no, document why we need backward compatibility.
 
 ---
 
