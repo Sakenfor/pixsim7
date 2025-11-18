@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from typing import Optional, Dict, Any
+import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+try:
+    from redis.asyncio import Redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    Redis = None  # type: ignore
 
 from pixsim7_backend.domain.game.models import (
     GameSession,
@@ -20,8 +28,34 @@ from pixsim7_backend.domain.narrative.relationships import (
 
 
 class GameSessionService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis: Optional[Redis] = None):
         self.db = db
+        self.redis = redis if REDIS_AVAILABLE else None
+
+    async def _get_cached_relationships(self, session_id: int) -> Optional[Dict]:
+        """Retrieve cached relationship computations from Redis."""
+        if not self.redis:
+            return None
+
+        try:
+            cache_key = f"session:{session_id}:relationships"
+            cached = await self.redis.get(cache_key)
+            return json.loads(cached) if cached else None
+        except Exception:
+            # Fail gracefully if cache is unavailable
+            return None
+
+    async def _cache_relationships(self, session_id: int, relationships: Dict):
+        """Cache relationship computations in Redis with 60s TTL."""
+        if not self.redis:
+            return
+
+        try:
+            cache_key = f"session:{session_id}:relationships"
+            await self.redis.setex(cache_key, 60, json.dumps(relationships))
+        except Exception:
+            # Fail gracefully if cache is unavailable
+            pass
 
     async def _normalize_session_relationships(self, session: GameSession) -> None:
         """
@@ -29,8 +63,16 @@ class GameSessionService:
 
         This makes the backend the authoritative source for relationship tiers/intimacy,
         with frontends consuming these pre-computed values.
+
+        Uses Redis cache to reduce computation overhead (60s TTL).
         """
         if not session.relationships:
+            return
+
+        # Check cache first
+        cached = await self._get_cached_relationships(session.id)
+        if cached:
+            session.relationships = cached
             return
 
         # TODO: Fetch world metadata for relationship schemas
@@ -64,6 +106,9 @@ class GameSessionService:
             if npc_key in session.relationships:
                 session.relationships[npc_key]["tierId"] = tier_id
                 session.relationships[npc_key]["intimacyLevelId"] = intimacy_id
+
+        # Cache results
+        await self._cache_relationships(session.id, session.relationships)
 
     async def _get_scene(self, scene_id: int) -> GameScene:
         result = await self.db.execute(

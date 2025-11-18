@@ -4,11 +4,19 @@
  * Pure, immutable helpers for manipulating GameSessionDTO state.
  * All setters return a NEW session object without mutating the original.
  *
+ * @authority CLIENT_FALLBACK
+ * These functions provide CLIENT-SIDE transformations for editor tools,
+ * previews, and offline processing. The BACKEND is authoritative for all
+ * runtime game state, including computed values like tierId and intimacyLevelId.
+ *
  * Follows conventions from RELATIONSHIPS_AND_ARCS.md:
  * - Relationships live in GameSession.relationships
  * - Arcs/quests/inventory/events live in GameSession.flags
  * - Backend-computed tierId/intimacyLevelId are authoritative
  * - No database schema changes; everything via JSON
+ *
+ * @use_cases Editor tools, offline processing, tests, state transformations
+ * @backend_authoritative Always trust backend responses over local computations
  */
 
 import type { GameSessionDTO } from '@pixsim7/types';

@@ -1,10 +1,19 @@
 /**
  * Session state helpers for flags, arcs, quests, inventory, and events
  *
+ * @authority CLIENT_MUTABLE
+ * These functions MUTATE session.flags in place (no return value).
+ * Use for React state updates and runtime game state manipulation.
+ *
+ * For IMMUTABLE operations (editor tools, transformations), use session/state.ts instead.
+ *
  * These helpers follow the conventions documented in RELATIONSHIPS_AND_ARCS.md:
  * - All state lives in GameSession.flags (no new tables)
  * - Use namespaced keys to avoid clashes (arcs, quests, inventory, events)
  * - Maintain type safety while working with JSON fields
+ *
+ * @use_cases Game2D runtime, React components, live state editing
+ * @backend_authoritative Always sync changes to backend and apply server response
  */
 
 import type { GameSessionDTO } from '@pixsim7/types';

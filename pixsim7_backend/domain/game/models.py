@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
+from sqlalchemy.sql import func
 
 # Scene graph
 class GameScene(SQLModel, table=True):
@@ -54,8 +55,9 @@ class GameSession(SQLModel, table=True):
     flags: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     relationships: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     world_time: float = Field(default=0.0, description="Game time seconds (can map to day cycles)")
+    version: int = Field(default=1, nullable=False, description="Optimistic locking version")
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()}, index=True)
 
 class GameSessionEvent(SQLModel, table=True):
     __tablename__ = "game_session_events"
