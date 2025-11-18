@@ -21,6 +21,18 @@ export const talkPlugin: InteractionPlugin<TalkConfig> = {
   name: 'Talk',
   description: 'Start a conversation with the NPC',
   icon: '💬',
+  category: 'social',
+  version: '1.0.0',
+  tags: ['dialogue', 'conversation', 'social'],
+
+  // UI behavior: opens dialogue interface
+  uiMode: 'dialogue',
+
+  // Capabilities for UI hints
+  capabilities: {
+    opensDialogue: true,
+    affectsRelationship: true, // Conversations can affect relationships
+  },
 
   defaultConfig: {
     enabled: true,

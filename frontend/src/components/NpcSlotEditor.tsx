@@ -339,41 +339,9 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
                 <h4 className="text-xs font-semibold mb-2">Interactions</h4>
 
                 {interactionRegistry.getAll().map((plugin) => {
-                  // Support both old and new format
+                  // Get config for this plugin (new format only)
                   const interactions = selectedSlot.interactions || {};
-                  let config: any;
-
-                  // Migration: Convert old format to new format
-                  if (plugin.id === 'talk') {
-                    if ((interactions as any).canTalk) {
-                      // Old format
-                      config = {
-                        enabled: true,
-                        ...(interactions as any).npcTalk,
-                      };
-                    } else if ((interactions as any).talk) {
-                      // New format
-                      config = (interactions as any).talk;
-                    } else {
-                      config = null;
-                    }
-                  } else if (plugin.id === 'pickpocket') {
-                    if ((interactions as any).canPickpocket) {
-                      // Old format
-                      config = {
-                        enabled: true,
-                        ...(interactions as any).pickpocket,
-                      };
-                    } else if ((interactions as any).pickpocket) {
-                      // New format
-                      config = (interactions as any).pickpocket;
-                    } else {
-                      config = null;
-                    }
-                  } else {
-                    config = (interactions as any)[plugin.id] || null;
-                  }
-
+                  const config = (interactions as any)[plugin.id] || null;
                   const enabled = config?.enabled ?? false;
 
                   return (

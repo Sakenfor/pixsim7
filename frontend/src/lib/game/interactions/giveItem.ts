@@ -20,6 +20,21 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
   name: 'Give Item',
   description: 'Offer an item to the NPC',
   icon: '🎁',
+  category: 'social',
+  version: '1.0.0',
+  tags: ['item', 'gift', 'social'],
+
+  // UI behavior: may open dialogue depending on scene config
+  uiMode: 'custom',
+
+  // Capabilities for UI hints
+  capabilities: {
+    opensDialogue: true, // Can open reward/reject scenes
+    modifiesInventory: true,
+    affectsRelationship: true,
+    requiresItems: true,
+    consumesItems: true,
+  },
 
   defaultConfig: {
     enabled: true,
