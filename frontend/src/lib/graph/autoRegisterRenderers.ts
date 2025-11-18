@@ -16,12 +16,23 @@ import { pluginCatalog } from '../plugins/pluginSystem';
  * Call registerRenderersFromNodeTypes() after node types are registered
  * but before scenes are rendered (typically in App.tsx initialization).
  *
+ * IMPORTANT: Renderer components MUST export a default export to be discoverable:
+ * ```typescript
+ * export function MyRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
+ *   // ... renderer implementation
+ * }
+ *
+ * // Required for auto-wire to work
+ * export default MyRenderer;
+ * ```
+ *
  * @example
  * ```typescript
  * // In App.tsx
  * registerBuiltinNodeTypes();
+ * registerBuiltinRenderers(); // Manual registrations (skipped by auto-wire)
  * loadAllPlugins(); // Registers plugin node types
- * registerRenderersFromNodeTypes(); // Auto-register their renderers
+ * registerRenderersFromNodeTypes(); // Auto-register plugin renderers
  * ```
  */
 

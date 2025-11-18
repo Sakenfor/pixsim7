@@ -1,35 +1,32 @@
-import { registerRendererFromNodeType } from './rendererBootstrap';
-import { SeductionNodeRenderer } from '../../components/graph/SeductionNodeRenderer';
-import { QuestTriggerRenderer } from '../../components/graph/QuestTriggerRenderer';
-
 /**
  * Manual plugin renderer overrides
  * Called on app initialization after built-in renderers
  *
- * Note: Uses registerRendererFromNodeType() to automatically inherit
- * preloadPriority from the node type definitions. Plugin node types
- * can specify their own preloadPriority in their definitions.
+ * This file is now mostly empty as plugin renderers are auto-registered via
+ * registerRenderersFromNodeTypes() based on the rendererComponent field in
+ * NodeTypeDefinition.
  *
- * Additional plugin renderers can also be auto-registered via
- * registerRenderersFromNodeTypes() based on the rendererComponent
- * field in NodeTypeDefinition.
+ * Only add manual registrations here if:
+ * 1. You need to override auto-registered renderers with custom configuration
+ * 2. You need to register renderers for node types that don't have rendererComponent set
+ * 3. You need to provide custom defaultSize or other renderer-specific options
+ *
+ * Example:
+ * ```typescript
+ * import { registerRendererFromNodeType } from './rendererBootstrap';
+ * import { CustomRenderer } from '../../components/graph/CustomRenderer';
+ *
+ * registerRendererFromNodeType({
+ *   nodeType: 'custom',
+ *   component: CustomRenderer,
+ *   defaultSize: { width: 300, height: 250 },
+ *   preloadPriority: 8, // Override node type priority
+ * });
+ * ```
  */
 export function registerPluginRenderers() {
-  // Seduction node - shows stages and progress
-  // Priority inherited from plugin node type definition
-  registerRendererFromNodeType({
-    nodeType: 'seduction',
-    component: SeductionNodeRenderer,
-    defaultSize: { width: 220, height: 200 },
-  });
+  // No manual registrations needed - all plugin renderers are auto-registered
+  // via registerRenderersFromNodeTypes() in App.tsx
 
-  // Quest trigger node - shows quest info and objectives
-  // Priority inherited from plugin node type definition
-  registerRendererFromNodeType({
-    nodeType: 'quest-trigger',
-    component: QuestTriggerRenderer,
-    defaultSize: { width: 240, height: 220 },
-  });
-
-  console.log('✓ Registered plugin node renderers');
+  console.log('✓ Plugin renderer registration (auto-wire enabled)');
 }

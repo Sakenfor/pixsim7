@@ -154,3 +154,6 @@ export function SeductionNodeRenderer({
     </div>
   );
 }
+
+// Default export for auto-wire system (import.meta.glob)
+export default SeductionNodeRenderer;
