@@ -110,6 +110,17 @@ export function Home() {
 
           <Panel className="space-y-2">
             <h3 className="font-medium flex items-center gap-2">
+              <Icon name="book" size={18} className="text-indigo-500" />
+              Arc Graph Editor
+            </h3>
+            <p className="text-xs text-neutral-500">Manage story arcs, quests, and narrative flow</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/arc-graph', '_self')}>Open Arc Graph</Button>
+            </div>
+          </Panel>
+
+          <Panel className="space-y-2">
+            <h3 className="font-medium flex items-center gap-2">
               <Icon name="map" size={18} />
               Game World
             </h3>

@@ -4,8 +4,9 @@ import { useAuthStore } from './stores/authStore';
 import { useControlCenterStore } from './stores/controlCenterStore';
 import { registerModules, moduleRegistry } from './modules';
 import { registerCubeExpansions } from './lib/registerCubeExpansions';
-import { registerBuiltinNodeTypes } from '@pixsim7/types';
+import { registerBuiltinNodeTypes, registerArcNodeTypes } from '@pixsim7/types';
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
+import { registerArcRenderers } from './lib/graph/arcRenderers';
 import { registerBuiltinHelpers } from '@pixsim7/game-core';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 import { registerSeductionNode } from './lib/plugins/seductionNode';
@@ -16,6 +17,7 @@ import { ProtectedRoute } from './routes/ProtectedRoute';
 import { AssetsRoute } from './routes/Assets';
 import { AssetDetailRoute } from './routes/AssetDetail';
 import { GraphRoute } from './routes/Graph';
+import { ArcGraphRoute } from './routes/ArcGraph';
 import { WorkspaceRoute } from './routes/Workspace';
 import { GameWorld } from './routes/GameWorld';
 import { AutomationRoute } from './routes/Automation';
@@ -41,12 +43,14 @@ function App() {
   useEffect(() => {
     // Register builtin node types
     registerBuiltinNodeTypes();
+    registerArcNodeTypes();
 
     // Register custom node type plugins
     registerSeductionNode();
 
     // Register builtin node renderers
     registerBuiltinRenderers();
+    registerArcRenderers();
 
     // Register session helpers (built-in and custom)
     registerBuiltinHelpers();
@@ -78,6 +82,7 @@ function App() {
           <Route path="/assets" element={<ProtectedRoute><AssetsRoute /></ProtectedRoute>} />
           <Route path="/assets/:id" element={<ProtectedRoute><AssetDetailRoute /></ProtectedRoute>} />
           <Route path="/graph/:id" element={<ProtectedRoute><GraphRoute /></ProtectedRoute>} />
+          <Route path="/arc-graph" element={<ProtectedRoute><ArcGraphRoute /></ProtectedRoute>} />
           <Route path="/workspace" element={<ProtectedRoute><WorkspaceRoute /></ProtectedRoute>} />
           <Route path="/automation" element={<ProtectedRoute><AutomationRoute /></ProtectedRoute>} />
           <Route path="/game-2d" element={<ProtectedRoute><Game2D /></ProtectedRoute>} />

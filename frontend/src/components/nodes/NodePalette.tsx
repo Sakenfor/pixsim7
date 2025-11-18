@@ -29,15 +29,22 @@ function toNodePaletteItem(def: NodeTypeDefinition): NodePaletteItem {
 interface NodePaletteProps {
   onNodeCreate: (nodeType: NodeType, position?: { x: number; y: number }) => void;
   compact?: boolean;
+  scope?: 'scene' | 'arc' | 'world'; // Filter by node scope
 }
 
-export function NodePalette({ onNodeCreate, compact = false }: NodePaletteProps) {
+export function NodePalette({ onNodeCreate, compact = false, scope }: NodePaletteProps) {
   const [draggedType, setDraggedType] = useState<NodeType | null>(null);
 
-  // Get creatable node types from registry
+  // Get creatable node types from registry, filtered by scope if provided
   const nodeTypes = useMemo(() => {
-    return nodeTypeRegistry
-      .getUserCreatable()
+    let types = nodeTypeRegistry.getUserCreatable();
+
+    // Filter by scope if specified
+    if (scope) {
+      types = types.filter(def => !def.scope || def.scope === scope);
+    }
+
+    return types
       .map(toNodePaletteItem)
       .sort((a, b) => {
         // Sort by category, then by label
@@ -46,7 +53,7 @@ export function NodePalette({ onNodeCreate, compact = false }: NodePaletteProps)
         if (catA !== catB) return catA.localeCompare(catB);
         return a.label.localeCompare(b.label);
       });
-  }, []);
+  }, [scope]);
 
   const handleDragStart = (e: React.DragEvent, nodeType: NodeType) => {
     setDraggedType(nodeType);
