@@ -270,6 +270,28 @@ export interface PickpocketResponse {
   message: string;
 }
 
+// Romance/Sensual Touch Types
+export interface SensualTouchRequest {
+  npc_id: number;
+  slot_id: string;
+  tool_id: string; // 'touch', 'caress', 'feather', 'silk', etc.
+  pattern: string; // 'circular', 'linear', 'spiral', 'wave', 'pulse'
+  base_intensity: number; // 0-1
+  duration: number; // seconds
+  world_id?: number | null;
+  session_id: number;
+}
+
+export interface SensualTouchResponse {
+  success: boolean;
+  pleasure_score: number; // 0-1, how much NPC enjoyed it
+  arousal_change: number; // Change in arousal level
+  affinity_change: number; // Change in relationship score
+  tool_unlocked: string | null; // New tool unlocked, if any
+  updated_flags: Record<string, unknown>;
+  message: string;
+}
+
 // ===================
 // Quest Types
 // ===================
