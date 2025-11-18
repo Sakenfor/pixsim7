@@ -73,8 +73,11 @@ export const ConstellationGizmo: React.FC<GizmoComponentProps> = ({
     setStars(generateStars);
   }, [generateStars]);
 
-  // Calculate star distances and activation
+  // Calculate star distances and activation based on cursor position
   useEffect(() => {
+    // Skip if stars array is empty (before initialization)
+    if (stars.length === 0) return;
+
     const updatedStars = stars.map(star => {
       const distance = Math.sqrt(
         Math.pow(star.position.x - cursor.x, 2) +
@@ -111,10 +114,11 @@ export const ConstellationGizmo: React.FC<GizmoComponentProps> = ({
           transition: 'smooth',
         });
       }
-    } else if (!closest) {
+    } else if (!closest && activeStar) {
       setActiveStar(null);
     }
-  }, [cursor, stars.length]); // Only depend on cursor and star count
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor.x, cursor.y, cursor.z]); // Only re-run when cursor position changes
 
   // Handle mouse movement for navigation
   const handleMouseMove = (e: React.MouseEvent) => {

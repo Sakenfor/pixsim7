@@ -53,11 +53,11 @@ export interface SensitivityProfile {
  * How NPC reacts to tool usage
  */
 export interface ReactionThresholds {
-  /** Minimum intensity to trigger positive reaction */
-  positiveMin: number;
-  /** Maximum intensity before negative reaction */
-  negativeMax: number;
-  /** Optimal intensity range */
+  /** Below this threshold = negative reaction (e.g., 0.3 means < 0.3 is negative) */
+  negativeThreshold: number;
+  /** Above optimal max = overstimulation/negative (e.g., 1.0 means no upper limit) */
+  overstimulationThreshold: number;
+  /** Optimal intensity range for best reactions */
   optimal: { min: number; max: number };
 }
 
@@ -153,13 +153,21 @@ export function calculateFeedback(
   // Clamp to 0-1
   const intensity = Math.max(0, Math.min(1, score));
 
-  // Determine reaction
+  // Determine reaction based on intensity thresholds
   let reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
-  if (intensity < preferences.reactions.negativeMax) {
+  const { negativeThreshold, overstimulationThreshold, optimal } = preferences.reactions;
+
+  if (intensity < negativeThreshold) {
+    // Too weak/unpleasant
     reaction = 'negative';
-  } else if (intensity >= preferences.reactions.optimal.min && intensity <= preferences.reactions.optimal.max) {
+  } else if (intensity >= optimal.min && intensity <= optimal.max) {
+    // In optimal range - positive or ecstatic
     reaction = intensity > 0.8 ? 'ecstatic' : 'positive';
+  } else if (intensity > overstimulationThreshold) {
+    // Too intense/overstimulating
+    reaction = 'negative';
   } else {
+    // Between negative threshold and optimal, or between optimal and overstimulation
     reaction = 'neutral';
   }
 
@@ -216,8 +224,8 @@ export function createDefaultPreferences(): NpcPreferences {
       rhythm: 1.0,
     },
     reactions: {
-      positiveMin: 0.6,
-      negativeMax: 0.3,
+      negativeThreshold: 0.3,
+      overstimulationThreshold: 1.0, // No upper limit by default
       optimal: { min: 0.7, max: 0.9 },
     },
     favorites: [],
@@ -250,9 +258,9 @@ export const PREFERENCE_PRESETS = {
       rhythm: 1.0,
     },
     reactions: {
-      positiveMin: 0.5,
-      negativeMax: 0.6,
-      optimal: { min: 0.6, max: 0.8 },
+      negativeThreshold: 0.4, // Sensitive - needs gentler approach
+      overstimulationThreshold: 0.85, // Gets overwhelmed easily
+      optimal: { min: 0.5, max: 0.75 },
     },
     favorites: ['feather', 'touch'],
     unlockedTools: ['touch'], // Start with only touch unlocked
@@ -282,9 +290,9 @@ export const PREFERENCE_PRESETS = {
       rhythm: 1.3,
     },
     reactions: {
-      positiveMin: 0.7,
-      negativeMax: 0.4,
-      optimal: { min: 0.8, max: 1.0 },
+      negativeThreshold: 0.5, // Needs stronger stimulation
+      overstimulationThreshold: 1.0, // Rarely overstimulated
+      optimal: { min: 0.75, max: 0.95 },
     },
     favorites: ['energy', 'temperature'],
     unlockedTools: ['touch'], // Start with basic touch
@@ -316,9 +324,9 @@ export const PREFERENCE_PRESETS = {
       rhythm: 1.5,
     },
     reactions: {
-      positiveMin: 0.6,
-      negativeMax: 0.3,
-      optimal: { min: 0.7, max: 0.95 },
+      negativeThreshold: 0.35, // Enjoys variety, rarely dislikes
+      overstimulationThreshold: 0.95, // Can handle high intensity playfully
+      optimal: { min: 0.6, max: 0.9 },
     },
     favorites: ['banana', 'feather', 'water'],
     unlockedTools: ['touch', 'feather'], // Start with 2 tools for variety

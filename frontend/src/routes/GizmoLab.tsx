@@ -3,7 +3,7 @@
  * Interactive playground for exploring all registered gizmos and tools
  */
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Panel, Button } from '@pixsim7/ui';
 import { SceneGizmoMiniGame } from '../components/minigames/SceneGizmoMiniGame';
 import { InteractiveTool } from '../components/gizmos/InteractiveTool';
@@ -63,14 +63,14 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
   }, [allTools, toolFilter]);
 
   // Auto-select first gizmo/tool on mount
-  useState(() => {
+  useEffect(() => {
     if (allGizmos.length > 0 && !selectedGizmo) {
       setSelectedGizmo(allGizmos[0]);
     }
     if (allTools.length > 0 && !selectedTool) {
       setSelectedTool(allTools[0]);
     }
-  });
+  }, [allGizmos, allTools, selectedGizmo, selectedTool]);
 
   // Create gizmo config from definition
   const gizmoConfig = useMemo((): SceneGizmoConfig | null => {

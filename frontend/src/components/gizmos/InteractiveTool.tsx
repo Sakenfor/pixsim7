@@ -71,6 +71,7 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   // Handle pressure from mouse/touch
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (isLocked) return; // Prevent interaction when locked
+    e.preventDefault(); // Prevent text selection and other default behaviors
     setIsDragging(true);
     const newPressure = 'shiftKey' in e && e.shiftKey ? 1.0 : 0.5;
     setPressure(newPressure);
@@ -87,6 +88,7 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || isLocked) return;
+    e.preventDefault(); // Prevent default drag behaviors
 
     const newPosition = {
       x: e.clientX,
@@ -378,17 +380,35 @@ const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => (
 
 const FeatherVisual: React.FC = () => {
   const [movement, setMovement] = useState({ x: 0, y: 0 });
+  const rafRef = useRef<number>();
+  const pendingMovementRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      setMovement({
+      // Store movement values
+      pendingMovementRef.current = {
         x: e.movementX * 0.3,
         y: e.movementY * 0.3,
+      };
+
+      // Cancel previous frame request if any
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+
+      // Schedule update for next frame (throttles to ~60fps)
+      rafRef.current = requestAnimationFrame(() => {
+        setMovement(pendingMovementRef.current);
       });
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
   }, []);
 
   return (

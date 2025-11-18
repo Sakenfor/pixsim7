@@ -113,6 +113,9 @@ export function createToolInstance(
     visual: { ...tool.visual, ...overrides?.visual },
     physics: { ...tool.physics, ...overrides?.physics },
     feedback: { ...tool.feedback, ...overrides?.feedback },
+    constraints: tool.constraints || overrides?.constraints
+      ? { ...tool.constraints, ...overrides?.constraints }
+      : undefined,
   };
 }
 

@@ -3,7 +3,7 @@
  * Beautiful, ethereal control interface
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { GizmoComponentProps, Vector3D, GizmoZone } from '@pixsim7/scene-gizmos';
 import './OrbGizmo.css';
 
@@ -14,13 +14,6 @@ export const OrbGizmo: React.FC<GizmoComponentProps> = ({
   onAction,
   isActive,
 }) => {
-  const orbRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [activeZone, setActiveZone] = useState<GizmoZone | null>(null);
-  const [glowIntensity, setGlowIntensity] = useState(0.5);
-  const [rotation, setRotation] = useState({ x: 0, y: 0, z: 0 });
-  const [facets, setFacets] = useState<FacetState[]>([]);
-
   interface FacetState {
     id: string;
     position: Vector3D;
@@ -29,9 +22,15 @@ export const OrbGizmo: React.FC<GizmoComponentProps> = ({
     color: string;
   }
 
-  // Generate facets from zones
-  useEffect(() => {
-    const newFacets: FacetState[] = config.zones.map((zone, index) => {
+  const orbRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [activeZone, setActiveZone] = useState<GizmoZone | null>(null);
+  const [glowIntensity, setGlowIntensity] = useState(0.5);
+  const [rotation, setRotation] = useState({ x: 0, y: 0, z: 0 });
+
+  // Memoize base facet data (only recalculate when zones change)
+  const baseFacets = useMemo(() => {
+    return config.zones.map((zone, index) => {
       const angle = (index / config.zones.length) * Math.PI * 2;
       const phi = Math.acos(2 * (index / config.zones.length) - 1);
 
@@ -42,13 +41,20 @@ export const OrbGizmo: React.FC<GizmoComponentProps> = ({
           y: Math.sin(phi) * Math.sin(angle) * 50,
           z: Math.cos(phi) * 50,
         },
-        active: zone.id === activeZone?.id,
         intensity: zone.intensity || 0.5,
         color: zone.color || '#00D9FF',
+        zone, // Keep reference to original zone
       };
     });
-    setFacets(newFacets);
-  }, [config.zones, activeZone]);
+  }, [config.zones]);
+
+  // Compute facets with active state (lightweight calculation)
+  const facets = useMemo(() => {
+    return baseFacets.map(baseFacet => ({
+      ...baseFacet,
+      active: baseFacet.id === activeZone?.id,
+    }));
+  }, [baseFacets, activeZone]);
 
   // Handle rotation interaction
   const handleMouseMove = (e: React.MouseEvent) => {
