@@ -54,11 +54,21 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
     }
 
     // Load Life Sim metadata
-    const lifeSim: any = node.metadata?.lifeSim || {};
-    setAdvanceMinutes(lifeSim.advanceMinutes ?? '');
-    setNpcId((node.metadata as any)?.npc_id ?? '');
-    setSpeakerRole((node.metadata as any)?.speakerRole ?? '');
-    setNpcState((node.metadata as any)?.npc_state ?? '');
+    const metadata = node.metadata as Record<string, unknown> | undefined;
+    const lifeSim = metadata?.lifeSim as Record<string, unknown> | undefined;
+
+    setAdvanceMinutes(
+      typeof lifeSim?.advanceMinutes === 'number' ? lifeSim.advanceMinutes : ''
+    );
+    setNpcId(
+      typeof metadata?.npc_id === 'number' ? metadata.npc_id : ''
+    );
+    setSpeakerRole(
+      typeof metadata?.speakerRole === 'string' ? metadata.speakerRole : ''
+    );
+    setNpcState(
+      typeof metadata?.npc_state === 'string' ? metadata.npc_state : ''
+    );
   }, [node]);
 
   // Handle browsing assets
@@ -105,16 +115,18 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
         label: step.label,
         segmentIds: step.segmentIds ? step.segmentIds.split(',').map(s => s.trim()) : undefined
       })),
-      miniGame: { id: 'reflex', config: { rounds: 3 } }
+      // Only include miniGame if this node is configured as a mini-game
+      // Note: This should be configured via UI in the future
+      ...(node.metadata?.isMiniGame ? { miniGame: { id: 'reflex', config: { rounds: 3 } } } : {})
     };
 
     // Build Life Sim metadata
-    const lifeSim: any = {};
+    const lifeSim: Record<string, unknown> = {};
     if (advanceMinutes !== '') {
       lifeSim.advanceMinutes = advanceMinutes;
     }
 
-    const metadata: any = { ...node.metadata };
+    const metadata: Record<string, unknown> = { ...(node.metadata || {}) };
     if (Object.keys(lifeSim).length > 0) {
       metadata.lifeSim = lifeSim;
     }
@@ -177,7 +189,12 @@ export function VideoNodeEditor({ node, onUpdate }: VideoNodeEditorProps) {
         <label className="block text-sm font-medium mb-1">Selection Strategy</label>
         <select
           value={selectionKind}
-          onChange={(e) => setSelectionKind(e.target.value as any)}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === 'ordered' || value === 'random' || value === 'pool') {
+              setSelectionKind(value);
+            }
+          }}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
         >
           <option value="ordered">Ordered</option>

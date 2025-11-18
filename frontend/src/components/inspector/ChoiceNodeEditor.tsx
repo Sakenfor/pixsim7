@@ -21,9 +21,25 @@ export function ChoiceNodeEditor({ node, onUpdate }: ChoiceNodeEditorProps) {
 
   useEffect(() => {
     // Load choices from node metadata
-    const savedChoices = (node.metadata as any)?.choices;
-    if (savedChoices && Array.isArray(savedChoices) && savedChoices.length > 0) {
-      setChoices(savedChoices);
+    const metadata = node.metadata as Record<string, unknown> | undefined;
+    const savedChoices = metadata?.choices;
+
+    // Validate that savedChoices is an array of the expected type
+    if (Array.isArray(savedChoices) && savedChoices.length > 0) {
+      // Type guard: check if each item has the expected structure
+      const isValidChoiceArray = savedChoices.every(
+        (choice) =>
+          typeof choice === 'object' &&
+          choice !== null &&
+          'id' in choice &&
+          'text' in choice
+      );
+
+      if (isValidChoiceArray) {
+        setChoices(savedChoices as Choice[]);
+      } else {
+        console.warn('[ChoiceNodeEditor] Saved choices have invalid structure, using defaults');
+      }
     }
   }, [node]);
 

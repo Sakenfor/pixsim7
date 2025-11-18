@@ -129,18 +129,42 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
 
       {/* Body - Dynamic Renderer from Registry */}
       {(() => {
-        // Get renderer for this node type
-        const renderer = nodeRendererRegistry.getOrDefault(data.nodeType);
-        const RendererComponent = renderer.component;
+        try {
+          // Get renderer for this node type
+          const renderer = nodeRendererRegistry.getOrDefault(data.nodeType);
+          const RendererComponent = renderer?.component;
 
-        return (
-          <RendererComponent
-            node={data.draftNode}
-            isSelected={selected}
-            isStart={data.isStart}
-            hasErrors={highestSeverity === 'error'}
-          />
-        );
+          if (!RendererComponent) {
+            console.error(`[SceneNode] No renderer component available for node type '${data.nodeType}'`);
+            return (
+              <div className="px-3 py-3 text-center">
+                <div className="text-red-500 text-xs font-medium">⚠️ Renderer Missing</div>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                  Type: {data.nodeType}
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <RendererComponent
+              node={data.draftNode}
+              isSelected={selected}
+              isStart={data.isStart}
+              hasErrors={highestSeverity === 'error'}
+            />
+          );
+        } catch (error) {
+          console.error(`[SceneNode] Error rendering node '${id}':`, error);
+          return (
+            <div className="px-3 py-3 text-center">
+              <div className="text-red-500 text-xs font-medium">⚠️ Render Error</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </div>
+            </div>
+          );
+        }
       })()}
 
       {/* Dynamic Input Handles */}

@@ -1,5 +1,6 @@
 import type { ArcStateCreator, ArcNodeManagementState } from './types';
 import type { ArcGraphNode, ArcGraphEdge } from '../../modules/arc-graph';
+import { useToastStore } from '../toastStore';
 
 /**
  * Arc Node Management Slice
@@ -9,13 +10,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   addArcNode: (node: ArcGraphNode) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
@@ -34,13 +47,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   updateArcNode: (id: string, patch: Partial<ArcGraphNode>) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
@@ -61,13 +86,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   removeArcNode: (id: string) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
@@ -88,13 +125,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   connectArcNodes: (fromId: string, toId: string, meta?: ArcGraphEdge['meta']) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
@@ -120,13 +169,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   removeArcEdge: (edgeId: string) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
@@ -145,13 +206,25 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
   setStartArcNode: (id: string) => {
     const { currentArcGraphId, arcGraphs } = get();
     if (!currentArcGraphId) {
-      console.error('No current arc graph');
+      const errorMsg = 'No current arc graph selected';
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) {
-      console.error(`Arc graph ${currentArcGraphId} not found`);
+      const errorMsg = `Arc graph '${currentArcGraphId}' not found`;
+      console.error('[arcNodeSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: errorMsg,
+        duration: 4000,
+      });
       return;
     }
 

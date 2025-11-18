@@ -203,7 +203,18 @@ export class NodeRendererRegistry {
 
   /** Get renderer or fallback to default */
   getOrDefault(nodeType: string): NodeRenderer {
-    return this.get(nodeType) ?? this.get('default')!;
+    const renderer = this.get(nodeType);
+    if (renderer) {
+      return renderer;
+    }
+
+    const defaultRenderer = this.get('default');
+    if (!defaultRenderer) {
+      console.error(`[NodeRendererRegistry] No renderer found for '${nodeType}' and no default renderer registered`);
+      throw new Error(`No renderer available for node type '${nodeType}' and no default fallback`);
+    }
+
+    return defaultRenderer;
   }
 
   /** Get all registered renderers */
