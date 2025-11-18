@@ -99,7 +99,13 @@
       "Bash(adb:*)",
       "Bash(G:codeconda_envspixsim7python.exe launcher.py)",
       "Bash(tree:*)",
-      "Bash(xargs -I {} bash -c 'head -20 \"\"\"\"{}\"\"\"\" | grep -E \"\"\"\"^import|^from\"\"\"\"')"
+      "Bash(xargs -I {} bash -c 'head -20 \"\"\"\"{}\"\"\"\" | grep -E \"\"\"\"^import|^from\"\"\"\"')",
+      "Bash(packages/game-core/src/session/helperRegistry.ts)",
+      "Bash(packages/game-core/src/session/helperBuilder.ts)",
+      "Bash(packages/game-core/src/session/builtinHelpers.ts)",
+      "Bash(packages/game-core/src/session/generateDocs.ts)",
+      "Bash(frontend/src/lib/game/customHelpers.ts)",
+      "Bash(pnpm:*)"
     ],
     "deny": [],
     "ask": []
