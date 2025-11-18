@@ -364,3 +364,41 @@ export function registerPluginsFeature() {
     ],
   });
 }
+
+/**
+ * App Map Feature
+ */
+export function registerAppMapFeature() {
+  registerCompleteFeature({
+    feature: {
+      id: 'app-map',
+      name: 'App Map',
+      description: 'Architecture visualization and dev tools',
+      icon: '🗺️',
+      category: 'utility',
+      priority: 40,
+    },
+    routes: [
+      {
+        path: '/app-map',
+        name: 'App Map',
+        description: 'View app architecture, features, and plugins',
+        icon: '🗺️',
+        protected: true,
+        showInNav: true,
+      },
+    ],
+    actions: [
+      {
+        id: 'app-map.open',
+        name: 'Open App Map',
+        description: 'View live app architecture and plugin ecosystem',
+        icon: '🗺️',
+        shortcut: 'Ctrl+Shift+M',
+        execute: () => {
+          navigateTo('/app-map');
+        },
+      },
+    ],
+  });
+}

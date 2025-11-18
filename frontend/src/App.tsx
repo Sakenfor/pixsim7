@@ -20,6 +20,7 @@ import { Game2D } from './routes/Game2D';
 import { NpcBrainLab } from './routes/NpcBrainLab';
 import { GizmoLab } from './routes/GizmoLab';
 import { PluginWorkspaceRoute } from './routes/PluginWorkspace';
+import { AppMapDev } from './routes/AppMapDev';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -77,6 +78,7 @@ function App() {
           <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
           <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
           <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
+          <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
