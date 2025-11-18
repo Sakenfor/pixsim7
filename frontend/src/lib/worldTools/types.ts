@@ -182,3 +182,46 @@ export class WorldToolRegistry {
  * Singleton instance
  */
 export const worldToolRegistry = new WorldToolRegistry();
+
+// ===================
+// HUD Layout Configuration Types
+// ===================
+
+/**
+ * Visibility condition for HUD tool placement
+ */
+export interface HudVisibilityCondition {
+  /** Type of condition */
+  kind: 'capability' | 'flag' | 'session';
+  /** Identifier for the condition (e.g., capability ID, flag path) */
+  id: string;
+}
+
+/**
+ * Region where a tool can be placed in the HUD
+ */
+export type HudRegion = 'left' | 'right' | 'top' | 'bottom' | 'overlay';
+
+/**
+ * Configuration for placing a world tool in the HUD
+ */
+export interface HudToolPlacement {
+  /** World tool plugin ID */
+  toolId: string;
+  /** Region where the tool should appear */
+  region: HudRegion;
+  /** Display order within the region (lower numbers first) */
+  order?: number;
+  /** Optional visibility condition */
+  visibleWhen?: HudVisibilityCondition;
+}
+
+/**
+ * World UI configuration stored in GameWorld.meta.ui
+ */
+export interface WorldUiConfig {
+  /** HUD tool layout configuration */
+  hud?: HudToolPlacement[];
+  /** Additional UI configuration */
+  [key: string]: unknown;
+}

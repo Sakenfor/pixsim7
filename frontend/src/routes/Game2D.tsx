@@ -52,6 +52,8 @@ import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
 import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
+import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
+import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import type { WorldToolContext } from '../lib/worldTools/types';
@@ -137,6 +139,7 @@ export function Game2D() {
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
+  const [showHudEditor, setShowHudEditor] = useState(false);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -820,13 +823,23 @@ export function Game2D() {
           >
             🎮 Gizmo Lab
           </Button>
+          {selectedWorldId && worldDetail && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowHudEditor(true)}
+              title="Configure HUD layout for this world"
+            >
+              🎨 HUD Layout
+            </Button>
+          )}
         </div>
       </div>
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
 
-      {/* World Tools Panel - replaces hard-coded tool panels */}
-      <WorldToolsPanel context={worldToolContext} tools={visibleWorldTools} />
+      {/* World Tools Panel - uses regional layout from world config */}
+      <RegionalHudLayout context={worldToolContext} tools={visibleWorldTools} worldDetail={worldDetail} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel className="space-y-3">
@@ -1075,6 +1088,22 @@ export function Game2D() {
 
       {/* Game Notifications */}
       <GameNotifications notifications={notifications} onDismiss={dismissNotification} />
+
+      {/* HUD Layout Editor */}
+      {showHudEditor && worldDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
+            <HudLayoutEditor
+              worldDetail={worldDetail}
+              onSave={(updatedWorld) => {
+                setWorldDetail(updatedWorld);
+                setShowHudEditor(false);
+              }}
+              onClose={() => setShowHudEditor(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

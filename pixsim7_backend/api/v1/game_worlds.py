@@ -32,6 +32,10 @@ class AdvanceWorldTimeRequest(BaseModel):
     delta_seconds: float
 
 
+class UpdateWorldMetaRequest(BaseModel):
+    meta: Dict[str, Any]
+
+
 @router.get("/", response_model=List[GameWorldSummary])
 async def list_worlds(
     game_world_service: GameWorldSvc,
@@ -109,4 +113,36 @@ async def advance_world_time(
         raise
 
     return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=state.world_time)
+
+
+@router.put("/{world_id}/meta", response_model=GameWorldDetail)
+async def update_world_meta(
+    world_id: int,
+    req: UpdateWorldMetaRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> GameWorldDetail:
+    """
+    Update the metadata for a game world.
+
+    This allows designers to configure per-world settings like HUD layouts,
+    enabled plugins, and other UI/UX customizations.
+    """
+    world = await game_world_service.get_world(world_id)
+    if not world or world.owner_user_id != user.id:
+        raise HTTPException(status_code=404, detail="World not found")
+
+    # Update the world metadata
+    updated_world = await game_world_service.update_world_meta(world_id, req.meta)
+
+    # Get current world time
+    state = await game_world_service.get_world_state(world_id)
+    world_time = state.world_time if state else 0.0
+
+    return GameWorldDetail(
+        id=updated_world.id,
+        name=updated_world.name,
+        meta=updated_world.meta,
+        world_time=world_time
+    )
 
