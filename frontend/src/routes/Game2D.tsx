@@ -140,11 +140,6 @@ export function Game2D() {
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
-  // Register built-in world tools on mount
-  useEffect(() => {
-    registerBuiltinWorldTools();
-  }, []);
-
   // Sync game state with plugin manager
   useEffect(() => {
     const pluginGameState: PluginGameState = {
