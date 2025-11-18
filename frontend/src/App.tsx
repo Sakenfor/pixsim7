@@ -8,6 +8,7 @@ import { registerBuiltinNodeTypes } from '@pixsim7/types';
 import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
 import { registerBuiltinHelpers } from '@pixsim7/game-core';
 import { registerCustomHelpers } from './lib/game/customHelpers';
+import { registerSeductionNode } from './lib/plugins/seductionNode';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -41,6 +42,9 @@ function App() {
     // Register builtin node types
     registerBuiltinNodeTypes();
 
+    // Register custom node type plugins
+    registerSeductionNode();
+
     // Register builtin node renderers
     registerBuiltinRenderers();
 
@@ -57,9 +61,6 @@ function App() {
 
     // Initialize auth state
     initialize();
-
-    // Load custom node type plugins (future)
-    // await loadNodeTypePlugins();
 
     // Cleanup on unmount
     return () => {
