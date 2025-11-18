@@ -1,159 +1,33 @@
 import type { DraftSceneNode } from './index';
-import { nodeTypeRegistry } from '@pixsim7/types';
+import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@pixsim7/types';
+import type {
+  ChoiceNodeMetadata,
+  SceneCallNodeMetadata,
+} from './nodeMetadataTypes';
 
-/**
- * Port Configuration System
- *
- * Defines which input/output ports each node type should have
- */
+// Re-export DSL helpers and types for convenience
+export {
+  type PortDefinition,
+  type NodePortConfig,
+  standardInput,
+  standardOutput,
+  singleInOut,
+  branchOutputs,
+  branchWithFallback,
+  multiChoiceOutputs,
+  terminalNode,
+  customPorts,
+  validatePortConfig,
+} from './portConfigDsl';
 
-export interface PortDefinition {
-  id: string;
-  label: string;
-  type: 'input' | 'output';
-  position: 'top' | 'bottom' | 'left' | 'right';
-  color: string; // For visual distinction
-  required?: boolean; // Must be connected
-  description?: string;
-}
-
-export interface NodePortConfig {
-  inputs: PortDefinition[];
-  outputs: PortDefinition[];
-}
-
-/**
- * Port Configuration DSL - Helper Functions
- *
- * These functions provide a mini DSL for defining common port patterns
- * without repeating boilerplate code.
- *
- * Custom node types can import and use these helpers to define their ports:
- *
- * @example
- * import { singleInOut, branchOutputs } from './portConfig';
- *
- * nodeTypeRegistry.register({
- *   id: 'my_custom_node',
- *   name: 'My Custom Node',
- *   defaultData: {},
- *   ports: {
- *     dynamic: (node) => singleInOut()
- *   }
- * });
- */
-
-/** Standard input port at the top */
-export function standardInput(overrides?: Partial<PortDefinition>): PortDefinition {
-  return {
-    id: 'input',
-    label: 'In',
-    type: 'input',
-    position: 'top',
-    color: '#3b82f6', // blue
-    ...overrides,
-  };
-}
-
-/** Standard output port at the bottom */
-export function standardOutput(overrides?: Partial<PortDefinition>): PortDefinition {
-  return {
-    id: 'default',
-    label: 'Next',
-    type: 'output',
-    position: 'bottom',
-    color: '#10b981', // green
-    ...overrides,
-  };
-}
-
-/**
- * DSL Pattern: Single input/output (passthrough)
- * Common for simple sequential nodes like video, node_group
- */
-export function singleInOut(
-  inputOverrides?: Partial<PortDefinition>,
-  outputOverrides?: Partial<PortDefinition>
-): NodePortConfig {
-  return {
-    inputs: [standardInput(inputOverrides)],
-    outputs: [standardOutput(outputOverrides)],
-  };
-}
-
-/**
- * DSL Pattern: Branch node with two conditional outputs
- * Used for binary decisions (condition, generation with success/failure)
- */
-export function branchOutputs(
-  trueOutput: Partial<PortDefinition> & { id: string; label: string },
-  falseOutput: Partial<PortDefinition> & { id: string; label: string },
-  inputOverrides?: Partial<PortDefinition>
-): NodePortConfig {
-  return {
-    inputs: [standardInput(inputOverrides)],
-    outputs: [
-      {
-        type: 'output',
-        position: 'right',
-        color: '#10b981', // green
-        ...trueOutput,
-      },
-      {
-        type: 'output',
-        position: 'right',
-        color: '#ef4444', // red
-        ...falseOutput,
-      },
-    ],
-  };
-}
-
-/**
- * DSL Pattern: Multi-choice outputs
- * Used for nodes with dynamic outputs based on metadata (choice, scene_call)
- */
-export function multiChoiceOutputs(
-  choices: Array<{
-    id: string;
-    label: string;
-    color?: string;
-    description?: string;
-  }>,
-  options?: {
-    position?: 'right' | 'bottom' | 'left';
-    defaultColor?: string;
-    inputOverrides?: Partial<PortDefinition>;
-  }
-): NodePortConfig {
-  const position = options?.position || 'right';
-  const defaultColor = options?.defaultColor || '#8b5cf6'; // purple
-
-  const outputs = choices.map(choice => ({
-    id: choice.id,
-    label: choice.label,
-    type: 'output' as const,
-    position,
-    color: choice.color || defaultColor,
-    description: choice.description,
-  }));
-
-  return {
-    inputs: [standardInput(options?.inputOverrides)],
-    outputs,
-  };
-}
-
-/**
- * DSL Pattern: Terminal node (no outputs)
- * Used for end nodes and return nodes
- */
-export function terminalNode(inputOverrides?: Partial<PortDefinition>): NodePortConfig {
-  return {
-    inputs: [standardInput(inputOverrides)],
-    outputs: [],
-  };
-}
+import {
+  singleInOut,
+  branchOutputs,
+  branchWithFallback,
+  multiChoiceOutputs,
+  terminalNode,
+  type NodePortConfig,
+} from './portConfigDsl';
 
 /**
  * Get port configuration for a specific node
@@ -173,12 +47,9 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
       );
 
     case 'choice': {
-      // Read choices from node metadata
-      const choices = (node.metadata as any)?.choices as Array<{
-        id: string;
-        text: string;
-        color?: string;
-      }> || [];
+      // Read choices from node metadata (type-safe)
+      const metadata = node.metadata as ChoiceNodeMetadata | undefined;
+      const choices = metadata?.choices || [];
 
       // Default choices if none configured
       const choicesData = choices.length > 0
@@ -211,8 +82,9 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
       );
 
     case 'scene_call': {
-      const callNode = node as any; // SceneCallNodeData
-      const returnPoints = callNode.returnPoints || [];
+      // Read return points from node metadata (type-safe)
+      const metadata = node.metadata as SceneCallNodeMetadata | undefined;
+      const returnPoints = metadata?.returnPoints || [];
 
       // Default return point if none configured
       if (returnPoints.length === 0) {
@@ -222,7 +94,7 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
         );
       }
 
-      const returnData = returnPoints.map((rp: any, index: number) => ({
+      const returnData = returnPoints.map((rp, index) => ({
         id: rp.id,
         label: rp.label || `Return ${index + 1}`,
         color: rp.color || '#a855f7', // purple variants
@@ -240,9 +112,9 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
     case 'end':
       return terminalNode();
 
-    case 'generation': {
-      // Generation is a special case: branch + default fallback
-      const branch = branchOutputs(
+    case 'generation':
+      // Generation has success/failure branches plus a default fallback
+      return branchWithFallback(
         {
           id: 'success',
           label: 'Success',
@@ -254,16 +126,6 @@ export function getNodePorts(node: DraftSceneNode): NodePortConfig {
           description: 'Generation failed',
         }
       );
-
-      // Add a third default output
-      return {
-        ...branch,
-        outputs: [
-          ...branch.outputs,
-          standardOutput({ color: '#6b7280' }), // gray
-        ],
-      };
-    }
 
     case 'node_group':
       return singleInOut(
@@ -305,23 +167,11 @@ function getCustomPortConfig(node: DraftSceneNode): NodePortConfig | null {
 
 /**
  * Convert registry port definitions to NodePortConfig format
+ * Adds the 'type' field and default colors/positions
  */
 function convertToNodePortConfig(
-  inputs?: Array<{
-    id: string;
-    label: string;
-    position?: 'top' | 'bottom' | 'left' | 'right';
-    color?: string;
-    required?: boolean;
-    description?: string;
-  }>,
-  outputs?: Array<{
-    id: string;
-    label: string;
-    position?: 'top' | 'bottom' | 'left' | 'right';
-    color?: string;
-    description?: string;
-  }>
+  inputs?: RegistryPortDef[],
+  outputs?: RegistryPortDef[]
 ): NodePortConfig {
   return {
     inputs: (inputs || []).map(input => ({

@@ -9,36 +9,41 @@
  */
 
 /**
+ * Port definition for a single input or output port
+ */
+export interface PortDefinition {
+  id: string;
+  label: string;
+  position?: 'top' | 'bottom' | 'left' | 'right';
+  color?: string;
+  required?: boolean;
+  description?: string;
+}
+
+/**
  * Port configuration for custom node types
  * Allows node types to define their own input/output ports
  */
 export interface PortConfig {
   /** Input port definitions */
-  inputs?: Array<{
-    id: string;
-    label: string;
-    position?: 'top' | 'bottom' | 'left' | 'right';
-    color?: string;
-    required?: boolean;
-    description?: string;
-  }>;
+  inputs?: PortDefinition[];
 
   /** Output port definitions */
-  outputs?: Array<{
-    id: string;
-    label: string;
-    position?: 'top' | 'bottom' | 'left' | 'right';
-    color?: string;
-    description?: string;
-  }>;
+  outputs?: PortDefinition[];
 
   /**
    * Dynamic port generator function
    * Allows ports to be generated based on node data/metadata
+   *
+   * @example
+   * dynamic: (node) => ({
+   *   inputs: [{ id: 'input', label: 'In', position: 'top', color: '#3b82f6' }],
+   *   outputs: [{ id: 'output', label: 'Out', position: 'bottom', color: '#10b981' }]
+   * })
    */
   dynamic?: (nodeData: any) => {
-    inputs: PortConfig['inputs'];
-    outputs: PortConfig['outputs'];
+    inputs: PortDefinition[];
+    outputs: PortDefinition[];
   };
 }
 
