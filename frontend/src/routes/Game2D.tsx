@@ -49,11 +49,10 @@ import { loadWorldSession, saveWorldSession } from '../lib/game/session';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
-import { RelationshipDashboard } from '../components/game/RelationshipDashboard';
-import { QuestLog } from '../components/game/QuestLog';
-import { InventoryPanel } from '../components/game/InventoryPanel';
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
+import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
+import { registerBuiltinWorldTools } from '../lib/worldTools/builtinTools';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 
@@ -134,14 +133,16 @@ export function Game2D() {
   const [selectedWorldId, setSelectedWorldId] = useState<number | null>(null);
   const [worldDetail, setWorldDetail] = useState<GameWorldDetail | null>(null);
   const [npcSlotAssignments, setNpcSlotAssignments] = useState<NpcSlotAssignment[]>([]);
-  const [showRelationshipDashboard, setShowRelationshipDashboard] = useState(false);
-  const [showQuestLog, setShowQuestLog] = useState(false);
-  const [showInventory, setShowInventory] = useState(false);
   const [showDialogue, setShowDialogue] = useState(false);
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+
+  // Register built-in world tools on mount
+  useEffect(() => {
+    registerBuiltinWorldTools();
+  }, []);
 
   // Sync game state with plugin manager
   useEffect(() => {
@@ -784,27 +785,6 @@ export function Game2D() {
           <div className="flex gap-2">
             <Button
               size="sm"
-              variant={showRelationshipDashboard ? "primary" : "secondary"}
-              onClick={() => setShowRelationshipDashboard(!showRelationshipDashboard)}
-            >
-              Relationships
-            </Button>
-            <Button
-              size="sm"
-              variant={showQuestLog ? "primary" : "secondary"}
-              onClick={() => setShowQuestLog(!showQuestLog)}
-            >
-              Quests
-            </Button>
-            <Button
-              size="sm"
-              variant={showInventory ? "primary" : "secondary"}
-              onClick={() => setShowInventory(!showInventory)}
-            >
-              Inventory
-            </Button>
-            <Button
-              size="sm"
               variant="secondary"
               onClick={() => openFloatingPanel('gizmo-lab', { context: { sceneId: currentScene?.id, locationId: selectedLocationId } })}
               title="Open Gizmo Lab to explore gizmos and tools"
@@ -817,32 +797,9 @@ export function Game2D() {
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
 
-      {/* Game UI Overlays */}
+      {/* Game UI Overlays - World Tools */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-        {showRelationshipDashboard && (
-          <div className="lg:col-span-1">
-            <RelationshipDashboard
-              session={gameSession}
-              onClose={() => setShowRelationshipDashboard(false)}
-            />
-          </div>
-        )}
-        {showQuestLog && (
-          <div className="lg:col-span-1">
-            <QuestLog
-              session={gameSession}
-              onClose={() => setShowQuestLog(false)}
-            />
-          </div>
-        )}
-        {showInventory && (
-          <div className="lg:col-span-1">
-            <InventoryPanel
-              session={gameSession}
-              onClose={() => setShowInventory(false)}
-            />
-          </div>
-        )}
+        <WorldToolsPanel session={gameSession} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
