@@ -40,6 +40,7 @@ import {
   parseWorldTime,
   composeWorldTime,
   addWorldTime,
+  getManifestTurnDelta,
   type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
@@ -84,12 +85,28 @@ function isTurnBasedMode(sessionFlags?: Record<string, unknown>): boolean {
 }
 
 /**
- * Get configured turn delta in seconds (default: 3600 = 1 hour)
+ * Get configured turn delta in seconds
+ * Priority: session flags > world manifest > default (3600 = 1 hour)
  */
-function getTurnDelta(sessionFlags?: Record<string, unknown>): number {
-  if (!sessionFlags) return 3600;
-  const flags = sessionFlags as SessionFlags;
-  return flags.world?.turnDeltaSeconds ?? 3600;
+function getTurnDelta(
+  sessionFlags?: Record<string, unknown>,
+  world?: GameWorldDetail | null
+): number {
+  // First, check session flags for an override
+  if (sessionFlags) {
+    const flags = sessionFlags as SessionFlags;
+    if (flags.world?.turnDeltaSeconds != null) {
+      return flags.world.turnDeltaSeconds;
+    }
+  }
+
+  // Second, check world manifest for default turn preset
+  if (world) {
+    return getManifestTurnDelta(world);
+  }
+
+  // Final fallback: 1 hour
+  return 3600;
 }
 
 export function Game2D() {
@@ -404,8 +421,8 @@ export function Game2D() {
   }, [locationDetail, locationNpcs, worldDetail]);
 
   const advanceTime = () => {
-    // Get turn delta from session flags (supports turn-based mode)
-    const deltaSeconds = getTurnDelta(gameSession?.flags);
+    // Get turn delta from session flags or world manifest
+    const deltaSeconds = getTurnDelta(gameSession?.flags, worldDetail);
     const isTurnBased = isTurnBasedMode(gameSession?.flags);
 
     if (selectedWorldId) {
@@ -716,7 +733,7 @@ export function Game2D() {
             </div>
             <Button size="sm" variant="primary" onClick={advanceTime}>
               {isTurnBasedMode(gameSession?.flags) ? (
-                <>End Turn ({getTurnDeltaLabel(getTurnDelta(gameSession?.flags))})</>
+                <>End Turn ({getTurnDeltaLabel(getTurnDelta(gameSession?.flags, worldDetail))})</>
               ) : (
                 <>Next Hour</>
               )}

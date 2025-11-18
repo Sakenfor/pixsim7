@@ -18,6 +18,7 @@ import type {
   QuestObjectiveDTO,
   QuestDTO,
   InventoryItemDTO,
+  WorldManifest,
 } from '@pixsim7/types';
 
 // Re-export types for backward compatibility
@@ -39,6 +40,7 @@ export type {
   QuestObjectiveDTO,
   QuestDTO,
   InventoryItemDTO,
+  WorldManifest,
 };
 
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
@@ -101,6 +103,31 @@ export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, s
     meta: {
       ...(world.meta || {}),
       npcRoles: roles,
+    },
+  };
+}
+
+// Helper to get world manifest from world meta
+export function getWorldManifest(world: GameWorldDetail): WorldManifest {
+  if (!world.meta) {
+    return {};
+  }
+  // Extract manifest fields from meta (manifest is stored directly in meta)
+  const meta = world.meta as any;
+  return {
+    turn_preset: meta.turn_preset,
+    enabled_arc_graphs: meta.enabled_arc_graphs,
+    enabled_plugins: meta.enabled_plugins,
+  };
+}
+
+// Helper to set world manifest in world meta
+export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest): GameWorldDetail {
+  return {
+    ...world,
+    meta: {
+      ...(world.meta || {}),
+      ...manifest,
     },
   };
 }
