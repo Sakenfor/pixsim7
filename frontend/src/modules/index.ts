@@ -7,6 +7,10 @@
 
 import { moduleRegistry } from './types';
 import { galleryModule } from './gallery';
+import { pluginBootstrapModule } from './plugin-bootstrap';
+import { graphSystemModule } from './graph-system';
+import { gameSessionModule } from './game-session';
+import { controlCenterModule } from './control-center';
 import { assetsModule } from './assets';
 import { workspaceModule } from './workspace';
 import { generationModule } from './generation';
@@ -16,10 +20,18 @@ import { pluginsModule } from './plugins';
 
 // Register all modules
 export function registerModules() {
-  // Legacy gallery module (kept for compatibility)
-  moduleRegistry.register(galleryModule);
+  // Infrastructure modules (priority: 100)
+  // These must initialize first as other modules depend on them
+  moduleRegistry.register(pluginBootstrapModule);
 
-  // Core feature modules
+  // Core system modules (priority: 75)
+  // Graph and session systems required by features
+  moduleRegistry.register(graphSystemModule);
+  moduleRegistry.register(gameSessionModule);
+
+  // UI/Feature modules (priority: 50)
+  // Standard feature modules that provide capabilities
+  moduleRegistry.register(controlCenterModule);
   moduleRegistry.register(assetsModule);
   moduleRegistry.register(workspaceModule);
   moduleRegistry.register(generationModule);
@@ -27,13 +39,11 @@ export function registerModules() {
   moduleRegistry.register(automationModule);
   moduleRegistry.register(pluginsModule);
 
+  // Legacy gallery module (kept for compatibility)
+  moduleRegistry.register(galleryModule);
+
   // Note: sceneBuilderModule removed - now uses graphStore (Zustand) for state management
   // scene-builder module now only exports types
-
-  // Future modules:
-  // moduleRegistry.register(playbackModule);
-  // moduleRegistry.register(collaborationModule);
-  // etc.
 }
 
 // Export registry for easy access
@@ -41,6 +51,10 @@ export { moduleRegistry };
 
 // Export module instances for direct access
 export { galleryModule } from './gallery';
+export { pluginBootstrapModule } from './plugin-bootstrap';
+export { graphSystemModule } from './graph-system';
+export { gameSessionModule } from './game-session';
+export { controlCenterModule } from './control-center';
 export { assetsModule } from './assets';
 export { workspaceModule } from './workspace';
 export { generationModule } from './generation';

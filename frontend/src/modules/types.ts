@@ -13,6 +13,26 @@ export interface Module {
   /** Human-readable module name */
   name: string;
 
+  /**
+   * Module initialization priority (optional)
+   * Higher priority modules are initialized first.
+   * Default priority is 50 if not specified.
+   *
+   * Suggested priorities:
+   * - 100: Critical infrastructure (plugin bootstrap, registries)
+   * - 75: Core systems (graph system, game session)
+   * - 50: Standard modules (features, UI components)
+   * - 25: Optional enhancements (analytics, debugging)
+   */
+  priority?: number;
+
+  /**
+   * Module dependencies (optional)
+   * List of module IDs that must be initialized before this module.
+   * The module registry will ensure dependencies are initialized first.
+   */
+  dependsOn?: string[];
+
   /** Module initialization - called when app starts */
   initialize?: () => Promise<void> | void;
 
@@ -49,11 +69,35 @@ class ModuleRegistry {
   async initializeAll() {
     logEvent('INFO', 'modules_initializing', { count: this.modules.size });
 
-    for (const [, module] of this.modules) {
+    // Sort modules by priority (higher priority first) and handle dependencies
+    const modulesToInit = this.getSortedModules();
+    const initialized = new Set<string>();
+
+    for (const module of modulesToInit) {
+      // Check if dependencies are satisfied
+      if (module.dependsOn && module.dependsOn.length > 0) {
+        const missingDeps = module.dependsOn.filter(dep => !initialized.has(dep));
+        if (missingDeps.length > 0) {
+          console.warn(
+            `⚠ Module "${module.name}" has uninitialized dependencies: ${missingDeps.join(', ')}`
+          );
+          logEvent('WARNING', 'module_missing_dependencies', {
+            moduleId: module.id,
+            moduleName: module.name,
+            missingDeps,
+          });
+        }
+      }
+
       if (module.initialize) {
         try {
           await module.initialize();
-          logEvent('INFO', 'module_initialized', { moduleId: module.id, moduleName: module.name });
+          initialized.add(module.id);
+          logEvent('INFO', 'module_initialized', {
+            moduleId: module.id,
+            moduleName: module.name,
+            priority: module.priority ?? 50,
+          });
         } catch (error) {
           console.error(`✗ Failed to initialize ${module.name}:`, error);
           logEvent('ERROR', 'module_init_failed', {
@@ -62,10 +106,64 @@ class ModuleRegistry {
             error: error instanceof Error ? error.message : String(error)
           });
         }
+      } else {
+        // Module has no initialize function, mark as initialized anyway
+        initialized.add(module.id);
       }
     }
 
     logEvent('INFO', 'modules_initialized', { count: this.modules.size });
+  }
+
+  /**
+   * Get modules sorted by priority and dependencies
+   * Higher priority modules come first, with dependency ordering respected
+   */
+  private getSortedModules(): Module[] {
+    const modules = Array.from(this.modules.values());
+
+    // Topological sort respecting dependencies
+    const sorted: Module[] = [];
+    const visited = new Set<string>();
+    const visiting = new Set<string>();
+
+    const visit = (module: Module) => {
+      if (visited.has(module.id)) return;
+      if (visiting.has(module.id)) {
+        console.warn(`⚠ Circular dependency detected involving module "${module.name}"`);
+        return;
+      }
+
+      visiting.add(module.id);
+
+      // Visit dependencies first
+      if (module.dependsOn) {
+        for (const depId of module.dependsOn) {
+          const dep = this.modules.get(depId);
+          if (dep) {
+            visit(dep);
+          }
+        }
+      }
+
+      visiting.delete(module.id);
+      visited.add(module.id);
+      sorted.push(module);
+    };
+
+    // Sort by priority first (higher priority = earlier)
+    const byPriority = [...modules].sort((a, b) => {
+      const aPriority = a.priority ?? 50;
+      const bPriority = b.priority ?? 50;
+      return bPriority - aPriority;
+    });
+
+    // Then apply topological sort
+    for (const module of byPriority) {
+      visit(module);
+    }
+
+    return sorted;
   }
 
   async cleanupAll() {

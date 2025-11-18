@@ -1,29 +1,17 @@
 /**
  * Core Feature Registration
  *
- * Example of how core app features should register themselves
- * in the capability registry so plugins can discover them.
+ * Individual registration functions for core app features.
+ * Each function registers a feature's capabilities (routes, actions, states)
+ * in the capability registry so plugins can discover and interact with them.
+ *
+ * These functions are called by their respective modules during initialization.
  */
 
 import { registerCompleteFeature, useCapabilityStore } from './index';
 import { useControlCenterStore } from '../../stores/controlCenterStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { ROUTES, navigateTo } from './routeConstants';
-
-/**
- * Register all core features
- * Call this during app initialization
- */
-export function registerCoreFeatures() {
-  registerAssetsFeature();
-  registerWorkspaceFeature();
-  registerGenerationFeature();
-  registerGameFeature();
-  registerAutomationFeature();
-  registerPluginsFeature();
-
-  console.log('[Capabilities] Registered all core features');
-}
 
 /**
  * Assets/Gallery Feature

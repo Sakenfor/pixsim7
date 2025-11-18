@@ -4,16 +4,6 @@ import { useAuthStore } from './stores/authStore';
 import { useControlCenterStore } from './stores/controlCenterStore';
 import { useToast } from './stores/toastStore';
 import { registerModules, moduleRegistry } from './modules';
-import { registerCubeExpansions } from './lib/registerCubeExpansions';
-import { registerBuiltinNodeTypes, registerArcNodeTypes, registerBuiltinHelpers } from './lib/registries';
-import { registerBuiltinRenderers } from './lib/graph/builtinRenderers';
-import { registerArcRenderers } from './lib/graph/arcRenderers';
-import { registerPluginRenderers } from './lib/graph/pluginRenderers';
-import { registerRenderersFromNodeTypes } from './lib/graph/autoRegisterRenderers';
-import { preloadHighPriorityRenderers } from './lib/graph/rendererBootstrap';
-import { registerCustomHelpers } from './lib/game/customHelpers';
-import { loadAllPlugins } from './lib/pluginLoader';
-import { pluginManager, bootstrapExamplePlugins } from './lib/plugins';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { Home } from './routes/Home';
@@ -49,60 +39,14 @@ function App() {
   useTheme();
 
   useEffect(() => {
-    // Load plugin registry from localStorage
-    pluginManager.loadPluginRegistry();
-
-    // Bootstrap plugins (re-enables previously enabled plugins)
-    bootstrapExamplePlugins().catch(error => {
-      console.error('Failed to bootstrap plugins:', error);
-    });
-
-    // Register builtin node types
-    registerBuiltinNodeTypes();
-    registerArcNodeTypes();
-
-    // Register builtin node renderers
-    registerBuiltinRenderers();
-    registerArcRenderers();
-
-    // Register plugin node renderers
-    registerPluginRenderers();
-
-    // Preload high-priority renderers (priority > 7)
-    // This eagerly loads core renderers (video, choice, scene_call, etc.)
-    // while leaving rare/heavy renderers lazy-loaded
-    preloadHighPriorityRenderers().catch(error => {
-      console.error('Failed to preload high-priority renderers:', error);
-    });
-
-    // Register session helpers (built-in and custom)
-    registerBuiltinHelpers();
-    registerCustomHelpers();
-
-    // Load all plugins (node types, helpers, and interactions) from plugins directory
-    // Note: This automatically discovers and registers:
-    // - Node type plugins from lib/plugins/**/*Node.{ts,tsx} (e.g., seductionNode, questTriggerNode)
-    // - Helper plugins from plugins/helpers/**/*.{ts,tsx}
-    // - Interaction plugins from plugins/interactions/**/*.{ts,tsx}
-    loadAllPlugins({
-      verbose: true, // Log plugin loading progress
-      strict: false, // Don't throw on individual plugin errors
-    });
-
-    // Auto-register renderers from node types (after plugins are loaded)
-    // This discovers renderer components and registers them based on the
-    // rendererComponent field in NodeTypeDefinition
-    registerRenderersFromNodeTypes({
-      verbose: true,
-      strict: false, // Don't fail if a renderer is missing
-    });
-
-    // Initialize modules
+    // Initialize all application modules
+    // The module system handles all initialization in the correct order:
+    // 1. Plugin bootstrap (priority 100) - loads plugins and plugin registry
+    // 2. Graph system (priority 75) - registers node types and renderers
+    // 3. Game session (priority 75) - registers session helpers
+    // 4. Feature modules (priority 50) - registers capabilities for UI features
     registerModules();
     moduleRegistry.initializeAll();
-
-    // Register cube expansions
-    registerCubeExpansions();
 
     // Initialize auth state
     initialize();
