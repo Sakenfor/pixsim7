@@ -1,28 +1,103 @@
 /**
- * Plugin Projects Store
+ * Extended Plugin Projects Store
  *
- * Manages local plugin development projects (frontend-only).
- * Phase 2 focuses on UI plugins only.
+ * Manages local plugin development projects for all plugin kinds (Phases 2-5).
+ * Supports: ui-plugin, interaction, node-type, gallery-tool, world-tool
  *
  * Storage: localStorage with key 'pixsim7_plugin_projects'
  */
 
 import type { PluginManifest, PluginBundle } from './types';
+import type { InteractionPlugin, BaseInteractionConfig, FormField } from '../game/interactions/types';
+import type { NodeTypeDefinition } from '@pixsim7/types';
+import type { GalleryToolPlugin } from '../gallery/types';
 import { pluginManager } from './PluginManager';
 
-export type PluginProjectKind = 'ui-plugin';
+export type PluginProjectKind =
+  | 'ui-plugin'
+  | 'interaction'
+  | 'node-type'
+  | 'gallery-tool'
+  | 'world-tool';
 
-export interface PluginProject {
+/**
+ * Base metadata shared across all plugin projects
+ */
+interface BasePluginMetadata {
+  id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  tags?: string[];
+  icon?: string;
+  experimental?: boolean;
+}
+
+/**
+ * Plugin project (discriminated union by kind)
+ */
+export type PluginProject =
+  | UIPluginProject
+  | InteractionPluginProject
+  | NodeTypePluginProject
+  | GalleryToolPluginProject
+  | WorldToolPluginProject;
+
+export interface UIPluginProject {
   id: string; // Local project ID
-  kind: PluginProjectKind;
+  kind: 'ui-plugin';
   label: string;
   createdAt: number;
   updatedAt: number;
-
-  // UI plugin-specific fields
   uiManifest: PluginManifest;
-  code: string; // JS/TS code as string
-  linkedPluginId?: string; // Installed plugin ID if installed
+  code: string;
+  linkedPluginId?: string;
+}
+
+export interface InteractionPluginProject {
+  id: string;
+  kind: 'interaction';
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata: BasePluginMetadata;
+  code: string;
+  configSchema?: string; // JSON string of config fields
+}
+
+export interface NodeTypePluginProject {
+  id: string;
+  kind: 'node-type';
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata: BasePluginMetadata & {
+    scope?: 'scene' | 'arc' | 'world' | 'custom';
+    userCreatable?: boolean;
+  };
+  code: string;
+}
+
+export interface GalleryToolPluginProject {
+  id: string;
+  kind: 'gallery-tool';
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata: BasePluginMetadata;
+  code: string;
+}
+
+export interface WorldToolPluginProject {
+  id: string;
+  kind: 'world-tool';
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+  metadata: BasePluginMetadata;
+  code: string;
 }
 
 export interface PluginProjectStore {
@@ -31,9 +106,10 @@ export interface PluginProjectStore {
 
 const STORAGE_KEY = 'pixsim7_plugin_projects';
 
-/**
- * Load projects from localStorage
- */
+// ============================================================================
+// Storage Functions
+// ============================================================================
+
 export function loadProjects(): PluginProject[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -47,9 +123,6 @@ export function loadProjects(): PluginProject[] {
   }
 }
 
-/**
- * Save projects to localStorage
- */
 export function saveProjects(projects: PluginProject[]): void {
   try {
     const store: PluginProjectStore = { projects };
@@ -59,25 +132,40 @@ export function saveProjects(projects: PluginProject[]): void {
   }
 }
 
-/**
- * Get a single project by ID
- */
 export function getProject(id: string): PluginProject | undefined {
   const projects = loadProjects();
   return projects.find((p) => p.id === id);
 }
 
-/**
- * Create a new UI plugin project with scaffold
- */
-export function createUiPluginProject(label: string): PluginProject {
+export function updateProject(project: PluginProject): void {
+  const projects = loadProjects();
+  const index = projects.findIndex((p) => p.id === project.id);
+
+  if (index !== -1) {
+    project.updatedAt = Date.now();
+    projects[index] = project;
+    saveProjects(projects);
+  }
+}
+
+export function deleteProject(id: string): void {
+  const projects = loadProjects();
+  const filtered = projects.filter((p) => p.id !== id);
+  saveProjects(filtered);
+}
+
+// ============================================================================
+// UI Plugin Functions (Phase 2)
+// ============================================================================
+
+export function createUiPluginProject(label: string): UIPluginProject {
   const now = Date.now();
   const id = `project-${now}`;
   const pluginId = `dev-${now}`;
 
   const scaffold = createUiPluginScaffold(label, pluginId);
 
-  const project: PluginProject = {
+  const project: UIPluginProject = {
     id,
     kind: 'ui-plugin',
     label,
@@ -94,33 +182,7 @@ export function createUiPluginProject(label: string): PluginProject {
   return project;
 }
 
-/**
- * Update an existing project
- */
-export function updateProject(project: PluginProject): void {
-  const projects = loadProjects();
-  const index = projects.findIndex((p) => p.id === project.id);
-
-  if (index !== -1) {
-    project.updatedAt = Date.now();
-    projects[index] = project;
-    saveProjects(projects);
-  }
-}
-
-/**
- * Delete a project
- */
-export function deleteProject(id: string): void {
-  const projects = loadProjects();
-  const filtered = projects.filter((p) => p.id !== id);
-  saveProjects(filtered);
-}
-
-/**
- * Create a UI plugin scaffold (manifest + code)
- */
-export function createUiPluginScaffold(
+function createUiPluginScaffold(
   label: string,
   pluginId: string
 ): { manifest: PluginManifest; code: string } {
@@ -139,41 +201,27 @@ export function createUiPluginScaffold(
  * ${label}
  *
  * A custom UI plugin for PixSim7.
- * This plugin adds an overlay to the game interface.
  */
 
-/**
- * Called when the plugin is enabled
- * @param {Object} api - The plugin API
- */
 async function onEnable(api) {
   const pluginId = api.getPluginId();
-  console.log('Plugin enabled:', pluginId);
 
-  // Add a simple overlay
   api.ui.addOverlay({
     id: pluginId + '-overlay',
     position: 'top-right',
     render: () => {
       const container = document.createElement('div');
-      container.className = 'bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-lg shadow-lg p-4 max-w-sm';
+      container.className = 'bg-white dark:bg-neutral-800 border rounded-lg shadow-lg p-4 max-w-sm';
 
       const title = document.createElement('h3');
-      title.className = 'text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2';
+      title.className = 'text-lg font-semibold mb-2';
       title.textContent = '${label}';
 
-      const content = document.createElement('p');
-      content.className = 'text-sm text-neutral-600 dark:text-neutral-400';
-      content.textContent = 'Hello from your custom plugin!';
-
       container.appendChild(title);
-      container.appendChild(content);
-
       return container;
     }
   });
 
-  // Show a notification
   api.ui.showNotification({
     message: '${label} enabled!',
     type: 'success',
@@ -181,133 +229,619 @@ async function onEnable(api) {
   });
 }
 
-/**
- * Called when the plugin is disabled
- */
 async function onDisable() {
   console.log('Plugin disabled');
 }
 
-// Export the plugin interface
-export default {
-  onEnable,
-  onDisable
-};
+export default { onEnable, onDisable };
 `;
 
   return { manifest, code };
 }
 
-/**
- * Install a UI plugin project
- * Creates a PluginBundle and installs it via PluginManager
- */
-export async function installUiPluginProject(project: PluginProject): Promise<void> {
+export async function installUiPluginProject(project: UIPluginProject): Promise<void> {
   const bundle: PluginBundle = {
     manifest: project.uiManifest,
     code: project.code,
   };
 
-  try {
-    // Check if already installed
-    const existingPlugin = pluginManager.getPlugin(project.uiManifest.id);
+  const existingPlugin = pluginManager.getPlugin(project.uiManifest.id);
+  if (existingPlugin) {
+    await pluginManager.uninstallPlugin(project.uiManifest.id);
+  }
 
-    if (existingPlugin) {
-      // Uninstall first, then reinstall
-      await pluginManager.uninstallPlugin(project.uiManifest.id);
+  await pluginManager.installPlugin(bundle);
+  await pluginManager.enablePlugin(project.uiManifest.id);
+
+  project.linkedPluginId = project.uiManifest.id;
+  updateProject(project);
+}
+
+// ============================================================================
+// Interaction Plugin Functions (Phase 3)
+// ============================================================================
+
+export function createInteractionProject(label: string): InteractionPluginProject {
+  const now = Date.now();
+  const id = `project-${now}`;
+  const pluginId = `dev-interaction-${now}`;
+
+  const scaffold = createInteractionScaffold(label, pluginId);
+
+  const project: InteractionPluginProject = {
+    id,
+    kind: 'interaction',
+    label,
+    createdAt: now,
+    updatedAt: now,
+    metadata: scaffold.metadata,
+    code: scaffold.code,
+    configSchema: JSON.stringify(scaffold.configFields, null, 2),
+  };
+
+  const projects = loadProjects();
+  projects.push(project);
+  saveProjects(projects);
+
+  return project;
+}
+
+function createInteractionScaffold(label: string, pluginId: string) {
+  const metadata: BasePluginMetadata = {
+    id: pluginId,
+    name: label,
+    description: `Custom interaction: ${label}`,
+    version: '0.1.0',
+    author: 'local-dev',
+    category: 'custom',
+    tags: ['dev'],
+  };
+
+  const configFields: FormField[] = [
+    {
+      key: 'enabled',
+      label: 'Enabled',
+      type: 'boolean',
+      description: 'Enable/disable this interaction',
+    },
+    {
+      key: 'successChance',
+      label: 'Success Chance',
+      type: 'number',
+      description: 'Base success probability (0-100)',
+      min: 0,
+      max: 100,
+    },
+  ];
+
+  const code = `/**
+ * ${label}
+ *
+ * Custom NPC interaction plugin.
+ */
+
+// Default configuration
+export const defaultConfig = {
+  enabled: true,
+  successChance: 75
+};
+
+// Config form fields
+export const configFields = ${JSON.stringify(configFields, null, 2)};
+
+// Execute the interaction
+export async function execute(config, context) {
+  const { state, api, session, onSuccess, onError } = context;
+
+  console.log('Executing ${label}', { config, state });
+
+  // Example: Random success/fail based on config
+  const roll = Math.random() * 100;
+  const success = roll < config.successChance;
+
+  if (success) {
+    onSuccess(\`${label} succeeded! (rolled \${roll.toFixed(1)})\`);
+    return { success: true, message: '${label} successful!' };
+  } else {
+    onError(\`${label} failed (rolled \${roll.toFixed(1)})\`);
+    return { success: false, message: '${label} failed' };
+  }
+}
+
+// Optional: Check if interaction is available
+export function isAvailable(context) {
+  return true; // Always available
+}
+
+// Optional: Validate configuration
+export function validate(config) {
+  if (config.successChance < 0 || config.successChance > 100) {
+    return 'Success chance must be between 0 and 100';
+  }
+  return null;
+}
+
+// Export the plugin definition
+export default {
+  id: '${pluginId}',
+  name: '${label}',
+  description: '${metadata.description}',
+  version: '${metadata.version}',
+  category: '${metadata.category}',
+  tags: ${JSON.stringify(metadata.tags)},
+  defaultConfig,
+  configFields,
+  execute,
+  isAvailable,
+  validate
+};
+`;
+
+  return { metadata, configFields, code };
+}
+
+// ============================================================================
+// Node Type Plugin Functions (Phase 3)
+// ============================================================================
+
+export function createNodeTypeProject(label: string): NodeTypePluginProject {
+  const now = Date.now();
+  const id = `project-${now}`;
+  const nodeId = `dev-node-${now}`;
+
+  const scaffold = createNodeTypeScaffold(label, nodeId);
+
+  const project: NodeTypePluginProject = {
+    id,
+    kind: 'node-type',
+    label,
+    createdAt: now,
+    updatedAt: now,
+    metadata: scaffold.metadata,
+    code: scaffold.code,
+  };
+
+  const projects = loadProjects();
+  projects.push(project);
+  saveProjects(projects);
+
+  return project;
+}
+
+function createNodeTypeScaffold(label: string, nodeId: string) {
+  const metadata = {
+    id: nodeId,
+    name: label,
+    description: `Custom node type: ${label}`,
+    version: '0.1.0',
+    author: 'local-dev',
+    category: 'custom' as const,
+    scope: 'scene' as const,
+    icon: '⚡',
+    userCreatable: true,
+  };
+
+  const code = `/**
+ * ${label}
+ *
+ * Custom node type plugin.
+ */
+
+// Default data for new nodes
+export const defaultData = {
+  value: '',
+  enabled: true
+};
+
+// Node type definition
+export default {
+  id: '${nodeId}',
+  name: '${label}',
+  description: '${metadata.description}',
+  icon: '${metadata.icon}',
+  category: '${metadata.category}',
+  scope: '${metadata.scope}',
+  version: '${metadata.version}',
+  defaultData,
+  userCreatable: true,
+
+  // Optional: validation function
+  validate: (data) => {
+    if (!data.value || data.value.trim().length === 0) {
+      return 'Value is required';
     }
+    return null;
+  },
 
-    // Install the plugin
-    await pluginManager.installPlugin(bundle);
+  // Optional: custom ports
+  ports: {
+    inputs: [
+      { id: 'in', label: 'In', position: 'top', color: '#3b82f6' }
+    ],
+    outputs: [
+      { id: 'out', label: 'Out', position: 'bottom', color: '#10b981' }
+    ]
+  }
+};
+`;
 
-    // Enable it
-    await pluginManager.enablePlugin(project.uiManifest.id);
+  return { metadata, code };
+}
 
-    // Link the project to the installed plugin
-    project.linkedPluginId = project.uiManifest.id;
-    updateProject(project);
+// ============================================================================
+// Gallery Tool Plugin Functions (Phase 4)
+// ============================================================================
 
-    console.log(`Installed and enabled plugin: ${project.uiManifest.id}`);
-  } catch (error) {
-    console.error('Failed to install plugin project:', error);
-    throw error;
+export function createGalleryToolProject(label: string): GalleryToolPluginProject {
+  const now = Date.now();
+  const id = `project-${now}`;
+  const toolId = `dev-gallery-${now}`;
+
+  const scaffold = createGalleryToolScaffold(label, toolId);
+
+  const project: GalleryToolPluginProject = {
+    id,
+    kind: 'gallery-tool',
+    label,
+    createdAt: now,
+    updatedAt: now,
+    metadata: scaffold.metadata,
+    code: scaffold.code,
+  };
+
+  const projects = loadProjects();
+  projects.push(project);
+  saveProjects(projects);
+
+  return project;
+}
+
+function createGalleryToolScaffold(label: string, toolId: string) {
+  const metadata: BasePluginMetadata = {
+    id: toolId,
+    name: label,
+    description: `Custom gallery tool: ${label}`,
+    version: '0.1.0',
+    author: 'local-dev',
+    category: 'utility',
+    icon: '🔧',
+  };
+
+  const code = `/**
+ * ${label}
+ *
+ * Custom gallery tool plugin.
+ */
+
+import { createElement } from 'react';
+
+// Render function for the tool
+export function render(context) {
+  const { assets, selectedAssets, filters, refresh } = context;
+
+  return createElement('div', {
+    className: 'p-4 space-y-3'
+  }, [
+    createElement('h3', {
+      key: 'title',
+      className: 'font-medium text-neutral-900 dark:text-neutral-100'
+    }, '${label}'),
+
+    createElement('p', {
+      key: 'count',
+      className: 'text-sm text-neutral-600 dark:text-neutral-400'
+    }, \`Showing \${assets.length} assets\`),
+
+    createElement('button', {
+      key: 'refresh',
+      onClick: refresh,
+      className: 'px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600'
+    }, 'Refresh Gallery')
+  ]);
+}
+
+// Optional: determine visibility
+export function whenVisible(context) {
+  return true; // Always visible
+}
+
+// Export the plugin
+export default {
+  id: '${toolId}',
+  name: '${label}',
+  description: '${metadata.description}',
+  icon: '${metadata.icon}',
+  category: '${metadata.category}',
+  render,
+  whenVisible
+};
+`;
+
+  return { metadata, code };
+}
+
+// ============================================================================
+// World Tool Plugin Functions (Phase 4)
+// ============================================================================
+
+export function createWorldToolProject(label: string): WorldToolPluginProject {
+  const now = Date.now();
+  const id = `project-${now}`;
+  const toolId = `dev-world-${now}`;
+
+  const scaffold = createWorldToolScaffold(label, toolId);
+
+  const project: WorldToolPluginProject = {
+    id,
+    kind: 'world-tool',
+    label,
+    createdAt: now,
+    updatedAt: now,
+    metadata: scaffold.metadata,
+    code: scaffold.code,
+  };
+
+  const projects = loadProjects();
+  projects.push(project);
+  saveProjects(projects);
+
+  return project;
+}
+
+function createWorldToolScaffold(label: string, toolId: string) {
+  const metadata: BasePluginMetadata = {
+    id: toolId,
+    name: label,
+    description: `Custom world tool: ${label}`,
+    version: '0.1.0',
+    author: 'local-dev',
+    category: 'custom',
+    icon: '🌍',
+  };
+
+  const code = `/**
+ * ${label}
+ *
+ * Custom world tool plugin.
+ */
+
+import { createElement } from 'react';
+
+// Render function for the tool
+export function render(context) {
+  const { world, gameSession, worldTime, location, locationNpcs } = context;
+
+  return createElement('div', {
+    className: 'p-4 space-y-3'
+  }, [
+    createElement('h3', {
+      key: 'title',
+      className: 'font-medium text-neutral-900 dark:text-neutral-100'
+    }, '${label}'),
+
+    createElement('div', {
+      key: 'info',
+      className: 'text-sm space-y-1'
+    }, [
+      createElement('p', { key: 'world' }, \`World: \${world?.title || 'None'}\`),
+      createElement('p', { key: 'time' }, \`Time: Day \${worldTime.day}, Hour \${worldTime.hour}\`),
+      createElement('p', { key: 'npcs' }, \`NPCs here: \${locationNpcs.length}\`)
+    ])
+  ]);
+}
+
+// Optional: determine visibility
+export function whenVisible(context) {
+  return context.world !== null; // Only show when in a world
+}
+
+// Export the plugin
+export default {
+  id: '${toolId}',
+  name: '${label}',
+  description: '${metadata.description}',
+  icon: '${metadata.icon}',
+  category: '${metadata.category}',
+  render,
+  whenVisible
+};
+`;
+
+  return { metadata, code };
+}
+
+// ============================================================================
+// Export/Import Functions (Phase 5)
+// ============================================================================
+
+export interface PluginExportFormat {
+  kind: PluginProjectKind;
+  version: string; // Export format version
+  data: any; // Kind-specific data
+}
+
+export function exportProject(project: PluginProject): PluginExportFormat {
+  switch (project.kind) {
+    case 'ui-plugin':
+      return {
+        kind: 'ui-plugin',
+        version: '1.0',
+        data: {
+          manifest: project.uiManifest,
+          code: project.code,
+        },
+      };
+
+    case 'interaction':
+      return {
+        kind: 'interaction',
+        version: '1.0',
+        data: {
+          metadata: project.metadata,
+          code: project.code,
+          configSchema: project.configSchema,
+        },
+      };
+
+    case 'node-type':
+      return {
+        kind: 'node-type',
+        version: '1.0',
+        data: {
+          metadata: project.metadata,
+          code: project.code,
+        },
+      };
+
+    case 'gallery-tool':
+      return {
+        kind: 'gallery-tool',
+        version: '1.0',
+        data: {
+          metadata: project.metadata,
+          code: project.code,
+        },
+      };
+
+    case 'world-tool':
+      return {
+        kind: 'world-tool',
+        version: '1.0',
+        data: {
+          metadata: project.metadata,
+          code: project.code,
+        },
+      };
   }
 }
 
-/**
- * Disable a UI plugin project
- */
-export async function disableUiPluginProject(project: PluginProject): Promise<void> {
-  if (!project.linkedPluginId) {
-    throw new Error('Plugin is not installed');
-  }
+export function importProject(exportData: PluginExportFormat): PluginProject {
+  const now = Date.now();
+  const projectId = `project-${now}`;
 
-  try {
-    await pluginManager.disablePlugin(project.linkedPluginId);
-    console.log(`Disabled plugin: ${project.linkedPluginId}`);
-  } catch (error) {
-    console.error('Failed to disable plugin project:', error);
-    throw error;
+  switch (exportData.kind) {
+    case 'ui-plugin':
+      const uiProject: UIPluginProject = {
+        id: projectId,
+        kind: 'ui-plugin',
+        label: exportData.data.manifest.name,
+        createdAt: now,
+        updatedAt: now,
+        uiManifest: exportData.data.manifest,
+        code: exportData.data.code,
+      };
+      const projects = loadProjects();
+      projects.push(uiProject);
+      saveProjects(projects);
+      return uiProject;
+
+    case 'interaction':
+      const interactionProject: InteractionPluginProject = {
+        id: projectId,
+        kind: 'interaction',
+        label: exportData.data.metadata.name,
+        createdAt: now,
+        updatedAt: now,
+        metadata: exportData.data.metadata,
+        code: exportData.data.code,
+        configSchema: exportData.data.configSchema,
+      };
+      const projects2 = loadProjects();
+      projects2.push(interactionProject);
+      saveProjects(projects2);
+      return interactionProject;
+
+    case 'node-type':
+      const nodeTypeProject: NodeTypePluginProject = {
+        id: projectId,
+        kind: 'node-type',
+        label: exportData.data.metadata.name,
+        createdAt: now,
+        updatedAt: now,
+        metadata: exportData.data.metadata,
+        code: exportData.data.code,
+      };
+      const projects3 = loadProjects();
+      projects3.push(nodeTypeProject);
+      saveProjects(projects3);
+      return nodeTypeProject;
+
+    case 'gallery-tool':
+      const galleryProject: GalleryToolPluginProject = {
+        id: projectId,
+        kind: 'gallery-tool',
+        label: exportData.data.metadata.name,
+        createdAt: now,
+        updatedAt: now,
+        metadata: exportData.data.metadata,
+        code: exportData.data.code,
+      };
+      const projects4 = loadProjects();
+      projects4.push(galleryProject);
+      saveProjects(projects4);
+      return galleryProject;
+
+    case 'world-tool':
+      const worldProject: WorldToolPluginProject = {
+        id: projectId,
+        kind: 'world-tool',
+        label: exportData.data.metadata.name,
+        createdAt: now,
+        updatedAt: now,
+        metadata: exportData.data.metadata,
+        code: exportData.data.code,
+      };
+      const projects5 = loadProjects();
+      projects5.push(worldProject);
+      saveProjects(projects5);
+      return worldProject;
+
+    default:
+      throw new Error(`Unknown plugin kind: ${(exportData as any).kind}`);
   }
 }
 
-/**
- * Enable a UI plugin project (if already installed)
- */
-export async function enableUiPluginProject(project: PluginProject): Promise<void> {
-  if (!project.linkedPluginId) {
-    throw new Error('Plugin is not installed');
-  }
+export function downloadProjectAsJSON(project: PluginProject): void {
+  const exportData = exportProject(project);
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
 
-  try {
-    await pluginManager.enablePlugin(project.linkedPluginId);
-    console.log(`Enabled plugin: ${project.linkedPluginId}`);
-  } catch (error) {
-    console.error('Failed to enable plugin project:', error);
-    throw error;
-  }
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `plugin-${project.kind}-${project.metadata?.id || (project as any).uiManifest?.id || project.id}.json`;
+  a.click();
+
+  URL.revokeObjectURL(url);
 }
 
-/**
- * Uninstall a UI plugin project
- */
-export async function uninstallUiPluginProject(project: PluginProject): Promise<void> {
-  if (!project.linkedPluginId) {
-    throw new Error('Plugin is not installed');
-  }
+// ============================================================================
+// Utility Functions
+// ============================================================================
 
-  try {
-    await pluginManager.uninstallPlugin(project.linkedPluginId);
-    project.linkedPluginId = undefined;
-    updateProject(project);
-    console.log(`Uninstalled plugin: ${project.uiManifest.id}`);
-  } catch (error) {
-    console.error('Failed to uninstall plugin project:', error);
-    throw error;
-  }
-}
-
-/**
- * Get the status of a plugin project
- */
 export function getProjectStatus(project: PluginProject): {
   installed: boolean;
   enabled: boolean;
   error?: string;
 } {
-  if (!project.linkedPluginId) {
-    return { installed: false, enabled: false };
+  if (project.kind === 'ui-plugin') {
+    if (!project.linkedPluginId) {
+      return { installed: false, enabled: false };
+    }
+
+    const pluginEntry = pluginManager.getPlugin(project.linkedPluginId);
+    if (!pluginEntry) {
+      return { installed: false, enabled: false };
+    }
+
+    return {
+      installed: true,
+      enabled: pluginEntry.state === 'enabled',
+      error: pluginEntry.error,
+    };
   }
 
-  const pluginEntry = pluginManager.getPlugin(project.linkedPluginId);
-
-  if (!pluginEntry) {
-    return { installed: false, enabled: false };
-  }
-
-  return {
-    installed: true,
-    enabled: pluginEntry.state === 'enabled',
-    error: pluginEntry.error,
-  };
+  // For other kinds, they're not "installed" in the traditional sense
+  // They're dev-registered when the project is active
+  return { installed: false, enabled: false };
 }
