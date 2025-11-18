@@ -148,6 +148,31 @@ export {
   THEME_PRESETS,
 } from './world/worldUiConfig';
 
+export {
+  getAllThemePresets,
+  getThemePresetById,
+  saveThemePreset,
+  updateThemePreset,
+  deleteThemePreset,
+  createThemePresetFromTheme,
+  generateThemeId,
+  clearCustomPresets,
+} from './world/worldUiThemePresets';
+
+export type { WorldUiThemePreset } from './world/worldUiThemePresets';
+
+// ===== User Preferences =====
+export {
+  loadUserPreferences,
+  saveUserPreferences,
+  updateUserPreferences,
+  resetUserPreferences,
+  isHighContrastEnabled,
+  isReducedMotionEnabled,
+  getEffectiveColorScheme,
+  getEffectiveDensity,
+} from './user/preferences';
+
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';
 export type { NpcPersona } from './npcs/brain';

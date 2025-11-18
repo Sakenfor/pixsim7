@@ -6,13 +6,40 @@
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme } from '@pixsim7/types';
-import { getWorldTheme } from '@pixsim7/game-core';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences } from '@pixsim7/types';
+import {
+  getWorldTheme,
+  loadUserPreferences,
+  isHighContrastEnabled,
+  getEffectiveDensity,
+} from '@pixsim7/game-core';
+
+/**
+ * Apply high contrast adjustments to colors
+ */
+function applyHighContrastColors(colors: Record<string, string>): Record<string, string> {
+  // Simple high contrast transformation:
+  // Make colors more saturated and increase contrast
+  const adjusted: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(colors)) {
+    // For backgrounds, use pure black or white
+    if (key.includes('background')) {
+      adjusted[key] = value.includes('fff') || value.includes('white') ? '#ffffff' : '#000000';
+    } else {
+      // For foreground colors, keep them but ensure they're vivid
+      adjusted[key] = value;
+    }
+  }
+
+  return adjusted;
+}
 
 /**
  * Apply a theme by setting CSS variables on the document root
+ * Respects user preferences for accessibility
  */
-function applyTheme(theme: WorldUiTheme | undefined) {
+function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreferences) {
   const root = document.documentElement;
 
   // Clear existing world theme variables
@@ -21,44 +48,65 @@ function applyTheme(theme: WorldUiTheme | undefined) {
   root.style.removeProperty('--world-theme-background');
   root.style.removeProperty('--world-theme-text');
   root.classList.remove('world-theme-compact', 'world-theme-comfortable', 'world-theme-spacious');
+  root.classList.remove('user-high-contrast', 'user-reduced-motion');
 
   if (!theme) {
     return;
   }
 
-  // Apply theme colors as CSS variables
+  // Apply theme colors as CSS variables (with high contrast if enabled)
   if (theme.colors) {
-    Object.entries(theme.colors).forEach(([key, value]) => {
+    const colors = userPrefs.prefersHighContrast
+      ? applyHighContrastColors(theme.colors)
+      : theme.colors;
+
+    Object.entries(colors).forEach(([key, value]) => {
       root.style.setProperty(`--world-theme-${key}`, value);
     });
   }
 
-  // Apply density class
-  if (theme.density) {
-    root.classList.add(`world-theme-${theme.density}`);
+  // Apply density class (user preference overrides theme)
+  const effectiveDensity = getEffectiveDensity(theme.density);
+  root.classList.add(`world-theme-${effectiveDensity}`);
+
+  // Apply user preference classes
+  if (userPrefs.prefersHighContrast) {
+    root.classList.add('user-high-contrast');
   }
 
-  console.debug(`[WorldTheme] Applied theme: ${theme.id}`, theme);
+  if (userPrefs.prefersReducedMotion) {
+    root.classList.add('user-reduced-motion');
+  }
+
+  console.debug(`[WorldTheme] Applied theme: ${theme.id}`, {
+    theme,
+    userPrefs,
+    effectiveDensity,
+  });
 }
 
 /**
  * React hook to automatically apply world theme when world changes
+ * Respects user preferences for accessibility
  */
 export function useWorldTheme(worldDetail: GameWorldDetail | null) {
   useEffect(() => {
+    // Load user preferences
+    const userPrefs = loadUserPreferences();
+
     if (!worldDetail) {
-      // No world selected - clear theme
-      applyTheme(undefined);
+      // No world selected - clear theme but apply user preferences
+      applyTheme(undefined, userPrefs);
       return;
     }
 
     // Get theme from world meta
     const theme = getWorldTheme(worldDetail);
-    applyTheme(theme);
+    applyTheme(theme, userPrefs);
 
     // Cleanup on unmount or world change
     return () => {
-      applyTheme(undefined);
+      applyTheme(undefined, userPrefs);
     };
   }, [worldDetail]);
 }

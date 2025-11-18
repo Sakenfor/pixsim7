@@ -10,9 +10,13 @@ import type { GameWorldDetail, WorldUiTheme, ViewMode } from '@pixsim7/types';
 import {
   getWorldUiConfig,
   setWorldUiConfig,
-  getThemePresetIds,
-  getThemePreset,
-  THEME_PRESETS,
+  getAllThemePresets,
+  getThemePresetById,
+  saveThemePreset,
+  deleteThemePreset,
+  createThemePresetFromTheme,
+  generateThemeId,
+  type WorldUiThemePreset,
 } from '@pixsim7/game-core';
 import { Button, Select, Badge, Panel } from '@pixsim7/ui';
 import { getViewModeOptions } from '../../lib/theming/useViewMode';
@@ -27,9 +31,16 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
   const [selectedThemeId, setSelectedThemeId] = useState<string>('default');
   const [selectedViewMode, setSelectedViewMode] = useState<ViewMode>('hud-heavy');
   const [hasChanges, setHasChanges] = useState(false);
+  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetDescription, setNewPresetDescription] = useState('');
+  const [themePresets, setThemePresets] = useState<WorldUiThemePreset[]>([]);
 
-  // Load current configuration
+  // Load presets and current configuration
   useEffect(() => {
+    const presets = getAllThemePresets();
+    setThemePresets(presets);
+
     const uiConfig = getWorldUiConfig(worldDetail);
     setSelectedThemeId(uiConfig.theme?.id || 'default');
     setSelectedViewMode(uiConfig.viewMode || 'hud-heavy');
@@ -47,7 +58,7 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
   };
 
   const handleSave = () => {
-    const theme = getThemePreset(selectedThemeId);
+    const theme = getThemePresetById(selectedThemeId);
     if (!theme) {
       console.error(`Theme preset '${selectedThemeId}' not found`);
       return;
@@ -69,9 +80,57 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
     setHasChanges(false);
   };
 
-  const themePresetIds = getThemePresetIds();
+  const handleSaveAsPreset = () => {
+    if (!newPresetName.trim()) {
+      alert('Please enter a name for the preset');
+      return;
+    }
+
+    const currentTheme = getThemePresetById(selectedThemeId);
+    if (!currentTheme) {
+      alert('No theme selected');
+      return;
+    }
+
+    const themeId = generateThemeId(newPresetName);
+    const preset = createThemePresetFromTheme(
+      currentTheme,
+      newPresetName,
+      newPresetDescription || undefined
+    );
+
+    const success = saveThemePreset({ ...preset, id: themeId });
+    if (success) {
+      setThemePresets(getAllThemePresets());
+      setSelectedThemeId(themeId);
+      setShowSavePresetDialog(false);
+      setNewPresetName('');
+      setNewPresetDescription('');
+      alert('Preset saved successfully!');
+    } else {
+      alert('Failed to save preset. Name might already exist.');
+    }
+  };
+
+  const handleDeletePreset = (themeId: string) => {
+    if (!confirm(`Delete theme preset '${themeId}'?`)) {
+      return;
+    }
+
+    const success = deleteThemePreset(themeId);
+    if (success) {
+      setThemePresets(getAllThemePresets());
+      if (selectedThemeId === themeId) {
+        setSelectedThemeId('default');
+        setHasChanges(true);
+      }
+    } else {
+      alert('Cannot delete built-in presets');
+    }
+  };
+
   const viewModeOptions = getViewModeOptions();
-  const currentTheme = THEME_PRESETS[selectedThemeId];
+  const currentTheme = getThemePresetById(selectedThemeId);
 
   if (compact) {
     return (
@@ -86,9 +145,9 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
             onChange={(e) => handleThemeChange(e.target.value)}
             className="w-full"
           >
-            {themePresetIds.map((id) => (
-              <option key={id} value={id}>
-                {THEME_PRESETS[id].id}
+            {themePresets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name} {preset.isBuiltIn ? '' : '(Custom)'}
               </option>
             ))}
           </Select>
@@ -139,19 +198,51 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
 
       {/* Theme Selection */}
       <div>
-        <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
-          UI Theme
-        </label>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+            UI Theme
+          </label>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => setShowSavePresetDialog(true)}
+              variant="secondary"
+              size="sm"
+            >
+              💾 Save as Preset
+            </Button>
+            {currentTheme && !currentTheme.isBuiltIn && (
+              <Button
+                onClick={() => handleDeletePreset(selectedThemeId)}
+                variant="secondary"
+                size="sm"
+              >
+                🗑️ Delete
+              </Button>
+            )}
+          </div>
+        </div>
+
         <Select
           value={selectedThemeId}
           onChange={(e) => handleThemeChange(e.target.value)}
           className="w-full mb-3"
         >
-          {themePresetIds.map((id) => (
-            <option key={id} value={id}>
-              {THEME_PRESETS[id].id}
-            </option>
-          ))}
+          <optgroup label="Built-in Themes">
+            {themePresets.filter(p => p.isBuiltIn).map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </optgroup>
+          {themePresets.some(p => !p.isBuiltIn) && (
+            <optgroup label="Custom Themes">
+              {themePresets.filter(p => !p.isBuiltIn).map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </Select>
 
         {/* Theme Preview */}
@@ -159,6 +250,11 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
           <div className="bg-neutral-50 dark:bg-neutral-900 p-3 rounded border border-neutral-200 dark:border-neutral-700">
             <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
               Color Preview
+              {currentTheme.description && (
+                <span className="ml-2 font-normal text-neutral-500">
+                  — {currentTheme.description}
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(currentTheme.colors).map(([key, value]) => (
@@ -226,6 +322,57 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
       {hasChanges && (
         <div className="text-xs text-amber-600 dark:text-amber-400">
           You have unsaved changes. Click "Save Changes" to apply them.
+        </div>
+      )}
+
+      {/* Save as Preset Dialog */}
+      {showSavePresetDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Panel className="w-full max-w-md p-4 space-y-3">
+            <h3 className="text-lg font-semibold">Save Theme as Preset</h3>
+
+            <div>
+              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                Preset Name *
+              </label>
+              <input
+                type="text"
+                value={newPresetName}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                placeholder="e.g., My Custom Theme"
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                Description (optional)
+              </label>
+              <textarea
+                value={newPresetDescription}
+                onChange={(e) => setNewPresetDescription(e.target.value)}
+                placeholder="Describe this theme..."
+                rows={2}
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button onClick={handleSaveAsPreset} variant="primary">
+                Save Preset
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowSavePresetDialog(false);
+                  setNewPresetName('');
+                  setNewPresetDescription('');
+                }}
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+            </div>
+          </Panel>
         </div>
       )}
     </div>

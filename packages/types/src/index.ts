@@ -163,3 +163,9 @@ export * from './arcNodeTypes'
 // ===================
 
 export * from './game'
+
+// ===================
+// User Preferences Types
+// ===================
+
+export * from './userPreferences'
