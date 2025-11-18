@@ -1,6 +1,7 @@
 /**
  * Interactive Tool - Diegetic interaction tools for scenes
- * Touch, temperature, energy - beautiful and responsive controller
+ * Touch, temperature, energy - beautiful and responsive
+ * ENHANCED WITH WATER/LIQUID AND 3D BANANA TOOLS
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -287,6 +288,10 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
         return <HandVisual pressure={pressure} />;
       case 'feather':
         return <FeatherVisual />;
+      case 'water':
+        return <WaterVisual pressure={pressure} />;
+      case 'banana':
+        return <BananaVisual pressure={pressure} />;
       case 'ice':
         return <IceVisual temperature={temperature} />;
       case 'flame':
@@ -314,13 +319,186 @@ const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => (
   </div>
 );
 
-const FeatherVisual: React.FC = () => (
-  <div className="feather-visual">
-    <div className="feather-shaft" />
-    <div className="feather-vane feather-vane-left" />
-    <div className="feather-vane feather-vane-right" />
-  </div>
-);
+const FeatherVisual: React.FC = () => {
+  const [movement, setMovement] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Create subtle flutter based on mouse movement
+      setMovement({
+        x: e.movementX * 0.3,
+        y: e.movementY * 0.3,
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  return (
+    <div
+      className="feather-visual"
+      style={{
+        '--flutter-x': `${movement.x}deg`,
+        '--flutter-y': `${movement.y}deg`,
+      } as any}
+    >
+      <div className="feather-shaft">
+        <div className="shaft-highlight" />
+      </div>
+
+      {/* Left vane with individual barbs */}
+      <div className="feather-vane feather-vane-left">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div
+            key={`left-${i}`}
+            className="feather-barb"
+            style={{
+              '--barb-index': i,
+              '--barb-delay': `${i * 0.02}s`,
+            } as any}
+          />
+        ))}
+      </div>
+
+      {/* Right vane with individual barbs */}
+      <div className="feather-vane feather-vane-right">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div
+            key={`right-${i}`}
+            className="feather-barb"
+            style={{
+              '--barb-index': i,
+              '--barb-delay': `${i * 0.02}s`,
+            } as any}
+          />
+        ))}
+      </div>
+
+      {/* Feather tip */}
+      <div className="feather-tip" />
+
+      {/* Floating particles */}
+      <div className="feather-particles">
+        <div className="petal petal-1" />
+        <div className="petal petal-2" />
+        <div className="petal petal-3" />
+      </div>
+    </div>
+  );
+};
+
+const WaterVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  const [ripples, setRipples] = useState<number[]>([]);
+
+  useEffect(() => {
+    // Generate ripples based on pressure
+    if (pressure > 0.3) {
+      const newRipple = Date.now();
+      setRipples(prev => [...prev.slice(-3), newRipple]);
+    }
+  }, [pressure]);
+
+  return (
+    <div className="water-visual">
+      {/* Main water droplet */}
+      <div className="water-droplet" style={{ scale: `${1 + pressure * 0.3}` }}>
+        <div className="droplet-highlight" />
+        <div className="droplet-refraction" />
+      </div>
+
+      {/* Flowing water stream */}
+      <div className="water-stream" style={{ opacity: pressure }}>
+        <div className="stream-flow stream-1" />
+        <div className="stream-flow stream-2" />
+        <div className="stream-flow stream-3" />
+      </div>
+
+      {/* Ripple effects */}
+      <div className="water-ripples">
+        {ripples.map(rippleId => (
+          <div key={rippleId} className="ripple" />
+        ))}
+      </div>
+
+      {/* Splash particles */}
+      <div className="water-splash">
+        {Array.from({ length: 5 }, (_, i) => (
+          <div
+            key={i}
+            className="splash-drop"
+            style={{
+              '--splash-index': i,
+              '--splash-delay': `${i * 0.1}s`,
+            } as any}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const BananaVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
+  // Pressure simulates proximity to surface - more pressure = closer = more bend
+  const bendAngle = pressure * 30; // Max 30 degrees bend
+  const squishScale = 1 - pressure * 0.2; // Squish up to 20%
+
+  return (
+    <div
+      className="banana-visual"
+      style={{
+        '--bend-angle': `${bendAngle}deg`,
+        '--squish-scale': squishScale,
+        '--pressure': pressure,
+      } as any}
+    >
+      {/* 3D Banana body segments */}
+      <div className="banana-body">
+        {/* Top segment */}
+        <div className="banana-segment segment-top">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+        </div>
+
+        {/* Middle segment (bends most) */}
+        <div className="banana-segment segment-middle">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+        </div>
+
+        {/* Bottom segment */}
+        <div className="banana-segment segment-bottom">
+          <div className="banana-ridge ridge-1" />
+          <div className="banana-ridge ridge-2" />
+          <div className="banana-ridge ridge-3" />
+          <div className="banana-tip" />
+        </div>
+      </div>
+
+      {/* Banana stem */}
+      <div className="banana-stem" />
+
+      {/* Shadow that grows with pressure */}
+      <div
+        className="banana-shadow"
+        style={{
+          scale: `${1 + pressure * 0.5} 1`,
+          opacity: 0.3 + pressure * 0.4,
+        }}
+      />
+
+      {/* Impact waves when pressed */}
+      {pressure > 0.7 && (
+        <div className="impact-waves">
+          <div className="impact-wave wave-1" />
+          <div className="impact-wave wave-2" />
+        </div>
+      )}
+    </div>
+  );
+};
 
 const IceVisual: React.FC<{ temperature: number }> = ({ temperature }) => (
   <div className="ice-visual">

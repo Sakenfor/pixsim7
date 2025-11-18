@@ -1,0 +1,802 @@
+/**
+ * Interactive Tool Styles - Beautiful diegetic interaction tools
+ * Touch, temperature, energy with particle effects
+ * ENHANCED VERSION WITH FEATHER BARBS AND ANIMATIONS
+ */
+
+/* ============================================================================
+   Canvas & Container
+   ============================================================================ */
+
+.tool-trail-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 100;
+  mix-blend-mode: screen;
+}
+
+/* ============================================================================
+   Base Tool
+   ============================================================================ */
+
+.interactive-tool {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 101;
+  transition: scale 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.interactive-tool.dragging {
+  scale: 1.1;
+  cursor: grabbing;
+}
+
+.interactive-tool.active {
+  filter: brightness(1.2);
+}
+
+.tool-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+/* ============================================================================
+   Pressure Indicator
+   ============================================================================ */
+
+.pressure-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.pressure-ring {
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--tool-active-color, #00D9FF);
+  border-radius: 50%;
+  opacity: calc(0.2 + var(--pressure, 0) * 0.6);
+  transition: scale 0.1s ease;
+  box-shadow: 0 0 20px var(--tool-active-color, #00D9FF);
+}
+
+.pressure-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100px;
+  height: 100px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--tool-active-color, #00D9FF);
+  border-radius: 50%;
+  opacity: 0;
+  animation: pressure-pulse-anim 1s ease-out infinite;
+}
+
+@keyframes pressure-pulse-anim {
+  0% {
+    scale: 0.5;
+    opacity: 0.8;
+  }
+  100% {
+    scale: 1.5;
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+   Hand Tool
+   ============================================================================ */
+
+.hand-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-45deg);
+}
+
+.palm {
+  position: absolute;
+  width: 30px;
+  height: 35px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 200, 150, 0.3),
+    rgba(255, 150, 200, 0.2)
+  );
+  border-radius: 50% 50% 40% 40%;
+  filter: blur(1px);
+}
+
+.finger {
+  position: absolute;
+  width: 8px;
+  height: 20px;
+  background: inherit;
+  border-radius: 50% 50% 30% 30%;
+}
+
+.finger-1 { top: -15px; left: 2px; }
+.finger-2 { top: -18px; left: 10px; }
+.finger-3 { top: -18px; left: 18px; }
+.finger-4 { top: -15px; left: 26px; }
+
+.thumb {
+  position: absolute;
+  width: 10px;
+  height: 15px;
+  top: 10px;
+  left: -5px;
+  background: inherit;
+  border-radius: 50%;
+  transform: rotate(30deg);
+}
+
+.energy-aura {
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    var(--tool-active-color, rgba(255, 100, 200, 0.6)),
+    transparent 60%
+  );
+  filter: blur(15px);
+}
+
+/* ============================================================================
+   ENHANCED Feather Tool with Individual Barbs
+   ============================================================================ */
+
+.feather-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-30deg);
+  animation: feather-sway 4s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+@keyframes feather-sway {
+  0%, 100% {
+    transform: rotate(-30deg) rotateX(var(--flutter-x, 0deg)) rotateY(var(--flutter-y, 0deg));
+  }
+  25% {
+    transform: rotate(-28deg) rotateX(calc(var(--flutter-x, 0deg) + 2deg)) rotateY(calc(var(--flutter-y, 0deg) - 1deg));
+  }
+  75% {
+    transform: rotate(-32deg) rotateX(calc(var(--flutter-x, 0deg) - 2deg)) rotateY(calc(var(--flutter-y, 0deg) + 1deg));
+  }
+}
+
+.feather-shaft {
+  position: absolute;
+  width: 3px;
+  height: 55px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: linear-gradient(
+    to bottom,
+    rgba(240, 240, 240, 0.9),
+    rgba(200, 200, 200, 0.6),
+    rgba(150, 150, 150, 0.4)
+  );
+  border-radius: 1px;
+  box-shadow: 0 0 3px rgba(255, 255, 255, 0.3);
+}
+
+.shaft-highlight {
+  position: absolute;
+  width: 1px;
+  height: 100%;
+  left: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(255, 255, 255, 0.6) 30%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(255, 255, 255, 0.6) 70%,
+    transparent
+  );
+}
+
+.feather-vane {
+  position: absolute;
+  width: 22px;
+  height: 40px;
+  top: 50%;
+  overflow: visible;
+}
+
+.feather-vane-left {
+  left: 50%;
+  transform: translate(-100%, -50%);
+}
+
+.feather-vane-right {
+  right: 50%;
+  transform: translate(100%, -50%) scaleX(-1);
+}
+
+/* Individual feather barbs */
+.feather-barb {
+  position: absolute;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.1) 10%,
+    rgba(255, 220, 255, 0.3) 30%,
+    rgba(255, 200, 255, 0.4) 60%,
+    rgba(255, 180, 255, 0.2) 90%,
+    transparent
+  );
+  transform-origin: 0% center;
+  border-radius: 0 50% 50% 0;
+  top: calc(5% + var(--barb-index) * 7%);
+  animation: barb-flutter 2s ease-in-out infinite;
+  animation-delay: var(--barb-delay, 0s);
+}
+
+@keyframes barb-flutter {
+  0%, 100% {
+    transform: rotate(calc(-15deg + var(--barb-index) * 2deg));
+    opacity: 0.8;
+  }
+  50% {
+    transform: rotate(calc(-10deg + var(--barb-index) * 2deg));
+    opacity: 1;
+  }
+}
+
+/* Feather tip */
+.feather-tip {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  top: 5px;
+  left: 50%;
+  transform: translate(-50%, 0) rotate(45deg);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.6),
+    rgba(255, 200, 255, 0.2),
+    transparent 70%
+  );
+  border-radius: 50% 0;
+  filter: blur(1px);
+}
+
+/* Floating petal particles */
+.feather-particles {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.petal {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 200, 220, 0.6),
+    rgba(255, 150, 200, 0.3)
+  );
+  border-radius: 0 50% 50% 50%;
+  filter: blur(0.5px);
+  opacity: 0;
+}
+
+.petal-1 {
+  top: 20%;
+  left: 30%;
+  animation: petal-float-1 4s ease-in-out infinite;
+}
+
+.petal-2 {
+  top: 40%;
+  right: 25%;
+  animation: petal-float-2 5s ease-in-out infinite 0.5s;
+}
+
+.petal-3 {
+  bottom: 30%;
+  left: 40%;
+  animation: petal-float-3 4.5s ease-in-out infinite 1s;
+}
+
+@keyframes petal-float-1 {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.7;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(-30px, 40px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+@keyframes petal-float-2 {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(25px, 35px) rotate(-120deg);
+    opacity: 0;
+  }
+}
+
+@keyframes petal-float-3 {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-20px, -30px) rotate(240deg);
+    opacity: 0;
+  }
+}
+
+/* Particle type: petals (for feather tool) */
+.particle-petals {
+  width: 6px;
+  height: 10px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 220, 240, 0.8),
+    rgba(255, 180, 220, 0.4)
+  );
+  border-radius: 0 50% 50% 50%;
+  animation: particle-petal-fall 2s linear;
+}
+
+@keyframes particle-petal-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  100% {
+    transform: translate(var(--drift-x, 10px), 30px) rotate(180deg);
+  }
+}
+
+/* ============================================================================
+   Ice Crystal
+   ============================================================================ */
+
+.ice-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.ice-crystal {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  animation: crystal-float 4s ease-in-out infinite;
+}
+
+@keyframes crystal-float {
+  0%, 100% { transform: translate(-50%, -50%) rotate(45deg) scale(1); }
+  50% { transform: translate(-50%, -50%) rotate(50deg) scale(1.1); }
+}
+
+.crystal-facet {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(100, 200, 255, 0.6),
+    rgba(200, 240, 255, 0.3)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+}
+
+.facet-1 {
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+.facet-2 {
+  transform: rotate(45deg) scale(0.7);
+  opacity: 0.7;
+}
+
+.facet-3 {
+  transform: rotate(22.5deg) scale(0.5);
+  opacity: 0.5;
+}
+
+.frost-particles {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(circle, white 1px, transparent 1px);
+  background-size: 10px 10px;
+  animation: frost-fall 3s linear infinite;
+}
+
+@keyframes frost-fall {
+  0% { transform: translateY(-10px); }
+  100% { transform: translateY(10px); }
+}
+
+/* ============================================================================
+   Flame Tool
+   ============================================================================ */
+
+.flame-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.flame-core {
+  position: absolute;
+  width: 20px;
+  height: 30px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    ellipse at bottom,
+    rgba(255, 255, 100, 0.9),
+    rgba(255, 200, 0, 0.6),
+    rgba(255, 100, 0, 0.3)
+  );
+  border-radius: 50% 50% 50% 50% / 80% 80% 20% 20%;
+  filter: blur(2px);
+  animation: flame-flicker 0.2s ease-in-out infinite alternate;
+}
+
+@keyframes flame-flicker {
+  0% { transform: translate(-50%, -50%) scaleY(1); }
+  100% { transform: translate(-50%, -52%) scaleY(1.1); }
+}
+
+.flame-outer {
+  position: absolute;
+  width: 35px;
+  height: 45px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    ellipse at bottom,
+    rgba(255, 100, 0, 0.4),
+    rgba(255, 50, 0, 0.2),
+    transparent 70%
+  );
+  border-radius: 50% 50% 50% 50% / 80% 80% 20% 20%;
+  filter: blur(5px);
+  animation: flame-wave 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes flame-wave {
+  0% { transform: translate(-50%, -50%) rotate(-5deg); }
+  100% { transform: translate(-50%, -50%) rotate(5deg); }
+}
+
+.flame-tips {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0.6;
+  animation: flame-rise 1s linear infinite;
+}
+
+.flame-tips::before,
+.flame-tips::after {
+  content: '';
+  position: absolute;
+  width: 5px;
+  height: 10px;
+  background: rgba(255, 200, 0, 0.8);
+  border-radius: 50%;
+  filter: blur(3px);
+}
+
+.flame-tips::before {
+  top: 15px;
+  left: 20px;
+}
+
+.flame-tips::after {
+  top: 10px;
+  right: 20px;
+}
+
+@keyframes flame-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  50% { opacity: 0.6; }
+  100% { transform: translateY(-20px); opacity: 0; }
+}
+
+/* ============================================================================
+   Electric Tool
+   ============================================================================ */
+
+.electric-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.electric-core {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    white,
+    rgba(100, 200, 255, 0.8),
+    rgba(0, 100, 255, 0.4)
+  );
+  border-radius: 50%;
+  box-shadow: 0 0 30px rgba(100, 200, 255, 0.8);
+  animation: electric-pulse 0.3s ease-in-out infinite;
+}
+
+@keyframes electric-pulse {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.2; }
+}
+
+.lightning-arc {
+  position: absolute;
+  width: 60px;
+  height: 2px;
+  top: 50%;
+  left: 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(100, 200, 255, 0.9),
+    white,
+    rgba(100, 200, 255, 0.9),
+    transparent
+  );
+  filter: blur(1px);
+  animation: lightning-flash 0.5s linear infinite;
+}
+
+.arc-1 {
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+
+.arc-2 {
+  transform: translate(-50%, -50%) rotate(60deg);
+  animation-delay: 0.17s;
+}
+
+.arc-3 {
+  transform: translate(-50%, -50%) rotate(-60deg);
+  animation-delay: 0.33s;
+}
+
+@keyframes lightning-flash {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* ============================================================================
+   Energy Tool (Default)
+   ============================================================================ */
+
+.energy-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.energy-sphere {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.9),
+    var(--tool-active-color, rgba(0, 217, 255, 0.6)),
+    transparent 70%
+  );
+  border-radius: 50%;
+  filter: blur(2px);
+  animation: energy-float 3s ease-in-out infinite;
+}
+
+@keyframes energy-float {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -48%) scale(1.1); }
+}
+
+.energy-rings {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.energy-rings .ring {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--tool-active-color, #00D9FF);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.ring-1 {
+  animation: ring-expand 2s linear infinite;
+}
+
+.ring-2 {
+  animation: ring-expand 2s linear infinite 1s;
+}
+
+@keyframes ring-expand {
+  0% {
+    scale: 0.5;
+    opacity: 1;
+  }
+  100% {
+    scale: 2;
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+   Particles
+   ============================================================================ */
+
+.tool-particles {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 99;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.particle-hearts {
+  width: 8px;
+  height: 8px;
+  background: rgba(255, 100, 150, 0.8);
+  clip-path: path('M4,1 C2,0 0,1 0,2.5 C0,4 4,7 4,7 C4,7 8,4 8,2.5 C8,1 6,0 4,1');
+}
+
+.particle-sparks {
+  background: radial-gradient(circle, white, rgba(255, 200, 0, 0.8));
+  box-shadow: 0 0 4px rgba(255, 200, 0, 0.8);
+}
+
+.particle-droplets {
+  background: radial-gradient(circle, rgba(100, 200, 255, 0.9), rgba(100, 200, 255, 0.3));
+  box-shadow: 0 0 4px rgba(100, 200, 255, 0.5);
+}
+
+.particle-steam {
+  width: 10px;
+  height: 10px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.3), transparent);
+  filter: blur(2px);
+}
+
+.particle-frost {
+  background: white;
+  box-shadow: 0 0 4px rgba(200, 240, 255, 0.8);
+}
+
+.particle-energy {
+  background: radial-gradient(circle, var(--tool-active-color, #00D9FF), transparent);
+  filter: blur(1px);
+}
+
+/* ============================================================================
+   Temperature Effects
+   ============================================================================ */
+
+.temperature-effect {
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.frost-effect {
+  background: radial-gradient(
+    circle,
+    transparent 30%,
+    rgba(200, 240, 255, 0.2) 50%,
+    transparent 70%
+  );
+  animation: frost-spread 2s ease-in-out infinite;
+}
+
+@keyframes frost-spread {
+  0%, 100% { scale: 0.8; opacity: 0.5; }
+  50% { scale: 1.2; opacity: 1; }
+}
+
+.heat-shimmer {
+  background: radial-gradient(
+    circle,
+    transparent 30%,
+    rgba(255, 100, 0, 0.1) 50%,
+    transparent 70%
+  );
+  filter: blur(3px);
+  animation: heat-wave 1s ease-in-out infinite;
+}
+
+@keyframes heat-wave {
+  0%, 100% { transform: translate(-50%, -50%) scaleY(1); }
+  50% { transform: translate(-50%, -48%) scaleY(1.1); }
+}

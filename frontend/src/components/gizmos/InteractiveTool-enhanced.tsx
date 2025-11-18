@@ -1,6 +1,6 @@
 /**
  * Interactive Tool - Diegetic interaction tools for scenes
- * Touch, temperature, energy - beautiful and responsive controller
+ * Touch, temperature, energy - beautiful and responsive
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -314,13 +314,74 @@ const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => (
   </div>
 );
 
-const FeatherVisual: React.FC = () => (
-  <div className="feather-visual">
-    <div className="feather-shaft" />
-    <div className="feather-vane feather-vane-left" />
-    <div className="feather-vane feather-vane-right" />
-  </div>
-);
+const FeatherVisual: React.FC = () => {
+  const [movement, setMovement] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Create subtle flutter based on mouse movement
+      setMovement({
+        x: e.movementX * 0.3,
+        y: e.movementY * 0.3,
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  return (
+    <div
+      className="feather-visual"
+      style={{
+        '--flutter-x': `${movement.x}deg`,
+        '--flutter-y': `${movement.y}deg`,
+      } as any}
+    >
+      <div className="feather-shaft">
+        <div className="shaft-highlight" />
+      </div>
+
+      {/* Left vane with individual barbs */}
+      <div className="feather-vane feather-vane-left">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div
+            key={`left-${i}`}
+            className="feather-barb"
+            style={{
+              '--barb-index': i,
+              '--barb-delay': `${i * 0.02}s`,
+            } as any}
+          />
+        ))}
+      </div>
+
+      {/* Right vane with individual barbs */}
+      <div className="feather-vane feather-vane-right">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div
+            key={`right-${i}`}
+            className="feather-barb"
+            style={{
+              '--barb-index': i,
+              '--barb-delay': `${i * 0.02}s`,
+            } as any}
+          />
+        ))}
+      </div>
+
+      {/* Feather tip */}
+      <div className="feather-tip" />
+
+      {/* Floating particles */}
+      <div className="feather-particles">
+        <div className="petal petal-1" />
+        <div className="petal petal-2" />
+        <div className="petal petal-3" />
+      </div>
+    </div>
+  );
+};
 
 const IceVisual: React.FC<{ temperature: number }> = ({ temperature }) => (
   <div className="ice-visual">
