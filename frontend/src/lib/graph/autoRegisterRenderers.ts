@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegistry';
 import { nodeTypeRegistry } from '@pixsim7/types';
+import { registerRenderer } from '../plugins/registryBridge';
+import { pluginCatalog } from '../plugins/pluginSystem';
 
 /**
  * Auto-wire renderers from node type definitions
@@ -156,19 +158,26 @@ export function registerRenderersFromNodeTypes(options: {
       continue;
     }
 
-    // Register the renderer with lazy loading
-    nodeRendererRegistry.register({
-      nodeType: nodeType.id,
-      component: null as any, // Will be loaded lazily
-      loader: rendererLoader,
-      defaultSize: { width: 220, height: 200 }, // Default size, can be overridden
-      preloadPriority: nodeType.preloadPriority,
-    });
+    // Determine origin from the node type's catalog entry
+    const nodeTypeMetadata = pluginCatalog.get(nodeType.id);
+    const origin = nodeTypeMetadata?.origin || 'builtin';
+
+    // Register the renderer with lazy loading and origin tracking
+    registerRenderer(
+      {
+        nodeType: nodeType.id,
+        component: null as any, // Will be loaded lazily
+        loader: rendererLoader,
+        defaultSize: { width: 220, height: 200 }, // Default size, can be overridden
+        preloadPriority: nodeType.preloadPriority,
+      },
+      { origin }
+    );
 
     registeredCount++;
 
     if (verbose) {
-      console.log(`  ✓ Auto-registered renderer for "${nodeType.id}" → ${rendererName}`);
+      console.log(`  ✓ Auto-registered renderer for "${nodeType.id}" → ${rendererName} (origin: ${origin})`);
     }
   }
 
