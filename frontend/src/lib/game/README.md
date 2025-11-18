@@ -33,8 +33,34 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
 **World time and session state helpers:**
 
 - World time synchronization between `GameSession` and `GameWorldState`
-- Helper functions for reading/updating `flags` and `relationships`
 - Session kind detection (`world` vs `scene`)
+
+**Session State Manipulation:**
+
+Game2D and interaction plugins now use `@pixsim7/game-core` session helpers for all relationship and flag manipulation. **Plugins access these via `context.session`** rather than importing directly:
+
+```typescript
+// In an interaction plugin:
+const relState = context.session.getNpcRelationship(npcId);
+const updated = context.session.updateNpcRelationship(npcId, { affinity: 50 });
+context.session.addInventoryItem('flower', 1);
+```
+
+**Available session helpers:**
+- **Relationships:** `getNpcRelationship()`, `updateNpcRelationship()`
+- **Arcs:** `updateArcStage()`, `markSceneSeen()`
+- **Quests:** `updateQuestStatus()`, `incrementQuestSteps()`
+- **Inventory:** `getInventory()`, `addInventoryItem()`, `removeInventoryItem()`
+- **Events:** `triggerEvent()`, `endEvent()`, `isEventActive()`
+- **Batching:** `createUpdate()` returns a `SessionUpdate` builder for chaining multiple operations
+
+**Architecture:**
+- `InteractionContext.session` provides all session helpers
+- `createSessionHelpers(gameSession)` binds helpers to a specific session
+- `executeSlotInteractions()` handles interaction normalization and execution
+- All session updates are type-safe via `SessionFlags`, `ArcProgress`, `QuestProgress`, etc.
+
+This ensures consistent session logic across all frontends (React/3D/CLI) and keeps plugins decoupled from game-core imports.
 
 **Conventions:**
 - `GameSession.flags` – Quest/arc progress, inventory, events, world state
@@ -43,6 +69,9 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
 **See:**
 - `docs/RELATIONSHIPS_AND_ARCS.md` – Complete guide to relationships, arcs, quests, and session state conventions
 - `docs/SYSTEM_OVERVIEW.md` – Sessions overview
+- `packages/game-core/src/session/` – Session types, helpers, and builder
+- `frontend/src/lib/game/interactions/sessionAdapter.ts` – Context.session implementation
+- `frontend/src/lib/game/interactions/executor.ts` – Interaction execution logic
 
 ---
 

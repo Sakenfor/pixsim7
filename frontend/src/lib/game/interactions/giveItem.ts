@@ -3,6 +3,8 @@
  *
  * Example of how easy it is to add a new interaction type.
  * Just define the config, fields, and execute logic.
+ *
+ * Note: Now uses context.session for cleaner API - no need to import game-core!
  */
 import type { InteractionPlugin, BaseInteractionConfig } from './types';
 
@@ -82,10 +84,9 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
       };
     }
 
-    // Check relationship level from state
-    const npcKey = `npc:${state.assignment.npcId}`;
-    const relationship = state.relationships[npcKey];
-    const relationshipScore = relationship?.score ?? 0;
+    // Check relationship level using context.session helper
+    const relState = context.session.getNpcRelationship(state.assignment.npcId!);
+    const relationshipScore = relState?.affinity ?? 0;
 
     if (relationshipScore < config.requiredRelationship) {
       return {

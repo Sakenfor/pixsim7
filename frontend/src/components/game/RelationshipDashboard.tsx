@@ -36,23 +36,19 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
     for (const [key] of Object.entries(session.relationships)) {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
-        // Use the new session helper instead of manual extraction
-        const relationshipState = getNpcRelationshipState(session, npcId);
+        // Use game-core helper instead of manual extraction
+        const relState = getNpcRelationshipState(session, npcId);
 
-        if (relationshipState) {
-          npcRelationships.push({
-            npcId,
-            affinity: relationshipState.affinity,
-            trust: relationshipState.trust,
-            chemistry: relationshipState.chemistry,
-            tension: relationshipState.tension,
-            flags: relationshipState.flags,
-            tier: relationshipState.tierId || 'stranger',
-            intimacyLevel: relationshipState.intimacyLevelId !== undefined
-              ? relationshipState.intimacyLevelId
-              : null,
-          });
-        }
+        npcRelationships.push({
+          npcId,
+          affinity: relState.affinity,
+          trust: relState.trust,
+          chemistry: relState.chemistry,
+          tension: relState.tension,
+          flags: relState.flags,
+          tier: relState.tierId || 'stranger',
+          intimacyLevel: relState.intimacyLevelId || null,
+        });
       }
     }
 
