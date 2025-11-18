@@ -211,7 +211,26 @@ export function registerBuiltinNodeTypes() {
     userCreatable: false, // Hidden from UI for now
     color: 'text-violet-700 dark:text-violet-300',
     bgColor: 'bg-violet-100 dark:bg-violet-900/30',
-    defaultData: {},
+    defaultData: {
+      config: {
+        generationType: 'transition',
+        purpose: 'gap_fill',
+        style: {
+          pacing: 'medium',
+          transitionType: 'gradual',
+        },
+        duration: {},
+        constraints: {},
+        strategy: 'once',
+        fallback: {
+          mode: 'placeholder',
+          timeoutMs: 30000,
+        },
+        enabled: true,
+        version: 1,
+      },
+    },
+    editorComponent: 'GenerationNodeEditor',
   });
 
   // Action node
