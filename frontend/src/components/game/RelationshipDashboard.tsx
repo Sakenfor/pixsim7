@@ -2,9 +2,7 @@ import { useEffect, useState } from 'react';
 import { Panel, Badge, Button, ProgressBar } from '@pixsim7/ui';
 import {
   parseNpcKey,
-  compute_relationship_tier,
-  compute_intimacy_level,
-  extract_relationship_values,
+  getNpcRelationshipState,
 } from '@pixsim7/game-core';
 import type { GameSessionDTO } from '../../lib/api/game';
 
@@ -35,42 +33,26 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
 
     const npcRelationships: NpcRelationship[] = [];
 
-    for (const [key, value] of Object.entries(session.relationships)) {
+    for (const [key] of Object.entries(session.relationships)) {
       const npcId = parseNpcKey(key);
-      if (npcId !== null && typeof value === 'object' && value !== null) {
-        const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
-          session.relationships,
-          npcId
-        );
+      if (npcId !== null) {
+        // Use the new session helper instead of manual extraction
+        const relationshipState = getNpcRelationshipState(session, npcId);
 
-        // Prefer backend-computed tierId and intimacyLevelId
-        // Only compute as fallback if not provided
-        const rel = value as any;
-        let tier = typeof rel.tierId === 'string' ? rel.tierId : undefined;
-        let intimacyLevel = rel.intimacyLevelId !== undefined ? rel.intimacyLevelId : undefined;
-
-        if (!tier) {
-          tier = compute_relationship_tier(affinity);
-        }
-        if (intimacyLevel === undefined) {
-          intimacyLevel = compute_intimacy_level({
-            affinity,
-            trust,
-            chemistry,
-            tension,
+        if (relationshipState) {
+          npcRelationships.push({
+            npcId,
+            affinity: relationshipState.affinity,
+            trust: relationshipState.trust,
+            chemistry: relationshipState.chemistry,
+            tension: relationshipState.tension,
+            flags: relationshipState.flags,
+            tier: relationshipState.tierId || 'stranger',
+            intimacyLevel: relationshipState.intimacyLevelId !== undefined
+              ? relationshipState.intimacyLevelId
+              : null,
           });
         }
-
-        npcRelationships.push({
-          npcId,
-          affinity,
-          trust,
-          chemistry,
-          tension,
-          flags,
-          tier,
-          intimacyLevel,
-        });
       }
     }
 

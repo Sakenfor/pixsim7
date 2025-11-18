@@ -47,6 +47,33 @@ export interface AuthProvider {
  *
  * Allows injecting NPC personality data (from GameNPC.personality or other sources)
  * into brain state computation.
+ *
+ * **Usage Pattern:**
+ *
+ * 1. Configure the provider when creating PixSim7Core:
+ * ```ts
+ * const core = createPixSim7Core({
+ *   npcPersonaProvider: {
+ *     async getNpcPersona(npcId) {
+ *       const npc = await fetchNpcFromBackend(npcId);
+ *       return npc.personality; // GameNPC.personality field
+ *     }
+ *   }
+ * });
+ * ```
+ *
+ * 2. Preload persona before building brain state:
+ * ```ts
+ * await core.preloadNpcPersona(npcId);
+ * const brain = core.getNpcBrainState(npcId); // Uses preloaded persona
+ * ```
+ *
+ * **Implementation Notes:**
+ *
+ * - The provider should return base persona data from GameNPC.personality
+ * - buildNpcBrainState will merge this with session overrides from flags.npcs
+ * - Session overrides always take precedence over base persona
+ * - No new database columns needed; all data comes from existing JSON fields
  */
 export interface NpcPersonaProvider {
   getNpcPersona(npcId: number): Promise<NpcPersona | null>;
@@ -141,6 +168,10 @@ export interface PixSim7Core {
     npcId: number,
     edit: Partial<NpcBrainState>
   ): void;
+
+  // npc persona management
+  preloadNpcPersona(npcId: number): Promise<void>;
+  getCachedPersona(npcId: number): any | undefined;
 
   // events
   on<K extends keyof CoreEventMap>(
