@@ -3,7 +3,7 @@ import { useAssets } from '../hooks/useAssets';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
-import { Tabs } from '../components/navigation/Tabs';
+import { Tabs } from '@pixsim7/ui';
 import { Badge, Button } from '@pixsim7/ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';

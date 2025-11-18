@@ -1,6 +1,24 @@
 import React, { useRef, useEffect } from 'react';
 import clsx from 'clsx';
 
+/**
+ * Tabs — canonical tab navigation component.
+ * REUSE this component for any tabbed interface across the app.
+ *
+ * Features:
+ * - Keyboard navigation (Arrow keys, Home, End)
+ * - Accessible (ARIA roles and states)
+ * - Badge support for counts
+ * - Responsive with overflow scrolling
+ *
+ * Usage:
+ * const tabs = [
+ *   { id: 'all', label: 'All', count: 42 },
+ *   { id: 'images', label: 'Images', count: 12 },
+ * ];
+ * <Tabs tabs={tabs} value={activeTab} onChange={setActiveTab} />
+ */
+
 export interface Tab {
   id: string;
   label: string;
@@ -11,9 +29,10 @@ export interface TabsProps {
   tabs: Tab[];
   value: string;
   onChange: (id: string) => void;
+  className?: string;
 }
 
-export function Tabs({ tabs, value, onChange }: TabsProps) {
+export function Tabs({ tabs, value, onChange, className }: TabsProps) {
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
@@ -49,8 +68,11 @@ export function Tabs({ tabs, value, onChange }: TabsProps) {
   return (
     <div
       role="tablist"
-      className="flex gap-1 overflow-x-auto border-b border-neutral-200 scrollbar-thin"
-      aria-label="Gallery scopes"
+      className={clsx(
+        'flex gap-1 overflow-x-auto border-b border-neutral-200 dark:border-neutral-700 scrollbar-thin',
+        className
+      )}
+      aria-label="Navigation tabs"
     >
       {tabs.map((tab, index) => {
         const isActive = tab.id === value;
@@ -71,8 +93,8 @@ export function Tabs({ tabs, value, onChange }: TabsProps) {
               'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
               'border-b-2 -mb-[1px]',
               isActive
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-neutral-600 hover:text-neutral-900 hover:border-neutral-300'
+                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-600'
             )}
           >
             <span className="flex items-center gap-2">
@@ -82,8 +104,8 @@ export function Tabs({ tabs, value, onChange }: TabsProps) {
                   className={clsx(
                     'inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs',
                     isActive
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-neutral-200 text-neutral-600'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
                   )}
                 >
                   {tab.count}
