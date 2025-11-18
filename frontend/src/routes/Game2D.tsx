@@ -55,11 +55,13 @@ import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
 import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
 import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
+import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import type { WorldToolContext } from '../lib/worldTools/types';
 import { worldToolRegistry } from '../lib/worldTools/registry';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
+import { applyPlayerPreferences, getEffectiveViewMode } from '../lib/worldTools/playerHudPreferences';
 
 interface WorldTime {
   day: number;
@@ -600,8 +602,14 @@ export function Game2D() {
   // Get visible world tools based on current context and view mode
   const visibleWorldTools = useMemo(() => {
     const contextFilteredTools = worldToolRegistry.getVisible(worldToolContext);
-    return filterToolsByViewMode(contextFilteredTools, viewMode);
-  }, [worldToolContext, viewMode]);
+
+    // Apply player view mode override if exists
+    const effectiveViewMode = selectedWorldId
+      ? getEffectiveViewMode(selectedWorldId, viewMode)
+      : viewMode;
+
+    return filterToolsByViewMode(contextFilteredTools, effectiveViewMode);
+  }, [worldToolContext, viewMode, selectedWorldId]);
 
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;
@@ -850,6 +858,15 @@ export function Game2D() {
               >
                 📦 Presets
               </Button>
+              <HudCustomizationButton
+                worldDetail={worldDetail}
+                availableTools={visibleWorldTools}
+                currentViewMode={viewMode}
+                onUpdate={() => {
+                  // Trigger re-render when player preferences change
+                  setWorldDetail({ ...worldDetail });
+                }}
+              />
             </>
           )}
         </div>

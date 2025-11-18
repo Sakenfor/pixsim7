@@ -14,6 +14,7 @@ import type {
   WorldUiConfig,
   HudVisibilityCondition,
 } from './types';
+import { applyPlayerPreferences } from './playerHudPreferences';
 
 /**
  * Tools grouped by HUD region
@@ -151,9 +152,14 @@ export function buildHudLayout(
   const hudConfig = getHudConfig(worldDetail) || getDefaultLayout(tools);
 
   // Filter placements by visibility conditions
-  const visiblePlacements = hudConfig.filter((placement) =>
+  let visiblePlacements = hudConfig.filter((placement) =>
     checkVisibilityCondition(placement.visibleWhen, context)
   );
+
+  // Apply player preferences (hide tools, apply overrides)
+  if (context.selectedWorldId != null) {
+    visiblePlacements = applyPlayerPreferences(visiblePlacements, context.selectedWorldId);
+  }
 
   // Create a map of tool ID to tool
   const toolMap = new Map(tools.map((tool) => [tool.id, tool]));
