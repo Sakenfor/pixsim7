@@ -146,16 +146,7 @@ export function getNextOccurrence(
   targetDayOfWeek: number,
   targetHour: number
 ): number {
-  const current = parseWorldTime(currentWorldTime);
-
-  // Calculate days until target
-  let daysUntil = targetDayOfWeek - current.dayOfWeek;
-  if (daysUntil < 0) {
-    daysUntil += 7; // Next week
-  } else if (daysUntil === 0 && current.hour >= targetHour) {
-    daysUntil = 7; // Target is today but already passed, so next week
-  }
-
+  // Compose the target time within the current week
   const targetSeconds = composeWorldTime({
     dayOfWeek: targetDayOfWeek,
     hour: targetHour,
@@ -163,7 +154,13 @@ export function getNextOccurrence(
     second: 0,
   });
 
-  return addWorldTime(currentWorldTime, daysUntil * SECONDS_PER_DAY + (targetSeconds - currentWorldTime));
+  // If target is in the future this week, return it
+  if (targetSeconds > currentWorldTime) {
+    return targetSeconds;
+  }
+
+  // Target has passed this week, wrap to next week
+  return addWorldTime(targetSeconds, SECONDS_PER_WEEK);
 }
 
 /**

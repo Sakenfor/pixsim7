@@ -37,6 +37,9 @@ import {
   deriveScenePlaybackPhase,
   getNpcRelationshipState,
   getTurnDeltaLabel,
+  parseWorldTime,
+  composeWorldTime,
+  addWorldTime,
   type NpcSlotAssignment,
   type HotspotAction,
   type ScenePlaybackPhase,
@@ -54,6 +57,21 @@ import { GameNotifications, type GameNotification } from '../components/game/Gam
 interface WorldTime {
   day: number;
   hour: number;
+}
+
+/**
+ * Convert Game2D WorldTime (1-indexed days) to world_time seconds
+ */
+function worldTimeToSeconds(wt: WorldTime): number {
+  return composeWorldTime({ dayOfWeek: wt.day - 1, hour: wt.hour, minute: 0, second: 0 });
+}
+
+/**
+ * Convert world_time seconds to Game2D WorldTime (1-indexed days)
+ */
+function secondsToWorldTime(seconds: number): WorldTime {
+  const { dayOfWeek, hour } = parseWorldTime(seconds);
+  return { day: dayOfWeek + 1, hour };
 }
 
 /**
@@ -149,11 +167,7 @@ export function Game2D() {
           try {
             const wd = await getGameWorld(effectiveWorldId);
             setWorldDetail(wd);
-            const totalHours = Math.floor(wd.world_time / 3600);
-            const totalDays = Math.floor(totalHours / 24);
-            const day = (totalDays % 7) + 1;
-            const hour = totalHours % 24;
-            setWorldTime({ day, hour });
+            setWorldTime(secondsToWorldTime(wd.world_time));
           } catch (e) {
             console.error('Failed to restore GameWorld for Game2D', e);
           }
@@ -170,11 +184,7 @@ export function Game2D() {
         try {
           const session = await getGameSession(stored.gameSessionId);
           setGameSession(session);
-          const totalHours = Math.floor(session.world_time / 3600);
-          const totalDays = Math.floor(totalHours / 24);
-          const day = (totalDays % 7) + 1;
-          const hour = totalHours % 24;
-          setWorldTime({ day, hour });
+          setWorldTime(secondsToWorldTime(session.world_time));
           return;
         } catch (e) {
           console.error('Failed to restore GameSession for Game2D', e);
@@ -186,11 +196,7 @@ export function Game2D() {
         try {
           const wd = await getGameWorld(stored.worldId);
           setWorldDetail(wd);
-          const totalHours = Math.floor(wd.world_time / 3600);
-          const totalDays = Math.floor(totalHours / 24);
-          const day = (totalDays % 7) + 1;
-          const hour = totalHours % 24;
-          setWorldTime({ day, hour });
+          setWorldTime(secondsToWorldTime(wd.world_time));
           return;
         } catch (e) {
           console.error('Failed to restore GameWorld for Game2D', e);
@@ -198,11 +204,7 @@ export function Game2D() {
       }
 
       // Fallback to local worldTimeSeconds if no valid GameSession or World.
-      const totalHours = Math.floor(stored.worldTimeSeconds / 3600);
-      const totalDays = Math.floor(totalHours / 24);
-      const day = (totalDays % 7) + 1;
-      const hour = totalHours % 24;
-      setWorldTime({ day, hour });
+      setWorldTime(secondsToWorldTime(stored.worldTimeSeconds));
     })();
   }, []);
 
@@ -243,7 +245,7 @@ export function Game2D() {
           try {
             const created = await createGameSession(sceneId);
             setGameSession(created);
-            const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+            const worldTimeSeconds = worldTimeToSeconds(worldTime);
             saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
             updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
           } catch (err) {
@@ -275,11 +277,7 @@ export function Game2D() {
     try {
       const wd = await getGameWorld(worldId);
       setWorldDetail(wd);
-      const totalHours = Math.floor(wd.world_time / 3600);
-      const totalDays = Math.floor(totalHours / 24);
-      const day = (totalDays % 7) + 1;
-      const hour = totalHours % 24;
-      setWorldTime({ day, hour });
+      setWorldTime(secondsToWorldTime(wd.world_time));
       const state = loadWorldSession();
       const worldTimeSeconds = wd.world_time;
       saveWorldSession({
@@ -368,7 +366,7 @@ export function Game2D() {
       setLocationNpcs([]);
       return;
     }
-    const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+    const worldTimeSeconds = worldTimeToSeconds(worldTime);
     (async () => {
       try {
         const presences = await getNpcPresence({
@@ -415,12 +413,7 @@ export function Game2D() {
         try {
           const updated = await advanceGameWorldTime(selectedWorldId, deltaSeconds);
           setWorldDetail(updated);
-          const totalHours = Math.floor(updated.world_time / 3600);
-          const totalDays = Math.floor(totalHours / 24);
-          const day = (totalDays % 7) + 1;
-          const hour = totalHours % 24;
-          const next = { day, hour };
-          setWorldTime(next);
+          setWorldTime(secondsToWorldTime(updated.world_time));
           const worldTimeSeconds = updated.world_time;
           const sessionId = gameSession?.id;
           saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId, worldId: selectedWorldId });
@@ -461,16 +454,10 @@ export function Game2D() {
       })();
     } else {
       setWorldTime((prev) => {
-        const deltaHours = deltaSeconds / 3600;
-        let hour = prev.hour + deltaHours;
-        let day = prev.day;
-        while (hour >= 24) {
-          hour -= 24;
-          day += 1;
-          if (day > 7) day = 1;
-        }
-        const next = { day, hour: Math.floor(hour) };
-        const worldTimeSeconds = ((next.day - 1) * 24 + next.hour) * 3600;
+        const currentSeconds = worldTimeToSeconds(prev);
+        const newSeconds = addWorldTime(currentSeconds, deltaSeconds);
+        const next = secondsToWorldTime(newSeconds);
+        const worldTimeSeconds = newSeconds;
         const sessionId = gameSession?.id;
         saveWorldSession({ worldTimeSeconds, gameSessionId: sessionId });
 
@@ -567,7 +554,7 @@ export function Game2D() {
           if (!gameSession) {
             const created = await createGameSession(sceneId);
             setGameSession(created);
-            const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+            const worldTimeSeconds = worldTimeToSeconds(worldTime);
             saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
             updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
           }
@@ -633,7 +620,7 @@ export function Game2D() {
         try {
           const created = await createGameSession(Number(sceneId));
           setGameSession(created);
-          const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+          const worldTimeSeconds = worldTimeToSeconds(worldTime);
           saveWorldSession({ worldTimeSeconds, gameSessionId: created.id });
           // Optionally keep GameSession.world_time in sync on creation.
           updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
@@ -1050,7 +1037,7 @@ export function Game2D() {
                 if (!gameSession) {
                   const created = await createGameSession(sceneId);
                   setGameSession(created);
-                  const worldTimeSeconds = ((worldTime.day - 1) * 24 + worldTime.hour) * 3600;
+                  const worldTimeSeconds = worldTimeToSeconds(worldTime);
                   saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
                   updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
                 }
