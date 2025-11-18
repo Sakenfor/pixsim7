@@ -1,17 +1,24 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { Button, Panel, Badge, Input } from '@pixsim7/ui';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Button, Panel, Badge, Input, Select } from '@pixsim7/ui';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
-import type { GameLocationDetail, NpcSlot2d } from '../lib/api/game';
+import type { GameLocationDetail, NpcSlot2d, GameWorldDetail } from '../lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
+import {
+  getWorldInteractionPresets,
+  getPresetsForInteraction,
+  applyPresetToSlot,
+  type InteractionPreset,
+} from '../lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
+  worldDetail?: GameWorldDetail | null;
   onLocationUpdate: (location: GameLocationDetail) => void;
 }
 
-export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps) {
+export function NpcSlotEditor({ location, worldDetail, onLocationUpdate }: NpcSlotEditorProps) {
   const [slots, setSlots] = useState<NpcSlot2d[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [backgroundAsset, setBackgroundAsset] = useState<AssetResponse | null>(null);
@@ -19,6 +26,12 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load presets from world
+  const availablePresets = useMemo(
+    () => (worldDetail ? getWorldInteractionPresets(worldDetail) : []),
+    [worldDetail]
+  );
 
   // Load slots from location meta
   useEffect(() => {
@@ -94,6 +107,17 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
     if (selectedSlotId === id) {
       setSelectedSlotId(null);
     }
+  };
+
+  // Apply a preset to the current slot
+  const applyPreset = (slotId: string, preset: InteractionPreset) => {
+    const presetConfig = applyPresetToSlot(preset);
+    updateSlot(slotId, {
+      interactions: {
+        ...slots.find((s) => s.id === slotId)?.interactions,
+        [preset.interactionId]: presetConfig,
+      },
+    });
   };
 
   const handleSave = async () => {
@@ -337,6 +361,63 @@ export function NpcSlotEditor({ location, onLocationUpdate }: NpcSlotEditorProps
               {/* Interactions Section */}
               <div className="border-t pt-3 dark:border-neutral-700">
                 <h4 className="text-xs font-semibold mb-2">Interactions</h4>
+
+                {/* Preset Palette */}
+                {availablePresets.length > 0 && (
+                  <div className="mb-4 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-blue-900 dark:text-blue-100">
+                        Quick Apply Presets
+                      </span>
+                      <Badge color="blue" className="text-[10px]">
+                        {availablePresets.length}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {availablePresets.slice(0, 5).map((preset) => (
+                        <button
+                          key={preset.id}
+                          onClick={() => applyPreset(selectedSlot.id, preset)}
+                          className="w-full text-left px-2 py-1.5 text-xs bg-white dark:bg-neutral-800 border border-blue-200 dark:border-blue-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              {preset.icon && <span>{preset.icon}</span>}
+                              <span className="font-medium">{preset.name}</span>
+                            </div>
+                            <Badge color="gray" className="text-[10px]">
+                              {preset.interactionId}
+                            </Badge>
+                          </div>
+                          {preset.description && (
+                            <div className="text-[10px] text-neutral-600 dark:text-neutral-400 mt-0.5">
+                              {preset.description}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                      {availablePresets.length > 5 && (
+                        <div className="text-[10px] text-neutral-500 dark:text-neutral-400 text-center pt-1">
+                          +{availablePresets.length - 5} more presets available
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {availablePresets.length === 0 && worldDetail && (
+                  <div className="mb-3 p-2 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded">
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                      No interaction presets defined for this world. Create presets in the Preset Manager to quickly configure interactions.
+                    </p>
+                  </div>
+                )}
+
+                <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3 mt-3">
+                  <h5 className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    Manual Configuration
+                  </h5>
+                </div>
 
                 {interactionRegistry.getAll().map((plugin) => {
                   // Get config for this plugin (new format only)

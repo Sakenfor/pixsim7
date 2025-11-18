@@ -54,6 +54,7 @@ import { GameNotifications, type GameNotification } from '../components/game/Gam
 import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
 import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
 import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
+import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import type { WorldToolContext } from '../lib/worldTools/types';
@@ -140,6 +141,7 @@ export function Game2D() {
   const [dialogueNpcId, setDialogueNpcId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<GameNotification[]>([]);
   const [showHudEditor, setShowHudEditor] = useState(false);
+  const [showPresetEditor, setShowPresetEditor] = useState(false);
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -824,14 +826,24 @@ export function Game2D() {
             🎮 Gizmo Lab
           </Button>
           {selectedWorldId && worldDetail && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setShowHudEditor(true)}
-              title="Configure HUD layout for this world"
-            >
-              🎨 HUD Layout
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowHudEditor(true)}
+                title="Configure HUD layout for this world"
+              >
+                🎨 HUD Layout
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowPresetEditor(true)}
+                title="Manage interaction presets for this world"
+              >
+                📦 Presets
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -1100,6 +1112,21 @@ export function Game2D() {
                 setShowHudEditor(false);
               }}
               onClose={() => setShowHudEditor(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Interaction Preset Editor */}
+      {showPresetEditor && worldDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
+            <InteractionPresetEditor
+              worldDetail={worldDetail}
+              onWorldUpdate={(updatedWorld) => {
+                setWorldDetail(updatedWorld);
+              }}
+              onClose={() => setShowPresetEditor(false)}
             />
           </div>
         </div>
