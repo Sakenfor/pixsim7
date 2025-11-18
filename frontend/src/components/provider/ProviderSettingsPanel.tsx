@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Modal, FormField, Input, Button } from '@pixsim7/ui';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
@@ -54,130 +55,109 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200 mb-4">
-          Edit Account
-        </h3>
+    <Modal isOpen={true} onClose={onClose} title="Edit Account" size="lg">
+      <div className="space-y-4">
+        <FormField label="Email" size="md">
+          <Input
+            type="email"
+            size="md"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="account@example.com"
+          />
+        </FormField>
 
-        <div className="space-y-4">
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="account@example.com"
-              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        <FormField label="Nickname" optional size="md">
+          <Input
+            type="text"
+            size="md"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="My Account"
+          />
+        </FormField>
 
-          {/* Nickname */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-              Nickname
-              <span className="text-xs text-neutral-500 ml-2">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="My Account"
-              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* API Key (Free/WebAPI) */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-              API Key / JWT Token
-              <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
-            </label>
-            <input
-              type="text"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter new API key or JWT token"
-              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-            />
-            {account.has_jwt && (
-              <p className="text-xs text-neutral-500 mt-1">
-                Currently has JWT token
-              </p>
-            )}
-          </div>
-
-          {/* OpenAPI Key (Paid) */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-              OpenAPI Key (Pro/Paid)
-              <span className="text-xs text-neutral-500 ml-2">(leave empty to keep existing)</span>
-            </label>
-            <input
-              type="text"
-              autoComplete="off"
-              value={apiKeyPaid}
-              onChange={(e) => setApiKeyPaid(e.target.value)}
-              placeholder="Enter OpenAPI key for paid tier"
-              className="w-full px-3 py-2 border rounded-lg dark:bg-neutral-700 dark:border-neutral-600 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-            />
-            {account.has_api_key_paid && (
-              <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                ✓ Currently has OpenAPI key (Pro tier active)
-              </p>
-            )}
-            {account.has_api_key_paid && (
-              <label className="mt-1 flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
-                <input
-                  type="checkbox"
-                  className="rounded border-neutral-300 dark:border-neutral-600"
-                  checked={clearOpenApiKey}
-                  onChange={(e) => setClearOpenApiKey(e.target.checked)}
-                />
-                <span>Clear stored OpenAPI key on save</span>
-              </label>
-            )}
+        <FormField
+          label="API Key / JWT Token"
+          helpText="Leave empty to keep existing"
+          size="md"
+        >
+          <Input
+            type="text"
+            size="md"
+            autoComplete="off"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Enter new API key or JWT token"
+            className="font-mono"
+          />
+          {account.has_jwt && (
             <p className="text-xs text-neutral-500 mt-1">
-              For Pixverse: This is the OpenAPI key for paid accounts with higher limits
+              Currently has JWT token
             </p>
-          </div>
+          )}
+        </FormField>
 
-          {/* Account Status Info */}
-          <div className="p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
-            <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
-              <div><strong>Provider:</strong> {account.provider_id}</div>
-              <div><strong>Status:</strong> {account.status}</div>
-              {account.has_cookies && <div>✓ Has cookies</div>}
-              {account.jwt_expired && <div className="text-red-500">⚠ JWT expired</div>}
-            </div>
-          </div>
-        </div>
+        <FormField
+          label="OpenAPI Key (Pro/Paid)"
+          helpText="For Pixverse: This is the OpenAPI key for paid accounts with higher limits"
+          size="md"
+        >
+          <Input
+            type="text"
+            size="md"
+            autoComplete="off"
+            value={apiKeyPaid}
+            onChange={(e) => setApiKeyPaid(e.target.value)}
+            placeholder="Enter OpenAPI key for paid tier"
+            className="font-mono"
+          />
+          {account.has_api_key_paid && (
+            <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+              ✓ Currently has OpenAPI key (Pro tier active)
+            </p>
+          )}
+          {account.has_api_key_paid && (
+            <label className="mt-1 flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">
+              <input
+                type="checkbox"
+                className="rounded border-neutral-300 dark:border-neutral-600"
+                checked={clearOpenApiKey}
+                onChange={(e) => setClearOpenApiKey(e.target.checked)}
+              />
+              <span>Clear stored OpenAPI key on save</span>
+            </label>
+          )}
+        </FormField>
 
-        <div className="flex justify-end gap-2 mt-6">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm border rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-            disabled={saving}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save Changes'}
-          </button>
+        {/* Account Status Info */}
+        <div className="p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
+          <div className="text-xs text-neutral-600 dark:text-neutral-400 space-y-1">
+            <div><strong>Provider:</strong> {account.provider_id}</div>
+            <div><strong>Status:</strong> {account.status}</div>
+            {account.has_cookies && <div>✓ Has cookies</div>}
+            {account.jwt_expired && <div className="text-red-500">⚠ JWT expired</div>}
+          </div>
         </div>
       </div>
-    </div>
+
+      <div className="flex justify-end gap-2 mt-6">
+        <Button
+          variant="secondary"
+          onClick={onClose}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -204,20 +184,13 @@ function DeleteConfirmModal({ account, onClose, onConfirm }: DeleteConfirmModalP
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md w-full mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-4">
-          Delete Account
-        </h3>
-
-        <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-4">
+    <Modal isOpen={true} onClose={onClose} title="Delete Account" size="sm">
+      <div className="space-y-4">
+        <p className="text-sm text-neutral-700 dark:text-neutral-300">
           Are you sure you want to delete this account?
         </p>
 
-        <div className="mb-6 p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
+        <div className="p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">
           <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
             {account.nickname || account.email}
           </div>
@@ -226,28 +199,29 @@ function DeleteConfirmModal({ account, onClose, onConfirm }: DeleteConfirmModalP
           )}
         </div>
 
-        <p className="text-xs text-red-600 dark:text-red-400 mb-6">
+        <p className="text-xs text-red-600 dark:text-red-400">
           This action cannot be undone.
         </p>
-
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm border rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-            disabled={deleting}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-          >
-            {deleting ? 'Deleting...' : 'Delete'}
-          </button>
-        </div>
       </div>
-    </div>
+
+      <div className="flex justify-end gap-2 mt-6">
+        <Button
+          variant="secondary"
+          onClick={onClose}
+          disabled={deleting}
+        >
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          onClick={handleDelete}
+          disabled={deleting}
+          className="bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
+        >
+          {deleting ? 'Deleting...' : 'Delete'}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

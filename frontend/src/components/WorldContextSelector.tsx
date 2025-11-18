@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button } from '@pixsim7/ui';
+import { Button, Modal, FormField, Input } from '@pixsim7/ui';
 import { useWorldContextStore } from '../stores/worldContextStore';
 import { useToast } from '../stores/toastStore';
 import {
@@ -144,48 +144,46 @@ export function WorldContextSelector() {
       </div>
 
       {/* New World Dialog */}
-      {showNewWorldDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl p-6 w-96">
-            <h3 className="text-lg font-semibold mb-4">Create New World</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">World Name</label>
-                <input
-                  type="text"
-                  value={newWorldName}
-                  onChange={(e) => setNewWorldName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleCreateWorld();
-                    } else if (e.key === 'Escape') {
-                      setShowNewWorldDialog(false);
-                      setNewWorldName('');
-                    }
-                  }}
-                  className="w-full px-3 py-2 border rounded bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
-                  placeholder="e.g., Main Story World"
-                  autoFocus
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setShowNewWorldDialog(false);
-                    setNewWorldName('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={handleCreateWorld}>
-                  Create
-                </Button>
-              </div>
-            </div>
-          </div>
+      <Modal
+        isOpen={showNewWorldDialog}
+        onClose={() => {
+          setShowNewWorldDialog(false);
+          setNewWorldName('');
+        }}
+        title="Create New World"
+        size="sm"
+      >
+        <FormField label="World Name" required size="md">
+          <Input
+            type="text"
+            size="md"
+            value={newWorldName}
+            onChange={(e) => setNewWorldName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleCreateWorld();
+              }
+            }}
+            placeholder="e.g., Main Story World"
+            autoFocus
+          />
+        </FormField>
+
+        <div className="flex gap-2 justify-end mt-4">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowNewWorldDialog(false);
+              setNewWorldName('');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleCreateWorld}>
+            Create
+          </Button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
