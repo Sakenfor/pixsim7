@@ -3,7 +3,7 @@ import { Button, Panel, Badge, Input } from '@pixsim7/ui';
 import { getAsset, type AssetResponse } from '../lib/api/assets';
 import type { GameLocationDetail, NpcSlot2d } from '../lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
-import { interactionRegistry } from '../lib/game/interactions';
+import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 
 interface NpcSlotEditorProps {

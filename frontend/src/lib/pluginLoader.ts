@@ -30,8 +30,7 @@
  * ```
  */
 
-import { sessionHelperRegistry } from '@pixsim7/game-core';
-import { interactionRegistry } from './game/interactions/types';
+import { sessionHelperRegistry, interactionRegistry } from './registries';
 
 /**
  * Plugin loader configuration

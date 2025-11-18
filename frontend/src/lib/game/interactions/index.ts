@@ -5,6 +5,9 @@
  * Adding a new interaction type is as simple as:
  * 1. Create a new plugin file (e.g., giveItem.ts)
  * 2. Import and register it here
+ *
+ * NOTE: For canonical registry imports, use:
+ * import { interactionRegistry } from '@/lib/registries';
  */
 
 import { interactionRegistry } from './types';
@@ -20,6 +23,7 @@ interactionRegistry.register(giveItemInteraction);
 interactionRegistry.register(persuadePlugin);
 
 // Export registry and types for use in components
+// DEPRECATED: Import from @/lib/registries instead for consistency
 export { interactionRegistry } from './types';
 export type {
   InteractionPlugin,

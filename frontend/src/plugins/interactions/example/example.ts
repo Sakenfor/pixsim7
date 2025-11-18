@@ -14,7 +14,7 @@
  * - PLUGIN_SYSTEM.md documentation
  */
 
-import type { InteractionPlugin, InteractionContext, InteractionResult } from '../../../lib/game/interactions/types';
+import type { InteractionPlugin, InteractionContext, InteractionResult } from '../../../lib/registries';
 
 /**
  * Configuration interface for this interaction
