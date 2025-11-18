@@ -192,11 +192,18 @@ export class PixSim7Core implements IPixSim7Core {
       throw new Error('No NpcPersonaProvider configured');
     }
 
+    // Skip if already cached
+    if (this.personaCache.has(npcId)) {
+      return;
+    }
+
     const persona = await this.config.npcPersonaProvider.getNpcPersona(npcId);
     if (persona) {
       this.personaCache.set(npcId, persona);
       // Invalidate brain cache for this NPC so it rebuilds with new persona
       this.brainCache.delete(npcId);
+      // Emit persona:loaded event
+      this.events.emit('persona:loaded', { npcId, persona });
     }
   }
 
@@ -208,6 +215,21 @@ export class PixSim7Core implements IPixSim7Core {
    */
   getCachedPersona(npcId: number): any | undefined {
     return this.personaCache.get(npcId);
+  }
+
+  /**
+   * Invalidate cached persona for an NPC
+   *
+   * Removes the persona from cache and invalidates the brain state cache.
+   * The next call to getNpcBrainState will rebuild brain state without
+   * the cached persona (unless preloadNpcPersona is called again).
+   *
+   * @param npcId - NPC ID to invalidate persona for
+   */
+  invalidatePersona(npcId: number): void {
+    this.personaCache.delete(npcId);
+    this.brainCache.delete(npcId);
+    this.events.emit('persona:invalidated', { npcId });
   }
 
   /**

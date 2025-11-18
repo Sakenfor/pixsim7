@@ -17,6 +17,15 @@ export type CoreEventMap = {
     npcId: number;
     brain: NpcBrainState;
   };
+
+  'persona:loaded': {
+    npcId: number;
+    persona: NpcPersona;
+  };
+
+  'persona:invalidated': {
+    npcId: number;
+  };
 };
 
 /**
@@ -172,6 +181,7 @@ export interface PixSim7Core {
   // npc persona management
   preloadNpcPersona(npcId: number): Promise<void>;
   getCachedPersona(npcId: number): any | undefined;
+  invalidatePersona(npcId: number): void;
 
   // events
   on<K extends keyof CoreEventMap>(

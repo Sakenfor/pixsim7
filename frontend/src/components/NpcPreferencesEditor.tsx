@@ -3,8 +3,8 @@
  * UI for viewing and editing NPC tool/pattern preferences
  */
 
-import { useState } from 'react';
-import { Button, Panel, Input, Badge } from '@pixsim7/ui';
+import { useState, useEffect } from 'react';
+import { Button, Panel, Badge } from '@pixsim7/ui';
 import type { GameNpcDetail } from '../lib/api/game';
 import type { NpcPreferences, ToolPreference, PatternPreference } from '@pixsim7/scene-gizmos';
 import { PREFERENCE_PRESETS, createDefaultPreferences } from '@pixsim7/scene-gizmos';
@@ -17,6 +17,10 @@ import {
   addFavoriteTool,
   removeFavoriteTool,
 } from '../lib/game/npcPreferences';
+import { buildNpcBrainState, type NpcBrainState, type NpcPersona } from '@pixsim7/game-core';
+import { BrainShape } from './shapes/BrainShape';
+import type { BrainFace } from '@pixsim7/semantic-shapes';
+import type { GameSessionDTO } from '@pixsim7/types';
 
 interface NpcPreferencesEditorProps {
   npc: GameNpcDetail;
@@ -28,7 +32,79 @@ const AVAILABLE_PATTERNS = ['linear', 'circular', 'tap', 'zigzag', 'spiral', 'wa
 export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProps) {
   const preferences = getNpcPreferences(npc);
   const allTools = getAllTools();
-  const [selectedTool, setSelectedTool] = useState<string | null>(null);
+
+  // Live brain preview state
+  const [livePreview, setLivePreview] = useState(false);
+  const [brainState, setBrainState] = useState<NpcBrainState | null>(null);
+  const [activeFace, setActiveFace] = useState<BrainFace>('cortex');
+
+  // Update brain state when preferences change (for live preview)
+  useEffect(() => {
+    if (!livePreview) return;
+
+    // Create a mock persona from NPC data
+    const basePersona: NpcPersona = {
+      traits: {
+        openness: 60,
+        conscientiousness: 55,
+        extraversion: 70,
+        agreeableness: 65,
+        neuroticism: 40,
+      },
+      tags: ['friendly', 'curious'],
+      conversation_style: 'warm',
+    };
+
+    // Create mock session with preferences in flags
+    const mockSession: GameSessionDTO = {
+      id: 0,
+      user_id: 0,
+      scene_id: 0,
+      current_node_id: null,
+      world_time: 0,
+      flags: {
+        npcs: {
+          [`npc:${npc.id}`]: {
+            personality: {
+              traits: basePersona.traits,
+              tags: basePersona.tags,
+              conversation_style: basePersona.conversation_style,
+            },
+            preferences,
+          },
+        },
+      },
+      relationships: {
+        [`npc:${npc.id}`]: {
+          affinity: npc.relationshipLevel || 50,
+          trust: 50,
+          chemistry: 50,
+          tension: 20,
+        },
+      },
+    };
+
+    // Create mock relationship state
+    const relationshipState = {
+      affinity: npc.relationshipLevel || 50,
+      trust: 50,
+      chemistry: 50,
+      tension: 20,
+      flags: [],
+      tierId: 'acquaintance',
+      intimacyLevelId: '0',
+    };
+
+    // Build brain state with current preferences
+    const brain = buildNpcBrainState({
+      npcId: npc.id,
+      session: mockSession,
+      relationship: relationshipState,
+      persona: basePersona,
+    });
+
+    setBrainState(brain);
+  }, [preferences, livePreview, npc.id, npc.relationshipLevel]);
 
   const handlePresetApply = (presetName: keyof typeof PREFERENCE_PRESETS) => {
     const preset = PREFERENCE_PRESETS[presetName]();
@@ -112,6 +188,14 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
               Playful
             </Button>
           </div>
+          <Button
+            variant={livePreview ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={() => setLivePreview(!livePreview)}
+            title="Toggle live brain preview"
+          >
+            {livePreview ? '🧠 Preview ON' : '🧠 Preview OFF'}
+          </Button>
         </div>
       </div>
 
@@ -324,6 +408,29 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
         💡 These preferences control how the NPC responds to different tools and interaction patterns.
         Higher affinity = more positive reactions.
       </div>
+
+      {/* Live Brain Preview */}
+      {livePreview && brainState && (
+        <Panel className="p-6">
+          <h3 className="text-sm font-semibold mb-4">Live Brain Preview</h3>
+          <div className="flex items-center justify-center">
+            <BrainShape
+              npcId={npc.id}
+              brainState={brainState}
+              onFaceClick={setActiveFace}
+              activeFace={activeFace}
+              showConnections={true}
+              style="holographic"
+              size={300}
+            />
+          </div>
+          <div className="mt-4 text-center">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Click on brain regions to inspect • Active: <span className="capitalize font-medium">{activeFace}</span>
+            </p>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

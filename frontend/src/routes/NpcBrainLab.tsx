@@ -89,7 +89,16 @@ export function NpcBrainLab() {
   // Load brain state when NPC selection changes
   useEffect(() => {
     if (selectedNpcId !== null) {
-      handleLoadBrainState(selectedNpcId);
+      // Preload persona if NpcPersonaProvider is configured
+      core.preloadNpcPersona(selectedNpcId)
+        .then(() => {
+          handleLoadBrainState(selectedNpcId);
+        })
+        .catch((error) => {
+          // Persona provider might not be configured, proceed anyway
+          console.warn('Could not preload persona:', error);
+          handleLoadBrainState(selectedNpcId);
+        });
     } else {
       setBrainState(null);
     }
