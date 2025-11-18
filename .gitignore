@@ -75,6 +75,15 @@ node_modules/
 yarn-error.log*
 npm-debug.log*
 
+# TypeScript build artifacts
+*.tsbuildinfo
+# Compiled files outside dist/ (should use proper outDir)
+**/src/**/*.js
+**/src/**/*.d.ts
+**/src/**/*.d.ts.map
+!**/src/**/*.test.js
+!**/src/**/*.spec.js
+
 # Windows reserved name accidentally present
 nul
 # Launcher GUI runtime state (not source)
