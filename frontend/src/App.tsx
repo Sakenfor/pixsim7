@@ -20,6 +20,7 @@ import { Game2D } from './routes/Game2D';
 import { NpcBrainLab } from './routes/NpcBrainLab';
 import { GizmoLab } from './routes/GizmoLab';
 import { PluginWorkspaceRoute } from './routes/PluginWorkspace';
+import { SimulationPlayground } from './routes/SimulationPlayground';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -75,6 +76,7 @@ function App() {
           <Route path="/npc-portraits" element={<ProtectedRoute><NpcPortraits /></ProtectedRoute>} />
           <Route path="/npc-brain-lab" element={<ProtectedRoute><NpcBrainLab /></ProtectedRoute>} />
           <Route path="/gizmo-lab" element={<ProtectedRoute><GizmoLab /></ProtectedRoute>} />
+          <Route path="/simulation" element={<ProtectedRoute><SimulationPlayground /></ProtectedRoute>} />
           <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
           <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
