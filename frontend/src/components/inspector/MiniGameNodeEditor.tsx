@@ -200,3 +200,6 @@ export function MiniGameNodeEditor({ node, onUpdate }: MiniGameNodeEditorProps) 
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default MiniGameNodeEditor;

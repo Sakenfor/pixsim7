@@ -268,3 +268,6 @@ export function SeductionNodeEditor({ node, onUpdate }: SeductionNodeEditorProps
     </div>
   );
 }
+
+// Default export for dynamic loading via nodeEditorRegistry
+export default SeductionNodeEditor;
