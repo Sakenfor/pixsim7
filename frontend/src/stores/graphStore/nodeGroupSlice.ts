@@ -1,6 +1,7 @@
 import type { StateCreator, GraphState } from './types';
 import type { NodeGroupData, DraftSceneNode } from '../../modules/scene-builder';
 import { logEvent } from '../../lib/logging';
+import { useToastStore } from '../toastStore';
 
 /**
  * Node Group Slice
@@ -50,7 +51,13 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
   createNodeGroup: (nodeIds, options = {}) => {
     const state = get();
     if (!state.currentSceneId) {
-      console.warn('[nodeGroupSlice] No current scene');
+      const errorMsg = 'No current scene selected';
+      console.warn('[nodeGroupSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'warning',
+        message: errorMsg,
+        duration: 4000,
+      });
       return null;
     }
 
@@ -60,7 +67,13 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
     // Validate all nodes exist
     const validNodeIds = nodeIds.filter((id) => scene.nodes.some((n) => n.id === id));
     if (validNodeIds.length === 0) {
-      console.warn('[nodeGroupSlice] No valid nodes to group');
+      const errorMsg = 'No valid nodes to group';
+      console.warn('[nodeGroupSlice]', errorMsg);
+      useToastStore.getState().addToast({
+        type: 'warning',
+        message: errorMsg,
+        duration: 4000,
+      });
       return null;
     }
 
@@ -129,12 +142,28 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
           | NodeGroupData
           | undefined;
         if (!groupNode) {
-          console.warn(`[nodeGroupSlice] Group not found: ${groupId}`);
+          const errorMsg = `Group '${groupId}' not found`;
+          console.warn('[nodeGroupSlice]', errorMsg);
+          useToastStore.getState().addToast({
+            type: 'warning',
+            message: errorMsg,
+            duration: 4000,
+          });
           return state;
         }
 
         // Validate nodes exist
         const validNodeIds = nodeIds.filter((id) => scene.nodes.some((n) => n.id === id));
+
+        // Show warning if some nodes were invalid
+        if (validNodeIds.length < nodeIds.length) {
+          const invalidCount = nodeIds.length - validNodeIds.length;
+          useToastStore.getState().addToast({
+            type: 'warning',
+            message: `${invalidCount} invalid node(s) were skipped`,
+            duration: 3000,
+          });
+        }
         const newChildIds = Array.from(new Set([...groupNode.childNodeIds, ...validNodeIds]));
 
         return {
@@ -208,12 +237,31 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
           nodesToRemove = [...nodesToRemove, ...groupNode.childNodeIds];
         }
 
+        // If not deleting children, ensure children are cleaned up properly
+        // Note: Children don't store parent references in DraftSceneNode, only in React Flow nodes
+        // The parent relationship is rebuilt from group.childNodeIds during toFlowNodes conversion
+        // When the group is deleted, children will automatically render without a parent on next render
+        let updatedNodes = scene.nodes.filter((n) => !nodesToRemove.includes(n.id));
+
+        // If keeping children, we don't need to modify them since:
+        // 1. Positions are stored as absolute coordinates, not relative to parent
+        // 2. parentNode is only set during React Flow conversion based on current groups
+        // 3. Once the group is removed, children will render as top-level nodes
+
+        if (!deleteChildren && groupNode.childNodeIds.length > 0) {
+          logEvent('DEBUG', 'node_group_deleted_keeping_children', {
+            groupId,
+            childCount: groupNode.childNodeIds.length,
+            childIds: groupNode.childNodeIds,
+          });
+        }
+
         return {
           scenes: {
             ...state.scenes,
             [state.currentSceneId]: {
               ...scene,
-              nodes: scene.nodes.filter((n) => !nodesToRemove.includes(n.id)),
+              nodes: updatedNodes,
               edges: scene.edges.filter(
                 (e) => !nodesToRemove.includes(e.from) && !nodesToRemove.includes(e.to)
               ),

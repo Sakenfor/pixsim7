@@ -111,7 +111,22 @@ function getCustomPortConfig(node: DraftSceneNode): NodePortConfig | null {
   // If dynamic port generator is provided, use it
   if (portConfig.dynamic) {
     const dynamicPorts = portConfig.dynamic(node);
-    return convertToNodePortConfig(dynamicPorts.inputs, dynamicPorts.outputs);
+
+    // Validate dynamic ports result
+    if (!dynamicPorts) {
+      console.warn('[portConfig] Dynamic port function returned null/undefined for node type:', node.type);
+      return null;
+    }
+
+    if (!dynamicPorts.inputs && !dynamicPorts.outputs) {
+      console.warn('[portConfig] Dynamic port function returned no inputs or outputs for node type:', node.type);
+      return null;
+    }
+
+    return convertToNodePortConfig(
+      dynamicPorts.inputs || [],
+      dynamicPorts.outputs || []
+    );
   }
 
   // Otherwise use static port definitions

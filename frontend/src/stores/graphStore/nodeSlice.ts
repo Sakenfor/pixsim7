@@ -109,6 +109,12 @@ export const createNodeSlice: StateCreator<NodeManagementState> = (set, _get, _a
           return state;
         }
 
+        const toNode = scene.nodes.find((n) => n.id === toId);
+        if (!toNode) {
+          console.warn(`[nodeSlice] Target node not found: ${toId}`);
+          return state;
+        }
+
         const edgeId = `${fromId}_${toId}_${meta?.fromPort || 'default'}`;
         const existingEdge = scene.edges.find((e) => e.id === edgeId);
 

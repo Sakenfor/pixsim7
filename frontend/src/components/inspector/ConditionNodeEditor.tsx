@@ -21,13 +21,30 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
 
   useEffect(() => {
     // Load conditions from node metadata
-    const savedConditions = (node.metadata as any)?.conditions;
-    const savedLogicMode = (node.metadata as any)?.logicMode;
+    const metadata = node.metadata as Record<string, unknown> | undefined;
+    const savedConditions = metadata?.conditions;
+    const savedLogicMode = metadata?.logicMode;
 
-    if (savedConditions && Array.isArray(savedConditions) && savedConditions.length > 0) {
-      setConditions(savedConditions);
+    // Validate savedConditions is an array of the expected type
+    if (Array.isArray(savedConditions) && savedConditions.length > 0) {
+      const isValidConditionArray = savedConditions.every(
+        (cond) =>
+          typeof cond === 'object' &&
+          cond !== null &&
+          'variable' in cond &&
+          'operator' in cond &&
+          'value' in cond
+      );
+
+      if (isValidConditionArray) {
+        setConditions(savedConditions as Condition[]);
+      } else {
+        console.warn('[ConditionNodeEditor] Saved conditions have invalid structure, using defaults');
+      }
     }
-    if (savedLogicMode) {
+
+    // Validate savedLogicMode
+    if (savedLogicMode === 'AND' || savedLogicMode === 'OR') {
       setLogicMode(savedLogicMode);
     }
   }, [node]);
@@ -38,7 +55,16 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
 
   function handleUpdateCondition(index: number, field: keyof Condition, value: string) {
     const updated = [...conditions];
-    updated[index][field] = value as any;
+    if (field === 'operator') {
+      // Validate operator value
+      const validOperators = ['==', '!=', '>', '<', '>=', '<='];
+      if (validOperators.includes(value)) {
+        updated[index][field] = value as Condition['operator'];
+      }
+    } else {
+      // For 'variable' and 'value' fields, direct assignment is safe
+      updated[index][field] = value;
+    }
     setConditions(updated);
   }
 
@@ -67,7 +93,12 @@ export function ConditionNodeEditor({ node, onUpdate }: ConditionNodeEditorProps
         <label className="block text-sm font-medium mb-1">Logic Mode</label>
         <select
           value={logicMode}
-          onChange={(e) => setLogicMode(e.target.value as 'AND' | 'OR')}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === 'AND' || value === 'OR') {
+              setLogicMode(value);
+            }
+          }}
           className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
         >
           <option value="AND">AND (all conditions must be true)</option>

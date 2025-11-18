@@ -3,11 +3,39 @@ import { nodeTypeRegistry } from '@pixsim7/types';
 import type { ArcNodeData } from '../../modules/arc-graph';
 
 /**
+ * Type guard to check if a node is an ArcNodeData
+ */
+function isArcNodeData(node: unknown): node is ArcNodeData {
+  if (typeof node !== 'object' || node === null) return false;
+  const n = node as Record<string, unknown>;
+  return (
+    n.type === 'arc' &&
+    typeof n.id === 'string' &&
+    typeof n.arcId === 'string' &&
+    typeof n.label === 'string'
+  );
+}
+
+/**
  * Arc node renderer - shows arc/story beat information
  */
 export function ArcNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
   const typeDef = nodeTypeRegistry.getSync(node.type);
-  const arcNode = node as unknown as ArcNodeData;
+
+  // Validate node is actually an ArcNodeData
+  if (!isArcNodeData(node)) {
+    console.error('[ArcNodeRenderer] Invalid arc node data:', node);
+    return (
+      <div className="px-3 py-3 text-center">
+        <div className="text-red-500 text-xs font-medium">⚠️ Invalid Arc Node</div>
+        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+          Missing required arc data fields
+        </div>
+      </div>
+    );
+  }
+
+  const arcNode = node;
 
   return (
     <div className="px-3 py-3 space-y-2">

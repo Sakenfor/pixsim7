@@ -4,7 +4,7 @@ import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
  * Custom renderer for choice nodes - shows available choices
  */
 export function ChoiceNodeRenderer({ node, isSelected, isStart, hasErrors }: NodeRendererProps) {
-  const choices = node.choices || [];
+  const choices = (node.metadata?.choices as any[]) || [];
   const hasChoices = choices.length > 0;
 
   return (
@@ -35,7 +35,7 @@ export function ChoiceNodeRenderer({ node, isSelected, isStart, hasErrors }: Nod
               </span>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 truncate">
-                  {choice.label || `Choice ${index + 1}`}
+                  {choice.text || `Choice ${index + 1}`}
                 </div>
                 {choice.targetNodeId && (
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
