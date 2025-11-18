@@ -56,6 +56,10 @@ node scripts/create-plugin/index.js \
   --description "Steal items from NPCs"
 ```
 
+The CLI will create your plugin in the appropriate directory:
+- Helper plugins → `frontend/src/plugins/helpers/`
+- Interaction plugins → `frontend/src/plugins/interactions/`
+
 ### 2. Implement Your Plugin
 
 Edit the generated file to add your logic:
@@ -97,18 +101,25 @@ export const pickpocketPlugin: InteractionPlugin<PickpocketConfig> = {
 };
 ```
 
-### 3. Register Your Plugin
+### 3. Plugin Auto-Registration
 
-```typescript
-// frontend/src/lib/plugins/index.ts
+**That's it!** The plugin loader will automatically discover and register your plugin. No manual imports needed!
 
-import { pickpocketPlugin } from '../../plugins/pickpocket/pickpocket';
-import { interactionRegistry } from '@pixsim7/types';
+The plugin loader runs during app initialization and scans:
+- `frontend/src/plugins/helpers/**/*.{ts,tsx,js,jsx}` for helper plugins
+- `frontend/src/plugins/interactions/**/*.{ts,tsx,js,jsx}` for interaction plugins
 
-export function registerPlugins() {
-  interactionRegistry.register(pickpocketPlugin);
-}
+Just refresh your browser and check the console:
+
 ```
+🔌 Loading plugins...
+   Loading 1 helper plugin(s)...
+   ✓ pickpocket/pickpocket.ts
+✅ Plugins loaded:
+   Helpers: 1 loaded, 0 failed
+```
+
+For more details, see [Plugin Loader Documentation](docs/PLUGIN_LOADER.md).
 
 ### 4. Generate Types (Optional but Recommended)
 
