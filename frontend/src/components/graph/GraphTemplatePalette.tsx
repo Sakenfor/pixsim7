@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
 import { useTemplateStore } from '../../lib/graph/templatesStore';
-import { validateTemplate } from '../../lib/graph/graphTemplates';
+import { validateTemplate, type TemplateCategory } from '../../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../../lib/graph/graphTemplates';
+
+// Available categories for filtering
+const TEMPLATE_CATEGORIES: (TemplateCategory | 'All')[] = [
+  'All',
+  'Quest Flow',
+  'Dialogue Branch',
+  'Combat',
+  'Minigame',
+  'Relationship',
+  'Condition Check',
+  'Other',
+];
 
 interface GraphTemplatePaletteProps {
   /** Callback when a template is selected to be inserted */
@@ -15,15 +27,58 @@ interface GraphTemplatePaletteProps {
   compact?: boolean;
 }
 
+/**
+ * Export a template to a JSON file
+ */
+function exportTemplate(template: GraphTemplate): void {
+  const filename = `graph-template-${template.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.json`;
+  const jsonString = JSON.stringify(template, null, 2);
+
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Validate that an imported object is a valid GraphTemplate
+ */
+function isValidTemplateJSON(obj: any): obj is GraphTemplate {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    typeof obj.id === 'string' &&
+    typeof obj.name === 'string' &&
+    typeof obj.createdAt === 'number' &&
+    Array.isArray(obj.nodeTypes) &&
+    typeof obj.data === 'object' &&
+    Array.isArray(obj.data.nodes) &&
+    Array.isArray(obj.data.edges)
+  );
+}
+
 export function GraphTemplatePalette({
   onInsertTemplate,
   worldId,
   compact = false,
 }: GraphTemplatePaletteProps) {
   const templates = useTemplateStore((state) => state.getTemplates(worldId));
+  const addTemplate = useTemplateStore((state) => state.addTemplate);
+  const updateTemplate = useTemplateStore((state) => state.updateTemplate);
   const removeTemplate = useTemplateStore((state) => state.removeTemplate);
   const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
+
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+
+  // Phase 7: Filtering state
+  const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'All'>('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load world templates when world changes
   useEffect(() => {
@@ -32,8 +87,66 @@ export function GraphTemplatePalette({
     }
   }, [worldId, loadWorldTemplates]);
 
+  // Phase 7: Filter templates
+  const filteredTemplates = templates.filter((template) => {
+    // Category filter
+    if (selectedCategory !== 'All' && template.category !== selectedCategory) {
+      return false;
+    }
+
+    // Search filter (name, description, tags)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const matchesName = template.name.toLowerCase().includes(query);
+      const matchesDescription = template.description?.toLowerCase().includes(query);
+      const matchesTags = template.tags?.some((tag) => tag.toLowerCase().includes(query));
+
+      if (!matchesName && !matchesDescription && !matchesTags) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
   const handleInsert = (template: GraphTemplate) => {
     onInsertTemplate(template);
+  };
+
+  // Phase 6: Rename/edit handlers
+  const handleStartEdit = (template: GraphTemplate) => {
+    if (template.source === 'builtin') {
+      alert('Cannot edit built-in templates');
+      return;
+    }
+
+    setEditingTemplateId(template.id);
+    setEditName(template.name);
+    setEditDescription(template.description || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTemplateId) return;
+
+    try {
+      await updateTemplate(editingTemplateId, {
+        name: editName.trim() || 'Unnamed Template',
+        description: editDescription.trim() || undefined,
+        updatedAt: Date.now(),
+      });
+
+      setEditingTemplateId(null);
+      setEditName('');
+      setEditDescription('');
+    } catch (error) {
+      alert(`Failed to update template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTemplateId(null);
+    setEditName('');
+    setEditDescription('');
   };
 
   const handleDelete = async (template: GraphTemplate) => {
@@ -49,6 +162,77 @@ export function GraphTemplatePalette({
         alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+  };
+
+  const handleExport = (template: GraphTemplate) => {
+    try {
+      exportTemplate(template);
+    } catch (error) {
+      alert(`Failed to export template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        // Validate the JSON structure
+        if (!isValidTemplateJSON(parsed)) {
+          alert('Invalid template file format. Please select a valid graph template JSON file.');
+          return;
+        }
+
+        // Check for ID collision
+        const existingTemplate = templates.find((t) => t.id === parsed.id);
+        if (existingTemplate) {
+          const shouldReplace = confirm(
+            `A template with ID "${parsed.id}" already exists.\n\n` +
+            `Click OK to generate a new ID, or Cancel to abort import.`
+          );
+
+          if (!shouldReplace) {
+            return;
+          }
+
+          // Generate new ID to avoid collision
+          parsed.id = `template_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        }
+
+        // Determine source based on current context
+        let source: 'user' | 'world' = 'user';
+        if (worldId !== null && worldId !== undefined) {
+          const saveToWorld = confirm(
+            `Import template to current world (World #${worldId})?\n\n` +
+            'Click OK to import to world (shared with all scenes in this world)\n' +
+            'Click Cancel to import to your user templates (available everywhere)'
+          );
+          source = saveToWorld ? 'world' : 'user';
+        }
+
+        // Set source and worldId
+        parsed.source = source;
+        parsed.worldId = source === 'world' ? worldId : undefined;
+
+        // Add the template
+        await addTemplate(parsed, worldId);
+
+        const scopeLabel = source === 'world' ? `world #${worldId}` : 'user templates';
+        alert(`Successfully imported template "${parsed.name}" to ${scopeLabel}`);
+      } catch (error) {
+        alert(`Failed to import template: ${error instanceof Error ? error.message : 'Invalid JSON file'}`);
+      }
+    };
+
+    input.click();
   };
 
   const toggleExpanded = (templateId: string) => {
@@ -68,29 +252,79 @@ export function GraphTemplatePalette({
     }
   };
 
-  if (templates.length === 0) {
-    return (
-      <div className="p-4 text-center text-neutral-500 dark:text-neutral-400 text-sm">
-        <div className="mb-2">📋</div>
-        <div>No templates saved yet</div>
-        <div className="text-xs mt-1 opacity-70">
-          Select nodes and save as template to get started
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
       {!compact && (
-        <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
-          Graph Templates ({templates.length})
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
+              Graph Templates ({templates.length})
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleImport}
+              title="Import template from JSON file"
+            >
+              ↑ Import
+            </Button>
+          </div>
+
+          {/* Phase 7: Search and filter controls */}
+          <div className="space-y-2 pb-2 border-b dark:border-neutral-700">
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search templates..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            />
+
+            {/* Category filter */}
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value as TemplateCategory | 'All')}
+              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            >
+              {TEMPLATE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat === 'All' ? 'All Categories' : cat}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter summary */}
+            {(selectedCategory !== 'All' || searchQuery.trim()) && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                Showing {filteredTemplates.length} of {templates.length} templates
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Empty state */}
+      {filteredTemplates.length === 0 && (
+        <div className="p-4 text-center text-neutral-500 dark:text-neutral-400 text-sm">
+          <div className="mb-2">📋</div>
+          {templates.length === 0 ? (
+            <>
+              <div>No templates saved yet</div>
+              <div className="text-xs mt-1 opacity-70">
+                Select nodes and save as template to get started
+              </div>
+            </>
+          ) : (
+            <div>No templates match your filters</div>
+          )}
         </div>
       )}
 
-      {templates.map((template) => {
+      {filteredTemplates.map((template) => {
         const validation = validateTemplate(template);
         const isExpanded = expandedTemplateId === template.id;
+        const isEditing = editingTemplateId === template.id;
         const sourceBadge = getSourceBadge(template);
         const isReadOnly = template.source === 'builtin';
 
@@ -101,30 +335,90 @@ export function GraphTemplatePalette({
           >
             {/* Template Header */}
             <div className="p-3">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="font-semibold text-sm truncate" title={template.name}>
-                      {template.name}
-                    </div>
-                    <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${sourceBadge.className}`}>
-                      {sourceBadge.label}
-                    </span>
-                  </div>
-                  {template.description && (
-                    <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 line-clamp-2">
-                      {template.description}
-                    </div>
-                  )}
+              {/* Phase 8: Preview image */}
+              {template.preview && !isEditing && (
+                <div className="mb-2 flex justify-center">
+                  <img
+                    src={template.preview}
+                    alt={`${template.name} preview`}
+                    className="max-w-full h-auto rounded border border-neutral-200 dark:border-neutral-700"
+                  />
                 </div>
-                <button
-                  onClick={() => toggleExpanded(template.id)}
-                  className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 text-xs"
-                  title={isExpanded ? 'Collapse' : 'Expand'}
-                >
-                  {isExpanded ? '▼' : '▶'}
-                </button>
-              </div>
+              )}
+
+              {/* Phase 6: Edit mode */}
+              {isEditing ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Template name"
+                    className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                  />
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="Description (optional)"
+                    rows={2}
+                    className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="primary" onClick={handleSaveEdit}>
+                      Save
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <div className="font-semibold text-sm truncate" title={template.name}>
+                          {template.name}
+                        </div>
+                        <span className={`px-1.5 py-0.5 text-xs font-medium rounded ${sourceBadge.className}`}>
+                          {sourceBadge.label}
+                        </span>
+                        {/* Phase 7: Category badge */}
+                        {template.category && (
+                          <span className="px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded">
+                            {template.category}
+                          </span>
+                        )}
+                      </div>
+                      {template.description && (
+                        <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 line-clamp-2">
+                          {template.description}
+                        </div>
+                      )}
+                      {/* Phase 7: Tags */}
+                      {template.tags && template.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {template.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="px-1.5 py-0.5 text-xs bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => toggleExpanded(template.id)}
+                      className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 text-xs"
+                      title={isExpanded ? 'Collapse' : 'Expand'}
+                    >
+                      {isExpanded ? '▼' : '▶'}
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Template Stats */}
               <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400 mb-2">
@@ -149,28 +443,50 @@ export function GraphTemplatePalette({
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onClick={() => handleInsert(template)}
-                  disabled={!validation.valid}
-                  className="flex-1"
-                >
-                  ➕ Insert
-                </Button>
-                {!isReadOnly && (
+              {!isEditing && (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => handleInsert(template)}
+                    disabled={!validation.valid}
+                    className="flex-1"
+                  >
+                    ➕ Insert
+                  </Button>
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => handleDelete(template)}
+                    onClick={() => handleExport(template)}
                     className="px-3"
-                    title="Delete template"
+                    title="Export template to JSON"
                   >
-                    🗑
+                    ↓
                   </Button>
-                )}
-              </div>
+                  {!isReadOnly && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleStartEdit(template)}
+                        className="px-3"
+                        title="Edit template"
+                      >
+                        ✏️
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleDelete(template)}
+                        className="px-3"
+                        title="Delete template"
+                      >
+                        🗑
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Expanded Details */}

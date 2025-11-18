@@ -140,7 +140,7 @@ export const useTemplateStore = create<TemplateStoreState>()(
           const worldTemplates = getWorldTemplates(world);
 
           // Add new template
-          const updatedTemplates = [...worldTemplates, { ...template, source: 'world', worldId }];
+          const updatedTemplates = [...worldTemplates, { ...template, source: 'world' as const, worldId }];
 
           // Save to backend
           const newMeta = setWorldTemplates(world, updatedTemplates);
@@ -155,7 +155,7 @@ export const useTemplateStore = create<TemplateStoreState>()(
         } else {
           // User template - save to localStorage
           set((state) => ({
-            userTemplates: [...state.userTemplates, { ...template, source: 'user' }],
+            userTemplates: [...state.userTemplates, { ...template, source: 'user' as const }],
           }));
         }
       },

@@ -10,6 +10,34 @@ import { nodeTypeRegistry } from '@pixsim7/types';
 export type TemplateSource = 'builtin' | 'user' | 'world';
 
 /**
+ * Template category for organization
+ */
+export type TemplateCategory =
+  | 'Quest Flow'
+  | 'Dialogue Branch'
+  | 'Combat'
+  | 'Minigame'
+  | 'Relationship'
+  | 'Condition Check'
+  | 'Other';
+
+/**
+ * Template parameter definition for parameterized templates
+ */
+export interface TemplateParameter {
+  /** Parameter ID (used for substitution) */
+  id: string;
+  /** Display name for the parameter */
+  name: string;
+  /** Parameter type */
+  type: 'string' | 'number' | 'boolean';
+  /** Default value */
+  defaultValue: string | number | boolean;
+  /** Description/help text */
+  description?: string;
+}
+
+/**
  * Graph Template - Reusable pattern of nodes and edges
  *
  * Templates allow designers to save and reuse common graph patterns
@@ -20,9 +48,21 @@ export interface GraphTemplate {
   name: string;
   description?: string;
   createdAt: number;
+  updatedAt?: number; // Phase 6: Track last modification
   nodeTypes: string[]; // Involved node types for validation
   source?: TemplateSource; // Where the template comes from
   worldId?: number; // For world-scoped templates
+
+  // Phase 7: Categories and tags
+  category?: TemplateCategory;
+  tags?: string[];
+
+  // Phase 8: Preview
+  preview?: string; // Data URL or base64 encoded SVG preview
+
+  // Phase 10: Parameters
+  parameters?: TemplateParameter[];
+
   data: {
     nodes: DraftSceneNode[];
     edges: DraftEdge[];
@@ -38,31 +78,53 @@ export interface TemplateSelection {
 }
 
 /**
+ * Metadata for capturing a template
+ */
+export interface CaptureTemplateMetadata {
+  name: string;
+  description?: string;
+  source?: TemplateSource;
+  worldId?: number;
+  category?: TemplateCategory;
+  tags?: string[];
+  parameters?: TemplateParameter[];
+}
+
+/**
  * Captures a selection of nodes and edges as a template
  */
 export function captureTemplate(
   selection: TemplateSelection,
-  metadata: { name: string; description?: string; source?: TemplateSource; worldId?: number }
+  metadata: CaptureTemplateMetadata
 ): GraphTemplate {
   const { nodes, edges } = selection;
 
   // Extract unique node types
   const nodeTypes = Array.from(new Set(nodes.map((n) => n.type)));
 
+  const now = Date.now();
+
   // Create template with current timestamp
   const template: GraphTemplate = {
-    id: `template_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    id: `template_${now}_${Math.random().toString(36).substring(2, 9)}`,
     name: metadata.name,
     description: metadata.description,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
     nodeTypes,
     source: metadata.source || 'user',
     worldId: metadata.worldId,
+    category: metadata.category,
+    tags: metadata.tags || [],
+    parameters: metadata.parameters,
     data: {
       nodes: JSON.parse(JSON.stringify(nodes)), // Deep clone
       edges: JSON.parse(JSON.stringify(edges)), // Deep clone
     },
   };
+
+  // Generate preview
+  template.preview = generateTemplatePreview(template);
 
   return template;
 }
@@ -76,6 +138,9 @@ export interface ApplyTemplateOptions {
 
   /** Node ID prefix for generated nodes (default: template name slug) */
   nodeIdPrefix?: string;
+
+  /** Parameter values for parameterized templates (Phase 10) */
+  parameterValues?: Record<string, string | number | boolean>;
 }
 
 /**
@@ -106,6 +171,7 @@ export function applyTemplate(
 ): ApplyTemplateResult {
   const warnings: string[] = [];
   const offsetPosition = options.offsetPosition || { x: 100, y: 100 };
+  const parameterValues = options.parameterValues || {};
 
   // Generate ID prefix from template name or use provided prefix
   const idPrefix = options.nodeIdPrefix ||
@@ -144,7 +210,12 @@ export function applyTemplate(
     if (!newId) return;
 
     // Clone node
-    const clonedNode = JSON.parse(JSON.stringify(node)) as DraftSceneNode;
+    let clonedNode = JSON.parse(JSON.stringify(node)) as DraftSceneNode;
+
+    // Phase 10: Apply parameter substitution
+    if (template.parameters && template.parameters.length > 0) {
+      clonedNode = substituteParameters(clonedNode, parameterValues);
+    }
 
     // Update ID
     clonedNode.id = newId;
@@ -236,4 +307,114 @@ export function validateTemplate(template: GraphTemplate): {
     errors,
     warnings,
   };
+}
+
+/**
+ * Phase 10: Substitute template parameters in a node
+ *
+ * Replaces {{paramId}} placeholders in string fields with actual values
+ */
+function substituteParameters(
+  node: DraftSceneNode,
+  parameterValues: Record<string, string | number | boolean>
+): DraftSceneNode {
+  const nodeString = JSON.stringify(node);
+
+  // Replace all {{paramId}} placeholders
+  const substituted = nodeString.replace(/\{\{(\w+)\}\}/g, (match, paramId) => {
+    if (paramId in parameterValues) {
+      const value = parameterValues[paramId];
+      // Escape the value for JSON if it's a string
+      return typeof value === 'string' ? JSON.stringify(value).slice(1, -1) : String(value);
+    }
+    return match; // Keep placeholder if no value provided
+  });
+
+  return JSON.parse(substituted);
+}
+
+/**
+ * Phase 8: Generate a simple SVG preview of a template
+ *
+ * Creates a miniature visual representation of the node layout
+ */
+export function generateTemplatePreview(template: GraphTemplate): string {
+  const nodes = template.data.nodes;
+  const edges = template.data.edges;
+
+  if (nodes.length === 0) {
+    return '';
+  }
+
+  // Calculate bounding box
+  const positions = nodes
+    .filter((n) => n.metadata?.position)
+    .map((n) => n.metadata!.position!);
+
+  if (positions.length === 0) {
+    return '';
+  }
+
+  const minX = Math.min(...positions.map((p) => p.x));
+  const maxX = Math.max(...positions.map((p) => p.x));
+  const minY = Math.min(...positions.map((p) => p.y));
+  const maxY = Math.max(...positions.map((p) => p.y));
+
+  const width = maxX - minX + 200; // Add padding
+  const height = maxY - minY + 100;
+
+  // Scale to fit preview (max 200x150)
+  const scale = Math.min(200 / width, 150 / height, 1);
+  const viewWidth = width * scale;
+  const viewHeight = height * scale;
+
+  // Build SVG
+  const svgParts: string[] = [
+    `<svg width="200" height="150" viewBox="0 0 ${viewWidth} ${viewHeight}" xmlns="http://www.w3.org/2000/svg">`,
+    '<rect width="100%" height="100%" fill="#f5f5f5"/>',
+  ];
+
+  // Draw edges
+  edges.forEach((edge) => {
+    const fromNode = nodes.find((n) => n.id === edge.from);
+    const toNode = nodes.find((n) => n.id === edge.to);
+
+    if (fromNode?.metadata?.position && toNode?.metadata?.position) {
+      const x1 = (fromNode.metadata.position.x - minX + 100) * scale;
+      const y1 = (fromNode.metadata.position.y - minY + 50) * scale;
+      const x2 = (toNode.metadata.position.x - minX + 100) * scale;
+      const y2 = (toNode.metadata.position.y - minY + 50) * scale;
+
+      svgParts.push(
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#999" stroke-width="1"/>`
+      );
+    }
+  });
+
+  // Draw nodes
+  nodes.forEach((node) => {
+    if (node.metadata?.position) {
+      const x = (node.metadata.position.x - minX + 100) * scale;
+      const y = (node.metadata.position.y - minY + 50) * scale;
+      const nodeWidth = 60 * scale;
+      const nodeHeight = 30 * scale;
+
+      // Color based on node type
+      let fill = '#6366f1'; // Default indigo
+      if (node.type === 'dialogue') fill = '#3b82f6';
+      if (node.type === 'choice') fill = '#8b5cf6';
+      if (node.type === 'condition') fill = '#f59e0b';
+      if (node.type === 'scene_call') fill = '#10b981';
+
+      svgParts.push(
+        `<rect x="${x - nodeWidth / 2}" y="${y - nodeHeight / 2}" width="${nodeWidth}" height="${nodeHeight}" fill="${fill}" rx="4"/>`
+      );
+    }
+  });
+
+  svgParts.push('</svg>');
+
+  // Return as data URL
+  const svgString = svgParts.join('');
+  return `data:image/svg+xml;base64,${btoa(svgString)}`;
 }
