@@ -1,68 +1,32 @@
-import { registerRendererFromNodeType } from './rendererBootstrap';
-import { DefaultNodeRenderer } from '../../components/graph/DefaultNodeRenderer';
-import { VideoNodeRenderer } from '../../components/graph/VideoNodeRenderer';
-import { ChoiceNodeRenderer } from '../../components/graph/ChoiceNodeRenderer';
+/**
+ * Builtin Node Renderers (Auto-Wire Enabled)
+ *
+ * This file is now mostly empty as builtin node renderers are auto-registered via
+ * registerRenderersFromNodeTypes() based on the rendererComponent field in
+ * NodeTypeDefinition.
+ *
+ * The auto-wire system (in autoRegisterRenderers.ts) handles:
+ * - Video nodes → VideoNodeRenderer
+ * - Choice nodes → ChoiceNodeRenderer
+ * - Action, condition, end, scene_call, return, generation, node_group → DefaultNodeRenderer
+ *
+ * How it works:
+ * 1. NodeTypeDefinition includes rendererComponent: 'VideoNodeRenderer'
+ * 2. Auto-wire discovers /src/components/graph/VideoNodeRenderer.tsx via import.meta.glob
+ * 3. Renderer is lazy-loaded and registered automatically
+ *
+ * Only add manual registrations here if you need to override the auto-wire behavior
+ * with custom configuration (e.g., special defaultSize, custom preloadPriority).
+ */
 
 /**
- * Register all built-in node renderers
- * Called on app initialization
- *
- * Note: Uses registerRendererFromNodeType() to automatically inherit
- * preloadPriority from the node type definitions.
+ * Register built-in node renderers
+ * Now a no-op since renderers are auto-wired
  */
 export function registerBuiltinRenderers() {
-  // Default fallback renderer - MUST be registered first
-  // Highest priority since it's used as fallback
-  registerRendererFromNodeType({
-    nodeType: 'default',
-    component: DefaultNodeRenderer,
-    defaultSize: { width: 200, height: 120 },
-    preloadPriority: 10, // Critical - used as fallback
-  });
+  // All builtin renderers are now auto-registered via registerRenderersFromNodeTypes()
+  // in App.tsx. The system discovers renderers based on the rendererComponent field
+  // in each NodeTypeDefinition.
 
-  // Video node - shows media thumbnail and playback info
-  // Priority inherited from node type (priority 10)
-  registerRendererFromNodeType({
-    nodeType: 'video',
-    component: VideoNodeRenderer,
-    defaultSize: { width: 220, height: 180 },
-  });
-
-  // Choice node - shows available choices
-  // Priority inherited from node type (priority 9)
-  registerRendererFromNodeType({
-    nodeType: 'choice',
-    component: ChoiceNodeRenderer,
-    defaultSize: { width: 200, height: 150 },
-  });
-
-  // Mini-game nodes use the video renderer
-  // Priority inherited from node type (priority 3)
-  registerRendererFromNodeType({
-    nodeType: 'miniGame',
-    component: VideoNodeRenderer,
-    defaultSize: { width: 220, height: 180 },
-  });
-
-  // Other node types use default renderer
-  // Priority inherited from their respective node types
-  const defaultNodeTypes = [
-    'action',        // priority 6
-    'condition',     // priority 7
-    'end',           // priority 5
-    'scene_call',    // priority 8
-    'return',        // priority 5
-    'generation',    // priority 2
-    'node_group',    // priority 1
-  ];
-
-  defaultNodeTypes.forEach(nodeType => {
-    registerRendererFromNodeType({
-      nodeType,
-      component: DefaultNodeRenderer,
-      defaultSize: { width: 200, height: 120 },
-    });
-  });
-
-  console.log('✓ Registered built-in node renderers');
+  console.log('✓ Builtin renderer registration (auto-wire enabled)');
 }

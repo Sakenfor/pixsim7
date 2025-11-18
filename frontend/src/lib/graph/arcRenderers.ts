@@ -1,59 +1,33 @@
-import { registerRendererFromNodeType } from './rendererBootstrap';
-import { ArcNodeRenderer } from '../../components/graph/ArcNodeRenderer';
-import { QuestNodeRenderer } from '../../components/graph/QuestNodeRenderer';
-import { MilestoneNodeRenderer } from '../../components/graph/MilestoneNodeRenderer';
-import { QuestTriggerRenderer } from '../../components/graph/QuestTriggerRenderer';
-import { DefaultNodeRenderer } from '../../components/graph/DefaultNodeRenderer';
+/**
+ * Arc Node Renderers (Auto-Wire Enabled)
+ *
+ * This file is now mostly empty as arc node renderers are auto-registered via
+ * registerRenderersFromNodeTypes() based on the rendererComponent field in
+ * NodeTypeDefinition.
+ *
+ * The auto-wire system (in autoRegisterRenderers.ts) handles:
+ * - Arc nodes → ArcNodeRenderer
+ * - Quest nodes → QuestNodeRenderer
+ * - Milestone nodes → MilestoneNodeRenderer
+ * - Arc group nodes → DefaultNodeRenderer
+ *
+ * How it works:
+ * 1. NodeTypeDefinition in arcNodeTypes.ts includes rendererComponent: 'ArcNodeRenderer'
+ * 2. Auto-wire discovers /src/components/graph/ArcNodeRenderer.tsx via import.meta.glob
+ * 3. Renderer is lazy-loaded and registered automatically
+ *
+ * Only add manual registrations here if you need to override the auto-wire behavior
+ * with custom configuration (e.g., special defaultSize, custom preloadPriority).
+ */
 
 /**
- * Register all arc graph node renderers
- * Called on app initialization
- *
- * Note: Uses registerRendererFromNodeType() to automatically inherit
- * preloadPriority from the node type definitions.
+ * Register arc node renderers
+ * Now a no-op since renderers are auto-wired
  */
 export function registerArcRenderers() {
-  // Arc node - shows arc/story beat information
-  // Priority inherited from node type (priority 4)
-  registerRendererFromNodeType({
-    nodeType: 'arc',
-    component: ArcNodeRenderer,
-    defaultSize: { width: 240, height: 200 },
-  });
+  // All arc renderers are now auto-registered via registerRenderersFromNodeTypes()
+  // in App.tsx. The system discovers renderers based on the rendererComponent field
+  // in each NodeTypeDefinition.
 
-  // Quest node - shows quest objective information
-  // Priority inherited from node type (priority 4)
-  registerRendererFromNodeType({
-    nodeType: 'quest',
-    component: QuestNodeRenderer,
-    defaultSize: { width: 240, height: 200 },
-  });
-
-  // Milestone node - shows major story checkpoint
-  // Priority inherited from node type (priority 3)
-  registerRendererFromNodeType({
-    nodeType: 'milestone',
-    component: MilestoneNodeRenderer,
-    defaultSize: { width: 240, height: 180 },
-  });
-
-  // Arc group uses default renderer
-  // Priority inherited from node type (priority 2)
-  registerRendererFromNodeType({
-    nodeType: 'arc_group',
-    component: DefaultNodeRenderer,
-    defaultSize: { width: 200, height: 120 },
-  });
-
-  // Quest trigger node - shows quest trigger information
-  // Plugin node type - use explicit priority since it may not have node type definition
-  registerRendererFromNodeType({
-    nodeType: 'quest-trigger',
-    component: QuestTriggerRenderer,
-    defaultSize: { width: 280, height: 200 },
-  }, {
-    priorityOverride: 7, // Moderately important plugin
-  });
-
-  console.log('✓ Registered arc node renderers');
+  console.log('✓ Arc renderer registration (auto-wire enabled)');
 }

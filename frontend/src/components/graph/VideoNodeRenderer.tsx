@@ -101,3 +101,6 @@ export function VideoNodeRenderer({ node, isSelected, isStart, hasErrors }: Node
     </div>
   );
 }
+
+// Default export for auto-wire system (import.meta.glob)
+export default VideoNodeRenderer;
