@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Scene } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
@@ -444,6 +444,21 @@ export function Game2D() {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  // Memoize SessionAPI to prevent recreating on every render
+  const sessionAPI = useMemo<SessionAPI>(
+    () => ({
+      updateSession: (sessionId, updates) => updateGameSession(sessionId, updates),
+    }),
+    [] // SessionAPI functions are stable, no dependencies needed
+  );
+
+  // Memoize sessionHelpers to prevent recreating on every render
+  // Only recreates when gameSession changes
+  const sessionHelpers = useMemo(
+    () => createSessionHelpers(gameSession, setGameSession, sessionAPI),
+    [gameSession, sessionAPI]
+  );
+
   const handleNpcSlotClick = async (assignment: NpcSlotAssignment) => {
     if (!assignment.npcId) return;
 
@@ -465,13 +480,7 @@ export function Game2D() {
         attemptPickpocket: (req) => attemptPickpocket(req),
         getScene: (id) => getGameScene(id),
       },
-      session: createSessionHelpers(
-        gameSession,
-        (updatedSession) => setGameSession(updatedSession),
-        {
-          updateSession: (sessionId, updates) => updateGameSession(sessionId, updates),
-        } satisfies SessionAPI
-      ),
+      session: sessionHelpers,
       onSceneOpen: async (sceneId, npcId) => {
         setIsLoadingScene(true);
         try {

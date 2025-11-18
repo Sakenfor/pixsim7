@@ -57,6 +57,18 @@ class GameSessionService:
             # Fail gracefully if cache is unavailable
             pass
 
+    async def _invalidate_cached_relationships(self, session_id: int):
+        """Invalidate cached relationship data for a session."""
+        if not self.redis:
+            return
+
+        try:
+            cache_key = f"session:{session_id}:relationships"
+            await self.redis.delete(cache_key)
+        except Exception:
+            # Fail gracefully if cache is unavailable
+            pass
+
     async def _normalize_session_relationships(self, session: GameSession) -> None:
         """
         Compute and store tierId and intimacyLevelId for all NPC relationships.
@@ -182,6 +194,9 @@ class GameSessionService:
         await self.db.commit()
         await self.db.refresh(session)
 
+        # Invalidate cache before normalization to ensure fresh computation
+        await self._invalidate_cached_relationships(session.id)
+
         # Normalize relationships before returning
         await self._normalize_session_relationships(session)
 
@@ -218,7 +233,11 @@ class GameSessionService:
         await self.db.commit()
         await self.db.refresh(session)
 
+        # Invalidate cache before normalization to ensure fresh computation
+        await self._invalidate_cached_relationships(session.id)
+
         # Normalize relationships before returning (especially important after relationship updates)
+        # This will recompute and re-cache the normalized relationships
         await self._normalize_session_relationships(session)
 
         return session

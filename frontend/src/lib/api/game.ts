@@ -12,6 +12,7 @@ import type {
   GameWorldSummary,
   GameWorldDetail,
   GameSessionDTO,
+  SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
   QuestObjectiveDTO,
@@ -32,6 +33,7 @@ export type {
   GameWorldSummary,
   GameWorldDetail,
   GameSessionDTO,
+  SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
   QuestObjectiveDTO,
@@ -133,12 +135,7 @@ export interface SessionUpdateResponse {
 
 export async function updateGameSession(
   sessionId: number,
-  payload: {
-    world_time?: number;
-    flags?: Record<string, unknown>;
-    relationships?: Record<string, unknown>;
-    expected_version?: number;
-  },
+  payload: SessionUpdatePayload,
 ): Promise<SessionUpdateResponse> {
   try {
     const res = await apiClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
