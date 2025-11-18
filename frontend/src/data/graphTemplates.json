@@ -4,7 +4,11 @@
     "name": "Simple Dialogue",
     "description": "A basic video node followed by a choice node with two options",
     "createdAt": 1700000000000,
+    "updatedAt": 1700000000000,
     "nodeTypes": ["video", "choice", "end"],
+    "source": "builtin",
+    "category": "Dialogue Branch",
+    "tags": ["dialogue", "choice", "beginner"],
     "data": {
       "nodes": [
         {
@@ -81,7 +85,11 @@
     "name": "Branching Quest",
     "description": "Quest intro with success/fail branches leading to different outcomes",
     "createdAt": 1700000000000,
+    "updatedAt": 1700000000000,
     "nodeTypes": ["video", "condition", "end"],
+    "source": "builtin",
+    "category": "Quest Flow",
+    "tags": ["quest", "condition", "branching"],
     "data": {
       "nodes": [
         {
@@ -191,7 +199,11 @@
     "name": "Conditional Dialogue",
     "description": "Dialogue that branches based on a condition, then converges",
     "createdAt": 1700000000000,
+    "updatedAt": 1700000000000,
     "nodeTypes": ["video", "condition"],
+    "source": "builtin",
+    "category": "Dialogue Branch",
+    "tags": ["dialogue", "condition", "converging"],
     "data": {
       "nodes": [
         {
@@ -281,6 +293,231 @@
           "id": "edge_neutral_conclusion",
           "from": "video_neutral",
           "to": "video_conclusion",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "builtin_flirt_sequence",
+    "name": "Flirt → Success/Fail",
+    "description": "A flirtation attempt with success and failure branches",
+    "createdAt": 1700000000000,
+    "updatedAt": 1700000000000,
+    "nodeTypes": ["video", "choice", "condition", "end"],
+    "source": "builtin",
+    "category": "Relationship",
+    "tags": ["flirt", "relationship", "branching"],
+    "data": {
+      "nodes": [
+        {
+          "id": "video_setup",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Setup Scene",
+            "position": { "x": 150, "y": 100 }
+          }
+        },
+        {
+          "id": "choice_approach",
+          "type": "choice",
+          "choices": [
+            { "id": "flirt", "text": "Try to flirt" },
+            { "id": "friendly", "text": "Be friendly" }
+          ],
+          "metadata": {
+            "label": "Choose Approach",
+            "position": { "x": 150, "y": 250 }
+          }
+        },
+        {
+          "id": "condition_success",
+          "type": "condition",
+          "condition": { "type": "true" },
+          "metadata": {
+            "label": "Flirt Success Check",
+            "position": { "x": 50, "y": 400 }
+          }
+        },
+        {
+          "id": "video_success",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Positive Response",
+            "position": { "x": 50, "y": 550 }
+          }
+        },
+        {
+          "id": "video_awkward",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Awkward Response",
+            "position": { "x": 150, "y": 550 }
+          }
+        },
+        {
+          "id": "video_friendly_response",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Friendly Chat",
+            "position": { "x": 250, "y": 400 }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_setup_choice",
+          "from": "video_setup",
+          "to": "choice_approach",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_choice_flirt",
+          "from": "choice_approach",
+          "to": "condition_success",
+          "meta": {
+            "fromPort": "flirt",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_choice_friendly",
+          "from": "choice_approach",
+          "to": "video_friendly_response",
+          "meta": {
+            "fromPort": "friendly",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_condition_success",
+          "from": "condition_success",
+          "to": "video_success",
+          "meta": {
+            "fromPort": "true",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_condition_fail",
+          "from": "condition_success",
+          "to": "video_awkward",
+          "meta": {
+            "fromPort": "false",
+            "toPort": "input"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "builtin_minigame_flow",
+    "name": "Minigame Flow",
+    "description": "Setup → Minigame → Success/Fail outcomes",
+    "createdAt": 1700000000000,
+    "updatedAt": 1700000000000,
+    "nodeTypes": ["video", "minigame", "end"],
+    "source": "builtin",
+    "category": "Minigame",
+    "tags": ["minigame", "challenge", "branching"],
+    "data": {
+      "nodes": [
+        {
+          "id": "video_intro",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Minigame Intro",
+            "position": { "x": 150, "y": 100 }
+          }
+        },
+        {
+          "id": "minigame_1",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Minigame",
+            "position": { "x": 150, "y": 250 }
+          }
+        },
+        {
+          "id": "video_win",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Victory",
+            "position": { "x": 75, "y": 400 }
+          }
+        },
+        {
+          "id": "video_lose",
+          "type": "video",
+          "assetIds": [],
+          "metadata": {
+            "label": "Defeat",
+            "position": { "x": 225, "y": 400 }
+          }
+        },
+        {
+          "id": "end_1",
+          "type": "end",
+          "metadata": {
+            "label": "End",
+            "position": { "x": 150, "y": 550 }
+          }
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_intro_game",
+          "from": "video_intro",
+          "to": "minigame_1",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_game_win",
+          "from": "minigame_1",
+          "to": "video_win",
+          "meta": {
+            "fromPort": "success",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_game_lose",
+          "from": "minigame_1",
+          "to": "video_lose",
+          "meta": {
+            "fromPort": "failure",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_win_end",
+          "from": "video_win",
+          "to": "end_1",
+          "meta": {
+            "fromPort": "default",
+            "toPort": "input"
+          }
+        },
+        {
+          "id": "edge_lose_end",
+          "from": "video_lose",
+          "to": "end_1",
           "meta": {
             "fromPort": "default",
             "toPort": "input"

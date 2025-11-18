@@ -474,6 +474,19 @@ export function GraphPanel() {
 
     const description = prompt('Enter template description (optional):');
 
+    // Prompt for category
+    const categoryInput = prompt(
+      'Enter category (optional):\n\n' +
+      'Options: Quest Flow, Dialogue Branch, Combat, Minigame, Relationship, Condition Check, Other'
+    );
+    const category = categoryInput?.trim() as any || undefined;
+
+    // Prompt for tags (comma-separated)
+    const tagsInput = prompt('Enter tags (comma-separated, optional):');
+    const tags = tagsInput
+      ? tagsInput.split(',').map((t) => t.trim()).filter((t) => t.length > 0)
+      : [];
+
     // Prompt for template scope
     let source: 'user' | 'world' = 'user';
     if (worldId !== null && worldId !== undefined) {
@@ -494,6 +507,8 @@ export function GraphPanel() {
           description: description?.trim(),
           source,
           worldId: source === 'world' ? worldId : undefined,
+          category,
+          tags,
         }
       );
 
@@ -516,9 +531,38 @@ export function GraphPanel() {
       }
 
       try {
-        // Apply template with offset
+        let parameterValues: Record<string, string | number | boolean> = {};
+
+        // Phase 10: Prompt for parameter values if template has parameters
+        if (template.parameters && template.parameters.length > 0) {
+          for (const param of template.parameters) {
+            const promptText = param.description
+              ? `${param.name} (${param.description})\n\nDefault: ${param.defaultValue}`
+              : `${param.name}\n\nDefault: ${param.defaultValue}`;
+
+            const inputValue = prompt(promptText, String(param.defaultValue));
+
+            if (inputValue === null) {
+              toast.info('Template insertion cancelled');
+              return;
+            }
+
+            // Parse value based on type
+            if (param.type === 'number') {
+              parameterValues[param.id] = parseFloat(inputValue) || param.defaultValue;
+            } else if (param.type === 'boolean') {
+              parameterValues[param.id] =
+                inputValue.toLowerCase() === 'true' || inputValue === '1';
+            } else {
+              parameterValues[param.id] = inputValue || param.defaultValue;
+            }
+          }
+        }
+
+        // Apply template with offset and parameter values
         const result = applyTemplate(template, {
           offsetPosition: { x: 150, y: 150 },
+          parameterValues,
         });
 
         // Show warnings if any
