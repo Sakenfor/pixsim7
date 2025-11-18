@@ -28,7 +28,7 @@ export function registerCoreFeatures() {
 /**
  * Assets/Gallery Feature
  */
-function registerAssetsFeature() {
+export function registerAssetsFeature() {
   registerCompleteFeature({
     feature: {
       id: 'assets',
@@ -107,7 +107,7 @@ function registerAssetsFeature() {
 /**
  * Workspace/Scene Builder Feature
  */
-function registerWorkspaceFeature() {
+export function registerWorkspaceFeature() {
   registerCompleteFeature({
     feature: {
       id: 'workspace',
@@ -178,7 +178,7 @@ function registerWorkspaceFeature() {
 /**
  * Content Generation Feature
  */
-function registerGenerationFeature() {
+export function registerGenerationFeature() {
   registerCompleteFeature({
     feature: {
       id: 'generation',
@@ -245,7 +245,7 @@ function registerGenerationFeature() {
 /**
  * Game Features
  */
-function registerGameFeature() {
+export function registerGameFeature() {
   registerCompleteFeature({
     feature: {
       id: 'game',
@@ -309,7 +309,7 @@ function registerGameFeature() {
 /**
  * Automation Feature
  */
-function registerAutomationFeature() {
+export function registerAutomationFeature() {
   registerCompleteFeature({
     feature: {
       id: 'automation',
@@ -344,7 +344,7 @@ function registerAutomationFeature() {
 /**
  * Plugin Manager Feature
  */
-function registerPluginsFeature() {
+export function registerPluginsFeature() {
   registerCompleteFeature({
     feature: {
       id: 'plugins',
