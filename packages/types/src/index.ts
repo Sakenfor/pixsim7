@@ -169,6 +169,12 @@ export * from './npcZoneTracking'
 export * from './game'
 
 // ===================
+// NPC Interaction Types
+// ===================
+
+export * from './interactions'
+
+// ===================
 // User Preferences Types
 // ===================
 

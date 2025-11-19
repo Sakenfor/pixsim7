@@ -91,7 +91,306 @@ Map all existing systems that implement “interactions with NPCs” so the new 
    - Where they rely on NPC identity vs roles.
 3. Add a short “Inventory Summary” section to the bottom of this file to guide subsequent phases.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+---
+
+## Phase 17.1 Inventory Summary
+
+### 1. Current Interaction Types
+
+#### A. Hotspot-Based Interactions (`packages/game-core/src/interactions/hotspot.ts`)
+
+**Types:**
+- `play_scene`: Triggers a scene via `GameHotspot.linked_scene_id` or explicit `scene_id`
+- `change_location`: Moves player to a different `GameLocation`
+- `npc_talk`: Initiates conversation with an NPC (placeholder implementation)
+
+**Schema:** Stored in `GameHotspot.meta.action` as untyped JSON, parsed on the client.
+
+**Limitations:**
+- No relationship/intimacy gating
+- No NPC behavior/availability integration
+- No structured outcome tracking
+- Client-side only schema validation
+
+#### B. Plugin-Based Slot Interactions (`frontend/src/lib/game/interactions/`)
+
+**Architecture:**
+- Registry-based plugin system with LRU caching
+- Each plugin defines config schema, execution logic, availability checks
+- Presets system for reusable configurations
+- Stored in `NpcSlot2d.interactions` as `Record<string, BaseInteractionConfig>`
+
+**Current Plugins:**
+- `talk`: Opens dialogue UI
+- `pickpocket`: Stealth mechanic with success/detection chances
+- `persuade`: Relationship-based skill checks
+- `giveItem`: Inventory-based gifting
+- `sensualize`: Intimacy-gated interactions
+
+**Key Features:**
+- Optimistic session updates with backend validation
+- Auto-generated UI from config fields
+- Preset libraries (global + per-world) with usage tracking
+- Context-aware suggestions based on NPC roles/world tags
+- Conflict detection for incompatible presets
+
+**Request/Response Shapes:**
+```typescript
+// Plugin execution context
+interface InteractionContext {
+  state: { assignment, gameSession, sessionFlags, relationships, worldId, worldTime, ... }
+  api: { getSession, updateSession, attemptPickpocket, getScene }
+  session: SessionHelpers  // High-level helpers for flags/inventory/arcs
+  onSceneOpen, onSessionUpdate, onError, onSuccess
+}
+
+// Plugin result
+interface InteractionResult {
+  success: boolean
+  message?: string
+  data?: unknown
+}
+```
+
+**Session Updates:**
+- `GameSession.flags`: Nested JSON for arcs, quests, events, NPC state
+- `GameSession.relationships`: Per-NPC relationship metrics (affinity, trust, chemistry, tension)
+- Updates via `updateGameSession(id, { flags, relationships })`
+
+**Storage:**
+- World presets: `GameWorld.meta.interactionPresets`
+- Global presets: `localStorage:pixsim7:global-interaction-presets`
+- Usage stats: `localStorage:pixsim7:preset-usage-stats`
+
+#### C. Dialogue & Generation (`pixsim7_backend/api/v1/game_dialogue.py`)
+
+**Endpoints:**
+- `POST /next-line`: Builds LLM prompt from narrative context
+- `POST /next-line/execute`: Generates dialogue with caching + memory/emotion integration
+- `POST /next-line/debug`: Full context dump for prompt debugging
+
+**Narrative Context Assembly:**
+```python
+context = engine.build_context(
+    world_id, session_id, npc_id,
+    world_data, session_data, npc_data,
+    location_data, scene_data, player_input
+)
+# Includes: relationship state, intimacy level, mood, arcs, time, location
+```
+
+**Integration with NPC Systems:**
+- **Memory**: Recent conversation history (last 3-5 exchanges)
+- **Emotions**: Current emotional state + dialogue modifiers
+- **Milestones**: Relationship tier changes trigger milestone creation
+- **Personality Evolution**: Milestones can adjust NPC traits over time
+- **World Events**: Context-aware event references in dialogue
+
+**Caching Strategy:**
+- Smart cache keys: `hash(npc_personality + relationship_state + player_input)`
+- Default TTL: 1 hour
+- Analytics tracking: hit rate, cost savings, generation time
+
+**Outcome Effects:**
+- Creates `NpcMemory` records (short/long-term)
+- Updates `NpcEmotionalState` (intensity, duration, triggers)
+- Tracks `DialogueAnalytics` (costs, quality metrics, engagement)
+
+#### D. Action Blocks & Visual Generation (`pixsim7_backend/domain/narrative/action_blocks/`)
+
+**Purpose:** Structured prompts for video/image generation in intimate/narrative scenes.
+
+**Types:**
+- `SingleStateBlock`: Motion from one reference image (image-to-video)
+- `TransitionBlock`: Smooth morphing between 2-7 reference images
+
+**Selection API:**
+```python
+POST /actions/select
+{
+  locationTag, pose, intimacy_level, mood,
+  branchIntent: "escalate" | "cool_down" | "maintain" | ...,
+  leadNpcId, partnerNpcId, requiredTags, excludeTags
+}
+→ Returns matched blocks with compatibility score + resolved images
+```
+
+**Generation API:**
+```python
+POST /actions/generate
+{
+  concept_type: "creature_interaction" | "position_maintenance" | ...,
+  parameters: { creature_type, character_name, intensity, ... },
+  content_rating, duration, previous_segment
+}
+→ Dynamically generates action block from templates
+```
+
+**Branch Intents:** Narrative direction control (`ESCALATE`, `COOL_DOWN`, `SIDE_BRANCH`, `MAINTAIN`, `RESOLVE`)
+
+**Storage:**
+- Block library: JSON files in `domain/narrative/action_blocks/`
+- Generated blocks: Cached in `GameWorld.meta` or dedicated cache table
+
+---
+
+### 2. How They Update State
+
+#### Session Flags (`GameSession.flags`)
+
+**Current Structure (from types):**
+```typescript
+interface SessionFlags {
+  sessionKind: 'world' | 'scene'
+  world?: {
+    id: string
+    mode: 'turn_based' | 'real_time'
+    turnNumber?: number
+    turnHistory?: TurnRecord[]
+    turnDeltaSeconds?: number
+    currentLocationId?: number
+  }
+  arcs?: Record<string, ArcProgress>      // { "arc:romance_alex": { stage: 2, seenScenes: [123] } }
+  quests?: Record<string, QuestState>     // { "quest:find_sword": { status: "active", steps: 3 } }
+  events?: Record<string, EventState>     // { "event:festival": { active: true, triggeredAt: ... } }
+  npcs?: Record<string, NpcSessionState>  // { "npc:123": { state: {...}, interactions: {...} } }
+}
+```
+
+**Update Pattern:** Plugins use `SessionHelpers` → optimistic UI update → backend validation → server truth applied.
+
+#### Relationships (`GameSession.relationships`)
+
+**Current Structure:**
+```typescript
+Record<string, {
+  affinity: number       // 0-100, general fondness
+  trust: number          // 0-100, reliability/honesty
+  chemistry: number      // 0-100, romantic/sexual attraction
+  tension: number        // 0-100, conflict/friction
+  lastInteractionAt?: string
+  custom?: Record<string, unknown>
+}>
+// Keys: "npc:<id>" or "npc:<name>" or custom identifiers
+```
+
+**Computed Metrics:**
+- **Relationship Tier**: `stranger → acquaintance → friend → close_friend → lover → soulmate`
+- **Intimacy Level**: Derived from chemistry + affinity + trust via world-defined schema
+
+**Update Sources:**
+- Direct deltas from interactions (e.g., `persuade` plugin)
+- Dialogue outcomes (relationship milestone detection)
+- Scene/quest progression hooks
+
+---
+
+### 3. NPC Identity: IDs vs Roles
+
+#### Current Usage
+
+**By NPC ID:**
+- Dialogue endpoints: `npc_id: int` (required, database primary key)
+- Slot assignments: `assignment.npcId: number` (specific NPC instance)
+- Relationships: `"npc:<id>"` keys in `GameSession.relationships`
+- Memory/emotions: `npc_id: int` FK to `GameNPC`
+
+**By Role:**
+- World NPC mappings: `GameWorld.meta.npcs: Record<role, npcId>`
+  - Example: `{ "role:shopkeeper": 456, "role:guard": 789 }`
+- Slot filters: `NpcSlot2d.roleFilter?: string` (match role instead of specific ID)
+- Scene roles: `SceneNode.meta.speakerRole?: string` (generic role, resolved at runtime)
+
+**Hybrid Approach:**
+- `getWorldNpcRoles(world)` extracts role mappings
+- `assignNpcsToSlots(slots, presences, npcRoles)` resolves roles → IDs
+- Interactions execute against concrete `npcId` (roles are pre-resolved)
+
+**Missing:**
+- No generic role-based interaction definitions (all are NPC-ID-specific once resolved)
+- No fallback/default interactions for "any NPC of role X"
+
+---
+
+### 4. Integration Gaps
+
+**What's Missing for a Unified Interaction Layer:**
+
+1. **No canonical NPC interaction model** that bridges:
+   - Hotspot actions (scene-centric)
+   - Slot plugin interactions (NPC-centric)
+   - Dialogue flows (narrative-centric)
+   - Action blocks (visual generation-centric)
+
+2. **Gating is ad-hoc:**
+   - Plugins have `isAvailable(context)` but no shared gating schema
+   - No relationship tier requirements
+   - No NPC behavior/activity integration (Task 13 schedules exist but aren't checked)
+   - No mood-based filtering
+
+3. **Outcomes are plugin-specific:**
+   - Dialogue creates memories/emotions
+   - Pickpocket updates flags/inventory
+   - No unified "interaction outcome" contract
+
+4. **No NPC-initiated interactions:**
+   - All interactions are player-triggered
+   - NPC behavior system (Task 13) can't "offer" interactions proactively
+
+5. **No cross-surface consistency:**
+   - 2D hotspots vs 3D interactions use different schemas
+   - Editor tooling defines interactions differently than runtime
+
+**What Works Well:**
+
+1. **Plugin registry + presets** (Phase 1-10 complete):
+   - Flexible, extensible architecture
+   - Great designer UX (presets, suggestions, conflict detection)
+   - Usage analytics
+
+2. **Session helpers abstraction:**
+   - Clean API for state manipulation
+   - Optimistic updates with rollback
+
+3. **Narrative context assembly:**
+   - Comprehensive NPC/world/relationship context
+   - Already integrates memory, emotions, milestones
+
+4. **Action blocks:**
+   - Well-structured visual generation pipeline
+   - Branch intent concept is reusable
+
+---
+
+### 5. Recommended Next Steps
+
+**Phase 17.2 (Canonical Model):**
+- Build `NpcInteraction` types on TOP of existing plugin system
+- Reuse `BaseInteractionConfig` + extend with gating/outcome metadata
+- Align with action block `BranchIntent` concept
+
+**Phase 17.3 (Gating):**
+- Centralize availability logic currently scattered in `plugin.isAvailable()`
+- Integrate NPC behavior state from `GameSession.flags.npcs["npc:<id>"].state`
+- Use relationship tiers from narrative engine
+
+**Phase 17.4 (UI):**
+- Unify hotspot actions + slot interactions into single menu builder
+- Reuse existing `InteractionContext` + `SessionHelpers`
+
+**Phase 17.5 (Execution):**
+- Wrap plugin execution with unified outcome tracking
+- Link to dialogue/action block generation when appropriate
+
+**Phase 17.6 (NPC-Initiated):**
+- Add `interactionInbox` to `GameSession.flags`
+- Let NPC behavior emit interaction intents
+
+**Phase 17.7 (Tooling):**
+- Extend existing preset system with debug overlays
+- Reuse analytics from dialogue system
 
 ---
 
@@ -200,7 +499,20 @@ export interface NpcInteractionInstance {
 2. Add Pydantic models and validators (gating ranges, known surfaces, reference consistency).
 3. Integrate with world/NPC meta validation (no new tables).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+**Implementation:**
+- TypeScript types: `packages/types/src/interactions.ts`
+- Pydantic schemas: `pixsim7_backend/domain/game/npc_interactions.py`
+
+**Key Design Decisions:**
+1. Built on top of existing plugin system (extends `BaseInteractionConfig`)
+2. Reused `BranchIntent` concept from action blocks
+3. Comprehensive gating schema (relationship, mood, behavior, time, flags)
+4. Unified outcome schema (relationships, flags, inventory, NPC effects, scenes, generation)
+5. Storage in GameWorld.meta and GameSession.flags (no new DB tables)
+6. Support for both player-initiated and NPC-initiated interactions
+7. Full TypeScript/Pydantic parity for API compatibility
 
 ---
 
