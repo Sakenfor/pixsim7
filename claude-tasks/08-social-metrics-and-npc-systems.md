@@ -23,8 +23,8 @@ This task defines phases for turning NPC mood and reputation into **first‑clas
 
 - [x] **Phase 1 – Inventory Existing NPC Mood & Social Signals** ✅ *2025-11-19*
 - [x] **Phase 2 – Design Generic Metric Types (Backend + TS)** ✅ *2025-11-19*
-- [ ] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)**
-- [ ] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)**
+- [x] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)** ✅ *2025-11-19*
+- [x] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)** ✅ *2025-11-19*
 - [ ] **Phase 5 – Add Generic Metric Preview Helper in Game-Core**
 - [ ] **Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)**
 - [ ] **Phase 7 – Define Schema Locations in World/Session Meta**
@@ -290,6 +290,71 @@ Add a reputation/faction metric suitable for world‑level or NPC‑pair reputat
    - Outputs: `reputation_band` (e.g. `enemy`, `neutral`, `ally`).
 3. Register this evaluator in the metrics registry.
 4. Expose a preview path via the metrics preview API.
+
+---
+
+**Phase 4 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Backend Evaluator
+
+**File**: `pixsim7_backend/domain/metrics/reputation_evaluators.py`
+
+Implemented `evaluate_reputation_band` with support for:
+
+1. **Multiple Reputation Types**:
+   - Player-to-NPC: Based on relationship affinity
+   - NPC-to-NPC: Based on stored pair relationships
+   - Faction-based: Based on faction membership standings
+
+2. **Schema-Aware Computation**:
+   - Uses `GameWorld.meta.reputation_schemas` for world-specific bands
+   - Supports target-type-specific schemas (npc, faction, group)
+   - Falls back to default schema if target-specific not found
+
+3. **Default Reputation Bands** (0-100 scale):
+   - enemy: 0-20
+   - hostile: 20-40
+   - neutral: 40-60
+   - friendly: 60-80
+   - ally: 80-100
+
+4. **Flexible Input**:
+   - Explicit reputation_score override
+   - Derived from session relationships (affinity for player-NPC)
+   - Faction membership dictionary for faction standings
+   - Neutral default (50.0) if no data available
+
+### API Endpoint
+
+**File**: `pixsim7_backend/api/v1/game_reputation_preview.py`
+
+**Route**: `POST /api/v1/game/reputation/preview-reputation`
+
+**Request**:
+- subject_id, subject_type (player/npc)
+- Optional: target_id, target_type (npc/faction/group)
+- Optional: reputation_score, session_id, faction_membership
+
+**Response**:
+- reputation_band, reputation_score
+- Echoed subject_id, target_id, target_type
+
+### Route Plugin
+
+**File**: `pixsim7_backend/routes/game_reputation_preview/manifest.py`
+
+- Registered at `/api/v1/game/reputation` prefix
+- Auto-discovery enabled
+- No auth required for preview endpoints
+
+### Key Features
+
+- **Extensible**: Easy to add new reputation types (guild, region, etc.)
+- **Schema-Driven**: Worlds can define custom reputation bands
+- **Integration-Ready**: Works with existing relationship data
+- **Future-Proof**: Supports faction system (to be implemented)
+
+**Verification**: ✅ Backend evaluator implemented, ✅ API endpoint created, ✅ Route plugin registered
 
 ---
 
