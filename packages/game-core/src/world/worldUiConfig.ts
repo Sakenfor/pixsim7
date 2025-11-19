@@ -76,6 +76,51 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
     density: 'comfortable',
     motion: 'comfortable',
   },
+  // Accessibility-focused presets
+  'high-contrast': {
+    id: 'high-contrast',
+    colors: {
+      primary: '#ffff00',
+      secondary: '#00ffff',
+      background: '#000000',
+      text: '#ffffff',
+    },
+    density: 'comfortable',
+    motion: 'comfortable',
+  },
+  'reduced-motion': {
+    id: 'reduced-motion',
+    colors: {
+      primary: '#3b82f6',
+      secondary: '#8b5cf6',
+      background: '#ffffff',
+      text: '#1f2937',
+    },
+    density: 'comfortable',
+    motion: 'none',
+  },
+  'large-ui': {
+    id: 'large-ui',
+    colors: {
+      primary: '#2563eb',
+      secondary: '#7c3aed',
+      background: '#f9fafb',
+      text: '#111827',
+    },
+    density: 'spacious',
+    motion: 'calm',
+  },
+  'maximum-accessibility': {
+    id: 'maximum-accessibility',
+    colors: {
+      primary: '#ffff00',
+      secondary: '#00ffff',
+      background: '#000000',
+      text: '#ffffff',
+    },
+    density: 'spacious',
+    motion: 'none',
+  },
 };
 
 /**
@@ -241,4 +286,60 @@ export function getMotionConfig(world: GameWorldDetail): MotionConfig {
  */
 export function getMotionPresetNames(): MotionPreset[] {
   return Object.keys(MOTION_PRESETS) as MotionPreset[];
+}
+
+/**
+ * List of accessibility-focused theme preset IDs
+ */
+export const ACCESSIBILITY_PRESET_IDS = [
+  'high-contrast',
+  'reduced-motion',
+  'large-ui',
+  'maximum-accessibility',
+] as const;
+
+/**
+ * Check if a theme preset is accessibility-focused
+ */
+export function isAccessibilityPreset(themeId: string): boolean {
+  return ACCESSIBILITY_PRESET_IDS.includes(themeId as any);
+}
+
+/**
+ * Get accessibility-focused theme presets
+ */
+export function getAccessibilityPresets(): WorldUiTheme[] {
+  return ACCESSIBILITY_PRESET_IDS.map(id => THEME_PRESETS[id]).filter(Boolean);
+}
+
+/**
+ * Get recommended accessibility preset based on user preferences
+ * Returns undefined if no specific recommendation
+ */
+export function getRecommendedAccessibilityPreset(userPrefs: {
+  prefersHighContrast?: boolean;
+  prefersReducedMotion?: boolean;
+  preferredDensity?: 'compact' | 'comfortable' | 'spacious';
+}): string | undefined {
+  // Maximum accessibility for users with both high contrast and reduced motion
+  if (userPrefs.prefersHighContrast && userPrefs.prefersReducedMotion) {
+    return 'maximum-accessibility';
+  }
+
+  // High contrast preset for users preferring high contrast
+  if (userPrefs.prefersHighContrast) {
+    return 'high-contrast';
+  }
+
+  // Reduced motion preset for users preferring reduced motion
+  if (userPrefs.prefersReducedMotion) {
+    return 'reduced-motion';
+  }
+
+  // Large UI preset for users preferring spacious density
+  if (userPrefs.preferredDensity === 'spacious') {
+    return 'large-ui';
+  }
+
+  return undefined;
 }

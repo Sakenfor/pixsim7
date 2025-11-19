@@ -17,15 +17,14 @@ export interface WorldUiThemePreset extends WorldUiTheme {
 }
 
 /**
- * Get all built-in theme presets
+ * Descriptions for accessibility-focused presets
  */
-function getBuiltInPresets(): WorldUiThemePreset[] {
-  return Object.values(THEME_PRESETS).map(theme => ({
-    ...theme,
-    name: formatThemeName(theme.id),
-    isBuiltIn: true,
-  }));
-}
+const ACCESSIBILITY_DESCRIPTIONS: Record<string, string> = {
+  'high-contrast': '♿ Maximum contrast colors (yellow/cyan on black) for visual accessibility',
+  'reduced-motion': '♿ No animations, instant transitions for vestibular sensitivity',
+  'large-ui': '♿ Spacious layout with larger text and controls for better readability',
+  'maximum-accessibility': '♿ Combines high contrast, no motion, and large UI for maximum accessibility',
+};
 
 /**
  * Format theme ID into a readable name
@@ -35,6 +34,18 @@ function formatThemeName(id: string): string {
     .split('-')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+/**
+ * Get all built-in theme presets
+ */
+function getBuiltInPresets(): WorldUiThemePreset[] {
+  return Object.values(THEME_PRESETS).map(theme => ({
+    ...theme,
+    name: formatThemeName(theme.id),
+    description: ACCESSIBILITY_DESCRIPTIONS[theme.id],
+    isBuiltIn: true,
+  }));
 }
 
 /**

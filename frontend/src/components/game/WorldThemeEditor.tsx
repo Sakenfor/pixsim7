@@ -18,6 +18,9 @@ import {
   generateThemeId,
   getMotionPresetNames,
   MOTION_PRESETS,
+  isAccessibilityPreset,
+  getRecommendedAccessibilityPreset,
+  loadUserPreferences,
   type WorldUiThemePreset,
 } from '@pixsim7/game-core';
 import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/ui';
@@ -27,6 +30,16 @@ interface WorldThemeEditorProps {
   worldDetail: GameWorldDetail;
   onSave: (updatedWorld: GameWorldDetail) => void;
   compact?: boolean;
+}
+
+/**
+ * Helper function to format theme ID into readable name
+ */
+function formatThemeName(id: string): string {
+  return id
+    .split('-')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 export function WorldThemeEditor({ worldDetail, onSave, compact = false }: WorldThemeEditorProps) {
@@ -176,9 +189,30 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
   const viewModeOptions = getViewModeOptions();
   const currentTheme = getThemePresetById(selectedThemeId);
 
+  // Get accessibility recommendation based on user preferences
+  const userPrefs = loadUserPreferences();
+  const recommendedPreset = getRecommendedAccessibilityPreset(userPrefs);
+  const showRecommendation = recommendedPreset && recommendedPreset !== selectedThemeId;
+
   if (compact) {
     return (
       <div className="space-y-3">
+        {/* Accessibility Recommendation */}
+        {showRecommendation && (
+          <div className="bg-green-50 dark:bg-green-900/20 p-2 rounded border border-green-200 dark:border-green-800">
+            <div className="text-xs text-green-700 dark:text-green-300 mb-1">
+              ♿ Try <strong>{formatThemeName(recommendedPreset)}</strong> for accessibility
+            </div>
+            <Button
+              onClick={() => handleThemeChange(recommendedPreset)}
+              variant="secondary"
+              size="sm"
+            >
+              Apply
+            </Button>
+          </div>
+        )}
+
         {/* Theme Selector */}
         <div>
           <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
@@ -189,11 +223,29 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
             onChange={(e) => handleThemeChange(e.target.value)}
             className="w-full"
           >
-            {themePresets.map((preset) => (
-              <option key={preset.id} value={preset.id}>
-                {preset.name} {preset.isBuiltIn ? '' : '(Custom)'}
-              </option>
-            ))}
+            <optgroup label="♿ Accessibility">
+              {themePresets.filter(p => p.isBuiltIn && isAccessibilityPreset(p.id)).map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Standard">
+              {themePresets.filter(p => p.isBuiltIn && !isAccessibilityPreset(p.id)).map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </optgroup>
+            {themePresets.some(p => !p.isBuiltIn) && (
+              <optgroup label="Custom">
+                {themePresets.filter(p => !p.isBuiltIn).map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </Select>
         </div>
 
@@ -258,6 +310,31 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
         </div>
       </div>
 
+      {/* Accessibility Recommendation */}
+      {showRecommendation && (
+        <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded border border-green-200 dark:border-green-800">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">♿</span>
+            <div className="flex-1">
+              <div className="font-semibold text-sm text-green-800 dark:text-green-200 mb-1">
+                Accessibility Recommendation
+              </div>
+              <div className="text-xs text-green-700 dark:text-green-300 mb-2">
+                Based on your accessibility preferences, we recommend the{' '}
+                <strong>{formatThemeName(recommendedPreset)}</strong> theme.
+              </div>
+              <Button
+                onClick={() => handleThemeChange(recommendedPreset)}
+                variant="secondary"
+                size="sm"
+              >
+                Apply Recommended Theme
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Theme Selection */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -289,8 +366,15 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
           onChange={(e) => handleThemeChange(e.target.value)}
           className="w-full mb-3"
         >
-          <optgroup label="Built-in Themes">
-            {themePresets.filter(p => p.isBuiltIn).map((preset) => (
+          <optgroup label="♿ Accessibility Themes">
+            {themePresets.filter(p => p.isBuiltIn && isAccessibilityPreset(p.id)).map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Standard Themes">
+            {themePresets.filter(p => p.isBuiltIn && !isAccessibilityPreset(p.id)).map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.name}
               </option>
