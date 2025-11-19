@@ -10,6 +10,23 @@ from .permissions import (
     PermissionDeniedError,
     PermissionDeniedBehavior,
 )
+from .behavior_registry import (
+    behavior_registry,
+    evaluate_condition,
+    apply_effect,
+    build_simulation_config,
+)
+from .observability import (
+    metrics_tracker,
+    RequestTimer,
+)
+from .world_scoping import (
+    get_enabled_plugins_for_world,
+    is_plugin_enabled_for_world,
+    set_enabled_plugins_for_world,
+    add_enabled_plugin_for_world,
+    remove_enabled_plugin_for_world,
+)
 
 __all__ = [
     # Core types
@@ -32,4 +49,21 @@ __all__ = [
     'PermissionGroup',
     'PermissionDeniedError',
     'PermissionDeniedBehavior',
+
+    # Behavior extensions (Phase 16.4)
+    'behavior_registry',
+    'evaluate_condition',
+    'apply_effect',
+    'build_simulation_config',
+
+    # Observability (Phase 16.5)
+    'metrics_tracker',
+    'RequestTimer',
+
+    # World scoping (Phase 16.6)
+    'get_enabled_plugins_for_world',
+    'is_plugin_enabled_for_world',
+    'set_enabled_plugins_for_world',
+    'add_enabled_plugin_for_world',
+    'remove_enabled_plugin_for_world',
 ]
