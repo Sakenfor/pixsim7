@@ -11,6 +11,7 @@ import {
   getNpcRelationshipState,
   buildNpcBrainState,
 } from '@pixsim7/game-core';
+import { useUnifiedMood } from '../../hooks/useUnifiedMood';
 
 export const moodDebugTool: WorldToolPlugin = {
   id: 'mood-debug',
@@ -38,6 +39,9 @@ export const moodDebugTool: WorldToolPlugin = {
       npcId: number;
       mood: { valence: number; arousal: number; label?: string };
       flags: Record<string, unknown>;
+      relationship: ReturnType<typeof getNpcRelationshipState>;
+      sessionId: number;
+      worldId: number;
     }> = [];
 
     for (const [key] of Object.entries(relationships)) {
@@ -53,7 +57,10 @@ export const moodDebugTool: WorldToolPlugin = {
         npcMoods.push({
           npcId,
           mood: brainState.mood,
-          flags: relState.flags || {},
+          flags: relState?.flags || {},
+          relationship: relState,
+          sessionId: session.id,
+          worldId: context.selectedWorldId!,
         });
       }
     }
@@ -101,11 +108,30 @@ interface NpcMoodCardProps {
     npcId: number;
     mood: { valence: number; arousal: number; label?: string };
     flags: Record<string, unknown>;
+    relationship: ReturnType<typeof getNpcRelationshipState>;
+    sessionId: number;
+    worldId: number;
   };
 }
 
 function NpcMoodCard({ npcMood }: NpcMoodCardProps) {
-  const { npcId, mood, flags } = npcMood;
+  const { npcId, mood, flags, relationship, sessionId, worldId } = npcMood;
+
+  // Unified mood (general + intimacy + active emotion) from backend metric
+  const unified = useUnifiedMood({
+    worldId,
+    npcId,
+    sessionId,
+    relationshipValues: relationship
+      ? {
+          affinity: relationship.affinity,
+          trust: relationship.trust,
+          chemistry: relationship.chemistry,
+          tension: relationship.tension,
+        }
+      : undefined,
+    intimacyLevelId: relationship?.intimacyLevelId ?? null,
+  });
 
   const getMoodColor = (label?: string): 'blue' | 'green' | 'yellow' | 'red' | 'gray' => {
     switch (label) {
@@ -143,6 +169,40 @@ function NpcMoodCard({ npcMood }: NpcMoodCardProps) {
           <span className="font-mono">{mood.arousal.toFixed(1)}</span>
         </div>
       </div>
+
+      {unified.data && (
+        <div className="pt-2 border-t border-neutral-200 dark:border-neutral-600 space-y-1 text-xs">
+          <p className="font-semibold text-neutral-600 dark:text-neutral-400">
+            Unified Mood
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-neutral-500">General:</span>{' '}
+              <span className="font-mono">
+                {unified.data.generalMood.moodId}
+              </span>
+            </div>
+            {unified.data.intimacyMood && (
+              <div>
+                <span className="text-neutral-500">Intimacy:</span>{' '}
+                <span className="font-mono">
+                  {unified.data.intimacyMood.moodId} (
+                  {Math.round(unified.data.intimacyMood.intensity * 100)}%)
+                </span>
+              </div>
+            )}
+            {unified.data.activeEmotion && (
+              <div className="col-span-2">
+                <span className="text-neutral-500">Emotion:</span>{' '}
+                <span className="font-mono">
+                  {unified.data.activeEmotion.emotionType} (
+                  {Math.round(unified.data.activeEmotion.intensity * 100)}%)
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {Object.keys(flags).length > 0 && (
         <div className="pt-2 border-t border-neutral-200 dark:border-neutral-600">
