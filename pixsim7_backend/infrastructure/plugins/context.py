@@ -1,0 +1,721 @@
+"""
+Plugin Context and Capability APIs
+
+Provides plugins with restricted, permission-aware access to system capabilities.
+
+Instead of giving plugins direct access to DB sessions, services, and internal modules,
+PluginContext exposes narrow, well-typed capability APIs that:
+- Check permissions before granting access
+- Log all plugin actions for observability
+- Provide safe, validated interfaces to world/session/NPC state
+- Make future sandboxing/out-of-process plugins feasible
+
+See: claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md Phase 16.3
+"""
+
+from typing import Optional, Any, Callable
+from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
+import structlog
+
+from .permissions import PluginPermission, PermissionDeniedError, PermissionDeniedBehavior
+from .types import PluginManifest
+
+
+# ===== BASE CAPABILITY API =====
+
+class BaseCapabilityAPI:
+    """
+    Base class for capability APIs.
+
+    Provides permission checking and logging for all capability methods.
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+    ):
+        self.plugin_id = plugin_id
+        self.permissions = permissions
+        self.logger = logger
+
+    def _check_permission(
+        self,
+        required: str,
+        capability_name: str,
+        behavior: PermissionDeniedBehavior = PermissionDeniedBehavior.RAISE,
+    ) -> bool:
+        """
+        Check if plugin has required permission.
+
+        Args:
+            required: Required permission (e.g., "world:read")
+            capability_name: Name of capability being accessed (for error messages)
+            behavior: What to do if permission is denied
+
+        Returns:
+            True if permission granted, False if denied (and behavior != RAISE)
+
+        Raises:
+            PermissionDeniedError: If permission denied and behavior == RAISE
+        """
+        if required not in self.permissions:
+            if behavior == PermissionDeniedBehavior.RAISE:
+                raise PermissionDeniedError(self.plugin_id, required, capability_name)
+            elif behavior == PermissionDeniedBehavior.WARN:
+                self.logger.warning(
+                    "Permission denied",
+                    plugin_id=self.plugin_id,
+                    required_permission=required,
+                    capability=capability_name,
+                )
+            # SILENT: do nothing
+            return False
+        return True
+
+
+# ===== WORLD READ API =====
+
+class WorldReadAPI(BaseCapabilityAPI):
+    """
+    Read-only access to world metadata and configuration.
+
+    Required permission: world:read
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+        db: Optional[AsyncSession] = None,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+        self.db = db
+
+    async def get_world(self, world_id: int) -> Optional[dict]:
+        """
+        Get world metadata by ID.
+
+        Returns:
+            World data (id, name, meta, flags) or None if not found/no permission
+        """
+        if not self._check_permission(
+            PluginPermission.WORLD_READ.value,
+            "WorldReadAPI.get_world",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return None
+
+        if not self.db:
+            self.logger.error("WorldReadAPI requires database access")
+            return None
+
+        from pixsim7_backend.domain.game.world import GameWorld
+
+        result = await self.db.execute(
+            "SELECT id, name, description, meta, flags FROM game_worlds WHERE id = :world_id",
+            {"world_id": world_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        self.logger.debug(
+            "get_world",
+            plugin_id=self.plugin_id,
+            world_id=world_id,
+        )
+
+        return {
+            "id": row[0],
+            "name": row[1],
+            "description": row[2],
+            "meta": row[3],
+            "flags": row[4],
+        }
+
+    async def get_world_config(self, world_id: int, key: str) -> Optional[Any]:
+        """
+        Get a specific config value from world.meta.
+
+        Args:
+            world_id: World ID
+            key: Dot-separated key path (e.g., "behavior.enabledPlugins")
+
+        Returns:
+            Config value or None if not found
+        """
+        world = await self.get_world(world_id)
+        if not world or not world.get("meta"):
+            return None
+
+        # Navigate nested keys
+        value = world["meta"]
+        for part in key.split("."):
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                return None
+
+        return value
+
+    async def list_world_locations(self, world_id: int) -> list[dict]:
+        """
+        List all locations in a world.
+
+        Returns:
+            List of location dicts (id, name, location_type, meta)
+        """
+        if not self._check_permission(
+            PluginPermission.WORLD_READ.value,
+            "WorldReadAPI.list_world_locations",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return []
+
+        if not self.db:
+            return []
+
+        result = await self.db.execute(
+            "SELECT id, name, location_type, meta FROM game_locations WHERE world_id = :world_id",
+            {"world_id": world_id}
+        )
+
+        locations = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "location_type": row[2],
+                "meta": row[3],
+            }
+            for row in result.fetchall()
+        ]
+
+        self.logger.debug(
+            "list_world_locations",
+            plugin_id=self.plugin_id,
+            world_id=world_id,
+            count=len(locations),
+        )
+
+        return locations
+
+    async def list_world_npcs(self, world_id: int) -> list[dict]:
+        """
+        List all NPCs in a world.
+
+        Returns:
+            List of NPC dicts (id, name, role, meta)
+        """
+        if not self._check_permission(
+            PluginPermission.WORLD_READ.value,
+            "WorldReadAPI.list_world_npcs",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return []
+
+        if not self.db:
+            return []
+
+        result = await self.db.execute(
+            "SELECT id, name, role, meta FROM game_npcs WHERE world_id = :world_id",
+            {"world_id": world_id}
+        )
+
+        npcs = [
+            {
+                "id": row[0],
+                "name": row[1],
+                "role": row[2],
+                "meta": row[3],
+            }
+            for row in result.fetchall()
+        ]
+
+        self.logger.debug(
+            "list_world_npcs",
+            plugin_id=self.plugin_id,
+            world_id=world_id,
+            count=len(npcs),
+        )
+
+        return npcs
+
+
+# ===== SESSION READ API =====
+
+class SessionReadAPI(BaseCapabilityAPI):
+    """
+    Read-only access to session state.
+
+    Required permission: session:read
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+        db: Optional[AsyncSession] = None,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+        self.db = db
+
+    async def get_session(self, session_id: int) -> Optional[dict]:
+        """
+        Get session state by ID.
+
+        Returns:
+            Session data (id, world_id, flags, relationships) or None
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_READ.value,
+            "SessionReadAPI.get_session",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return None
+
+        if not self.db:
+            self.logger.error("SessionReadAPI requires database access")
+            return None
+
+        result = await self.db.execute(
+            "SELECT id, world_id, flags, relationships FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        self.logger.debug(
+            "get_session",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+        )
+
+        return {
+            "id": row[0],
+            "world_id": row[1],
+            "flags": row[2] or {},
+            "relationships": row[3] or {},
+        }
+
+    async def get_session_flag(self, session_id: int, flag_key: str) -> Optional[Any]:
+        """
+        Get a specific flag from session.flags.
+
+        Args:
+            session_id: Session ID
+            flag_key: Dot-separated flag path (e.g., "stealth.pickpocket_attempts")
+
+        Returns:
+            Flag value or None if not found
+        """
+        session = await self.get_session(session_id)
+        if not session:
+            return None
+
+        # Navigate nested keys
+        value = session["flags"]
+        for part in flag_key.split("."):
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                return None
+
+        return value
+
+    async def get_relationship(self, session_id: int, npc_key: str) -> Optional[dict]:
+        """
+        Get relationship state for an NPC.
+
+        Args:
+            session_id: Session ID
+            npc_key: NPC key (e.g., "npc:123" or "role:friend")
+
+        Returns:
+            Relationship dict or None if not found
+        """
+        session = await self.get_session(session_id)
+        if not session:
+            return None
+
+        return session["relationships"].get(npc_key)
+
+
+# ===== SESSION MUTATIONS API =====
+
+class SessionMutationsAPI(BaseCapabilityAPI):
+    """
+    Write access to session state (flags, relationships).
+
+    Required permission: session:write
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+        db: Optional[AsyncSession] = None,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+        self.db = db
+
+    async def set_session_flag(
+        self,
+        session_id: int,
+        flag_key: str,
+        value: Any,
+    ) -> bool:
+        """
+        Set a flag in session.flags.
+
+        Args:
+            session_id: Session ID
+            flag_key: Flag key (will be namespaced under plugin ID)
+            value: Flag value (must be JSON-serializable)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "SessionMutationsAPI.set_session_flag",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        if not self.db:
+            self.logger.error("SessionMutationsAPI requires database access")
+            return False
+
+        from pixsim7_backend.domain.game.session import GameSession
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            self.logger.warning(
+                "Session not found",
+                plugin_id=self.plugin_id,
+                session_id=session_id,
+            )
+            return False
+
+        session_id_db, flags = row
+        flags = flags or {}
+
+        # Namespace flag under plugin ID
+        namespaced_key = f"plugin:{self.plugin_id}:{flag_key}"
+
+        # Set flag
+        flags[namespaced_key] = value
+
+        # Update session
+        await self.db.execute(
+            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
+            {"flags": flags, "session_id": session_id}
+        )
+        await self.db.commit()
+
+        self.logger.info(
+            "set_session_flag",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            flag_key=namespaced_key,
+        )
+
+        return True
+
+    async def update_relationship(
+        self,
+        session_id: int,
+        npc_key: str,
+        updates: dict,
+    ) -> bool:
+        """
+        Update relationship state for an NPC.
+
+        Args:
+            session_id: Session ID
+            npc_key: NPC key (e.g., "npc:123")
+            updates: Partial relationship data to merge (affinity, trust, etc.)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "SessionMutationsAPI.update_relationship",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        if not self.db:
+            return False
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, relationships FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return False
+
+        session_id_db, relationships = row
+        relationships = relationships or {}
+
+        # Get existing relationship or create new
+        if npc_key not in relationships:
+            relationships[npc_key] = {}
+
+        # Merge updates
+        relationships[npc_key].update(updates)
+
+        # Track plugin provenance
+        if "meta" not in relationships[npc_key]:
+            relationships[npc_key]["meta"] = {}
+        relationships[npc_key]["meta"]["last_modified_by"] = self.plugin_id
+
+        # Update session
+        await self.db.execute(
+            "UPDATE game_sessions SET relationships = :relationships WHERE id = :session_id",
+            {"relationships": relationships, "session_id": session_id}
+        )
+        await self.db.commit()
+
+        self.logger.info(
+            "update_relationship",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            npc_key=npc_key,
+            updates=list(updates.keys()),
+        )
+
+        return True
+
+
+# ===== LOGGING API =====
+
+class LoggingAPI(BaseCapabilityAPI):
+    """
+    Structured logging for plugins.
+
+    Required permission: log:emit
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+
+    def info(self, message: str, **kwargs):
+        """Log info message"""
+        if self._check_permission(
+            PluginPermission.LOG_EMIT.value,
+            "LoggingAPI.info",
+            PermissionDeniedBehavior.SILENT,
+        ):
+            self.logger.info(message, plugin_id=self.plugin_id, **kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """Log warning message"""
+        if self._check_permission(
+            PluginPermission.LOG_EMIT.value,
+            "LoggingAPI.warning",
+            PermissionDeniedBehavior.SILENT,
+        ):
+            self.logger.warning(message, plugin_id=self.plugin_id, **kwargs)
+
+    def error(self, message: str, **kwargs):
+        """Log error message"""
+        if self._check_permission(
+            PluginPermission.LOG_EMIT.value,
+            "LoggingAPI.error",
+            PermissionDeniedBehavior.SILENT,
+        ):
+            self.logger.error(message, plugin_id=self.plugin_id, **kwargs)
+
+    def debug(self, message: str, **kwargs):
+        """Log debug message"""
+        if self._check_permission(
+            PluginPermission.LOG_EMIT.value,
+            "LoggingAPI.debug",
+            PermissionDeniedBehavior.SILENT,
+        ):
+            self.logger.debug(message, plugin_id=self.plugin_id, **kwargs)
+
+
+# ===== BEHAVIOR EXTENSION API =====
+
+class BehaviorExtensionAPI(BaseCapabilityAPI):
+    """
+    Register custom behavior conditions and effects.
+
+    Required permissions:
+    - behavior:extend_conditions
+    - behavior:extend_effects
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+        self._condition_registry: dict[str, Callable] = {}
+        self._effect_registry: dict[str, Callable] = {}
+
+    def register_condition_evaluator(
+        self,
+        condition_name: str,
+        evaluator: Callable,
+    ) -> bool:
+        """
+        Register a custom behavior condition evaluator.
+
+        Args:
+            condition_name: Condition name (will be namespaced)
+            evaluator: Callable that takes context and returns bool
+
+        Returns:
+            True if registered, False if permission denied
+        """
+        if not self._check_permission(
+            PluginPermission.BEHAVIOR_EXTEND_CONDITIONS.value,
+            "BehaviorExtensionAPI.register_condition_evaluator",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        # Namespace condition ID
+        condition_id = f"plugin:{self.plugin_id}:{condition_name}"
+
+        self._condition_registry[condition_id] = evaluator
+
+        self.logger.info(
+            "register_condition_evaluator",
+            plugin_id=self.plugin_id,
+            condition_id=condition_id,
+        )
+
+        return True
+
+    def register_effect_handler(
+        self,
+        effect_name: str,
+        handler: Callable,
+    ) -> bool:
+        """
+        Register a custom activity effect handler.
+
+        Args:
+            effect_name: Effect name (will be namespaced)
+            handler: Callable that applies the effect
+
+        Returns:
+            True if registered, False if permission denied
+        """
+        if not self._check_permission(
+            PluginPermission.BEHAVIOR_EXTEND_EFFECTS.value,
+            "BehaviorExtensionAPI.register_effect_handler",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        # Namespace effect ID
+        effect_id = f"effect:plugin:{self.plugin_id}:{effect_name}"
+
+        self._effect_registry[effect_id] = handler
+
+        self.logger.info(
+            "register_effect_handler",
+            plugin_id=self.plugin_id,
+            effect_id=effect_id,
+        )
+
+        return True
+
+
+# ===== PLUGIN CONTEXT =====
+
+class PluginContext:
+    """
+    Main context object provided to plugins.
+
+    Provides permission-gated access to capability APIs instead of
+    direct access to internal services, DB sessions, etc.
+
+    Usage in plugin routes:
+        @router.get("/something")
+        async def my_endpoint(ctx: PluginContext = Depends(get_plugin_context("my_plugin"))):
+            world = await ctx.world.get_world(world_id)
+            await ctx.session.set_session_flag(session_id, "my_flag", True)
+            ctx.log.info("Did something")
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: list[str],
+        db: Optional[AsyncSession] = None,
+        redis: Optional[Redis] = None,
+    ):
+        self.plugin_id = plugin_id
+        self.permissions = set(permissions)
+
+        # Create bound logger
+        from pixsim_logging import configure_logging
+        self.logger = configure_logging(f"plugin.{plugin_id}")
+
+        # Initialize capability APIs
+        self.world = WorldReadAPI(plugin_id, self.permissions, self.logger, db)
+        self.session = SessionReadAPI(plugin_id, self.permissions, self.logger, db)
+        self.session_write = SessionMutationsAPI(plugin_id, self.permissions, self.logger, db)
+        self.behavior = BehaviorExtensionAPI(plugin_id, self.permissions, self.logger)
+        self.log = LoggingAPI(plugin_id, self.permissions, self.logger)
+
+        # Store raw resources (for future capability APIs)
+        self._db = db
+        self._redis = redis
+
+    def has_permission(self, permission: str) -> bool:
+        """
+        Check if plugin has a specific permission.
+
+        Useful for conditional feature enablement.
+        """
+        return permission in self.permissions
+
+    def require_permission(self, permission: str) -> None:
+        """
+        Require a permission (raise error if not granted).
+
+        Args:
+            permission: Required permission
+
+        Raises:
+            PermissionDeniedError: If permission not granted
+        """
+        if permission not in self.permissions:
+            raise PermissionDeniedError(
+                self.plugin_id,
+                permission,
+                "PluginContext.require_permission"
+            )
