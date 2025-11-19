@@ -11,8 +11,10 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 ### Worlds: Locations, Hotspots, and Time
 
 **`GameWorld`** represents a long-lived simulation context:
-- Defines a world identifier (`meta.world_id`) and configuration (turn-based vs real-time, relationship scales, etc.)
-- See `RELATIONSHIPS_AND_ARCS.md` for relationship tier definitions
+- Defines a world identifier and configuration (turn-based vs real-time)
+- **`meta.relationship_schemas`**: Per-world relationship tier definitions (affinity ranges → tier IDs)
+- **`meta.intimacy_schema`**: Per-world intimacy level thresholds (affinity/trust/chemistry/tension → level IDs)
+- See `RELATIONSHIPS_AND_ARCS.md` § 2.4 for world-aware relationship normalization
 
 **`GameWorldState`** tracks the current simulation state:
 - `world_time` (decimal timestamp for in-world clock)
@@ -40,6 +42,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 ### Sessions: Player Progress and State
 
 **`GameSession`** tracks a single player's progress through a world or scene:
+- **`world_id`**: Links session to a `GameWorld` for world-aware relationship normalization (optional)
 - **`world_time`**: Synchronized with `GameWorldState.world_time` for life-sim sessions
 - **`flags`**: Arbitrary JSON for quest/arc progress, inventory, events
   - Example: `flags.arcs.main_romance_alex.stage = 2`
@@ -47,7 +50,8 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
   - Example: `flags.world.currentLocationId = 3`
 - **`relationships`**: NPC ↔ Player and NPC ↔ NPC affinity/trust/flags
   - Example: `relationships["npc:12"].affinity = 72`
-  - See `RELATIONSHIPS_AND_ARCS.md` for details
+  - Backend automatically computes `tierId` and `intimacyLevelId` using world-specific schemas
+  - See `RELATIONSHIPS_AND_ARCS.md` for world-aware normalization details
 
 **Session kinds:**
 - **World sessions**: `flags.sessionKind = "world"` – life-sim runs with time progression

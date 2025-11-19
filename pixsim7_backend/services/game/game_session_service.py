@@ -77,6 +77,7 @@ class GameSessionService:
         with frontends consuming these pre-computed values.
 
         Uses Redis cache to reduce computation overhead (60s TTL).
+        Now world-aware: loads schemas from GameWorld.meta when session.world_id is set.
         """
         if not session.relationships:
             return
@@ -87,10 +88,19 @@ class GameSessionService:
             session.relationships = cached
             return
 
-        # TODO: Fetch world metadata for relationship schemas
-        # For now, use default schemas (will fall back to hardcoded defaults)
+        # Fetch world metadata if session is linked to a world
         relationship_schemas: Dict[str, Any] = {}
         intimacy_schema: Optional[Dict[str, Any]] = None
+
+        if session.world_id:
+            result = await self.db.execute(
+                select(GameWorld.id, GameWorld.meta).where(GameWorld.id == session.world_id)
+            )
+            world_row = result.one_or_none()
+
+            if world_row and world_row.meta:
+                relationship_schemas = world_row.meta.get("relationship_schemas", {})
+                intimacy_schema = world_row.meta.get("intimacy_schema")
 
         # Normalize each NPC relationship
         for npc_key in list(session.relationships.keys()):
@@ -107,7 +117,7 @@ class GameSessionService:
                 session.relationships, npc_id
             )
 
-            # Compute tier and intimacy
+            # Compute tier and intimacy using world-specific schemas
             tier_id = compute_relationship_tier(affinity, relationship_schemas)
             intimacy_id = compute_intimacy_level(
                 {"affinity": affinity, "trust": trust, "chemistry": chemistry, "tension": tension},
@@ -134,13 +144,14 @@ class GameSessionService:
         return scene
 
     async def create_session(
-        self, *, user_id: int, scene_id: int, flags: Optional[Dict[str, Any]] = None
+        self, *, user_id: int, scene_id: int, world_id: Optional[int] = None, flags: Optional[Dict[str, Any]] = None
     ) -> GameSession:
         scene = await self._get_scene(scene_id)
         session = GameSession(
             user_id=user_id,
             scene_id=scene.id,
             current_node_id=scene.entry_node_id,
+            world_id=world_id,
             flags=flags or {},
         )
         self.db.add(session)

@@ -110,6 +110,100 @@ Initially this can still live in a per-player `GameSession`. A future
 `PlayerRelationship` table can be introduced later without affecting the
 session structure.
 
+### 2.4 World-Aware Relationship Normalization
+
+**As of Task 11 (2025-11-19)**, sessions can be linked to worlds via `GameSession.world_id`, enabling **per-world relationship schemas**.
+
+#### How it Works
+
+1. **World Schemas**: Define custom relationship tiers and intimacy levels in `GameWorld.meta`:
+
+```jsonc
+{
+  "relationship_schemas": {
+    "default": [
+      {"id": "stranger", "min": 0, "max": 29},
+      {"id": "acquaintance", "min": 30, "max": 59},
+      {"id": "friend", "min": 60, "max": 79},
+      {"id": "best_friend", "min": 80}
+    ]
+  },
+  "intimacy_schema": {
+    "levels": [
+      {
+        "id": "platonic",
+        "minAffinity": 0,
+        "minTrust": 0,
+        "minChemistry": 0,
+        "maxTension": 100
+      },
+      {
+        "id": "romantic",
+        "minAffinity": 70,
+        "minTrust": 60,
+        "minChemistry": 70,
+        "maxTension": 20
+      }
+    ]
+  }
+}
+```
+
+2. **Session Linking**: When creating a session, optionally specify `world_id`:
+
+```http
+POST /api/v1/game/sessions
+{
+  "scene_id": 42,
+  "world_id": 5,
+  "flags": {"sessionKind": "world", ...}
+}
+```
+
+3. **Automatic Normalization**: When updating session relationships, the backend:
+   - Loads schemas from `GameWorld.meta` (if `world_id` is set)
+   - Computes `tierId` and `intimacyLevelId` using those schemas
+   - Stores normalized values in `GameSession.relationships["npc:X"]`
+
+4. **Frontend Consumption**: Frontends receive normalized values:
+
+```jsonc
+{
+  "relationships": {
+    "npc:12": {
+      "affinity": 75.0,
+      "trust": 65.0,
+      "chemistry": 75.0,
+      "tension": 15.0,
+      "tierId": "friend",           // Computed by backend
+      "intimacyLevelId": "romantic", // Computed by backend
+      "flags": []
+    }
+  }
+}
+```
+
+#### Schema Validation
+
+- `GameWorld.meta` schemas are validated on create/update (Pydantic models)
+- Invalid schemas return HTTP 400 with detailed validation errors
+- Use `GET /api/v1/game/worlds/debug/validate-schemas` to check all your worlds
+
+#### Cache Behavior
+
+- Normalized relationships are cached in Redis (60s TTL)
+- Cache is invalidated when:
+  - Session relationships are updated
+  - World schemas are changed (invalidates all sessions for that world)
+
+#### Fallback Behavior
+
+- **Sessions without `world_id`**: Use hardcoded default schemas
+- **Worlds without schemas**: Fall back to hardcoded defaults
+- **Frontend**: Can compute fallback values locally if backend normalization hasn't run
+
+See [Task 11](/claude-tasks/11-world-aware-session-normalization-and-schema-validation.md) for implementation details.
+
 ---
 
 ## 3. Story Arcs and Quests

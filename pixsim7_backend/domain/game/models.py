@@ -60,6 +60,7 @@ class GameSession(SQLModel, table=True):
     user_id: int = Field(index=True)
     scene_id: int = Field(foreign_key="game_scenes.id", index=True)
     current_node_id: int = Field(foreign_key="game_scene_nodes.id", index=True)
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True, description="Links session to a world for schema-aware normalization")
     flags: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     relationships: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     world_time: float = Field(default=0.0, description="Game time seconds (can map to day cycles)")

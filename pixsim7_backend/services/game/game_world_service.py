@@ -6,12 +6,20 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7_backend.domain.game.models import GameWorld, GameWorldState
+try:
+    from redis.asyncio import Redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    Redis = None  # type: ignore
+
+from pixsim7_backend.domain.game.models import GameWorld, GameWorldState, GameSession
 
 
 class GameWorldService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, redis: Optional[Redis] = None):
         self.db = db
+        self.redis = redis if REDIS_AVAILABLE else None
 
     async def create_world(
         self,
@@ -79,6 +87,9 @@ class GameWorldService:
         """
         Update the metadata for a game world.
 
+        When schemas change, invalidates cached relationships for all sessions
+        linked to this world to ensure normalization uses updated schemas.
+
         Args:
             world_id: ID of the world to update
             meta: New metadata dictionary
@@ -94,5 +105,34 @@ class GameWorldService:
         self.db.add(world)
         await self.db.commit()
         await self.db.refresh(world)
+
+        # Invalidate cached relationships for all sessions linked to this world
+        await self._invalidate_world_session_caches(world_id)
+
         return world
+
+    async def _invalidate_world_session_caches(self, world_id: int) -> None:
+        """
+        Invalidate cached relationship data for all sessions linked to a world.
+
+        Called when world schemas are updated to ensure subsequent normalization
+        uses the new schemas.
+        """
+        if not self.redis:
+            return
+
+        try:
+            # Find all sessions linked to this world
+            result = await self.db.execute(
+                select(GameSession.id).where(GameSession.world_id == world_id)
+            )
+            session_ids = [row[0] for row in result.all()]
+
+            # Invalidate cache for each session
+            if session_ids:
+                cache_keys = [f"session:{sid}:relationships" for sid in session_ids]
+                await self.redis.delete(*cache_keys)
+        except Exception:
+            # Fail gracefully if cache invalidation fails
+            pass
 
