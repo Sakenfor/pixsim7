@@ -70,6 +70,7 @@ import { ScenarioComparison } from '../components/simulation/ScenarioComparison'
 import { WorldStateOverview } from '../components/simulation/WorldStateOverview';
 import { MultiRunComparison } from '../components/simulation/MultiRunComparison';
 import { ConstraintRunner } from '../components/simulation/ConstraintRunner';
+import { SimulationPluginsPanel } from '../components/simulation/SimulationPluginsPanel';
 import {
   loadSavedRuns,
   saveSimulationRun,
@@ -77,6 +78,7 @@ import {
   type SavedSimulationRun,
 } from '../lib/simulation/multiRunStorage';
 import type { ConstraintEvaluationContext } from '../lib/simulation/constraints';
+import { registerExamplePlugins, unregisterExamplePlugins } from '../lib/simulation/hooks';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -134,9 +136,14 @@ export function SimulationPlayground() {
   const [showConstraintRunner, setShowConstraintRunner] = useState(false);
   const [isConstraintRunning, setIsConstraintRunning] = useState(false);
 
+  // Phase 8: Plugin management
+  const [showPluginsPanel, setShowPluginsPanel] = useState(false);
+  const [plugins, setPlugins] = useState<any[]>([]);
+
   // Register simulation hooks on mount
   useEffect(() => {
     registerBuiltinHooks();
+    registerExamplePlugins(); // Phase 8: Register example plugins
 
     // Load or create simulation history
     const savedHistory = loadHistory();
@@ -146,8 +153,12 @@ export function SimulationPlayground() {
       setSimulationHistory(createHistory(null, null));
     }
 
+    // Phase 8: Load initial plugins
+    setPlugins(simulationHooksRegistry.getPlugins());
+
     return () => {
       unregisterBuiltinHooks();
+      unregisterExamplePlugins(); // Phase 8: Cleanup
     };
   }, []);
 
@@ -460,6 +471,12 @@ export function SimulationPlayground() {
     });
   };
 
+  // Phase 8: Toggle plugin enabled/disabled
+  const handleTogglePlugin = (pluginId: string, enabled: boolean) => {
+    simulationHooksRegistry.setPluginEnabled(pluginId, enabled);
+    setPlugins(simulationHooksRegistry.getPlugins());
+  };
+
   // Parse world time for display
   const worldTimeComponents = parseWorldTime(worldTime);
   const worldTimeDisplay = formatWorldTime(worldTime);
@@ -602,6 +619,13 @@ export function SimulationPlayground() {
             disabled={!selectedWorldId}
           >
             🎯 Constraint Runner
+          </Button>
+          <Button
+            size="sm"
+            variant={showPluginsPanel ? 'primary' : 'secondary'}
+            onClick={() => setShowPluginsPanel(!showPluginsPanel)}
+          >
+            🔌 Plugins ({plugins.filter((p) => p.enabled).length}/{plugins.length})
           </Button>
         </div>
       </Panel>
@@ -746,6 +770,11 @@ export function SimulationPlayground() {
           isRunning={isConstraintRunning}
           onRunningChange={setIsConstraintRunning}
         />
+      )}
+
+      {/* Phase 8: Plugins Panel */}
+      {showPluginsPanel && (
+        <SimulationPluginsPanel plugins={plugins} onTogglePlugin={handleTogglePlugin} />
       )}
 
       {/* World Selection & Time Display */}
