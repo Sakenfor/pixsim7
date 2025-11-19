@@ -53,6 +53,9 @@ export interface GraphTemplate {
   source?: TemplateSource; // Where the template comes from
   worldId?: number; // For world-scoped templates
 
+  // Phase 6: Favorites
+  isFavorite?: boolean;
+
   // Phase 7: Categories and tags
   category?: TemplateCategory;
   tags?: string[];
@@ -63,10 +66,38 @@ export interface GraphTemplate {
   // Phase 10: Parameters
   parameters?: TemplateParameter[];
 
+  // Phase 8: Preconditions for compatibility checking
+  preconditions?: TemplatePreconditions;
+
   data: {
     nodes: DraftSceneNode[];
     edges: DraftEdge[];
   };
+}
+
+/**
+ * Phase 8: Template preconditions for validation
+ *
+ * Defines requirements that must be met before a template can be inserted
+ */
+export interface TemplatePreconditions {
+  /** Required cast roles (e.g., ["protagonist", "mentor"]) */
+  requiredRoles?: string[];
+
+  /** Required arc IDs that must exist in the scene */
+  requiredArcs?: string[];
+
+  /** Required flags or variables (e.g., ["quest_started", "has_key"]) */
+  requiredFlags?: string[];
+
+  /** Minimum number of nodes the scene should have */
+  minNodes?: number;
+
+  /** Maximum number of nodes the scene should have */
+  maxNodes?: number;
+
+  /** Custom validation message */
+  customMessage?: string;
 }
 
 /**
@@ -306,6 +337,116 @@ export function validateTemplate(template: GraphTemplate): {
     valid: errors.length === 0,
     errors,
     warnings,
+  };
+}
+
+/**
+ * Phase 8: Validate template preconditions against a scene
+ *
+ * Checks if the template's preconditions are met by the target scene
+ */
+export function validatePreconditions(
+  template: GraphTemplate,
+  scene: import('../../modules/scene-builder').DraftScene
+): {
+  compatible: boolean;
+  errors: string[];
+  warnings: string[];
+  missingRoles?: string[];
+  missingArcs?: string[];
+  missingFlags?: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const missingRoles: string[] = [];
+  const missingArcs: string[] = [];
+  const missingFlags: string[] = [];
+
+  // If no preconditions, always compatible
+  if (!template.preconditions) {
+    return {
+      compatible: true,
+      errors,
+      warnings,
+    };
+  }
+
+  const preconditions = template.preconditions;
+
+  // Check node count constraints
+  if (preconditions.minNodes !== undefined && scene.nodes.length < preconditions.minNodes) {
+    warnings.push(
+      `Scene has ${scene.nodes.length} nodes, but template recommends at least ${preconditions.minNodes}`
+    );
+  }
+
+  if (preconditions.maxNodes !== undefined && scene.nodes.length > preconditions.maxNodes) {
+    warnings.push(
+      `Scene has ${scene.nodes.length} nodes, but template recommends at most ${preconditions.maxNodes}`
+    );
+  }
+
+  // Check required roles
+  // Note: We'll check scene.metadata for cast/roles information
+  if (preconditions.requiredRoles && preconditions.requiredRoles.length > 0) {
+    const sceneRoles = (scene.metadata?.cast as string[]) || [];
+    preconditions.requiredRoles.forEach((role) => {
+      if (!sceneRoles.includes(role)) {
+        missingRoles.push(role);
+      }
+    });
+
+    if (missingRoles.length > 0) {
+      errors.push(
+        `Template requires roles: ${missingRoles.join(', ')}. Add these roles to the scene metadata.`
+      );
+    }
+  }
+
+  // Check required arcs
+  if (preconditions.requiredArcs && preconditions.requiredArcs.length > 0) {
+    const sceneArcs = (scene.metadata?.arcs as string[]) || [];
+    preconditions.requiredArcs.forEach((arc) => {
+      if (!sceneArcs.includes(arc)) {
+        missingArcs.push(arc);
+      }
+    });
+
+    if (missingArcs.length > 0) {
+      errors.push(
+        `Template requires arcs: ${missingArcs.join(', ')}. Add these arcs to the scene metadata.`
+      );
+    }
+  }
+
+  // Check required flags
+  if (preconditions.requiredFlags && preconditions.requiredFlags.length > 0) {
+    const sceneFlags = (scene.metadata?.flags as string[]) || [];
+    preconditions.requiredFlags.forEach((flag) => {
+      if (!sceneFlags.includes(flag)) {
+        missingFlags.push(flag);
+      }
+    });
+
+    if (missingFlags.length > 0) {
+      warnings.push(
+        `Template expects flags: ${missingFlags.join(', ')}. Scene may not have expected context.`
+      );
+    }
+  }
+
+  // Custom message
+  if (preconditions.customMessage) {
+    warnings.push(preconditions.customMessage);
+  }
+
+  return {
+    compatible: errors.length === 0,
+    errors,
+    warnings,
+    missingRoles: missingRoles.length > 0 ? missingRoles : undefined,
+    missingArcs: missingArcs.length > 0 ? missingArcs : undefined,
+    missingFlags: missingFlags.length > 0 ? missingFlags : undefined,
   };
 }
 

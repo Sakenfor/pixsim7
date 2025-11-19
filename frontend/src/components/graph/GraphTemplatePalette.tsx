@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
 import { useTemplateStore } from '../../lib/graph/templatesStore';
-import { validateTemplate, type TemplateCategory } from '../../lib/graph/graphTemplates';
+import { validateTemplate, validatePreconditions, type TemplateCategory } from '../../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../../lib/graph/graphTemplates';
+import type { DraftScene } from '../../modules/scene-builder';
 
 // Available categories for filtering
 const TEMPLATE_CATEGORIES: (TemplateCategory | 'All')[] = [
@@ -22,6 +23,9 @@ interface GraphTemplatePaletteProps {
 
   /** Current world ID for loading world templates */
   worldId?: number | null;
+
+  /** Current scene for precondition validation (Phase 8) */
+  currentScene?: DraftScene | null;
 
   /** Compact mode for smaller display */
   compact?: boolean;
@@ -63,12 +67,14 @@ function isValidTemplateJSON(obj: any): obj is GraphTemplate {
 export function GraphTemplatePalette({
   onInsertTemplate,
   worldId,
+  currentScene,
   compact = false,
 }: GraphTemplatePaletteProps) {
   const templates = useTemplateStore((state) => state.getTemplates(worldId));
   const addTemplate = useTemplateStore((state) => state.addTemplate);
   const updateTemplate = useTemplateStore((state) => state.updateTemplate);
   const removeTemplate = useTemplateStore((state) => state.removeTemplate);
+  const toggleFavorite = useTemplateStore((state) => state.toggleFavorite);
   const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
 
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -76,9 +82,10 @@ export function GraphTemplatePalette({
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  // Phase 7: Filtering state
+  // Phase 6 & 7: Filtering state
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   // Load world templates when world changes
   useEffect(() => {
@@ -87,8 +94,13 @@ export function GraphTemplatePalette({
     }
   }, [worldId, loadWorldTemplates]);
 
-  // Phase 7: Filter templates
+  // Phase 6 & 7: Filter templates
   const filteredTemplates = templates.filter((template) => {
+    // Phase 6: Favorites filter
+    if (showFavoritesOnly && !template.isFavorite) {
+      return false;
+    }
+
     // Category filter
     if (selectedCategory !== 'All' && template.category !== selectedCategory) {
       return false;
@@ -108,6 +120,10 @@ export function GraphTemplatePalette({
 
     return true;
   });
+
+  // Phase 6: Separate favorites for quick access
+  const favoriteTemplates = filteredTemplates.filter((t) => t.isFavorite);
+  const nonFavoriteTemplates = filteredTemplates.filter((t) => !t.isFavorite);
 
   const handleInsert = (template: GraphTemplate) => {
     onInsertTemplate(template);
@@ -161,6 +177,20 @@ export function GraphTemplatePalette({
       } catch (error) {
         alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
+    }
+  };
+
+  // Phase 6: Toggle favorite
+  const handleToggleFavorite = async (template: GraphTemplate) => {
+    if (template.source === 'builtin') {
+      alert('Cannot modify built-in templates');
+      return;
+    }
+
+    try {
+      await toggleFavorite(template.id);
+    } catch (error) {
+      alert(`Failed to toggle favorite: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -294,8 +324,21 @@ export function GraphTemplatePalette({
               ))}
             </select>
 
+            {/* Phase 6: Favorites filter toggle */}
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showFavoritesOnly}
+                onChange={(e) => setShowFavoritesOnly(e.target.checked)}
+                className="rounded border-neutral-300 dark:border-neutral-600"
+              />
+              <span className="text-neutral-700 dark:text-neutral-300">
+                ⭐ Show favorites only ({templates.filter(t => t.isFavorite).length})
+              </span>
+            </label>
+
             {/* Filter summary */}
-            {(selectedCategory !== 'All' || searchQuery.trim()) && (
+            {(selectedCategory !== 'All' || searchQuery.trim() || showFavoritesOnly) && (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
                 Showing {filteredTemplates.length} of {templates.length} templates
               </div>
@@ -321,8 +364,41 @@ export function GraphTemplatePalette({
         </div>
       )}
 
-      {filteredTemplates.map((template) => {
+      {/* Phase 6: Favorites section */}
+      {!showFavoritesOnly && favoriteTemplates.length > 0 && (
+        <>
+          <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2 flex items-center gap-1">
+            <span>⭐</span>
+            <span>Favorites</span>
+          </div>
+          {favoriteTemplates.map((template) => renderTemplate(template))}
+
+          {nonFavoriteTemplates.length > 0 && (
+            <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2 mt-4">
+              All Templates
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Render non-favorite templates or all if showing favorites only */}
+      {(showFavoritesOnly ? favoriteTemplates : nonFavoriteTemplates).map((template) => renderTemplate(template))}
+
+      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t dark:border-neutral-700">
+        💡 Click Insert to add template to canvas
+      </div>
+    </div>
+  );
+
+  // Template rendering function (extracted for DRY)
+  function renderTemplate(template: GraphTemplate) {
         const validation = validateTemplate(template);
+
+        // Phase 8: Validate preconditions against current scene
+        const preconditionCheck = currentScene
+          ? validatePreconditions(template, currentScene)
+          : { compatible: true, errors: [], warnings: [] };
+
         const isExpanded = expandedTemplateId === template.id;
         const isEditing = editingTemplateId === template.id;
         const sourceBadge = getSourceBadge(template);
@@ -377,6 +453,16 @@ export function GraphTemplatePalette({
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {/* Phase 6: Favorite star button */}
+                        {!isReadOnly && (
+                          <button
+                            onClick={() => handleToggleFavorite(template)}
+                            className="text-lg hover:scale-110 transition-transform"
+                            title={template.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            {template.isFavorite ? '⭐' : '☆'}
+                          </button>
+                        )}
                         <div className="font-semibold text-sm truncate" title={template.name}>
                           {template.name}
                         </div>
@@ -442,6 +528,26 @@ export function GraphTemplatePalette({
                 </div>
               )}
 
+              {/* Phase 8: Precondition Errors */}
+              {preconditionCheck.errors.length > 0 && (
+                <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-800 dark:text-red-200">
+                  <div className="font-semibold mb-1">❌ Incompatible with current scene</div>
+                  {preconditionCheck.errors.map((err, i) => (
+                    <div key={i}>• {err}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Phase 8: Precondition Warnings */}
+              {preconditionCheck.warnings.length > 0 && preconditionCheck.errors.length === 0 && (
+                <div className="mb-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded text-xs text-amber-800 dark:text-amber-200">
+                  <div className="font-semibold mb-1">⚠ Compatibility warnings</div>
+                  {preconditionCheck.warnings.map((warn, i) => (
+                    <div key={i}>• {warn}</div>
+                  ))}
+                </div>
+              )}
+
               {/* Action Buttons */}
               {!isEditing && (
                 <div className="flex gap-2">
@@ -449,8 +555,15 @@ export function GraphTemplatePalette({
                     size="sm"
                     variant="primary"
                     onClick={() => handleInsert(template)}
-                    disabled={!validation.valid}
+                    disabled={!validation.valid || !preconditionCheck.compatible}
                     className="flex-1"
+                    title={
+                      !preconditionCheck.compatible
+                        ? 'Template is incompatible with current scene'
+                        : !validation.valid
+                        ? 'Template has validation errors'
+                        : 'Insert template into scene'
+                    }
                   >
                     ➕ Insert
                   </Button>
@@ -539,11 +652,5 @@ export function GraphTemplatePalette({
             )}
           </div>
         );
-      })}
-
-      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t dark:border-neutral-700">
-        💡 Click Insert to add template to canvas
-      </div>
-    </div>
-  );
+  }
 }

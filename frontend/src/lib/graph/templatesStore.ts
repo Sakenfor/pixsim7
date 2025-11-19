@@ -39,6 +39,9 @@ interface TemplateStoreState {
   /** Remove a template */
   removeTemplate: (id: string, worldId?: number | null) => Promise<void>;
 
+  /** Toggle favorite status */
+  toggleFavorite: (id: string) => Promise<void>;
+
   /** Load world templates from backend */
   loadWorldTemplates: (worldId: number) => Promise<void>;
 
@@ -255,6 +258,21 @@ export const useTemplateStore = create<TemplateStoreState>()(
             return { worldTemplatesCache: newCache };
           });
         }
+      },
+
+      toggleFavorite: async (id: string) => {
+        const template = get().getTemplate(id);
+        if (!template) {
+          throw new Error('Template not found');
+        }
+
+        const newFavoriteStatus = !template.isFavorite;
+
+        // Update the template
+        await get().updateTemplate(id, {
+          isFavorite: newFavoriteStatus,
+          updatedAt: Date.now(),
+        });
       },
 
       clearUserTemplates: () => {

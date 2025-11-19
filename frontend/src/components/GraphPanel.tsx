@@ -29,6 +29,7 @@ import { ValidationPanel } from './validation/ValidationPanel';
 import { WorldContextSelector } from './WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/types';
 import { GraphTemplatePalette } from './graph/GraphTemplatePalette';
+import { TemplateWizardPalette } from './graph/TemplateWizardPalette';
 import { useTemplateStore } from '../lib/graph/templatesStore';
 import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../lib/graph/graphTemplates';
@@ -65,6 +66,7 @@ export function GraphPanel() {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
   const [showTemplatePalette, setShowTemplatePalette] = useState(false);
+  const [showWizardPalette, setShowWizardPalette] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 
@@ -589,6 +591,33 @@ export function GraphPanel() {
     [currentScene, toast, addNode, connectNodes]
   );
 
+  // Phase 7: Handle wizard completion
+  const handleWizardComplete = useCallback(
+    (nodes: any[], edges: any[]) => {
+      if (!currentScene) {
+        toast.error('No active scene');
+        return;
+      }
+
+      try {
+        // Add all nodes
+        nodes.forEach((node) => {
+          addNode(node);
+        });
+
+        // Add all edges
+        edges.forEach((edge) => {
+          connectNodes(edge.from, edge.to, edge.meta);
+        });
+
+        toast.success(`Pattern created with ${nodes.length} nodes and ${edges.length} edges`);
+      } catch (error) {
+        toast.error(`Failed to create pattern: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    },
+    [currentScene, toast, addNode, connectNodes]
+  );
+
   return (
     <div className="h-full w-full flex flex-col">
       {/* Breadcrumbs - appears when zoomed into a group */}
@@ -630,6 +659,14 @@ export function GraphPanel() {
           title="Show/hide template palette"
         >
           {showTemplatePalette ? '✓ Templates' : 'Templates'}
+        </Button>
+        <Button
+          size="sm"
+          variant={showWizardPalette ? 'primary' : 'secondary'}
+          onClick={() => setShowWizardPalette(!showWizardPalette)}
+          title="Show/hide pattern wizards"
+        >
+          {showWizardPalette ? '✓ Wizards' : '🧙 Wizards'}
         </Button>
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <Button size="sm" variant="primary" onClick={handlePreview} disabled={!currentScene?.startNodeId}>
@@ -674,7 +711,18 @@ export function GraphPanel() {
         {/* Template Palette Sidebar */}
         {showTemplatePalette && (
           <div className="w-80 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
-            <GraphTemplatePalette onInsertTemplate={handleInsertTemplate} worldId={worldId} />
+            <GraphTemplatePalette
+              onInsertTemplate={handleInsertTemplate}
+              worldId={worldId}
+              currentScene={currentScene}
+            />
+          </div>
+        )}
+
+        {/* Phase 7: Wizard Palette Sidebar */}
+        {showWizardPalette && (
+          <div className="w-80 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
+            <TemplateWizardPalette onWizardComplete={handleWizardComplete} />
           </div>
         )}
 

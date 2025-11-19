@@ -11,16 +11,16 @@ Below are 10 incremental phases for introducing and maturing graph templates.
 
 ### Phase Checklist
 
-- [ ] **Phase 1 – Capture Selection as an In‑Memory Template**
-- [ ] **Phase 2 – Template Palette & Insertion**
-- [ ] **Phase 3 – Persistence & Basic Management**
-- [ ] **Phase 4 – Per‑World Templates**
-- [ ] **Phase 5 – Export / Import Templates as JSON**
-- [ ] **Phase 6 – Template Library UX (Search, Tags, Favorites)**
-- [ ] **Phase 7 – Template Wizards for Common Patterns**
-- [ ] **Phase 8 – Template Validation & Compatibility**
+- [x] **Phase 1 – Capture Selection as an In‑Memory Template** ✅ *Implemented in `graphTemplates.ts`, `templatesStore.ts`, `GraphPanel.tsx` - 2025-11-19*
+- [x] **Phase 2 – Template Palette & Insertion** ✅ *Implemented in `GraphTemplatePalette.tsx` with applyTemplate function - 2025-11-19*
+- [x] **Phase 3 – Persistence & Basic Management** ✅ *localStorage persistence + rename/delete in palette - 2025-11-19*
+- [x] **Phase 4 – Per‑World Templates** ✅ *World-scoped templates in world metadata with source badges - 2025-11-19*
+- [x] **Phase 5 – Export / Import Templates as JSON** ✅ *Export/import with validation and ID collision handling - 2025-11-19*
+- [x] **Phase 6 – Template Library UX (Search, Tags, Favorites)** ✅ *Search, tags, category filters, and favorites complete - 2025-11-19*
+- [x] **Phase 7 – Template Wizards for Common Patterns** ✅ *5 built-in wizards (Quest Intro, Dialogue Branch, Relationship Check, Flirt, Sequential Dialogue) with form-based UI - 2025-11-19*
+- [x] **Phase 8 – Template Validation & Compatibility** ✅ *validateTemplate, preview, and precondition validation (roles, arcs, flags, node count) with UI warnings - 2025-11-19*
 - [ ] **Phase 9 – Cross‑World Template Packs**
-- [ ] **Phase 10 – Template Usage Analytics & Refactoring Hints**
+- [~] **Phase 10 – Template Usage Analytics & Refactoring Hints** 🚧 *Parameter substitution done; analytics pending*
 
 ---
 
