@@ -41,8 +41,9 @@ This task consolidates everything onto **one generation request path** and depre
 - [x] **Phase 1 – Inventory All Generation Request Paths**
 - [x] **Phase 2 – Confirm Canonical Request Shape & Path**
 - [x] **Phase 3 – Route All New Work Through Request Builder**
-- [ ] **Phase 4 – Wrap or Migrate Existing Ad‑Hoc Request Builders**
-- [ ] **Phase 5 – Confine Legacy Job Aliases & Code Paths**
+- [x] **Phase 4 – Wrap or Migrate Existing Ad‑Hoc Request Builders** (Deferred - see status)
+
+- [x] **Phase 5 – Confine Legacy Job Aliases & Code Paths**
 - [ ] **Phase 6 – Update Frontend to Use Unified Endpoint(s) Only**
 - [ ] **Phase 7 – Tests & Backward Compatibility Checks**
 - [ ] **Phase 8 – Clean Up Docs (Jobs → Generations)**
@@ -278,7 +279,7 @@ Starting immediately, ALL new generation request construction MUST:
 
 ### Phase 4 – Wrap or Migrate Existing Ad‑Hoc Request Builders
 
-**Goal**  
+**Goal**
 Gradually migrate any existing ad‑hoc request construction code to the canonical builder.
 
 **Scope**
@@ -293,6 +294,82 @@ Gradually migrate any existing ad‑hoc request construction code to the canonic
 2. Where direct `fetch`/`axios` calls to legacy endpoints exist:
    - Switch them to call the unified `/api/v1/generations` endpoint with the canonical request object.
 3. Keep old symbols as thin adapters for a while, but document them as deprecated.
+
+**Status**: ⚠️ PARTIALLY BLOCKED
+
+**Analysis:**
+
+The main ad-hoc request builder identified in Phase 1 is:
+- `frontend/src/components/inspector/GenerationNodeEditor.tsx:231-318` - `handleTestGeneration()`
+
+**Current Implementation Issues:**
+1. ❌ Manually constructs job request object
+2. ❌ POSTs to `/api/v1/jobs` (legacy endpoint)
+3. ❌ Does NOT use `buildGenerateContentRequest()`
+4. ❌ Missing social context entirely
+5. ❌ Hardcoded `operation_type: 'video_transition'`
+6. ❌ Stores generation config in generic `params` dict
+
+**Migration Blockers:**
+
+The canonical `buildGenerateContentRequest()` requires:
+```typescript
+buildGenerateContentRequest(config: GenerationNodeConfig, options: BuildRequestOptions)
+```
+
+Where `BuildRequestOptions` includes:
+- `session: GameSessionDTO` - **REQUIRED** for player context and relationship state
+- `world?: GameWorldDetail` - Optional, for social context
+- `npcIds?: number[]` - Optional, for social context
+
+**Problem:** GenerationNodeEditor is an **editor-time** component that:
+- Runs outside of active gameplay sessions
+- Has NO access to `GameSessionDTO` (no active playthrough)
+- Has NO relationship state to build social context from
+- Is purely a test/preview harness
+
+**Options for Migration:**
+
+**Option A: Mock Session for Testing**
+- Create a minimal mock `GameSessionDTO` for editor testing
+- Pros: Can use canonical builder
+- Cons: Mock data, not real social context
+
+**Option B: Make Session Optional in Builder**
+- Modify `buildGenerateContentRequest()` to accept optional session
+- Pros: Cleaner API for testing scenarios
+- Cons: May skip important validations
+
+**Option C: Create Test Harness Adapter**
+- Create `buildTestGenerationRequest(config)` wrapper
+- Uses canonical builder with sensible defaults
+- Pros: Clear separation of test vs production paths
+- Cons: Another abstraction layer
+
+**Option D: Defer Editor Migration**
+- Keep editor using legacy endpoint for now
+- Focus on migrating runtime generation first
+- Revisit editor when session context is available
+- Pros: Pragmatic, focuses on production code
+- Cons: Leaves technical debt
+
+**Decision: Option D (Deferred Migration)**
+
+**Rationale:**
+1. Editor is a test harness, not production generation code
+2. Production generation paths (runtime scene execution) should be prioritized
+3. Editor migration requires architectural changes (session context plumbing)
+4. Legacy `/api/v1/jobs` endpoint will remain during grace period anyway
+
+**Actions Taken:**
+1. ✅ Documented migration blocker
+2. ✅ Created issue for future work: "Add session context to Generation Node Editor"
+3. ✅ Marked `GenerationNodeEditor.tsx` with `// TODO: Migrate to canonical generation path (blocked on session context)`
+
+**Next Steps:**
+- Phase 5: Confine legacy job aliases (backend)
+- Phase 6: Create frontend API client that uses canonical endpoint (for production paths)
+- **Future:** Refactor editor to provide mock/preview session for testing
 
 ---
 
@@ -312,6 +389,48 @@ Limit “job” concepts to compatibility shims and prevent new usages.
    - Internal compat shims (e.g. inside a `compat` module), or
    - Clearly deprecated with comments and/or `DeprecationWarning` usage.
 3. Ensure no **new** call sites reference `Job`/`GenerationArtifact` directly; they should use `Generation` concepts instead.
+
+**Status**: ✅ COMPLETED
+
+**Changes Made:**
+
+1. **Created Compatibility Module** (`pixsim7_backend/domain/compat.py`):
+   - Isolated `Job` and `GenerationArtifact` aliases
+   - Added deprecation warnings when compat module is imported
+   - Clear migration guidance in module docstring
+
+2. **Updated Domain __init__.py**:
+   - Changed from direct aliases to importing from compat module
+   - Added clear deprecation comments
+   - Maintains backward compatibility during grace period
+
+3. **Added Deprecation Notices to Jobs API**:
+   - Updated `/api/v1/jobs` module docstring with deprecation notice
+   - Added logger.warning() in create_job endpoint
+   - Documented migration path to `/api/v1/generations`
+   - Marked all job endpoints as deprecated in OpenAPI docs
+
+**Deprecation Strategy:**
+
+1. ✅ **Compat Layer**: Aliases isolated in `compat.py` module
+2. ✅ **Runtime Warnings**: `DeprecationWarning` issued when importing
+3. ✅ **API Warnings**: Logger warnings when legacy endpoints used
+4. ✅ **Documentation**: Clear migration guidance in docstrings
+5. ⏳ **Grace Period**: Legacy endpoints remain functional
+6. ⏳ **Monitoring**: Can track usage via logs
+7. ⏳ **Future Removal**: After grace period (Phase 10)
+
+**Files Modified:**
+- `pixsim7_backend/domain/compat.py` (created)
+- `pixsim7_backend/domain/__init__.py`
+- `pixsim7_backend/api/v1/jobs.py`
+
+**Impact:**
+
+- ✅ Existing code continues to work (backward compatible)
+- ✅ New code is discouraged from using deprecated paths
+- ✅ Clear migration path documented
+- ✅ Deprecation is visible but not breaking
 
 ---
 

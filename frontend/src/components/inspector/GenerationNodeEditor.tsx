@@ -229,6 +229,12 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   }
 
   async function handleTestGeneration() {
+    // TODO: Migrate to canonical generation path (blocked on session context)
+    // This test harness currently uses legacy /api/v1/jobs endpoint.
+    // To migrate to buildGenerateContentRequest() + /api/v1/generations,
+    // we need access to GameSessionDTO for player context and social context.
+    // See: claude-tasks/15-unified-generation-request-path-and-job-deprecation.md Phase 4
+
     // Check validation
     if (validationResult.errors.length > 0) {
       toast.error(`Cannot test: ${validationResult.errors[0]}`);
@@ -253,7 +259,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           }
         : undefined;
 
-      // Build job request for existing jobs API
+      // Build job request for existing jobs API (LEGACY)
       // Use video_transition operation type as it's closest to content generation
       const jobRequest = {
         operation_type: 'video_transition',
