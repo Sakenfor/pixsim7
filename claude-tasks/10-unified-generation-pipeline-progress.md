@@ -1,8 +1,17 @@
 # Unified Generation Pipeline - Implementation Progress
 
-**Date**: 2025-11-19
-**Task**: claude-tasks/10-unified-generation-pipeline-and-dev-tools.md
-**Phases Completed**: 1-3
+> **For Agents (How to use this file)**
+> - This file is an **implementation progress log** for Task 10, not a spec.
+> - For behavior and data contracts, read:  
+>   - `docs/DYNAMIC_GENERATION_FOUNDATION.md`  
+>   - `docs/INTIMACY_AND_GENERATION.md`  
+>   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`  
+>   - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md` (task overview).
+> - Use this file to understand what phases are already implemented and where code lives.
+
+**Date**: 2025-11-19  
+**Task**: `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md`  
+**Phases Completed**: 1–2 (Phase 3 partially explored)
 
 ---
 
@@ -385,4 +394,3 @@ Rating order: `sfw` < `romantic` < `mature_implied` < `restricted`
 4. **Validation**: Content rating validated against world/user constraints
 
 ---
-
