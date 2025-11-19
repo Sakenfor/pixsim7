@@ -18,9 +18,9 @@ Below are 10 phases for evolving the interaction preset system.
 - [x] **Phase 5 – Usage Summary (Dev‑Only)**
 - [x] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries** *(Completed 2025-11-19)*
 - [x] **Phase 7 – Outcome‑Aware Presets & Success Metrics** *(Completed 2025-11-19)*
-- [ ] **Phase 8 – Context‑Aware Preset Suggestions**
-- [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
-- [ ] **Phase 10 – Preset Playlists & Sequenced Interactions**
+- [x] **Phase 8 – Context‑Aware Preset Suggestions** *(Completed 2025-11-19)*
+- [x] **Phase 9 – Preset Conflict & Compatibility Checks** *(Completed 2025-11-19)*
+- [x] **Phase 10 – Preset Playlists & Sequenced Interactions** *(Completed 2025-11-19)*
 
 ---
 
@@ -280,27 +280,82 @@ Give designers a sense of how different presets perform (e.g. success/fail rates
 
 ---
 
-### Phase 8 – Context‑Aware Preset Suggestions
+### Phase 8 – Context‑Aware Preset Suggestions ✅
 
-**Goal**  
+**Goal**
 Suggest relevant presets based on world context, NPC roles, or past usage, reducing decision load for designers.
 
 **Scope**
 - Heuristic, local suggestions; no external model required.
 
 **Key Steps**
-1. Add metadata to presets (recommended NPC roles, world tags, situation tags like “intro”, “intense”).
+1. Add metadata to presets (recommended NPC roles, world tags, situation tags like "intro", "intense").
 2. In `NpcSlotEditor` / hotspot editors, sort or highlight presets based on:
    - NPC role or tags.
    - Location/world tags.
    - Recent usage in the current world.
-3. Optionally add a “Recommended” section at the top of preset lists.
+3. Optionally add a "Recommended" section at the top of preset lists.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added suggestion metadata and scoring algorithm
+- `frontend/src/components/NpcSlotEditor.tsx` - Added recommended presets section
+- `frontend/src/components/HotspotEditor.tsx` - Added recommended presets section
+
+**Features Implemented:**
+
+1. **Extended Preset Metadata**:
+   - `recommendedRoles`: NPC roles this preset works well with
+   - `worldTags`: World types suitable for this preset (fantasy, modern, sci-fi)
+   - `situationTags`: Situation context (intro, intense, casual, combat, romance)
+
+2. **Suggestion Scoring Algorithm** (0-100 points):
+   - **NPC Role Matching** (30 pts): Matches recommended roles
+   - **World Tags** (25 pts): Matches world context tags
+   - **Situation Tags** (25 pts): Matches current situation
+   - **Recent Usage** (20 pts): Used in last 24h/week/frequently
+   - **Success Rate Bonus** (10 pts): High/moderate success rate from Phase 7
+   - **Base Score** (10 pts): Minimum for any valid preset
+
+3. **Suggestion Functions**:
+   - `SuggestionContext` interface - Context for scoring
+   - `PresetSuggestion` interface - Preset with score and reasons
+   - `calculateSuggestionScore()` - Internal scoring logic
+   - `getSuggestedPresets()` - Get top N suggestions sorted by score
+   - `getRecommendedPresets()` - Get suggestions with minimum score threshold
+
+4. **NpcSlotEditor Integration**:
+   - "⭐ Recommended" section above preset selector
+   - Shows top 3 presets with score ≥ 30
+   - Context includes: NPC role, world tags
+   - One-click apply with hover tooltips showing reasons
+   - Score display with each recommendation
+
+5. **HotspotEditor Integration**:
+   - "⭐ Recommended Presets" section above all presets
+   - Context includes: World tags, situation tags ('hotspot')
+   - Yellow-themed UI to distinguish from NPC slots (blue)
+   - Similar one-click apply with scores
+
+**Scoring Examples:**
+- Perfect match (role + world + recent usage + high success): ~85 points
+- Good match (role + situation): ~55 points
+- Moderate (world tags only): ~25 points (below threshold)
+- Recent usage alone: ~30 points (just meets threshold)
+
+**Benefits:**
+- Reduces decision fatigue for designers
+- Promotes successful presets based on Phase 7 data
+- Contextual suggestions feel intelligent
+- No external dependencies (local heuristics only)
+- Transparent scoring with reason tooltips
 
 ---
 
-### Phase 9 – Preset Conflict & Compatibility Checks
+### Phase 9 – Preset Conflict & Compatibility Checks ✅
 
-**Goal**  
+**Goal**
 Detect when multiple presets applied to the same slot/hotspot might conflict (e.g. contradictory flags or timing).
 
 **Scope**
@@ -310,13 +365,124 @@ Detect when multiple presets applied to the same slot/hotspot might conflict (e.
 1. Define a small set of conflict rules (e.g. two presets both enabling mutually exclusive modes).
 2. Add a validation helper that inspects active presets for a slot/hotspot and returns warnings.
 3. Surface warnings in editors (inline badges or a summary panel).
-4. Provide suggestions where possible (e.g. “remove X” / “adjust Y”).
+4. Provide suggestions where possible (e.g. "remove X" / "adjust Y").
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added conflict detection types and validation functions
+- `frontend/src/components/NpcSlotEditor.tsx` - Added conflict warning panel
+- `frontend/src/components/HotspotEditor.tsx` - Added conflict warning panel
+
+**Features Implemented:**
+
+1. **Conflict Types** (`ConflictSeverity` type):
+   - **error**: Critical conflicts that likely prevent correct execution
+   - **warning**: Potential issues that may cause unexpected behavior
+   - **info**: Performance concerns or best practice suggestions
+
+2. **ConflictWarning Interface**:
+   - `severity`: Conflict severity level
+   - `message`: Human-readable description
+   - `presetIds`: IDs of involved presets
+   - `suggestion`: Optional actionable fix suggestion
+   - `type`: Conflict category identifier
+
+3. **Conflict Detection Rules**:
+   - **Duplicate Interactions** (`checkDuplicateInteractions`):
+     - Detects multiple active presets for same interaction type
+     - Severity: warning
+     - Suggests keeping highest-priority preset
+
+   - **Config Conflicts** (`checkConfigConflicts`):
+     - **Mutually Exclusive Flags**: Detects contradictory personality traits
+       - Examples: aggressive + friendly, stealth + loud, passive + dominant
+       - Severity: error
+       - Suggests choosing one approach
+     - **Boolean Conflicts**: Detects same config key set to different values
+       - Examples: `allowInterrupt: true` vs `allowInterrupt: false`
+       - Severity: warning
+       - Identifies conflicting presets
+
+   - **Performance Concerns** (`checkPerformanceConcerns`):
+     - Warns when >5 presets are active simultaneously
+     - Severity: info
+     - Suggests reviewing for necessary presets only
+
+4. **Validation Functions**:
+   - `validateActivePresets(interactions)`: Main validation function
+     - Accepts interactions record from NPC slot or hotspot
+     - Returns array of `ConflictWarning` objects
+     - Runs all three conflict checks
+
+   - `getConflictSummary(conflicts)`: Severity breakdown
+     - Returns counts: `{ errors, warnings, infos, total }`
+     - Helps prioritize conflict resolution
+
+5. **UI Integration**:
+   - **NpcSlotEditor Panel** (orange theme):
+     - Appears when conflicts detected
+     - Shows severity summary badges (errors, warnings, infos)
+     - Lists each conflict with color-coded background
+     - Displays suggestions with 💡 icon
+     - Collapsible to save space
+
+   - **HotspotEditor Panel**:
+     - Similar UI to NpcSlotEditor
+     - Appears in expanded interactions section
+     - Same conflict detection and display
+
+6. **User Experience**:
+   - **Visual Hierarchy**:
+     - Errors: Red background (`bg-red-50`)
+     - Warnings: Yellow background (`bg-yellow-50`)
+     - Infos: Blue background (`bg-blue-50`)
+   - **Actionable Suggestions**:
+     - Clear recommendations for each conflict
+     - Identifies specific presets involved
+   - **Non-Intrusive**:
+     - Panel only appears when conflicts exist
+     - Doesn't block workflow
+     - Provides guidance without enforcement
+
+**Conflict Detection Examples:**
+
+```typescript
+// Mutually exclusive flags
+{
+  "conversation": { enabled: true, aggressive: true },
+  "smalltalk": { enabled: true, friendly: true }
+}
+// → Error: "aggressive" and "friendly" are mutually exclusive
+
+// Duplicate interactions
+{
+  "conversation": { enabled: true, __presetId: "preset-1" },
+  "conversation": { enabled: true, __presetId: "preset-2" }
+}
+// → Warning: Multiple presets for same interaction type
+
+// Performance concern
+{
+  "interaction1": { enabled: true },
+  "interaction2": { enabled: true },
+  ... (6+ total interactions)
+}
+// → Info: Consider reducing number of active presets
+```
+
+**Usage:**
+- Designers get immediate feedback when preset combinations might conflict
+- Error-level conflicts highlight critical issues that need resolution
+- Warning-level conflicts suggest potential problems to review
+- Info-level suggestions help optimize performance
+- Suggestions guide designers toward solutions
 
 ---
 
-### Phase 10 – Preset Playlists & Sequenced Interactions
+### Phase 10 – Preset Playlists & Sequenced Interactions ✅
 
-**Goal**  
+**Goal**
 Allow designers to define small sequences of presets (playlists) that run over time or in response to state changes.
 
 **Scope**
@@ -327,4 +493,212 @@ Allow designers to define small sequences of presets (playlists) that run over t
 2. Extend editors to let designers build and assign playlists to NPC slots or hotspots.
 3. Add execution logic to step through playlists while respecting existing interaction rules.
 4. Ensure playlists degrade gracefully when some presets are missing or disabled.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added playlist types and execution logic
+- `frontend/src/components/game/PresetPlaylistBuilder.tsx` - Created playlist builder UI
+- `frontend/src/components/NpcSlotEditor.tsx` - Added playlist selector
+- `frontend/src/components/HotspotEditor.tsx` - Added playlist selector
+
+**Features Implemented:**
+
+1. **Playlist Data Types**:
+   - `PlaylistCondition` interface - Condition checking system:
+     - **always**: Always execute (default)
+     - **flag**: Check game flag values
+     - **state**: Check game state values
+     - **random**: Execute with probability (0-1)
+
+   - `PlaylistItem` interface - Single step in playlist:
+     - `presetId`: Which preset to execute
+     - `delayMs`: Optional delay before execution
+     - `condition`: Optional condition check
+     - `stopOnFailure`: Whether to halt playlist on failure
+
+   - `PresetPlaylist` interface - Complete playlist:
+     - `id`, `name`, `description`, `category`, `tags`
+     - `items`: Array of `PlaylistItem`
+     - `loop`: Whether to repeat
+     - `maxLoops`: Maximum loop iterations
+
+   - `PlaylistWithScope` - Playlist with global/world scope
+   - `PlaylistExecutionState` - Runtime execution tracking
+
+2. **Storage Functions** (similar to presets):
+   - **Global**: `getGlobalPlaylists()`, `saveGlobalPlaylists()`, `addGlobalPlaylist()`, `updateGlobalPlaylist()`, `deleteGlobalPlaylist()`
+   - **World**: `getWorldPlaylists()`, `setWorldPlaylists()`, `addWorldPlaylist()`, `updateWorldPlaylist()`, `deleteWorldPlaylist()`
+   - **Combined**: `getCombinedPlaylists()` - merges global and world playlists
+
+3. **Playlist Validation**:
+   - `validatePlaylist()` - Checks if referenced presets exist
+   - Returns `{ valid, missingPresets }` for graceful degradation
+   - Filters out missing presets during execution with warnings
+
+4. **Playlist Execution** (`executePlaylist` function):
+   - **Sequential execution** - Steps through playlist items in order
+   - **Delay handling** - Respects `delayMs` with setTimeout
+   - **Condition evaluation** - `evaluatePlaylistCondition()` checks flags/state/probability
+   - **Error handling** - Respects `stopOnFailure` flag
+   - **Loop support** - Handles `loop` and `maxLoops` parameters
+   - **Graceful degradation** - Skips missing presets, continues execution
+   - **Callback handlers** - `PlaylistExecutionHandlers` for:
+     - `onPresetApply`: Called before applying preset
+     - `onPresetComplete`: Called after preset completes
+     - `onPlaylistComplete`: Called after full cycle
+     - `onPlaylistError`: Called on errors
+     - `onConditionSkip`: Called when condition not met
+   - **Execution control** - Returns stop function to cancel execution
+
+5. **Playlist Builder UI** (`PresetPlaylistBuilder.tsx`):
+   - **Purple-themed** component to distinguish from presets
+   - **Three-column layout**:
+     - Playlist list with scope filter
+     - Playlist editor/creator
+     - Info panel
+   - **Create new playlists**:
+     - Name, description, category
+     - Scope selection (global/world)
+     - Loop configuration
+     - Add/remove/reorder playlist items
+   - **Configure playlist items**:
+     - Select preset from dropdown
+     - Set delay in milliseconds
+     - Toggle "stop on failure"
+     - Drag to reorder (↑/↓ buttons)
+   - **Validation display**:
+     - Shows missing presets with warning badges
+     - Lists validation issues
+   - **Management**:
+     - Delete playlists
+     - Scope filtering (all/global/world)
+
+6. **NpcSlotEditor Integration**:
+   - **Playlist selector section** above Interactions
+   - Dropdown to assign playlist to NPC slot
+   - Shows playlist metadata: name, step count, scope
+   - Stores `__playlistId` and `__playlistName` in slot.meta
+   - Purple info panel when playlist assigned
+   - Only visible when playlists exist
+
+7. **HotspotEditor Integration**:
+   - **Playlist selector** in expanded interactions section
+   - Similar UI to NpcSlotEditor but in purple theme
+   - Dropdown to assign playlist to hotspot
+   - Stores `__playlistId` and `__playlistName` in hotspot.meta
+   - Shows playlist info when assigned
+
+**Technical Design:**
+
+```typescript
+// Example playlist structure
+{
+  id: "romance_sequence_abc123",
+  name: "Romance Sequence",
+  description: "Escalating romantic interactions",
+  items: [
+    {
+      presetId: "flirt_friendly",
+      delayMs: 0,
+      condition: { type: "always" }
+    },
+    {
+      presetId: "flirt_intense",
+      delayMs: 2000,  // Wait 2 seconds
+      condition: {
+        type: "flag",
+        flagName: "romance_level",
+        flagValue: true
+      },
+      stopOnFailure: true
+    },
+    {
+      presetId: "kiss_attempt",
+      delayMs: 3000,
+      condition: {
+        type: "random",
+        probability: 0.7  // 70% chance
+      }
+    }
+  ],
+  loop: false,
+  category: "romance"
+}
+```
+
+**Execution Flow:**
+1. Designer creates playlist in `PresetPlaylistBuilder`
+2. Designer assigns playlist to NPC slot or hotspot
+3. At runtime, `executePlaylist()` is called with:
+   - Playlist definition
+   - Available presets
+   - Apply function (to execute each preset)
+   - Context (flags, state for conditions)
+   - Event handlers (optional)
+4. Executor validates playlist, filters missing presets
+5. For each item:
+   - Evaluate condition (skip if not met)
+   - Wait for delay (if specified)
+   - Apply preset
+   - Handle success/failure
+   - Stop if `stopOnFailure` and failed
+6. Loop if configured
+7. Return stop function for cancellation
+
+**Graceful Degradation:**
+- Missing presets filtered out before execution
+- Warnings logged via `onPlaylistError` handler
+- Playlist continues with remaining valid items
+- Validation UI shows missing preset badges
+- Empty playlists (all missing) return no-op stop function
+
+**Usage Example:**
+```typescript
+// In game executor
+const playlist = getCombinedPlaylists(world).find(p => p.id === npcSlot.__playlistId);
+const presets = getCombinedPresets(world);
+
+const stop = await executePlaylist(
+  playlist,
+  presets,
+  async (preset) => {
+    // Apply preset to NPC
+    applyPresetToSlot(npcSlot, preset);
+    return true; // Success
+  },
+  {
+    flags: gameState.flags,
+    state: gameState.state
+  },
+  {
+    onPresetApply: (id, idx) => console.log(`Applying preset ${id} step ${idx}`),
+    onPlaylistComplete: () => console.log('Playlist finished'),
+    onConditionSkip: (id, reason) => console.log(`Skipped ${id}: ${reason}`)
+  }
+);
+
+// Later, to stop:
+// stop();
+```
+
+**Benefits:**
+- **Sequenced interactions** - Create multi-step interaction flows
+- **Timed execution** - Add delays between steps
+- **Conditional logic** - Execute based on game state
+- **Reusability** - Share playlists across NPCs and hotspots
+- **Flexibility** - Loop support for repeating patterns
+- **Robustness** - Graceful handling of missing presets
+- **Designer-friendly** - Visual builder with drag-and-drop
+
+**All 10 Phases Complete!** The interaction preset system is now fully featured with:
+- Basic presets (Phase 1-2)
+- Hotspot support (Phase 3)
+- Per-world organization (Phase 4)
+- Usage tracking (Phase 5)
+- Import/export (Phase 6)
+- Performance metrics (Phase 7)
+- Smart suggestions (Phase 8)
+- Conflict detection (Phase 9)
+- **Sequenced playlists (Phase 10)** ✅
 

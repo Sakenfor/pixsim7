@@ -38,6 +38,17 @@ export interface InteractionPreset {
 
   /** Icon/emoji for visual identification */
   icon?: string;
+
+  /** Phase 8: Context-aware suggestion metadata */
+
+  /** Recommended NPC roles this preset works well with */
+  recommendedRoles?: string[];
+
+  /** World tags this preset is suitable for (e.g., 'fantasy', 'modern', 'sci-fi') */
+  worldTags?: string[];
+
+  /** Situation tags (e.g., 'intro', 'intense', 'casual', 'combat', 'romance') */
+  situationTags?: string[];
 }
 
 /**
@@ -840,6 +851,801 @@ export async function importPresetsFromFile(
       presets: [],
     };
   }
+}
+
+/**
+ * PHASE 8: Context-Aware Preset Suggestions
+ * Suggest relevant presets based on NPC roles, world tags, and usage patterns
+ */
+
+export interface SuggestionContext {
+  /** Current NPC role (if applicable) */
+  npcRole?: string;
+
+  /** World tags from current world metadata */
+  worldTags?: string[];
+
+  /** Situation tags describing current context */
+  situationTags?: string[];
+
+  /** Current world detail for usage stats */
+  world?: GameWorldDetail | null;
+
+  /** Selected interaction ID to filter by */
+  interactionId?: string;
+}
+
+export interface PresetSuggestion extends PresetWithScope {
+  /** Suggestion score (0-100, higher is better) */
+  score: number;
+
+  /** Reasons why this preset was suggested */
+  reasons: string[];
+}
+
+/**
+ * Calculate suggestion score for a preset based on context
+ */
+function calculateSuggestionScore(
+  preset: PresetWithScope,
+  context: SuggestionContext,
+  usageStats: ReturnType<typeof getPresetUsageStatsWithDetails>
+): { score: number; reasons: string[] } {
+  let score = 0;
+  const reasons: string[] = [];
+
+  // Filter by interaction type (essential)
+  if (context.interactionId && preset.interactionId !== context.interactionId) {
+    return { score: 0, reasons: [] };
+  }
+
+  // 1. NPC Role matching (30 points max)
+  if (context.npcRole && preset.recommendedRoles?.length) {
+    const roleMatch = preset.recommendedRoles.some(
+      (role) => role.toLowerCase() === context.npcRole?.toLowerCase()
+    );
+    if (roleMatch) {
+      score += 30;
+      reasons.push(`Matches NPC role: ${context.npcRole}`);
+    }
+  }
+
+  // 2. World tags matching (25 points max)
+  if (context.worldTags?.length && preset.worldTags?.length) {
+    const matchingWorldTags = preset.worldTags.filter((tag) =>
+      context.worldTags?.some((wt) => wt.toLowerCase() === tag.toLowerCase())
+    );
+    if (matchingWorldTags.length > 0) {
+      const tagScore = Math.min(25, matchingWorldTags.length * 10);
+      score += tagScore;
+      reasons.push(`World tags: ${matchingWorldTags.join(', ')}`);
+    }
+  }
+
+  // 3. Situation tags matching (25 points max)
+  if (context.situationTags?.length && preset.situationTags?.length) {
+    const matchingSituationTags = preset.situationTags.filter((tag) =>
+      context.situationTags?.some((st) => st.toLowerCase() === tag.toLowerCase())
+    );
+    if (matchingSituationTags.length > 0) {
+      const tagScore = Math.min(25, matchingSituationTags.length * 10);
+      score += tagScore;
+      reasons.push(`Situation: ${matchingSituationTags.join(', ')}`);
+    }
+  }
+
+  // 4. Recent usage in current world (20 points max)
+  const stats = usageStats.find((s) => s.presetId === preset.id);
+  if (stats && stats.count > 0) {
+    // More recent usage gets higher score
+    const now = Date.now();
+    const hoursSinceLastUse = (now - stats.lastUsed) / (1000 * 60 * 60);
+
+    if (hoursSinceLastUse < 24) {
+      score += 20;
+      reasons.push('Used recently (< 24h)');
+    } else if (hoursSinceLastUse < 168) {
+      // < 1 week
+      score += 15;
+      reasons.push('Used this week');
+    } else if (stats.count >= 3) {
+      score += 10;
+      reasons.push('Frequently used');
+    }
+  }
+
+  // 5. Success rate bonus (Phase 7 integration, max 10 points)
+  if (stats?.successRate !== null && stats.successRate !== undefined) {
+    if (stats.successRate >= 70) {
+      score += 10;
+      reasons.push(`High success rate (${stats.successRate.toFixed(0)}%)`);
+    } else if (stats.successRate >= 40) {
+      score += 5;
+      reasons.push(`Moderate success rate (${stats.successRate.toFixed(0)}%)`);
+    }
+  }
+
+  // 6. Base score for any preset without context (ensures all presets get some score)
+  if (score === 0) {
+    score = 10; // Minimum score for any valid preset
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
+
+/**
+ * Get suggested presets for a given context, sorted by relevance
+ */
+export function getSuggestedPresets(
+  presets: PresetWithScope[],
+  context: SuggestionContext,
+  maxSuggestions: number = 5
+): PresetSuggestion[] {
+  const usageStats = getPresetUsageStatsWithDetails(context.world || null);
+
+  const suggestions = presets
+    .map((preset) => {
+      const { score, reasons } = calculateSuggestionScore(preset, context, usageStats);
+      return {
+        ...preset,
+        score,
+        reasons,
+      };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxSuggestions);
+
+  return suggestions;
+}
+
+/**
+ * Get top N recommended presets with a minimum score threshold
+ */
+export function getRecommendedPresets(
+  presets: PresetWithScope[],
+  context: SuggestionContext,
+  minScore: number = 30,
+  maxResults: number = 3
+): PresetSuggestion[] {
+  const suggestions = getSuggestedPresets(presets, context, maxResults * 2);
+  return suggestions.filter((s) => s.score >= minScore).slice(0, maxResults);
+}
+
+/**
+ * PHASE 9: Preset Conflict & Compatibility Checks
+ * Detect when multiple presets might conflict or have compatibility issues
+ */
+
+export type ConflictSeverity = 'warning' | 'error' | 'info';
+
+export interface ConflictWarning {
+  /** Severity level of the conflict */
+  severity: ConflictSeverity;
+
+  /** Human-readable conflict message */
+  message: string;
+
+  /** IDs of presets involved in the conflict */
+  presetIds: string[];
+
+  /** Suggested resolution */
+  suggestion?: string;
+
+  /** Conflict type identifier */
+  type: string;
+}
+
+/**
+ * Check for duplicate interaction types (multiple presets for same plugin)
+ */
+function checkDuplicateInteractions(
+  activePresets: Array<{ presetId: string; interactionId: string; presetName: string }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+  const interactionGroups = new Map<string, Array<{ presetId: string; presetName: string }>>();
+
+  // Group presets by interaction type
+  for (const preset of activePresets) {
+    if (!interactionGroups.has(preset.interactionId)) {
+      interactionGroups.set(preset.interactionId, []);
+    }
+    interactionGroups.get(preset.interactionId)!.push({
+      presetId: preset.presetId,
+      presetName: preset.presetName,
+    });
+  }
+
+  // Check for duplicates
+  for (const [interactionId, group] of interactionGroups.entries()) {
+    if (group.length > 1) {
+      warnings.push({
+        severity: 'warning',
+        message: `Multiple presets configured for ${interactionId}: ${group.map((p) => p.presetName).join(', ')}`,
+        presetIds: group.map((p) => p.presetId),
+        suggestion: 'Consider using only one preset per interaction type, or ensure configurations are compatible',
+        type: 'duplicate-interaction',
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Check for conflicting configuration values
+ */
+function checkConfigConflicts(
+  activePresets: Array<{
+    presetId: string;
+    presetName: string;
+    config: Record<string, any>;
+  }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  // Check for mutually exclusive flags
+  const exclusiveFlags: Record<string, string[]> = {
+    aggressive: ['friendly', 'passive'],
+    friendly: ['aggressive', 'hostile'],
+    hostile: ['friendly', 'passive'],
+    stealth: ['loud', 'obvious'],
+  };
+
+  for (let i = 0; i < activePresets.length; i++) {
+    for (let j = i + 1; j < activePresets.length; j++) {
+      const preset1 = activePresets[i];
+      const preset2 = activePresets[j];
+
+      // Check for conflicting flags in config
+      for (const [flag, exclusives] of Object.entries(exclusiveFlags)) {
+        if (preset1.config[flag] && exclusives.some((ex) => preset2.config[ex])) {
+          warnings.push({
+            severity: 'error',
+            message: `Conflicting flags: "${preset1.presetName}" has ${flag}, "${preset2.presetName}" has conflicting behavior`,
+            presetIds: [preset1.presetId, preset2.presetId],
+            suggestion: `Remove one of the conflicting presets or adjust their configurations`,
+            type: 'config-conflict',
+          });
+        }
+      }
+
+      // Check for contradictory boolean flags
+      const sharedKeys = Object.keys(preset1.config).filter((k) =>
+        Object.keys(preset2.config).includes(k)
+      );
+      for (const key of sharedKeys) {
+        const val1 = preset1.config[key];
+        const val2 = preset2.config[key];
+
+        // Check boolean contradictions
+        if (typeof val1 === 'boolean' && typeof val2 === 'boolean' && val1 !== val2) {
+          warnings.push({
+            severity: 'warning',
+            message: `Contradictory setting "${key}": "${preset1.presetName}" sets to ${val1}, "${preset2.presetName}" sets to ${val2}`,
+            presetIds: [preset1.presetId, preset2.presetId],
+            suggestion: 'Verify which setting should take precedence',
+            type: 'boolean-contradiction',
+          });
+        }
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Check for performance concerns (too many presets active)
+ */
+function checkPerformanceConcerns(
+  activePresets: Array<{ presetId: string; presetName: string }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  if (activePresets.length > 5) {
+    warnings.push({
+      severity: 'info',
+      message: `${activePresets.length} presets active. This may impact performance.`,
+      presetIds: activePresets.map((p) => p.presetId),
+      suggestion: 'Consider consolidating presets or disabling unused ones',
+      type: 'performance',
+    });
+  }
+
+  return warnings;
+}
+
+/**
+ * Validate active presets for conflicts and compatibility issues
+ */
+export function validateActivePresets(interactions: Record<string, any>): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  // Extract active presets from interactions
+  const activePresets: Array<{
+    presetId: string;
+    presetName: string;
+    interactionId: string;
+    config: Record<string, any>;
+  }> = [];
+
+  for (const [interactionId, config] of Object.entries(interactions)) {
+    if (config?.enabled && config?.__presetId) {
+      activePresets.push({
+        presetId: config.__presetId,
+        presetName: config.__presetName || config.__presetId,
+        interactionId,
+        config,
+      });
+    }
+  }
+
+  // Skip validation if no presets are active
+  if (activePresets.length === 0) {
+    return [];
+  }
+
+  // Run all conflict checks
+  warnings.push(...checkDuplicateInteractions(activePresets));
+  warnings.push(...checkConfigConflicts(activePresets));
+  warnings.push(...checkPerformanceConcerns(activePresets));
+
+  return warnings;
+}
+
+/**
+ * Get a summary of conflicts by severity
+ */
+export function getConflictSummary(warnings: ConflictWarning[]): {
+  errors: number;
+  warnings: number;
+  info: number;
+  total: number;
+} {
+  return {
+    errors: warnings.filter((w) => w.severity === 'error').length,
+    warnings: warnings.filter((w) => w.severity === 'warning').length,
+    info: warnings.filter((w) => w.severity === 'info').length,
+    total: warnings.length,
+  };
+}
+
+/**
+ * PHASE 10: Preset Playlists & Sequenced Interactions
+ * Allow designers to create sequences of presets that execute over time or based on conditions
+ */
+
+/**
+ * Condition that must be met for a playlist item to execute
+ */
+export interface PlaylistCondition {
+  /** Type of condition check */
+  type: 'always' | 'flag' | 'state' | 'random';
+
+  /** For 'flag' type: flag name to check */
+  flagName?: string;
+
+  /** For 'flag' type: required flag value */
+  flagValue?: boolean;
+
+  /** For 'state' type: state key to check */
+  stateKey?: string;
+
+  /** For 'state' type: required state value */
+  stateValue?: any;
+
+  /** For 'random' type: probability (0-1) */
+  probability?: number;
+}
+
+/**
+ * Single item in a preset playlist
+ */
+export interface PlaylistItem {
+  /** ID of the preset to execute */
+  presetId: string;
+
+  /** Optional delay before executing this preset (milliseconds) */
+  delayMs?: number;
+
+  /** Optional condition that must be met */
+  condition?: PlaylistCondition;
+
+  /** Whether to skip remaining items if this fails */
+  stopOnFailure?: boolean;
+}
+
+/**
+ * Playlist of sequenced interaction presets
+ */
+export interface PresetPlaylist {
+  /** Unique playlist ID */
+  id: string;
+
+  /** Display name */
+  name: string;
+
+  /** Description of what this playlist does */
+  description?: string;
+
+  /** Ordered list of preset items */
+  items: PlaylistItem[];
+
+  /** Whether to loop the playlist */
+  loop?: boolean;
+
+  /** Maximum loop iterations (if loop is true) */
+  maxLoops?: number;
+
+  /** Category for organization */
+  category?: string;
+
+  /** Tags for filtering */
+  tags?: string[];
+}
+
+/**
+ * Playlist with scope information
+ */
+export interface PlaylistWithScope extends PresetPlaylist {
+  scope: 'global' | 'world';
+}
+
+/**
+ * Runtime state for an active playlist execution
+ */
+export interface PlaylistExecutionState {
+  /** Playlist being executed */
+  playlistId: string;
+
+  /** Current item index */
+  currentIndex: number;
+
+  /** Current loop iteration (if looping) */
+  currentLoop: number;
+
+  /** Timestamp when execution started */
+  startedAt: number;
+
+  /** Whether execution is paused */
+  paused: boolean;
+
+  /** Timeout ID for delayed execution */
+  timeoutId?: NodeJS.Timeout;
+}
+
+const GLOBAL_PLAYLISTS_KEY = 'pixsim7:interaction-playlists:global';
+
+/**
+ * Get global playlists from localStorage
+ */
+export function getGlobalPlaylists(): PresetPlaylist[] {
+  try {
+    const data = localStorage.getItem(GLOBAL_PLAYLISTS_KEY);
+    if (!data) return [];
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Failed to load global playlists:', e);
+    return [];
+  }
+}
+
+/**
+ * Save global playlists to localStorage
+ */
+export function saveGlobalPlaylists(playlists: PresetPlaylist[]): void {
+  try {
+    localStorage.setItem(GLOBAL_PLAYLISTS_KEY, JSON.stringify(playlists));
+  } catch (e) {
+    console.error('Failed to save global playlists:', e);
+  }
+}
+
+/**
+ * Get world-specific playlists
+ */
+export function getWorldPlaylists(world: GameWorldDetail | null): PresetPlaylist[] {
+  if (!world?.meta) return [];
+  const meta = world.meta as any;
+  return meta.interactionPlaylists || [];
+}
+
+/**
+ * Set world-specific playlists (returns updated world)
+ */
+export function setWorldPlaylists(
+  world: GameWorldDetail,
+  playlists: PresetPlaylist[]
+): GameWorldDetail {
+  return {
+    ...world,
+    meta: {
+      ...(world.meta || {}),
+      interactionPlaylists: playlists,
+    },
+  };
+}
+
+/**
+ * Get combined playlists (global + world-specific)
+ */
+export function getCombinedPlaylists(world: GameWorldDetail | null): PlaylistWithScope[] {
+  const global = getGlobalPlaylists().map((p) => ({ ...p, scope: 'global' as const }));
+  const worldPlaylists = getWorldPlaylists(world).map((p) => ({ ...p, scope: 'world' as const }));
+  return [...global, ...worldPlaylists];
+}
+
+/**
+ * Generate a unique playlist ID from name
+ */
+export function generatePlaylistId(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const timestamp = Date.now().toString(36);
+  return `playlist_${base}_${timestamp}`;
+}
+
+/**
+ * Add a playlist to global storage
+ */
+export function addGlobalPlaylist(playlist: PresetPlaylist): void {
+  const playlists = getGlobalPlaylists();
+  playlists.push(playlist);
+  saveGlobalPlaylists(playlists);
+}
+
+/**
+ * Add a playlist to world storage
+ */
+export async function addWorldPlaylist(
+  worldId: number,
+  playlist: PresetPlaylist,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  playlists.push(playlist);
+  const updatedWorld = setWorldPlaylists(currentWorld, playlists);
+  await saveGameWorldMeta(worldId, updatedWorld.meta);
+}
+
+/**
+ * Update a global playlist
+ */
+export function updateGlobalPlaylist(id: string, updates: Partial<PresetPlaylist>): void {
+  const playlists = getGlobalPlaylists();
+  const index = playlists.findIndex((p) => p.id === id);
+  if (index >= 0) {
+    playlists[index] = { ...playlists[index], ...updates };
+    saveGlobalPlaylists(playlists);
+  }
+}
+
+/**
+ * Update a world playlist
+ */
+export async function updateWorldPlaylist(
+  worldId: number,
+  id: string,
+  updates: Partial<PresetPlaylist>,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  const index = playlists.findIndex((p) => p.id === id);
+  if (index >= 0) {
+    playlists[index] = { ...playlists[index], ...updates };
+    const updatedWorld = setWorldPlaylists(currentWorld, playlists);
+    await saveGameWorldMeta(worldId, updatedWorld.meta);
+  }
+}
+
+/**
+ * Delete a global playlist
+ */
+export function deleteGlobalPlaylist(id: string): void {
+  const playlists = getGlobalPlaylists();
+  const filtered = playlists.filter((p) => p.id !== id);
+  saveGlobalPlaylists(filtered);
+}
+
+/**
+ * Delete a world playlist
+ */
+export async function deleteWorldPlaylist(
+  worldId: number,
+  id: string,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  const filtered = playlists.filter((p) => p.id !== id);
+  const updatedWorld = setWorldPlaylists(currentWorld, filtered);
+  await saveGameWorldMeta(worldId, updatedWorld.meta);
+}
+
+/**
+ * Validate a playlist (check if all referenced presets exist)
+ */
+export function validatePlaylist(
+  playlist: PresetPlaylist,
+  availablePresets: PresetWithScope[]
+): { valid: boolean; missingPresets: string[] } {
+  const presetIds = new Set(availablePresets.map((p) => p.id));
+  const missingPresets = playlist.items
+    .map((item) => item.presetId)
+    .filter((id) => !presetIds.has(id));
+
+  return {
+    valid: missingPresets.length === 0,
+    missingPresets,
+  };
+}
+
+/**
+ * Evaluate a playlist condition
+ */
+export function evaluatePlaylistCondition(
+  condition: PlaylistCondition | undefined,
+  context: { flags?: Record<string, boolean>; state?: Record<string, any> }
+): boolean {
+  if (!condition || condition.type === 'always') return true;
+
+  if (condition.type === 'flag' && condition.flagName) {
+    const flagValue = context.flags?.[condition.flagName];
+    return flagValue === condition.flagValue;
+  }
+
+  if (condition.type === 'state' && condition.stateKey) {
+    const stateValue = context.state?.[condition.stateKey];
+    return stateValue === condition.stateValue;
+  }
+
+  if (condition.type === 'random' && condition.probability !== undefined) {
+    return Math.random() < condition.probability;
+  }
+
+  return true;
+}
+
+/**
+ * Playlist execution callback handlers
+ */
+export interface PlaylistExecutionHandlers {
+  /** Called when a preset is about to be applied */
+  onPresetApply?: (presetId: string, itemIndex: number) => void;
+
+  /** Called when a preset application completes */
+  onPresetComplete?: (presetId: string, itemIndex: number, success: boolean) => void;
+
+  /** Called when the playlist completes a full cycle */
+  onPlaylistComplete?: (playlistId: string, loopIteration: number) => void;
+
+  /** Called when playlist execution fails */
+  onPlaylistError?: (error: string) => void;
+
+  /** Called when a condition is not met */
+  onConditionSkip?: (presetId: string, reason: string) => void;
+}
+
+/**
+ * Execute a playlist step-by-step
+ * Returns a function to stop the execution
+ */
+export async function executePlaylist(
+  playlist: PresetPlaylist,
+  availablePresets: PresetWithScope[],
+  applyPreset: (preset: InteractionPreset) => Promise<boolean>,
+  context: { flags?: Record<string, boolean>; state?: Record<string, any> },
+  handlers?: PlaylistExecutionHandlers
+): Promise<() => void> {
+  // Validate playlist first
+  const validation = validatePlaylist(playlist, availablePresets);
+  if (!validation.valid && validation.missingPresets.length > 0) {
+    // Graceful degradation: filter out missing presets and warn
+    const filteredItems = playlist.items.filter(
+      (item) => !validation.missingPresets.includes(item.presetId)
+    );
+
+    if (filteredItems.length === 0) {
+      handlers?.onPlaylistError?.(
+        `All presets in playlist "${playlist.name}" are missing`
+      );
+      return () => {}; // Return no-op stop function
+    }
+
+    // Continue with filtered items
+    playlist = { ...playlist, items: filteredItems };
+    handlers?.onPlaylistError?.(
+      `Warning: ${validation.missingPresets.length} preset(s) missing from playlist "${playlist.name}"`
+    );
+  }
+
+  let stopped = false;
+  const timeouts: NodeJS.Timeout[] = [];
+
+  const stopExecution = () => {
+    stopped = true;
+    timeouts.forEach((timeout) => clearTimeout(timeout));
+    timeouts.length = 0;
+  };
+
+  const executeLoop = async (loopIndex: number) => {
+    if (stopped) return;
+
+    for (let i = 0; i < playlist.items.length; i++) {
+      if (stopped) return;
+
+      const item = playlist.items[i];
+      const preset = availablePresets.find((p) => p.id === item.presetId);
+
+      if (!preset) {
+        // Skip missing preset (should have been filtered above, but double-check)
+        continue;
+      }
+
+      // Evaluate condition
+      if (item.condition && !evaluatePlaylistCondition(item.condition, context)) {
+        handlers?.onConditionSkip?.(
+          item.presetId,
+          `Condition not met for ${preset.name}`
+        );
+        continue;
+      }
+
+      // Apply delay if specified
+      if (item.delayMs && item.delayMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            timeouts.splice(timeouts.indexOf(timeout), 1);
+            resolve();
+          }, item.delayMs);
+          timeouts.push(timeout);
+        });
+      }
+
+      if (stopped) return;
+
+      // Apply the preset
+      handlers?.onPresetApply?.(item.presetId, i);
+      try {
+        const success = await applyPreset(preset);
+        handlers?.onPresetComplete?.(item.presetId, i, success);
+
+        // Stop on failure if configured
+        if (!success && item.stopOnFailure) {
+          handlers?.onPlaylistError?.(`Playlist stopped due to failure at step ${i + 1}`);
+          return;
+        }
+      } catch (e) {
+        handlers?.onPresetComplete?.(item.presetId, i, false);
+        if (item.stopOnFailure) {
+          handlers?.onPlaylistError?.(
+            `Playlist stopped due to error at step ${i + 1}: ${e}`
+          );
+          return;
+        }
+      }
+    }
+
+    handlers?.onPlaylistComplete?.(playlist.id, loopIndex);
+
+    // Handle looping
+    if (playlist.loop) {
+      const maxLoops = playlist.maxLoops || Infinity;
+      if (loopIndex < maxLoops - 1) {
+        // Schedule next loop
+        await executeLoop(loopIndex + 1);
+      }
+    }
+  };
+
+  // Start execution
+  executeLoop(0).catch((e) => {
+    handlers?.onPlaylistError?.(`Playlist execution failed: ${e}`);
+  });
+
+  return stopExecution;
 }
 
 /**

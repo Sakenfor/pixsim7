@@ -15,9 +15,15 @@ import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
+  getCombinedPlaylists,
   applyPresetToSlot,
+  getRecommendedPresets,
+  validateActivePresets,
+  getConflictSummary,
   type InteractionPreset,
   type PresetWithScope,
+  type PlaylistWithScope,
+  type SuggestionContext,
 } from '../lib/game/interactions/presets';
 
 interface HotspotEditorProps {
@@ -44,6 +50,12 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
   // Load presets from world and global storage
   const availablePresets = useMemo(
     () => getCombinedPresets(worldDetail),
+    [worldDetail]
+  );
+
+  // Phase 10: Load playlists
+  const availablePlaylists = useMemo(
+    () => getCombinedPlaylists(worldDetail),
     [worldDetail]
   );
 
@@ -244,12 +256,151 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
 
               {expandedInteractions[idx] && (
                 <div className="mt-2 space-y-2">
+                  {/* Phase 10: Preset Playlist Selector */}
+                  {availablePlaylists.length > 0 && (
+                    <div className="p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded">
+                      <label className="block text-xs font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                        🎵 Preset Playlist (Phase 10)
+                      </label>
+                      <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                        Assign a playlist to sequence multiple presets
+                      </p>
+                      <Select
+                        size="sm"
+                        value={(h.meta as any)?.__playlistId || ''}
+                        onChange={(e) => {
+                          const playlistId = e.target.value;
+                          handleHotspotChange(idx, {
+                            meta: {
+                              ...(h.meta || {}),
+                              __playlistId: playlistId || undefined,
+                              __playlistName: playlistId
+                                ? availablePlaylists.find(p => p.id === playlistId)?.name
+                                : undefined,
+                            },
+                          });
+                        }}
+                      >
+                        <option value="">No playlist</option>
+                        {availablePlaylists.map(playlist => (
+                          <option key={`${playlist.scope}-${playlist.id}`} value={playlist.id}>
+                            {playlist.name} ({playlist.items.length} steps, {playlist.scope === 'global' ? '🌍' : '🗺️'})
+                          </option>
+                        ))}
+                      </Select>
+                      {(h.meta as any)?.__playlistId && (
+                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-2">
+                          ℹ️ Playlist "{(h.meta as any).__playlistName}" will execute when this hotspot is triggered
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Phase 8: Recommended Presets */}
+                  {(() => {
+                    const suggestionContext: SuggestionContext = {
+                      worldTags: (worldDetail?.meta as any)?.tags || [],
+                      situationTags: ['hotspot'],
+                      world: worldDetail,
+                    };
+                    const recommendedPresets = getRecommendedPresets(availablePresets, suggestionContext, 30, 3);
+
+                    if (recommendedPresets.length > 0) {
+                      return (
+                        <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                          <div className="flex items-center gap-1 mb-2">
+                            <span className="text-xs font-semibold text-yellow-900 dark:text-yellow-100">
+                              ⭐ Recommended Presets
+                            </span>
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              (based on context)
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {recommendedPresets.map((recommended) => (
+                              <button
+                                key={recommended.id}
+                                onClick={() => applyPreset(idx, recommended)}
+                                className="px-2 py-1 text-xs bg-white dark:bg-neutral-800 border border-yellow-300 dark:border-yellow-700 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
+                                title={recommended.reasons.join(', ')}
+                              >
+                                {recommended.scope === 'global' ? '🌍 ' : '🗺️ '}
+                                {recommended.name}
+                                <span className="ml-1 text-yellow-600 dark:text-yellow-400 font-semibold">
+                                  {recommended.score}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* Phase 9: Conflict Warnings */}
+                  {(() => {
+                    const interactions = ((h.meta as any)?.interactions as Record<string, any>) || {};
+                    const conflicts = validateActivePresets(interactions);
+                    const summary = getConflictSummary(conflicts);
+
+                    if (conflicts.length === 0) return null;
+
+                    return (
+                      <div className="p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-orange-900 dark:text-orange-100">
+                            ⚠️ Preset Conflicts
+                          </span>
+                          <div className="flex gap-1">
+                            {summary.errors > 0 && (
+                              <Badge color="red" className="text-[10px]">
+                                {summary.errors} error{summary.errors !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            {summary.warnings > 0 && (
+                              <Badge color="yellow" className="text-[10px]">
+                                {summary.warnings} warning{summary.warnings !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            {summary.info > 0 && (
+                              <Badge color="blue" className="text-[10px]">
+                                {summary.info} info
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {conflicts.map((conflict, conflictIdx) => (
+                            <div
+                              key={conflictIdx}
+                              className={`text-xs p-1.5 rounded ${
+                                conflict.severity === 'error'
+                                  ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                  : conflict.severity === 'warning'
+                                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
+                                  : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                              }`}
+                            >
+                              <div className="font-medium">{conflict.message}</div>
+                              {conflict.suggestion && (
+                                <div className="text-[10px] opacity-75 mt-0.5">
+                                  💡 {conflict.suggestion}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Preset Palette */}
                   {availablePresets.length > 0 && (
                     <div className="p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold text-blue-900 dark:text-blue-100">
-                          Quick Apply Presets
+                          All Presets
                         </span>
                         <Badge color="blue" className="text-[10px]">
                           {availablePresets.length}

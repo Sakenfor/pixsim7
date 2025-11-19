@@ -5,7 +5,15 @@ import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '../lib/api/
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
-import { getCombinedPresets, applyPresetToSlot, type PresetWithScope } from '../lib/game/interactions/presets';
+import {
+  getCombinedPresets,
+  getCombinedPlaylists,
+  applyPresetToSlot,
+  getRecommendedPresets,
+  type PresetWithScope,
+  type PlaylistWithScope,
+  type SuggestionContext,
+} from '../lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -25,6 +33,11 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   // Load presets from world and global storage
   const presets = useMemo(() => {
     return getCombinedPresets(world);
+  }, [world]);
+
+  // Phase 10: Load playlists
+  const playlists = useMemo(() => {
+    return getCombinedPlaylists(world);
   }, [world]);
 
   // Load slots from location meta
@@ -341,6 +354,107 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                 </p>
               </div>
 
+              {/* Phase 9: Conflict Warnings */}
+              {(() => {
+                const conflicts = validateActivePresets(selectedSlot.interactions || {});
+                const summary = getConflictSummary(conflicts);
+
+                if (conflicts.length === 0) return null;
+
+                return (
+                  <div className="border-t pt-3 dark:border-neutral-700 mb-3">
+                    <div className="p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-orange-900 dark:text-orange-100">
+                          ⚠️ Preset Conflicts Detected
+                        </span>
+                        <div className="flex gap-1">
+                          {summary.errors > 0 && (
+                            <Badge color="red" className="text-[10px]">
+                              {summary.errors} error{summary.errors !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {summary.warnings > 0 && (
+                            <Badge color="yellow" className="text-[10px]">
+                              {summary.warnings} warning{summary.warnings !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {summary.info > 0 && (
+                            <Badge color="blue" className="text-[10px]">
+                              {summary.info} info
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {conflicts.map((conflict, idx) => (
+                          <div
+                            key={idx}
+                            className={`text-xs p-2 rounded ${
+                              conflict.severity === 'error'
+                                ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                : conflict.severity === 'warning'
+                                ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
+                                : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                            }`}
+                          >
+                            <div className="font-medium mb-1">{conflict.message}</div>
+                            {conflict.suggestion && (
+                              <div className="text-[10px] opacity-75">
+                                💡 {conflict.suggestion}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Phase 10: Preset Playlist Section */}
+              {playlists.length > 0 && (
+                <div className="border-t pt-3 dark:border-neutral-700">
+                  <h4 className="text-xs font-semibold mb-2">🎵 Preset Playlist (Phase 10)</h4>
+                  <p className="text-xs text-neutral-500 mb-2">
+                    Assign a playlist to sequence multiple presets automatically
+                  </p>
+
+                  <Select
+                    size="sm"
+                    value={(selectedSlot.meta as any)?.__playlistId || ''}
+                    onChange={(e) => {
+                      const playlistId = e.target.value;
+                      updateSlot(selectedSlot.id, {
+                        ...selectedSlot,
+                        meta: {
+                          ...(selectedSlot.meta || {}),
+                          __playlistId: playlistId || undefined,
+                          __playlistName: playlistId
+                            ? playlists.find(p => p.id === playlistId)?.name
+                            : undefined,
+                        },
+                      });
+                    }}
+                  >
+                    <option value="">No playlist</option>
+                    {playlists.map(playlist => (
+                      <option key={`${playlist.scope}-${playlist.id}`} value={playlist.id}>
+                        {playlist.name} ({playlist.items.length} steps, {playlist.scope === 'global' ? '🌍' : '🗺️'})
+                      </option>
+                    ))}
+                  </Select>
+
+                  {(selectedSlot.meta as any)?.__playlistId && (
+                    <div className="mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-200 dark:border-purple-800">
+                      <p className="text-xs text-purple-900 dark:text-purple-100">
+                        ℹ️ Playlist "{(selectedSlot.meta as any).__playlistName}" will execute its presets in sequence when this NPC is interacted with
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Interactions Section */}
               <div className="border-t pt-3 dark:border-neutral-700">
                 <h4 className="text-xs font-semibold mb-2">Interactions</h4>
@@ -353,6 +467,15 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
 
                   // Get presets for this plugin
                   const pluginPresets = presets.filter(p => p.interactionId === plugin.id);
+
+                  // Phase 8: Get recommended presets based on context
+                  const suggestionContext: SuggestionContext = {
+                    npcRole: selectedSlot.npcRole,
+                    worldTags: (world?.meta as any)?.tags || [],
+                    world: world,
+                    interactionId: plugin.id,
+                  };
+                  const recommendedPresets = getRecommendedPresets(presets, suggestionContext, 30, 3);
 
                   return (
                     <div key={plugin.id} className="mb-3">
@@ -380,11 +503,48 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                         </span>
                       </label>
 
+                      {/* Phase 8: Recommended Presets */}
+                      {enabled && recommendedPresets.length > 0 && (
+                        <div className="ml-6 mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-xs font-semibold text-blue-900 dark:text-blue-100">
+                              ⭐ Recommended
+                            </span>
+                            <span className="text-xs text-blue-600 dark:text-blue-400">
+                              (based on context)
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {recommendedPresets.map(recommended => (
+                              <button
+                                key={recommended.id}
+                                className="px-2 py-1 text-xs bg-white dark:bg-neutral-800 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                onClick={() => {
+                                  updateSlot(selectedSlot.id, {
+                                    interactions: {
+                                      ...selectedSlot.interactions,
+                                      [plugin.id]: applyPresetToSlot(recommended),
+                                    },
+                                  });
+                                }}
+                                title={recommended.reasons.join(', ')}
+                              >
+                                {recommended.scope === 'global' ? '🌍 ' : '🗺️ '}
+                                {recommended.name}
+                                <span className="ml-1 text-blue-600 dark:text-blue-400 font-semibold">
+                                  {recommended.score}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Preset Selector */}
                       {enabled && pluginPresets.length > 0 && (
                         <div className="ml-6 mb-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded">
                           <label className="block text-xs text-neutral-500 mb-1">
-                            Quick Apply Preset:
+                            All Presets:
                           </label>
                           <div className="flex gap-2">
                             <Select
