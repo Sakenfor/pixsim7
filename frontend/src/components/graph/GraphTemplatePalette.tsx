@@ -69,6 +69,7 @@ export function GraphTemplatePalette({
   const addTemplate = useTemplateStore((state) => state.addTemplate);
   const updateTemplate = useTemplateStore((state) => state.updateTemplate);
   const removeTemplate = useTemplateStore((state) => state.removeTemplate);
+  const toggleFavorite = useTemplateStore((state) => state.toggleFavorite);
   const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
 
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
@@ -76,9 +77,10 @@ export function GraphTemplatePalette({
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
-  // Phase 7: Filtering state
+  // Phase 6 & 7: Filtering state
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | 'All'>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
   // Load world templates when world changes
   useEffect(() => {
@@ -87,8 +89,13 @@ export function GraphTemplatePalette({
     }
   }, [worldId, loadWorldTemplates]);
 
-  // Phase 7: Filter templates
+  // Phase 6 & 7: Filter templates
   const filteredTemplates = templates.filter((template) => {
+    // Phase 6: Favorites filter
+    if (showFavoritesOnly && !template.isFavorite) {
+      return false;
+    }
+
     // Category filter
     if (selectedCategory !== 'All' && template.category !== selectedCategory) {
       return false;
@@ -108,6 +115,10 @@ export function GraphTemplatePalette({
 
     return true;
   });
+
+  // Phase 6: Separate favorites for quick access
+  const favoriteTemplates = filteredTemplates.filter((t) => t.isFavorite);
+  const nonFavoriteTemplates = filteredTemplates.filter((t) => !t.isFavorite);
 
   const handleInsert = (template: GraphTemplate) => {
     onInsertTemplate(template);
@@ -161,6 +172,20 @@ export function GraphTemplatePalette({
       } catch (error) {
         alert(`Failed to delete template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
+    }
+  };
+
+  // Phase 6: Toggle favorite
+  const handleToggleFavorite = async (template: GraphTemplate) => {
+    if (template.source === 'builtin') {
+      alert('Cannot modify built-in templates');
+      return;
+    }
+
+    try {
+      await toggleFavorite(template.id);
+    } catch (error) {
+      alert(`Failed to toggle favorite: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -294,8 +319,21 @@ export function GraphTemplatePalette({
               ))}
             </select>
 
+            {/* Phase 6: Favorites filter toggle */}
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showFavoritesOnly}
+                onChange={(e) => setShowFavoritesOnly(e.target.checked)}
+                className="rounded border-neutral-300 dark:border-neutral-600"
+              />
+              <span className="text-neutral-700 dark:text-neutral-300">
+                ⭐ Show favorites only ({templates.filter(t => t.isFavorite).length})
+              </span>
+            </label>
+
             {/* Filter summary */}
-            {(selectedCategory !== 'All' || searchQuery.trim()) && (
+            {(selectedCategory !== 'All' || searchQuery.trim() || showFavoritesOnly) && (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
                 Showing {filteredTemplates.length} of {templates.length} templates
               </div>
@@ -321,7 +359,34 @@ export function GraphTemplatePalette({
         </div>
       )}
 
-      {filteredTemplates.map((template) => {
+      {/* Phase 6: Favorites section */}
+      {!showFavoritesOnly && favoriteTemplates.length > 0 && (
+        <>
+          <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2 flex items-center gap-1">
+            <span>⭐</span>
+            <span>Favorites</span>
+          </div>
+          {favoriteTemplates.map((template) => renderTemplate(template))}
+
+          {nonFavoriteTemplates.length > 0 && (
+            <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2 mt-4">
+              All Templates
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Render non-favorite templates or all if showing favorites only */}
+      {(showFavoritesOnly ? favoriteTemplates : nonFavoriteTemplates).map((template) => renderTemplate(template))}
+
+      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t dark:border-neutral-700">
+        💡 Click Insert to add template to canvas
+      </div>
+    </div>
+  );
+
+  // Template rendering function (extracted for DRY)
+  function renderTemplate(template: GraphTemplate) {
         const validation = validateTemplate(template);
         const isExpanded = expandedTemplateId === template.id;
         const isEditing = editingTemplateId === template.id;
@@ -377,6 +442,16 @@ export function GraphTemplatePalette({
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {/* Phase 6: Favorite star button */}
+                        {!isReadOnly && (
+                          <button
+                            onClick={() => handleToggleFavorite(template)}
+                            className="text-lg hover:scale-110 transition-transform"
+                            title={template.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                          >
+                            {template.isFavorite ? '⭐' : '☆'}
+                          </button>
+                        )}
                         <div className="font-semibold text-sm truncate" title={template.name}>
                           {template.name}
                         </div>
@@ -539,11 +614,5 @@ export function GraphTemplatePalette({
             )}
           </div>
         );
-      })}
-
-      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-3 pt-2 border-t dark:border-neutral-700">
-        💡 Click Insert to add template to canvas
-      </div>
-    </div>
-  );
+  }
 }

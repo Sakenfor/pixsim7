@@ -53,6 +53,9 @@ export interface GraphTemplate {
   source?: TemplateSource; // Where the template comes from
   worldId?: number; // For world-scoped templates
 
+  // Phase 6: Favorites
+  isFavorite?: boolean;
+
   // Phase 7: Categories and tags
   category?: TemplateCategory;
   tags?: string[];
