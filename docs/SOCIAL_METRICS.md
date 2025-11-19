@@ -122,6 +122,145 @@ arousal = chemistry * 0.5 + tension * 0.5
 
 ---
 
+### 3b. Unified NPC Mood
+
+**Purpose**: Compute comprehensive NPC mood state combining general mood, intimacy mood, and active emotions
+
+**Metric ID**: `unified_npc_mood`
+
+**Input**:
+- Relationship values (affinity, trust, chemistry, tension)
+- Optional: Intimacy level ID
+- Optional: Session ID for automatic relationship and emotion lookup
+
+**Output**:
+- **General Mood**: Valence/arousal-based mood (same as NPC Mood above)
+  - `mood_id`: General mood ID (e.g., "excited", "content")
+  - `valence`, `arousal`: Emotional axes (0-100)
+- **Intimacy Mood** (optional): Romantic/intimate mood when relationship context is intimate
+  - `mood_id`: Intimacy mood ID (e.g., "playful", "tender", "passionate")
+  - `intensity`: Intimacy mood strength (0-1)
+- **Active Emotion** (optional): Event-driven discrete emotion from EmotionalState system
+  - `emotion_type`: Emotion type (e.g., "happy", "anxious")
+  - `intensity`: Emotion intensity (0-1)
+  - `trigger`: Optional trigger description
+  - `expires_at`: Optional expiration timestamp
+
+**Mood Domains**:
+
+1. **General Mood** (always computed):
+   - Based on valence/arousal model
+   - Driven by affinity, chemistry, tension
+   - Default quadrants: excited, content, anxious, calm
+
+2. **Intimate Mood** (computed when intimate context detected):
+   - Based on chemistry, trust, tension axes
+   - Only computed for non-platonic intimacy levels or high chemistry
+   - Default moods: playful, tender, passionate, conflicted, shy, eager
+
+3. **Active Emotion** (computed when available):
+   - Event-driven discrete emotions from NPCEmotionalState table
+   - Represents temporary emotional state from specific triggers
+   - Uses EmotionType enum (happy, sad, angry, curious, etc.)
+
+**Intimacy Mood Computation**:
+
+Intimacy mood is computed when:
+- `intimacy_level_id` is non-platonic (not "platonic" or null)
+- Chemistry > 20
+
+Default heuristics:
+```python
+# High chemistry + low trust = conflicted
+if chemistry > 60 and trust < 40:
+    mood_id = "conflicted"
+
+# High chemistry + high tension = passionate
+if chemistry > 70 and tension > 50:
+    mood_id = "passionate"
+
+# High trust + moderate chemistry = tender
+if trust > 60 and chemistry > 40:
+    mood_id = "tender"
+
+# Early stage flirting = playful
+if chemistry < 60 and intimacy_level_id in ("light_flirt", "deep_flirt"):
+    mood_id = "playful"
+
+# Default = shy
+else:
+    mood_id = "shy"
+```
+
+**Schema Location**: `GameWorld.meta.npc_mood_schema`
+
+**Schema Format** (extended domain-based format):
+```json
+{
+  "npc_mood_schema": {
+    "general": {
+      "moods": [
+        {
+          "id": "excited",
+          "valence_min": 50,
+          "valence_max": 100,
+          "arousal_min": 50,
+          "arousal_max": 100
+        }
+      ]
+    },
+    "intimate": {
+      "moods": [
+        {
+          "id": "playful",
+          "chemistry_min": 0,
+          "chemistry_max": 60,
+          "trust_min": 0,
+          "trust_max": 100,
+          "tension_min": 0,
+          "tension_max": 100
+        },
+        {
+          "id": "passionate",
+          "chemistry_min": 70,
+          "chemistry_max": 100,
+          "trust_min": 0,
+          "trust_max": 100,
+          "tension_min": 50,
+          "tension_max": 100
+        }
+      ]
+    }
+  }
+}
+```
+
+**Legacy Schema Support**: For backward compatibility, the old flat format is still supported:
+```json
+{
+  "npc_mood_schema": {
+    "moods": [...]  // Treated as "general" domain
+  }
+}
+```
+
+**Backend Evaluator**: `pixsim7_backend/domain/metrics/mood_evaluators.py::evaluate_unified_npc_mood`
+
+**Preview Endpoint**: `POST /api/v1/game/npc/preview-unified-mood`
+
+**Game-Core Helper**: `previewUnifiedMood(args)` from `@pixsim7/game-core`
+
+**NPC Brain Integration**: `buildNpcBrainState({ unifiedMood })` accepts optional unified mood parameter
+
+**Mood Debug Tool**: `frontend/src/plugins/worldTools/moodDebug.tsx` displays unified mood when available
+
+**Related Documentation**:
+- `docs/INTIMACY_AND_GENERATION.md` - How intimacy mood flows into generation
+- `docs/RELATIONSHIPS_AND_ARCS.md` - Relationship and intimacy context
+- `claude-tasks/14-unified-mood-and-brain-integration.md` - Implementation roadmap
+
+---
+
 ### 4. Reputation Band
 
 **Purpose**: Categorize reputation between entities (player-NPC, NPC-NPC, faction)
@@ -780,6 +919,13 @@ Test scenarios:
 ---
 
 ## Changelog
+
+- **2025-11-19**: Added Unified NPC Mood System (Task 14)
+  - New metric: Unified NPC Mood combining general, intimate, and emotion domains
+  - Extended mood schema format to support domain-based configuration
+  - Backward compatible with legacy mood schemas
+  - NPC Brain integration with unified mood support
+  - Mood Debug tool displays intimacy moods and active emotions
 
 - **2025-11-19**: Initial documentation (Phase 8 of Task 08)
   - All 4 metrics documented

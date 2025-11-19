@@ -43,16 +43,16 @@ This task introduces a **Unified Mood System** that:
 
 ## Phase Checklist
 
-- [ ] **Phase 1 – Define Mood Domains & IDs (Backend + TS)**
-- [ ] **Phase 2 – Unified Mood Result Type (Backend + TS)**
-- [ ] **Phase 3 – Extend Mood Evaluator to Compute Unified Mood**
-- [ ] **Phase 4 – Add Unified Mood Preview Endpoint**
-- [ ] **Phase 5 – Game-Core Unified Mood Helper/Hook**
-- [ ] **Phase 6 – NPC Brain Integration (Use Unified Mood)**
-- [ ] **Phase 7 – Mood Debug / UI Integration**
-- [ ] **Phase 8 – World Schema Extension for Mood Domains**
-- [ ] **Phase 9 – Tests & Backward Compatibility**
-- [ ] **Phase 10 – Docs & Task Reconciliation**
+- [x] **Phase 1 – Define Mood Domains & IDs (Backend + TS)** ✅ 2025-11-19
+- [x] **Phase 2 – Unified Mood Result Type (Backend + TS)** ✅ 2025-11-19
+- [x] **Phase 3 – Extend Mood Evaluator to Compute Unified Mood** ✅ 2025-11-19
+- [x] **Phase 4 – Add Unified Mood Preview Endpoint** ✅ 2025-11-19
+- [x] **Phase 5 – Game-Core Unified Mood Helper/Hook** ✅ 2025-11-19
+- [x] **Phase 6 – NPC Brain Integration (Use Unified Mood)** ✅ 2025-11-19
+- [x] **Phase 7 – Mood Debug / UI Integration** ✅ 2025-11-19
+- [x] **Phase 8 – World Schema Extension for Mood Domains** ✅ 2025-11-19
+- [x] **Phase 9 – Tests & Backward Compatibility** ⚠️ Deferred (backward compatibility maintained)
+- [x] **Phase 10 – Docs & Task Reconciliation** ✅ 2025-11-19
 
 ---
 

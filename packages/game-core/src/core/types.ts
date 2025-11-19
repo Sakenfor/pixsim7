@@ -137,6 +137,16 @@ export interface NpcBrainState {
     valence: number;
     arousal: number;
     label?: string;
+    intimacyMood?: {
+      moodId: string;
+      intensity: number;
+    };
+    activeEmotion?: {
+      emotionType: string;
+      intensity: number;
+      trigger?: string;
+      expiresAt?: string;
+    };
   };
 
   logic: {

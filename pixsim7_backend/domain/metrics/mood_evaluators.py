@@ -81,7 +81,9 @@ def _compute_mood_from_schema(
     """
     Compute mood ID using world-specific mood schema.
 
-    Schema format:
+    Schema format (supports both legacy and new domain-based formats):
+
+    Legacy format:
     {
       "moods": [
         {
@@ -95,6 +97,16 @@ def _compute_mood_from_schema(
       ]
     }
 
+    New domain-based format:
+    {
+      "general": {
+        "moods": [...]
+      },
+      "intimate": {
+        "moods": [...]
+      }
+    }
+
     Args:
         valence: Valence value (0-100)
         arousal: Arousal value (0-100)
@@ -103,10 +115,20 @@ def _compute_mood_from_schema(
     Returns:
         Mood ID string
     """
-    if not mood_schema or "moods" not in mood_schema:
+    if not mood_schema:
         return _default_mood_id(valence, arousal)
 
-    moods = mood_schema.get("moods", [])
+    # Support both legacy flat schema and new domain-based schema
+    moods = []
+    if "moods" in mood_schema:
+        # Legacy format
+        moods = mood_schema.get("moods", [])
+    elif "general" in mood_schema and isinstance(mood_schema["general"], dict):
+        # New domain-based format
+        moods = mood_schema["general"].get("moods", [])
+
+    if not moods:
+        return _default_mood_id(valence, arousal)
 
     # Find first matching mood based on valence/arousal ranges
     for mood in moods:
@@ -277,6 +299,16 @@ async def evaluate_unified_npc_mood(
     Returns:
         Dict representation of UnifiedMoodResult
     """
+    # Load world and mood schema for intimacy mood computation
+    result = await db.execute(
+        select(GameWorld).where(GameWorld.id == world_id)
+    )
+    world = result.scalar_one_or_none()
+
+    mood_schema = None
+    if world and world.meta:
+        mood_schema = world.meta.get("npc_mood_schema")
+
     # First, compute general mood via existing evaluator
     general_result = await evaluate_npc_mood(world_id=world_id, payload=payload, db=db)
 
@@ -297,6 +329,7 @@ async def evaluate_unified_npc_mood(
             trust=float(rel_values.get("trust", 0.0)),
             tension=float(rel_values.get("tension", 0.0)),
             intimacy_level_id=str(intimacy_level_id),
+            mood_schema=mood_schema,
         )
 
     # Optionally include active emotion
@@ -343,12 +376,57 @@ def _compute_intimacy_mood(
     trust: float,
     tension: float,
     intimacy_level_id: str,
+    mood_schema: Optional[dict[str, Any]] = None,
 ) -> IntimacyMoodResult:
     """
     Compute intimacy mood from relationship axes.
 
-    Uses simple heuristics; worlds can later customize via schemas.
+    Supports world-specific schemas via the "intimate" domain in npc_mood_schema.
+
+    Schema format:
+    {
+      "intimate": {
+        "moods": [
+          {
+            "id": "playful",
+            "chemistry_min": 0,
+            "chemistry_max": 60,
+            "trust_min": 0,
+            "trust_max": 100,
+            "tension_min": 0,
+            "tension_max": 100
+          },
+          ...
+        ]
+      }
+    }
+
+    Falls back to default heuristics if no schema provided.
     """
+    # Try schema-based computation first
+    if mood_schema and "intimate" in mood_schema:
+        intimate_schema = mood_schema["intimate"]
+        if isinstance(intimate_schema, dict) and "moods" in intimate_schema:
+            moods = intimate_schema["moods"]
+            for mood in moods:
+                chemistry_min = mood.get("chemistry_min", 0)
+                chemistry_max = mood.get("chemistry_max", 100)
+                trust_min = mood.get("trust_min", 0)
+                trust_max = mood.get("trust_max", 100)
+                tension_min = mood.get("tension_min", 0)
+                tension_max = mood.get("tension_max", 100)
+
+                if (chemistry_min <= chemistry <= chemistry_max and
+                    trust_min <= trust <= trust_max and
+                    tension_min <= tension <= tension_max):
+                    # Compute intensity as average of normalized axes
+                    intensity = (chemistry + trust + tension) / 300.0
+                    return IntimacyMoodResult(
+                        mood_id=IntimacyMoodId(mood["id"]),
+                        intensity=max(0.1, min(1.0, intensity)),
+                    )
+
+    # Fallback to default heuristics
     # High chemistry + low trust = conflicted
     if chemistry > 60 and trust < 40:
         return IntimacyMoodResult(

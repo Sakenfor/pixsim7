@@ -1,4 +1,4 @@
-import type { GameSessionDTO } from '@pixsim7/types';
+import type { GameSessionDTO, UnifiedMoodState } from '@pixsim7/types';
 import type { NpcBrainState, NpcRelationshipState } from '../core/types';
 
 /**
@@ -142,6 +142,7 @@ function getDefaultTags(): string[] {
  * 1. Base persona (optional): From GameNPC.personality in backend database
  * 2. Session overrides: From GameSession.flags.npcs["npc:ID"]
  * 3. Relationship state: From GameSession.relationships["npc:ID"]
+ * 4. Unified mood (optional): Pre-computed unified mood state from backend
  *
  * **Merging Logic (follows backend's merge_npc_persona):**
  * - Base traits/tags/conversation_style from `persona` parameter
@@ -151,8 +152,14 @@ function getDefaultTags(): string[] {
  *
  * **Backend Relationship:**
  * - Relationship tierId and intimacyLevelId should be backend-computed (authoritative)
- * - Mood is derived from relationship numeric axes (affinity, chemistry, tension)
+ * - Mood is derived from unified mood system when available (preferred)
+ * - Falls back to local computation from relationship axes when unified mood unavailable
  * - Social state includes backend-computed tier/intimacy when available
+ *
+ * **Unified Mood Integration:**
+ * - When `unifiedMood` is provided, it drives the brain's mood component
+ * - Includes general mood (valence/arousal), optional intimacy mood, and optional active emotion
+ * - When unavailable, falls back to local valence/arousal computation for offline/preview tools
  *
  * **No Schema Changes:**
  * All data comes from existing JSON fields (GameNPC.personality, GameSession.flags,
@@ -162,6 +169,7 @@ function getDefaultTags(): string[] {
  * @param params.session - Game session with flags and relationships
  * @param params.relationship - Pre-extracted relationship state for this NPC
  * @param params.persona - Optional base persona from GameNPC.personality
+ * @param params.unifiedMood - Optional pre-computed unified mood state from backend
  * @returns Complete NPC brain state with traits, mood, social, and memories
  *
  * @example
@@ -173,14 +181,19 @@ function getDefaultTags(): string[] {
  * };
  *
  * const relationship = getNpcRelationshipState(session, 12);
+ *
+ * // With unified mood (preferred)
+ * const unifiedMood = await previewUnifiedMood({ worldId: 1, npcId: 12, sessionId: session.id });
  * const brain = buildNpcBrainState({
  *   npcId: 12,
  *   session,
  *   relationship,
- *   persona
+ *   persona,
+ *   unifiedMood
  * });
  *
  * console.log(brain.mood.label); // e.g., "excited"
+ * console.log(brain.mood.intimacyMood?.moodId); // e.g., "passionate"
  * console.log(brain.social.tierId); // e.g., "close_friend"
  * ```
  */
@@ -189,8 +202,9 @@ export function buildNpcBrainState(params: {
   session: GameSessionDTO;
   relationship: NpcRelationshipState;
   persona?: NpcPersona;
+  unifiedMood?: UnifiedMoodState;
 }): NpcBrainState {
-  const { npcId, session, relationship, persona } = params;
+  const { npcId, session, relationship, persona, unifiedMood } = params;
 
   // Merge base persona with session overrides
   const mergedPersona = mergeNpcPersona(persona, npcId, session);
@@ -203,8 +217,8 @@ export function buildNpcBrainState(params: {
   // Extract memories from session
   const memories = extractMemoriesFromSession(npcId, session);
 
-  // Compute mood based on relationship state
-  const mood = computeMood(relationship);
+  // Compute mood based on unified mood system (preferred) or relationship state (fallback)
+  const mood = computeMood(relationship, unifiedMood);
 
   // Extract logic strategies (placeholder for now)
   const logic = {
@@ -262,16 +276,53 @@ function extractMemoriesFromSession(
 }
 
 /**
- * Compute mood based on relationship state
+ * Compute mood based on unified mood system or relationship state fallback
  *
- * Valence (pleasure): primarily driven by affinity and chemistry
- * Arousal (energy): primarily driven by chemistry and tension
+ * **Unified Mood (Preferred):**
+ * When `unifiedMood` is provided, uses backend-computed mood state including:
+ * - General mood (valence/arousal from backend evaluator)
+ * - Optional intimacy mood based on relationship context
+ * - Optional active discrete emotion
+ *
+ * **Fallback (Local Computation):**
+ * When unified mood unavailable, computes locally from relationship state:
+ * - Valence (pleasure): primarily driven by affinity and chemistry
+ * - Arousal (energy): primarily driven by chemistry and tension
+ *
+ * @param relationship - Relationship state for fallback computation
+ * @param unifiedMood - Optional pre-computed unified mood from backend
+ * @returns Mood state with valence, arousal, label, and optional intimacy/emotion
  */
-function computeMood(relationship: NpcRelationshipState): {
+function computeMood(
+  relationship: NpcRelationshipState,
+  unifiedMood?: UnifiedMoodState
+): {
   valence: number;
   arousal: number;
   label?: string;
+  intimacyMood?: {
+    moodId: string;
+    intensity: number;
+  };
+  activeEmotion?: {
+    emotionType: string;
+    intensity: number;
+    trigger?: string;
+    expiresAt?: string;
+  };
 } {
+  // Use unified mood if available (preferred path)
+  if (unifiedMood) {
+    return {
+      valence: unifiedMood.generalMood.valence,
+      arousal: unifiedMood.generalMood.arousal,
+      label: unifiedMood.generalMood.moodId,
+      intimacyMood: unifiedMood.intimacyMood,
+      activeEmotion: unifiedMood.activeEmotion,
+    };
+  }
+
+  // Fallback: compute locally from relationship state
   const { affinity, chemistry, tension } = relationship;
 
   // Valence: positive emotions (0-100 scale)
