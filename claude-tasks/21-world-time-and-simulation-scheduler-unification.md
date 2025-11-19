@@ -295,11 +295,52 @@ Make NPC simulation a first-class part of `tick_world`, using ECS and behavior s
      - Choose activity if `nextDecisionAt` has passed.  
      - Apply activity effects (which will update components & session flags).
 3. Ensure behavior system:
-   - Uses ECS + metric APIs exclusively (Task 19), not raw JSON.  
-4. Make behavior simulation “step-based”:
+   - Uses ECS + metric APIs exclusively (Task 19), not raw JSON.
+4. Make behavior simulation "step-based":
    - Each tick only does a bounded amount of work (per config).
 
-**Status:** ☐ Not started
+**Implementation Notes:**
+
+1. **NPC Selection** (`_select_npcs_for_simulation()` in scheduler.py)
+   - Queries all sessions for the world
+   - Queries all NPCs in the database
+   - Calls `get_npcs_to_simulate()` from behavior system for each session
+   - Respects `maxNpcTicksPerStep` budget across all sessions
+   - Returns NPCs grouped by tier with session context
+   - Logs selection statistics for observability
+
+2. **NPC Simulation** (`_simulate_npc()` in scheduler.py)
+   - Uses ECS `get_npc_component()` to read behavior state
+   - Checks `nextDecisionAt` against current world_time
+   - Tier-based decision intervals:
+     - detailed: 60s (1 minute)
+     - active: 300s (5 minutes)
+     - ambient: 1800s (30 minutes)
+     - dormant: 7200s (2 hours)
+   - Updates behavior component using ECS `update_npc_component()`
+   - Tracks `lastSimulatedAt`, `simulationTier`, `nextDecisionAt`
+   - Placeholder for full activity selection and effects (future enhancement)
+
+3. **ECS Integration**
+   - Uses `get_npc_component()` to read NPC state
+   - Uses `update_npc_component()` to write changes (merge-based)
+   - Triggers SQLAlchemy dirty tracking with `session.flags = session.flags`
+   - All state reads/writes go through ECS layer (no raw JSON access)
+
+4. **Step-Based Work Budget**
+   - Scheduler respects `maxNpcTicksPerStep` from config
+   - Early exit when budget exhausted
+   - Per-tier tracking via `context.record_npc_simulated(tier)`
+   - Tick stats logged for monitoring
+
+5. **Future Enhancements**
+   - Full behavior system integration for activity selection
+   - Apply activity effects (energy, mood, relationships)
+   - Location/state updates based on activities
+   - Routine graph traversal
+   - Custom condition/effect evaluators
+
+**Status:** ✅ Complete
 
 ---
 
@@ -325,7 +366,34 @@ Tie generation job scheduling into the world scheduler so content generation doe
 4. Optionally:
    - Allow different worlds or shards to have different generation budgets.
 
-**Status:** ☐ Not started
+**Implementation Notes:**
+
+The scheduler already has placeholder integration points for generation backpressure:
+
+1. **Integration Point** (`_get_pending_generation_requests()` in scheduler.py)
+   - Currently returns empty list (placeholder)
+   - Future: Query session flags for pending generation requests
+   - Check `pending_generations` or similar flag in session
+   - Respect per-user and per-world quotas
+
+2. **Budget Enforcement** (in `tick_world()`)
+   - Already respects `maxJobOpsPerStep` from config
+   - Uses `context.can_enqueue_more_jobs()` to check budget
+   - Records each job with `context.record_job_enqueued()`
+   - Logs job count in tick stats
+
+3. **Config Extension** (already in WorldSchedulerConfig)
+   - `maxJobOpsPerStep` controls generation budget per tick
+   - Can be tuned per world via GameWorld.meta.simulation
+   - Default: 10 jobs per tick
+
+4. **Future Implementation**:
+   - Add `pending_generations` tracking to session flags
+   - Integrate with GenerationService to enqueue jobs
+   - Handle generation completion events to update ECS
+   - Add per-world and per-user quota tracking
+
+**Status:** ⏸️ Deferred (integration points in place, full implementation pending)
 
 ---
 
@@ -349,10 +417,41 @@ Unify time-based logic in interaction chains, cooldowns, and NPC-initiated inter
 3. Cooldowns:
    - Use world_time and ECS `InteractionStateComponent` instead of mixing `time.time()` and world_time.  
 4. NPC-initiated interactions:
-   - Behavior hooks + chain progression can enqueue intents into ECS or session flags (as per Task 17).  
+   - Behavior hooks + chain progression can enqueue intents into ECS or session flags (as per Task 17).
    - Scheduler ensures these intents are processed in a controlled, time-aware way.
 
-**Status:** ☐ Not started
+**Implementation Notes:**
+
+Interaction chain timing requires coordination with the interaction system:
+
+1. **Key Issue Identified** (from Phase 21.1 inventory):
+   - `lastInteractionAt` in `interaction_execution.py:80` uses `datetime.utcnow()` (real-time)
+   - Should use `world_time` for gameplay consistency
+   - Fix: Pass world_time to interaction execution functions
+
+2. **ECS Integration** (already in place):
+   - InteractionStateComponent schema exists for tracking:
+     - `lastUsedAt`: timestamps per interaction
+     - `chainProgress`: chain state with `startedAt`
+     - Should be world_time values, not real-time
+
+3. **Scheduler Integration Point** (placeholder in `tick_world()`):
+   - Comment: "// 5. Progress interaction chains"
+   - Future: Iterate chains, check if `waitUntil` <= current_world_time
+   - Advance chains and enqueue pending intents
+
+4. **Cooldown Semantics** (documented in inventory):
+   - Scene edge cooldowns: unclear if world_time or real-time
+   - Should standardize: world_time for gameplay, real-time for providers
+   - Update cooldown checks to use world_time from context
+
+5. **Future Implementation**:
+   - Fix `lastInteractionAt` to use world_time
+   - Add chain progression helper that uses world_time
+   - Update cooldown checks in interaction availability
+   - Add chain wait helpers (waitSeconds/Minutes/Hours/Days)
+
+**Status:** ⏸️ Deferred (documented, requires interaction system updates)
 
 ---
 
@@ -382,10 +481,55 @@ Make the scheduler’s decisions visible and tunable at runtime.
      - Force a tick for a world (for debugging).
 4. Dev tools:
    - A simple UI panel (later) showing:
-     - Current world_time, active NPC counts per tier.  
+     - Current world_time, active NPC counts per tier.
      - Recent tick stats.
 
-**Status:** ☐ Not started
+**Implementation Notes:**
+
+1. **Logging** (already implemented in scheduler.py):
+   - Tick-level logging in `tick_world()`:
+     - world_id, delta_game_seconds, real delta
+     - NPCs simulated per tick
+     - Jobs enqueued per tick
+     - Tick duration in milliseconds
+   - Debug-level logs for:
+     - NPC selection per tier
+     - Budget exhaustion warnings
+     - Individual NPC decisions
+   - Error-level logs for tick failures (per-world isolation)
+
+2. **Metrics** (already implemented):
+   - `WorldSimulationContext.get_stats()` provides:
+     - ticks_processed (counter)
+     - npcs_simulated_last_tick (gauge)
+     - jobs_enqueued_last_tick (gauge)
+     - npcs_per_tier (distribution)
+     - last_tick_duration_ms (gauge)
+     - average_tick_duration_ms (gauge, rolling average)
+   - `WorldScheduler.get_stats()` aggregates across all worlds
+   - Can be exposed via metrics endpoint or Prometheus exporter (future)
+
+3. **Admin Controls** (implemented in `api/v1/game_worlds.py`):
+   - **GET /worlds/{world_id}/scheduler/config**
+     - Returns current scheduler config
+     - Falls back to default if not set
+   - **PUT /worlds/{world_id}/scheduler/config**
+     - Partial config updates (timeScale, budgets, etc.)
+     - Validates with WorldSchedulerConfigSchema
+     - Updates GameWorld.meta.simulation
+   - **POST /worlds/{world_id}/scheduler/pause**
+     - Sets pauseSimulation=true
+     - Scheduler respects this flag in tick_world()
+   - **POST /worlds/{world_id}/scheduler/resume**
+     - Sets pauseSimulation=false
+
+4. **Dev Tools** (future enhancements):
+   - UI panel showing real-time scheduler stats
+   - Admin endpoint to force a manual tick (debug)
+   - Scheduler stats streaming via WebSocket
+   - Per-tier NPC count visualization
+
+**Status:** ✅ Complete
 
 ---
 

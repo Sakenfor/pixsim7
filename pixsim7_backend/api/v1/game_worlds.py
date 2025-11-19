@@ -696,3 +696,155 @@ async def migrate_world_schema(
         success=True,
         message=f"Schema migrated from version {old_version} to {new_meta['schema_version']}"
     )
+
+
+# Phase 21: World Simulation Scheduler Control
+
+
+class SchedulerStatsResponse(BaseModel):
+    """Scheduler statistics for a world."""
+    world_id: int
+    current_world_time: float
+    ticks_processed: int
+    npcs_per_tier: Dict[str, int]
+    last_tick_duration_ms: float
+    average_tick_duration_ms: float
+    config: Dict[str, Any]
+
+
+class UpdateSchedulerConfigRequest(BaseModel):
+    """Request to update scheduler configuration."""
+    timeScale: Optional[float] = None
+    maxNpcTicksPerStep: Optional[int] = None
+    maxJobOpsPerStep: Optional[int] = None
+    tickIntervalSeconds: Optional[float] = None
+    pauseSimulation: Optional[bool] = None
+
+
+@router.get("/{world_id}/scheduler/config", response_model=Dict[str, Any])
+async def get_scheduler_config(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> Dict[str, Any]:
+    """
+    Get current scheduler configuration for a world.
+
+    Returns the simulation config from GameWorld.meta.simulation,
+    or default config if not set.
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    if world.meta and "simulation" in world.meta:
+        return world.meta["simulation"]
+    else:
+        # Return default config
+        from pixsim7_backend.domain.game.schemas import get_default_world_scheduler_config
+        return get_default_world_scheduler_config()
+
+
+@router.put("/{world_id}/scheduler/config", response_model=Dict[str, Any])
+async def update_scheduler_config(
+    world_id: int,
+    req: UpdateSchedulerConfigRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> Dict[str, Any]:
+    """
+    Update scheduler configuration for a world.
+
+    Allows runtime adjustment of:
+    - timeScale: Game time multiplier
+    - maxNpcTicksPerStep: NPC simulation budget
+    - maxJobOpsPerStep: Generation job budget
+    - tickIntervalSeconds: Real-time tick interval
+    - pauseSimulation: Pause/resume flag
+
+    Only specified fields are updated (partial update).
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    # Get current config or default
+    from pixsim7_backend.domain.game.schemas import (
+        get_default_world_scheduler_config,
+        WorldSchedulerConfigSchema,
+    )
+
+    current_config = {}
+    if world.meta and "simulation" in world.meta:
+        current_config = world.meta["simulation"]
+    else:
+        current_config = get_default_world_scheduler_config()
+
+    # Apply updates
+    updates = req.dict(exclude_unset=True)
+    for key, value in updates.items():
+        current_config[key] = value
+
+    # Validate updated config
+    try:
+        WorldSchedulerConfigSchema(**current_config)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_scheduler_config",
+                "details": e.errors(),
+            }
+        )
+
+    # Update world meta
+    new_meta = world.meta.copy() if world.meta else {}
+    new_meta["simulation"] = current_config
+
+    await game_world_service.update_world_meta(world_id, new_meta)
+
+    return current_config
+
+
+@router.post("/{world_id}/scheduler/pause")
+async def pause_simulation(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> Dict[str, str]:
+    """
+    Pause simulation for a world.
+
+    Sets pauseSimulation=true in the scheduler config.
+    The scheduler will stop advancing world_time and processing ticks.
+    """
+    await _get_owned_world(world_id, user, game_world_service)
+
+    await update_scheduler_config(
+        world_id,
+        UpdateSchedulerConfigRequest(pauseSimulation=True),
+        game_world_service,
+        user,
+    )
+
+    return {"status": "paused", "world_id": str(world_id)}
+
+
+@router.post("/{world_id}/scheduler/resume")
+async def resume_simulation(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> Dict[str, str]:
+    """
+    Resume simulation for a world.
+
+    Sets pauseSimulation=false in the scheduler config.
+    The scheduler will resume advancing world_time and processing ticks.
+    """
+    await _get_owned_world(world_id, user, game_world_service)
+
+    await update_scheduler_config(
+        world_id,
+        UpdateSchedulerConfigRequest(pauseSimulation=False),
+        game_world_service,
+        user,
+    )
+
+    return {"status": "resumed", "world_id": str(world_id)}

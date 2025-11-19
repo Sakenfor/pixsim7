@@ -19,9 +19,17 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7_backend.domain.game.models import GameWorld, GameWorldState, GameSession
+from pixsim7_backend.domain.game.models import GameWorld, GameWorldState, GameSession, GameNPC
 from pixsim7_backend.services.simulation.context import WorldSimulationContext
 from pixsim7_backend.domain.game.schemas import get_default_world_scheduler_config
+from pixsim7_backend.domain.behavior.simulation import (
+    get_npcs_to_simulate,
+    determine_simulation_tier,
+)
+from pixsim7_backend.domain.game.ecs import (
+    get_npc_component,
+    update_npc_component,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -149,20 +157,23 @@ class WorldScheduler:
         )
 
         # 2. Build work plan: which NPCs to simulate
-        # (Phase 21.4 will implement this)
-        # For now, this is a placeholder
-        npcs_to_simulate = await self._select_npcs_for_simulation(
+        npcs_by_tier = await self._select_npcs_for_simulation(
             world_id, context
         )
 
-        # 3. Simulate selected NPCs
-        # (Phase 21.4 will implement this)
-        for npc in npcs_to_simulate:
-            if not context.can_simulate_more_npcs():
-                break
-            # TODO: Call behavior system to simulate NPC
-            # await self._simulate_npc(npc, context)
-            context.record_npc_simulated(tier="active")  # Placeholder
+        # 3. Simulate selected NPCs (grouped by tier)
+        for tier, npcs in npcs_by_tier.items():
+            for npc_data in npcs:
+                if not context.can_simulate_more_npcs():
+                    logger.debug(
+                        f"Reached max NPC ticks ({context.config.maxNpcTicksPerStep}) "
+                        f"for world {world_id}"
+                    )
+                    break
+
+                # Simulate NPC
+                await self._simulate_npc(npc_data["npc"], npc_data["session"], tier, context)
+                context.record_npc_simulated(tier)
 
         # 4. Enqueue generation jobs (with backpressure)
         # (Phase 21.5 will implement this)
@@ -211,25 +222,165 @@ class WorldScheduler:
         self,
         world_id: int,
         context: WorldSimulationContext
-    ) -> List[Any]:
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Select which NPCs should be simulated this tick.
 
-        Phase 21.4 will implement the full logic using behavior system's
-        tier-based selection and ECS queries.
+        Uses behavior system's tier-based selection and respects work budgets.
 
         Args:
             world_id: World ID
             context: Simulation context
 
         Returns:
-            List of NPCs to simulate
+            Dict mapping tier ID to list of NPC data dicts with keys:
+            - "npc": GameNPC instance
+            - "session": GameSession instance
+            - "tier": tier ID string
         """
-        # Placeholder - Phase 21.4 will implement full logic
-        # TODO: Query NPCs from world
-        # TODO: Use behavior simulation.get_npcs_to_simulate()
-        # TODO: Respect tier configs and maxNpcTicksPerStep
-        return []
+        # Get all sessions for this world
+        result = await self.db.execute(
+            select(GameSession)
+            .where(GameSession.world_id == world_id)
+        )
+        sessions = list(result.scalars().all())
+
+        if not sessions:
+            logger.debug(f"No sessions found for world {world_id}")
+            return {}
+
+        # Get world and world state
+        world = await self.db.get(GameWorld, world_id)
+        world_state = await self.db.get(GameWorldState, world_id)
+
+        if not world or not world_state:
+            logger.warning(f"World or world state not found for {world_id}")
+            return {}
+
+        # Get simulation config from world meta or use defaults
+        simulation_config = None
+        if world.meta and "behavior" in world.meta:
+            behavior_config = world.meta.get("behavior", {})
+            simulation_config = behavior_config.get("simulationConfig")
+
+        # Collect all NPCs that might need simulation
+        # For now, we'll query NPCs and check them against all sessions
+        # In a more optimized version, we'd track which NPCs are relevant per session
+        result = await self.db.execute(select(GameNPC))
+        all_npcs = list(result.scalars().all())
+
+        if not all_npcs:
+            logger.debug(f"No NPCs found in database")
+            return {}
+
+        # Group NPCs to simulate by tier (across all sessions)
+        npcs_by_tier: Dict[str, List[Dict[str, Any]]] = {}
+        total_selected = 0
+
+        # For each session, determine which NPCs need simulation
+        for session in sessions:
+            if total_selected >= context.config.maxNpcTicksPerStep:
+                break
+
+            # Use behavior system to select NPCs for this session
+            session_npcs_by_tier = get_npcs_to_simulate(
+                npcs=all_npcs,
+                world=world,
+                session=session,
+                world_time=context.current_world_time,
+                simulation_config=simulation_config,
+            )
+
+            # Add selected NPCs to our result (with session context)
+            for tier, npc_list in session_npcs_by_tier.items():
+                if tier not in npcs_by_tier:
+                    npcs_by_tier[tier] = []
+
+                for npc in npc_list:
+                    if total_selected >= context.config.maxNpcTicksPerStep:
+                        break
+
+                    npcs_by_tier[tier].append({
+                        "npc": npc,
+                        "session": session,
+                        "tier": tier,
+                    })
+                    total_selected += 1
+
+        logger.debug(
+            f"Selected {total_selected} NPCs for simulation in world {world_id}: "
+            f"{', '.join(f'{tier}={len(npcs)}' for tier, npcs in npcs_by_tier.items())}"
+        )
+
+        return npcs_by_tier
+
+    async def _simulate_npc(
+        self,
+        npc: GameNPC,
+        session: GameSession,
+        tier: str,
+        context: WorldSimulationContext
+    ) -> None:
+        """
+        Simulate one NPC tick using behavior system and ECS.
+
+        This is a simplified simulation that updates NPC behavior state.
+        Full behavior system integration (activity selection, effects) will
+        be added in a future iteration.
+
+        Args:
+            npc: NPC to simulate
+            session: Game session
+            tier: Simulation tier
+            context: Simulation context
+        """
+        # Get behavior component
+        behavior_comp = get_npc_component(session, npc.id, "behavior", default={})
+
+        # Check if it's time for a new decision
+        next_decision_at = behavior_comp.get("nextDecisionAt", 0)
+        current_activity = behavior_comp.get("currentActivity")
+
+        if context.current_world_time >= next_decision_at:
+            # Time for new decision
+            # In full implementation, this would:
+            # 1. Use behavior system to choose new activity
+            # 2. Apply activity effects (energy, mood, relationships)
+            # 3. Update location/state based on activity
+
+            # For now, just log and update decision time
+            logger.debug(
+                f"NPC {npc.id} ({npc.name}) ready for decision "
+                f"(tier: {tier}, activity: {current_activity})"
+            )
+
+            # Simple placeholder: schedule next decision based on tier
+            # Detailed tier gets decisions more frequently
+            decision_interval_map = {
+                "detailed": 60,      # 1 minute
+                "active": 300,       # 5 minutes
+                "ambient": 1800,     # 30 minutes
+                "dormant": 7200,     # 2 hours
+            }
+            interval = decision_interval_map.get(tier, 300)
+
+            # Update behavior component
+            update_npc_component(session, npc.id, "behavior", {
+                "nextDecisionAt": context.current_world_time + interval,
+                "simulationTier": tier,
+                "lastSimulatedAt": context.current_world_time,
+            })
+
+            # Mark session as modified (will trigger DB update)
+            session.flags = session.flags  # Trigger SQLAlchemy dirty tracking
+
+        else:
+            # Not time for decision yet, just update last simulated time
+            update_npc_component(session, npc.id, "behavior", {
+                "lastSimulatedAt": context.current_world_time,
+                "simulationTier": tier,
+            })
+            session.flags = session.flags
 
     async def _get_pending_generation_requests(
         self,
