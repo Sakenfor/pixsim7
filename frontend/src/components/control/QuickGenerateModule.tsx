@@ -14,9 +14,13 @@ import { useGenerationsStore, isGenerationTerminal } from '../../stores/generati
 import { ccSelectors } from '../../stores/selectors';
 import { logEvent } from '../../lib/logging';
 import { GenerationPluginRenderer } from '../../lib/providers';
+import { useGenerationWebSocket } from '../../hooks/useGenerationWebSocket';
 
 export function QuickGenerateModule() {
   const navigate = useNavigate();
+
+  // Connect to WebSocket for real-time updates
+  useGenerationWebSocket();
 
   // Use stable selectors to reduce re-renders
   const operationType = useControlCenterStore(ccSelectors.operationType);
@@ -432,42 +436,68 @@ export function QuickGenerateModule() {
 }
 
 /**
- * Simple inline generation status display with polling
+ * Simple inline generation status display with WebSocket updates and retry support
  * Replaces the deleted JobStatusIndicator
  */
 function GenerationStatusDisplay({ generationId }: { generationId: number }) {
   const generation = useGenerationsStore(s => s.generations.get(generationId));
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
+  const [retrying, setRetrying] = useState(false);
 
-  // Poll for status updates
+  // Fallback polling if WebSocket disconnects (backup only)
   useEffect(() => {
     if (!generationId) return;
 
     // Check if generation is in terminal state
     if (generation && isGenerationTerminal(generation.status)) {
-      // Stop polling if completed, failed, or cancelled
       return;
     }
 
-    // Poll every 2 seconds
+    // Poll every 5 seconds as backup (WebSocket is primary)
     const interval = setInterval(async () => {
       try {
         const { getGeneration } = await import('../../lib/api/generations');
         const updated = await getGeneration(generationId);
         addOrUpdateGeneration(updated);
 
-        // Stop polling if terminal state reached
         if (isGenerationTerminal(updated.status)) {
           clearInterval(interval);
         }
       } catch (err) {
         console.error(`Failed to poll generation ${generationId}:`, err);
-        // Continue polling even on error
       }
-    }, 2000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [generationId, generation?.status, addOrUpdateGeneration]);
+
+  async function handleRetry() {
+    if (!generation || retrying) return;
+
+    setRetrying(true);
+    try {
+      const { retryGeneration } = await import('../../lib/api/generations');
+      const newGeneration = await retryGeneration(generationId);
+
+      // Update store with new generation
+      addOrUpdateGeneration(newGeneration);
+
+      // Switch display to new generation after 1 second
+      setTimeout(() => {
+        // The parent component should ideally track the new generation ID
+        // For now, just show success message
+        logEvent('INFO', 'generation_retried', {
+          originalId: generationId,
+          newId: newGeneration.id,
+        });
+      }, 1000);
+    } catch (err: any) {
+      console.error(`Failed to retry generation ${generationId}:`, err);
+      alert(err.response?.data?.detail || 'Failed to retry generation');
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   if (!generation) {
     return (
@@ -486,11 +516,29 @@ function GenerationStatusDisplay({ generationId }: { generationId: number }) {
   };
 
   const statusColor = statusColors[generation.status] || statusColors.pending;
+  const canRetry = generation.status === 'failed' && generation.retry_count < 3;
 
   return (
     <div className={`text-xs p-2 border rounded ${statusColor}`}>
-      <div className="font-medium">Generation #{generationId}</div>
+      <div className="flex items-center justify-between">
+        <div className="font-medium">Generation #{generationId}</div>
+        {canRetry && (
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Retry this generation (useful for content filter rejections)"
+          >
+            {retrying ? 'Retrying...' : 'Retry'}
+          </button>
+        )}
+      </div>
       <div className="mt-1">Status: {generation.status}</div>
+      {generation.retry_count > 0 && (
+        <div className="mt-1 text-xs opacity-75">
+          Retry attempt: {generation.retry_count}/3
+        </div>
+      )}
       {generation.error_message && (
         <div className="mt-1 text-red-600 dark:text-red-400">
           Error: {generation.error_message}

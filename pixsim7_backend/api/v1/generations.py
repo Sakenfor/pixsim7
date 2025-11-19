@@ -245,6 +245,38 @@ async def cancel_generation(
         raise HTTPException(status_code=500, detail=f"Failed to cancel generation: {str(e)}")
 
 
+# ===== RETRY GENERATION =====
+
+@router.post("/generations/{generation_id}/retry", response_model=GenerationResponse)
+async def retry_generation(
+    generation_id: int,
+    user: CurrentUser,
+    generation_service: GenerationSvc
+):
+    """
+    Retry a failed generation
+
+    Creates a new generation with the same parameters as the failed one.
+    Useful for generations that failed due to:
+    - Content filtering (romantic/erotic content that might pass on retry)
+    - Temporary provider errors
+    - Rate limits
+
+    Only the generation owner or admin can retry.
+    Maximum 3 retry attempts per generation.
+    """
+    try:
+        new_generation = await generation_service.retry_generation(generation_id, user)
+        return GenerationResponse.model_validate(new_generation)
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to retry generation {generation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retry generation: {str(e)}")
+
+
 # ===== VALIDATE GENERATION CONFIG =====
 
 @router.post("/generations/validate")

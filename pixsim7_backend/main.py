@@ -85,6 +85,10 @@ async def lifespan(app: FastAPI):
     from pixsim7_backend.infrastructure.events.handlers import register_handlers
     register_handlers()
 
+    # Initialize WebSocket event handlers
+    from pixsim7_backend.infrastructure.events.websocket_handler import register_websocket_handlers
+    register_websocket_handlers()
+
     # Initialize plugin system (feature plugins)
     plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
     logger.info(f"Loaded {len(plugin_manager.list_plugins())} feature plugins")
