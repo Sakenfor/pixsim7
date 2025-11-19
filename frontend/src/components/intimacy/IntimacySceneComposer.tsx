@@ -22,6 +22,8 @@ import { validateIntimacyScene } from '../../lib/intimacy/validation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { GatePreviewPanel } from './GatePreviewPanel';
+import { GenerationPreviewPanel } from './GenerationPreviewPanel';
+import { SceneSaveLoadControls, StateSaveLoadControls } from './SaveLoadControls';
 import { createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface IntimacySceneComposerProps {
@@ -42,6 +44,9 @@ interface IntimacySceneComposerProps {
 
   /** Whether the composer is read-only */
   readOnly?: boolean;
+
+  /** Workspace ID for generation preview */
+  workspaceId?: number;
 }
 
 const SCENE_TYPES: Array<{ value: IntimacySceneType; label: string; description: string }> = [
@@ -77,8 +82,9 @@ export function IntimacySceneComposer({
   userMaxRating,
   availableNpcs = [],
   readOnly = false,
+  workspaceId,
 }: IntimacySceneComposerProps) {
-  const [activeTab, setActiveTab] = useState<'basic' | 'gates' | 'generation' | 'validation'>('basic');
+  const [activeTab, setActiveTab] = useState<'basic' | 'gates' | 'generation' | 'validation' | 'save'>('basic');
   const [expandedGateId, setExpandedGateId] = useState<string | null>(null);
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
@@ -164,6 +170,7 @@ export function IntimacySceneComposer({
           { id: 'gates' as const, label: 'Gates', icon: '🚪', badge: scene.gates.length },
           { id: 'generation' as const, label: 'Generation', icon: '✨' },
           { id: 'validation' as const, label: 'Validation', icon: '✓', badge: validation.errors.length > 0 ? '!' : undefined },
+          { id: 'save' as const, label: 'Save/Load', icon: '💾' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -379,70 +386,84 @@ export function IntimacySceneComposer({
         )}
 
         {activeTab === 'generation' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left: State Editor */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                  Simulate Relationship State
-                </h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Adjust metrics to preview how gates will behave in different scenarios
-                </p>
+          <div className="space-y-6">
+            {/* Top Row: State Editor & Gate Preview */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left: State Editor */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                    Simulate Relationship State
+                  </h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    Adjust metrics to preview how gates will behave in different scenarios
+                  </p>
+                </div>
+
+                <RelationshipStateEditor
+                  state={simulatedState}
+                  onChange={setSimulatedState}
+                  readOnly={false}
+                  showPresets={true}
+                />
+
+                {scene.socialContext && (
+                  <div className="mt-4">
+                    <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
+                      Social Context (For Generation)
+                    </h4>
+                    <SocialContextPanel
+                      socialContext={scene.socialContext}
+                      readOnly={readOnly}
+                      onConfigure={() => {
+                        // TODO: Open social context configuration dialog
+                        console.log('Configure social context');
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
-              <RelationshipStateEditor
-                state={simulatedState}
-                onChange={setSimulatedState}
-                readOnly={false}
-                showPresets={true}
-              />
+              {/* Right: Gate Preview */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                    Gate Preview
+                  </h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    See which gates are satisfied with the current simulated state
+                  </p>
+                </div>
 
-              {scene.socialContext && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
-                    Social Context (For Generation)
-                  </h4>
-                  <SocialContextPanel
-                    socialContext={scene.socialContext}
-                    readOnly={readOnly}
-                    onConfigure={() => {
-                      // TODO: Open social context configuration dialog
-                      console.log('Configure social context');
+                {scene.gates.length === 0 ? (
+                  <div className="p-6 border-2 border-dashed dark:border-neutral-700 rounded-lg text-center text-neutral-500 dark:text-neutral-400">
+                    <div className="text-3xl mb-2">🚪</div>
+                    <p className="text-sm">No gates configured</p>
+                    <p className="text-xs mt-1">Add gates in the Gates tab to preview them here</p>
+                  </div>
+                ) : (
+                  <GatePreviewPanel
+                    gates={scene.gates}
+                    simulatedState={simulatedState}
+                    expandByDefault={false}
+                    onGateClick={(gateId) => {
+                      // Could switch to gates tab and highlight this gate
+                      console.log('Gate clicked:', gateId);
                     }}
                   />
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* Right: Gate Preview */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                  Gate Preview
-                </h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  See which gates are satisfied with the current simulated state
-                </p>
-              </div>
-
-              {scene.gates.length === 0 ? (
-                <div className="p-6 border-2 border-dashed dark:border-neutral-700 rounded-lg text-center text-neutral-500 dark:text-neutral-400">
-                  <div className="text-3xl mb-2">🚪</div>
-                  <p className="text-sm">No gates configured</p>
-                  <p className="text-xs mt-1">Add gates in the Gates tab to preview them here</p>
-                </div>
-              ) : (
-                <GatePreviewPanel
-                  gates={scene.gates}
-                  simulatedState={simulatedState}
-                  expandByDefault={false}
-                  onGateClick={(gateId) => {
-                    // Could switch to gates tab and highlight this gate
-                    console.log('Gate clicked:', gateId);
-                  }}
-                />
-              )}
+            {/* Bottom Row: Generation Preview (Full Width) */}
+            <div className="border-t dark:border-neutral-700 pt-6">
+              <GenerationPreviewPanel
+                scene={scene}
+                relationshipState={simulatedState}
+                worldMaxRating={worldMaxRating}
+                userMaxRating={userMaxRating}
+                workspaceId={workspaceId}
+              />
             </div>
           </div>
         )}
@@ -533,6 +554,66 @@ export function IntimacySceneComposer({
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'save' && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                Save & Load
+              </h3>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                Save scene configurations and simulated states for later use
+              </p>
+            </div>
+
+            {/* Scene Save/Load */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                Scene Configuration
+              </h4>
+              <div className="p-4 border dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-800">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+                  Save this scene configuration to a file or browser storage for reuse.
+                </p>
+                <SceneSaveLoadControls
+                  scene={scene}
+                  onLoad={(loadedScene) => onChange(loadedScene)}
+                  disabled={readOnly}
+                />
+              </div>
+            </div>
+
+            {/* Simulated State Save/Load */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                Simulated Relationship State
+              </h4>
+              <div className="p-4 border dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-800">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+                  Save the current simulated state for testing different scenarios.
+                </p>
+                <StateSaveLoadControls
+                  state={simulatedState}
+                  onLoad={(loadedState) => setSimulatedState(loadedState)}
+                  disabled={readOnly}
+                />
+              </div>
+            </div>
+
+            {/* Tips */}
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+              <div className="text-xs font-medium text-blue-900 dark:text-blue-300 mb-1">
+                💡 Save/Load Tips
+              </div>
+              <ul className="text-xs text-blue-700 dark:text-blue-400 space-y-1 list-disc list-inside">
+                <li><strong>Save to File:</strong> Export as JSON for backup or sharing</li>
+                <li><strong>Quick Save:</strong> Save to browser storage for quick access</li>
+                <li><strong>Simulated States:</strong> Save test scenarios to replay later</li>
+                <li><strong>Load from File:</strong> Import previously exported configurations</li>
+              </ul>
+            </div>
           </div>
         )}
       </div>

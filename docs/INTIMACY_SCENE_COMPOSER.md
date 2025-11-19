@@ -2,9 +2,11 @@
 
 > Visual editor tooling for designing intimate scenes and relationship progression arcs with proper safety controls and content rating management.
 
-> **Status**: Phase 1-2 Implementation Complete (UI, Data Models, Live Preview)
+> **Status**: Phase 1-4 Implementation Complete (UI, Live Preview, Generation, Save/Load)
 > **Phase 1**: Basic UI and type definitions ✓
 > **Phase 2**: Live preview with what-if analysis ✓
+> **Phase 3**: Generation integration with content preview ✓
+> **Phase 4**: Save/load & state persistence ✓ NEW
 > **For Agents**: This doc covers the intimacy scene composer and progression editor UI. See `INTIMACY_AND_GENERATION.md` for the underlying generation system and `RELATIONSHIPS_AND_ARCS.md` for relationship data models.
 
 ---
@@ -16,7 +18,9 @@ The Intimacy Scene Composer provides visual tools for:
 - **Creating progression arcs** showing relationship milestones over time
 - **Validating content** against world and user preferences
 - **Visualizing gates** with tier/intimacy thresholds
-- **Live preview & what-if analysis** - Test gates with simulated relationship states ✓ NEW
+- **Live preview & what-if analysis** - Test gates with simulated relationship states ✓
+- **Generation preview** - Preview generated content with derived social context ✓
+- **Save/load functionality** - Export, import, and persist configurations ✓ NEW
 
 **Key principles:**
 - **Safety first**: Multi-layer content rating validation and explicit consent requirements
@@ -48,11 +52,18 @@ Intimacy Scene Composer
   │   ├─ Quick presets (stranger → lover)
   │   └─ Flag management
   │
-  ├─ GatePreviewPanel (Phase 2) ✓ NEW
+  ├─ GatePreviewPanel (Phase 2) ✓
   │   ├─ Live gate checking with simulated state
   │   ├─ Pass/fail indicators
   │   ├─ Missing requirements display
   │   └─ What-if analysis
+  │
+  ├─ GenerationPreviewPanel (Phase 3) ✓ NEW
+  │   ├─ Social context derivation
+  │   ├─ Generation API integration
+  │   ├─ Live content preview
+  │   ├─ Status tracking (pending/processing/complete)
+  │   └─ Error handling
   │
   └─ ProgressionArcEditor (timeline view)
       ├─ Stage cards with status
@@ -697,6 +708,762 @@ for (const scenario of scenarios) {
 
 ---
 
+## Phase 3: Generation Integration & Content Preview
+
+### Overview
+
+Phase 3 adds live content generation preview capabilities. Designers can now see what content would be generated for different relationship states, complete with derived social context and rating enforcement.
+
+### Social Context Derivation
+
+Automatic mapping from simulated relationship state to `GenerationSocialContext`.
+
+```typescript
+import { deriveSocialContext } from '@/lib/intimacy/socialContextDerivation';
+
+// Derive social context from simulated state
+const socialContext = deriveSocialContext(
+  simulatedState,        // SimulatedRelationshipState
+  sceneConfig,           // IntimacySceneConfig (optional)
+  worldMaxRating,        // World constraint (optional)
+  userMaxRating          // User constraint (optional)
+);
+
+// Result: GenerationSocialContext
+// {
+//   intimacyLevelId: 'intimate',
+//   relationshipTierId: 'close_friend',
+//   intimacyBand: 'deep',
+//   contentRating: 'mature_implied',
+//   worldMaxRating: 'mature_implied',
+//   userMaxRating: 'romantic',
+//   relationshipValues: { affinity: 70, trust: 65, chemistry: 55, tension: 30 },
+//   npcIds: [12]
+// }
+```
+
+**Intimacy Band Derivation:**
+- `none`: chemistry < 25 and affinity < 60
+- `light`: chemistry >= 25 or affinity >= 60
+- `deep`: chemistry >= 50
+- `intense`: chemistry >= 70 and affinity >= 70
+
+**Content Rating Derivation:**
+- Derives from intimacy band or scene config rating
+- Automatically clamped to world/user constraints
+- Shows warnings when rating is downgraded
+
+### GenerationPreviewPanel
+
+Interactive panel for previewing generated content.
+
+```tsx
+import { GenerationPreviewPanel } from '@/components/intimacy/GenerationPreviewPanel';
+
+function MySceneEditor() {
+  return (
+    <GenerationPreviewPanel
+      scene={sceneConfig}
+      relationshipState={simulatedState}
+      worldMaxRating="mature_implied"
+      userMaxRating="romantic"
+      workspaceId={123}
+    />
+  );
+}
+```
+
+**Features:**
+- **Generate Button**: Starts content generation with derived social context
+- **Status Tracking**: Shows pending → processing → completed states
+- **Social Context Display**: Collapsible panel showing derived context
+- **Content Display**: Shows generated dialogue, metadata, and tags
+- **Error Handling**: Clear error messages with retry suggestions
+- **Generation Metadata**: Shows generation ID, duration, intimacy band, rating
+
+**Generation Flow:**
+1. Derive social context from simulated state + scene config
+2. Build generation request with content rules
+3. Start generation (non-blocking)
+4. Poll status every 2s until complete/failed
+5. Display generated content or error
+
+### Generation Preview Service
+
+Backend integration utilities for preview generation.
+
+```typescript
+import {
+  generateIntimacyPreview,
+  startIntimacyPreview,
+  getPreviewStatus,
+} from '@/lib/intimacy/generationPreview';
+
+// Option 1: Blocking (waits for result)
+const result = await generateIntimacyPreview({
+  scene: sceneConfig,
+  relationshipState: simulatedState,
+  worldMaxRating: 'mature_implied',
+  userMaxRating: 'romantic',
+  workspaceId: 123,
+});
+
+if (result.status === 'completed') {
+  console.log('Generated:', result.content);
+}
+
+// Option 2: Non-blocking (start and poll separately)
+const { generationId, result: initial } = await startIntimacyPreview({
+  scene: sceneConfig,
+  relationshipState: simulatedState,
+});
+
+// Poll status
+const updated = await getPreviewStatus(generationId, initial.socialContext);
+```
+
+**IntimacyPreviewRequest:**
+```typescript
+interface IntimacyPreviewRequest {
+  scene: IntimacySceneConfig;
+  relationshipState: SimulatedRelationshipState;
+  worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+  userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+  workspaceId?: number;
+}
+```
+
+**IntimacyPreviewResult:**
+```typescript
+interface IntimacyPreviewResult {
+  generationId: number;
+  socialContext: GenerationSocialContext;
+  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  content?: GeneratedContentPayload;
+  error?: string;
+  metadata?: {
+    startedAt?: string;
+    completedAt?: string;
+    duration?: number;
+    provider?: string;
+  };
+}
+```
+
+### Utility Functions
+
+**Get Effective Content Rating:**
+
+```typescript
+import { getEffectiveContentRating } from '@/lib/intimacy/socialContextDerivation';
+
+const { effectiveRating, wasClamped, clampedBy } = getEffectiveContentRating(
+  'mature_implied',  // Requested
+  'romantic',        // World max
+  'mature_implied'   // User max
+);
+
+// effectiveRating: 'romantic' (clamped down)
+// wasClamped: true
+// clampedBy: 'world'
+```
+
+**Check Content Rating Support:**
+
+```typescript
+import { supportsContentRating } from '@/lib/intimacy/socialContextDerivation';
+
+const check = supportsContentRating(simulatedState, 'mature_implied');
+
+if (!check.supported) {
+  console.log('Reason:', check.reason);
+  console.log('Suggested minimums:', check.suggestedMinimums);
+  // { chemistry: 50, affinity: 60, intimacyLevel: 'intimate' }
+}
+```
+
+### Integration in IntimacySceneComposer
+
+The Generation tab now includes three sections:
+
+```tsx
+<IntimacySceneComposer
+  scene={myScene}
+  onChange={setScene}
+  worldMaxRating="mature_implied"
+  userMaxRating="romantic"
+  workspaceId={123}  // NEW: For generation tracking
+/>
+```
+
+**Generation Tab Layout (Updated):**
+- **Top Left**: RelationshipStateEditor for adjusting metrics
+- **Top Right**: GatePreviewPanel showing gate results
+- **Bottom (Full Width)**: GenerationPreviewPanel for content preview ✓ NEW
+
+### Usage Examples
+
+#### Example 1: Basic Generation Preview
+
+```typescript
+// Configure scene
+const kissScene: IntimacySceneConfig = {
+  name: 'First Kiss',
+  sceneType: 'kiss',
+  intensity: 'moderate',
+  contentRating: 'romantic',
+  gates: [
+    {
+      id: 'kiss_gate',
+      name: 'Romantic Interest',
+      requiredTier: 'close_friend',
+      metricRequirements: {
+        minChemistry: 50,
+        minAffinity: 60,
+      },
+    },
+  ],
+  targetNpcIds: [12],
+  tags: ['romantic', 'sweet'],
+};
+
+// Simulate state
+const state: SimulatedRelationshipState = {
+  tier: 'close_friend',
+  intimacyLevel: 'deep_flirt',
+  metrics: { affinity: 70, trust: 65, chemistry: 60, tension: 35 },
+  flags: { 'went_on_date': true },
+};
+
+// Derive social context
+const context = deriveSocialContext(state, kissScene, 'mature_implied');
+// context.intimacyBand: 'deep'
+// context.contentRating: 'romantic'
+
+// Generate preview
+const result = await generateIntimacyPreview({
+  scene: kissScene,
+  relationshipState: state,
+  worldMaxRating: 'mature_implied',
+});
+
+if (result.status === 'completed') {
+  console.log('Generated dialogue:', result.content?.dialogue);
+}
+```
+
+#### Example 2: Testing Different States
+
+```typescript
+// Test progression from friend → lover
+const states = [
+  createStateFromTier('friend'),
+  createStateFromTier('close_friend'),
+  createStateFromTier('lover'),
+];
+
+for (const state of states) {
+  const context = deriveSocialContext(state, kissScene);
+  console.log(`${state.tier}: intimacy=${context.intimacyBand}, rating=${context.contentRating}`);
+
+  // Check if rating is supported
+  const check = supportsContentRating(state, 'mature_implied');
+  if (!check.supported) {
+    console.log('  Warning:', check.reason);
+  }
+}
+
+// Output:
+// friend: intimacy=light, rating=romantic
+//   Warning: Mature content requires deep intimacy (chemistry 50+, affinity 60+)
+// close_friend: intimacy=deep, rating=mature_implied
+// lover: intimacy=intense, rating=mature_implied
+```
+
+#### Example 3: Rating Constraint Handling
+
+```typescript
+// Scene requests mature content
+const intimateScene: IntimacySceneConfig = {
+  sceneType: 'intimate',
+  intensity: 'intense',
+  contentRating: 'mature_implied',
+  // ...
+};
+
+// But world limits to romantic
+const context = deriveSocialContext(
+  loverState,
+  intimateScene,
+  'romantic',  // World max
+  undefined    // No user constraint
+);
+
+// context.contentRating: 'romantic' (clamped from 'mature_implied')
+// context.worldMaxRating: 'romantic'
+
+// Check what happened
+const { effectiveRating, wasClamped, clampedBy } = getEffectiveContentRating(
+  'mature_implied',
+  'romantic',
+  undefined
+);
+// effectiveRating: 'romantic'
+// wasClamped: true
+// clampedBy: 'world'
+```
+
+---
+
+## Phase 4: Save/Load & State Persistence
+
+### Overview
+
+Phase 4 adds comprehensive save/load functionality for scene configurations, progression arcs, and simulated relationship states. Designers can save their work to files or browser storage for later use, backup, or sharing with team members.
+
+### Save/Load Utilities
+
+Core utilities for import/export and local storage persistence.
+
+```typescript
+import {
+  // Scene export/import
+  exportScenesToJSON,
+  importScenesFromJSON,
+  downloadScenesAsFile,
+  uploadScenesFromFile,
+
+  // Arc export/import
+  exportArcsToJSON,
+  importArcsFromJSON,
+  downloadArcsAsFile,
+  uploadArcsFromFile,
+
+  // Local storage
+  saveSceneToLocalStorage,
+  loadSceneFromLocalStorage,
+  saveArcToLocalStorage,
+  loadArcFromLocalStorage,
+  saveSimulatedState,
+  loadSimulatedState,
+
+  // Management
+  listSavedScenes,
+  listSavedArcs,
+  listSavedStates,
+  clearSavedData,
+} from '@/lib/intimacy/saveLoad';
+```
+
+### Scene Export/Import
+
+**Export to JSON File:**
+
+```typescript
+// Export single scene
+downloadScenesAsFile([myScene], 'my-kiss-scene.json', {
+  name: 'Kiss Scene Pack',
+  description: 'Collection of romantic kiss scenes',
+  author: 'YourName',
+  tags: ['romantic', 'kiss'],
+});
+
+// Or get JSON string for custom handling
+const json = exportScenesToJSON([scene1, scene2], metadata);
+```
+
+**Import from JSON File:**
+
+```typescript
+// Upload and import
+const importedData = await uploadScenesFromFile();
+console.log('Imported scenes:', importedData.scenes);
+console.log('Metadata:', importedData.metadata);
+
+// Or parse JSON string
+const data = importScenesFromJSON(jsonString);
+```
+
+**Export Format:**
+
+```json
+{
+  "version": "1.0.0",
+  "exportedAt": "2024-11-19T12:00:00.000Z",
+  "scenes": [
+    {
+      "id": "scene_123",
+      "name": "First Kiss",
+      "sceneType": "kiss",
+      "intensity": "moderate",
+      "contentRating": "romantic",
+      "gates": [...],
+      "targetNpcIds": [12]
+    }
+  ],
+  "metadata": {
+    "name": "Kiss Scene Pack",
+    "description": "Collection of romantic kiss scenes",
+    "author": "YourName",
+    "tags": ["romantic", "kiss"]
+  }
+}
+```
+
+### Progression Arc Export/Import
+
+**Export Arc:**
+
+```typescript
+// Download as file
+downloadArcsAsFile([myArc], 'romance-progression.json', {
+  name: 'Romance Progression',
+  description: 'Complete romance path from strangers to lovers',
+  author: 'Designer',
+});
+
+// Get JSON
+const json = exportArcsToJSON([arc], metadata);
+```
+
+**Import Arc:**
+
+```typescript
+const importedData = await uploadArcsFromFile();
+console.log('Imported arcs:', importedData.arcs);
+```
+
+### Local Storage Persistence
+
+**Quick Save/Load for Scenes:**
+
+```typescript
+// Save to browser storage
+saveSceneToLocalStorage(scene.id, scene);
+
+// Load from browser storage
+const savedScene = loadSceneFromLocalStorage(sceneId);
+
+// List all saved scenes
+const savedSceneIds = listSavedScenes();
+
+// Delete saved scene
+deleteSceneFromLocalStorage(sceneId);
+```
+
+**Quick Save/Load for Arcs:**
+
+```typescript
+// Save arc
+saveArcToLocalStorage(arc.id, arc);
+
+// Load arc
+const savedArc = loadArcFromLocalStorage(arcId);
+
+// List saved arcs
+const savedArcIds = listSavedArcs();
+```
+
+**Simulated State Saves:**
+
+```typescript
+// Save a test scenario
+saveSimulatedState({
+  name: 'Lover State Test',
+  description: 'High chemistry, high affinity lover scenario',
+  state: {
+    tier: 'lover',
+    intimacyLevel: 'very_intimate',
+    metrics: { affinity: 90, trust: 85, chemistry: 88, tension: 60 },
+    flags: { 'went_on_date': true, 'first_kiss': true },
+  },
+});
+
+// Load saved state
+const saved = loadSimulatedState('Lover State Test');
+setSimulatedState(saved.state);
+
+// List all saved states
+const allStates = listSavedStates();
+// Returns array sorted by savedAt (most recent first)
+```
+
+### UI Components
+
+**SceneSaveLoadControls:**
+
+Used in IntimacySceneComposer Save/Load tab.
+
+```tsx
+import { SceneSaveLoadControls } from '@/components/intimacy/SaveLoadControls';
+
+<SceneSaveLoadControls
+  scene={currentScene}
+  onLoad={(loadedScene) => setScene(loadedScene)}
+  disabled={false}
+/>
+```
+
+**Features:**
+- **Save to File**: Downloads scene as JSON
+- **Load from File**: Uploads and parses JSON
+- **Quick Save**: Saves to browser localStorage
+- **Quick Load**: Shows dialog with all saved scenes
+- **Delete**: Remove saved scenes
+
+**ArcSaveLoadControls:**
+
+Used in ProgressionArcEditor modal.
+
+```tsx
+import { ArcSaveLoadControls } from '@/components/intimacy/SaveLoadControls';
+
+<ArcSaveLoadControls
+  arc={currentArc}
+  onLoad={(loadedArc) => setArc(loadedArc)}
+  disabled={false}
+/>
+```
+
+**StateSaveLoadControls:**
+
+Used for saving simulated relationship states.
+
+```tsx
+import { StateSaveLoadControls } from '@/components/intimacy/SaveLoadControls';
+
+<StateSaveLoadControls
+  state={simulatedState}
+  onLoad={(loadedState) => setSimulatedState(loadedState)}
+  disabled={false}
+/>
+```
+
+### Integration in IntimacySceneComposer
+
+**New Save/Load Tab:**
+
+The composer now has a dedicated Save/Load tab with:
+- Scene configuration export/import
+- Simulated state save/load
+- Tips and usage guide
+
+```tsx
+<IntimacySceneComposer
+  scene={myScene}
+  onChange={setScene}
+  // ... other props
+/>
+
+// Navigate to "Save/Load" tab to access save/load features
+```
+
+### Integration in ProgressionArcEditor
+
+**Save/Load Button:**
+
+Header now includes a "💾 Save/Load" button that opens a modal:
+
+```tsx
+<ProgressionArcEditor
+  arc={myArc}
+  onChange={setArc}
+  // ... other props
+/>
+
+// Click "Save/Load" button in header
+```
+
+### Usage Examples
+
+#### Example 1: Save Scene for Team Sharing
+
+```typescript
+// Designer creates a complex kiss scene
+const kissScene: IntimacySceneConfig = {
+  id: 'kiss_beach_sunset',
+  name: 'Beach Sunset Kiss',
+  sceneType: 'kiss',
+  intensity: 'moderate',
+  contentRating: 'romantic',
+  gates: [
+    {
+      id: 'romantic_gate',
+      name: 'Deep Romantic Connection',
+      requiredTier: 'close_friend',
+      metricRequirements: {
+        minChemistry: 60,
+        minAffinity: 70,
+      },
+    },
+  ],
+  targetNpcIds: [42],
+  tags: ['romantic', 'beach', 'sunset'],
+};
+
+// Export for team
+downloadScenesAsFile([kissScene], 'beach-kiss-scene.json', {
+  name: 'Beach Kiss Scene',
+  author: 'LeadDesigner',
+  description: 'Romantic beach scene for NPC Alice',
+});
+
+// Team member imports
+const imported = await uploadScenesFromFile();
+const teamScene = imported.scenes[0];
+```
+
+#### Example 2: Quick Save During Iteration
+
+```typescript
+// Designer working on scene, wants to save progress
+const workInProgress: IntimacySceneConfig = {
+  // ... partial scene config
+};
+
+// Quick save to browser
+saveSceneToLocalStorage('wip_kiss_scene', workInProgress);
+
+// Later: resume work
+const resumedScene = loadSceneFromLocalStorage('wip_kiss_scene');
+```
+
+#### Example 3: Save Test Scenarios
+
+```typescript
+// Save multiple test states for regression testing
+const testScenarios = [
+  {
+    name: 'Early Game - Strangers',
+    description: 'Starting state for new relationships',
+    state: createStateFromTier('stranger'),
+  },
+  {
+    name: 'Mid Game - Friends',
+    description: 'Established friendship',
+    state: createStateFromTier('friend'),
+  },
+  {
+    name: 'End Game - Lovers',
+    description: 'Full romance progression',
+    state: createStateFromTier('lover'),
+  },
+  {
+    name: 'Edge Case - High Chemistry Low Trust',
+    description: 'Testing conflicting metrics',
+    state: {
+      tier: 'acquaintance',
+      intimacyLevel: 'light_flirt',
+      metrics: { affinity: 40, trust: 10, chemistry: 70, tension: 50 },
+      flags: {},
+    },
+  },
+];
+
+// Save all scenarios
+testScenarios.forEach((scenario) => saveSimulatedState(scenario));
+
+// List and load later
+const allScenarios = listSavedStates();
+allScenarios.forEach((saved) => {
+  console.log(`${saved.name}: ${saved.description}`);
+});
+```
+
+#### Example 4: Export Complete Progression Pack
+
+```typescript
+// Export multiple arcs as a "Romance Pack"
+const romancePack = [
+  aliceRomanceArc,
+  bobRomanceArc,
+  carolRomanceArc,
+];
+
+downloadArcsAsFile(romancePack, 'romance-pack-v1.json', {
+  name: 'Romance Pack v1.0',
+  description: 'Complete romance progressions for main NPCs',
+  author: 'NarrativeTeam',
+  tags: ['romance', 'main-story'],
+});
+```
+
+#### Example 5: Backup and Restore
+
+```typescript
+// Backup all scenes from local storage
+const allSceneIds = listSavedScenes();
+const allScenes = allSceneIds
+  .map((id) => loadSceneFromLocalStorage(id))
+  .filter((s) => s !== null);
+
+// Export as backup
+downloadScenesAsFile(allScenes, `backup-${Date.now()}.json`, {
+  name: 'Local Storage Backup',
+  description: 'Backup of all scenes in browser storage',
+});
+
+// Clear browser storage
+clearSavedData('scenes');
+
+// Restore from backup file
+const backup = await uploadScenesFromFile();
+backup.scenes.forEach((scene) => {
+  saveSceneToLocalStorage(scene.id, scene);
+});
+```
+
+### Data Management
+
+**Clear Saved Data:**
+
+```typescript
+// Clear specific type
+clearSavedData('scenes');  // Removes all saved scenes
+clearSavedData('arcs');    // Removes all saved arcs
+clearSavedData('states');  // Removes all saved states
+
+// Clear everything
+clearSavedData('all');
+```
+
+**List Saved Items:**
+
+```typescript
+// Get IDs
+const sceneIds = listSavedScenes();
+const arcIds = listSavedArcs();
+
+// Get full state saves (sorted by date)
+const states = listSavedStates();
+states.forEach((save) => {
+  console.log(`${save.name} - saved ${save.savedAt}`);
+  console.log(`  Tier: ${save.state.tier}`);
+  console.log(`  Intimacy: ${save.state.intimacyLevel}`);
+});
+```
+
+### Storage Keys
+
+All data is stored in `localStorage` with prefixed keys:
+- Scenes: `pixsim7_intimacy_scene_{sceneId}`
+- Arcs: `pixsim7_intimacy_arc_{arcId}`
+- States: `pixsim7_intimacy_state_{name}`
+
+### Version Compatibility
+
+Export format includes version field (`1.0.0`). Future versions will handle migration:
+
+```typescript
+const exported = importScenesFromJSON(jsonString);
+if (exported.version !== CURRENT_VERSION) {
+  console.warn(`Version mismatch: ${exported.version} vs ${CURRENT_VERSION}`);
+  // Handle migration if needed
+}
+```
+
+---
+
 ## Implementation Status
 
 ### ✓ Phase 1 - Complete
@@ -720,19 +1487,34 @@ for (const scenario of scenarios) {
 - [x] Quick presets for common relationship states
 - [x] Documentation with usage examples
 
-### Phase 3 - Planned
+### ✓ Phase 3 - Complete
 
-- [ ] Generation integration (backend preview of intimacy scenes)
+- [x] Social context auto-derivation (`frontend/src/lib/intimacy/socialContextDerivation.ts`)
+- [x] Generation preview service (`frontend/src/lib/intimacy/generationPreview.ts`)
+- [x] GenerationPreviewPanel component (`frontend/src/components/intimacy/GenerationPreviewPanel.tsx`)
+- [x] Integration in IntimacySceneComposer (Generation tab)
+- [x] Utility functions (getEffectiveContentRating, supportsContentRating)
+- [x] Documentation with usage examples
+
+### ✓ Phase 4 - Complete
+
+- [x] Save/load utilities (`frontend/src/lib/intimacy/saveLoad.ts`)
+- [x] Scene export/import to JSON files
+- [x] Progression arc export/import to JSON files
+- [x] Local storage persistence for scenes and arcs
+- [x] Simulated state save/load
+- [x] SaveLoadControls components (`frontend/src/components/intimacy/SaveLoadControls.tsx`)
+- [x] Integration in IntimacySceneComposer (Save/Load tab)
+- [x] Integration in ProgressionArcEditor (Save/Load modal)
+- [x] Documentation with usage examples
+
+### Phase 5 - Future
+
 - [ ] Template library for common patterns
-- [ ] Progression state tracking with save/load
 - [ ] Advanced what-if scenarios (multi-NPC, temporal)
-
-### Phase 4 - Future
-
 - [ ] Branching progression paths
 - [ ] Multi-NPC progression arcs
 - [ ] Analytics and playtesting tools
-- [ ] Import/export progression packs
 - [ ] A/B testing for content variations
 
 ---
@@ -869,13 +1651,22 @@ await saveScene(scene);
 - `frontend/src/components/intimacy/ProgressionArcEditor.tsx` - Arc timeline editor
 - `frontend/src/components/generation/SocialContextPanel.tsx` - Social context display
 
-### Components (Phase 2 - NEW)
+### Components (Phase 2)
 - `frontend/src/components/intimacy/RelationshipStateEditor.tsx` - State simulation editor
 - `frontend/src/components/intimacy/GatePreviewPanel.tsx` - Live gate preview panel
+
+### Components (Phase 3)
+- `frontend/src/components/intimacy/GenerationPreviewPanel.tsx` - Generation preview panel
+
+### Components (Phase 4 - NEW)
+- `frontend/src/components/intimacy/SaveLoadControls.tsx` - Save/load controls (Scene, Arc, State)
 
 ### Utilities
 - `frontend/src/lib/intimacy/validation.ts` - Validation functions
 - `frontend/src/lib/intimacy/gateChecking.ts` - Gate checking utilities (Phase 2)
+- `frontend/src/lib/intimacy/socialContextDerivation.ts` - Social context derivation (Phase 3)
+- `frontend/src/lib/intimacy/generationPreview.ts` - Generation preview service (Phase 3)
+- `frontend/src/lib/intimacy/saveLoad.ts` - Save/load utilities (Phase 4)
 
 ### Documentation
 - `docs/INTIMACY_AND_GENERATION.md` - Generation system integration
