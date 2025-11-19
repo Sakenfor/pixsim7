@@ -6,7 +6,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
 from pixsim7_backend.api.dependencies import CurrentUser, GameWorldSvc
-from pixsim7_backend.domain.game.schemas import WorldMetaSchemas
+from pixsim7_backend.domain.game.schemas import (
+    WorldMetaSchemas,
+    RelationshipTierSchema,
+    detect_tier_gaps,
+    CURRENT_SCHEMA_VERSION,
+    auto_migrate_schema,
+)
 
 
 router = APIRouter()
@@ -179,57 +185,514 @@ async def update_world_meta(
     return await _build_world_detail(updated_world, game_world_service)
 
 
+def generate_migration_suggestions(errors: List[str]) -> List[str]:
+    """Generate actionable migration suggestions based on validation errors."""
+    suggestions = []
+
+    for error in errors:
+        if 'max' in error and 'must be >=' in error and 'min' in error:
+            suggestions.append('Swap min and max values, or adjust thresholds')
+        elif 'Duplicate' in error:
+            suggestions.append('Rename duplicate IDs to be unique')
+        elif 'Overlapping' in error or 'overlap' in error:
+            suggestions.append('Adjust tier ranges to eliminate overlaps')
+        elif 'cannot be empty' in error:
+            suggestions.append('Provide a valid non-empty ID')
+        elif 'must be between 0 and 100' in error:
+            suggestions.append('Adjust values to be within valid range (0-100)')
+        elif 'at least one threshold' in error:
+            suggestions.append('Add at least one threshold value for the intimacy level')
+
+    # Add generic suggestion if no specific ones matched
+    if not suggestions and errors:
+        suggestions.append('Review the error messages and adjust schema configuration')
+
+    return suggestions
+
+
 class WorldSchemaValidationResult(BaseModel):
     """Result of schema validation for a single world."""
     world_id: int
     world_name: str
-    valid: bool
-    errors: Optional[List[Dict[str, Any]]] = None
+    is_valid: bool
+    errors: List[str] = []
+    warnings: List[str] = []
+    suggestions: List[str] = []
 
 
-@router.get("/debug/validate-schemas", response_model=List[WorldSchemaValidationResult])
+class BatchValidationResponse(BaseModel):
+    """Response for batch validation containing summary and individual results."""
+    total_worlds: int
+    valid_worlds: int
+    invalid_worlds: int
+    results: List[WorldSchemaValidationResult]
+
+
+@router.get("/debug/validate-schemas", response_model=BatchValidationResponse)
 async def validate_all_world_schemas(
     game_world_service: GameWorldSvc,
     user: CurrentUser,
-) -> List[WorldSchemaValidationResult]:
+) -> BatchValidationResponse:
     """
     Development endpoint to validate schemas for all worlds owned by the current user.
 
     Returns validation results for each world, identifying any that have invalid
-    relationship_schemas or intimacy_schema configurations.
+    relationship_schemas or intimacy_schema configurations. Also includes warnings
+    for potential issues (like gaps in tier coverage) and suggestions for fixing
+    validation errors.
     """
     worlds = await game_world_service.list_worlds_for_user(owner_user_id=user.id)
     results = []
 
     for world in worlds:
+        errors = []
+        warnings = []
+        suggestions = []
+        is_valid = True
+
         if not world.meta:
             # No meta means no schemas to validate - this is valid
             results.append(
                 WorldSchemaValidationResult(
                     world_id=world.id,
                     world_name=world.name,
-                    valid=True,
+                    is_valid=True,
                 )
             )
             continue
 
         try:
+            # Validate schemas
             WorldMetaSchemas.parse_obj(world.meta)
-            results.append(
-                WorldSchemaValidationResult(
-                    world_id=world.id,
-                    world_name=world.name,
-                    valid=True,
-                )
-            )
+
+            # Check for gaps (warnings only)
+            if 'relationship_schemas' in world.meta:
+                for schema_key, tiers_data in world.meta['relationship_schemas'].items():
+                    try:
+                        tier_schemas = [RelationshipTierSchema.parse_obj(t) for t in tiers_data]
+                        gaps = detect_tier_gaps(tier_schemas)
+                        if gaps:
+                            warnings.extend([f"[{schema_key}] {gap}" for gap in gaps])
+                    except Exception:
+                        # If tier parsing fails, it will be caught in the main validation
+                        pass
+
         except ValidationError as e:
-            results.append(
-                WorldSchemaValidationResult(
-                    world_id=world.id,
-                    world_name=world.name,
-                    valid=False,
-                    errors=e.errors(),
+            is_valid = False
+            # Convert Pydantic errors to readable strings
+            errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+            suggestions = generate_migration_suggestions(errors)
+
+        results.append(
+            WorldSchemaValidationResult(
+                world_id=world.id,
+                world_name=world.name,
+                is_valid=is_valid,
+                errors=errors,
+                warnings=warnings,
+                suggestions=suggestions,
+            )
+        )
+
+    valid_count = sum(1 for r in results if r.is_valid)
+
+    return BatchValidationResponse(
+        total_worlds=len(results),
+        valid_worlds=valid_count,
+        invalid_worlds=len(results) - valid_count,
+        results=results,
+    )
+
+
+class SchemaHealth(BaseModel):
+    """Health status for a specific schema type."""
+    schema_type: str  # "relationship", "intimacy", "mood", "reputation"
+    is_valid: bool
+    entry_count: int
+    errors: List[str] = []
+    warnings: List[str] = []
+    suggestions: List[str] = []
+
+
+class WorldSchemaReport(BaseModel):
+    """Detailed schema validation report for a single world."""
+    world_id: int
+    world_name: str
+    overall_valid: bool
+    schema_health: List[SchemaHealth]
+
+
+@router.get("/{world_id}/schema-report", response_model=WorldSchemaReport)
+async def get_world_schema_report(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> WorldSchemaReport:
+    """
+    Generate detailed schema validation report for a single world.
+
+    Provides per-schema-type health information including:
+    - Validation status
+    - Entry counts
+    - Specific errors and warnings
+    - Migration suggestions
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+    schema_health = []
+
+    if not world.meta:
+        return WorldSchemaReport(
+            world_id=world.id,
+            world_name=world.name,
+            overall_valid=True,
+            schema_health=[],
+        )
+
+    # Validate relationship schemas
+    if 'relationship_schemas' in world.meta:
+        for schema_key, tiers_data in world.meta['relationship_schemas'].items():
+            errors = []
+            warnings = []
+            suggestions = []
+            is_valid = True
+            entry_count = len(tiers_data)
+
+            try:
+                tier_schemas = [RelationshipTierSchema.parse_obj(t) for t in tiers_data]
+
+                # Check for duplicates and overlaps (these are caught by WorldMetaSchemas)
+                try:
+                    from pixsim7_backend.domain.game.schemas import detect_tier_overlaps
+                    overlaps = detect_tier_overlaps(tier_schemas)
+                    if overlaps:
+                        errors.extend(overlaps)
+                        is_valid = False
+                except Exception:
+                    pass
+
+                # Check for gaps (warnings)
+                gaps = detect_tier_gaps(tier_schemas)
+                if gaps:
+                    warnings.extend(gaps)
+
+            except ValidationError as e:
+                is_valid = False
+                errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+                suggestions = generate_migration_suggestions(errors)
+
+            schema_health.append(
+                SchemaHealth(
+                    schema_type=f"relationship:{schema_key}",
+                    is_valid=is_valid,
+                    entry_count=entry_count,
+                    errors=errors,
+                    warnings=warnings,
+                    suggestions=suggestions,
                 )
             )
 
-    return results
+    # Validate intimacy schema
+    if 'intimacy_schema' in world.meta:
+        errors = []
+        warnings = []
+        suggestions = []
+        is_valid = True
+        entry_count = 0
+
+        intimacy_data = world.meta['intimacy_schema']
+        if isinstance(intimacy_data, dict) and 'levels' in intimacy_data:
+            entry_count = len(intimacy_data['levels'])
+
+        try:
+            from pixsim7_backend.domain.game.schemas import IntimacySchema
+            IntimacySchema.parse_obj(intimacy_data)
+        except ValidationError as e:
+            is_valid = False
+            errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+            suggestions = generate_migration_suggestions(errors)
+
+        schema_health.append(
+            SchemaHealth(
+                schema_type="intimacy",
+                is_valid=is_valid,
+                entry_count=entry_count,
+                errors=errors,
+                warnings=warnings,
+                suggestions=suggestions,
+            )
+        )
+
+    # Validate mood schema
+    if 'npc_mood_schema' in world.meta:
+        errors = []
+        warnings = []
+        suggestions = []
+        is_valid = True
+        entry_count = 0
+
+        mood_data = world.meta['npc_mood_schema']
+
+        # Count entries
+        if isinstance(mood_data, dict):
+            if 'moods' in mood_data:
+                entry_count += len(mood_data['moods'])
+            if 'general' in mood_data and isinstance(mood_data['general'], dict):
+                for moods_list in mood_data['general'].values():
+                    if isinstance(moods_list, list):
+                        entry_count += len(moods_list)
+            if 'intimate' in mood_data and isinstance(mood_data['intimate'], dict):
+                for moods_list in mood_data['intimate'].values():
+                    if isinstance(moods_list, list):
+                        entry_count += len(moods_list)
+
+        try:
+            from pixsim7_backend.domain.game.schemas import MoodSchemaConfig
+            MoodSchemaConfig.parse_obj(mood_data)
+        except ValidationError as e:
+            is_valid = False
+            errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+            suggestions = generate_migration_suggestions(errors)
+
+        schema_health.append(
+            SchemaHealth(
+                schema_type="mood",
+                is_valid=is_valid,
+                entry_count=entry_count,
+                errors=errors,
+                warnings=warnings,
+                suggestions=suggestions,
+            )
+        )
+
+    # Validate reputation schemas
+    if 'reputation_schemas' in world.meta:
+        for schema_key, reputation_data in world.meta['reputation_schemas'].items():
+            errors = []
+            warnings = []
+            suggestions = []
+            is_valid = True
+            entry_count = 0
+
+            if isinstance(reputation_data, dict) and 'bands' in reputation_data:
+                entry_count = len(reputation_data['bands'])
+
+            try:
+                from pixsim7_backend.domain.game.schemas import ReputationSchemaConfig
+                ReputationSchemaConfig.parse_obj(reputation_data)
+            except ValidationError as e:
+                is_valid = False
+                errors = [f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in e.errors()]
+                suggestions = generate_migration_suggestions(errors)
+
+            schema_health.append(
+                SchemaHealth(
+                    schema_type=f"reputation:{schema_key}",
+                    is_valid=is_valid,
+                    entry_count=entry_count,
+                    errors=errors,
+                    warnings=warnings,
+                    suggestions=suggestions,
+                )
+            )
+
+    overall_valid = all(h.is_valid for h in schema_health)
+
+    return WorldSchemaReport(
+        world_id=world.id,
+        world_name=world.name,
+        overall_valid=overall_valid,
+        schema_health=schema_health,
+    )
+
+
+# Phase 16: Schema Migration Helpers
+
+
+class SchemaDiff(BaseModel):
+    """Differences between old and new schema configurations."""
+    added_ids: List[str] = []
+    removed_ids: List[str] = []
+    changed_ranges: Dict[str, Dict[str, Any]] = {}
+
+
+def diff_relationship_schemas(
+    old_tiers: List[RelationshipTierSchema],
+    new_tiers: List[RelationshipTierSchema]
+) -> SchemaDiff:
+    """Detect differences between old and new tier schemas."""
+    old_ids = {t.id for t in old_tiers}
+    new_ids = {t.id for t in new_tiers}
+
+    diff = SchemaDiff(
+        added_ids=list(new_ids - old_ids),
+        removed_ids=list(old_ids - new_ids)
+    )
+
+    # Detect changed ranges for existing IDs
+    for tier_id in old_ids & new_ids:
+        old_tier = next(t for t in old_tiers if t.id == tier_id)
+        new_tier = next(t for t in new_tiers if t.id == tier_id)
+
+        if old_tier.min != new_tier.min or old_tier.max != new_tier.max:
+            diff.changed_ranges[tier_id] = {
+                'old': {'min': old_tier.min, 'max': old_tier.max},
+                'new': {'min': new_tier.min, 'max': new_tier.max}
+            }
+
+    return diff
+
+
+class SchemaEvolutionRequest(BaseModel):
+    """Request to evolve world schemas with validation."""
+    new_schemas: Dict[str, Any]
+    dry_run: bool = True
+
+
+class SchemaEvolutionResponse(BaseModel):
+    """Response from schema evolution analysis."""
+    is_safe: bool
+    diff: Optional[SchemaDiff] = None
+    warnings: List[str] = []
+    changes_applied: bool = False
+
+
+@router.post("/{world_id}/evolve-schemas", response_model=SchemaEvolutionResponse)
+async def evolve_world_schemas(
+    world_id: int,
+    req: SchemaEvolutionRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SchemaEvolutionResponse:
+    """
+    Safely evolve world schemas with migration planning.
+
+    In dry_run mode (default), only analyzes impact without making changes.
+    Set dry_run=false to apply changes if they are safe (no removed IDs).
+
+    A schema change is considered "safe" if:
+    - No tier/level IDs are removed (would break existing sessions)
+    - All new schemas pass validation
+
+    For breaking changes, manual migration is required.
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    # Validate new schemas
+    try:
+        WorldMetaSchemas.parse_obj(req.new_schemas)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_new_schemas",
+                "details": e.errors(),
+            }
+        )
+
+    warnings = []
+    diff = None
+    is_safe = True
+
+    # Diff relationship schemas if both old and new have them
+    if world.meta and 'relationship_schemas' in world.meta and 'relationship_schemas' in req.new_schemas:
+        # For simplicity, just check the 'default' schema
+        if 'default' in world.meta.get('relationship_schemas', {}) and 'default' in req.new_schemas.get('relationship_schemas', {}):
+            old_tiers = [RelationshipTierSchema.parse_obj(t) for t in world.meta['relationship_schemas']['default']]
+            new_tiers = [RelationshipTierSchema.parse_obj(t) for t in req.new_schemas['relationship_schemas']['default']]
+
+            diff = diff_relationship_schemas(old_tiers, new_tiers)
+
+            # Check if safe (no removed IDs)
+            if diff.removed_ids:
+                is_safe = False
+                warnings.append(f"Breaking change: {len(diff.removed_ids)} tier IDs removed: {diff.removed_ids}")
+                warnings.append("Manual migration required for existing sessions using these tiers")
+
+            if diff.added_ids:
+                warnings.append(f"New tiers added: {diff.added_ids}")
+
+            if diff.changed_ranges:
+                warnings.append(f"Tier ranges changed for: {list(diff.changed_ranges.keys())}")
+                warnings.append("Existing session relationships may need recomputation")
+
+    # Apply changes if not dry run and is safe
+    changes_applied = False
+    if not req.dry_run and is_safe:
+        await game_world_service.update_world_meta(world_id, req.new_schemas)
+        changes_applied = True
+        warnings.append("Schema changes applied successfully")
+    elif not req.dry_run and not is_safe:
+        warnings.append("Changes NOT applied due to breaking changes (removed IDs)")
+
+    return SchemaEvolutionResponse(
+        is_safe=is_safe,
+        diff=diff,
+        warnings=warnings,
+        changes_applied=changes_applied,
+    )
+
+
+# Phase 19: Schema Versioning and Migration
+
+
+class SchemaMigrationResponse(BaseModel):
+    """Response from schema migration."""
+    old_version: int
+    new_version: int
+    success: bool
+    message: str
+
+
+@router.post("/{world_id}/migrate-schema", response_model=SchemaMigrationResponse)
+async def migrate_world_schema(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SchemaMigrationResponse:
+    """
+    Automatically migrate world schema to latest version.
+
+    This endpoint applies any necessary schema migrations to bring the world's
+    metadata schemas up to the current version. Safe to call multiple times.
+
+    Returns the old and new version numbers.
+    """
+    world = await _get_owned_world(world_id, user, game_world_service)
+
+    if not world.meta:
+        raise HTTPException(status_code=400, detail="No schema to migrate")
+
+    old_version = world.meta.get('schema_version', 1)
+
+    if old_version >= CURRENT_SCHEMA_VERSION:
+        return SchemaMigrationResponse(
+            old_version=old_version,
+            new_version=old_version,
+            success=True,
+            message="Schema already up to date"
+        )
+
+    # Migrate
+    new_meta = auto_migrate_schema(world.meta.copy())
+
+    # Validate migrated schema
+    try:
+        WorldMetaSchemas.parse_obj(new_meta)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "migration_failed_validation",
+                "details": e.errors(),
+            }
+        )
+
+    # Apply migration
+    await game_world_service.update_world_meta(world_id, new_meta)
+
+    return SchemaMigrationResponse(
+        old_version=old_version,
+        new_version=new_meta['schema_version'],
+        success=True,
+        message=f"Schema migrated from version {old_version} to {new_meta['schema_version']}"
+    )

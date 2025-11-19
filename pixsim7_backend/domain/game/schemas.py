@@ -379,6 +379,10 @@ class ReputationSchemaConfig(BaseModel):
         return self
 
 
+# Phase 19: Schema Versioning
+CURRENT_SCHEMA_VERSION = 1
+
+
 class WorldMetaSchemas(BaseModel):
     """
     World-level relationship and intimacy schemas inside GameWorld.meta.
@@ -387,6 +391,7 @@ class WorldMetaSchemas(BaseModel):
     systems (UI config, generation config, etc.) can evolve independently.
     """
 
+    schema_version: int = Field(default=CURRENT_SCHEMA_VERSION)
     relationship_schemas: Dict[str, List[RelationshipTierSchema]] = Field(
         default_factory=dict
     )
@@ -394,6 +399,15 @@ class WorldMetaSchemas(BaseModel):
     npc_mood_schema: Optional[MoodSchemaConfig] = None
     reputation_schemas: Optional[Dict[str, ReputationSchemaConfig]] = None
     # Key = target type ("default", "npc", "faction", "group", etc.)
+
+    @model_validator(mode='after')
+    def check_version_compatibility(self):
+        """Check schema version and log deprecation warnings."""
+        if self.schema_version < CURRENT_SCHEMA_VERSION:
+            # Note: In production, this would log to a logger
+            # For now, we just allow it but note the deprecation
+            pass
+        return self
 
     @model_validator(mode='after')
     def validate_relationship_schemas(self):
@@ -419,4 +433,34 @@ class WorldMetaSchemas(BaseModel):
 
     class Config:
         extra = "ignore"
+
+
+# Migration helpers for schema version upgrades
+def auto_migrate_schema(schema: Dict) -> Dict:
+    """
+    Automatically migrate schema to latest version.
+
+    Currently at version 1, so no migrations needed yet.
+    Future versions will add migration logic here.
+
+    Example migration (for future reference):
+    version = schema.get('schema_version', 1)
+    if version < 2:
+        schema = migrate_schema_to_v2(schema)
+    return schema
+    """
+    version = schema.get('schema_version', 1)
+
+    # Future migrations will be added here as:
+    # if version < 2:
+    #     schema = migrate_schema_to_v2(schema)
+    #     version = 2
+    # if version < 3:
+    #     schema = migrate_schema_to_v3(schema)
+    #     version = 3
+
+    # Ensure version is set
+    schema['schema_version'] = version
+
+    return schema
 
