@@ -432,11 +432,42 @@ export function QuickGenerateModule() {
 }
 
 /**
- * Simple inline generation status display
+ * Simple inline generation status display with polling
  * Replaces the deleted JobStatusIndicator
  */
 function GenerationStatusDisplay({ generationId }: { generationId: number }) {
   const generation = useGenerationsStore(s => s.generations.get(generationId));
+  const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
+
+  // Poll for status updates
+  useEffect(() => {
+    if (!generationId) return;
+
+    // Check if generation is in terminal state
+    if (generation && isGenerationTerminal(generation.status)) {
+      // Stop polling if completed, failed, or cancelled
+      return;
+    }
+
+    // Poll every 2 seconds
+    const interval = setInterval(async () => {
+      try {
+        const { getGeneration } = await import('../../lib/api/generations');
+        const updated = await getGeneration(generationId);
+        addOrUpdateGeneration(updated);
+
+        // Stop polling if terminal state reached
+        if (isGenerationTerminal(updated.status)) {
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error(`Failed to poll generation ${generationId}:`, err);
+        // Continue polling even on error
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [generationId, generation?.status, addOrUpdateGeneration]);
 
   if (!generation) {
     return (
