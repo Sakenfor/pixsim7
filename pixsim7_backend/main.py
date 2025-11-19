@@ -97,6 +97,12 @@ async def lifespan(app: FastAPI):
     routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
     logger.info(f"Loaded {len(routes_manager.list_plugins())} core routes")
 
+    # Register plugin managers for dependency injection (Phase 16.3)
+    from pixsim7_backend.infrastructure.plugins import set_plugin_manager
+    # Set the feature plugin manager as primary (routes can use same pattern)
+    set_plugin_manager(plugin_manager)
+    logger.info("Plugin dependency injection configured")
+
     # Enable all plugins
     await plugin_manager.enable_all()
     await routes_manager.enable_all()

@@ -302,9 +302,80 @@ async def do_something(ctx: PluginContext = Depends(get_plugin_context("my_plugi
     ...
 ```
 
-4. For event handlers, pass `PluginContext` (or a subset) into callback signatures so they don’t need raw DB/services.
+4. For event handlers, pass `PluginContext` (or a subset) into callback signatures so they don't need raw DB/services.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed
+
+### Implementation Summary
+
+**Files Created:**
+- `pixsim7_backend/infrastructure/plugins/context.py` (~650 lines) - PluginContext and capability APIs
+- `pixsim7_backend/infrastructure/plugins/dependencies.py` (~120 lines) - FastAPI dependency injection
+- `pixsim7_backend/plugins/example_plugin_context/manifest.py` - Example plugin demonstrating new pattern
+
+**Capability APIs Implemented:**
+
+1. **WorldReadAPI** - Read-only world access
+   - `get_world(world_id)` - Get world metadata
+   - `get_world_config(world_id, key)` - Get specific config value
+   - `list_world_locations(world_id)` - List all locations
+   - `list_world_npcs(world_id)` - List all NPCs
+
+2. **SessionReadAPI** - Read-only session access
+   - `get_session(session_id)` - Get session state
+   - `get_session_flag(session_id, flag_key)` - Get specific flag
+   - `get_relationship(session_id, npc_key)` - Get relationship state
+
+3. **SessionMutationsAPI** - Write access to session
+   - `set_session_flag(session_id, flag_key, value)` - Set flag (auto-namespaced)
+   - `update_relationship(session_id, npc_key, updates)` - Update relationship
+
+4. **BehaviorExtensionAPI** - Register behavior extensions
+   - `register_condition_evaluator(name, evaluator)` - Register custom condition
+   - `register_effect_handler(name, handler)` - Register custom effect
+
+5. **LoggingAPI** - Structured logging
+   - `info(message, **kwargs)` - Log info (auto-tagged with plugin_id)
+   - `warning(message, **kwargs)` - Log warning
+   - `error(message, **kwargs)` - Log error
+   - `debug(message, **kwargs)` - Log debug
+
+**PluginContext Features:**
+- Permission-aware access to all capability APIs
+- Automatic permission checking before capability access
+- Three failure modes: `RAISE` (exception), `WARN` (log + return None), `SILENT` (return None)
+- Automatic namespacing for plugin data (flags, conditions, effects)
+- Provenance tracking (all mutations logged with plugin_id)
+- Plugin introspection (`has_permission()`, `require_permission()`)
+
+**Dependency Injection:**
+- `get_plugin_context(plugin_id)` - FastAPI dependency factory
+- Automatically injects DB/Redis based on manifest requirements
+- Plugin manager registered globally for dependency resolution
+- Clean separation from direct DB/service access
+
+**Migration Path:**
+
+Old (unrestricted):
+```python
+@router.get("/endpoint")
+async def endpoint(db: Session = Depends(get_db)):
+    session = db.query(GameSession).filter(...).first()
+    session.flags["my_key"] = "value"
+    db.commit()
+```
+
+New (permission-aware):
+```python
+@router.get("/endpoint")
+async def endpoint(ctx: PluginContext = Depends(get_plugin_context("my_plugin"))):
+    await ctx.session_write.set_session_flag(session_id, "my_key", "value")
+    ctx.log.info("Flag set")
+```
+
+**Updated Files:**
+- `pixsim7_backend/infrastructure/plugins/__init__.py` - Export new classes
+- `pixsim7_backend/main.py` - Register plugin manager for DI
 
 ---
 
