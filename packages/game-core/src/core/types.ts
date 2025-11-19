@@ -1,4 +1,8 @@
-import type { GameSessionDTO } from '@pixsim7/types';
+import type {
+  GameSessionDTO,
+  RelationshipTierId,
+  IntimacyLevelId,
+} from '@pixsim7/types';
 import type { NpcPersona } from '../npcs/brain';
 
 /**
@@ -97,8 +101,14 @@ export interface NpcRelationshipState {
   chemistry: number;
   tension: number;
   flags: string[];
-  tierId?: string;
-  intimacyLevelId?: string | null;
+  tierId?: RelationshipTierId;
+  intimacyLevelId?: IntimacyLevelId | null;
+  /**
+   * True if tierId / intimacyLevelId were computed by the backend
+   * and stored in GameSession.relationships, false if they were
+   * derived locally as a fallback.
+   */
+  isNormalized?: boolean;
   raw?: Record<string, any>;
 }
 

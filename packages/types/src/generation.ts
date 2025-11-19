@@ -12,48 +12,39 @@ export type GenerationStrategy = 'once' | 'per_playthrough' | 'per_player' | 'al
  *
  * Captures relationship and intimacy state to inform content generation.
  * Used to ensure generated content respects relationship progression and
- * content rating constraints.
+ * content rating constraints, while respecting world and user preferences.
  *
  * All fields are optional to support gradual adoption and backwards compatibility.
  */
 export interface GenerationSocialContext {
-  /**
-   * Current intimacy level ID (e.g., 'light_flirt', 'intimate', 'very_intimate')
-   * Derived from relationship metrics like affinity, chemistry, trust
-   */
-  intimacyLevelId?: string;
+  /** Intimacy level ID from world schema (e.g., 'light_flirt', 'intimate') */
+  intimacyLevelId?: string
 
-  /**
-   * Current relationship tier ID (e.g., 'stranger', 'friend', 'close_friend', 'lover')
-   * Derived from affinity value
-   */
-  relationshipTierId?: string;
+  /** Relationship tier ID from world schema (e.g., 'friend', 'lover') */
+  relationshipTierId?: string
 
-  /**
-   * Simplified intimacy band for content filtering
-   * Maps intimacy levels to broad categories
-   * - 'none': No romantic/intimate context
-   * - 'light': Light flirting, romantic interest
-   * - 'deep': Established romantic relationship
-   * - 'intense': Deep intimacy
-   */
-  intimacyBand?: 'none' | 'light' | 'deep' | 'intense';
+  /** Intimacy band for content intensity (simplified buckets) */
+  intimacyBand?: 'none' | 'light' | 'deep' | 'intense'
 
-  /**
-   * Content rating for this generation
-   * Determines what kind of content is appropriate
-   * - 'sfw': Safe for work, no romantic content
-   * - 'romantic': Light romance, hand-holding, kissing
-   * - 'mature_implied': Mature themes implied but not explicit
-   * - 'restricted': Restricted content (requires explicit user consent)
-   */
-  contentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+  /** Content rating for this generation */
+  contentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
 
-  /**
-   * NPC ID(s) involved in this generation (if applicable)
-   * Allows tracking which relationships are relevant
-   */
-  npcIds?: number[];
+  /** World's maximum allowed content rating */
+  worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+
+  /** User's maximum allowed content rating (if set) */
+  userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+
+  /** NPC ID(s) involved in this generation (if applicable) */
+  npcIds?: number[]
+
+  /** Raw relationship values that drove this context */
+  relationshipValues?: {
+    affinity?: number
+    trust?: number
+    chemistry?: number
+    tension?: number
+  }
 }
 
 export interface SceneRef {

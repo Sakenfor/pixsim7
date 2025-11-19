@@ -12,9 +12,37 @@ from .relationship_evaluators import (
     evaluate_relationship_tier,
     evaluate_relationship_intimacy,
 )
-from .mood_evaluators import (
-    evaluate_npc_mood,
-)
+from .mood_evaluators import evaluate_npc_mood
+from .reputation_evaluators import evaluate_reputation_band
+
+
+def _register_default_metrics() -> None:
+    """
+    Register built-in metric evaluators in the global registry.
+
+    This makes it possible to look up evaluators by MetricType from any
+    API route or service without hard-coding imports.
+    """
+    registry = get_metric_registry()
+
+    if not registry.is_registered(MetricType.RELATIONSHIP_TIER):
+        registry.register(MetricType.RELATIONSHIP_TIER, evaluate_relationship_tier)
+
+    if not registry.is_registered(MetricType.RELATIONSHIP_INTIMACY):
+        registry.register(
+            MetricType.RELATIONSHIP_INTIMACY,
+            evaluate_relationship_intimacy,
+        )
+
+    if not registry.is_registered(MetricType.NPC_MOOD):
+        registry.register(MetricType.NPC_MOOD, evaluate_npc_mood)
+
+    if not registry.is_registered(MetricType.REPUTATION_BAND):
+        registry.register(MetricType.REPUTATION_BAND, evaluate_reputation_band)
+
+
+# Perform one-time registration on module import
+_register_default_metrics()
 
 __all__ = [
     "MetricType",
@@ -23,4 +51,5 @@ __all__ = [
     "evaluate_relationship_tier",
     "evaluate_relationship_intimacy",
     "evaluate_npc_mood",
+    "evaluate_reputation_band",
 ]

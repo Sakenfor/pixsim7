@@ -73,6 +73,10 @@ export function getNpcRelationshipState(
   let tierId = typeof raw.tierId === 'string' ? raw.tierId : undefined;
   let intimacyLevelId = raw.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
 
+  // Marker indicating whether backend normalization ran
+  const isNormalized =
+    raw.tierId !== undefined || raw.intimacyLevelId !== undefined;
+
   // Fallback to local computation if not provided by backend
   if (!tierId) {
     tierId = compute_relationship_tier(affinity);
@@ -87,6 +91,7 @@ export function getNpcRelationshipState(
     chemistry,
     tension,
     flags: Array.isArray(flags) ? flags : [],
+    isNormalized,
     tierId,
     intimacyLevelId,
     raw,

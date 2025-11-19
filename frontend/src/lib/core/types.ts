@@ -78,6 +78,12 @@ export interface NpcRelationshipState {
   flags: string[]; // e.g., ["saved_from_accident", "first_kiss"]
   tierId?: string; // e.g., "friend", "close_friend", "lover"
   intimacyLevelId?: string | null; // e.g., "light_flirt", "intimate"
+  /**
+   * True if tierId / intimacyLevelId were computed by the backend and
+   * stored in GameSession.relationships, false if they were derived
+   * locally as a fallback.
+   */
+  isNormalized?: boolean;
   raw?: Record<string, any>; // Extra per-world axes
 }
 
