@@ -205,3 +205,93 @@ async def _resolve_prompt_config(
 - ✅ Validation endpoint for editor-time feedback
 
 The foundation is solid for implementing Phases 4-10, which will add social context, validation, caching, telemetry, safety, testing, and developer tools.
+
+---
+
+## ✅ Phase 4 - Social Context & Intimacy Integration (COMPLETE)
+
+### Summary
+Integrated relationship and intimacy context from Task 09 into the generation pipeline.
+
+### Implementation
+
+**✅ Frontend Types**
+- File: `packages/types/src/generation.ts`
+- Added `GenerationSocialContext` interface with:
+  - `intimacyLevelId` - Intimacy level from world schema
+  - `relationshipTierId` - Relationship tier from world schema
+  - `intimacyBand` - Simplified band ('none', 'light', 'deep', 'intense')
+  - `contentRating` - Content rating ('sfw', 'romantic', 'mature_implied', 'restricted')
+  - `worldMaxRating` / `userMaxRating` - Rating constraints
+  - `relationshipValues` - Raw affinity/trust/chemistry/tension values
+- Updated `GenerateContentRequest` to include optional `social_context` field
+
+**✅ Backend Social Context Builder**
+- File: `pixsim7_backend/services/generation/social_context_builder.py`
+- Function: `build_generation_social_context()`
+  - Loads world and schemas
+  - Computes relationship tier using `compute_relationship_tier()`
+  - Computes intimacy level using `compute_intimacy_level()`
+  - Maps intimacy to band and content rating
+  - Clamps rating by world and user maximums
+  - Returns complete `GenerationSocialContext` dict
+
+**✅ Helper Functions**
+- `_map_intimacy_to_band()` - Maps intimacy level ID to simplified band
+- `_map_intimacy_to_rating()` - Maps intimacy band to content rating
+- `_clamp_rating()` - Clamps rating by world/user constraints
+- `validate_social_context_against_constraints()` - Validation with errors/warnings
+
+**✅ API Endpoint**
+- Endpoint: `POST /api/v1/generations/social-context/build`
+- Query params: `world_id`, `session_id`, `npc_id`, `user_max_rating`
+- Returns: Complete `GenerationSocialContext` for given relationship state
+- Use case: Frontend/game-core can call this before creating generation
+
+**✅ Integration with Generation API**
+- `POST /api/v1/generations` now accepts `social_context` in request
+- Social context persisted in `canonical_params.social_context`
+- Available for prompt-building layer and metrics
+
+### Data Flow
+
+```
+GameSession.relationships[npc:X]
+    ↓
+    affinity, trust, chemistry, tension
+    ↓
+build_generation_social_context()
+    ↓
+    compute_relationship_tier() → relationshipTierId
+    compute_intimacy_level() → intimacyLevelId
+    map to intimacyBand
+    map to contentRating
+    clamp by world/user maxRating
+    ↓
+GenerationSocialContext
+    ↓
+GenerateContentRequest.social_context
+    ↓
+Generation.canonical_params.social_context
+    ↓
+Available for prompt resolution & metrics
+```
+
+### Content Rating Clamping
+
+Rating order: `sfw` < `romantic` < `mature_implied` < `restricted`
+
+**Example:**
+- Intimacy: "very_intimate" → Band: "intense" → Rating: "mature_implied"
+- World max: "romantic"
+- **Final rating: "romantic"** (clamped down)
+
+### Integration Points
+
+1. **Frontend**: Call `/generations/social-context/build` to get context before generation
+2. **Generation Service**: Social context persisted in `canonical_params`
+3. **Prompt Resolution**: Social context available for prompt variable substitution
+4. **Validation**: Content rating validated against world/user constraints
+
+---
+

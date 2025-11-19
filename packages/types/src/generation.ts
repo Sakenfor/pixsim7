@@ -83,6 +83,45 @@ export interface GenerationEdgeMeta {
   fallback?: FallbackConfig
 }
 
+// ============================================================================
+// Social Context for Generation (Task 09)
+// ============================================================================
+
+/**
+ * Social and relationship context for generation
+ *
+ * Captures relationship state, intimacy level, and content rating constraints
+ * for generation requests. Allows content generation to adapt to relationship
+ * dynamics while respecting world and user content preferences.
+ */
+export interface GenerationSocialContext {
+  /** Intimacy level ID from world schema (e.g., 'light_flirt', 'intimate') */
+  intimacyLevelId?: string
+
+  /** Relationship tier ID from world schema (e.g., 'friend', 'lover') */
+  relationshipTierId?: string
+
+  /** Intimacy band for content intensity (simplified buckets) */
+  intimacyBand?: 'none' | 'light' | 'deep' | 'intense'
+
+  /** Content rating for this generation */
+  contentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+
+  /** World's maximum allowed content rating */
+  worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+
+  /** User's maximum allowed content rating (if set) */
+  userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+
+  /** Raw relationship values that drove this context */
+  relationshipValues?: {
+    affinity?: number
+    trust?: number
+    chemistry?: number
+    tension?: number
+  }
+}
+
 // Backend Request & Response Contracts
 export interface GenerateContentRequest {
   type: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
@@ -97,6 +136,8 @@ export interface GenerateContentRequest {
   template_id?: string
   cache_key?: string
   player_context?: PlayerContextSnapshot
+  // Social context (Task 09)
+  social_context?: GenerationSocialContext
   // NPC response specific params
   npc_params?: NpcResponseParams
 }
