@@ -27,10 +27,10 @@ This task introduces reusable graph templates and a basic workflow for authoring
   *5 built‑in wizards (Quest Intro, Dialogue Branch, Relationship Check, Flirt, Sequential Dialogue) with form‑based UI – 2025‑11‑19*
 - [x] **Phase 8 – Template Validation & Compatibility**  
   *`validateTemplate`, preview, and precondition validation (roles, arcs, flags, node count) with UI warnings – 2025‑11‑19*
-- [x] **Phase 9 – Cross‑World Template Packs**  
+- [x] **Phase 9 – Cross‑World Template Packs**
   *`TemplatePack` interface, pack store, pack filtering UI, bulk pack export/import – 2025‑11‑19*
-- [ ] **Phase 10 – Template Usage Analytics & Refactoring Hints**  
-  *Not started – no analytics or refactoring hints implemented yet*
+- [x] **Phase 10 – Template Usage Analytics & Refactoring Hints**
+  *Analytics store, usage tracking, dev panel with insights and refactoring recommendations – 2025‑11‑19*
 
 ---
 
@@ -185,10 +185,14 @@ Show which templates are heavily used and where, helping identify opportunities 
 **IMPLEMENTATION STATUS NOTE** (2025‑11‑19)
 
 As of this date:
-- Phases 1–9 have a working implementation in the editor and associated stores.
-- Phase 10 (usage analytics and refactoring hints) has **not been implemented**:
-  - No dedicated analytics storage for template usage exists.
-  - No dev panel or UI for template usage/refactoring hints exists.
+- **All phases (1–10) have been fully implemented** and are working in the editor:
+  - **Phase 10 implementation** includes:
+    - `templateAnalyticsStore.ts`: Zustand store with localStorage persistence for usage tracking
+    - `TemplateAnalyticsPanel.tsx`: Dev panel UI with overview, per-template stats, refactoring hints, and raw data views
+    - `TemplateAnalyticsDev.tsx`: Route at `/template-analytics`
+    - Template insertion tracking integrated into `GraphPanel.tsx`
+    - Automatic refactoring hints based on usage patterns (high usage, world-specific, underutilized templates)
+    - Metrics: usage counts, scene/world distribution, node insertion stats, temporal patterns
 
-Treat Phase 10 as greenfield work once template usage is common enough to justify analytics.
+**Access the analytics panel at `/template-analytics` to view template usage insights and refactoring recommendations.**
 

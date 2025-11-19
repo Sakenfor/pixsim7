@@ -22,6 +22,7 @@ import { GizmoLab } from './routes/GizmoLab';
 import { PluginWorkspaceRoute } from './routes/PluginWorkspace';
 import { SimulationPlayground } from './routes/SimulationPlayground';
 import { AppMapDev } from './routes/AppMapDev';
+import { TemplateAnalyticsDev } from './routes/TemplateAnalyticsDev';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -80,6 +81,7 @@ function App() {
           <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
           <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
           <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
+          <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
