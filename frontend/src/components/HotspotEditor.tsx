@@ -15,12 +15,14 @@ import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
+  getCombinedPlaylists,
   applyPresetToSlot,
   getRecommendedPresets,
   validateActivePresets,
   getConflictSummary,
   type InteractionPreset,
   type PresetWithScope,
+  type PlaylistWithScope,
   type SuggestionContext,
 } from '../lib/game/interactions/presets';
 
@@ -48,6 +50,12 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
   // Load presets from world and global storage
   const availablePresets = useMemo(
     () => getCombinedPresets(worldDetail),
+    [worldDetail]
+  );
+
+  // Phase 10: Load playlists
+  const availablePlaylists = useMemo(
+    () => getCombinedPlaylists(worldDetail),
     [worldDetail]
   );
 
@@ -248,6 +256,46 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
 
               {expandedInteractions[idx] && (
                 <div className="mt-2 space-y-2">
+                  {/* Phase 10: Preset Playlist Selector */}
+                  {availablePlaylists.length > 0 && (
+                    <div className="p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded">
+                      <label className="block text-xs font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                        🎵 Preset Playlist (Phase 10)
+                      </label>
+                      <p className="text-xs text-purple-700 dark:text-purple-300 mb-2">
+                        Assign a playlist to sequence multiple presets
+                      </p>
+                      <Select
+                        size="sm"
+                        value={(h.meta as any)?.__playlistId || ''}
+                        onChange={(e) => {
+                          const playlistId = e.target.value;
+                          handleHotspotChange(idx, {
+                            meta: {
+                              ...(h.meta || {}),
+                              __playlistId: playlistId || undefined,
+                              __playlistName: playlistId
+                                ? availablePlaylists.find(p => p.id === playlistId)?.name
+                                : undefined,
+                            },
+                          });
+                        }}
+                      >
+                        <option value="">No playlist</option>
+                        {availablePlaylists.map(playlist => (
+                          <option key={`${playlist.scope}-${playlist.id}`} value={playlist.id}>
+                            {playlist.name} ({playlist.items.length} steps, {playlist.scope === 'global' ? '🌍' : '🗺️'})
+                          </option>
+                        ))}
+                      </Select>
+                      {(h.meta as any)?.__playlistId && (
+                        <p className="text-xs text-purple-700 dark:text-purple-300 mt-2">
+                          ℹ️ Playlist "{(h.meta as any).__playlistName}" will execute when this hotspot is triggered
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Phase 8: Recommended Presets */}
                   {(() => {
                     const suggestionContext: SuggestionContext = {

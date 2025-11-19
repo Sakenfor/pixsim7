@@ -1212,6 +1212,443 @@ export function getConflictSummary(warnings: ConflictWarning[]): {
 }
 
 /**
+ * PHASE 10: Preset Playlists & Sequenced Interactions
+ * Allow designers to create sequences of presets that execute over time or based on conditions
+ */
+
+/**
+ * Condition that must be met for a playlist item to execute
+ */
+export interface PlaylistCondition {
+  /** Type of condition check */
+  type: 'always' | 'flag' | 'state' | 'random';
+
+  /** For 'flag' type: flag name to check */
+  flagName?: string;
+
+  /** For 'flag' type: required flag value */
+  flagValue?: boolean;
+
+  /** For 'state' type: state key to check */
+  stateKey?: string;
+
+  /** For 'state' type: required state value */
+  stateValue?: any;
+
+  /** For 'random' type: probability (0-1) */
+  probability?: number;
+}
+
+/**
+ * Single item in a preset playlist
+ */
+export interface PlaylistItem {
+  /** ID of the preset to execute */
+  presetId: string;
+
+  /** Optional delay before executing this preset (milliseconds) */
+  delayMs?: number;
+
+  /** Optional condition that must be met */
+  condition?: PlaylistCondition;
+
+  /** Whether to skip remaining items if this fails */
+  stopOnFailure?: boolean;
+}
+
+/**
+ * Playlist of sequenced interaction presets
+ */
+export interface PresetPlaylist {
+  /** Unique playlist ID */
+  id: string;
+
+  /** Display name */
+  name: string;
+
+  /** Description of what this playlist does */
+  description?: string;
+
+  /** Ordered list of preset items */
+  items: PlaylistItem[];
+
+  /** Whether to loop the playlist */
+  loop?: boolean;
+
+  /** Maximum loop iterations (if loop is true) */
+  maxLoops?: number;
+
+  /** Category for organization */
+  category?: string;
+
+  /** Tags for filtering */
+  tags?: string[];
+}
+
+/**
+ * Playlist with scope information
+ */
+export interface PlaylistWithScope extends PresetPlaylist {
+  scope: 'global' | 'world';
+}
+
+/**
+ * Runtime state for an active playlist execution
+ */
+export interface PlaylistExecutionState {
+  /** Playlist being executed */
+  playlistId: string;
+
+  /** Current item index */
+  currentIndex: number;
+
+  /** Current loop iteration (if looping) */
+  currentLoop: number;
+
+  /** Timestamp when execution started */
+  startedAt: number;
+
+  /** Whether execution is paused */
+  paused: boolean;
+
+  /** Timeout ID for delayed execution */
+  timeoutId?: NodeJS.Timeout;
+}
+
+const GLOBAL_PLAYLISTS_KEY = 'pixsim7:interaction-playlists:global';
+
+/**
+ * Get global playlists from localStorage
+ */
+export function getGlobalPlaylists(): PresetPlaylist[] {
+  try {
+    const data = localStorage.getItem(GLOBAL_PLAYLISTS_KEY);
+    if (!data) return [];
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Failed to load global playlists:', e);
+    return [];
+  }
+}
+
+/**
+ * Save global playlists to localStorage
+ */
+export function saveGlobalPlaylists(playlists: PresetPlaylist[]): void {
+  try {
+    localStorage.setItem(GLOBAL_PLAYLISTS_KEY, JSON.stringify(playlists));
+  } catch (e) {
+    console.error('Failed to save global playlists:', e);
+  }
+}
+
+/**
+ * Get world-specific playlists
+ */
+export function getWorldPlaylists(world: GameWorldDetail | null): PresetPlaylist[] {
+  if (!world?.meta) return [];
+  const meta = world.meta as any;
+  return meta.interactionPlaylists || [];
+}
+
+/**
+ * Set world-specific playlists (returns updated world)
+ */
+export function setWorldPlaylists(
+  world: GameWorldDetail,
+  playlists: PresetPlaylist[]
+): GameWorldDetail {
+  return {
+    ...world,
+    meta: {
+      ...(world.meta || {}),
+      interactionPlaylists: playlists,
+    },
+  };
+}
+
+/**
+ * Get combined playlists (global + world-specific)
+ */
+export function getCombinedPlaylists(world: GameWorldDetail | null): PlaylistWithScope[] {
+  const global = getGlobalPlaylists().map((p) => ({ ...p, scope: 'global' as const }));
+  const worldPlaylists = getWorldPlaylists(world).map((p) => ({ ...p, scope: 'world' as const }));
+  return [...global, ...worldPlaylists];
+}
+
+/**
+ * Generate a unique playlist ID from name
+ */
+export function generatePlaylistId(name: string): string {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const timestamp = Date.now().toString(36);
+  return `playlist_${base}_${timestamp}`;
+}
+
+/**
+ * Add a playlist to global storage
+ */
+export function addGlobalPlaylist(playlist: PresetPlaylist): void {
+  const playlists = getGlobalPlaylists();
+  playlists.push(playlist);
+  saveGlobalPlaylists(playlists);
+}
+
+/**
+ * Add a playlist to world storage
+ */
+export async function addWorldPlaylist(
+  worldId: number,
+  playlist: PresetPlaylist,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  playlists.push(playlist);
+  const updatedWorld = setWorldPlaylists(currentWorld, playlists);
+  await saveGameWorldMeta(worldId, updatedWorld.meta);
+}
+
+/**
+ * Update a global playlist
+ */
+export function updateGlobalPlaylist(id: string, updates: Partial<PresetPlaylist>): void {
+  const playlists = getGlobalPlaylists();
+  const index = playlists.findIndex((p) => p.id === id);
+  if (index >= 0) {
+    playlists[index] = { ...playlists[index], ...updates };
+    saveGlobalPlaylists(playlists);
+  }
+}
+
+/**
+ * Update a world playlist
+ */
+export async function updateWorldPlaylist(
+  worldId: number,
+  id: string,
+  updates: Partial<PresetPlaylist>,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  const index = playlists.findIndex((p) => p.id === id);
+  if (index >= 0) {
+    playlists[index] = { ...playlists[index], ...updates };
+    const updatedWorld = setWorldPlaylists(currentWorld, playlists);
+    await saveGameWorldMeta(worldId, updatedWorld.meta);
+  }
+}
+
+/**
+ * Delete a global playlist
+ */
+export function deleteGlobalPlaylist(id: string): void {
+  const playlists = getGlobalPlaylists();
+  const filtered = playlists.filter((p) => p.id !== id);
+  saveGlobalPlaylists(filtered);
+}
+
+/**
+ * Delete a world playlist
+ */
+export async function deleteWorldPlaylist(
+  worldId: number,
+  id: string,
+  currentWorld: GameWorldDetail
+): Promise<void> {
+  const playlists = getWorldPlaylists(currentWorld);
+  const filtered = playlists.filter((p) => p.id !== id);
+  const updatedWorld = setWorldPlaylists(currentWorld, filtered);
+  await saveGameWorldMeta(worldId, updatedWorld.meta);
+}
+
+/**
+ * Validate a playlist (check if all referenced presets exist)
+ */
+export function validatePlaylist(
+  playlist: PresetPlaylist,
+  availablePresets: PresetWithScope[]
+): { valid: boolean; missingPresets: string[] } {
+  const presetIds = new Set(availablePresets.map((p) => p.id));
+  const missingPresets = playlist.items
+    .map((item) => item.presetId)
+    .filter((id) => !presetIds.has(id));
+
+  return {
+    valid: missingPresets.length === 0,
+    missingPresets,
+  };
+}
+
+/**
+ * Evaluate a playlist condition
+ */
+export function evaluatePlaylistCondition(
+  condition: PlaylistCondition | undefined,
+  context: { flags?: Record<string, boolean>; state?: Record<string, any> }
+): boolean {
+  if (!condition || condition.type === 'always') return true;
+
+  if (condition.type === 'flag' && condition.flagName) {
+    const flagValue = context.flags?.[condition.flagName];
+    return flagValue === condition.flagValue;
+  }
+
+  if (condition.type === 'state' && condition.stateKey) {
+    const stateValue = context.state?.[condition.stateKey];
+    return stateValue === condition.stateValue;
+  }
+
+  if (condition.type === 'random' && condition.probability !== undefined) {
+    return Math.random() < condition.probability;
+  }
+
+  return true;
+}
+
+/**
+ * Playlist execution callback handlers
+ */
+export interface PlaylistExecutionHandlers {
+  /** Called when a preset is about to be applied */
+  onPresetApply?: (presetId: string, itemIndex: number) => void;
+
+  /** Called when a preset application completes */
+  onPresetComplete?: (presetId: string, itemIndex: number, success: boolean) => void;
+
+  /** Called when the playlist completes a full cycle */
+  onPlaylistComplete?: (playlistId: string, loopIteration: number) => void;
+
+  /** Called when playlist execution fails */
+  onPlaylistError?: (error: string) => void;
+
+  /** Called when a condition is not met */
+  onConditionSkip?: (presetId: string, reason: string) => void;
+}
+
+/**
+ * Execute a playlist step-by-step
+ * Returns a function to stop the execution
+ */
+export async function executePlaylist(
+  playlist: PresetPlaylist,
+  availablePresets: PresetWithScope[],
+  applyPreset: (preset: InteractionPreset) => Promise<boolean>,
+  context: { flags?: Record<string, boolean>; state?: Record<string, any> },
+  handlers?: PlaylistExecutionHandlers
+): Promise<() => void> {
+  // Validate playlist first
+  const validation = validatePlaylist(playlist, availablePresets);
+  if (!validation.valid && validation.missingPresets.length > 0) {
+    // Graceful degradation: filter out missing presets and warn
+    const filteredItems = playlist.items.filter(
+      (item) => !validation.missingPresets.includes(item.presetId)
+    );
+
+    if (filteredItems.length === 0) {
+      handlers?.onPlaylistError?.(
+        `All presets in playlist "${playlist.name}" are missing`
+      );
+      return () => {}; // Return no-op stop function
+    }
+
+    // Continue with filtered items
+    playlist = { ...playlist, items: filteredItems };
+    handlers?.onPlaylistError?.(
+      `Warning: ${validation.missingPresets.length} preset(s) missing from playlist "${playlist.name}"`
+    );
+  }
+
+  let stopped = false;
+  const timeouts: NodeJS.Timeout[] = [];
+
+  const stopExecution = () => {
+    stopped = true;
+    timeouts.forEach((timeout) => clearTimeout(timeout));
+    timeouts.length = 0;
+  };
+
+  const executeLoop = async (loopIndex: number) => {
+    if (stopped) return;
+
+    for (let i = 0; i < playlist.items.length; i++) {
+      if (stopped) return;
+
+      const item = playlist.items[i];
+      const preset = availablePresets.find((p) => p.id === item.presetId);
+
+      if (!preset) {
+        // Skip missing preset (should have been filtered above, but double-check)
+        continue;
+      }
+
+      // Evaluate condition
+      if (item.condition && !evaluatePlaylistCondition(item.condition, context)) {
+        handlers?.onConditionSkip?.(
+          item.presetId,
+          `Condition not met for ${preset.name}`
+        );
+        continue;
+      }
+
+      // Apply delay if specified
+      if (item.delayMs && item.delayMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            timeouts.splice(timeouts.indexOf(timeout), 1);
+            resolve();
+          }, item.delayMs);
+          timeouts.push(timeout);
+        });
+      }
+
+      if (stopped) return;
+
+      // Apply the preset
+      handlers?.onPresetApply?.(item.presetId, i);
+      try {
+        const success = await applyPreset(preset);
+        handlers?.onPresetComplete?.(item.presetId, i, success);
+
+        // Stop on failure if configured
+        if (!success && item.stopOnFailure) {
+          handlers?.onPlaylistError?.(`Playlist stopped due to failure at step ${i + 1}`);
+          return;
+        }
+      } catch (e) {
+        handlers?.onPresetComplete?.(item.presetId, i, false);
+        if (item.stopOnFailure) {
+          handlers?.onPlaylistError?.(
+            `Playlist stopped due to error at step ${i + 1}: ${e}`
+          );
+          return;
+        }
+      }
+    }
+
+    handlers?.onPlaylistComplete?.(playlist.id, loopIndex);
+
+    // Handle looping
+    if (playlist.loop) {
+      const maxLoops = playlist.maxLoops || Infinity;
+      if (loopIndex < maxLoops - 1) {
+        // Schedule next loop
+        await executeLoop(loopIndex + 1);
+      }
+    }
+  };
+
+  // Start execution
+  executeLoop(0).catch((e) => {
+    handlers?.onPlaylistError?.(`Playlist execution failed: ${e}`);
+  });
+
+  return stopExecution;
+}
+
+/**
  * Built-in preset examples (can be used as templates)
  */
 export const EXAMPLE_PRESETS: InteractionPreset[] = [

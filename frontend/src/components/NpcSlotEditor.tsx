@@ -7,9 +7,11 @@ import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
+  getCombinedPlaylists,
   applyPresetToSlot,
   getRecommendedPresets,
   type PresetWithScope,
+  type PlaylistWithScope,
   type SuggestionContext,
 } from '../lib/game/interactions/presets';
 
@@ -31,6 +33,11 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   // Load presets from world and global storage
   const presets = useMemo(() => {
     return getCombinedPresets(world);
+  }, [world]);
+
+  // Phase 10: Load playlists
+  const playlists = useMemo(() => {
+    return getCombinedPlaylists(world);
   }, [world]);
 
   // Load slots from location meta
@@ -404,6 +411,49 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                   </div>
                 );
               })()}
+
+              {/* Phase 10: Preset Playlist Section */}
+              {playlists.length > 0 && (
+                <div className="border-t pt-3 dark:border-neutral-700">
+                  <h4 className="text-xs font-semibold mb-2">🎵 Preset Playlist (Phase 10)</h4>
+                  <p className="text-xs text-neutral-500 mb-2">
+                    Assign a playlist to sequence multiple presets automatically
+                  </p>
+
+                  <Select
+                    size="sm"
+                    value={(selectedSlot.meta as any)?.__playlistId || ''}
+                    onChange={(e) => {
+                      const playlistId = e.target.value;
+                      updateSlot(selectedSlot.id, {
+                        ...selectedSlot,
+                        meta: {
+                          ...(selectedSlot.meta || {}),
+                          __playlistId: playlistId || undefined,
+                          __playlistName: playlistId
+                            ? playlists.find(p => p.id === playlistId)?.name
+                            : undefined,
+                        },
+                      });
+                    }}
+                  >
+                    <option value="">No playlist</option>
+                    {playlists.map(playlist => (
+                      <option key={`${playlist.scope}-${playlist.id}`} value={playlist.id}>
+                        {playlist.name} ({playlist.items.length} steps, {playlist.scope === 'global' ? '🌍' : '🗺️'})
+                      </option>
+                    ))}
+                  </Select>
+
+                  {(selectedSlot.meta as any)?.__playlistId && (
+                    <div className="mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-200 dark:border-purple-800">
+                      <p className="text-xs text-purple-900 dark:text-purple-100">
+                        ℹ️ Playlist "{(selectedSlot.meta as any).__playlistName}" will execute its presets in sequence when this NPC is interacted with
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Interactions Section */}
               <div className="border-t pt-3 dark:border-neutral-700">
