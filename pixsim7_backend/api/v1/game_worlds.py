@@ -177,3 +177,59 @@ async def update_world_meta(
 
     # Get current world time
     return await _build_world_detail(updated_world, game_world_service)
+
+
+class WorldSchemaValidationResult(BaseModel):
+    """Result of schema validation for a single world."""
+    world_id: int
+    world_name: str
+    valid: bool
+    errors: Optional[List[Dict[str, Any]]] = None
+
+
+@router.get("/debug/validate-schemas", response_model=List[WorldSchemaValidationResult])
+async def validate_all_world_schemas(
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> List[WorldSchemaValidationResult]:
+    """
+    Development endpoint to validate schemas for all worlds owned by the current user.
+
+    Returns validation results for each world, identifying any that have invalid
+    relationship_schemas or intimacy_schema configurations.
+    """
+    worlds = await game_world_service.list_worlds_for_user(owner_user_id=user.id)
+    results = []
+
+    for world in worlds:
+        if not world.meta:
+            # No meta means no schemas to validate - this is valid
+            results.append(
+                WorldSchemaValidationResult(
+                    world_id=world.id,
+                    world_name=world.name,
+                    valid=True,
+                )
+            )
+            continue
+
+        try:
+            WorldMetaSchemas.parse_obj(world.meta)
+            results.append(
+                WorldSchemaValidationResult(
+                    world_id=world.id,
+                    world_name=world.name,
+                    valid=True,
+                )
+            )
+        except ValidationError as e:
+            results.append(
+                WorldSchemaValidationResult(
+                    world_id=world.id,
+                    world_name=world.name,
+                    valid=False,
+                    errors=e.errors(),
+                )
+            )
+
+    return results

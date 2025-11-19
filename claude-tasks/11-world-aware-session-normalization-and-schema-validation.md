@@ -17,35 +17,42 @@ This task makes session normalization world‑aware and adds schema validation, 
 
 ### Phase Checklist
 
-- [ ] **Phase 1 – Design Session ↔ World Relationship**
-- [ ] **Phase 2 – Implement `world_id` on `GameSession` (or Equivalent Link)**
-- [ ] **Phase 3 – Make `_normalize_session_relationships` World‑Aware**
-- [~] **Phase 4 – Add World Meta Schema Validation**
-- [ ] **Phase 5 – (Optional) Cache Invalidation on Schema Changes**
-- [ ] **Phase 6 – Distinguish “No Data” vs “Not Normalized” in Game‑Core**
-- [ ] **Phase 7 – Type‑Safe Tier/Intimacy IDs in Types**
-- [ ] **Phase 8 – Additional Integration Tests (Session + Preview API)**
-- [ ] **Phase 9 – Metric Registry Wiring (Optional)**
-- [ ] **Phase 10 – Documentation Updates**
+- [x] **Phase 1 – Design Session ↔ World Relationship**
+- [x] **Phase 2 – Implement `world_id` on `GameSession` (or Equivalent Link)**
+- [x] **Phase 3 – Make `_normalize_session_relationships` World‑Aware**
+- [x] **Phase 4 – Add World Meta Schema Validation**
+- [x] **Phase 5 – (Optional) Cache Invalidation on Schema Changes**
+- [x] **Phase 6 – Distinguish "No Data" vs "Not Normalized" in Game‑Core**
+- [x] **Phase 7 – Type‑Safe Tier/Intimacy IDs in Types**
+- [x] **Phase 8 – Additional Integration Tests (Session + Preview API)**
+- [x] **Phase 9 – Metric Registry Wiring (Optional)**
+- [x] **Phase 10 – Documentation Updates**
 
 ---
 
-**CURRENT GAMESESSION STATE (2025‑11‑19)**
+**IMPLEMENTATION COMPLETED (2025‑11‑19)**
 
-As of this date:
-- `GameSession` exists in `pixsim7_backend/domain/game/models.py` with:
-  - `id`, `user_id`, `scene_id`, `current_node_id`
-  - `flags` (JSON), `relationships` (JSON)
-  - `world_time`, `version`, timestamps
-- There is **no `world_id` field** on `GameSession` yet.
-- `GameSessionService._normalize_session_relationships` exists and:
-  - Computes `tierId` / `intimacyLevelId` using **hardcoded default schemas** (empty `relationship_schemas` / `intimacy_schema`), not per‑world schemas.
-  - Uses Redis caching for normalized relationship blobs.
-- World meta schema validation (Phase 4) is **partially implemented**:
-  - `pixsim7_backend/domain/game/schemas.py` defines Pydantic models for `relationship_schemas` and `intimacy_schema`.
-  - `pixsim7_backend/api/v1/game_worlds.py` validates `GameWorld.meta` on create/update and returns HTTP 400 on invalid schemas.
+All phases of this task have been completed. Current state:
 
-All phases remain marked as not started except Phase 4 (now `[~]`) to reflect partial schema validation. The core world‑aware link (`world_id`) and session normalization behavior are still greenfield work.
+- `GameSession` now has `world_id: Optional[int]` field linking to `GameWorld.id`
+- Migration created: `20251119_0000_add_world_id_to_game_session.py`
+- `GameSessionService._normalize_session_relationships` now:
+  - Loads schemas from `GameWorld.meta` when `world_id` is set
+  - Computes `tierId` / `intimacyLevelId` using per‑world schemas
+  - Falls back to hardcoded defaults when `world_id` is null
+  - Uses Redis caching (60s TTL) for normalized relationship blobs
+- World meta schema validation is fully implemented:
+  - Pydantic models in `pixsim7_backend/domain/game/schemas.py`
+  - API validation in `pixsim7_backend/api/v1/game_worlds.py` (HTTP 400 on invalid schemas)
+  - Debug endpoint: `GET /api/v1/game/worlds/debug/validate-schemas`
+- Cache invalidation implemented:
+  - `GameWorldService.update_world_meta` invalidates all session caches for that world
+  - Redis dependency injection added to both `GameSessionService` and `GameWorldService`
+- Frontend types already included `isNormalized` flag and type-safe tier/intimacy IDs
+- Comprehensive integration tests added: `tests/test_world_aware_normalization.py`
+- Documentation updated:
+  - `RELATIONSHIPS_AND_ARCS.md` § 2.4: World-aware normalization details
+  - `SYSTEM_OVERVIEW.md`: Updated world and session sections
 
 ---
 

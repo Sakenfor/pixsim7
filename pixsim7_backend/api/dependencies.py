@@ -3,12 +3,20 @@ FastAPI dependencies - dependency injection for services
 
 Provides clean dependency injection for API routes
 """
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi import Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+try:
+    from redis.asyncio import Redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    Redis = None  # type: ignore
+
 from pixsim7_backend.domain import User
 from pixsim7_backend.infrastructure.database.session import get_db
+from pixsim7_backend.infrastructure.redis.client import get_redis
 from pixsim7_backend.services.user import UserService, AuthService
 from pixsim7_backend.services.account import AccountService
 from pixsim7_backend.services.generation import GenerationService
@@ -75,9 +83,23 @@ def get_asset_service(
     return AssetService(db, user_service)
 
 
-def get_game_session_service(db: AsyncSession = Depends(get_database)) -> GameSessionService:
-    """Get GameSessionService instance"""
-    return GameSessionService(db)
+async def get_redis_client() -> Optional[Redis]:
+    """Get Redis client instance (optional, returns None if unavailable)"""
+    if not REDIS_AVAILABLE:
+        return None
+    try:
+        return await get_redis()
+    except Exception:
+        # Fail gracefully if Redis is unavailable
+        return None
+
+
+async def get_game_session_service(
+    db: AsyncSession = Depends(get_database),
+    redis: Optional[Redis] = Depends(get_redis_client)
+) -> GameSessionService:
+    """Get GameSessionService instance with Redis support"""
+    return GameSessionService(db, redis)
 
 
 def get_game_location_service(db: AsyncSession = Depends(get_database)) -> GameLocationService:
@@ -90,9 +112,12 @@ def get_npc_expression_service(db: AsyncSession = Depends(get_database)) -> NpcE
     return NpcExpressionService(db)
 
 
-def get_game_world_service(db: AsyncSession = Depends(get_database)) -> GameWorldService:
-    """Get GameWorldService instance"""
-    return GameWorldService(db)
+async def get_game_world_service(
+    db: AsyncSession = Depends(get_database),
+    redis: Optional[Redis] = Depends(get_redis_client)
+) -> GameWorldService:
+    """Get GameWorldService instance with Redis support"""
+    return GameWorldService(db, redis)
 
 
 # ===== AUTHENTICATION DEPENDENCY =====

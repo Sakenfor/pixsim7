@@ -21,6 +21,7 @@ async def _get_owned_session(session_id: int, user: CurrentUser, game_session_se
 
 class CreateSessionRequest(BaseModel):
     scene_id: int
+    world_id: Optional[int] = None
     flags: Optional[Dict[str, Any]] = None
 
 
@@ -40,6 +41,7 @@ class GameSessionResponse(BaseModel):
     user_id: int
     scene_id: int
     current_node_id: int
+    world_id: Optional[int] = None
     flags: Dict[str, Any]
     relationships: Dict[str, Any]
     world_time: float
@@ -52,6 +54,7 @@ class GameSessionResponse(BaseModel):
             user_id=gs.user_id,
             scene_id=gs.scene_id,
             current_node_id=gs.current_node_id,
+            world_id=gs.world_id,
             flags=gs.flags,
             relationships=gs.relationships,
             world_time=gs.world_time,
@@ -70,6 +73,7 @@ async def create_session(
         gs = await game_session_service.create_session(
             user_id=user.id,
             scene_id=req.scene_id,
+            world_id=req.world_id,
             flags=req.flags,
         )
     except ValueError as e:
