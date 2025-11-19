@@ -15,6 +15,24 @@ from pixsim7_backend.domain.game.models import (
     NPCSchedule,
     NPCState,
 )
+from pixsim7_backend.domain.game.ecs import (
+    get_npc_entity,
+    set_npc_entity,
+    get_npc_component,
+    set_npc_component,
+    update_npc_component,
+    delete_npc_component,
+    has_npc_component,
+    list_npc_components,
+    get_npc_tags,
+    set_npc_tags,
+    add_npc_tag,
+    remove_npc_tag,
+    get_npc_metadata,
+    set_npc_metadata,
+    update_npc_metadata,
+    validate_entity,
+)
 
 __all__ = [
     "GameScene",
@@ -26,4 +44,21 @@ __all__ = [
     "GameNPC",
     "NPCSchedule",
     "NPCState",
+    # ECS helpers
+    "get_npc_entity",
+    "set_npc_entity",
+    "get_npc_component",
+    "set_npc_component",
+    "update_npc_component",
+    "delete_npc_component",
+    "has_npc_component",
+    "list_npc_components",
+    "get_npc_tags",
+    "set_npc_tags",
+    "add_npc_tag",
+    "remove_npc_tag",
+    "get_npc_metadata",
+    "set_npc_metadata",
+    "update_npc_metadata",
+    "validate_entity",
 ]
