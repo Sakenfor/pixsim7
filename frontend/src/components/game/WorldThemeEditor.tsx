@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, ViewMode } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiTheme, ViewMode, MotionPreset } from '@pixsim7/types';
 import {
   getWorldUiConfig,
   setWorldUiConfig,
@@ -16,6 +16,8 @@ import {
   deleteThemePreset,
   createThemePresetFromTheme,
   generateThemeId,
+  getMotionPresetNames,
+  MOTION_PRESETS,
   type WorldUiThemePreset,
 } from '@pixsim7/game-core';
 import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/ui';
@@ -30,6 +32,7 @@ interface WorldThemeEditorProps {
 export function WorldThemeEditor({ worldDetail, onSave, compact = false }: WorldThemeEditorProps) {
   const [selectedThemeId, setSelectedThemeId] = useState<string>('default');
   const [selectedViewMode, setSelectedViewMode] = useState<ViewMode>('hud-heavy');
+  const [selectedMotion, setSelectedMotion] = useState<MotionPreset>('comfortable');
   const [hasChanges, setHasChanges] = useState(false);
   const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
@@ -44,16 +47,37 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
     const uiConfig = getWorldUiConfig(worldDetail);
     setSelectedThemeId(uiConfig.theme?.id || 'default');
     setSelectedViewMode(uiConfig.viewMode || 'hud-heavy');
+
+    // Get motion preset from theme, default to 'comfortable'
+    const currentMotion = uiConfig.theme?.motion;
+    if (typeof currentMotion === 'string') {
+      setSelectedMotion(currentMotion);
+    } else {
+      setSelectedMotion('comfortable');
+    }
+
     setHasChanges(false);
   }, [worldDetail]);
 
   const handleThemeChange = (themeId: string) => {
     setSelectedThemeId(themeId);
+
+    // When changing theme, update motion to match the theme's motion preset
+    const theme = getThemePresetById(themeId);
+    if (theme?.motion && typeof theme.motion === 'string') {
+      setSelectedMotion(theme.motion);
+    }
+
     setHasChanges(true);
   };
 
   const handleViewModeChange = (viewMode: ViewMode) => {
     setSelectedViewMode(viewMode);
+    setHasChanges(true);
+  };
+
+  const handleMotionChange = (motion: MotionPreset) => {
+    setSelectedMotion(motion);
     setHasChanges(true);
   };
 
@@ -64,8 +88,14 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
       return;
     }
 
+    // Create a new theme object with the selected motion preset
+    const themeWithMotion: WorldUiTheme = {
+      ...theme,
+      motion: selectedMotion,
+    };
+
     const updatedWorld = setWorldUiConfig(worldDetail, {
-      theme,
+      theme: themeWithMotion,
       viewMode: selectedViewMode,
     });
 
@@ -77,6 +107,14 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
     const uiConfig = getWorldUiConfig(worldDetail);
     setSelectedThemeId(uiConfig.theme?.id || 'default');
     setSelectedViewMode(uiConfig.viewMode || 'hud-heavy');
+
+    const currentMotion = uiConfig.theme?.motion;
+    if (typeof currentMotion === 'string') {
+      setSelectedMotion(currentMotion);
+    } else {
+      setSelectedMotion('comfortable');
+    }
+
     setHasChanges(false);
   };
 
@@ -92,9 +130,15 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
       return;
     }
 
+    // Create theme with current motion setting
+    const themeWithMotion: WorldUiTheme = {
+      ...currentTheme,
+      motion: selectedMotion,
+    };
+
     const themeId = generateThemeId(newPresetName);
     const preset = createThemePresetFromTheme(
-      currentTheme,
+      themeWithMotion,
       newPresetName,
       newPresetDescription || undefined
     );
@@ -148,6 +192,24 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
             {themePresets.map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.name} {preset.isBuiltIn ? '' : '(Custom)'}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {/* Motion Preset Selector */}
+        <div>
+          <label className="block text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
+            Motion
+          </label>
+          <Select
+            value={selectedMotion}
+            onChange={(e) => handleMotionChange(e.target.value as MotionPreset)}
+            className="w-full"
+          >
+            {getMotionPresetNames().map((preset) => (
+              <option key={preset} value={preset}>
+                {preset.charAt(0).toUpperCase() + preset.slice(1)} ({MOTION_PRESETS[preset].duration}ms)
               </option>
             ))}
           </Select>
@@ -276,6 +338,44 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
             )}
           </div>
         )}
+      </div>
+
+      {/* Motion Preset Selection */}
+      <div>
+        <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
+          Motion Preset
+        </label>
+        <Select
+          value={selectedMotion}
+          onChange={(e) => handleMotionChange(e.target.value as MotionPreset)}
+          className="w-full mb-2"
+        >
+          {getMotionPresetNames().map((preset) => {
+            const config = MOTION_PRESETS[preset];
+            return (
+              <option key={preset} value={preset}>
+                {preset.charAt(0).toUpperCase() + preset.slice(1)} — {config.duration}ms
+              </option>
+            );
+          })}
+        </Select>
+
+        {/* Motion Preview */}
+        <div className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 p-2 rounded border border-neutral-200 dark:border-neutral-700">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Duration:</span>
+            <span>{MOTION_PRESETS[selectedMotion].duration}ms</span>
+            <span className="mx-2">•</span>
+            <span className="font-semibold">Easing:</span>
+            <span className="font-mono text-[10px]">{MOTION_PRESETS[selectedMotion].easing}</span>
+          </div>
+          <div className="mt-1 text-neutral-500">
+            {selectedMotion === 'none' && '⚡ No animations (accessibility-friendly)'}
+            {selectedMotion === 'calm' && '🌊 Slow, gentle animations'}
+            {selectedMotion === 'comfortable' && '✨ Balanced animations (recommended)'}
+            {selectedMotion === 'snappy' && '🚀 Fast, punchy animations'}
+          </div>
+        </div>
       </div>
 
       {/* View Mode Selection */}

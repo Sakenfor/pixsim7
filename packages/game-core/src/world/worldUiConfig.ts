@@ -5,7 +5,33 @@
  * stored in GameWorld.meta.ui (nested under a 'ui' key).
  */
 
-import type { GameWorldDetail, WorldUiConfig, WorldUiTheme, ViewMode } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiConfig, WorldUiTheme, ViewMode, MotionPreset, MotionConfig } from '@pixsim7/types';
+
+/**
+ * Built-in motion presets with their configurations
+ */
+export const MOTION_PRESETS: Record<MotionPreset, MotionConfig> = {
+  none: {
+    duration: 0,
+    easing: 'linear',
+    respectReducedMotion: true,
+  },
+  calm: {
+    duration: 400,
+    easing: 'cubic-bezier(0.4, 0, 0.2, 1)', // ease-in-out
+    respectReducedMotion: true,
+  },
+  comfortable: {
+    duration: 250,
+    easing: 'cubic-bezier(0.4, 0, 0.2, 1)', // ease-in-out
+    respectReducedMotion: true,
+  },
+  snappy: {
+    duration: 150,
+    easing: 'cubic-bezier(0.4, 0, 0.6, 1)', // Custom snappy curve
+    respectReducedMotion: true,
+  },
+};
 
 /**
  * Predefined theme presets
@@ -15,6 +41,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
     id: 'default',
     colors: {},
     density: 'comfortable',
+    motion: 'comfortable',
   },
   'neo-noir': {
     id: 'neo-noir',
@@ -25,6 +52,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#e0e0e0',
     },
     density: 'compact',
+    motion: 'snappy',
   },
   'bright-minimal': {
     id: 'bright-minimal',
@@ -35,6 +63,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#1f2937',
     },
     density: 'spacious',
+    motion: 'calm',
   },
   'fantasy-rpg': {
     id: 'fantasy-rpg',
@@ -45,6 +74,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#fef3c7',
     },
     density: 'comfortable',
+    motion: 'comfortable',
   },
 };
 
@@ -173,4 +203,42 @@ export function hasCustomTheme(world: GameWorldDetail): boolean {
  */
 export function resetWorldUiConfig(world: GameWorldDetail): GameWorldDetail {
   return setWorldUiConfig(world, createDefaultWorldUiConfig());
+}
+
+/**
+ * Resolve motion configuration from theme
+ * Converts preset names to MotionConfig or returns custom config
+ */
+export function resolveMotionConfig(motion?: MotionPreset | MotionConfig): MotionConfig {
+  if (!motion) {
+    // Default to comfortable preset
+    return MOTION_PRESETS.comfortable;
+  }
+
+  if (typeof motion === 'string') {
+    // It's a preset name
+    return MOTION_PRESETS[motion] || MOTION_PRESETS.comfortable;
+  }
+
+  // It's a custom MotionConfig
+  return {
+    duration: motion.duration ?? MOTION_PRESETS.comfortable.duration,
+    easing: motion.easing ?? MOTION_PRESETS.comfortable.easing,
+    respectReducedMotion: motion.respectReducedMotion ?? true,
+  };
+}
+
+/**
+ * Get motion configuration from a world theme
+ */
+export function getMotionConfig(world: GameWorldDetail): MotionConfig {
+  const theme = getWorldTheme(world);
+  return resolveMotionConfig(theme?.motion);
+}
+
+/**
+ * Get all available motion preset names
+ */
+export function getMotionPresetNames(): MotionPreset[] {
+  return Object.keys(MOTION_PRESETS) as MotionPreset[];
 }

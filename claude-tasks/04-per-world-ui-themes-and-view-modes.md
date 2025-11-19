@@ -18,7 +18,7 @@ Below are 10 phases for per‑world themes and view modes.
 - [x] **Phase 3 – World Theme Editor UI**
 - [x] **Phase 4 – Shared Theme Presets (Frontend‑Only)**
 - [x] **Phase 5 – User‑Level Overrides**
-- [ ] **Phase 6 – Per‑World Motion / Animation Presets**
+- [x] **Phase 6 – Per‑World Motion / Animation Presets**
 - [ ] **Phase 7 – Accessibility‑First Presets**
 - [ ] **Phase 8 – Per‑Session / Arc‑Specific Overrides**
 - [ ] **Phase 9 – Theme Packs & Sharing**

@@ -12,6 +12,7 @@ import {
   loadUserPreferences,
   isHighContrastEnabled,
   getEffectiveDensity,
+  resolveMotionConfig,
 } from '@pixsim7/game-core';
 
 /**
@@ -47,6 +48,8 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
   root.style.removeProperty('--world-theme-secondary');
   root.style.removeProperty('--world-theme-background');
   root.style.removeProperty('--world-theme-text');
+  root.style.removeProperty('--world-theme-motion-duration');
+  root.style.removeProperty('--world-theme-motion-easing');
   root.classList.remove('world-theme-compact', 'world-theme-comfortable', 'world-theme-spacious');
   root.classList.remove('user-high-contrast', 'user-reduced-motion');
 
@@ -69,6 +72,18 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
   const effectiveDensity = getEffectiveDensity(theme.density);
   root.classList.add(`world-theme-${effectiveDensity}`);
 
+  // Apply motion settings as CSS variables
+  const motionConfig = resolveMotionConfig(theme.motion);
+
+  // If user prefers reduced motion, override with no animations
+  if (userPrefs.prefersReducedMotion && motionConfig.respectReducedMotion) {
+    root.style.setProperty('--world-theme-motion-duration', '0ms');
+    root.style.setProperty('--world-theme-motion-easing', 'linear');
+  } else {
+    root.style.setProperty('--world-theme-motion-duration', `${motionConfig.duration}ms`);
+    root.style.setProperty('--world-theme-motion-easing', motionConfig.easing || 'ease');
+  }
+
   // Apply user preference classes
   if (userPrefs.prefersHighContrast) {
     root.classList.add('user-high-contrast');
@@ -82,6 +97,7 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
     theme,
     userPrefs,
     effectiveDensity,
+    motionConfig,
   });
 }
 

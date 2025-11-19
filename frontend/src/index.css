@@ -240,3 +240,95 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* ===============================================
+ * World Theme Motion System
+ * ===============================================
+ * Uses CSS variables set by useWorldTheme hook:
+ * - --world-theme-motion-duration (default: 250ms)
+ * - --world-theme-motion-easing (default: ease)
+ */
+
+:root {
+  /* Fallback values for motion variables */
+  --world-theme-motion-duration: 250ms;
+  --world-theme-motion-easing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Override Tailwind transition utilities to use world theme motion */
+.transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: var(--world-theme-motion-easing);
+  transition-duration: var(--world-theme-motion-duration);
+}
+
+.transition-all {
+  transition-property: all;
+  transition-timing-function: var(--world-theme-motion-easing);
+  transition-duration: var(--world-theme-motion-duration);
+}
+
+.transition-opacity {
+  transition-property: opacity;
+  transition-timing-function: var(--world-theme-motion-easing);
+  transition-duration: var(--world-theme-motion-duration);
+}
+
+.transition-transform {
+  transition-property: transform;
+  transition-timing-function: var(--world-theme-motion-easing);
+  transition-duration: var(--world-theme-motion-duration);
+}
+
+/* Custom animations that respect world theme motion */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-from-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in var(--world-theme-motion-duration) var(--world-theme-motion-easing);
+}
+
+.animate-scale-in {
+  animation: scale-in var(--world-theme-motion-duration) var(--world-theme-motion-easing);
+}
+
+.animate-slide-in-from-bottom {
+  animation: slide-in-from-bottom var(--world-theme-motion-duration) var(--world-theme-motion-easing);
+}
+
+/* Respect user's reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .user-reduced-motion * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
