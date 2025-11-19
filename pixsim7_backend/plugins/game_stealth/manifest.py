@@ -18,7 +18,7 @@ from pixsim7_backend.infrastructure.plugins.context import PluginContext
 manifest = PluginManifest(
     id="game-stealth",
     name="Game Stealth & Pickpocket",
-    version="2.0.0",  # Updated to use PluginContext
+    version="3.0.0",  # Updated to use ECS components and metric registry
     description="Provides stealth mechanics including pickpocket interactions",
     author="PixSim Team",
     kind="feature",
@@ -33,6 +33,7 @@ manifest = PluginManifest(
     permissions=[
         "session:read",   # Read session state
         "session:write",  # Modify session flags and relationships
+        "behavior:extend_conditions",  # Register component schemas and metrics
         "log:emit",       # Structured logging
     ],
 )
@@ -88,39 +89,48 @@ async def attempt_pickpocket(
         slot_id=req.slot_id,
     )
 
-    # NEW: Fetch session using capability API (permission-checked)
-    session = await ctx.session.get_session(req.session_id)
-    if not session:
-        ctx.log.warning("Session not found", session_id=req.session_id)
-        raise HTTPException(status_code=404, detail=f"GameSession {req.session_id} not found")
+    # NEW: Get stealth component using ECS
+    stealth_component = await ctx.components.get_component(
+        req.session_id, req.npc_id, "stealth", default={
+            "suspicion": 0.0,
+            "lastCaughtAt": None,
+            "pickpocketAttempts": [],
+            "detectionCount": 0,
+            "successfulThefts": 0,
+        }
+    )
 
     # Perform random rolls
     success_roll = random.random()
     detection_roll = random.random()
 
+    # Modify success/detection based on suspicion level
+    current_suspicion = stealth_component.get('suspicion', 0.0)
+    modified_detection_chance = min(1.0, req.detection_chance + (current_suspicion * 0.3))
+
     success = success_roll < req.base_success_chance
-    detected = detection_roll < req.detection_chance
+    detected = detection_roll < modified_detection_chance
 
-    # Prepare stealth flags (note: flags are now auto-namespaced by capability API)
-    # Build the flag structure we want to set
-    stealth_flags = session["flags"].get("stealth", {})
-
-    # Track pickpocket attempts
-    if "pickpocket_attempts" not in stealth_flags:
-        stealth_flags["pickpocket_attempts"] = []
-
+    # Build attempt record
     attempt_record = {
-        "npc_id": req.npc_id,
         "slot_id": req.slot_id,
         "success": success,
         "detected": detected,
+        "timestamp": int(__import__('time').time()),
     }
-    stealth_flags["pickpocket_attempts"].append(attempt_record)
 
-    # Set specific flags based on outcome
+    # Update component data
+    attempts = stealth_component.get('pickpocketAttempts', [])
+    attempts.append(attempt_record)
+
+    component_updates = {
+        'pickpocketAttempts': attempts,
+    }
+
+    # Set message and update counters
     if success:
-        flag_key = f"stole_from_npc_{req.npc_id}"
-        stealth_flags[flag_key] = True
+        successful_thefts = stealth_component.get('successfulThefts', 0) + 1
+        component_updates['successfulThefts'] = successful_thefts
         message = f"You successfully pickpocketed NPC #{req.npc_id}!"
         ctx.log.info("Pickpocket succeeded", npc_id=req.npc_id)
     else:
@@ -128,39 +138,45 @@ async def attempt_pickpocket(
         ctx.log.info("Pickpocket failed", npc_id=req.npc_id)
 
     if detected:
-        flag_key = f"caught_by_npc_{req.npc_id}"
-        stealth_flags[flag_key] = True
+        detection_count = stealth_component.get('detectionCount', 0) + 1
+        component_updates['detectionCount'] = detection_count
+        component_updates['lastCaughtAt'] = int(__import__('time').time())
+        # Increase suspicion significantly when caught
+        component_updates['suspicion'] = min(1.0, current_suspicion + 0.25)
+
         message += " You were detected!"
         ctx.log.warning("Player detected by NPC", npc_id=req.npc_id)
 
-        # NEW: Update relationship using capability API
-        npc_key = f"npc:{req.npc_id}"
-        relationship = await ctx.session.get_relationship(req.session_id, npc_key)
+        # NEW: Update core component for affinity penalty
+        core_component = await ctx.components.get_component(
+            req.session_id, req.npc_id, "core", default={"affinity": 50}
+        )
+        current_affinity = core_component.get('affinity', 50)
+        new_affinity = max(0, current_affinity - 10)
 
-        if relationship:
-            # Mark as caught pickpocketing
-            updates = {
-                "flags": {
-                    **relationship.get("flags", {}),
-                    "caught_pickpocketing": True,
-                },
-            }
+        await ctx.components.update_component(
+            req.session_id,
+            req.npc_id,
+            "core",
+            {"affinity": new_affinity}
+        )
 
-            # Decrease relationship score
-            current_score = relationship.get("score", 50)
-            updates["score"] = max(0, current_score - 10)
+        ctx.log.info(
+            "Affinity penalty applied",
+            npc_id=req.npc_id,
+            affinity_delta=-10,
+        )
+    else:
+        # Slowly decrease suspicion on successful undetected attempts
+        component_updates['suspicion'] = max(0.0, current_suspicion - 0.05)
 
-            # NEW: Use capability API to update relationship (permission-checked, provenance tracked)
-            await ctx.session_write.update_relationship(req.session_id, npc_key, updates)
-            ctx.log.info(
-                "Relationship penalty applied",
-                npc_id=req.npc_id,
-                score_delta=-10,
-            )
-
-    # NEW: Save flags using capability API (auto-namespaced under plugin:game-stealth:*)
-    # Set the entire stealth flag structure
-    await ctx.session_write.set_session_flag(req.session_id, "stealth", stealth_flags)
+    # NEW: Save stealth component using ECS API
+    await ctx.components.update_component(
+        req.session_id,
+        req.npc_id,
+        "stealth",
+        component_updates
+    )
 
     ctx.log.info(
         "Pickpocket attempt completed",
@@ -168,10 +184,13 @@ async def attempt_pickpocket(
         detected=detected,
     )
 
+    # Get updated component to return
+    updated_stealth = {**stealth_component, **component_updates}
+
     return PickpocketResponse(
         success=success,
         detected=detected,
-        updated_flags={"stealth": stealth_flags},  # Return the structure we set
+        updated_flags={"stealth": updated_stealth},  # Return updated component
         message=message,
     )
 
@@ -181,8 +200,50 @@ async def attempt_pickpocket(
 def on_load(app):
     """Called when plugin is loaded (before app starts)"""
     from pixsim_logging import configure_logging
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
     logger = configure_logging("plugin.game-stealth")
-    logger.info("Game Stealth plugin loaded (v2.0 - using PluginContext)")
+    logger.info("Game Stealth plugin loaded (v3.0 - using ECS components)")
+
+    # Register component schema and metrics directly with registry
+    try:
+        success = behavior_registry.register_component_schema(
+            component_name="plugin:game-stealth:stealth",  # Fully qualified name
+            plugin_id="game-stealth",
+            schema={
+                "suspicion": {"type": "float", "min": 0, "max": 1},
+                "lastCaughtAt": {"type": "integer"},
+                "pickpocketAttempts": {"type": "array"},
+                "detectionCount": {"type": "integer"},
+                "successfulThefts": {"type": "integer"},
+            },
+            description="Stealth system component for NPCs - suspicion, detection, pickpocket history",
+            metrics={
+                "npcRelationship.suspicion": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "plugin:game-stealth:stealth",
+                    "path": "suspicion",
+                    "label": "Suspicion",
+                    "description": "NPC's suspicion level towards player"
+                },
+                "npcRelationship.lastCaught": {
+                    "type": "integer",
+                    "component": "plugin:game-stealth:stealth",
+                    "path": "lastCaughtAt",
+                    "label": "Last Caught",
+                    "description": "Timestamp of when player was last caught by this NPC"
+                },
+            }
+        )
+
+        if success:
+            logger.info("Registered stealth component schema with 2 metrics")
+        else:
+            logger.warning("Failed to register stealth component schema")
+    except Exception as e:
+        logger.error(f"Error registering stealth component schema: {e}", exc_info=True)
 
 
 async def on_enable():
