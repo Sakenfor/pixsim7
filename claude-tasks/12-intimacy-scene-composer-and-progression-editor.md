@@ -1,11 +1,13 @@
 **Task: Intimacy Scene Composer & Relationship Progression Editor (Multi‑Phase)**
 
-> **Status: Phase 1 Implementation Complete** ✓
-> **Implementation Date**: 2024-11-19
+> **Status: Phase 1-2 Implementation Complete** ✓
+> **Phase 1 Date**: 2024-11-19
+> **Phase 2 Date**: 2024-11-19
 
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document** for editor tooling.
 > - **Phase 1 is now complete** with basic UI and data models implemented.
+> - **Phase 2 is now complete** with live preview and what-if analysis.
 > - Read these first for authoritative behavior and data shapes:  
 >   - `docs/INTIMACY_AND_GENERATION.md` (intimacy + generation)  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship tiers / arcs)  
@@ -72,10 +74,17 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Component API reference
   - Examples and best practices
 
-- [ ] **Phase 7 – Live Preview with Social Context (What‑If Analysis)**
+- [x] **Phase 7 – Live Preview with Social Context (What‑If Analysis)** ✓
   - Real-time preview with simulated relationship states
-  - "What-if" scenario testing
-  - Gate satisfaction preview
+  - "What-if" scenario testing with adjustable metrics
+  - Gate satisfaction preview with pass/fail indicators
+  - Quick presets for common relationship states
+  - Implemented in:
+    - `frontend/src/components/intimacy/RelationshipStateEditor.tsx`
+    - `frontend/src/components/intimacy/GatePreviewPanel.tsx`
+    - `frontend/src/lib/intimacy/gateChecking.ts`
+  - Integrated into IntimacySceneComposer (Generation tab)
+  - Preview mode added to ProgressionArcEditor
 
 - [ ] **Phase 8 – Generation Integration (Preview Intimacy Scenes)**
   - Backend integration for content generation

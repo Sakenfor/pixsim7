@@ -2,7 +2,9 @@
 
 > Visual editor tooling for designing intimate scenes and relationship progression arcs with proper safety controls and content rating management.
 
-> **Status**: Phase 1 Implementation Complete (Basic UI & Data Models)
+> **Status**: Phase 1-2 Implementation Complete (UI, Data Models, Live Preview)
+> **Phase 1**: Basic UI and type definitions ✓
+> **Phase 2**: Live preview with what-if analysis ✓
 > **For Agents**: This doc covers the intimacy scene composer and progression editor UI. See `INTIMACY_AND_GENERATION.md` for the underlying generation system and `RELATIONSHIPS_AND_ARCS.md` for relationship data models.
 
 ---
@@ -14,7 +16,7 @@ The Intimacy Scene Composer provides visual tools for:
 - **Creating progression arcs** showing relationship milestones over time
 - **Validating content** against world and user preferences
 - **Visualizing gates** with tier/intimacy thresholds
-- **Previewing social context** for generation (coming in Phase 2)
+- **Live preview & what-if analysis** - Test gates with simulated relationship states ✓ NEW
 
 **Key principles:**
 - **Safety first**: Multi-layer content rating validation and explicit consent requirements
@@ -31,7 +33,7 @@ Intimacy Scene Composer
   ├─ IntimacySceneComposer (main panel)
   │   ├─ Basic tab (scene type, intensity, rating)
   │   ├─ Gates tab (relationship requirements)
-  │   ├─ Generation tab (social context, future)
+  │   ├─ Generation tab (live preview with state simulation) ✓ NEW
   │   └─ Validation tab (safety checks)
   │
   ├─ RelationshipGateVisualizer (gate configuration)
@@ -40,17 +42,31 @@ Intimacy Scene Composer
   │   ├─ Metric requirements (affinity, trust, etc.)
   │   └─ Flag requirements
   │
+  ├─ RelationshipStateEditor (Phase 2) ✓ NEW
+  │   ├─ Tier/intimacy level selection
+  │   ├─ Metric sliders (affinity, trust, chemistry, tension)
+  │   ├─ Quick presets (stranger → lover)
+  │   └─ Flag management
+  │
+  ├─ GatePreviewPanel (Phase 2) ✓ NEW
+  │   ├─ Live gate checking with simulated state
+  │   ├─ Pass/fail indicators
+  │   ├─ Missing requirements display
+  │   └─ What-if analysis
+  │
   └─ ProgressionArcEditor (timeline view)
       ├─ Stage cards with status
       ├─ Gate badges
       ├─ Progress indicator
+      ├─ Preview mode with state simulation ✓ NEW
       └─ Stage detail panel
 
-Validation System
+Validation & Preview Systems
   ├─ Content rating checks (world/user limits)
   ├─ Gate validation (requirements, conflicts)
   ├─ Safety checks (consent, ratings)
-  └─ Arc validation (stages, branches)
+  ├─ Arc validation (stages, branches)
+  └─ Live gate checking (simulated states) ✓ NEW
 ```
 
 ---
@@ -485,6 +501,202 @@ const request: GenerateContentRequest = {
 
 ---
 
+## Phase 2: Live Preview & What-If Analysis
+
+### Overview
+
+Phase 2 adds interactive preview capabilities to test how gates behave with different relationship states. Designers can simulate various relationship scenarios without needing to run the game.
+
+### RelationshipStateEditor
+
+Interactive editor for adjusting simulated relationship metrics.
+
+```tsx
+import { RelationshipStateEditor } from '@/components/intimacy/RelationshipStateEditor';
+
+function MyPreview() {
+  const [state, setState] = useState(createDefaultState());
+
+  return (
+    <RelationshipStateEditor
+      state={state}
+      onChange={setState}
+      readOnly={false}
+      showPresets={true}
+    />
+  );
+}
+```
+
+**Features:**
+- **Quick Presets**: One-click load of typical relationship states (stranger → lover)
+- **Tier Selection**: Dropdown for relationship tier
+- **Intimacy Level**: Dropdown for intimacy progression
+- **Metric Sliders**: Visual sliders for affinity, trust, chemistry, tension (0-100)
+- **Flag Management**: Toggle flags on/off
+- **State Summary**: Quick overview of current simulated state
+
+### GatePreviewPanel
+
+Shows live gate checking results based on simulated state.
+
+```tsx
+import { GatePreviewPanel } from '@/components/intimacy/GatePreviewPanel';
+
+function MyGateTest() {
+  const [state, setState] = useState(createDefaultState());
+
+  return (
+    <GatePreviewPanel
+      gates={myScene.gates}
+      simulatedState={state}
+      expandByDefault={false}
+      onGateClick={(gateId) => console.log('Gate clicked:', gateId)}
+    />
+  );
+}
+```
+
+**Features:**
+- **Pass/Fail Summary**: Shows X/Y gates passed at a glance
+- **Color-Coded Status**: Green for passed, red for failed, amber for partial
+- **Expandable Details**: Click to see why a gate passed/failed
+- **Missing Requirements**: Clear list of what's needed to unlock
+- **Progress Bars**: Visual indicators for metric requirements
+
+### Gate Checking Utilities
+
+Runtime utilities for checking gates against simulated states.
+
+```typescript
+import { checkGate, createDefaultState, createStateFromTier } from '@/lib/intimacy/gateChecking';
+
+// Create a simulated state
+const state = createStateFromTier('friend'); // Quick preset
+// or
+const customState = {
+  tier: 'close_friend',
+  intimacyLevel: 'deep_flirt',
+  metrics: { affinity: 70, trust: 65, chemistry: 55, tension: 30 },
+  flags: { 'met_parents': true },
+};
+
+// Check if a gate is satisfied
+const result = checkGate(myGate, state);
+
+if (result.satisfied) {
+  console.log('Gate passed! Content unlocked.');
+} else {
+  console.log('Gate failed. Missing:', result.missingRequirements);
+}
+```
+
+**Available Presets:**
+- `stranger`: affinity: 0, trust: 0, chemistry: 0, tension: 0
+- `acquaintance`: affinity: 15, trust: 10, chemistry: 5, tension: 0
+- `friend`: affinity: 40, trust: 35, chemistry: 20, tension: 10
+- `close_friend`: affinity: 65, trust: 60, chemistry: 50, tension: 30
+- `lover`: affinity: 85, trust: 80, chemistry: 75, tension: 50
+
+### Integration in IntimacySceneComposer
+
+The Generation tab now includes live preview:
+
+```tsx
+<IntimacySceneComposer
+  scene={myScene}
+  onChange={setScene}
+  worldMaxRating="romantic"
+  userMaxRating="mature_implied"
+/>
+```
+
+**Generation Tab Layout:**
+- **Left Panel**: RelationshipStateEditor for adjusting metrics
+- **Right Panel**: GatePreviewPanel showing gate results
+- Updates in real-time as you adjust metrics
+
+### Integration in ProgressionArcEditor
+
+Preview mode allows simulating progression through an arc:
+
+```tsx
+<ProgressionArcEditor
+  arc={myArc}
+  onChange={setArc}
+  layout="horizontal"
+/>
+```
+
+**Preview Mode:**
+- Click "👁️ Preview" button in header to enable
+- Expandable panel at top for state editor
+- Stage cards show locked/unlocked/current status based on simulated state
+- Exit preview mode by clicking "Exit Preview" or toggle button
+
+### Usage Examples
+
+#### Example 1: Testing a Gate
+
+```typescript
+// Configure a gate
+const friendGate: RelationshipGate = {
+  id: 'friend_gate',
+  name: 'Must be friends',
+  requiredTier: 'friend',
+  metricRequirements: {
+    minAffinity: 30,
+    minTrust: 20,
+  },
+};
+
+// Create test states
+const strangerState = createStateFromTier('stranger');
+const friendState = createStateFromTier('friend');
+
+// Check gates
+const strangerResult = checkGate(friendGate, strangerState);
+console.log(strangerResult.satisfied); // false
+
+const friendResult = checkGate(friendGate, friendState);
+console.log(friendResult.satisfied); // true
+```
+
+#### Example 2: Preview Progression Arc
+
+1. Open ProgressionArcEditor with your arc
+2. Click "👁️ Preview" in the header
+3. Use quick presets or adjust metrics manually
+4. Watch stage cards update to show which stages are unlocked
+5. Click on a stage to see its requirements
+6. Adjust metrics until you reach the desired stage
+
+#### Example 3: What-If Analysis
+
+```typescript
+// Test different scenarios
+const scenarios = [
+  { name: 'High affinity, low trust', state: { ...defaultState, metrics: { affinity: 80, trust: 20, chemistry: 30, tension: 10 } } },
+  { name: 'Balanced growth', state: createStateFromTier('close_friend') },
+  { name: 'Fast chemistry', state: { ...defaultState, metrics: { affinity: 40, trust: 30, chemistry: 70, tension: 50 } } },
+];
+
+for (const scenario of scenarios) {
+  const result = checkGate(myGate, scenario.state);
+  console.log(`${scenario.name}: ${result.satisfied ? 'PASS' : 'FAIL'}`);
+}
+```
+
+### Tips for Using Preview Mode
+
+1. **Start with Presets**: Use tier presets for quick testing
+2. **Incremental Testing**: Gradually increase metrics to find exact thresholds
+3. **Multiple Scenarios**: Test edge cases (very low/high metrics, unusual combinations)
+4. **Flag Testing**: Toggle flags to test conditional gates
+5. **Progression Testing**: In arc editor, simulate full progression paths
+
+---
+
 ## Implementation Status
 
 ### ✓ Phase 1 - Complete
@@ -497,15 +709,25 @@ const request: GenerateContentRequest = {
 - [x] Validation utilities (`frontend/src/lib/intimacy/validation.ts`)
 - [x] Documentation
 
-### Phase 2 - Planned
+### ✓ Phase 2 - Complete
 
-- [ ] Live preview with social context (what-if analysis)
-- [ ] Generation integration (preview intimacy scenes)
-- [ ] Runtime gate checking integration
-- [ ] Progression state tracking
+- [x] Live preview with social context (what-if analysis)
+- [x] RelationshipStateEditor component (`frontend/src/components/intimacy/RelationshipStateEditor.tsx`)
+- [x] GatePreviewPanel component (`frontend/src/components/intimacy/GatePreviewPanel.tsx`)
+- [x] Gate checking utilities (`frontend/src/lib/intimacy/gateChecking.ts`)
+- [x] Integration in IntimacySceneComposer (Generation tab)
+- [x] Preview mode in ProgressionArcEditor
+- [x] Quick presets for common relationship states
+- [x] Documentation with usage examples
+
+### Phase 3 - Planned
+
+- [ ] Generation integration (backend preview of intimacy scenes)
 - [ ] Template library for common patterns
+- [ ] Progression state tracking with save/load
+- [ ] Advanced what-if scenarios (multi-NPC, temporal)
 
-### Phase 3 - Future
+### Phase 4 - Future
 
 - [ ] Branching progression paths
 - [ ] Multi-NPC progression arcs
@@ -641,14 +863,19 @@ await saveScene(scene);
 - `packages/types/src/generation.ts` - Generation and social context types
 - `packages/types/src/index.ts` - Main exports
 
-### Components
+### Components (Phase 1)
 - `frontend/src/components/intimacy/IntimacySceneComposer.tsx` - Main editor
 - `frontend/src/components/intimacy/RelationshipGateVisualizer.tsx` - Gate visualization
 - `frontend/src/components/intimacy/ProgressionArcEditor.tsx` - Arc timeline editor
 - `frontend/src/components/generation/SocialContextPanel.tsx` - Social context display
 
+### Components (Phase 2 - NEW)
+- `frontend/src/components/intimacy/RelationshipStateEditor.tsx` - State simulation editor
+- `frontend/src/components/intimacy/GatePreviewPanel.tsx` - Live gate preview panel
+
 ### Utilities
 - `frontend/src/lib/intimacy/validation.ts` - Validation functions
+- `frontend/src/lib/intimacy/gateChecking.ts` - Gate checking utilities (Phase 2)
 
 ### Documentation
 - `docs/INTIMACY_AND_GENERATION.md` - Generation system integration
@@ -660,10 +887,10 @@ await saveScene(scene);
 
 ## Future Enhancements
 
-1. **Live Preview** - Real-time "what-if" analysis with simulated relationship states
+1. ~~**Live Preview**~~ - ✓ Implemented in Phase 2
 2. **Smart Templates** - AI-powered suggestions for common progression patterns
 3. **Metric Visualization** - Charts showing relationship metric changes over time
-4. **Playtesting Mode** - Simulate full progression with player choices
+4. **Playtesting Mode** - Full simulation with player choices and branching
 5. **Export/Import** - Share progression packs between projects
 6. **Analytics** - Track which gates/stages players reach most often
 7. **Branching Editor** - Visual editor for complex branching progressions
