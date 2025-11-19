@@ -499,7 +499,20 @@ export interface NpcInteractionInstance {
 2. Add Pydantic models and validators (gating ranges, known surfaces, reference consistency).
 3. Integrate with world/NPC meta validation (no new tables).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+**Implementation:**
+- TypeScript types: `packages/types/src/interactions.ts`
+- Pydantic schemas: `pixsim7_backend/domain/game/npc_interactions.py`
+
+**Key Design Decisions:**
+1. Built on top of existing plugin system (extends `BaseInteractionConfig`)
+2. Reused `BranchIntent` concept from action blocks
+3. Comprehensive gating schema (relationship, mood, behavior, time, flags)
+4. Unified outcome schema (relationships, flags, inventory, NPC effects, scenes, generation)
+5. Storage in GameWorld.meta and GameSession.flags (no new DB tables)
+6. Support for both player-initiated and NPC-initiated interactions
+7. Full TypeScript/Pydantic parity for API compatibility
 
 ---
 
