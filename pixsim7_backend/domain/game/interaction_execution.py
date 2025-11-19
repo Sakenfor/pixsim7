@@ -450,6 +450,25 @@ async def execute_interaction(
             player_input
         )
 
+    # 6.5. Narrative program launch (unified runtime)
+    narrative_program_result = None
+    if outcome.narrative_program_id:
+        from pixsim7_backend.domain.narrative.integration_helpers import (
+            launch_narrative_program_from_interaction
+        )
+        from pixsim7_backend.domain.game.models import GameWorld
+
+        # Load world
+        world = await db.get(GameWorld, session.world_id)
+        if world:
+            narrative_program_result = await launch_narrative_program_from_interaction(
+                session=session,
+                world=world,
+                npc_id=npc_id,
+                program_id=outcome.narrative_program_id,
+                db=db
+            )
+
     # 7. Track cooldown
     if definition.gating and definition.gating.cooldown_seconds:
         await track_interaction_cooldown(session, npc_id, definition.id)
