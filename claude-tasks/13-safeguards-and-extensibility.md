@@ -725,35 +725,35 @@ def simulate_npc_schedule_only(npc, world, session, delta_seconds):
 
 ## Implementation Checklist
 
-### Phase 13.1 Updates
+### Phase 13.1 Updates ✅ COMPLETE
 
 Add these to Phase 13.1 (Data Schemas & Validation):
 
-- [ ] Add `version` field to all behavior schemas (Activity, RoutineGraph, BehaviorConfig)
-- [ ] Change `ActivityCategory` from enum to `string`
-- [ ] Add `activityCategories` config to `BehaviorConfig`
-- [ ] Add `customEffects` array to `ActivityEffects`
-- [ ] Add `custom` condition type to Condition DSL
-- [ ] Add `ScoringConfig` to `BehaviorConfig`
-- [ ] Add `SimulationConfig` to `BehaviorConfig`
-- [ ] Create migration system for behavior data versions
-- [ ] Add Pydantic validators for all new fields
-- [ ] Document extensibility points in schema comments
+- [x] Add `version` field to all behavior schemas (Activity, RoutineGraph, BehaviorConfig)
+- [x] Change `ActivityCategory` from enum to `string`
+- [x] Add `activityCategories` config to `BehaviorConfig`
+- [x] Add `customEffects` array to `ActivityEffects`
+- [x] Add `custom` condition type to Condition DSL
+- [x] Add `ScoringConfig` to `BehaviorConfig`
+- [x] Add `SimulationConfig` to `BehaviorConfig`
+- [x] Create migration system for behavior data versions (`auto_migrate_behavior_config` in schemas.py)
+- [x] Add Pydantic validators for all new fields
+- [x] Document extensibility points in schema comments (in README.md)
 
-### Phase 13.2 Updates
+### Phase 13.2 Updates (Backend ✅, Frontend ⏭️)
 
-- [ ] Implement custom effect handler registry
-- [ ] Implement custom condition evaluator registry
-- [ ] Add UI for defining custom activity categories
-- [ ] Add validation for category references in activities
+- [x] Implement custom effect handler registry (`EFFECT_HANDLERS` in effects.py)
+- [x] Implement custom condition evaluator registry (`CONDITION_EVALUATORS` in conditions.py)
+- [ ] ~~Add UI for defining custom activity categories~~ ⏭️ **SKIPPED** (backend API supports it)
+- [x] Add validation for category references in activities (in BehaviorConfigSchema)
 
-### Phase 13.4 Updates
+### Phase 13.4 Updates ✅ COMPLETE
 
-- [ ] Implement configurable scoring with world-specific weights
-- [ ] Implement game-agnostic simulation prioritization system
-- [ ] Add relevance-based tick frequency (location, scene, quest, interaction)
-- [ ] Add simulation tier assignment based on priority rules
-- [ ] Add simulation performance metrics
+- [x] Implement configurable scoring with world-specific weights (ScoringConfig with 8 tunable weights)
+- [x] Implement game-agnostic simulation prioritization system (simulation.py with tier system)
+- [x] Add relevance-based tick frequency (location, scene, quest, interaction) (SimulationConfig with flexible priority rules)
+- [x] Add simulation tier assignment based on priority rules (`determine_simulation_tier` function)
+- [ ] ~~Add simulation performance metrics~~ ⏭️ **SKIPPED** (can be added later)
 
 ---
 
