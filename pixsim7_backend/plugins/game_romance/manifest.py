@@ -19,7 +19,7 @@ from pixsim7_backend.infrastructure.plugins.context import PluginContext
 manifest = PluginManifest(
     id="game-romance",
     name="Game Romance & Sensual Touch",
-    version="2.0.0",  # Updated to use PluginContext
+    version="3.0.0",  # Updated to use ECS components and metric registry
     description="Provides romance mechanics including sensual touch interactions with gizmo integration",
     author="PixSim Team",
     kind="feature",
@@ -34,6 +34,7 @@ manifest = PluginManifest(
     permissions=[
         "session:read",   # Read session state and relationships
         "session:write",  # Modify session flags and relationships
+        "behavior:extend_conditions",  # Register component schemas and metrics
         "log:emit",       # Structured logging
     ],
 )
@@ -237,30 +238,26 @@ async def attempt_sensual_touch(
         pattern=req.pattern,
     )
 
-    # NEW: Fetch session using capability API (permission-checked)
-    session = await ctx.session.get_session(req.session_id)
-    if not session:
-        ctx.log.warning("Session not found", session_id=req.session_id)
-        raise HTTPException(
-            status_code=404,
-            detail=f"GameSession {req.session_id} not found"
-        )
+    # NEW: Get core component for affinity check
+    core_component = await ctx.components.get_component(
+        req.session_id, req.npc_id, "core", default={"affinity": 50}
+    )
+    current_affinity = core_component.get('affinity', 50)
 
-    # NEW: Get NPC relationship using capability API
-    npc_key = f"npc:{req.npc_id}"
-    npc_rel = await ctx.session.get_relationship(req.session_id, npc_key)
-
-    if not npc_rel:
-        # Initialize relationship if it doesn't exist
-        npc_rel = {'score': 50, 'flags': {}, 'affinity': 50}
-        await ctx.session_write.update_relationship(req.session_id, npc_key, npc_rel)
-        ctx.log.info("Initialized relationship for NPC", npc_id=req.npc_id)
-
-    current_affinity = npc_rel.get('affinity', npc_rel.get('score', 50))
+    # NEW: Get romance component using ECS
+    romance_component = await ctx.components.get_component(
+        req.session_id, req.npc_id, "romance", default={
+            "arousal": 0.0,
+            "consentLevel": 0.5,
+            "stage": "none",
+            "unlockedTools": [],
+            "sensualTouchAttempts": [],
+        }
+    )
 
     # Check consent/availability
-    flags = npc_rel.get('flags', {})
-    has_consent = flags.get('romance:consented', False)
+    consent_level = romance_component.get('consentLevel', 0.5)
+    has_consent = consent_level >= 0.7 or current_affinity >= 60
 
     if not has_consent and current_affinity < 50:
         ctx.log.warning(
@@ -274,7 +271,7 @@ async def attempt_sensual_touch(
             arousal_change=0.0,
             affinity_change=-5,
             tool_unlocked=None,
-            updated_flags=session.get("flags", {}),
+            updated_flags={"romance": romance_component},
             message=f"NPC #{req.npc_id} isn't comfortable with this yet. Build your relationship first."
         )
 
@@ -307,57 +304,22 @@ async def attempt_sensual_touch(
     # Check for tool unlock
     tool_unlocked = determine_tool_unlock(current_affinity, new_affinity)
 
-    # NEW: Update session data using capability APIs
-    # ------------------------------------------------
-
-    # Prepare relationship updates
-    relationship_updates = {
-        'affinity': new_affinity,
-        'score': new_affinity,
-    }
-
-    # Update arousal level
-    current_arousal = npc_rel.get('arousal', 0.0)
-    relationship_updates['arousal'] = max(0.0, min(1.0, current_arousal + arousal_change))
-
-    # Update flags
-    updated_flags = npc_rel.get('flags', {}).copy()
-    if success:
-        updated_flags['romance:sensual_touch_success'] = True
-        updated_flags[f'romance:tool_used_{req.tool_id}'] = True
-    else:
-        updated_flags['romance:sensual_touch_failed'] = True
-
-    # Unlock tool if applicable
-    if tool_unlocked:
-        if 'unlocked_tools' not in updated_flags:
-            updated_flags['unlocked_tools'] = []
-        if tool_unlocked not in updated_flags['unlocked_tools']:
-            updated_flags['unlocked_tools'].append(tool_unlocked)
-
-    relationship_updates['flags'] = updated_flags
-
-    # NEW: Update relationship using capability API (permission-checked, provenance tracked)
-    await ctx.session_write.update_relationship(req.session_id, npc_key, relationship_updates)
-
-    ctx.log.info(
-        "Updated NPC relationship",
-        npc_id=req.npc_id,
-        affinity_change=affinity_change,
-        arousal_change=arousal_change,
-        new_affinity=new_affinity,
+    # NEW: Update core component for affinity
+    await ctx.components.update_component(
+        req.session_id,
+        req.npc_id,
+        "core",
+        {"affinity": new_affinity}
     )
 
-    # NEW: Update global session flags using capability API
-    # Get current romance flags
-    current_session_flags = session.get("flags", {})
-    romance_flags = current_session_flags.get('romance', {})
+    # NEW: Update romance component using ECS
+    # ------------------------------------------------
+    current_arousal = romance_component.get('arousal', 0.0)
+    new_arousal = max(0.0, min(1.0, current_arousal + arousal_change))
 
-    if 'sensual_touch_attempts' not in romance_flags:
-        romance_flags['sensual_touch_attempts'] = []
-
+    # Track attempt in component
+    attempts = romance_component.get('sensualTouchAttempts', [])
     attempt_record = {
-        'npc_id': req.npc_id,
         'slot_id': req.slot_id,
         'tool_id': req.tool_id,
         'pattern': req.pattern,
@@ -367,10 +329,51 @@ async def attempt_sensual_touch(
         'arousal_change': arousal_change,
         'affinity_change': affinity_change,
     }
-    romance_flags['sensual_touch_attempts'].append(attempt_record)
+    attempts.append(attempt_record)
 
-    # NEW: Save flags using capability API (auto-namespaced under plugin:game-romance:*)
-    await ctx.session_write.set_session_flag(req.session_id, "romance", romance_flags)
+    # Build component updates
+    component_updates = {
+        'arousal': new_arousal,
+        'sensualTouchAttempts': attempts,
+        'lastInteractionAt': int(__import__('time').time()),
+    }
+
+    # Unlock tool if applicable
+    if tool_unlocked:
+        unlocked_tools = romance_component.get('unlockedTools', [])
+        if tool_unlocked not in unlocked_tools:
+            unlocked_tools.append(tool_unlocked)
+        component_updates['unlockedTools'] = unlocked_tools
+
+    # Possibly update stage based on affinity/arousal
+    if new_affinity >= 70 and new_arousal >= 0.6:
+        component_updates['stage'] = 'dating'
+    elif new_affinity >= 50 and new_arousal >= 0.3:
+        component_updates['stage'] = 'flirting'
+    elif new_affinity >= 30:
+        component_updates['stage'] = 'interested'
+
+    # Update consent level based on positive interactions
+    if success:
+        current_consent = romance_component.get('consentLevel', 0.5)
+        component_updates['consentLevel'] = min(1.0, current_consent + 0.05)
+
+    # NEW: Save romance component using ECS API
+    await ctx.components.update_component(
+        req.session_id,
+        req.npc_id,
+        "romance",
+        component_updates
+    )
+
+    ctx.log.info(
+        "Updated NPC romance component",
+        npc_id=req.npc_id,
+        affinity_change=affinity_change,
+        arousal_change=arousal_change,
+        new_affinity=new_affinity,
+        new_arousal=new_arousal,
+    )
 
     # Generate message
     if success:
@@ -393,13 +396,16 @@ async def attempt_sensual_touch(
         tool_unlocked=tool_unlocked,
     )
 
+    # Get updated component to return
+    updated_romance = {**romance_component, **component_updates}
+
     return SensualTouchResponse(
         success=success,
         pleasure_score=pleasure_score,
         arousal_change=arousal_change,
         affinity_change=affinity_change,
         tool_unlocked=tool_unlocked,
-        updated_flags={"romance": romance_flags},  # Return the structure we set
+        updated_flags={"romance": updated_romance},  # Return updated component
         message=message,
     )
 
@@ -426,8 +432,61 @@ async def get_npc_romance_preferences(
 def on_load(app):
     """Called when plugin is loaded (before app starts)"""
     from pixsim_logging import configure_logging
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
     logger = configure_logging("plugin.game-romance")
-    logger.info("Game Romance plugin loaded (v2.0 - using PluginContext)")
+    logger.info("Game Romance plugin loaded (v3.0 - using ECS components)")
+
+    # Register component schema and metrics directly with registry
+    try:
+        success = behavior_registry.register_component_schema(
+            component_name="plugin:game-romance:romance",  # Fully qualified name
+            plugin_id="game-romance",
+            schema={
+                "arousal": {"type": "float", "min": 0, "max": 1},
+                "consentLevel": {"type": "float", "min": 0, "max": 1},
+                "stage": {"type": "string", "enum": ["none", "interested", "flirting", "dating", "partner"]},
+                "unlockedTools": {"type": "array", "items": {"type": "string"}},
+                "sensualTouchAttempts": {"type": "array"},
+                "lastInteractionAt": {"type": "integer"},
+            },
+            description="Romance system component for NPCs - arousal, consent, relationship stage",
+            metrics={
+                "npcRelationship.arousal": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "plugin:game-romance:romance",
+                    "path": "arousal",
+                    "label": "Arousal",
+                    "description": "NPC's current arousal level"
+                },
+                "npcRelationship.consentLevel": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "plugin:game-romance:romance",
+                    "path": "consentLevel",
+                    "label": "Consent Level",
+                    "description": "NPC's comfort/consent level with intimate interactions"
+                },
+                "npcRelationship.romanceStage": {
+                    "type": "enum",
+                    "values": ["none", "interested", "flirting", "dating", "partner"],
+                    "component": "plugin:game-romance:romance",
+                    "path": "stage",
+                    "label": "Romance Stage",
+                    "description": "Current stage of romantic relationship"
+                },
+            }
+        )
+
+        if success:
+            logger.info("Registered romance component schema with 3 metrics")
+        else:
+            logger.warning("Failed to register romance component schema")
+    except Exception as e:
+        logger.error(f"Error registering romance component schema: {e}", exc_info=True)
 
 
 async def on_enable():
