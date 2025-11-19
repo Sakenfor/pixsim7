@@ -34,6 +34,7 @@ import { useTemplateStore } from '../lib/graph/templatesStore';
 import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../lib/graph/graphTemplates';
 import { useWorldContextStore } from '../stores/worldContextStore';
+import { useTemplateAnalyticsStore } from '../lib/graph/templateAnalyticsStore';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -59,6 +60,7 @@ export function GraphPanel() {
   const getCurrentZoomLevel = useGraphStore((s: GraphState) => s.getCurrentZoomLevel);
   const navigationStack = useGraphStore((s: GraphState) => s.navigationStack);
   const addTemplate = useTemplateStore((state) => state.addTemplate);
+  const recordUsage = useTemplateAnalyticsStore((state) => state.recordUsage);
 
   // Get current scene (derived from currentSceneId)
   const currentScene = getCurrentScene();
@@ -581,6 +583,15 @@ export function GraphPanel() {
           connectNodes(edge.from, edge.to, edge.meta);
         });
 
+        // Phase 10: Record template usage analytics
+        recordUsage({
+          templateId: template.id,
+          sceneId: currentSceneId,
+          worldId: worldId || null,
+          nodeCount: result.nodes.length,
+          edgeCount: result.edges.length,
+        });
+
         toast.success(
           `Inserted template: ${result.nodes.length} nodes, ${result.edges.length} edges`
         );
@@ -588,7 +599,7 @@ export function GraphPanel() {
         toast.error(`Failed to insert template: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     },
-    [currentScene, toast, addNode, connectNodes]
+    [currentScene, currentSceneId, worldId, toast, addNode, connectNodes, recordUsage]
   );
 
   // Phase 7: Handle wizard completion
