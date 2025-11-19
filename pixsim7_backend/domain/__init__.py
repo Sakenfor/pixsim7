@@ -30,11 +30,9 @@ from .provider_submission import ProviderSubmission
 from .account import ProviderAccount
 from .provider_credit import ProviderCredit
 
-# Backward compatibility aliases (will be removed in future)
-# from .job import Job  # Removed - use Generation instead
-# from .generation_artifact import GenerationArtifact  # Removed - use Generation instead
-Job = Generation  # Backward compatibility alias
-GenerationArtifact = Generation  # Backward compatibility alias
+# Backward compatibility aliases (DEPRECATED - will be removed in future)
+# These are now in a separate compat module and issue deprecation warnings
+from .compat import Job, GenerationArtifact
 
 # Asset metadata tables
 from .asset_metadata import (

@@ -1,10 +1,10 @@
 /**
  * Generation Request Builder
  *
- * Reference implementation for building GenerateContentRequest from
+ * Canonical implementation for building GenerateContentRequest from
  * GenerationNodeConfig with social context integration.
  *
- * This module provides the canonical way to assemble generation requests
+ * This module provides the ONLY supported way to assemble generation requests
  * with relationship/intimacy context attached.
  *
  * @authority CLIENT_FALLBACK
@@ -13,10 +13,11 @@
  *
  * @use_cases Generation node execution, editor previews, test harness
  *
- * @status REFERENCE_IMPLEMENTATION
- * This code is not yet integrated into the runtime execution path.
- * It serves as documentation and reference for future integration.
- * See docs/DYNAMIC_GENERATION_FOUNDATION.md for MVP roadmap.
+ * @status CANONICAL
+ * This is the canonical request builder. All new generation work MUST use
+ * this builder to ensure consistent request structure and social context.
+ * Direct manual construction of GenerateContentRequest is DEPRECATED.
+ * See docs/DYNAMIC_GENERATION_FOUNDATION.md for usage guidelines.
  */
 
 import type {

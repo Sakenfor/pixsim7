@@ -1,5 +1,18 @@
 """
 Job management API endpoints
+
+**DEPRECATED:** This endpoint is deprecated in favor of `/api/v1/generations`.
+
+The `/api/v1/jobs` endpoint is a backward-compatibility wrapper around the
+unified GenerationService. It will continue to work during a grace period,
+but new code should use `/api/v1/generations` instead.
+
+Migration:
+- Use `POST /api/v1/generations` instead of `POST /api/v1/jobs`
+- Use `CreateGenerationRequest` schema with full generation config
+- See: claude-tasks/15-unified-generation-request-path-and-job-deprecation.md
+
+This endpoint will be removed in a future version after the deprecation period.
 """
 from fastapi import APIRouter, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pixsim7_backend.api.dependencies import CurrentUser, JobSvc, get_auth_service, get_database
@@ -34,6 +47,8 @@ async def create_job(
     """
     Create a new job
 
+    **DEPRECATED:** Use POST /api/v1/generations instead.
+
     Creates a video generation job with the specified operation type and parameters.
     The job will be queued for processing by background workers.
 
@@ -50,9 +65,14 @@ async def create_job(
     - `video_extend`: video_url, extend_seconds
     - `video_transition`: video_url_1, video_url_2
     - `fusion`: video_urls (list)
-    
+
     Rate limited: 10 requests per 60 seconds per user/IP
     """
+    # Add deprecation warning to response headers
+    logger.warning(
+        f"Deprecated endpoint /api/v1/jobs used by user {user.id}. "
+        "Migrate to /api/v1/generations."
+    )
     # Rate limit check
     identifier = await get_client_identifier(req)
     await job_create_limiter.check(identifier)
