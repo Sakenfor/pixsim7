@@ -340,10 +340,56 @@ Implement a simple narrative runtime that can advance one step at a time and be 
      - Any launched scene/generation IDs.  
      - Updated narrative state snapshot.
 3. Wire runtime into:
-   - Interaction execution: instead of ad-hoc `pendingDialogue`, call `start_program`/`step_program` where appropriate.  
+   - Interaction execution: instead of ad-hoc `pendingDialogue`, call `start_program`/`step_program` where appropriate.
    - (Later) dedicated narrative endpoints if needed.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
+
+**Deliverables:**
+- ✅ Runtime engine: `pixsim7_backend/services/narrative/runtime.py` (650 lines)
+- ✅ API endpoints: `pixsim7_backend/api/v1/narrative_runtime.py` (280 lines)
+- ✅ `NarrativeRuntimeEngine` - Core execution orchestrator
+- ✅ Execution for all 9 node types:
+  * **DialogueNode**: Static text, templates, or LLM program execution
+  * **ChoiceNode**: Evaluates conditions, presents choices, processes selection
+  * **ActionNode**: Applies state effects, supports delays
+  * **ActionBlockNode**: Resolves blocks, prepares generation
+  * **SceneNode**: Scene transitions or intent setting
+  * **BranchNode**: Conditional branching with auto-advance
+  * **WaitNode**: Duration/condition waiting
+  * **CommentNode**: Auto-skipped during execution
+  * **ExternalCallNode**: Plugin integration (basic structure)
+- ✅ `start()` - Start new program (supports nesting via stack)
+- ✅ `step()` - Execute one step with player input
+- ✅ REST API endpoints: `/start`, `/step`, `/state`, `/pause`, `/resume`, `/finish`
+- ✅ Template rendering with variable substitution
+- ✅ Condition evaluation with relationship/flags/variables
+- ✅ State effects application (relationships, flags, inventory)
+- ✅ Auto-advance for branch and comment nodes
+- ✅ Program loading from world metadata
+- ✅ Context building from session/world/NPC data
+
+**Features:**
+- Step-by-step execution with state persistence
+- Player input handling (choice selection, text input)
+- Automatic edge traversal based on conditions
+- Program stacking for nested/interrupted conversations
+- on_enter/on_exit effects for all nodes
+- Generation launching (immediate or pending)
+- Scene transition support
+- Error handling and recovery
+
+**API Endpoints:**
+- `POST /narrative-runtime/start` - Start program
+- `POST /narrative-runtime/step` - Execute step
+- `POST /narrative-runtime/state` - Get current state
+- `POST /narrative-runtime/pause` - Pause execution
+- `POST /narrative-runtime/resume` - Resume execution
+- `POST /narrative-runtime/finish` - Manually finish program
+
+This is the **heart of the narrative runtime system** - it orchestrates all
+node types and provides the execution flow that unifies dialogue, action blocks,
+choices, and scenes into a single coherent system.
 
 ---
 
