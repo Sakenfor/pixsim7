@@ -283,11 +283,30 @@ Make `ActionBlockNode` a first-class citizen in the narrative program model and 
      - Return a sequence of blocks and metadata for downstream generation.  
 3. Decide where resolved sequences go:
    - Either:
-     - Directly call the generation service with composed prompt(s) and treat it as part of program execution, or  
-     - Store a pending “visual generation request” in `session.flags.pendingActionBlocks` (similar to current behavior).
+     - Directly call the generation service with composed prompt(s) and treat it as part of program execution, or
+     - Store a pending "visual generation request" in `session.flags.pendingActionBlocks` (similar to current behavior).
 4. Integrate with existing `/api/v1/action_blocks` APIs for CRUD/search; no schema change required.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
+
+**Deliverables:**
+- ✅ Action block resolver: `pixsim7_backend/domain/narrative/action_block_resolver.py`
+- ✅ `ActionBlockSequence` dataclass for resolved blocks
+- ✅ Two resolution modes:
+  * **Direct mode**: Fetch blocks by ID from ActionEngine or generated store
+  * **Query mode**: Use ActionEngine selection with context (location, pose, intimacy, mood, etc.)
+- ✅ `resolve_action_block_node()` - Main resolver function
+- ✅ `prepare_generation_from_sequence()` - Prepares generation request with social context
+- ✅ `should_launch_immediately()` - Checks launch mode
+- ✅ Integration with existing ActionEngine (no schema changes)
+- ✅ Automatic intimacy level computation from relationship data
+- ✅ Compatibility scoring and fallback support
+
+**Design Decisions:**
+- Launch mode configurable per node (`immediate` vs `pending`)
+- Generation config embedded in ActionBlockNode
+- Social context automatically derived from runtime context
+- Reuses all existing action block infrastructure (search, scoring, composition)
 
 ---
 

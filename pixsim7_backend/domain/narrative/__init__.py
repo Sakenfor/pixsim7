@@ -50,6 +50,14 @@ from .ecs_helpers import (
     get_stack_depth,
 )
 
+# Action Block Resolver
+from .action_block_resolver import (
+    ActionBlockSequence,
+    resolve_action_block_node,
+    prepare_generation_from_sequence,
+    should_launch_immediately,
+)
+
 __all__ = [
     # Legacy exports
     "NarrativeEngine",
@@ -91,4 +99,10 @@ __all__ = [
     "set_program_variable",
     "has_visited_node",
     "get_stack_depth",
+
+    # Unified Narrative Runtime - Action Block Resolver
+    "ActionBlockSequence",
+    "resolve_action_block_node",
+    "prepare_generation_from_sequence",
+    "should_launch_immediately",
 ]
