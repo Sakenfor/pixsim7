@@ -37,6 +37,14 @@ export {
   getPreviewApiConfig,
 } from './relationships/preview';
 
+// Social Context (for generation system)
+export {
+  buildGenerationSocialContext,
+  buildSocialContextForNpc,
+} from './relationships/socialContext';
+
+export type { SocialContextConfig } from './relationships/socialContext';
+
 export {
   relationshipKeys,
   arcKeys,
@@ -55,6 +63,22 @@ export {
 } from './relationships/effects';
 
 export type { EdgeEffect } from './relationships/effects';
+
+// ===== Generation =====
+export {
+  buildGenerateContentRequest,
+  buildSocialContext,
+  computeCacheKey,
+} from './generation/requestBuilder';
+
+export type { BuildRequestOptions } from './generation/requestBuilder';
+
+export {
+  validateGenerationNode,
+  validateSocialContextAgainstWorld,
+  validateSocialContextAgainstUser,
+  isGenerationNodeValid,
+} from './generation/validator';
 
 // ===== Interactions =====
 export {
@@ -160,6 +184,20 @@ export {
 } from './world/worldUiConfig';
 
 export {
+  getWorldGenerationConfig,
+  setWorldGenerationConfig,
+  updateWorldGenerationConfig,
+  getWorldMaxContentRating,
+  setWorldMaxContentRating,
+  getWorldStylePreset,
+  setWorldStylePreset,
+  getWorldDefaultStrategy,
+  setWorldDefaultStrategy,
+  createDefaultGenerationConfig,
+  resetWorldGenerationConfig,
+} from './world/generationConfig';
+
+export {
   getAllThemePresets,
   getThemePresetById,
   saveThemePreset,
@@ -227,6 +265,20 @@ export {
   getEffectiveColorScheme,
   getEffectiveDensity,
 } from './user/preferences';
+
+export {
+  loadUserContentPreferences,
+  saveUserContentPreferences,
+  updateUserContentPreferences,
+  resetUserContentPreferences,
+  getUserMaxContentRating,
+  setUserMaxContentRating,
+  shouldReduceRomanticIntensity,
+  setReduceRomanticIntensity,
+  requiresMatureContentConfirmation,
+  setRequireMatureContentConfirmation,
+  isContentRatingAllowed,
+} from './user/contentPreferences';
 
 // ===== NPCs =====
 export { buildNpcBrainState } from './npcs/brain';

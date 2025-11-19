@@ -232,6 +232,51 @@ export interface SessionUiOverride {
   };
 }
 
+/**
+ * Per-world generation configuration stored in GameWorld.meta.generation
+ * Controls content generation behavior and rating constraints
+ *
+ * Example:
+ * ```typescript
+ * world.meta = {
+ *   generation: {
+ *     stylePresetId: "soft_romance",
+ *     maxContentRating: "romantic"
+ *   }
+ * }
+ * ```
+ */
+export interface WorldGenerationConfig {
+  /**
+   * Style preset ID for generation
+   * Can reference a template/style configuration for content generation
+   * (e.g., 'soft_romance', 'action_focused', 'mystery_thriller')
+   */
+  stylePresetId?: string;
+
+  /**
+   * Maximum content rating allowed for this world
+   * Clamps all generation requests to this rating or lower
+   * - 'sfw': Safe for work, no romantic content
+   * - 'romantic': Light romance, hand-holding, kissing
+   * - 'mature_implied': Mature themes implied but not explicit
+   * - 'restricted': Restricted content (requires explicit user consent)
+   */
+  maxContentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+
+  /**
+   * Default generation strategy for this world
+   * Can be overridden per generation node
+   */
+  defaultStrategy?: 'once' | 'per_playthrough' | 'per_player' | 'always';
+
+  /**
+   * Additional custom configuration
+   * Allows world-specific generation parameters without schema changes
+   */
+  [key: string]: unknown;
+}
+
 // ===================
 // Session Types
 // ===================

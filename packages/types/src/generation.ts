@@ -3,6 +3,59 @@
 
 export type GenerationStrategy = 'once' | 'per_playthrough' | 'per_player' | 'always'
 
+// ============================================================================
+// Social Context (Intimacy & Relationships)
+// ============================================================================
+
+/**
+ * Social context for generation requests
+ *
+ * Captures relationship and intimacy state to inform content generation.
+ * Used to ensure generated content respects relationship progression and
+ * content rating constraints.
+ *
+ * All fields are optional to support gradual adoption and backwards compatibility.
+ */
+export interface GenerationSocialContext {
+  /**
+   * Current intimacy level ID (e.g., 'light_flirt', 'intimate', 'very_intimate')
+   * Derived from relationship metrics like affinity, chemistry, trust
+   */
+  intimacyLevelId?: string;
+
+  /**
+   * Current relationship tier ID (e.g., 'stranger', 'friend', 'close_friend', 'lover')
+   * Derived from affinity value
+   */
+  relationshipTierId?: string;
+
+  /**
+   * Simplified intimacy band for content filtering
+   * Maps intimacy levels to broad categories
+   * - 'none': No romantic/intimate context
+   * - 'light': Light flirting, romantic interest
+   * - 'deep': Established romantic relationship
+   * - 'intense': Deep intimacy
+   */
+  intimacyBand?: 'none' | 'light' | 'deep' | 'intense';
+
+  /**
+   * Content rating for this generation
+   * Determines what kind of content is appropriate
+   * - 'sfw': Safe for work, no romantic content
+   * - 'romantic': Light romance, hand-holding, kissing
+   * - 'mature_implied': Mature themes implied but not explicit
+   * - 'restricted': Restricted content (requires explicit user consent)
+   */
+  contentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
+
+  /**
+   * NPC ID(s) involved in this generation (if applicable)
+   * Allows tracking which relationships are relevant
+   */
+  npcIds?: number[];
+}
+
 export interface SceneRef {
   id: string
   mood?: string
@@ -58,6 +111,11 @@ export interface GenerationNodeConfig {
   templateId?: string
   enabled: boolean
   version: number
+  /**
+   * Social context for relationship-aware generation
+   * Optional field containing intimacy/relationship state
+   */
+  socialContext?: GenerationSocialContext
 }
 
 export interface GenerationHealthStatus {
@@ -97,6 +155,11 @@ export interface GenerateContentRequest {
   template_id?: string
   cache_key?: string
   player_context?: PlayerContextSnapshot
+  /**
+   * Social context for relationship-aware generation
+   * Contains intimacy/relationship state to inform content generation
+   */
+  social_context?: GenerationSocialContext
   // NPC response specific params
   npc_params?: NpcResponseParams
 }
