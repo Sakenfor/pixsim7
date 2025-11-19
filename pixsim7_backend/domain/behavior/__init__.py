@@ -6,6 +6,7 @@ This package contains the core logic for NPC behavior simulation:
 - Effect handlers (activity effects)
 - Scoring system (activity selection)
 - Simulation prioritization (game-agnostic)
+- Routine graph traversal and activity resolution
 """
 
 from .conditions import (
@@ -26,11 +27,19 @@ from .scoring import (
     calculate_activity_score,
     choose_activity,
     merge_preferences,
+    score_and_filter_activities,
 )
 from .simulation import (
     determine_simulation_tier,
     get_default_simulation_config,
     should_tick_npc,
+)
+from .routine_resolver import (
+    find_active_routine_node,
+    collect_candidate_activities,
+    choose_npc_activity,
+    apply_activity_to_npc,
+    finish_activity,
 )
 
 __all__ = [
@@ -50,8 +59,15 @@ __all__ = [
     "calculate_activity_score",
     "choose_activity",
     "merge_preferences",
+    "score_and_filter_activities",
     # Simulation
     "determine_simulation_tier",
     "get_default_simulation_config",
     "should_tick_npc",
+    # Routine Resolution
+    "find_active_routine_node",
+    "collect_candidate_activities",
+    "choose_npc_activity",
+    "apply_activity_to_npc",
+    "finish_activity",
 ]
