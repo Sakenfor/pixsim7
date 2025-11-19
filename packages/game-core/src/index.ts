@@ -404,3 +404,19 @@ export { registerBuiltinHelpers } from './session/builtinHelpers';
 export { generateHelper } from './session/helperBuilder';
 export type { HelperSchema } from './session/helperBuilder';
 export { generateHelperDocs } from './session/generateDocs';
+
+// ===== Game State (Task 22) =====
+export {
+  isConversationMode,
+  isSceneMode,
+  isRoomMode,
+  isMapMode,
+  isMenuMode,
+  isInteractiveMode,
+  hasFocusedNpc,
+  getFocusedNpcId,
+  hasActiveNarrativeProgram,
+  getActiveNarrativeProgramId,
+  createGameContext,
+  updateGameContext,
+} from './gameState';

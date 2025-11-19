@@ -1318,3 +1318,43 @@ export interface MetricRegistry {
   /** Custom metric categories */
   [category: string]: Record<string, MetricDefinition> | undefined;
 }
+
+// ===================
+// Game Mode & View State Types (Task 22)
+// ===================
+
+/**
+ * Game mode represents the high-level state of what the player is currently doing
+ * - 'map': Browsing world/region map overview
+ * - 'room': In a specific location/room
+ * - 'scene': Running a scene graph / cutscene
+ * - 'conversation': In a narrative program / chat/dialogue view
+ * - 'menu': Global menu / settings
+ */
+export type GameMode =
+  | 'map'
+  | 'room'
+  | 'scene'
+  | 'conversation'
+  | 'menu';
+
+/**
+ * Game context provides a unified view of the current game state
+ * Shared between frontend and backend to ensure consistent mode transitions
+ */
+export interface GameContext {
+  /** Current game mode */
+  mode: GameMode;
+  /** Current world ID */
+  worldId: number;
+  /** Current session ID */
+  sessionId: number;
+  /** Current location ID (e.g., "location:market_square") when in room mode */
+  locationId?: string;
+  /** Active scene ID when in scene mode */
+  sceneId?: number;
+  /** Focused NPC ID (in conversation/room) */
+  npcId?: number;
+  /** Active narrative program ID, if any */
+  narrativeProgramId?: string;
+}

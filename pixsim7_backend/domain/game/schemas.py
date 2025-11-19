@@ -1162,6 +1162,44 @@ class MetricRegistrySchema(BaseModel):
 
 
 # ===================
+# Game State / Mode Schemas (Task 22)
+# ===================
+
+class GameStateSchema(BaseModel):
+    """
+    Game state schema for session-level game mode tracking.
+    Stored in GameSession.flags["gameState"]
+
+    Provides a coarse representation of the current game mode:
+    - map: Browsing world/region map overview
+    - room: In a specific location/room
+    - scene: Running a scene graph / cutscene
+    - conversation: In a narrative program / chat/dialogue view
+    - menu: Global menu / settings
+    """
+
+    mode: str = Field(description="Game mode: map, room, scene, conversation, menu")
+    world_id: int = Field(description="Current world ID")
+    session_id: int = Field(description="Current session ID")
+    location_id: Optional[str] = Field(None, description="Current location ID (e.g., 'location:123')")
+    scene_id: Optional[int] = Field(None, description="Active scene ID when in scene mode")
+    npc_id: Optional[int] = Field(None, description="Focused NPC ID (in conversation/room)")
+    narrative_program_id: Optional[str] = Field(None, description="Active narrative program ID, if any")
+
+    @field_validator('mode')
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        """Ensure mode is one of the allowed values."""
+        allowed_modes = {'map', 'room', 'scene', 'conversation', 'menu'}
+        if v not in allowed_modes:
+            raise ValueError(f'mode must be one of {allowed_modes}')
+        return v
+
+    class Config:
+        extra = "allow"  # Allow additional fields for future extensibility
+
+
+# ===================
 # World Simulation Scheduler Schemas (Task 21)
 # ===================
 

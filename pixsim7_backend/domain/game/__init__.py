@@ -41,6 +41,23 @@ from pixsim7_backend.domain.game.ecs import (
     list_metrics_for_category,
     get_metric_definition,
 )
+from pixsim7_backend.domain.game.game_state import (
+    get_game_state,
+    set_game_state,
+    update_game_state,
+    clear_game_state,
+    is_in_mode,
+    is_conversation_mode,
+    is_scene_mode,
+    is_room_mode,
+    is_map_mode,
+    is_menu_mode,
+    get_focused_npc,
+    get_active_narrative_program,
+    get_current_location,
+    get_current_scene,
+)
+from pixsim7_backend.domain.game.schemas import GameStateSchema
 
 __all__ = [
     "GameScene",
@@ -77,4 +94,20 @@ __all__ = [
     "update_npc_metric",
     "list_metrics_for_category",
     "get_metric_definition",
+    # Game state (Task 22)
+    "GameStateSchema",
+    "get_game_state",
+    "set_game_state",
+    "update_game_state",
+    "clear_game_state",
+    "is_in_mode",
+    "is_conversation_mode",
+    "is_scene_mode",
+    "is_room_mode",
+    "is_map_mode",
+    "is_menu_mode",
+    "get_focused_npc",
+    "get_active_narrative_program",
+    "get_current_location",
+    "get_current_scene",
 ]

@@ -4,6 +4,7 @@ import type { Scene, SessionFlags } from '@pixsim7/types';
 import { ScenePlayer } from '@pixsim7/game-ui';
 import { Button, Panel, Badge, Select } from '@pixsim7/ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useGameStateStore } from '../stores/gameStateStore';
 import {
   listGameLocations,
   getGameLocation,
@@ -151,6 +152,13 @@ export function Game2D() {
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
+  // Game state store (Task 22)
+  const enterRoom = useGameStateStore((s) => s.enterRoom);
+  const enterScene = useGameStateStore((s) => s.enterScene);
+  const enterConversation = useGameStateStore((s) => s.enterConversation);
+  const updateContext = useGameStateStore((s) => s.updateContext);
+  const clearContext = useGameStateStore((s) => s.clearContext);
+
   // Apply per-world theme when world changes
   useWorldTheme(worldDetail);
 
@@ -171,6 +179,17 @@ export function Game2D() {
 
     pluginManager.updateGameState(pluginGameState);
   }, [gameSession, worldDetail, worldTime, locationDetail, locationNpcs]);
+
+  // Update game context when entering a room (Task 22)
+  useEffect(() => {
+    if (selectedWorldId && gameSession && selectedLocationId && locationDetail) {
+      const locationIdStr = `location:${selectedLocationId}`;
+      enterRoom(selectedWorldId, gameSession.id, locationIdStr);
+    } else if (!selectedLocationId || !locationDetail) {
+      // Clear context when leaving a location
+      clearContext();
+    }
+  }, [selectedWorldId, gameSession, selectedLocationId, locationDetail, enterRoom, clearContext]);
 
   useEffect(() => {
     (async () => {
@@ -651,6 +670,11 @@ export function Game2D() {
           setIsSceneOpen(true);
           setScenePhase('playing');
           setActiveNpcId(npcId);
+
+          // Update game context to scene mode (Task 22)
+          if (selectedWorldId && gameSession) {
+            enterScene(selectedWorldId, gameSession.id, sceneId, npcId);
+          }
         } finally {
           setIsLoadingScene(false);
         }
@@ -665,6 +689,11 @@ export function Game2D() {
       onDialogue: (npcId) => {
         setDialogueNpcId(npcId);
         setShowDialogue(true);
+
+        // Update game context to conversation mode (Task 22)
+        if (selectedWorldId && gameSession) {
+          enterConversation(selectedWorldId, gameSession.id, npcId);
+        }
       },
       onNotification: (type, title, message) => {
         addNotification(type, title, message);
@@ -1092,6 +1121,12 @@ export function Game2D() {
             <Button size="sm" variant="secondary" onClick={() => {
               setIsSceneOpen(false);
               setScenePhase(null);
+
+              // Return to room mode when closing scene (Task 22)
+              if (selectedWorldId && gameSession && selectedLocationId) {
+                const locationIdStr = `location:${selectedLocationId}`;
+                enterRoom(selectedWorldId, gameSession.id, locationIdStr);
+              }
             }}>
               Close
             </Button>
@@ -1135,7 +1170,15 @@ export function Game2D() {
                 setIsLoadingScene(false);
               }
             }}
-            onClose={() => setShowDialogue(false)}
+            onClose={() => {
+              setShowDialogue(false);
+
+              // Return to room mode when closing dialogue (Task 22)
+              if (selectedWorldId && gameSession && selectedLocationId) {
+                const locationIdStr = `location:${selectedLocationId}`;
+                enterRoom(selectedWorldId, gameSession.id, locationIdStr);
+              }
+            }}
           />
         </div>
       )}
