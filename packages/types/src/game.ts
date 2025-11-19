@@ -348,3 +348,51 @@ export interface InventoryItemDTO {
   quantity: number;
   metadata: Record<string, unknown>;
 }
+
+// ===================
+// Relationship Preview Types
+// ===================
+
+/**
+ * Request payload for relationship tier preview
+ */
+export interface RelationshipTierPreviewRequest {
+  worldId: number;
+  affinity: number;
+  schemaKey?: string;
+}
+
+/**
+ * Response from relationship tier preview API
+ */
+export interface RelationshipTierPreviewResponse {
+  tierId: string | null;
+  schemaKey: string;
+  affinity: number;
+}
+
+/**
+ * Relationship values for intimacy computation
+ */
+export interface RelationshipValues {
+  affinity: number;
+  trust: number;
+  chemistry: number;
+  tension: number;
+}
+
+/**
+ * Request payload for intimacy level preview
+ */
+export interface RelationshipIntimacyPreviewRequest {
+  worldId: number;
+  relationshipValues: RelationshipValues;
+}
+
+/**
+ * Response from intimacy level preview API
+ */
+export interface RelationshipIntimacyPreviewResponse {
+  intimacyLevelId: string | null;
+  relationshipValues: RelationshipValues;
+}

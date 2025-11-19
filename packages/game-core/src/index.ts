@@ -20,11 +20,22 @@ export type {
 } from './core/types';
 
 // ===== Relationships =====
+
+// Deprecated: Use preview API instead for editor/tooling
 export {
   compute_relationship_tier,
   compute_intimacy_level,
   extract_relationship_values,
 } from './relationships/computation';
+
+// Preview API (recommended for editor/tooling)
+export {
+  previewRelationshipTier,
+  previewIntimacyLevel,
+  configurePreviewApi,
+  resetPreviewApiConfig,
+  getPreviewApiConfig,
+} from './relationships/preview';
 
 export {
   relationshipKeys,

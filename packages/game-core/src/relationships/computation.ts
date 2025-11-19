@@ -11,16 +11,19 @@
  * Compute relationship tier based on affinity value.
  * Default tiers if no world schema is provided.
  *
+ * @deprecated Use `previewRelationshipTier()` from `./preview` instead.
+ *   This function only supports hardcoded default tiers and does NOT respect
+ *   world-specific schemas. The preview API calls the backend for schema-aware
+ *   computation.
+ *
  * @authority CLIENT_FALLBACK
  * @backend_authoritative Use session.relationships["npc:X"].tierId at runtime
- * @use_cases Editor previews, offline tools, tests
+ * @use_cases Legacy fallback only - migrate to preview API
  *
  * NOTE: This is a fallback computation. The backend computes and stores tierId
  * in GameSession.relationships["npc:ID"].tierId, which should be preferred at runtime.
- * Use this function only for:
- * - Editor previews (e.g., "what if we changed affinity here?")
- * - Tools that work on scenes or sessions without hitting the backend
- * - Offline/local development
+ * For preview/editor use cases, use `previewRelationshipTier()` which calls the
+ * backend preview API with world-specific schemas.
  *
  * @param affinity - The affinity value (typically 0-100)
  * @returns The tier ID (e.g., "friend", "lover")
@@ -42,16 +45,19 @@ export function compute_relationship_tier(affinity: number): string {
 /**
  * Compute intimacy level based on multiple relationship axes.
  *
+ * @deprecated Use `previewIntimacyLevel()` from `./preview` instead.
+ *   This function only supports hardcoded default levels and does NOT respect
+ *   world-specific schemas. The preview API calls the backend for schema-aware
+ *   computation.
+ *
  * @authority CLIENT_FALLBACK
  * @backend_authoritative Use session.relationships["npc:X"].intimacyLevelId at runtime
- * @use_cases Editor previews, offline tools, tests
+ * @use_cases Legacy fallback only - migrate to preview API
  *
  * NOTE: This is a fallback computation. The backend computes and stores intimacyLevelId
  * in GameSession.relationships["npc:ID"].intimacyLevelId, which should be preferred at runtime.
- * Use this function only for:
- * - Editor previews (e.g., "what if we changed chemistry here?")
- * - Tools that work on scenes or sessions without hitting the backend
- * - Offline/local development
+ * For preview/editor use cases, use `previewIntimacyLevel()` which calls the
+ * backend preview API with world-specific schemas.
  *
  * @param relationshipValues - Object with affinity, trust, chemistry, tension values
  * @returns The intimacy level ID (e.g., "intimate", "light_flirt") or null
