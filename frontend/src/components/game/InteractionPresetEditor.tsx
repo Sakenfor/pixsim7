@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Button, Panel, Input, Select, Badge } from '@pixsim7/ui';
 import type { GameWorldDetail } from '../../lib/api/game';
 import { saveGameWorldMeta } from '../../lib/api/game';
@@ -12,8 +12,11 @@ import {
   saveGlobalInteractionPresets,
   promotePresetToGlobal,
   copyPresetToWorld,
+  downloadPresetsAsJSON,
+  importPresetsFromFile,
   type InteractionPreset,
   type PresetWithScope,
+  type ConflictResolution,
 } from '../../lib/game/interactions/presets';
 
 interface InteractionPresetEditorProps {
@@ -37,6 +40,14 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
   const [newPresetDescription, setNewPresetDescription] = useState('');
   const [newPresetConfig, setNewPresetConfig] = useState<any>(null);
   const [newPresetScope, setNewPresetScope] = useState<'global' | 'world'>('world');
+
+  // Import/Export state
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importTarget, setImportTarget] = useState<'global' | 'world'>('world');
+  const [importConflictResolution, setImportConflictResolution] = useState<ConflictResolution>('rename');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedPreset = useMemo(
     () => presets.find(p => p.id === selectedPresetId && p.scope === selectedScope) || null,
@@ -181,6 +192,89 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
     setError(null);
   };
 
+  const handleExportAll = () => {
+    const presetsToExport = filteredPresets.map(({ scope, ...preset }) => preset);
+    const scopeLabel = scopeFilter === 'all' ? 'all' : scopeFilter;
+    downloadPresetsAsJSON(
+      presetsToExport,
+      `interaction-presets-${scopeLabel}-${Date.now()}.json`,
+      {
+        description: `Exported ${scopeLabel} presets from ${world.name}`,
+        source: world.name,
+      }
+    );
+  };
+
+  const handleExportSelected = () => {
+    if (!selectedPreset) return;
+    const { scope, ...preset } = selectedPreset;
+    downloadPresetsAsJSON(
+      [preset],
+      `preset-${preset.id}-${Date.now()}.json`,
+      {
+        description: `Exported preset: ${preset.name}`,
+        source: world.name,
+      }
+    );
+  };
+
+  const handleImportClick = () => {
+    setShowImportDialog(true);
+    setError(null);
+    setImportSuccess(null);
+  };
+
+  const handleImportFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setError(null);
+    setImportSuccess(null);
+
+    try {
+      const target = importTarget === 'global' ? 'global' : world.id;
+      const result = await importPresetsFromFile(
+        file,
+        target,
+        importConflictResolution,
+        world
+      );
+
+      if (!result.success && result.errors.length > 0) {
+        setError(result.errors.join('; '));
+      } else {
+        const messages = [];
+        if (result.imported > 0) {
+          messages.push(`Imported ${result.imported} preset${result.imported !== 1 ? 's' : ''}`);
+        }
+        if (result.renamed > 0) {
+          messages.push(`${result.renamed} renamed due to conflicts`);
+        }
+        if (result.skipped > 0) {
+          messages.push(`${result.skipped} skipped`);
+        }
+        setImportSuccess(messages.join(', '));
+
+        // Refresh preset list
+        setPresets(getCombinedPresets(world));
+      }
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
+    } finally {
+      setIsImporting(false);
+      setShowImportDialog(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const availablePlugins = interactionRegistry.getAll();
 
   return (
@@ -197,7 +291,120 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
         </div>
       </div>
 
+      {/* Import/Export Panel */}
+      <Panel className="bg-blue-50 dark:bg-blue-950/20">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold mb-1">Import / Export Presets</h3>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              Share presets across worlds and projects
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleImportClick}
+              disabled={isImporting}
+            >
+              📥 Import
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportSelected}
+              disabled={!selectedPreset || isCreating}
+              title="Export selected preset"
+            >
+              📤 Export Selected
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportAll}
+              title={`Export ${scopeFilter === 'all' ? 'all' : scopeFilter} presets`}
+            >
+              📦 Export {scopeFilter === 'all' ? 'All' : scopeFilter === 'global' ? 'Global' : 'World'}
+            </Button>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleImportFile}
+        style={{ display: 'none' }}
+      />
+
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <Panel className="border-2 border-blue-500 bg-white dark:bg-neutral-900">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Import Presets</h3>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowImportDialog(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1">Import To</label>
+              <Select
+                size="sm"
+                value={importTarget}
+                onChange={(e) => setImportTarget(e.target.value as 'global' | 'world')}
+              >
+                <option value="world">🗺️ This World</option>
+                <option value="global">🌍 Global Presets</option>
+              </Select>
+              <p className="text-xs text-neutral-500 mt-1">
+                {importTarget === 'global'
+                  ? 'Import to global presets (available in all worlds)'
+                  : 'Import to this world only'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1">If Preset ID Already Exists</label>
+              <Select
+                size="sm"
+                value={importConflictResolution}
+                onChange={(e) => setImportConflictResolution(e.target.value as ConflictResolution)}
+              >
+                <option value="skip">Skip (don't import duplicates)</option>
+                <option value="rename">Rename (generate new ID)</option>
+                <option value="overwrite">Overwrite (replace existing)</option>
+              </Select>
+              <p className="text-xs text-neutral-500 mt-1">
+                {importConflictResolution === 'skip' && 'Presets with duplicate IDs will be skipped'}
+                {importConflictResolution === 'rename' && 'Duplicate presets will get new auto-generated IDs'}
+                {importConflictResolution === 'overwrite' && 'Existing presets will be replaced (use with caution!)'}
+              </p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleImportFileSelect}
+                disabled={isImporting}
+              >
+                {isImporting ? 'Importing...' : 'Select File to Import'}
+              </Button>
+            </div>
+          </div>
+        </Panel>
+      )}
+
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
+      {importSuccess && <p className="text-sm text-green-600 dark:text-green-400">✓ {importSuccess}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Presets list */}

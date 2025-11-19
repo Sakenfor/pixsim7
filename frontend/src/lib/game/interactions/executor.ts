@@ -9,7 +9,7 @@ import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game-core';
 import type { InteractionContext } from './types';
 import { executeInteraction } from './index';
-import { trackPresetUsage } from './presets';
+import { trackPresetUsage, trackPresetOutcome, type InteractionOutcome } from './presets';
 
 export interface SlotInteractionConfig {
   [key: string]: any;
@@ -147,10 +147,30 @@ export async function executeSlotInteractions(
     // Execute other interactions normally
     try {
       const result = await executeInteraction(interactionId, config, context);
+
+      // Phase 7: Track preset outcome if this interaction was created from a preset
+      if (config.__presetId) {
+        // Determine outcome based on result
+        let outcome: InteractionOutcome;
+        if (result.success) {
+          outcome = 'success';
+        } else if (result.success === false) {
+          outcome = 'failure';
+        } else {
+          outcome = 'neutral';
+        }
+        trackPresetOutcome(config.__presetId, outcome, config.__presetName);
+      }
+
       if (result.success && result.message && handlers.onNotification) {
         handlers.onNotification('success', `${interactionId} Success`, result.message);
       }
     } catch (e: any) {
+      // Phase 7: Track failure outcome for preset
+      if (config.__presetId) {
+        trackPresetOutcome(config.__presetId, 'failure', config.__presetName);
+      }
+
       if (handlers.onNotification) {
         handlers.onNotification(
           'error',

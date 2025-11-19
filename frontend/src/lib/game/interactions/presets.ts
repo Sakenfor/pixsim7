@@ -393,11 +393,23 @@ export async function copyPresetToWorld(
 
 const PRESET_USAGE_KEY = 'pixsim7:preset-usage-stats';
 
+/**
+ * PHASE 7: Outcome tracking for presets
+ */
+export type InteractionOutcome = 'success' | 'failure' | 'neutral';
+
+export interface PresetOutcomeData {
+  success: number;
+  failure: number;
+  neutral: number;
+}
+
 export interface PresetUsageStats {
   [presetId: string]: {
     count: number;
     lastUsed: number; // timestamp
     presetName?: string;
+    outcomes?: PresetOutcomeData; // Phase 7: outcome tracking
   };
 }
 
@@ -438,11 +450,51 @@ export function trackPresetUsage(presetId: string, presetName?: string): void {
       count: 0,
       lastUsed: Date.now(),
       presetName,
+      outcomes: { success: 0, failure: 0, neutral: 0 },
     };
   }
 
   stats[presetId].count += 1;
   stats[presetId].lastUsed = Date.now();
+  if (presetName) {
+    stats[presetId].presetName = presetName;
+  }
+
+  // Ensure outcomes object exists (for backward compatibility)
+  if (!stats[presetId].outcomes) {
+    stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
+  }
+
+  savePresetUsageStats(stats);
+}
+
+/**
+ * PHASE 7: Track preset outcome (success/failure/neutral)
+ */
+export function trackPresetOutcome(
+  presetId: string,
+  outcome: InteractionOutcome,
+  presetName?: string
+): void {
+  const stats = getPresetUsageStats();
+
+  if (!stats[presetId]) {
+    stats[presetId] = {
+      count: 0,
+      lastUsed: Date.now(),
+      presetName,
+      outcomes: { success: 0, failure: 0, neutral: 0 },
+    };
+  }
+
+  // Ensure outcomes object exists
+  if (!stats[presetId].outcomes) {
+    stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
+  }
+
+  // Increment the specific outcome counter
+  stats[presetId].outcomes[outcome] += 1;
+
   if (presetName) {
     stats[presetId].presetName = presetName;
   }
@@ -462,26 +514,332 @@ export function clearPresetUsageStats(): void {
 }
 
 /**
- * Get preset usage statistics with preset details
+ * Get preset usage statistics with preset details (Phase 7: includes outcome data)
  */
 export function getPresetUsageStatsWithDetails(
   world: GameWorldDetail | null
-): Array<{ presetId: string; presetName: string; count: number; lastUsed: number; scope?: 'global' | 'world' }> {
+): Array<{
+  presetId: string;
+  presetName: string;
+  count: number;
+  lastUsed: number;
+  scope?: 'global' | 'world';
+  outcomes: PresetOutcomeData;
+  successRate: number | null;
+  totalOutcomes: number;
+}> {
   const stats = getPresetUsageStats();
   const presets = getCombinedPresets(world);
 
   return Object.entries(stats)
     .map(([presetId, data]) => {
-      const preset = presets.find(p => p.id === presetId);
+      const preset = presets.find((p) => p.id === presetId);
+
+      // Phase 7: Calculate outcome metrics
+      const outcomes = data.outcomes || { success: 0, failure: 0, neutral: 0 };
+      const totalOutcomes = outcomes.success + outcomes.failure + outcomes.neutral;
+      const successRate =
+        totalOutcomes > 0 ? (outcomes.success / totalOutcomes) * 100 : null;
+
       return {
         presetId,
         presetName: preset?.name || data.presetName || presetId,
         count: data.count,
         lastUsed: data.lastUsed,
         scope: preset?.scope,
+        outcomes,
+        successRate,
+        totalOutcomes,
       };
     })
     .sort((a, b) => b.count - a.count); // Sort by usage count descending
+}
+
+/**
+ * PHASE 6: Cross-World / Cross-Project Preset Libraries
+ * Export and import presets to share across worlds and projects
+ */
+
+/**
+ * Preset library export format
+ */
+export interface PresetLibrary {
+  /** Format version for compatibility checking */
+  version: string;
+
+  /** Export metadata */
+  metadata: {
+    exportDate: string;
+    description?: string;
+    source?: string;
+    author?: string;
+  };
+
+  /** Preset collection */
+  presets: InteractionPreset[];
+}
+
+/**
+ * Conflict resolution strategy for imports
+ */
+export type ConflictResolution =
+  | 'skip'      // Skip presets with conflicting IDs
+  | 'rename'    // Rename conflicting presets with new IDs
+  | 'overwrite'; // Replace existing presets with imported ones
+
+/**
+ * Import result details
+ */
+export interface ImportResult {
+  success: boolean;
+  imported: number;
+  skipped: number;
+  renamed: number;
+  errors: string[];
+  presets: InteractionPreset[];
+}
+
+const LIBRARY_FORMAT_VERSION = '1.0';
+
+/**
+ * Export presets to a library JSON format
+ */
+export function exportPresetsToLibrary(
+  presets: InteractionPreset[],
+  metadata?: Partial<PresetLibrary['metadata']>
+): PresetLibrary {
+  return {
+    version: LIBRARY_FORMAT_VERSION,
+    metadata: {
+      exportDate: new Date().toISOString(),
+      description: metadata?.description,
+      source: metadata?.source,
+      author: metadata?.author,
+    },
+    presets,
+  };
+}
+
+/**
+ * Download presets as a JSON file
+ */
+export function downloadPresetsAsJSON(
+  presets: InteractionPreset[],
+  filename: string = 'interaction-presets.json',
+  metadata?: Partial<PresetLibrary['metadata']>
+): void {
+  const library = exportPresetsToLibrary(presets, metadata);
+  const json = JSON.stringify(library, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Validate preset library format
+ */
+export function validatePresetLibrary(data: any): string | null {
+  if (!data || typeof data !== 'object') {
+    return 'Invalid library format: must be an object';
+  }
+
+  if (!data.version || typeof data.version !== 'string') {
+    return 'Invalid library format: missing or invalid version';
+  }
+
+  // Check version compatibility (currently only support 1.x)
+  const majorVersion = data.version.split('.')[0];
+  if (majorVersion !== '1') {
+    return `Unsupported library version: ${data.version}. This tool supports version 1.x only.`;
+  }
+
+  if (!data.metadata || typeof data.metadata !== 'object') {
+    return 'Invalid library format: missing or invalid metadata';
+  }
+
+  if (!Array.isArray(data.presets)) {
+    return 'Invalid library format: presets must be an array';
+  }
+
+  // Validate each preset
+  for (let i = 0; i < data.presets.length; i++) {
+    const preset = data.presets[i];
+    const error = validatePreset(preset);
+    if (error) {
+      return `Invalid preset at index ${i}: ${error}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Import presets from library with conflict resolution
+ *
+ * @param library - Preset library to import
+ * @param target - 'global' or world ID for world-specific import
+ * @param conflictResolution - How to handle ID conflicts
+ * @param currentWorld - Current world (required for world imports)
+ * @returns Import result with details
+ */
+export async function importPresetsFromLibrary(
+  library: PresetLibrary,
+  target: 'global' | number,
+  conflictResolution: ConflictResolution = 'skip',
+  currentWorld?: GameWorldDetail
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    success: false,
+    imported: 0,
+    skipped: 0,
+    renamed: 0,
+    errors: [],
+    presets: [],
+  };
+
+  // Validate library format
+  const validationError = validatePresetLibrary(library);
+  if (validationError) {
+    result.errors.push(validationError);
+    return result;
+  }
+
+  // Get existing presets based on target
+  const existingPresets = target === 'global'
+    ? getGlobalInteractionPresets()
+    : getWorldInteractionPresets(currentWorld || null);
+
+  const existingIds = new Set(existingPresets.map(p => p.id));
+
+  // Process each preset
+  for (const preset of library.presets) {
+    const hasConflict = existingIds.has(preset.id);
+
+    if (hasConflict) {
+      if (conflictResolution === 'skip') {
+        result.skipped++;
+        continue;
+      } else if (conflictResolution === 'rename') {
+        // Generate new ID
+        const newId = generatePresetId(preset.name);
+        const renamedPreset = { ...preset, id: newId };
+
+        try {
+          if (target === 'global') {
+            addGlobalPreset(renamedPreset);
+          } else if (currentWorld) {
+            await addInteractionPreset(target, renamedPreset, currentWorld);
+            // Update currentWorld reference for next iteration
+            currentWorld = setWorldInteractionPresets(currentWorld, [
+              ...getWorldInteractionPresets(currentWorld),
+              renamedPreset,
+            ]);
+          }
+          result.imported++;
+          result.renamed++;
+          result.presets.push(renamedPreset);
+          existingIds.add(newId);
+        } catch (e) {
+          result.errors.push(`Failed to import renamed preset "${preset.name}": ${e}`);
+        }
+      } else if (conflictResolution === 'overwrite') {
+        try {
+          if (target === 'global') {
+            updateGlobalPreset(preset.id, preset);
+          } else if (currentWorld) {
+            await updateInteractionPreset(target, preset.id, preset, currentWorld);
+          }
+          result.imported++;
+          result.presets.push(preset);
+        } catch (e) {
+          result.errors.push(`Failed to overwrite preset "${preset.name}": ${e}`);
+        }
+      }
+    } else {
+      // No conflict, add normally
+      try {
+        if (target === 'global') {
+          addGlobalPreset(preset);
+        } else if (currentWorld) {
+          await addInteractionPreset(target, preset, currentWorld);
+          // Update currentWorld reference for next iteration
+          currentWorld = setWorldInteractionPresets(currentWorld, [
+            ...getWorldInteractionPresets(currentWorld),
+            preset,
+          ]);
+        }
+        result.imported++;
+        result.presets.push(preset);
+        existingIds.add(preset.id);
+      } catch (e) {
+        result.errors.push(`Failed to import preset "${preset.name}": ${e}`);
+      }
+    }
+  }
+
+  result.success = result.errors.length === 0;
+  return result;
+}
+
+/**
+ * Parse preset library from JSON string
+ */
+export function parsePresetLibrary(json: string): PresetLibrary | null {
+  try {
+    const data = JSON.parse(json);
+    const error = validatePresetLibrary(data);
+    if (error) {
+      console.error('Library validation failed:', error);
+      return null;
+    }
+    return data as PresetLibrary;
+  } catch (e) {
+    console.error('Failed to parse preset library:', e);
+    return null;
+  }
+}
+
+/**
+ * Import presets from a JSON file
+ */
+export async function importPresetsFromFile(
+  file: File,
+  target: 'global' | number,
+  conflictResolution: ConflictResolution = 'skip',
+  currentWorld?: GameWorldDetail
+): Promise<ImportResult> {
+  try {
+    const text = await file.text();
+    const library = parsePresetLibrary(text);
+
+    if (!library) {
+      return {
+        success: false,
+        imported: 0,
+        skipped: 0,
+        renamed: 0,
+        errors: ['Failed to parse preset library file'],
+        presets: [],
+      };
+    }
+
+    return await importPresetsFromLibrary(library, target, conflictResolution, currentWorld);
+  } catch (e) {
+    return {
+      success: false,
+      imported: 0,
+      skipped: 0,
+      renamed: 0,
+      errors: [`Failed to read file: ${e}`],
+      presets: [],
+    };
+  }
 }
 
 /**

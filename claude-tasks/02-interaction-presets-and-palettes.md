@@ -16,8 +16,8 @@ Below are 10 phases for evolving the interaction preset system.
 - [x] **Phase 3 – Hotspot Editor Integration**
 - [x] **Phase 4 – Per‑World Presets & Categorization**
 - [x] **Phase 5 – Usage Summary (Dev‑Only)**
-- [ ] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries**
-- [ ] **Phase 7 – Outcome‑Aware Presets & Success Metrics**
+- [x] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries** *(Completed 2025-11-19)*
+- [x] **Phase 7 – Outcome‑Aware Presets & Success Metrics** *(Completed 2025-11-19)*
 - [ ] **Phase 8 – Context‑Aware Preset Suggestions**
 - [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
 - [ ] **Phase 10 – Preset Playlists & Sequenced Interactions**
@@ -140,9 +140,9 @@ Give designers a rough sense of which presets are actually used during playtests
 
 ---
 
-### Phase 6 – Cross‑World / Cross‑Project Preset Libraries
+### Phase 6 – Cross‑World / Cross‑Project Preset Libraries ✅
 
-**Goal**  
+**Goal**
 Allow teams to share interaction presets across worlds and projects via import/export and simple library management.
 
 **Scope**
@@ -151,14 +151,64 @@ Allow teams to share interaction presets across worlds and projects via import/e
 **Key Steps**
 1. Define a stable JSON format for `InteractionPreset` collections (with optional scope metadata).
 2. Add helpers to export selected presets to a `.json` file and import them into another project.
-3. Extend `InteractionPresetEditor` with “Export” / “Import” controls and basic validation.
+3. Extend `InteractionPresetEditor` with "Export" / "Import" controls and basic validation.
 4. Document how to handle ID collisions (rename or generate new IDs).
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added Phase 6 export/import functions
+- `frontend/src/components/game/InteractionPresetEditor.tsx` - Added import/export UI
+
+**Features Implemented:**
+
+1. **Library Format** (`PresetLibrary` type):
+   - Version field for compatibility checking (currently v1.0)
+   - Metadata: exportDate, description, source, author
+   - Preset array
+
+2. **Export Functions**:
+   - `exportPresetsToLibrary()` - Creates library object with metadata
+   - `downloadPresetsAsJSON()` - Downloads presets as JSON file
+   - Export All button (respects scope filter: all/global/world)
+   - Export Selected button for single preset export
+   - Automatic filename generation with timestamp
+
+3. **Import Functions**:
+   - `validatePresetLibrary()` - Validates library format and version compatibility
+   - `parsePresetLibrary()` - Parses JSON string to library object
+   - `importPresetsFromFile()` - Imports from File object
+   - `importPresetsFromLibrary()` - Core import with conflict resolution
+
+4. **Conflict Resolution** (`ConflictResolution` type):
+   - **Skip**: Don't import presets with duplicate IDs
+   - **Rename**: Auto-generate new IDs for conflicts
+   - **Overwrite**: Replace existing presets (use with caution)
+
+5. **Import UI Features**:
+   - Import dialog with options
+   - Target selection (global or world)
+   - Conflict resolution strategy picker
+   - Detailed import results (imported count, renamed count, skipped count)
+   - Error handling and success messages
+
+6. **ID Collision Handling**:
+   - Uses existing `generatePresetId()` function to create unique IDs
+   - Maintains original preset name when renaming
+   - Tracks renamed presets in import results
+   - Prevents accidental overwrites with clear warnings
+
+**Usage:**
+- Designers can export presets from one world and import to another
+- Teams can share preset libraries across projects via JSON files
+- Global presets can be distributed as starter templates
+- Supports partial imports (select specific conflict resolution strategy)
 
 ---
 
-### Phase 7 – Outcome‑Aware Presets & Success Metrics
+### Phase 7 – Outcome‑Aware Presets & Success Metrics ✅
 
-**Goal**  
+**Goal**
 Give designers a sense of how different presets perform (e.g. success/fail rates) without heavy analytics.
 
 **Scope**
@@ -169,6 +219,64 @@ Give designers a sense of how different presets perform (e.g. success/fail rates
 2. Extend the interaction executor to record outcome counts per `presetId` alongside usage counts.
 3. Enhance `InteractionPresetUsagePanel` to show both usage counts and outcome ratios (e.g. success %).
 4. Provide filters to find underperforming or overused presets.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added outcome tracking types and functions
+- `frontend/src/lib/game/interactions/executor.ts` - Added outcome recording
+- `frontend/src/components/game/InteractionPresetUsagePanel.tsx` - Enhanced UI with outcome metrics
+
+**Features Implemented:**
+
+1. **Outcome Schema** (`InteractionOutcome` type):
+   - `success`: Interaction completed successfully
+   - `failure`: Interaction failed or threw an error
+   - `neutral`: Interaction completed but with neither success nor failure
+
+2. **Outcome Tracking**:
+   - Extended `PresetUsageStats` interface with `outcomes` field
+   - New `trackPresetOutcome()` function to record outcomes
+   - Automatic outcome detection in interaction executor
+   - Backward compatible with existing usage stats (auto-initializes outcomes)
+
+3. **Executor Integration**:
+   - Tracks outcome based on `InteractionResult.success` field
+   - Handles exceptions as failures
+   - Only tracks outcomes for preset-based interactions (checks `__presetId`)
+
+4. **Enhanced Statistics**:
+   - `getPresetUsageStatsWithDetails()` now includes:
+     - `outcomes`: Success/failure/neutral counts
+     - `successRate`: Percentage (null if no outcomes)
+     - `totalOutcomes`: Total outcome count
+   - Success rate calculation: `(success / total) * 100`
+
+5. **Usage Panel Enhancements**:
+   - **Dashboard Metrics**:
+     - Average success rate across all presets
+     - Total outcomes count
+   - **Filtering** (Phase 7 requirement):
+     - All Presets (default)
+     - Underperforming (< 40% success rate, min 3 outcomes)
+     - Overused (> 1.5x average usage)
+   - **Sorting Options**:
+     - Usage Count (default)
+     - Success Rate
+     - Last Used
+   - **Table Columns**:
+     - Success Rate badge (color-coded: green ≥70%, yellow ≥40%, red <40%)
+     - Outcomes breakdown (S/F/N with visual symbols)
+   - **Visual Indicators**:
+     - Green ✓ for successes
+     - Red ✗ for failures
+     - Blue ● for neutral outcomes
+
+**Usage:**
+- Designers can now identify presets that need balancing
+- Underperforming filter helps find problematic configurations
+- Success rates inform preset design decisions
+- Outcome data persists in localStorage alongside usage counts
 
 ---
 
