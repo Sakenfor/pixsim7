@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Button, Modal, FormField, Input } from '@pixsim7/ui';
+import { Button, Modal, FormField, Input, useToast } from '@pixsim7/ui';
 import { useWorldContextStore } from '../stores/worldContextStore';
-import { useToast } from '../stores/toastStore';
 import {
   listGameWorlds,
   createGameWorld,

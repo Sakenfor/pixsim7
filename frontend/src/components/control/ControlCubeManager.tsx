@@ -9,7 +9,7 @@ import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
 import { panelActionRegistry } from '../../lib/panelActions';
 import type { PanelActionsConfig } from '../../lib/panelActions';
 import { Icon } from '../../lib/icons';
-import { useToast } from '../../stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 import { clsx } from 'clsx';
 
 export interface ControlCubeManagerProps {

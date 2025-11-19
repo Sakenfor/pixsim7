@@ -13,10 +13,9 @@ import ReactFlow, {
   type EdgeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button } from '@pixsim7/ui';
+import { Button, useToast } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
 import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '../modules/scene-builder/graphSync';
-import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { logEvent } from '../lib/logging';
 import { SceneNode } from './nodes/SceneNode';

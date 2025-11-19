@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, Select } from '@pixsim7/ui';
-import { useToast } from '../stores/toastStore';
+import { Button, Select, useToast } from '@pixsim7/ui';
 import { getGameSession, listGameSessions, type GameSessionDTO } from '../lib/api/game';
 import { parseNpcKey, parseArcKey, parseQuestKey } from '@pixsim7/game-core';
 

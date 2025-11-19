@@ -12,7 +12,7 @@ import type {
   GenerateContentResponse,
   SceneRef,
 } from '@pixsim7/types';
-import { useToast } from '../../stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 import { useGraphStore } from '../../stores/graphStore';
 
 interface GenerationNodeEditorProps {

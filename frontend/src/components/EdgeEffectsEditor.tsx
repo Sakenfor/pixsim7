@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@pixsim7/ui';
+import { Button, useToast } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
-import { useToast } from '../stores/toastStore';
 import type { DraftEdge } from '../modules/scene-builder';
 import {
   type EdgeEffect,

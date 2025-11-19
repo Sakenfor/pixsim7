@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 import { type DraftSceneNode } from '../../modules/scene-builder';
 import { useGraphStore, type GraphState } from '../../stores/graphStore';
 import { useSelectionStore } from '../../stores/selectionStore';
-import { useToast } from '../../stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 import { nodeTypeRegistry } from '@pixsim7/types';
 import { nodeEditorRegistry } from '../../lib/nodeEditorRegistry';
 

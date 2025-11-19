@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { type AppActionPreset, type ActionDefinition } from '../../types/automation';
-import { Button, Panel } from '@pixsim7/ui';
+import { Button, Panel, useToast } from '@pixsim7/ui';
 import { ActionBuilder } from './ActionBuilder';
-import { useToast } from '../../stores/toastStore';
 
 interface PresetFormProps {
   preset?: AppActionPreset;

@@ -13,10 +13,9 @@ import ReactFlow, {
   type NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button } from '@pixsim7/ui';
+import { Button, useToast } from '@pixsim7/ui';
 import { useArcGraphStore, type ArcGraphState } from '../stores/arcGraphStore';
 import type { ArcGraphNode, ArcGraphEdge } from '../modules/arc-graph';
-import { useToast } from '../stores/toastStore';
 import { nodeTypeRegistry } from '@pixsim7/types';
 import { SceneNode } from './nodes/SceneNode';
 import { NodePalette } from './nodes/NodePalette';
