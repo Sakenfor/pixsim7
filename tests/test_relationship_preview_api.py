@@ -41,8 +41,8 @@ async def test_world(app: FastAPI):
     async for db in get_db():
         # Create test world with custom schemas
         world = GameWorld(
+            owner_user_id=1,
             name="Test World",
-            description="World for testing relationship preview API",
             meta={
                 "relationship_schemas": {
                     "default": [

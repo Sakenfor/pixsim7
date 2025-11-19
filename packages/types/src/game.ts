@@ -107,6 +107,41 @@ export interface GameWorldDetail {
   world_time: number;
 }
 
+// ===================
+// Relationship Tier / Intimacy ID Types
+// ===================
+
+export type DefaultRelationshipTier =
+  | 'stranger'
+  | 'acquaintance'
+  | 'friend'
+  | 'close_friend'
+  | 'lover';
+
+export type DefaultIntimacyLevel =
+  | 'platonic'
+  | 'light_flirt'
+  | 'deep_flirt'
+  | 'intimate'
+  | 'very_intimate';
+
+/**
+ * Relationship tier identifier.
+ *
+ * Uses a set of well-known defaults but allows custom strings so that
+ * individual worlds can introduce their own tiers without schema changes.
+ */
+export type RelationshipTierId = DefaultRelationshipTier | string;
+
+/**
+ * Intimacy level identifier.
+ *
+ * Uses a set of well-known defaults but allows custom strings so that
+ * individual worlds can introduce their own intimacy levels without
+ * database schema changes.
+ */
+export type IntimacyLevelId = DefaultIntimacyLevel | string;
+
 /**
  * World Manifest structure stored in GameWorld.meta.manifest
  * Defines per-world configuration for gameplay features
@@ -390,7 +425,7 @@ export interface RelationshipTierPreviewRequest {
  * Response from relationship tier preview API
  */
 export interface RelationshipTierPreviewResponse {
-  tierId: string | null;
+  tierId: RelationshipTierId | null;
   schemaKey: string;
   affinity: number;
 }
@@ -417,6 +452,6 @@ export interface RelationshipIntimacyPreviewRequest {
  * Response from intimacy level preview API
  */
 export interface RelationshipIntimacyPreviewResponse {
-  intimacyLevelId: string | null;
+  intimacyLevelId: IntimacyLevelId | null;
   relationshipValues: RelationshipValues;
 }

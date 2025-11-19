@@ -117,6 +117,9 @@ export class PixSim7Core implements IPixSim7Core {
     let tierId = typeof raw?.tierId === 'string' ? raw.tierId : undefined;
     let intimacyLevelId = raw?.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
 
+    const isNormalized =
+      raw?.tierId !== undefined || raw?.intimacyLevelId !== undefined;
+
     if (!tierId) {
       tierId = compute_relationship_tier(affinity);
     }
@@ -132,6 +135,7 @@ export class PixSim7Core implements IPixSim7Core {
       flags: Array.isArray(flags) ? flags : [],
       tierId,
       intimacyLevelId,
+      isNormalized,
       raw,
     };
   }

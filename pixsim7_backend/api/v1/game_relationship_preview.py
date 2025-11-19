@@ -16,9 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7_backend.api.dependencies import get_database
-from pixsim7_backend.domain.metrics.relationship_evaluators import (
-    evaluate_relationship_tier,
-    evaluate_relationship_intimacy,
+from pixsim7_backend.domain.metrics import (
+    MetricType,
+    get_metric_registry,
 )
 
 router = APIRouter()
@@ -92,8 +92,9 @@ async def preview_relationship_tier(
         400: Invalid request (missing fields, invalid types)
     """
     try:
-        # Call evaluator
-        result = await evaluate_relationship_tier(
+        # Call evaluator via metric registry
+        evaluator = get_metric_registry().get_evaluator(MetricType.RELATIONSHIP_TIER)
+        result = await evaluator(
             world_id=request.world_id,
             payload={
                 "affinity": request.affinity,
@@ -144,8 +145,11 @@ async def preview_relationship_intimacy(
         400: Invalid request (missing fields, invalid types)
     """
     try:
-        # Call evaluator
-        result = await evaluate_relationship_intimacy(
+        # Call evaluator via metric registry
+        evaluator = get_metric_registry().get_evaluator(
+            MetricType.RELATIONSHIP_INTIMACY
+        )
+        result = await evaluator(
             world_id=request.world_id,
             payload={
                 "relationship_values": {

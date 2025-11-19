@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from pixsim7_backend.api.dependencies import CurrentUser, GameWorldSvc
+from pixsim7_backend.domain.game.schemas import WorldMetaSchemas
 
 
 router = APIRouter()
@@ -79,6 +80,19 @@ async def create_world(
     """
     Create a new game world for the current user.
     """
+    # Validate world-level schemas inside meta (if present)
+    if req.meta is not None:
+        try:
+            WorldMetaSchemas.parse_obj(req.meta)
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_world_schemas",
+                    "details": e.errors(),
+                },
+            )
+
     world = await game_world_service.create_world(
         owner_user_id=user.id,
         name=req.name,
@@ -141,12 +155,25 @@ async def update_world_meta(
 
     This allows designers to configure per-world settings like HUD layouts,
     enabled plugins, and other UI/UX customizations.
+
+    Also validates relationship/intimacy schemas stored in meta to prevent
+    invalid configurations from breaking relationship computations.
     """
     await _get_owned_world(world_id, user, game_world_service)
+
+    try:
+        WorldMetaSchemas.parse_obj(req.meta)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_world_schemas",
+                "details": e.errors(),
+            },
+        )
 
     # Update the world metadata
     updated_world = await game_world_service.update_world_meta(world_id, req.meta)
 
     # Get current world time
     return await _build_world_detail(updated_world, game_world_service)
-
