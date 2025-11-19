@@ -21,7 +21,8 @@ remain generic; only the **JSON stored in `meta`** and the TypeScript helpers
 define this behavior.
 
 Relevant code:
-- `frontend/src/lib/game/interactionSchema.ts`
+- `@pixsim7/game-core` (hotspot actions and playback helpers)
+- `frontend/src/lib/game/interactionSchema.ts` (re-exports game-core helpers)
 - `frontend/src/routes/Game2D.tsx`
 - `frontend/src/routes/GameWorld.tsx`
 
@@ -34,7 +35,7 @@ Hotspot actions live in:
 - `GameHotspot.meta.action` (arbitrary JSON in the backend),
 - parsed and enforced in the frontend by `parseHotspotAction`.
 
-TypeScript schema (`interactionSchema.ts`):
+TypeScript schema (canonical in `@pixsim7/game-core`):
 
 - `HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk'`
 
@@ -135,7 +136,7 @@ type ScenePlaybackPhase = 'playing' | 'awaiting_input' | 'completed';
 
 ### 3.2 Deriving Phase
 
-Helper in `interactionSchema.ts`:
+Helper (canonical in `@pixsim7/game-core`, re-exported via `interactionSchema.ts`):
 
 ```ts
 deriveScenePlaybackPhase({ scene, runtime }): ScenePlaybackPhase
@@ -224,4 +225,3 @@ stores a generic `meta` object.
 
 This keeps the **2D interaction model** fully frontend-driven while allowing
 world authors to define structured behaviors from the editor UI.
-

@@ -309,7 +309,7 @@ overlay that world creators control.
   - Backend: `pixsim7_backend/services/game/game_session_service.py` calls `_normalize_session_relationships()` before returning sessions.
   - Computation logic: `pixsim7_backend/domain/narrative/relationships.py` provides `compute_relationship_tier()` and `compute_intimacy_level()`.
   - TypeScript: `packages/game-core/src/core/PixSim7Core.ts` and frontends prefer backend-provided values.
-  - Fallback computation functions in `@pixsim7/game-core` (and `frontend/src/lib/game/relationshipComputation.ts`) are documented as **preview/offline tools only**.
+  - Fallback computation functions in `@pixsim7/game-core` (re-exported via `frontend/src/lib/game/relationshipComputation.ts`) are documented as **preview/offline tools only**.
 
 This approach:
 - Keeps the single source of truth on the backend.

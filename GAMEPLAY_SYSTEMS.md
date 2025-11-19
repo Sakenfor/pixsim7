@@ -296,7 +296,7 @@ All frontend API functions located in: `frontend/src/lib/api/game.ts`
 Functions include:
 - Quest management: `listSessionQuests`, `addQuest`, `updateQuestStatus`, etc.
 - Inventory management: `listInventoryItems`, `addInventoryItem`, `removeInventoryItem`, etc.
-- Relationship computation: `frontend/src/lib/game/relationshipComputation.ts`
+- Relationship computation: `@pixsim7/game-core` (with a re-export shim at `frontend/src/lib/game/relationshipComputation.ts`)
 
 ## Notes for Opus (UI Redesign)
 
@@ -349,7 +349,7 @@ Frontend:
   - DialogueUI.tsx
   - GameNotification.tsx
 - frontend/src/lib/game/
-  - relationshipComputation.ts
+  - relationshipComputation.ts (re-exports relationship helpers from @pixsim7/game-core)
 - frontend/src/routes/
   - Game2D.tsx
 

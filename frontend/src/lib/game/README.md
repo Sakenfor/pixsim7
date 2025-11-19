@@ -79,5 +79,5 @@ This ensures consistent session logic across all frontends (React/3D/CLI) and ke
 
 - These modules define **frontend-only schemas** on top of generic backend JSON fields
 - Backend models remain generic; TypeScript types and helpers enforce conventions
-- When adding new action types or playback rules, update `interactionSchema.ts` and document in `HOTSPOT_ACTIONS_2D.md`
+- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game-core` (re-exported via `interactionSchema.ts`) and document in `HOTSPOT_ACTIONS_2D.md`
 - When adding new session state patterns, update `session.ts` helpers and document in `RELATIONSHIPS_AND_ARCS.md`

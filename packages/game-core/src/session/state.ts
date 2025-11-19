@@ -132,14 +132,7 @@ export function setNpcRelationshipState(
 
 // ===== Arc Helpers =====
 
-/**
- * Arc state structure
- */
-export interface ArcState {
-  stage: number;
-  seenScenes: number[];
-  [key: string]: any;
-}
+import type { ArcState, QuestState, InventoryItem } from './sharedTypes';
 
 /**
  * Get arc state from session
@@ -180,15 +173,6 @@ export function setArcState(
 }
 
 // ===== Quest Helpers =====
-
-/**
- * Quest state structure
- */
-export interface QuestState {
-  status: 'not_started' | 'in_progress' | 'completed' | 'failed';
-  stepsCompleted: number;
-  [key: string]: any;
-}
 
 /**
  * Get quest state from session

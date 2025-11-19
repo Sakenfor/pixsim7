@@ -17,44 +17,7 @@
  */
 
 import type { GameSessionDTO } from '@pixsim7/types';
-
-// ===== Types =====
-
-/**
- * Arc state structure
- */
-export interface ArcState {
-  stage: number;
-  seenScenes: number[];
-  [key: string]: any; // Allow custom fields
-}
-
-/**
- * Quest state structure
- */
-export interface QuestState {
-  status: 'not_started' | 'in_progress' | 'completed' | 'failed';
-  stepsCompleted: number;
-  [key: string]: any; // Allow custom fields
-}
-
-/**
- * Inventory item
- */
-export interface InventoryItem {
-  id: string;
-  qty: number;
-  [key: string]: any; // Allow custom metadata
-}
-
-/**
- * Event state structure
- */
-export interface EventState {
-  active: boolean;
-  triggeredAt?: number;
-  [key: string]: any; // Allow custom fields
-}
+import type { ArcState, QuestState, InventoryItem, EventState } from './sharedTypes';
 
 // ===== Generic Flag Helpers =====
 

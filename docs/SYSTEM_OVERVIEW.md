@@ -135,7 +135,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 **`frontend/src/routes/Game2D.tsx`** – Playtest environment for 2D gameplay:
 - Renders a location's background and hotspots
 - Handles hotspot clicks via `handlePlayHotspot`:
-  - Parses `meta.action` using `parseHotspotAction` (from `interactionSchema.ts`)
+  - Parses `meta.action` using `parseHotspotAction` (from `@pixsim7/game-core`)
   - Supports: `play_scene`, `change_location`, `npc_talk`
 - Opens `ScenePlayer` full-screen for scenes
 - Displays NPC portraits based on scene playback phase and `NpcExpression` states
