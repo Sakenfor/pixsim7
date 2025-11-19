@@ -298,6 +298,9 @@ export interface InteractionOutcome {
   /** Generation to trigger */
   generationLaunch?: GenerationLaunch;
 
+  /** Narrative program to launch (unified runtime) */
+  narrativeProgramId?: string;
+
   /** Success message to display */
   successMessage?: string;
 

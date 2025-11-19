@@ -416,10 +416,35 @@ Replace scattered narrative calls with narrative program launches and steps.
    - Extend behavior hooks (via BehaviorExtensionAPI or built-in configs) to emit narrative intents:
      - E.g., `hook: greetOnApproach` → start `program:small_talk` when conditions match.  
 3. Intimacy Scene Composer:
-   - Add an export path from the composer to `NarrativeProgram` JSON.  
+   - Add an export path from the composer to `NarrativeProgram` JSON.
    - Let those programs be executed by the runtime when triggered via interactions/behavior.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
+
+**Deliverables:**
+- ✅ Integration helpers: `pixsim7_backend/domain/narrative/integration_helpers.py` (530 lines)
+- ✅ Added `narrativeProgramId` to `InteractionOutcome` (Python + TypeScript)
+- ✅ Updated `interaction_execution.py` to launch narrative programs
+- ✅ Intimacy scene converter: `intimacy_scene_to_narrative_program()`
+- ✅ Export function: `export_intimacy_scene_as_program()`
+- ✅ Program creation helpers:
+  * `create_simple_dialogue_program()` - Linear dialogue sequences
+  * `create_simple_choice_program()` - Choice-based programs
+  * `create_behavior_dialogue_program()` - Behavior-driven dialogue
+- ✅ `launch_narrative_program_from_interaction()` - Main integration entry point
+- ✅ Legacy wrapper: `wrap_legacy_dialogue_request_as_program()`
+
+**Integration Points:**
+1. **NPC Interactions**: Can now specify `narrativeProgramId` in outcomes
+2. **Intimacy Composer**: Scenes can be exported as narrative programs
+3. **Behavior System**: Helper for creating behavior-driven dialogue programs
+
+**Features:**
+- Arc structure conversion (intimacy scenes → action block nodes)
+- Progression gate conversion (gates → choice nodes)
+- Automatic metadata preservation
+- Program storage in world.meta.narrative.programs
+- Simple helper functions for common patterns
 
 ---
 

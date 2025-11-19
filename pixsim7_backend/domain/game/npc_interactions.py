@@ -201,6 +201,7 @@ class InteractionOutcome(BaseModel):
     npc_effects: Optional[NpcEffects] = Field(None, alias="npcEffects")
     scene_launch: Optional[SceneLaunch] = Field(None, alias="sceneLaunch")
     generation_launch: Optional[GenerationLaunch] = Field(None, alias="generationLaunch")
+    narrative_program_id: Optional[str] = Field(None, alias="narrativeProgramId")
     success_message: Optional[str] = Field(None, alias="successMessage")
     failure_message: Optional[str] = Field(None, alias="failureMessage")
     custom_outcome_id: Optional[str] = Field(None, alias="customOutcomeId")

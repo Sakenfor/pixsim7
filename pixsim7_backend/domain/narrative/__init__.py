@@ -58,6 +58,16 @@ from .action_block_resolver import (
     should_launch_immediately,
 )
 
+# Integration Helpers
+from .integration_helpers import (
+    launch_narrative_program_from_interaction,
+    intimacy_scene_to_narrative_program,
+    export_intimacy_scene_as_program,
+    create_simple_dialogue_program,
+    create_simple_choice_program,
+    create_behavior_dialogue_program,
+)
+
 __all__ = [
     # Legacy exports
     "NarrativeEngine",
@@ -105,4 +115,12 @@ __all__ = [
     "resolve_action_block_node",
     "prepare_generation_from_sequence",
     "should_launch_immediately",
+
+    # Unified Narrative Runtime - Integration Helpers
+    "launch_narrative_program_from_interaction",
+    "intimacy_scene_to_narrative_program",
+    "export_intimacy_scene_as_program",
+    "create_simple_dialogue_program",
+    "create_simple_choice_program",
+    "create_behavior_dialogue_program",
 ]
