@@ -9,7 +9,7 @@
   - Uses **empty** `relationship_schemas` / `intimacy_schema` (hardcoded defaults only).
   - Has a TODO to fetch world metadata.
 - As a result, **custom world schemas are not used** when normalizing sessions, which limits the value of per‑world relationship scales.
-- There is no validation of schema shape in `GameWorld.meta`, so invalid configs can silently break computation.
+- Prior to this task, there was no validation of schema shape in `GameWorld.meta`, so invalid configs could silently break computation.
 
 This task makes session normalization world‑aware and adds schema validation, so relationship behavior truly reflects per‑world configuration and fails fast on bad schemas.
 
@@ -19,14 +19,33 @@ This task makes session normalization world‑aware and adds schema validation, 
 
 - [ ] **Phase 1 – Design Session ↔ World Relationship**
 - [ ] **Phase 2 – Implement `world_id` on `GameSession` (or Equivalent Link)**
-- [ ] **Phase 3 – Make `_normalize_session_relationships` World-Aware**
-- [ ] **Phase 4 – Add World Meta Schema Validation**
+- [ ] **Phase 3 – Make `_normalize_session_relationships` World‑Aware**
+- [~] **Phase 4 – Add World Meta Schema Validation**
 - [ ] **Phase 5 – (Optional) Cache Invalidation on Schema Changes**
-- [ ] **Phase 6 – Distinguish “No Data” vs “Not Normalized” in Game-Core**
-- [ ] **Phase 7 – Type-Safe Tier/Intimacy IDs in Types**
+- [ ] **Phase 6 – Distinguish “No Data” vs “Not Normalized” in Game‑Core**
+- [ ] **Phase 7 – Type‑Safe Tier/Intimacy IDs in Types**
 - [ ] **Phase 8 – Additional Integration Tests (Session + Preview API)**
 - [ ] **Phase 9 – Metric Registry Wiring (Optional)**
 - [ ] **Phase 10 – Documentation Updates**
+
+---
+
+**CURRENT GAMESESSION STATE (2025‑11‑19)**
+
+As of this date:
+- `GameSession` exists in `pixsim7_backend/domain/game/models.py` with:
+  - `id`, `user_id`, `scene_id`, `current_node_id`
+  - `flags` (JSON), `relationships` (JSON)
+  - `world_time`, `version`, timestamps
+- There is **no `world_id` field** on `GameSession` yet.
+- `GameSessionService._normalize_session_relationships` exists and:
+  - Computes `tierId` / `intimacyLevelId` using **hardcoded default schemas** (empty `relationship_schemas` / `intimacy_schema`), not per‑world schemas.
+  - Uses Redis caching for normalized relationship blobs.
+- World meta schema validation (Phase 4) is **partially implemented**:
+  - `pixsim7_backend/domain/game/schemas.py` defines Pydantic models for `relationship_schemas` and `intimacy_schema`.
+  - `pixsim7_backend/api/v1/game_worlds.py` validates `GameWorld.meta` on create/update and returns HTTP 400 on invalid schemas.
+
+All phases remain marked as not started except Phase 4 (now `[~]`) to reflect partial schema validation. The core world‑aware link (`world_id`) and session normalization behavior are still greenfield work.
 
 ---
 
@@ -68,7 +87,7 @@ Add a robust link from `GameSession` to `GameWorld` according to the design from
 
 ---
 
-### Phase 3 – Make `_normalize_session_relationships` World-Aware
+### Phase 3 – Make `_normalize_session_relationships` World‑Aware
 
 **Goal**  
 Use the correct world schemas when computing `tierId` and `intimacyLevelId` during session normalization.
@@ -95,7 +114,7 @@ Use the correct world schemas when computing `tierId` and `intimacyLevelId` duri
 3. Keep Redis caching behavior but ensure it now reflects world‑specific schemas.
 4. Add unit tests for `_normalize_session_relationships` that:
    - Use a session linked to a world with custom schemas.
-   - Assert that normalized `tierId`/`intimacyLevelId` reflect those schemas, not the defaults.
+   - Assert that normalized `tierId` / `intimacyLevelId` reflect those schemas, not the defaults.
 
 ---
 
@@ -116,6 +135,9 @@ Validate `GameWorld.meta.relationship_schemas` and `intimacy_schema` at write ti
    - Attempt to validate `world.meta` (or just the schemas portion) against `WorldMetaSchemas`.
    - If validation fails, raise an appropriate HTTP 400 or service error.
 3. Optionally, add a small admin/dev endpoint to validate all existing worlds and report schema problems.
+
+> **Status (2025‑11‑19):**  
+> Pydantic models and API‑level validation are implemented, but existing worlds have not yet been batch‑validated and no dedicated troubleshooting endpoint exists.
 
 ---
 
@@ -138,13 +160,13 @@ Ensure normalized relationships are not stale when world schemas change.
 
 ---
 
-### Phase 6 – Distinguish “No Data” vs “Not Normalized” in Game-Core
+### Phase 6 – Distinguish “No Data” vs “Not Normalized” in Game‑Core
 
 **Goal**  
 Expose whether a relationship has been normalized by backend vs simply having no data, to improve debugging and tooling.
 
 **Scope**
-- `NpcRelationshipState` and related helpers in game-core.
+- `NpcRelationshipState` and related helpers in game‑core.
 
 **Key Steps**
 1. Extend `NpcRelationshipState` in `packages/game-core/src/core/types.ts` with an `isNormalized: boolean` field, e.g.:
@@ -168,13 +190,13 @@ Expose whether a relationship has been normalized by backend vs simply having no
 
 ---
 
-### Phase 7 – Type-Safe Tier/Intimacy IDs in Types
+### Phase 7 – Type‑Safe Tier/Intimacy IDs in Types
 
 **Goal**  
 Improve type safety and clarity around `tierId` and `intimacyLevelId` while still allowing world‑specific custom IDs.
 
 **Scope**
-- `@pixsim7/types` and game-core usage.
+- `@pixsim7/types` and game‑core usage.
 
 **Key Steps**
 1. In `packages/types/src/game.ts`, define default enums/union types, e.g.:
@@ -213,7 +235,7 @@ Extend integration tests to cover world‑aware normalization and ensure it matc
 1. Add integration tests that:
    - Create a `GameWorld` with custom schemas.
    - Create a `GameSession` linked to that world with specific relationship values.
-   - Call session update/advance and assert that normalized `tierId`/`intimacyLevelId` match both:
+   - Call session update/advance and assert that normalized `tierId` / `intimacyLevelId` match both:
      - The configured schemas.
      - The values returned by the preview API for the same inputs.
 2. Ensure tests cover:
@@ -239,6 +261,9 @@ Start using the generic `MetricRegistry` for relationship preview, or at least p
    ```
 2. In preview endpoints, optionally fetch evaluators via the registry instead of calling them directly.
 3. This step is optional and can be deferred if keeping relationship preview endpoints simple is preferred; the main goal is to ensure the registry is either used or consciously left for future metrics.
+
+> **Status (2025‑11‑19):**  
+> The metric registry is wired and relationship evaluators are registered in `pixsim7_backend/domain/metrics/__init__.py`. Preview endpoints already use `get_metric_registry().get_evaluator(...)`.
 
 ---
 

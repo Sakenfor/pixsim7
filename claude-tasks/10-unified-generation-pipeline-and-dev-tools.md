@@ -1,14 +1,15 @@
 **Task: Unified Generation Pipeline & Dev Tooling (Multi‑Phase)**
 
 **Context**
-- The project has a unified `Generation` model in `pixsim7_backend/domain/generation.py` that replaces the previous Job + GenerationArtifact split.
+- The project has a unified generation domain in `pixsim7_backend/domain/generation.py` with a modern `Generation`/`GenerationArtifact` model.
 - Dynamic generation has a clear design via:
   - `docs/DYNAMIC_GENERATION_FOUNDATION.md`
   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`
   - `docs/PROMPT_VERSIONING_SYSTEM.md`, `NARRATIVE_PROMPT_ENGINE_SPEC.md`, etc.
-- Frontend/editor integration is planned/partial via:
-  - `packages/types/src/generation.ts` (`GenerationNodeConfig`, `GenerateContentRequest/Response`, etc.).
-  - Graph/Node editor docs and components for Generation Nodes.
+- Frontend/editor integration is partially implemented via:
+  - `packages/types/src/generation.ts` (`GenerationNodeConfig`, `GenerateContentRequest/Response`, `GenerationSocialContext`).
+  - Generation node support in the graph editor.
+  - `packages/game-core/src/generation/requestBuilder.ts` and `generation/validator.ts`.
 - Tasks 07–09 introduce:
   - A metrics/preview system for relationships and social state.
   - Intimacy‑aware `GenerationSocialContext` for embedding relationship context into generation.
@@ -17,12 +18,14 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
 - From editor/graph → `GenerateContentRequest` → `Generation` record → asset → dev tooling.
 - With social/intimacy context, validation, caching, and observability aligned with the design docs.
 
-> **For agents:** Treat this task as the umbrella for “generation pipeline v1.0 reality”. Only start deeper phases once earlier ones (and dependent tasks 07–09) are in a good state.
+> **For agents:** Treat this task as the umbrella for “generation pipeline v1.0 reality”. Only move deeper phases to `[x]` when you verify the implementation against the referenced docs and code.
 
 ### Phase Checklist
 
-- [ ] **Phase 1 – Confirm Migration to Unified `Generation` Model**
-- [ ] **Phase 2 – Wire Frontend Generation Nodes to Generation Service**
+- [x] **Phase 1 – Confirm Migration to Unified `Generation` Model**  
+  *Core model and service exist (Generation/GenerationArtifact, provider abstraction, GenerationService) – 2025‑11‑19*
+- [~] **Phase 2 – Wire Frontend Generation Nodes to Generation Service**  
+  *Generation nodes and request builder exist; full `GenerateContentRequest` → backend wiring needs verification*
 - [ ] **Phase 3 – Prompt Versioning & `prompt_config` Integration**
 - [ ] **Phase 4 – Social Context & Intimacy Integration**
 - [ ] **Phase 5 – Validation & Health Panel for Generation Nodes**
@@ -31,6 +34,57 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
 - [ ] **Phase 8 – Safety & Content Rating Enforcement**
 - [ ] **Phase 9 – Regression Harness for Generations**
 - [ ] **Phase 10 – Developer Tools & App Map Integration**
+
+---
+
+**CURRENT IMPLEMENTATION STATUS (2025‑11‑19)**
+
+### ✅ Implemented
+
+- **Generation Domain & Model**
+  - `pixsim7_backend/domain/generation.py` defines the unified model (Generation/GenerationArtifact) with:
+    - `operation_type`, `provider_id`, `inputs`, `canonical_params`
+    - `reproducible_hash` (SHA‑256) for deduplication.
+    - Status fields and timestamps for orchestration.
+  - Alembic migrations in `infrastructure/database/migrations/versions/*` create/update the `generations` tables.
+
+- **Provider Abstraction**
+  - Backend provider interface with:
+    - An abstract `execute()` method.
+    - A `GenerationResult` dataclass/structure.
+    - Per‑provider parameter mapping and capabilities.
+  - Integration with account management / provider selection.
+
+- **GenerationService**
+  - `pixsim7_backend/services/generation/generation_service.py`:
+    - Orchestrates provider calls.
+    - Creates and updates `Generation`/`GenerationArtifact` records.
+    - Handles basic error states and mapping from requests to providers.
+
+- **Frontend Types & Helpers**
+  - `packages/types/src/generation.ts`:
+    - `GenerationNodeConfig`, `GenerateContentRequest`, `GenerationSocialContext`.
+  - `packages/game-core/src/generation/requestBuilder.ts`:
+    - `buildGenerateContentRequest` and `computeCacheKey`.
+    - Social context integration via `buildGenerationSocialContext`.
+  - `packages/game-core/src/generation/validator.ts`:
+    - Validates generation node configs and social context against world/user constraints.
+
+### ⏳ Pending / Needs Verification
+
+- Frontend → backend wiring:
+  - Confirm that all generation nodes in the editor:
+    - Build `GenerateContentRequest` via the request builder.
+    - Call the unified generation endpoint (not legacy job endpoints).
+    - Result in `Generation`/`GenerationArtifact` records managed by `GenerationService`.
+- Prompt versioning / `prompt_config`:
+  - Ensure `GenerateContentRequest` carries enough metadata to populate `prompt_config` on `Generation`.
+  - Confirm behavior matches `PROMPT_VERSIONING_SYSTEM.md`.
+- Social context enforcement:
+  - Backend currently accepts `social_context` on `GenerateContentRequest` (per Task 09 design).
+  - Enforcement of world/user max content rating, and storage of social context on `Generation`, is still pending.
+
+Use the phases below to track completion of each area.
 
 ---
 
@@ -44,13 +98,14 @@ Ensure all new generation work uses the unified `Generation` model instead of le
 
 **Key Steps**
 1. Audit backend:
-   - Confirm where `Generation` is used (`pixsim7_backend/domain/generation.py`, `services/generation/generation_service.py`).
-   - Identify any places still referencing old job/generation artifact models or tables.
-2. Check migrations as per `GENERATION_PIPELINE_REFACTOR_PLAN.md`:
-   - `generations` table created.
-   - References from `provider_submissions`, `assets`, etc. updated to use `generation_id` / `source_generation_id`.
-3. If any legacy code paths remain:
-   - Mark them as deprecated and plan removal or migration in this file.
+   - Confirm where `Generation`/`GenerationArtifact` is used (`domain/generation.py`, `services/generation/generation_service.py`).
+   - Identify any places still referencing old job/generation tables or models.
+2. Check migrations per `GENERATION_PIPELINE_REFACTOR_PLAN.md`:
+   - `generations` tables created and wired to upstream/downstream tables.
+   - References from `provider_submissions`, `assets`, etc. updated to use generation IDs.
+3. For any remaining legacy paths:
+   - Mark them deprecated.
+   - Add TODOs or follow‑up tasks to remove/migrate.
 
 ---
 
@@ -60,23 +115,27 @@ Ensure all new generation work uses the unified `Generation` model instead of le
 Make sure Generation Nodes in the editor actually drive requests to the unified generation service and record `Generation` rows.
 
 **Scope**
-- Frontend → backend integration; no prompt logic changes yet.
+- Frontend + backend integration; no prompt logic changes yet.
 
 **Key Steps**
 1. Confirm `GenerationNodeConfig` and `GenerateContentRequest` in `packages/types/src/generation.ts` are used by:
    - The React Flow node components for generation.
-   - Any existing generation API client in frontend/lib.
+   - Any generation API client in `frontend/src/lib/api` or similar.
 2. Update the frontend client to:
    - Call the unified generation endpoint (per `DYNAMIC_GENERATION_FOUNDATION.md` / refactor plan).
-   - Ensure requests are mapped to `Generation` creation via `generation_service`.
+   - Ensure requests are mapped to `GenerationService` (unified path).
 3. Remove or wrap any usage of older “job” endpoints so new work only hits the unified generation path.
+
+Mark this phase `[x]` when:
+- Generation nodes send `GenerateContentRequest` objects that hit the unified generation endpoint.
+- You can see corresponding `Generation` records in the database for node executions.
 
 ---
 
 ### Phase 3 – Prompt Versioning & `prompt_config` Integration
 
 **Goal**  
-Use the structured prompt versioning system (prompt versions & `prompt_config`) as the canonical source for generation prompts.
+Use the structured prompt versioning system (`prompt_config`) as the canonical source for generation prompts.
 
 **Scope**
 - Backend `Generation` model and services.
@@ -87,9 +146,9 @@ Use the structured prompt versioning system (prompt versions & `prompt_config`) 
    - `prompt_config` (structured config with `versionId`, `familyId`, `autoSelectLatest`, variables).
 2. Implement or refine logic in `generation_service` to:
    - Resolve the actual prompt from `prompt_config` (version/family lookups).
-   - Avoid relying on `final_prompt` inline except for testing/dev.
-3. Ensure `GenerateContentRequest` feeds enough info (prompt config IDs, variables) to populate `prompt_config` on `Generation` records.
-4. Align with `PROMPT_VERSIONING_SYSTEM.md` and `NARRATIVE_PROMPT_ENGINE_SPEC.md` (at least for core use cases).
+   - Avoid depending on ad‑hoc `final_prompt` except for debugging/testing.
+3. Ensure `GenerateContentRequest` includes enough information (prompt config IDs, variables) to populate `prompt_config`.
+4. Align with `PROMPT_VERSIONING_SYSTEM.md` and `NARRATIVE_PROMPT_ENGINE_SPEC.md` for core use cases.
 
 ---
 
@@ -99,64 +158,61 @@ Use the structured prompt versioning system (prompt versions & `prompt_config`) 
 Attach relationship/intimacy context (from Task 09) to generation requests and their persisted `Generation` records.
 
 **Scope**
-- Social context only; no explicit prompt text.
+- Social context only; no explicit prompt text changes.
 
 **Key Steps**
-1. From Task 09, ensure `GenerationSocialContext` exists in `generation.ts` and is threaded into:
-   - `GenerationNodeConfig`.
-   - `GenerateContentRequest`.
-2. In the generation request path:
-   - Call the helper that builds `GenerationSocialContext` (using `tierId`, `intimacyLevelId`, world/user config).
-   - Attach this to `GenerateContentRequest`.
-3. In `generation_service`:
-   - Persist `GenerationSocialContext` as part of `canonical_params` or a dedicated field.
-   - Ensure this context is available to the prompt‑building layer and metrics.
+1. From Task 09, ensure `GenerationSocialContext` is fully defined in `packages/types/src/generation.ts`.
+2. Confirm `buildGenerateContentRequest` in `packages/game-core/src/generation/requestBuilder.ts`:
+   - Calls `buildGenerationSocialContext` for relevant nodes.
+   - Attaches `social_context` to `GenerateContentRequest`.
+3. In the backend generation API/service:
+   - Accept `social_context` in request payloads.
+   - Store it on `Generation` records (e.g. in a JSON field).
+4. Add basic tests:
+   - A request with a certain `intimacyBand`/`contentRating` results in a `Generation` record whose `social_context` matches.
 
 ---
 
 ### Phase 5 – Validation & Health Panel for Generation Nodes
 
 **Goal**  
-Implement validation and exploration tooling for Generation Nodes, per the roadmap in `DYNAMIC_GENERATION_FOUNDATION.md`.
+Surface validation and health information for generation nodes in the editor.
 
 **Scope**
-- Validation logic (backend or frontend) and dev‑facing panel.
+- Validation logic (TS) + dev‑only UI.
 
 **Key Steps**
-1. Implement or finish the validation rules described in `DYNAMIC_GENERATION_FOUNDATION.md`:
-   - Duration constraints.
-   - Fallback configuration correctness.
-   - Strategy viability warnings (e.g. `always` + high‑cost assets).
-   - Social/rating constraints from Task 09 (Phase 8).
+1. Extend `generation/validator.ts` to:
+   - Check for missing or inconsistent fields (strategy, duration, constraints).
+   - Validate social context vs world/user constraints (Task 09).
 2. Expose validation results in the Generation Node UI:
    - Node badges (OK/warn/error).
-   - A validation tab or section in the side panel summarizing issues.
-3. Optionally add a “Generation Health” view (could be part of App Map) aggregating:
-   - Node validation statuses.
-   - Common configuration problems.
+   - A validation section in the side panel summarizing issues.
+3. (Optional) Add a “Generation Health” view:
+   - Aggregates node validation status across a project/world.
 
 ---
 
 ### Phase 6 – Caching, Determinism & Seed Strategy
 
 **Goal**  
-Finalize how caching and determinism work for generations (as per the design docs).
+Finalize how caching and determinism work for generations.
 
 **Scope**
-- Backend `Generation` hash + cache keys; no UI.
+- Backend `Generation` hash + cache keys; no user‑facing UI.
 
 **Key Steps**
-1. Ensure `Generation.compute_hash` is used consistently to derive deterministic keys from:
+1. Ensure `Generation.compute_hash` (or equivalent) is used consistently to derive deterministic keys from:
    - `canonical_params`.
    - `inputs`.
-2. Align the cache key pattern with `DYNAMIC_GENERATION_FOUNDATION.md`:
+2. Align cache key patterns with `DYNAMIC_GENERATION_FOUNDATION.md`:
    - `[type]|[purpose]|[fromSceneId]|[toSceneId]|[strategy]|[seed]|[version]`, etc.
 3. Implement or confirm:
    - In‑memory and Redis cache layers.
-   - Optional durable storage lockouts to prevent stampedes.
+   - Optional locking/guardrails to prevent stampedes.
 4. Document and enforce seed strategies:
-   - `playthrough`, `player`, `fixed`, `timestamp` seeds.
-   - How they map into `canonical_params` and hash computation.
+   - `playthrough`, `player`, `fixed`, `timestamp`.
+   - How they feed into both `canonical_params` and cache keys.
 
 ---
 
@@ -166,16 +222,16 @@ Finalize how caching and determinism work for generations (as per the design doc
 Capture and surface key metrics for generation: cost, latency, provider health.
 
 **Scope**
-- Backend fields and dev tooling; no strict product UI.
+- Backend metrics collection + dev tooling.
 
 **Key Steps**
 1. Extend `Generation` or associated tables to record:
-   - Latency (already derivable from timestamps).
-   - Token or compute cost metadata.
+   - Latency (derivable from timestamps).
+   - Token or compute cost metadata (if available).
    - Provider health info when available.
-2. Add basic aggregation queries or helper functions to compute:
-   - p95 latency per provider / operation type.
-   - Error rates.
+2. Add helper functions/queries to compute:
+   - p95 latency per provider/operation type.
+   - Error rates and failure patterns.
 3. Surface these metrics in a dev panel (Generation Health, App Map, or separate route).
 
 ---
@@ -186,7 +242,7 @@ Capture and surface key metrics for generation: cost, latency, provider health.
 Ensure generation requests respect world/user content rating constraints at the generation layer, not just in context building.
 
 **Scope**
-- Enforcement logic; no content details.
+- Enforcement logic; no explicit content details.
 
 **Key Steps**
 1. At the generation service boundary, inspect `GenerationSocialContext`:
@@ -194,7 +250,7 @@ Ensure generation requests respect world/user content rating constraints at the 
      - World `maxContentRating` (from world meta).
      - User `maxContentRating` (from preferences), when available.
 2. If a request violates constraints:
-   - Either clamp the rating and adjust prompt config accordingly, or
+   - Clamp the rating and adjust prompts/config accordingly, **or**
    - Reject the request and log a structured error.
 3. Log violations and surface them in dev tools so misconfigured nodes/worlds can be fixed early.
 
@@ -209,17 +265,17 @@ Add tests and fixtures to catch regressions in generation behavior, especially a
 - Test code only; no new features.
 
 **Key Steps**
-1. Create test fixtures representing:
-   - A few representative GenerationNodeConfigs (simple transition, complex variation).
+1. Create fixtures representing:
+   - Several `GenerationNodeConfig` examples (simple/complex).
    - Worlds with different generation configs and social contexts.
 2. For each fixture:
-   - Build `GenerateContentRequest`.
+   - Build `GenerateContentRequest` via the request builder.
    - Create `Generation` records via `generation_service`.
    - Assert:
-     - Correct canonical parameters.
+     - Correct canonical params and hash behavior.
      - Prompt config wiring (version/family/variables).
      - Social context presence and clamping.
-3. Include seeds for deterministic runs where appropriate so changes in params can be detected via hash differences.
+3. Use deterministic seeds where needed to make regressions visible via hash changes.
 
 ---
 
@@ -234,7 +290,7 @@ Expose the generation pipeline in dev tooling so developers can see end‑to‑e
 **Key Steps**
 1. Extend `/app-map` or add a dedicated Generation Dev Panel to:
    - List recent `Generation` records (filter by world, provider, status).
-   - Show key fields: operation type, prompt source, social context, status, timings.
+   - Show operation type, prompt source, social context, status, timings.
 2. Add drill‑down from:
    - Generation Nodes in the graph editor → related `Generation` records.
    - App Map feature listings → generation routes and operations.
