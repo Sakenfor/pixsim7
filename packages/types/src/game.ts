@@ -559,6 +559,7 @@ export interface ReputationBandPreviewRequest {
   targetId?: number;
   targetType?: 'npc' | 'faction' | 'group';
   reputationScore?: number;
+  sessionId?: number;
   factionMembership?: Record<string, number>;
 }
 

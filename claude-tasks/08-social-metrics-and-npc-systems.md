@@ -25,7 +25,7 @@ This task defines phases for turning NPC mood and reputation into **first‑clas
 - [x] **Phase 2 – Design Generic Metric Types (Backend + TS)** ✅ *2025-11-19*
 - [x] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)** ✅ *2025-11-19*
 - [x] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)** ✅ *2025-11-19*
-- [ ] **Phase 5 – Add Generic Metric Preview Helper in Game-Core**
+- [x] **Phase 5 – Add Generic Metric Preview Helper in Game-Core** ✅ *2025-11-19*
 - [ ] **Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)**
 - [ ] **Phase 7 – Define Schema Locations in World/Session Meta**
 - [ ] **Phase 8 – Extend Docs & App Map to Cover Social Metrics**
@@ -377,6 +377,71 @@ Provide a single TS helper in game-core for previewing any metric, with relation
 3. Add typed wrappers for:
    - `previewNpcMood(...)`
    - `previewReputationBand(...)`.
+
+---
+
+**Phase 5 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Game-Core Metrics Preview Module
+
+**File**: `packages/game-core/src/metrics/preview.ts`
+
+Created a unified metrics preview API client with:
+
+1. **Configuration Management**:
+   - `configureMetricPreviewApi()`: Configure base URL and fetch function
+   - `resetMetricPreviewApiConfig()`: Reset to defaults
+   - `getMetricPreviewApiConfig()`: Get current config (for testing)
+
+2. **NPC Mood Preview** (`previewNpcMood`):
+   - Calls `POST /api/v1/game/npc/preview-mood`
+   - Accepts: worldId, npcId, optional sessionId, relationship values, emotional state
+   - Returns: moodId, valence, arousal, optional emotionType/intensity
+   - Full JSDoc with usage examples
+
+3. **Reputation Band Preview** (`previewReputationBand`):
+   - Calls `POST /api/v1/game/reputation/preview-reputation`
+   - Accepts: worldId, subject (id/type), optional target, reputation score, session, faction data
+   - Returns: reputationBand, reputationScore, subject/target info
+   - Supports player-NPC, NPC-NPC, and faction reputation
+   - Full JSDoc with usage examples
+
+4. **Generic Metric Preview** (`previewMetric`):
+   - Placeholder for future generic endpoint
+   - Currently routes to specific metric endpoints
+   - Designed for extensibility
+
+### Public API Exports
+
+**File**: `packages/game-core/src/index.ts`
+
+Added exports for metrics preview:
+```typescript
+export {
+  previewNpcMood,
+  previewReputationBand,
+  configureMetricPreviewApi,
+  resetMetricPreviewApiConfig,
+  getMetricPreviewApiConfig,
+} from './metrics/preview';
+```
+
+### Type System Integration
+
+**Fixed**: Added missing `sessionId` field to `ReputationBandPreviewRequest`
+- Ensures type safety between frontend and backend
+- Matches backend API contract
+
+### Design Features
+
+- **Type-Safe**: Full TypeScript types from `@pixsim7/types`
+- **Configurable**: Can override fetch and base URL for testing
+- **Consistent**: Follows same pattern as relationship preview API
+- **Error Handling**: Clear error messages with HTTP status codes
+- **Documented**: Comprehensive JSDoc with usage examples
+- **Extensible**: Ready for future metrics (skill levels, etc.)
+
+**Verification**: ✅ Types package builds, ✅ Game-core builds, ✅ Exports added, ✅ API client complete
 
 ---
 

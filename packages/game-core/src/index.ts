@@ -37,6 +37,17 @@ export {
   getPreviewApiConfig,
 } from './relationships/preview';
 
+// ===== Metrics Preview =====
+
+// Generic metric preview (NPC mood, reputation, etc.)
+export {
+  previewNpcMood,
+  previewReputationBand,
+  configureMetricPreviewApi,
+  resetMetricPreviewApiConfig,
+  getMetricPreviewApiConfig,
+} from './metrics/preview';
+
 export {
   relationshipKeys,
   arcKeys,
