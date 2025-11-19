@@ -9,7 +9,7 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type {
   RelationshipProgressionArc,
   ProgressionStage,
@@ -18,6 +18,8 @@ import type {
 } from '@pixsim7/types';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '../../lib/intimacy/validation';
+import { RelationshipStateEditor } from './RelationshipStateEditor';
+import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface ProgressionArcEditorProps {
   /** Current arc configuration */
@@ -61,9 +63,34 @@ export function ProgressionArcEditor({
 }: ProgressionArcEditorProps) {
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
   // Validate arc
   const validation = validateProgressionArc(arc, worldMaxRating, userMaxRating);
+
+  // Compute which stages are unlocked in preview mode
+  const previewStageStatus = useMemo(() => {
+    if (!previewMode) return {};
+
+    const status: Record<string, 'completed' | 'current' | 'unlocked' | 'locked'> = {};
+    let reachedCurrent = false;
+
+    for (const stage of arc.stages) {
+      const gateResult = checkGate(stage.gate, simulatedState);
+
+      if (gateResult.satisfied && !reachedCurrent) {
+        status[stage.id] = 'current';
+        reachedCurrent = true;
+      } else if (gateResult.satisfied) {
+        status[stage.id] = 'unlocked';
+      } else {
+        status[stage.id] = 'locked';
+      }
+    }
+
+    return status;
+  }, [previewMode, arc.stages, simulatedState]);
 
   // Update arc field
   const updateArc = (updates: Partial<RelationshipProgressionArc>) => {
@@ -110,6 +137,11 @@ export function ProgressionArcEditor({
 
   // Get stage status
   const getStageStatus = (stageId: string): 'completed' | 'current' | 'unlocked' | 'locked' => {
+    // Use preview status if in preview mode
+    if (previewMode && previewStageStatus[stageId]) {
+      return previewStageStatus[stageId];
+    }
+    // Otherwise use provided state
     if (!state) return 'locked';
     if (state.completedStages.includes(stageId)) return 'completed';
     if (state.currentStageId === stageId) return 'current';
@@ -147,6 +179,16 @@ export function ProgressionArcEditor({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPreviewMode(!previewMode)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-all ${
+                previewMode
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                  : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+              }`}
+            >
+              {previewMode ? '👁️ Preview Mode' : '👁️ Preview'}
+            </button>
             <button
               onClick={() => setShowValidation(!showValidation)}
               className={`px-3 py-1 rounded text-sm font-medium ${
@@ -203,6 +245,31 @@ export function ProgressionArcEditor({
           </div>
         )}
       </div>
+
+      {/* Preview Panel */}
+      {previewMode && (
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+          <div className="max-w-md">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-300">
+                Simulate Progression
+              </h4>
+              <button
+                onClick={() => setPreviewMode(false)}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Exit Preview
+              </button>
+            </div>
+            <RelationshipStateEditor
+              state={simulatedState}
+              onChange={setSimulatedState}
+              readOnly={false}
+              showPresets={true}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">

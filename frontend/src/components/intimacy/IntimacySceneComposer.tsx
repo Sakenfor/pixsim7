@@ -20,6 +20,9 @@ import type {
 import { RelationshipGateVisualizer, RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateIntimacyScene } from '../../lib/intimacy/validation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';
+import { RelationshipStateEditor } from './RelationshipStateEditor';
+import { GatePreviewPanel } from './GatePreviewPanel';
+import { createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface IntimacySceneComposerProps {
   /** Current scene configuration */
@@ -77,6 +80,7 @@ export function IntimacySceneComposer({
 }: IntimacySceneComposerProps) {
   const [activeTab, setActiveTab] = useState<'basic' | 'gates' | 'generation' | 'validation'>('basic');
   const [expandedGateId, setExpandedGateId] = useState<string | null>(null);
+  const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
   // Validate scene
   const validation = validateIntimacyScene(scene, worldMaxRating, userMaxRating);
@@ -375,32 +379,70 @@ export function IntimacySceneComposer({
         )}
 
         {activeTab === 'generation' && (
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
-                Dynamic Generation
-              </h3>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Configure AI-powered content generation with relationship context
-              </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left: State Editor */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                  Simulate Relationship State
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Adjust metrics to preview how gates will behave in different scenarios
+                </p>
+              </div>
+
+              <RelationshipStateEditor
+                state={simulatedState}
+                onChange={setSimulatedState}
+                readOnly={false}
+                showPresets={true}
+              />
+
+              {scene.socialContext && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
+                    Social Context (For Generation)
+                  </h4>
+                  <SocialContextPanel
+                    socialContext={scene.socialContext}
+                    readOnly={readOnly}
+                    onConfigure={() => {
+                      // TODO: Open social context configuration dialog
+                      console.log('Configure social context');
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
-            {scene.socialContext && (
-              <SocialContextPanel
-                socialContext={scene.socialContext}
-                readOnly={readOnly}
-                onConfigure={() => {
-                  // TODO: Open social context configuration dialog
-                  console.log('Configure social context');
-                }}
-              />
-            )}
+            {/* Right: Gate Preview */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
+                  Gate Preview
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  See which gates are satisfied with the current simulated state
+                </p>
+              </div>
 
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
-              <p className="text-sm text-blue-900 dark:text-blue-300">
-                💡 Generation integration coming in next phase. Social context will automatically
-                be derived from relationship state and gates.
-              </p>
+              {scene.gates.length === 0 ? (
+                <div className="p-6 border-2 border-dashed dark:border-neutral-700 rounded-lg text-center text-neutral-500 dark:text-neutral-400">
+                  <div className="text-3xl mb-2">🚪</div>
+                  <p className="text-sm">No gates configured</p>
+                  <p className="text-xs mt-1">Add gates in the Gates tab to preview them here</p>
+                </div>
+              ) : (
+                <GatePreviewPanel
+                  gates={scene.gates}
+                  simulatedState={simulatedState}
+                  expandByDefault={false}
+                  onGateClick={(gateId) => {
+                    // Could switch to gates tab and highlight this gate
+                    console.log('Gate clicked:', gateId);
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
