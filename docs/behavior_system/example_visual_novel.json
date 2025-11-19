@@ -1,0 +1,472 @@
+{
+  "description": "Example behavior config for a visual novel / romance game",
+  "version": 1,
+  "activityCategories": {
+    "romantic": {
+      "id": "romantic",
+      "label": "Romantic",
+      "icon": "💕",
+      "defaultWeight": 0.8,
+      "description": "Romance-focused activities"
+    },
+    "social": {
+      "id": "social",
+      "label": "Social",
+      "icon": "👥",
+      "defaultWeight": 0.7,
+      "description": "Casual social activities"
+    },
+    "story": {
+      "id": "story",
+      "label": "Story",
+      "icon": "📖",
+      "defaultWeight": 0.9,
+      "description": "Main story progression activities"
+    },
+    "intimate": {
+      "id": "intimate",
+      "label": "Intimate",
+      "icon": "🔥",
+      "defaultWeight": 0.6,
+      "description": "Intimate moments"
+    }
+  },
+  "activities": {
+    "activity:coffee_date": {
+      "version": 1,
+      "id": "activity:coffee_date",
+      "name": "Coffee Date",
+      "category": "romantic",
+      "requirements": {
+        "requiredNpcRolesOrIds": ["role:love_interest"],
+        "conditions": [
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "affinity",
+            "threshold": 20
+          }
+        ]
+      },
+      "effects": {
+        "moodImpact": {
+          "valence": 20,
+          "arousal": 10
+        },
+        "relationshipChanges": {
+          "role:love_interest": {
+            "affinity": 5,
+            "chemistry": 3,
+            "trust": 2
+          }
+        }
+      },
+      "visual": {
+        "sceneIntent": "cafe_date",
+        "dialogueContext": "romantic_casual",
+        "icon": "☕"
+      },
+      "minDurationSeconds": 1800,
+      "priority": 1.5
+    },
+    "activity:deep_conversation": {
+      "version": 1,
+      "id": "activity:deep_conversation",
+      "name": "Deep Conversation",
+      "category": "romantic",
+      "requirements": {
+        "requiredNpcRolesOrIds": ["role:love_interest"],
+        "moodTags": ["calm", "tender"],
+        "conditions": [
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "affinity",
+            "threshold": 40
+          },
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "trust",
+            "threshold": 30
+          }
+        ]
+      },
+      "effects": {
+        "moodImpact": {
+          "valence": 15,
+          "arousal": 5
+        },
+        "relationshipChanges": {
+          "role:love_interest": {
+            "affinity": 8,
+            "trust": 10,
+            "chemistry": 2
+          }
+        },
+        "flagsSet": {
+          "arc.romance_deepening.unlocked": true
+        }
+      },
+      "visual": {
+        "sceneIntent": "heart_to_heart",
+        "dialogueContext": "deep_talk",
+        "icon": "💬"
+      },
+      "minDurationSeconds": 2400,
+      "priority": 2.0
+    },
+    "activity:romantic_dinner": {
+      "version": 1,
+      "id": "activity:romantic_dinner",
+      "name": "Romantic Dinner",
+      "category": "romantic",
+      "requirements": {
+        "requiredNpcRolesOrIds": ["role:love_interest"],
+        "timeOfDay": ["evening"],
+        "conditions": [
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "affinity",
+            "threshold": 50
+          }
+        ]
+      },
+      "effects": {
+        "moodImpact": {
+          "valence": 25,
+          "arousal": 15
+        },
+        "relationshipChanges": {
+          "role:love_interest": {
+            "affinity": 10,
+            "chemistry": 8,
+            "trust": 3
+          }
+        }
+      },
+      "visual": {
+        "sceneIntent": "romantic_dinner",
+        "dialogueContext": "date_night",
+        "icon": "🍷"
+      },
+      "minDurationSeconds": 3600,
+      "cooldownSeconds": 86400,
+      "priority": 2.5
+    },
+    "activity:kiss": {
+      "version": 1,
+      "id": "activity:kiss",
+      "name": "Share a Kiss",
+      "category": "intimate",
+      "requirements": {
+        "requiredNpcRolesOrIds": ["role:love_interest"],
+        "moodTags": ["passionate", "tender"],
+        "conditions": [
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "affinity",
+            "threshold": 60
+          },
+          {
+            "type": "relationship_gt",
+            "npcIdOrRole": "role:love_interest",
+            "metric": "chemistry",
+            "threshold": 50
+          },
+          {
+            "type": "flag_equals",
+            "key": "intimacy_unlocked",
+            "value": true
+          }
+        ]
+      },
+      "effects": {
+        "moodImpact": {
+          "valence": 30,
+          "arousal": 25
+        },
+        "relationshipChanges": {
+          "role:love_interest": {
+            "affinity": 5,
+            "chemistry": 15,
+            "tension": -5
+          }
+        },
+        "flagsSet": {
+          "first_kiss": true
+        }
+      },
+      "visual": {
+        "sceneIntent": "first_kiss",
+        "dialogueContext": "intimate",
+        "icon": "💋"
+      },
+      "minDurationSeconds": 300,
+      "cooldownSeconds": 3600,
+      "priority": 3.0
+    },
+    "activity:group_hangout": {
+      "version": 1,
+      "id": "activity:group_hangout",
+      "name": "Group Hangout",
+      "category": "social",
+      "requirements": {
+        "requiredNpcRolesOrIds": ["role:friend"]
+      },
+      "effects": {
+        "moodImpact": {
+          "valence": 12,
+          "arousal": 8
+        },
+        "relationshipChanges": {
+          "role:friend": {
+            "affinity": 2,
+            "trust": 1
+          }
+        }
+      },
+      "visual": {
+        "sceneIntent": "group_scene",
+        "dialogueContext": "casual_friends",
+        "icon": "🎉"
+      },
+      "minDurationSeconds": 1800,
+      "priority": 0.8
+    },
+    "activity:story_event": {
+      "version": 1,
+      "id": "activity:story_event",
+      "name": "Story Event",
+      "category": "story",
+      "requirements": {
+        "conditions": [
+          {
+            "type": "flag_equals",
+            "key": "chapter",
+            "value": 3
+          }
+        ]
+      },
+      "effects": {
+        "flagsSet": {
+          "story.chapter3.completed": true,
+          "chapter": 4
+        }
+      },
+      "visual": {
+        "sceneIntent": "story_cutscene",
+        "icon": "🎬"
+      },
+      "minDurationSeconds": 600,
+      "priority": 5.0
+    }
+  },
+  "routines": {
+    "routine:love_interest_progression": {
+      "version": 1,
+      "id": "routine:love_interest_progression",
+      "name": "Love Interest Progression",
+      "nodes": [
+        {
+          "id": "early_romance",
+          "nodeType": "decision",
+          "decisionConditions": [
+            {
+              "type": "relationship_lt",
+              "npcIdOrRole": "role:love_interest",
+              "metric": "affinity",
+              "threshold": 40
+            }
+          ],
+          "preferredActivities": [
+            {
+              "activityId": "activity:coffee_date",
+              "weight": 1.5
+            },
+            {
+              "activityId": "activity:group_hangout",
+              "weight": 1.0
+            }
+          ],
+          "meta": {
+            "label": "Early Romance (Affinity < 40)",
+            "position": {
+              "x": 100,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "deepening_romance",
+          "nodeType": "decision",
+          "decisionConditions": [
+            {
+              "type": "relationship_gt",
+              "npcIdOrRole": "role:love_interest",
+              "metric": "affinity",
+              "threshold": 40
+            },
+            {
+              "type": "relationship_lt",
+              "npcIdOrRole": "role:love_interest",
+              "metric": "affinity",
+              "threshold": 70
+            }
+          ],
+          "preferredActivities": [
+            {
+              "activityId": "activity:deep_conversation",
+              "weight": 2.0
+            },
+            {
+              "activityId": "activity:romantic_dinner",
+              "weight": 1.8
+            },
+            {
+              "activityId": "activity:coffee_date",
+              "weight": 1.0
+            }
+          ],
+          "meta": {
+            "label": "Deepening Romance (40 <= Affinity < 70)",
+            "position": {
+              "x": 300,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "established_romance",
+          "nodeType": "decision",
+          "decisionConditions": [
+            {
+              "type": "relationship_gt",
+              "npcIdOrRole": "role:love_interest",
+              "metric": "affinity",
+              "threshold": 70
+            }
+          ],
+          "preferredActivities": [
+            {
+              "activityId": "activity:kiss",
+              "weight": 2.5
+            },
+            {
+              "activityId": "activity:romantic_dinner",
+              "weight": 2.0
+            },
+            {
+              "activityId": "activity:deep_conversation",
+              "weight": 1.5
+            }
+          ],
+          "meta": {
+            "label": "Established Romance (Affinity >= 70)",
+            "position": {
+              "x": 500,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "story_priority",
+          "nodeType": "decision",
+          "decisionConditions": [
+            {
+              "type": "flag_exists",
+              "key": "story.active_event"
+            }
+          ],
+          "preferredActivities": [
+            {
+              "activityId": "activity:story_event",
+              "weight": 5.0
+            }
+          ],
+          "meta": {
+            "label": "Story Priority (Active Event)",
+            "position": {
+              "x": 300,
+              "y": 300
+            }
+          }
+        }
+      ],
+      "edges": [],
+      "defaultPreferences": {
+        "categoryWeights": {
+          "romantic": 0.95,
+          "social": 0.6,
+          "story": 1.0,
+          "intimate": 0.7
+        }
+      },
+      "meta": {
+        "description": "Progression-based routine for love interests",
+        "tags": ["romance", "progression"]
+      }
+    }
+  },
+  "scoringConfig": {
+    "version": 1,
+    "weights": {
+      "baseWeight": 1.0,
+      "activityPreference": 0.7,
+      "categoryPreference": 0.6,
+      "traitModifier": 0.4,
+      "moodCompatibility": 0.9,
+      "relationshipBonus": 1.5,
+      "urgency": 0.8,
+      "inertia": 0.2
+    },
+    "meta": {
+      "description": "Romance-heavy scoring (relationships matter most)"
+    }
+  },
+  "simulationConfig": {
+    "version": 1,
+    "tiers": [
+      {
+        "id": "active_scene",
+        "tickFrequencySeconds": 1,
+        "detailLevel": "full"
+      },
+      {
+        "id": "recent_interaction",
+        "tickFrequencySeconds": 300,
+        "detailLevel": "simplified"
+      },
+      {
+        "id": "background",
+        "tickFrequencySeconds": 3600,
+        "detailLevel": "schedule_only"
+      }
+    ],
+    "priorityRules": [
+      {
+        "condition": {
+          "type": "flag_exists",
+          "key": "current_scene_npcs"
+        },
+        "tier": "active_scene",
+        "priority": 100
+      },
+      {
+        "condition": {
+          "type": "custom",
+          "evaluatorId": "evaluator:interacted_recently",
+          "params": {
+            "withinMinutes": 30
+          }
+        },
+        "tier": "recent_interaction",
+        "priority": 50
+      }
+    ],
+    "defaultTier": "background",
+    "maxNpcsPerTick": 20
+  }
+}
