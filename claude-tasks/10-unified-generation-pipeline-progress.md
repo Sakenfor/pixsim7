@@ -1,0 +1,207 @@
+# Unified Generation Pipeline - Implementation Progress
+
+**Date**: 2025-11-19
+**Task**: claude-tasks/10-unified-generation-pipeline-and-dev-tools.md
+**Phases Completed**: 1-3
+
+---
+
+## ✅ Phase 1 - Unified Generation Model Migration (COMPLETE)
+
+### Summary
+The migration from Job + GenerationArtifact to the unified `Generation` model is **fully complete**.
+
+### Key Findings
+
+**✅ Unified Generation Model**
+- Location: `pixsim7_backend/domain/generation.py:26`
+- Includes all required fields: `prompt_version_id`, `prompt_config`, `prompt_source_type`
+- Hash computation for reproducibility: `Generation.compute_hash()`
+- Status tracking via `JobStatus` enum (can be renamed to `GenerationStatus` later)
+
+**✅ Database Migrations**
+- `20251117_unify_generation_model.py` - Creates `generations` table
+- Drops old `jobs` and `generation_artifacts` tables
+- Updates all foreign keys:
+  - `provider_submissions.generation_id`
+  - `assets.source_generation_id`
+  - `prompt_variant_feedback.generation_id`
+- `20251118_1010_add_generation_prompt_config.py` - Adds `prompt_config` and `prompt_source_type` fields
+
+**✅ Service Layer**
+- `GenerationService` (`pixsim7_backend/services/generation/generation_service.py:32`) is active and used
+- API endpoints use `GenerationService` via backward-compatible `JobSvc` alias
+- No active usage of legacy `JobService`
+
+**⚠️ Legacy Code (Identified for Future Removal)**
+- `pixsim7_backend/services/job/job_service.py` - Not imported or used
+- Backward compatibility aliases in `domain/__init__.py:36`:
+  ```python
+  Job = Generation  # Alias
+  GenerationArtifact = Generation  # Alias
+  ```
+
+---
+
+## ✅ Phase 2 - Frontend Generation Nodes Integration (COMPLETE)
+
+### Summary
+Created complete unified generation API with structured `GenerationNodeConfig` support.
+
+### Implementation
+
+**✅ New API Endpoint**
+- File: `pixsim7_backend/api/v1/generations.py`
+- Routes:
+  - `POST /api/v1/generations` - Create generation from GenerationNodeConfig
+  - `GET /api/v1/generations/{id}` - Get generation details
+  - `GET /api/v1/generations` - List with filters (workspace, status, operation_type)
+  - `POST /api/v1/generations/{id}/cancel` - Cancel generation
+  - `POST /api/v1/generations/validate` - Validate config without creating
+
+**✅ Request/Response Schemas**
+- File: `pixsim7_backend/shared/schemas/generation_schemas.py`
+- Schemas:
+  - `CreateGenerationRequest` - Full generation config with social context
+  - `GenerationResponse` - Complete generation state
+  - `GenerationNodeConfigSchema` - Mirrors frontend `GenerationNodeConfig`
+  - `SceneRefSchema`, `PlayerContextSnapshotSchema`, `DurationRuleSchema`, etc.
+
+**✅ Route Plugin**
+- Directory: `pixsim7_backend/routes/generations/`
+- Auto-discovered by plugin system during app startup
+- Registered at `/api/v1` prefix
+
+**✅ Frontend Types**
+- Location: `packages/types/src/generation.ts`
+- Types: `GenerationNodeConfig`, `GenerateContentRequest`, `GenerateContentResponse`
+- UI Component: `frontend/src/components/inspector/GenerationNodeEditor.tsx`
+
+**✅ Features**
+- Structured generation config (strategy, style, constraints, duration, fallback)
+- Validation endpoint for editor-time checks
+- Social context integration (ready for Phase 4)
+- Prompt versioning support (template_id, prompt_version_id)
+
+---
+
+## ✅ Phase 3 - Prompt Versioning & prompt_config Integration (COMPLETE)
+
+### Summary
+Implemented comprehensive prompt resolution from structured `prompt_config`.
+
+### Implementation
+
+**✅ New Method: `_resolve_prompt_config()`**
+- Location: `pixsim7_backend/services/generation/generation_service.py:314`
+- Supports:
+  1. **Direct Version ID** - `{ "versionId": "uuid" }`
+  2. **Family ID with Auto-Select** - `{ "familyId": "uuid", "autoSelectLatest": true }`
+  3. **Variable Substitution** - `{ "variables": {...} }`
+  4. **Inline Prompts** (deprecated) - `{ "inlinePrompt": "..." }`
+
+**✅ Resolution Logic**
+```python
+async def _resolve_prompt_config(
+    self,
+    prompt_config: Dict[str, Any]
+) -> tuple[Optional[str], Optional[UUID], str]:
+    """
+    Returns: (final_prompt, prompt_version_id, source_type)
+    source_type: "versioned", "inline", "unknown"
+    """
+```
+
+**✅ Variable Substitution**
+- Method: `_substitute_variables(prompt_text, variables)`
+- Replaces `{{variable_name}}` placeholders with values from variables dict
+- Simple string substitution (can be enhanced with formatters later)
+
+**✅ Auto-Select Latest Version**
+- Queries `PromptVersion` table ordered by `version_number DESC`
+- Logs selected version for audit trail
+- Returns latest version from specified family
+
+**✅ Backward Compatibility**
+- Legacy `_resolve_prompt(prompt_version_id, params)` method retained
+- Marked as LEGACY with documentation pointing to new method
+- Supports existing code while transitioning to structured config
+
+---
+
+## 📋 Files Created/Modified
+
+### New Files
+1. `pixsim7_backend/api/v1/generations.py` - Generations API
+2. `pixsim7_backend/shared/schemas/generation_schemas.py` - Request/Response schemas
+3. `pixsim7_backend/routes/generations/__init__.py` - Route plugin init
+4. `pixsim7_backend/routes/generations/manifest.py` - Route plugin manifest
+
+### Modified Files
+1. `pixsim7_backend/api/v1/__init__.py` - Added generations import
+2. `pixsim7_backend/services/generation/generation_service.py` - Added prompt_config resolution
+
+---
+
+## 🎯 Next Steps - Remaining Phases
+
+### Phase 4 - Social Context & Intimacy Integration
+- Thread `GenerationSocialContext` from Task 09
+- Attach relationship/intimacy context to generation requests
+- Persist in `canonical_params` or dedicated field
+
+### Phase 5 - Validation & Health Panel
+- Implement validation rules from `DYNAMIC_GENERATION_FOUNDATION.md`
+- Duration constraints, fallback validation
+- Strategy viability warnings
+- Node health UI badges
+
+### Phase 6 - Caching & Determinism
+- Finalize `compute_hash()` for cache keys
+- Implement Redis cache layer
+- Seed strategy enforcement (`playthrough`, `player`, `fixed`, `timestamp`)
+
+### Phase 7 - Telemetry
+- Cost tracking (tokens, compute)
+- Latency metrics (p95, p99)
+- Provider health monitoring
+
+### Phase 8 - Safety & Content Rating
+- Enforce world/user content rating constraints
+- Clamp or reject violating requests
+- Log violations for dev tools
+
+### Phase 9 - Regression Harness
+- Test fixtures for GenerationNodeConfigs
+- Assert canonical parameters
+- Hash-based change detection
+
+### Phase 10 - Developer Tools & App Map
+- Generation dev panel with drill-down
+- List recent generations
+- Link Generation Nodes → Generation records
+
+---
+
+## 🔍 Technical Debt & Future Work
+
+1. **Rename JobStatus → GenerationStatus** - Consider renaming for clarity
+2. **Remove Legacy Code**:
+   - `pixsim7_backend/services/job/job_service.py`
+   - Backward compatibility aliases in `domain/__init__.py`
+3. **Enhanced Variable Substitution** - Add formatters, type coercion
+4. **Parameter Mappers** - Complete canonicalization with provider-specific mappers
+5. **Prompt Caching** - Cache resolved prompts to reduce DB queries
+
+---
+
+## ✨ Summary
+
+**Phases 1-3 are complete and functional.** The unified generation pipeline now has:
+- ✅ Unified `Generation` model with database migrations
+- ✅ Complete REST API for generation management
+- ✅ Structured prompt versioning with auto-select and variable substitution
+- ✅ Frontend types and UI components for Generation Nodes
+- ✅ Validation endpoint for editor-time feedback
+
+The foundation is solid for implementing Phases 4-10, which will add social context, validation, caching, telemetry, safety, testing, and developer tools.
