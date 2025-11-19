@@ -68,6 +68,18 @@ import { LocationPresenceMap } from '../components/simulation/LocationPresenceMa
 import { TimelineScrubber } from '../components/simulation/TimelineScrubber';
 import { ScenarioComparison } from '../components/simulation/ScenarioComparison';
 import { WorldStateOverview } from '../components/simulation/WorldStateOverview';
+import { MultiRunComparison } from '../components/simulation/MultiRunComparison';
+import { ConstraintRunner } from '../components/simulation/ConstraintRunner';
+import { SimulationPluginsPanel } from '../components/simulation/SimulationPluginsPanel';
+import { ExportImportPanel } from '../components/simulation/ExportImportPanel';
+import {
+  loadSavedRuns,
+  saveSimulationRun,
+  deleteSavedRun,
+  type SavedSimulationRun,
+} from '../lib/simulation/multiRunStorage';
+import type { ConstraintEvaluationContext } from '../lib/simulation/constraints';
+import { registerExamplePlugins, unregisterExamplePlugins } from '../lib/simulation/hooks';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -113,9 +125,29 @@ export function SimulationPlayground() {
   const [comparisonScenario1, setComparisonScenario1] = useState<string | null>(null);
   const [comparisonScenario2, setComparisonScenario2] = useState<string | null>(null);
 
+  // Phase 6: Multi-run comparison
+  const [savedRuns, setSavedRuns] = useState<SavedSimulationRun[]>([]);
+  const [showMultiRunComparison, setShowMultiRunComparison] = useState(false);
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [isCreatingRun, setIsCreatingRun] = useState(false);
+  const [newRunName, setNewRunName] = useState('');
+  const [newRunDescription, setNewRunDescription] = useState('');
+
+  // Phase 7: Constraint-driven simulation
+  const [showConstraintRunner, setShowConstraintRunner] = useState(false);
+  const [isConstraintRunning, setIsConstraintRunning] = useState(false);
+
+  // Phase 8: Plugin management
+  const [showPluginsPanel, setShowPluginsPanel] = useState(false);
+  const [plugins, setPlugins] = useState<any[]>([]);
+
+  // Phase 9: Export/Import
+  const [showExportImport, setShowExportImport] = useState(false);
+
   // Register simulation hooks on mount
   useEffect(() => {
     registerBuiltinHooks();
+    registerExamplePlugins(); // Phase 8: Register example plugins
 
     // Load or create simulation history
     const savedHistory = loadHistory();
@@ -125,8 +157,12 @@ export function SimulationPlayground() {
       setSimulationHistory(createHistory(null, null));
     }
 
+    // Phase 8: Load initial plugins
+    setPlugins(simulationHooksRegistry.getPlugins());
+
     return () => {
       unregisterBuiltinHooks();
+      unregisterExamplePlugins(); // Phase 8: Cleanup
     };
   }, []);
 
@@ -143,6 +179,7 @@ export function SimulationPlayground() {
         setNpcs(npcList);
         setLocations(locationList);
         setScenarios(loadScenarios());
+        setSavedRuns(loadSavedRuns());
 
         // Auto-select first world if available
         if (worldList.length > 0 && !selectedWorldId) {
@@ -390,6 +427,66 @@ export function SimulationPlayground() {
     }
   };
 
+  // Phase 6: Save current simulation as a run
+  const handleSaveSimulationRun = () => {
+    if (!simulationHistory || !selectedWorldId || !worldDetail) {
+      setError('No simulation history to save');
+      return;
+    }
+
+    if (simulationHistory.snapshots.length === 0) {
+      setError('No snapshots in history. Run some simulation ticks first.');
+      return;
+    }
+
+    const run = saveSimulationRun(
+      newRunName || `Run ${savedRuns.length + 1}`,
+      selectedWorldId,
+      simulationHistory,
+      {
+        description: newRunDescription || undefined,
+        worldName: worldDetail.name,
+      }
+    );
+
+    setSavedRuns(loadSavedRuns());
+    setIsCreatingRun(false);
+    setNewRunName('');
+    setNewRunDescription('');
+  };
+
+  // Phase 6: Delete a saved run
+  const handleDeleteSavedRun = (runId: string) => {
+    if (confirm('Delete this simulation run?')) {
+      deleteSavedRun(runId);
+      setSavedRuns(loadSavedRuns());
+      setSelectedRunIds(selectedRunIds.filter((id) => id !== runId));
+    }
+  };
+
+  // Phase 6: Toggle run selection for comparison
+  const handleToggleRunSelection = (runId: string) => {
+    setSelectedRunIds((prev) => {
+      if (prev.includes(runId)) {
+        return prev.filter((id) => id !== runId);
+      } else {
+        return [...prev, runId];
+      }
+    });
+  };
+
+  // Phase 8: Toggle plugin enabled/disabled
+  const handleTogglePlugin = (pluginId: string, enabled: boolean) => {
+    simulationHooksRegistry.setPluginEnabled(pluginId, enabled);
+    setPlugins(simulationHooksRegistry.getPlugins());
+  };
+
+  // Phase 9: Handle import complete
+  const handleImportComplete = () => {
+    setScenarios(loadScenarios());
+    setSavedRuns(loadSavedRuns());
+  };
+
   // Parse world time for display
   const worldTimeComponents = parseWorldTime(worldTime);
   const worldTimeDisplay = formatWorldTime(worldTime);
@@ -450,6 +547,19 @@ export function SimulationPlayground() {
     [brainToolContext]
   );
 
+  // Phase 7: Build constraint evaluation context
+  const constraintContext = useMemo<ConstraintEvaluationContext>(
+    () => ({
+      worldTime,
+      worldDetail: worldDetail!,
+      sessionFlags: gameSession?.flags || {},
+      npcPresences,
+      tickCount: simulationHistory?.snapshots.length || 0,
+      snapshot: simulationHistory?.snapshots[simulationHistory.snapshots.length - 1],
+    }),
+    [worldTime, worldDetail, gameSession, npcPresences, simulationHistory]
+  );
+
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
       {/* Header */}
@@ -503,6 +613,36 @@ export function SimulationPlayground() {
             disabled={scenarios.length < 2}
           >
             🔄 Compare Scenarios
+          </Button>
+          <Button
+            size="sm"
+            variant={showMultiRunComparison ? 'primary' : 'secondary'}
+            onClick={() => setShowMultiRunComparison(!showMultiRunComparison)}
+            disabled={savedRuns.length === 0}
+          >
+            🔬 Multi-Run Comparison ({savedRuns.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={showConstraintRunner ? 'primary' : 'secondary'}
+            onClick={() => setShowConstraintRunner(!showConstraintRunner)}
+            disabled={!selectedWorldId}
+          >
+            🎯 Constraint Runner
+          </Button>
+          <Button
+            size="sm"
+            variant={showPluginsPanel ? 'primary' : 'secondary'}
+            onClick={() => setShowPluginsPanel(!showPluginsPanel)}
+          >
+            🔌 Plugins ({plugins.filter((p) => p.enabled).length}/{plugins.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={showExportImport ? 'primary' : 'secondary'}
+            onClick={() => setShowExportImport(!showExportImport)}
+          >
+            📦 Export/Import
           </Button>
         </div>
       </Panel>
@@ -586,6 +726,81 @@ export function SimulationPlayground() {
             scenario2={scenarios.find((s) => s.id === comparisonScenario2) || null}
           />
         </Panel>
+      )}
+
+      {/* Phase 6: Multi-Run Comparison */}
+      {showMultiRunComparison && savedRuns.length > 0 && (
+        <Panel className="p-4">
+          <h2 className="text-sm font-semibold mb-3">Multi-Run Comparison</h2>
+
+          {/* Run Selection */}
+          <div className="mb-4">
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+              Select runs to compare ({selectedRunIds.length} selected):
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {savedRuns.map((run) => (
+                <button
+                  key={run.id}
+                  onClick={() => handleToggleRunSelection(run.id)}
+                  className={`px-3 py-2 rounded border text-xs transition-colors ${
+                    selectedRunIds.includes(run.id)
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                  }`}
+                >
+                  <div className="font-semibold">{run.name}</div>
+                  <div className="text-[10px] opacity-80">
+                    {run.worldName || `World #${run.worldId}`} •{' '}
+                    {run.history.snapshots.length} snapshots
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Comparison View */}
+          {selectedRunIds.length > 0 && (
+            <MultiRunComparison
+              runs={savedRuns.filter((run) => selectedRunIds.includes(run.id))}
+              onRemoveRun={(runId) => {
+                setSelectedRunIds(selectedRunIds.filter((id) => id !== runId));
+              }}
+            />
+          )}
+
+          {selectedRunIds.length === 0 && (
+            <div className="text-xs text-neutral-500 text-center py-8">
+              Select at least one run to view comparison
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Phase 7: Constraint Runner */}
+      {showConstraintRunner && worldDetail && (
+        <ConstraintRunner
+          context={constraintContext}
+          onRunTick={async () => {
+            await handleAdvanceTime(tickSize);
+          }}
+          isRunning={isConstraintRunning}
+          onRunningChange={setIsConstraintRunning}
+        />
+      )}
+
+      {/* Phase 8: Plugins Panel */}
+      {showPluginsPanel && (
+        <SimulationPluginsPanel plugins={plugins} onTogglePlugin={handleTogglePlugin} />
+      )}
+
+      {/* Phase 9: Export/Import Panel */}
+      {showExportImport && (
+        <ExportImportPanel
+          scenarios={scenarios}
+          runs={savedRuns}
+          onImportComplete={handleImportComplete}
+        />
       )}
 
       {/* World Selection & Time Display */}
@@ -840,6 +1055,94 @@ export function SimulationPlayground() {
           )}
         </Panel>
       )}
+
+      {/* Phase 6: Saved Simulation Runs */}
+      <Panel className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Saved Simulation Runs</h2>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setIsCreatingRun(true)}
+            disabled={!simulationHistory || simulationHistory.snapshots.length === 0}
+          >
+            Save Current Run
+          </Button>
+        </div>
+
+        {isCreatingRun && (
+          <div className="p-3 border border-neutral-300 dark:border-neutral-700 rounded space-y-2">
+            <Input
+              placeholder="Run name"
+              value={newRunName}
+              onChange={(e) => setNewRunName(e.target.value)}
+              className="w-full"
+            />
+            <Input
+              placeholder="Description (optional)"
+              value={newRunDescription}
+              onChange={(e) => setNewRunDescription(e.target.value)}
+              className="w-full"
+            />
+            <div className="flex gap-2">
+              <Button size="sm" variant="primary" onClick={handleSaveSimulationRun}>
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setIsCreatingRun(false);
+                  setNewRunName('');
+                  setNewRunDescription('');
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {savedRuns.length === 0 && !isCreatingRun && (
+          <p className="text-xs text-neutral-500">
+            No saved runs yet. Run some simulation ticks and save your run for later comparison.
+          </p>
+        )}
+
+        {savedRuns.length > 0 && (
+          <div className="space-y-2">
+            {savedRuns.map((run) => (
+              <div
+                key={run.id}
+                className="p-3 rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold">{run.name}</div>
+                    {run.description && (
+                      <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                        {run.description}
+                      </div>
+                    )}
+                    <div className="text-xs text-neutral-500 mt-1">
+                      World: {run.worldName || `#${run.worldId}`} •{' '}
+                      {run.history.snapshots.length} snapshots •{' '}
+                      Saved {new Date(run.savedAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSavedRun(run.id)}
+                    className="text-red-500 hover:text-red-700 text-xs"
+                    title="Delete run"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
 
       {/* Scenario Management */}
       <Panel className="p-4 space-y-3">
