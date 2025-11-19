@@ -10,6 +10,12 @@ from .permissions import (
     PermissionDeniedError,
     PermissionDeniedBehavior,
 )
+from .behavior_registry import (
+    behavior_registry,
+    evaluate_condition,
+    apply_effect,
+    build_simulation_config,
+)
 
 __all__ = [
     # Core types
@@ -32,4 +38,10 @@ __all__ = [
     'PermissionGroup',
     'PermissionDeniedError',
     'PermissionDeniedBehavior',
+
+    # Behavior extensions (Phase 16.4)
+    'behavior_registry',
+    'evaluate_condition',
+    'apply_effect',
+    'build_simulation_config',
 ]

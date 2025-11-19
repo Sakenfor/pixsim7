@@ -409,7 +409,85 @@ Ensure that plugins extending the NPC behavior system (Task 13) can only do so v
 5. Wire simulation tier rules:
    - Allow plugins to *influence* `simulationConfig` (e.g. by generating default config), but require explicit permissions (e.g. `behavior:configure_simulation`).
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed
+
+### Implementation Summary
+
+**Files Created:**
+- `pixsim7_backend/infrastructure/plugins/behavior_registry.py` (~550 lines) - Global behavior extension registry
+- `pixsim7_backend/plugins/example_behavior_extension/manifest.py` - Example plugin with behavior extensions
+
+**Behavior Extension Registry:**
+
+**Core Components:**
+- **BehaviorExtensionRegistry** - Thread-safe global registry for behavior extensions
+  - Condition registry: `condition_id -> ConditionMetadata`
+  - Effect registry: `effect_id -> EffectMetadata`
+  - Simulation config registry: `provider_id -> SimulationConfigProvider`
+  - Lock mechanism to prevent runtime registration after startup
+
+**Metadata Classes:**
+- **ConditionMetadata** - Stores condition ID, plugin ID, evaluator function, description, required context
+- **EffectMetadata** - Stores effect ID, plugin ID, handler function, description, default params
+- **SimulationConfigProvider** - Stores provider ID, plugin ID, config function, priority
+
+**Helper Functions for Behavior System (Task 13):**
+- `evaluate_condition(condition_id, context, world_enabled_plugins)` - Evaluate registered condition
+  - Permission-checked (filters by world-enabled plugins)
+  - Error-isolated (failed conditions return False)
+  - Context validation (checks required_context keys)
+- `apply_effect(effect_id, context, params, world_enabled_plugins)` - Apply registered effect
+  - Permission-checked (filters by world-enabled plugins)
+  - Error-isolated (failed effects return None)
+  - Parameter merging (merges with default_params)
+- `build_simulation_config(base_config)` - Build config by merging provider outputs
+  - Priority-ordered (lower priority = earlier application)
+  - Error-isolated (failed providers skipped)
+
+**BehaviorExtensionAPI Updates:**
+- `register_condition_evaluator()` - Now uses global registry
+  - Auto-namespaces: `plugin:<plugin_id>:<name>`
+  - Requires `behavior:extend_conditions` permission
+  - Validates and registers in global registry
+- `register_effect_handler()` - Now uses global registry
+  - Auto-namespaces: `effect:plugin:<plugin_id>:<name>`
+  - Requires `behavior:extend_effects` permission
+  - Supports default_params
+- `register_simulation_config()` - NEW method
+  - Auto-namespaces: `plugin:<plugin_id>:<name>`
+  - Requires `behavior:configure_simulation` permission
+  - Priority-based merging (lower = higher priority)
+
+**Integration:**
+- Updated `main.py` to lock registry after plugin loading
+  - Registry locked = no more runtime registrations
+  - Logs statistics (conditions, effects, simulation configs)
+- Updated `__init__.py` to export behavior registry functions
+  - Task 13 implementation will import these helpers
+
+**Example Plugin:**
+Created `example_behavior_extension` demonstrating:
+- Custom conditions: `has_high_intimacy`, `is_player_disguised`
+- Custom effects: `mood_boost`, `relationship_impact`
+- Simulation config: `performance` (optimized settings)
+- Proper registration in `on_load` hook
+- Permission declarations in manifest
+
+**Key Features:**
+- ✅ Permission-gated registration (via BehaviorExtensionAPI)
+- ✅ Automatic namespacing (prevents ID conflicts)
+- ✅ Provenance tracking (all extensions tagged with plugin_id)
+- ✅ World-scoped filtering (plugins can be enabled per-world)
+- ✅ Error isolation (failed extensions don't crash behavior system)
+- ✅ Registry locking (prevents runtime tampering)
+
+**Integration with Task 13:**
+When Task 13 (NPC behavior system) is implemented, it will:
+1. Import `evaluate_condition()` and `apply_effect()` from plugins module
+2. Query registry for available conditions/effects
+3. Filter by world-enabled plugins
+4. Execute with error isolation
+5. Merge simulation configs at startup
 
 ---
 

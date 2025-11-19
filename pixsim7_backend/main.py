@@ -107,6 +107,18 @@ async def lifespan(app: FastAPI):
     await plugin_manager.enable_all()
     await routes_manager.enable_all()
 
+    # Lock behavior extension registry (Phase 16.4)
+    # After all plugins are loaded, prevent runtime registration
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+    behavior_registry.lock()
+    stats = behavior_registry.get_stats()
+    logger.info(
+        "Behavior extension registry locked",
+        conditions=stats['conditions']['total'],
+        effects=stats['effects']['total'],
+        simulation_configs=stats['simulation_configs']['total'],
+    )
+
     # Enable all middleware (call lifecycle hooks)
     # Note: Middleware was already registered before lifespan, this just calls hooks
     from pixsim7_backend.infrastructure.middleware.manager import middleware_manager
