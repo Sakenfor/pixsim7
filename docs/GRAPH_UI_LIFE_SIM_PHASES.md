@@ -33,7 +33,8 @@ Key existing references:
   - `frontend/src/modules/scene-builder/index.ts`
 - Game APIs & 2D playtest:
   - `frontend/src/lib/api/game.ts`
-  - `frontend/src/lib/game/interactionSchema.ts`
+  - `@pixsim7/game-core` (hotspot actions and playback helpers)
+  - `frontend/src/lib/game/interactionSchema.ts` (re-export shim)
   - `frontend/src/lib/game/session.ts`
   - `frontend/src/routes/GameWorld.tsx`
   - `frontend/src/routes/Game2D.tsx`
