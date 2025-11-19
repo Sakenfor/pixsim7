@@ -23,6 +23,8 @@ import { PluginWorkspaceRoute } from './routes/PluginWorkspace';
 import { SimulationPlayground } from './routes/SimulationPlayground';
 import { AppMapDev } from './routes/AppMapDev';
 import { TemplateAnalyticsDev } from './routes/TemplateAnalyticsDev';
+import { InteractionStudio } from './pages/InteractionStudio';
+import { InteractionComponentsDemo } from './pages/InteractionComponentsDemo';
 import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
 import { ControlCenterDock } from './components/control/ControlCenterDock';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
@@ -82,6 +84,8 @@ function App() {
           <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
           <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
           <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
+          <Route path="/interaction-studio" element={<ProtectedRoute><InteractionStudio /></ProtectedRoute>} />
+          <Route path="/interaction-demo" element={<ProtectedRoute><InteractionComponentsDemo /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
