@@ -11,9 +11,16 @@ import type {
   GenerateContentRequest,
   GenerateContentResponse,
   SceneRef,
+  GenerationValidationResult,
 } from '@pixsim7/types';
 import { useToast } from '@pixsim7/ui';
 import { useGraphStore } from '../../stores/graphStore';
+import {
+  validateGenerationNode,
+  getValidationStatus,
+  getValidationSummary,
+  type ValidationStatus,
+} from '@pixsim7/game-core/generation/validator';
 
 interface GenerationNodeEditorProps {
   node: DraftSceneNode;
@@ -59,8 +66,14 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<GenerateContentResponse | null>(null);
 
-  // Validation errors
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  // Validation state
+  const [validationResult, setValidationResult] = useState<GenerationValidationResult>({
+    errors: [],
+    warnings: [],
+    suggestions: [],
+  });
+  const [validationStatus, setValidationStatus] = useState<ValidationStatus>('ok');
+  const [showValidation, setShowValidation] = useState(false);
 
   // Load node data
   useEffect(() => {
@@ -106,72 +119,45 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
     }
   }, [node]);
 
-  // Validate configuration
-  function validateConfig(): string[] {
-    const errors: string[] = [];
+  // Run validation whenever configuration changes
+  useEffect(() => {
+    const config = buildConfig();
+    const result = validateGenerationNode(config, {
+      // TODO: Pass actual world and user prefs when available
+      world: undefined,
+      userPrefs: undefined,
+    });
 
-    // Validate duration ranges
-    const minDur = durationMin ? parseFloat(durationMin) : undefined;
-    const maxDur = durationMax ? parseFloat(durationMax) : undefined;
-    const targetDur = durationTarget ? parseFloat(durationTarget) : undefined;
+    setValidationResult(result);
+    setValidationStatus(getValidationStatus(result));
 
-    if (minDur !== undefined && maxDur !== undefined && minDur > maxDur) {
-      errors.push('Duration min cannot be greater than max');
+    // Auto-expand validation panel if there are errors
+    if (result.errors.length > 0) {
+      setShowValidation(true);
     }
-
-    if (targetDur !== undefined && minDur !== undefined && targetDur < minDur) {
-      errors.push('Duration target cannot be less than min');
-    }
-
-    if (targetDur !== undefined && maxDur !== undefined && targetDur > maxDur) {
-      errors.push('Duration target cannot be greater than max');
-    }
-
-    // Validate duration values are positive
-    if (minDur !== undefined && minDur < 0) {
-      errors.push('Duration min must be positive');
-    }
-    if (maxDur !== undefined && maxDur < 0) {
-      errors.push('Duration max must be positive');
-    }
-    if (targetDur !== undefined && targetDur < 0) {
-      errors.push('Duration target must be positive');
-    }
-
-    // Validate requiredElements vs avoidElements
-    const required = requiredElements
-      .split(',')
-      .map((e) => e.trim())
-      .filter(Boolean);
-    const avoid = avoidElements
-      .split(',')
-      .map((e) => e.trim())
-      .filter(Boolean);
-
-    const intersection = required.filter((e) => avoid.includes(e));
-    if (intersection.length > 0) {
-      errors.push(`Elements cannot be both required and avoided: ${intersection.join(', ')}`);
-    }
-
-    // Validate fallback completeness
-    if (fallbackMode === 'default_content' && !defaultContentId.trim()) {
-      errors.push('Default content ID is required when fallback mode is "default_content"');
-    }
-
-    if (fallbackMode === 'retry') {
-      const retries = maxRetries ? parseInt(maxRetries) : undefined;
-      if (retries === undefined || retries < 1) {
-        errors.push('Max retries must be at least 1 when fallback mode is "retry"');
-      }
-    }
-
-    const timeout = timeoutMs ? parseInt(timeoutMs) : undefined;
-    if (timeout !== undefined && timeout < 1000) {
-      errors.push('Timeout must be at least 1000ms');
-    }
-
-    return errors;
-  }
+  }, [
+    generationType,
+    purpose,
+    strategy,
+    seedSource,
+    enabled,
+    templateId,
+    moodFrom,
+    moodTo,
+    pacing,
+    transitionType,
+    durationMin,
+    durationMax,
+    durationTarget,
+    rating,
+    requiredElements,
+    avoidElements,
+    contentRules,
+    fallbackMode,
+    defaultContentId,
+    maxRetries,
+    timeoutMs,
+  ]);
 
   function buildConfig(): GenerationNodeConfig {
     const style: StyleRules = {
@@ -223,12 +209,10 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   }
 
   function handleApply() {
-    // Validate first
-    const errors = validateConfig();
-    setValidationErrors(errors);
-
-    if (errors.length > 0) {
-      toast.error(`Validation failed: ${errors[0]}`);
+    // Check validation
+    if (validationResult.errors.length > 0) {
+      toast.error(`Validation failed: ${validationResult.errors[0]}`);
+      setShowValidation(true);
       return;
     }
 
@@ -245,12 +229,10 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   }
 
   async function handleTestGeneration() {
-    // Validate first
-    const errors = validateConfig();
-    setValidationErrors(errors);
-
-    if (errors.length > 0) {
-      toast.error(`Cannot test: ${errors[0]}`);
+    // Check validation
+    if (validationResult.errors.length > 0) {
+      toast.error(`Cannot test: ${validationResult.errors[0]}`);
+      setShowValidation(true);
       return;
     }
 
@@ -338,17 +320,96 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
 
   return (
     <div className="space-y-4">
-      {/* Validation Errors */}
-      {validationErrors.length > 0 && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
-          <div className="text-sm font-semibold text-red-700 dark:text-red-300 mb-1">
-            Validation Errors:
-          </div>
-          <ul className="text-xs text-red-600 dark:text-red-400 list-disc list-inside">
-            {validationErrors.map((error, i) => (
-              <li key={i}>{error}</li>
-            ))}
-          </ul>
+      {/* Validation Status Badge */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span
+            className={`px-2 py-1 rounded text-xs font-semibold ${
+              validationStatus === 'error'
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                : validationStatus === 'warning'
+                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+            }`}
+          >
+            {validationStatus === 'error' && '❌ Has Errors'}
+            {validationStatus === 'warning' && '⚠️ Has Warnings'}
+            {validationStatus === 'ok' && '✅ Valid'}
+          </span>
+          <span className="text-xs text-neutral-500">
+            {getValidationSummary(validationResult)}
+          </span>
+        </div>
+        <button
+          onClick={() => setShowValidation(!showValidation)}
+          className="text-xs text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+        >
+          {showValidation ? '▼ Hide Details' : '▶ Show Details'}
+        </button>
+      </div>
+
+      {/* Validation Details Panel */}
+      {showValidation && (
+        <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded space-y-3">
+          {/* Errors */}
+          {validationResult.errors.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-red-700 dark:text-red-300 mb-1.5">
+                ❌ Errors ({validationResult.errors.length})
+              </div>
+              <ul className="text-xs text-red-600 dark:text-red-400 space-y-1">
+                {validationResult.errors.map((error, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5">•</span>
+                    <span>{error}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Warnings */}
+          {validationResult.warnings.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-yellow-700 dark:text-yellow-300 mb-1.5">
+                ⚠️ Warnings ({validationResult.warnings.length})
+              </div>
+              <ul className="text-xs text-yellow-600 dark:text-yellow-400 space-y-1">
+                {validationResult.warnings.map((warning, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5">•</span>
+                    <span>{warning}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Suggestions */}
+          {validationResult.suggestions.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1.5">
+                💡 Suggestions ({validationResult.suggestions.length})
+              </div>
+              <ul className="text-xs text-blue-600 dark:text-blue-400 space-y-1">
+                {validationResult.suggestions.map((suggestion, i) => (
+                  <li key={i} className="flex items-start gap-1">
+                    <span className="mt-0.5">•</span>
+                    <span>{suggestion}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* All clear message */}
+          {validationResult.errors.length === 0 &&
+            validationResult.warnings.length === 0 &&
+            validationResult.suggestions.length === 0 && (
+              <div className="text-xs text-green-600 dark:text-green-400 text-center py-2">
+                ✅ All validation checks passed
+              </div>
+            )}
         </div>
       )}
 
