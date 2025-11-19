@@ -97,15 +97,25 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Integrated into IntimacySceneComposer (Generation tab)
   - Documentation updated in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 3 section)
 
-- [ ] **Phase 9 – Templates & Preset Library**
+- [x] **Phase 9 – Save/Load & State Persistence** ✓
+  - Save/load utilities for scenes and arcs (`frontend/src/lib/intimacy/saveLoad.ts`)
+  - JSON export/import with metadata
+  - Local storage persistence
+  - Simulated state save/load
+  - SaveLoadControls components (`frontend/src/components/intimacy/SaveLoadControls.tsx`)
+  - Integration in IntimacySceneComposer (Save/Load tab)
+  - Integration in ProgressionArcEditor (Save/Load modal)
+  - Documentation in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 4 section)
+
+- [ ] **Phase 10 – Templates & Preset Library**
   - Common scene templates
   - Preset progression arcs
   - Template browser and import
 
-- [ ] **Phase 10 – Playtesting Tools & Analytics**
+- [ ] **Phase 11 – Playtesting Tools & Analytics**
   - Simulation integration
   - Progression analytics
-  - Export/import progression packs
+  - Advanced analytics dashboards
 
 ---
 

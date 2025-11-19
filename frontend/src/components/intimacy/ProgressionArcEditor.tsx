@@ -19,6 +19,7 @@ import type {
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '../../lib/intimacy/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
+import { ArcSaveLoadControls } from './SaveLoadControls';
 import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface ProgressionArcEditorProps {
@@ -63,6 +64,7 @@ export function ProgressionArcEditor({
 }: ProgressionArcEditorProps) {
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [showSaveLoad, setShowSaveLoad] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
@@ -179,6 +181,12 @@ export function ProgressionArcEditor({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSaveLoad(true)}
+              className="px-3 py-1 rounded text-sm font-medium bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+            >
+              💾 Save/Load
+            </button>
             <button
               onClick={() => setPreviewMode(!previewMode)}
               className={`px-3 py-1 rounded text-sm font-medium transition-all ${
@@ -542,6 +550,40 @@ export function ProgressionArcEditor({
               >
                 Close
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Save/Load Modal */}
+        {showSaveLoad && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-neutral-800 rounded-lg p-6 max-w-md w-full">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                  Save & Load Arc
+                </h3>
+                <button
+                  onClick={() => setShowSaveLoad(false)}
+                  className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 text-xl"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Save this progression arc to a file or browser storage for reuse.
+                </p>
+
+                <ArcSaveLoadControls
+                  arc={arc}
+                  onLoad={(loadedArc) => {
+                    onChange(loadedArc);
+                    setShowSaveLoad(false);
+                  }}
+                  disabled={readOnly}
+                />
+              </div>
             </div>
           </div>
         )}
