@@ -19,7 +19,7 @@ Below are 10 phases for killing the TS fallback logic and introducing a reusable
 - [x] **Phase 1 – Audit Current Relationship Computation & Call Sites** ✅ *2025-11-19*
 - [x] **Phase 2 – Design Preview API & Metric Abstraction** ✅ *2025-11-19*
 - [x] **Phase 3 – Implement Backend Relationship Preview Endpoint(s)** ✅ *2025-11-19*
-- [ ] **Phase 4 – Add Game-Core TS Wrappers & Types**
+- [x] **Phase 4 – Add Game-Core TS Wrappers & Types** ✅ *2025-11-19*
 - [ ] **Phase 5 – Migrate Editor/Tooling to Preview API**
 - [ ] **Phase 6 – Remove TS Fallback Logic for Relationships**
 - [ ] **Phase 7 – Generalize Metric System for Future Social/Sim Derivations**
@@ -685,6 +685,95 @@ Expose typed preview helpers in game-core that call the backend API, replacing l
    ```
 3. Wire these through the game-core public API (`packages/game-core/src/index.ts`).
 4. Mark existing TS functions `compute_relationship_tier` / `compute_intimacy_level` as deprecated in JSDoc and ensure they are no longer used by new code.
+
+---
+
+**Phase 4 Implementation Summary** ✅ *Completed 2025-11-19*
+
+**Files Created/Modified:**
+
+1. **Types Package** (`packages/types/src/game.ts`)
+   - Added `RelationshipTierPreviewRequest` interface
+   - Added `RelationshipTierPreviewResponse` interface
+   - Added `RelationshipValues` interface
+   - Added `RelationshipIntimacyPreviewRequest` interface
+   - Added `RelationshipIntimacyPreviewResponse` interface
+
+2. **Game-Core Preview Module** (`packages/game-core/src/relationships/preview.ts`)
+   - `previewRelationshipTier()` - Async function to call tier preview API
+   - `previewIntimacyLevel()` - Async function to call intimacy preview API
+   - `configurePreviewApi()` - Configure base URL and fetch function
+   - `resetPreviewApiConfig()` - Reset to default configuration
+   - `getPreviewApiConfig()` - Get current configuration (for testing)
+   - Full JSDoc documentation with examples
+   - Configurable fetch and base URL for testing/flexibility
+
+3. **Deprecation Markers** (`packages/game-core/src/relationships/computation.ts`)
+   - Added `@deprecated` JSDoc tags to `compute_relationship_tier()`
+   - Added `@deprecated` JSDoc tags to `compute_intimacy_level()`
+   - Updated documentation to point users to preview API
+   - Noted that functions only support hardcoded defaults, not world schemas
+
+4. **Game-Core Exports** (`packages/game-core/src/index.ts`)
+   - Added exports for preview functions
+   - Added exports for configuration functions
+   - Clearly marked deprecated functions vs. recommended preview API
+
+5. **Tests** (`packages/game-core/src/relationships/__tests__/preview.test.ts`)
+   - Unit tests for `previewRelationshipTier()`
+   - Unit tests for `previewIntimacyLevel()`
+   - Tests for API configuration
+   - Tests for error handling
+   - Mock fetch for isolated testing
+
+**Implementation Details:**
+
+- **Preview API Client**:
+  - Uses native `fetch` API for HTTP calls
+  - Configurable base URL (defaults to `/api/v1`)
+  - Custom fetch function support for testing/mocking
+  - Proper error handling with helpful messages
+  - Converts snake_case backend responses to camelCase TypeScript
+  - Type-safe with full TypeScript interfaces
+
+- **Deprecation Strategy**:
+  - Existing functions kept for backward compatibility
+  - Clear deprecation warnings guide migration
+  - Functions will be removed in Phase 6
+
+- **Type Safety**:
+  - All request/response types defined in `@pixsim7/types`
+  - Shared between frontend and game-core
+  - Matches backend API contracts exactly
+
+**Verification:**
+
+The implementation:
+- ✅ Exposes typed preview helpers that call backend API
+- ✅ Adds comprehensive types to `@pixsim7/types`
+- ✅ Wires preview functions through game-core public API
+- ✅ Marks deprecated functions with `@deprecated` JSDoc
+- ✅ Provides configuration for testing and flexibility
+- ✅ Includes comprehensive unit tests
+
+**Migration Path:**
+
+Before (deprecated):
+```ts
+import { compute_relationship_tier } from '@pixsim7/game-core';
+const tier = compute_relationship_tier(75.0); // Only uses hardcoded defaults!
+```
+
+After (recommended):
+```ts
+import { previewRelationshipTier } from '@pixsim7/game-core';
+const preview = await previewRelationshipTier({
+  worldId: 1,
+  affinity: 75.0,
+  schemaKey: 'default'
+});
+console.log(preview.tierId); // Uses world-specific schemas!
+```
 
 ---
 
