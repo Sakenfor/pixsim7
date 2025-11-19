@@ -16,7 +16,7 @@ Below are 10 phases for evolving the interaction preset system.
 - [x] **Phase 3 – Hotspot Editor Integration**
 - [x] **Phase 4 – Per‑World Presets & Categorization**
 - [x] **Phase 5 – Usage Summary (Dev‑Only)**
-- [ ] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries**
+- [x] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries** *(Completed 2025-11-19)*
 - [ ] **Phase 7 – Outcome‑Aware Presets & Success Metrics**
 - [ ] **Phase 8 – Context‑Aware Preset Suggestions**
 - [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
@@ -140,9 +140,9 @@ Give designers a rough sense of which presets are actually used during playtests
 
 ---
 
-### Phase 6 – Cross‑World / Cross‑Project Preset Libraries
+### Phase 6 – Cross‑World / Cross‑Project Preset Libraries ✅
 
-**Goal**  
+**Goal**
 Allow teams to share interaction presets across worlds and projects via import/export and simple library management.
 
 **Scope**
@@ -151,8 +151,58 @@ Allow teams to share interaction presets across worlds and projects via import/e
 **Key Steps**
 1. Define a stable JSON format for `InteractionPreset` collections (with optional scope metadata).
 2. Add helpers to export selected presets to a `.json` file and import them into another project.
-3. Extend `InteractionPresetEditor` with “Export” / “Import” controls and basic validation.
+3. Extend `InteractionPresetEditor` with "Export" / "Import" controls and basic validation.
 4. Document how to handle ID collisions (rename or generate new IDs).
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added Phase 6 export/import functions
+- `frontend/src/components/game/InteractionPresetEditor.tsx` - Added import/export UI
+
+**Features Implemented:**
+
+1. **Library Format** (`PresetLibrary` type):
+   - Version field for compatibility checking (currently v1.0)
+   - Metadata: exportDate, description, source, author
+   - Preset array
+
+2. **Export Functions**:
+   - `exportPresetsToLibrary()` - Creates library object with metadata
+   - `downloadPresetsAsJSON()` - Downloads presets as JSON file
+   - Export All button (respects scope filter: all/global/world)
+   - Export Selected button for single preset export
+   - Automatic filename generation with timestamp
+
+3. **Import Functions**:
+   - `validatePresetLibrary()` - Validates library format and version compatibility
+   - `parsePresetLibrary()` - Parses JSON string to library object
+   - `importPresetsFromFile()` - Imports from File object
+   - `importPresetsFromLibrary()` - Core import with conflict resolution
+
+4. **Conflict Resolution** (`ConflictResolution` type):
+   - **Skip**: Don't import presets with duplicate IDs
+   - **Rename**: Auto-generate new IDs for conflicts
+   - **Overwrite**: Replace existing presets (use with caution)
+
+5. **Import UI Features**:
+   - Import dialog with options
+   - Target selection (global or world)
+   - Conflict resolution strategy picker
+   - Detailed import results (imported count, renamed count, skipped count)
+   - Error handling and success messages
+
+6. **ID Collision Handling**:
+   - Uses existing `generatePresetId()` function to create unique IDs
+   - Maintains original preset name when renaming
+   - Tracks renamed presets in import results
+   - Prevents accidental overwrites with clear warnings
+
+**Usage:**
+- Designers can export presets from one world and import to another
+- Teams can share preset libraries across projects via JSON files
+- Global presets can be distributed as starter templates
+- Supports partial imports (select specific conflict resolution strategy)
 
 ---
 
