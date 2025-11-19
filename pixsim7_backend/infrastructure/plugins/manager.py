@@ -11,6 +11,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, APIRouter
 import structlog
 
+from pixsim7_backend.shared.config import settings
 from .types import PluginManifest, BackendPlugin, plugin_hooks, PluginEvents
 
 logger = structlog.get_logger(__name__)
@@ -106,13 +107,30 @@ class PluginManager:
                     f"Plugin ID mismatch: directory={plugin_name}, manifest={manifest.id}"
                 )
 
+            # Compute effective enabled state using manifest and settings
+            effective_enabled = manifest.enabled
+
+            # Apply allowlist: if set, anything not in the list is disabled
+            allowlist = getattr(settings, "plugin_allowlist", None)
+            if allowlist:
+                if manifest.id not in allowlist:
+                    effective_enabled = False
+
+            # Apply denylist override
+            denylist = getattr(settings, "plugin_denylist", []) or []
+            if manifest.id in denylist:
+                effective_enabled = False
+
+            # Persist effective state back to manifest so downstream checks see it
+            manifest.enabled = effective_enabled
+
             # Store plugin
             self.plugins[manifest.id] = {
                 'manifest': manifest,
                 'router': router,
                 'module': module,
                 'loaded': True,
-                'enabled': manifest.enabled,
+                'enabled': effective_enabled,
             }
 
             logger.info(
@@ -120,13 +138,17 @@ class PluginManager:
                 plugin_id=manifest.id,
             )
 
-            # Call on_load hook if defined
-            if hasattr(module, 'on_load'):
+            # Call on_load hook if defined and plugin is enabled
+            if effective_enabled and hasattr(module, 'on_load'):
                 try:
                     module.on_load(self.app)
                     logger.debug(f"Called on_load for {manifest.id}")
                 except Exception as e:
                     logger.error(f"Error in on_load for {manifest.id}: {e}")
+            elif hasattr(module, 'on_load') and not effective_enabled:
+                logger.debug(
+                    f"Skipping on_load for disabled plugin: {manifest.id}"
+                )
 
             # Emit event
             plugin_hooks.emit(PluginEvents.PLUGIN_LOADED, manifest.id)

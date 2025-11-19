@@ -220,6 +220,54 @@ class Settings(BaseSettings):
         description="Relative folder under storage_base_path for screenshots"
     )
 
+    # ===== WEBHOOKS =====
+    webhook_config_json: str | None = Field(
+        default=None,
+        description=(
+            "Optional JSON array of webhook configs. "
+            "Each item should include at least a 'url', and may include "
+            "'event_types', 'retry_count', 'timeout', and 'secret'."
+        ),
+    )
+    webhook_timeout_seconds: int = Field(
+        default=5,
+        description="Default timeout in seconds for outbound webhook HTTP requests",
+    )
+    webhook_max_retries: int = Field(
+        default=3,
+        description="Default max retry attempts for failed webhook deliveries",
+    )
+    webhook_block_private_networks: bool = Field(
+        default=True,
+        description=(
+            "If True, block webhook delivery to private, loopback, link-local, "
+            "and other non-public IP ranges as an SSRF safeguard."
+        ),
+    )
+    webhook_hmac_secret: str | None = Field(
+        default=None,
+        description=(
+            "Optional HMAC secret for signing webhook payloads. "
+            "Per-webhook secrets in webhook_config_json take precedence."
+        ),
+    )
+
+    # ===== PLUGINS =====
+    plugin_allowlist: List[str] | None = Field(
+        default=None,
+        description=(
+            "Optional allowlist of backend plugin IDs. "
+            "If set, only plugins whose manifest.id is in this list will be enabled."
+        ),
+    )
+    plugin_denylist: List[str] = Field(
+        default_factory=list,
+        description=(
+            "List of backend plugin IDs that should be disabled even if their manifest enables them. "
+            "Applied to route, feature, middleware, and event handler plugins that support 'enabled'."
+        ),
+    )
+
     @property
     def async_database_url(self) -> str:
         """Convert sync database URL to async (asyncpg)"""
