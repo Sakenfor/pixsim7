@@ -1,5 +1,8 @@
 // Shared types exported by @pixsim7/types
 
+// Character Identity Graph
+export * from './characterGraph';
+
 export type JobStatus = 'queued' | 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface JobSummary {
