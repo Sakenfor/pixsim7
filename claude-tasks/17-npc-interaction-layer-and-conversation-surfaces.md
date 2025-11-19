@@ -618,7 +618,46 @@ Provide frontend/game‑core helpers to **build and render interaction menus** a
    - 2D/3D view‑modes.
    - Editor tooling (interaction presets per NPC/world).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+**Implementation:**
+- React hook: `frontend/src/lib/hooks/useNpcInteractions.ts`
+- UI components: `frontend/src/components/interactions/InteractionMenu.tsx` + `.css`
+- Menu builder: `packages/game-core/src/interactions/menuBuilder.ts`
+- Component exports: `frontend/src/components/interactions/index.ts`
+
+**Key Features:**
+1. **useNpcInteractions hook:**
+   - Fetches interactions from API
+   - Auto-refetch on dependency changes
+   - Splits into available/unavailable
+   - Error handling and loading states
+
+2. **InteractionMenu component:**
+   - Displays list of interactions
+   - Shows disabled reasons as tooltips
+   - Supports compact mode (maxVisible)
+   - Loading/empty states
+   - Responsive design
+
+3. **InlineInteractionHint component:**
+   - Compact HUD display for 2D
+   - Shows primary interaction with key hint
+   - Minimal footprint
+
+4. **Unified menu builder:**
+   - Consolidates hotspot actions, slot plugins, and canonical interactions
+   - Surface-based filtering and grouping
+   - Priority-based sorting
+   - Migration helper for legacy slot interactions
+   - Helpers: getPrimaryInteraction, hasDialogueInteractions, etc.
+
+5. **Cross-surface support:**
+   - inline: Quick HUD actions
+   - dialogue: Opens conversation UI
+   - scene: Triggers scene transition
+   - notification: Background events
+   - menu: Context menu display
 
 ---
 

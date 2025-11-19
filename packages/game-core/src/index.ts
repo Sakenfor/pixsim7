@@ -107,6 +107,26 @@ export type {
   ScenePlaybackPhase,
 } from './interactions/hotspot';
 
+// Menu Builder (Phase 17.4)
+export {
+  buildInteractionMenu,
+  hotspotActionToMenuItem,
+  canonicalInteractionToMenuItem,
+  slotPluginToMenuItem,
+  getPrimaryInteraction,
+  getInteractionsBySurface,
+  hasDialogueInteractions,
+  hasSceneInteractions,
+  migrateSlotInteractionsToMenu,
+} from './interactions/menuBuilder';
+
+export type {
+  UnifiedMenuItem,
+  CanonicalInteractionItem,
+  SlotPluginItem,
+  InteractionMenuResult,
+} from './interactions/menuBuilder';
+
 // ===== World =====
 export {
   getNpcRoles,
