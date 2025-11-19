@@ -174,6 +174,36 @@ class Settings(BaseSettings):
         description="Status polling interval (seconds)"
     )
 
+    # ===== LLM / AI =====
+    anthropic_api_key: str | None = Field(
+        default=None,
+        description="Anthropic API key for Claude (optional, can also use ANTHROPIC_API_KEY env var)"
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        description="OpenAI API key for GPT models (optional)"
+    )
+    llm_provider: str = Field(
+        default="anthropic",
+        description="Default LLM provider: anthropic, openai, local"
+    )
+    llm_default_model: str | None = Field(
+        default=None,
+        description="Default model to use (provider-specific, uses provider default if None)"
+    )
+    llm_cache_enabled: bool = Field(
+        default=True,
+        description="Enable LLM response caching"
+    )
+    llm_cache_ttl: int = Field(
+        default=3600,
+        description="Default cache TTL in seconds (1 hour)"
+    )
+    llm_cache_freshness: float = Field(
+        default=0.0,
+        description="Default cache freshness threshold (0.0=always use cache, 1.0=always regenerate)"
+    )
+
     # ===== LOGGING =====
     log_level: str = Field(
         default="INFO",

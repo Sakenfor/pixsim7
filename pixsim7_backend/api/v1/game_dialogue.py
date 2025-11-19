@@ -15,6 +15,13 @@ from pixsim7_backend.domain.game.models import (
     GameScene, GameSceneNode
 )
 from pixsim7_backend.domain.narrative import NarrativeEngine
+from pixsim7_backend.services.llm import LLMService, LLMRequest, LLMCacheStats, CacheInvalidationRequest
+from pixsim7_backend.infrastructure.redis.client import get_redis
+from pixsim7_backend.services.npc import (
+    MemoryService, EmotionalStateService, MilestoneService,
+    WorldAwarenessService, PersonalityEvolutionService, DialogueAnalyticsService
+)
+from pixsim7_backend.domain.npc_memory import MemoryImportance, MemoryType
 from pixsim7_backend.domain.narrative.action_blocks import (
     ActionEngine,
     ActionSelectionContext,
@@ -35,6 +42,7 @@ router = APIRouter()
 _narrative_engine = None
 _action_engine = None
 _block_generator = None
+_llm_service = None
 
 
 def get_narrative_engine() -> NarrativeEngine:
@@ -60,6 +68,15 @@ def get_block_generator() -> DynamicBlockGenerator:
     if _block_generator is None:
         _block_generator = DynamicBlockGenerator(use_claude_api=False)
     return _block_generator
+
+
+async def get_llm_service() -> LLMService:
+    """Get or create the LLM service singleton."""
+    global _llm_service
+    if _llm_service is None:
+        redis_client = await get_redis()
+        _llm_service = LLMService(redis_client, provider="anthropic")
+    return _llm_service
 
 
 def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[PreviousSegmentSnapshot]:
@@ -149,6 +166,29 @@ class DialogueNextLineResponse(BaseModel):
     llm_prompt: str
     visual_prompt: Optional[str] = None
     meta: Dict[str, Any] = {}
+
+
+class DialogueExecuteResponse(BaseModel):
+    """Response containing executed dialogue text with caching info."""
+    text: str = Field(..., description="Generated dialogue text")
+    llm_prompt: str = Field(..., description="The prompt used")
+    visual_prompt: Optional[str] = Field(None, description="Visual generation prompt if available")
+
+    # Cache info
+    cached: bool = Field(..., description="Whether this was a cached response")
+    cache_key: Optional[str] = Field(None, description="Cache key used")
+
+    # LLM info
+    provider: str = Field(..., description="LLM provider used")
+    model: str = Field(..., description="Model used")
+
+    # Usage stats
+    usage: Optional[Dict[str, int]] = Field(None, description="Token usage")
+    estimated_cost: Optional[float] = Field(None, description="Estimated cost in USD")
+    generation_time_ms: Optional[float] = Field(None, description="Generation time in milliseconds")
+
+    # Context metadata
+    meta: Dict[str, Any] = Field(default_factory=dict, description="Narrative context metadata")
 
 
 class DialogueDebugResponse(BaseModel):
@@ -325,6 +365,411 @@ async def generate_next_line(
         llm_prompt=result["llm_prompt"],
         visual_prompt=result.get("visual_prompt"),
         meta=result.get("metadata", {})
+    )
+
+
+@router.post("/next-line/execute", response_model=DialogueExecuteResponse)
+async def execute_dialogue_generation(
+    req: DialogueNextLineRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    engine: NarrativeEngine = Depends(get_narrative_engine),
+    llm_service: LLMService = Depends(get_llm_service)
+) -> DialogueExecuteResponse:
+    """
+    Generate and execute NPC dialogue using the LLM service.
+
+    This endpoint:
+    1. Builds the dialogue prompt using the narrative engine
+    2. Executes the LLM call with smart caching
+    3. Returns the generated text with cache/usage statistics
+
+    Caching behavior:
+    - Uses smart cache keys based on NPC personality + relationship state
+    - Default freshness threshold: 0.0 (always use cache if available)
+    - Cache TTL: 1 hour by default
+    """
+    # Load required data (same as generate_next_line)
+    session = None
+    if req.session_id:
+        session = await db.get(GameSession, req.session_id)
+        if not session or session.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Session not found")
+    elif req.scene_id:
+        session = GameSession(
+            id=0,
+            user_id=user.id,
+            scene_id=req.scene_id,
+            current_node_id=req.node_id or 0,
+            flags={},
+            relationships={},
+            world_time=0.0
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Either session_id or scene_id must be provided"
+        )
+
+    # Load world data
+    world = None
+    world_data = {}
+    if req.world_id:
+        world = await db.get(GameWorld, req.world_id)
+        if world:
+            world_data = {
+                "id": world.id,
+                "name": world.name,
+                "meta": world.meta or {}
+            }
+    elif session and session.flags.get("world", {}).get("id"):
+        world_id = session.flags["world"]["id"]
+        if isinstance(world_id, int):
+            world = await db.get(GameWorld, world_id)
+            if world:
+                world_data = {
+                    "id": world.id,
+                    "name": world.name,
+                    "meta": world.meta or {}
+                }
+
+    if not world_data:
+        world_data = {
+            "id": 0,
+            "name": "Default World",
+            "meta": {}
+        }
+
+    # Load NPC data
+    npc = await db.get(GameNPC, req.npc_id)
+    if not npc:
+        raise HTTPException(status_code=404, detail="NPC not found")
+
+    npc_data = {
+        "id": npc.id,
+        "name": npc.name,
+        "personality": npc.personality or {},
+        "home_location_id": npc.home_location_id
+    }
+
+    # Load location data if provided
+    location_data = None
+    if req.location_id:
+        location = await db.get(GameLocation, req.location_id)
+        if location:
+            location_data = {
+                "id": location.id,
+                "name": location.name,
+                "meta": location.meta or {}
+            }
+
+    # Load scene/node data if provided
+    scene_data = None
+    if req.scene_id:
+        scene = await db.get(GameScene, req.scene_id)
+        if scene:
+            scene_data = {
+                "scene_id": scene.id,
+                "node_id": req.node_id,
+                "node_meta": {},
+                "speaker_role": None
+            }
+
+            if req.node_id:
+                node = await db.get(GameSceneNode, req.node_id)
+                if node:
+                    scene_data["node_meta"] = node.meta or {}
+                    scene_data["speaker_role"] = node.meta.get("speakerRole") if node.meta else None
+
+    # Prepare session data
+    session_data = {
+        "id": session.id if session else 0,
+        "world_time": session.world_time if session else 0.0,
+        "flags": session.flags if session else {},
+        "relationships": session.relationships if session else {}
+    }
+
+    # Build context using the engine
+    context = engine.build_context(
+        world_id=world_data["id"],
+        session_id=session_data["id"],
+        npc_id=req.npc_id,
+        world_data=world_data,
+        session_data=session_data,
+        npc_data=npc_data,
+        location_data=location_data,
+        scene_data=scene_data,
+        player_input=req.player_input
+    )
+
+    # Initialize all NPC services
+    memory_service = MemoryService(db)
+    emotion_service = EmotionalStateService(db)
+    milestone_service = MilestoneService(db)
+    world_awareness_service = WorldAwarenessService(db)
+    personality_service = PersonalityEvolutionService(db)
+    analytics_service = DialogueAnalyticsService(db)
+
+    # Recall relevant memories
+    recent_memories = await memory_service.get_recent_conversation(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        session_id=req.session_id,
+        limit=5
+    )
+
+    # Get current emotional state
+    current_emotions = await emotion_service.get_current_emotions(
+        npc_id=req.npc_id,
+        session_id=req.session_id
+    )
+
+    # Get emotional modifiers for dialogue
+    emotion_modifiers = emotion_service.get_emotion_modifiers(current_emotions)
+
+    # Get relevant world events
+    relevant_world_events = await world_awareness_service.get_relevant_events(
+        npc_id=req.npc_id,
+        min_relevance=0.5,
+        limit=3
+    )
+
+    # Get recent milestones for context
+    recent_milestones = await milestone_service.get_recent_milestones(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        limit=2
+    )
+
+    # Generate the dialogue request
+    result = engine.build_dialogue_request(
+        context=context,
+        program_id=req.program_id
+    )
+
+    # Add computed relationship info to metadata
+    result["meta"]["relationship_state"] = {
+        "affinity": context.relationship.affinity,
+        "trust": context.relationship.trust,
+        "chemistry": context.relationship.chemistry,
+        "tension": context.relationship.tension,
+        "relationship_tier": context.relationship.relationship_tier,
+        "intimacy_level": context.relationship.intimacy_level
+    }
+
+    # Enhance prompt with memory and emotional context
+    enhanced_prompt = result["llm_prompt"]
+
+    # Add memory context
+    if recent_memories:
+        memory_context = "\n\nRecent conversation history:"
+        for mem in recent_memories[:3]:  # Last 3 exchanges
+            if mem.player_said:
+                memory_context += f"\nPlayer said: {mem.player_said}"
+            if mem.npc_said:
+                memory_context += f"\nYou responded: {mem.npc_said}"
+        enhanced_prompt += memory_context
+
+    # Add emotional context
+    if current_emotions:
+        emotion_context = f"\n\nCurrent emotional state: You are feeling {emotion_modifiers['primary_emotion']} "
+        emotion_context += f"(intensity: {emotion_modifiers['emotion_intensity']:.1%}). "
+        emotion_context += f"Your tone should be {emotion_modifiers['tone']}."
+        if emotion_modifiers.get('dialogue_adjustments'):
+            emotion_context += f" Context: {', '.join(emotion_modifiers['dialogue_adjustments'])}."
+        enhanced_prompt += emotion_context
+
+    # Add world events context
+    if relevant_world_events:
+        world_context = world_awareness_service.format_events_for_dialogue(relevant_world_events)
+        enhanced_prompt += f"\n\n{world_context}"
+
+    # Add milestone context
+    if recent_milestones:
+        milestone_context = "\n\nRecent relationship milestones:"
+        for milestone in recent_milestones:
+            milestone_context += f"\n- {milestone.milestone_name} (achieved {milestone.achieved_at.strftime('%Y-%m-%d')})"
+        enhanced_prompt += milestone_context
+
+    # System prompt with character context
+    system_prompt = f"You are roleplaying as {npc_data['name']}, an NPC in a game. "
+    system_prompt += "Respond naturally in character, taking into account your personality, emotional state, and conversation history. "
+    system_prompt += "Keep responses concise and conversational (2-3 sentences maximum)."
+
+    # Execute LLM call with caching
+    llm_request = LLMRequest(
+        prompt=enhanced_prompt,
+        system_prompt=system_prompt,
+        max_tokens=500,
+        temperature=0.8,
+        use_cache=True,
+        cache_ttl=3600,  # 1 hour
+        cache_freshness=0.0,  # Always use cache if available
+        metadata={
+            "npc_id": req.npc_id,
+            "program_id": req.program_id,
+            "relationship_tier": context.relationship.relationship_tier,
+            "intimacy_level": context.relationship.intimacy_level,
+            "has_memories": len(recent_memories) > 0,
+            "has_emotions": len(current_emotions) > 0
+        }
+    )
+
+    # Build cache context for smart key generation
+    cache_context = {
+        "npc_id": req.npc_id,
+        "npc_personality": npc_data["personality"],
+        "relationship_state": {
+            "affinity": context.relationship.affinity,
+            "trust": context.relationship.trust,
+            "chemistry": context.relationship.chemistry,
+            "tension": context.relationship.tension
+        },
+        "player_input_hash": hash(req.player_input) if req.player_input else None
+    }
+
+    # Generate dialogue
+    llm_response = await llm_service.generate(llm_request, context=cache_context)
+
+    # Store this conversation as a memory
+    # Determine importance based on context
+    importance = MemoryImportance.NORMAL
+    if context.relationship.relationship_tier in ["close_friend", "lover"]:
+        importance = MemoryImportance.IMPORTANT
+    elif req.player_input and len(req.player_input) > 100:  # Long player input = important
+        importance = MemoryImportance.IMPORTANT
+
+    # Determine memory type (short-term for now, can be promoted later)
+    memory_type = MemoryType.SHORT_TERM
+    if importance == MemoryImportance.IMPORTANT:
+        memory_type = MemoryType.LONG_TERM
+
+    # Create memory
+    created_memory = await memory_service.create_memory(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        session_id=req.session_id,
+        topic="general_conversation",  # Can be enhanced with topic detection
+        summary=f"Player: {req.player_input or 'initiated conversation'}. NPC responded.",
+        player_said=req.player_input,
+        npc_said=llm_response.text,
+        importance=importance,
+        memory_type=memory_type,
+        location_id=req.location_id,
+        world_time=session.world_time if session else None,
+        npc_emotion=current_emotions[0].emotion if current_emotions else None,
+        relationship_tier=context.relationship.relationship_tier,
+        tags=["conversation", context.relationship.relationship_tier]
+    )
+
+    # Record analytics for this dialogue generation
+    analytics_record = await analytics_service.record_dialogue_generation(
+        npc_id=req.npc_id,
+        user_id=user.id,
+        program_id=req.program_id,
+        prompt_hash=llm_response.cache_key or "",
+        relationship_tier=context.relationship.relationship_tier,
+        model_used=llm_response.model,
+        generation_time_ms=llm_response.generation_time_ms or 0.0,
+        dialogue_length=len(llm_response.text),
+        session_id=req.session_id,
+        memory_id=created_memory.id,
+        intimacy_level=context.relationship.intimacy_level,
+        npc_emotion=current_emotions[0].emotion.value if current_emotions else None,
+        was_cached=llm_response.cached,
+        tokens_used=llm_response.usage.get("total_tokens") if llm_response.usage else None,
+        estimated_cost=llm_response.estimated_cost,
+        contains_memory_reference=len(recent_memories) > 0,
+        emotional_consistency=True,
+        metadata={
+            "world_events_count": len(relevant_world_events),
+            "milestones_count": len(recent_milestones)
+        }
+    )
+
+    # Check for relationship milestones
+    # Get previous relationship tier from recent memories
+    previous_tier = None
+    if recent_memories:
+        previous_tier = recent_memories[0].relationship_tier_at_time
+
+    # If tier changed, create milestone
+    current_tier = context.relationship.relationship_tier
+    if previous_tier and previous_tier != current_tier:
+        relationship_values = {
+            "affinity": context.relationship.affinity,
+            "trust": context.relationship.trust,
+            "chemistry": context.relationship.chemistry,
+            "tension": context.relationship.tension
+        }
+
+        milestone = await milestone_service.check_and_create_tier_milestone(
+            npc_id=req.npc_id,
+            user_id=user.id,
+            new_tier=current_tier,
+            relationship_values=relationship_values,
+            session_id=req.session_id,
+            triggered_by="relationship_change_during_conversation"
+        )
+
+        # If milestone created, trigger emotional response
+        if milestone:
+            emotion_trigger = milestone_service.get_milestone_emotion_trigger(milestone.milestone_type)
+            if emotion_trigger:
+                emotion_type, intensity = emotion_trigger
+                await emotion_service.set_emotion(
+                    npc_id=req.npc_id,
+                    emotion=emotion_type,
+                    intensity=intensity,
+                    duration_seconds=1800,  # 30 minutes
+                    triggered_by=f"milestone_{milestone.milestone_type.value}",
+                    session_id=req.session_id
+                )
+
+            # Consider personality evolution from milestone
+            personality_changes = personality_service.suggest_trait_changes_from_milestone(
+                milestone_type=milestone.milestone_type.value,
+                current_traits=npc_data.get("personality", {})
+            )
+
+            for trait, change_amount, reason in personality_changes:
+                # Apply small personality changes over time
+                # Note: This would need NPC personality tracking in the database
+                # For now, just record the evolution event
+                if npc_data.get("personality", {}).get(trait.value):
+                    current_value = npc_data["personality"][trait.value]
+                    await personality_service.apply_trait_change(
+                        npc_id=req.npc_id,
+                        trait=trait,
+                        current_value=current_value,
+                        change_amount=change_amount,
+                        triggered_by=reason,
+                        user_id=user.id,
+                        trigger_event_id=milestone.id,
+                        relationship_tier=current_tier
+                    )
+
+    return DialogueExecuteResponse(
+        text=llm_response.text,
+        llm_prompt=result["llm_prompt"],
+        visual_prompt=result.get("visual_prompt"),
+        cached=llm_response.cached,
+        cache_key=llm_response.cache_key,
+        provider=llm_response.provider,
+        model=llm_response.model,
+        usage=llm_response.usage,
+        estimated_cost=llm_response.estimated_cost,
+        generation_time_ms=llm_response.generation_time_ms,
+        meta={
+            **result.get("metadata", {}),
+            "memory_created": True,
+            "current_emotion": emotion_modifiers.get('primary_emotion') if current_emotions else None,
+            "recent_memories_count": len(recent_memories),
+            "world_events_count": len(relevant_world_events),
+            "milestones_count": len(recent_milestones),
+            "analytics_recorded": True,
+            "milestone_created": previous_tier and previous_tier != current_tier
+        }
     )
 
 
@@ -1084,3 +1529,651 @@ async def list_available_concepts(
         response["camera_patterns"] = concept_library.camera_patterns
 
     return response
+
+
+# ============================================================================
+# LLM CACHE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+
+@router.get("/llm/cache/stats", response_model=LLMCacheStats)
+async def get_llm_cache_stats(
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> LLMCacheStats:
+    """
+    Get LLM cache statistics.
+
+    Returns cache hit rate, total keys, estimated cost savings, etc.
+    Useful for monitoring cache performance and cost optimization.
+    """
+    return await llm_service.get_cache_stats()
+
+
+@router.post("/llm/cache/invalidate")
+async def invalidate_llm_cache(
+    req: CacheInvalidationRequest,
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> Dict[str, Any]:
+    """
+    Invalidate LLM cache entries.
+
+    Supports:
+    - Invalidating by pattern (e.g., 'npc:*', '*relationship*')
+    - Invalidating specific cache keys
+    - Invalidating all LLM cache entries
+
+    Use cases:
+    - Clear cache for specific NPC when personality changes
+    - Clear cache when relationship reaches milestone
+    - Clear all cache during development/testing
+    """
+    deleted_count = await llm_service.invalidate_cache(
+        pattern=req.pattern,
+        cache_keys=req.cache_keys,
+        invalidate_all=req.invalidate_all
+    )
+
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "message": f"Invalidated {deleted_count} cache entries"
+    }
+
+
+@router.post("/llm/cache/clear-stats")
+async def clear_llm_cache_stats(
+    user: CurrentUser,
+    llm_service: LLMService = Depends(get_llm_service)
+) -> Dict[str, Any]:
+    """
+    Clear LLM cache statistics.
+
+    Resets hit/miss counters and cost savings tracking.
+    Does NOT delete cached responses - use /invalidate for that.
+    """
+    await llm_service.clear_cache_stats()
+
+    return {
+        "success": True,
+        "message": "Cache statistics cleared"
+    }
+
+
+# ============================================================================
+# NPC MEMORY & EMOTIONAL STATE MANAGEMENT ENDPOINTS
+# ============================================================================
+
+
+@router.get("/npcs/{npc_id}/memories")
+async def get_npc_memories(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    topic: Optional[str] = None,
+    limit: int = 20,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Get conversation memories for an NPC
+
+    Args:
+        npc_id: NPC ID
+        topic: Filter by topic
+        limit: Maximum results
+        session_id: Filter by session
+
+    Returns:
+        List of memories
+    """
+    memory_service = MemoryService(db)
+
+    memories = await memory_service.recall_memories(
+        npc_id=npc_id,
+        user_id=user.id,
+        topic=topic,
+        session_id=session_id,
+        limit=limit
+    )
+
+    return {
+        "memories": [
+            {
+                "id": m.id,
+                "topic": m.topic,
+                "summary": m.summary,
+                "player_said": m.player_said,
+                "npc_said": m.npc_said,
+                "importance": m.importance.value,
+                "memory_type": m.memory_type.value,
+                "strength": m.strength,
+                "created_at": m.created_at.isoformat(),
+                "tags": m.tags
+            }
+            for m in memories
+        ],
+        "total": len(memories)
+    }
+
+
+@router.get("/npcs/{npc_id}/memories/summary")
+async def get_npc_memory_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get memory summary statistics for an NPC
+
+    Returns count by type and importance
+    """
+    memory_service = MemoryService(db)
+    summary = await memory_service.get_memory_summary(npc_id, user.id)
+
+    return summary
+
+
+@router.get("/npcs/{npc_id}/emotions")
+async def get_npc_emotions(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Get current emotional states for an NPC
+
+    Returns active emotions with intensities
+    """
+    emotion_service = EmotionalStateService(db)
+
+    emotions = await emotion_service.get_current_emotions(
+        npc_id=npc_id,
+        session_id=session_id
+    )
+
+    modifiers = emotion_service.get_emotion_modifiers(emotions)
+
+    return {
+        "current_emotions": [
+            {
+                "id": e.id,
+                "emotion": e.emotion.value,
+                "intensity": e.intensity,
+                "triggered_by": e.triggered_by,
+                "started_at": e.started_at.isoformat(),
+                "expires_at": e.expires_at.isoformat() if e.expires_at else None
+            }
+            for e in emotions
+        ],
+        "modifiers": modifiers,
+        "total_active": len(emotions)
+    }
+
+
+class SetEmotionRequest(BaseModel):
+    """Request to set NPC emotion"""
+    emotion: str = Field(..., description="Emotion type (happy, sad, angry, etc.)")
+    intensity: float = Field(default=0.7, ge=0.0, le=1.0, description="Intensity (0.0-1.0)")
+    duration_seconds: Optional[float] = Field(None, description="How long it lasts")
+    triggered_by: Optional[str] = Field(None, description="What caused this")
+    session_id: Optional[int] = Field(None, description="Session this is part of")
+
+
+@router.post("/npcs/{npc_id}/emotions")
+async def set_npc_emotion(
+    npc_id: int,
+    req: SetEmotionRequest,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Set an emotional state for an NPC
+
+    Triggers a new emotion with specified intensity and duration
+    """
+    from pixsim7_backend.domain.npc_memory import EmotionType
+
+    # Validate emotion type
+    try:
+        emotion = EmotionType(req.emotion)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid emotion type. Valid types: {[e.value for e in EmotionType]}"
+        )
+
+    emotion_service = EmotionalStateService(db)
+
+    state = await emotion_service.set_emotion(
+        npc_id=npc_id,
+        emotion=emotion,
+        intensity=req.intensity,
+        duration_seconds=req.duration_seconds,
+        triggered_by=req.triggered_by or f"manual_trigger_by_user_{user.id}",
+        session_id=req.session_id
+    )
+
+    return {
+        "success": True,
+        "emotion_id": state.id,
+        "emotion": state.emotion.value,
+        "intensity": state.intensity,
+        "expires_at": state.expires_at.isoformat() if state.expires_at else None
+    }
+
+
+@router.delete("/npcs/{npc_id}/emotions/{emotion_id}")
+async def clear_npc_emotion(
+    npc_id: int,
+    emotion_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Clear a specific emotional state
+    """
+    emotion_service = EmotionalStateService(db)
+
+    success = await emotion_service.clear_emotion(emotion_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Emotion not found")
+
+    return {
+        "success": True,
+        "message": "Emotion cleared"
+    }
+
+
+@router.delete("/npcs/{npc_id}/emotions")
+async def clear_all_npc_emotions(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Clear all active emotions for an NPC
+    """
+    emotion_service = EmotionalStateService(db)
+
+    count = await emotion_service.clear_all_emotions(
+        npc_id=npc_id,
+        session_id=session_id
+    )
+
+    return {
+        "success": True,
+        "cleared_count": count,
+        "message": f"Cleared {count} emotions"
+    }
+
+# ===== Relationship Milestone Endpoints =====
+
+@router.get("/npcs/{npc_id}/milestones")
+async def get_npc_milestones(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Get all relationship milestones for an NPC
+
+    Returns milestone history in chronological order
+    """
+    milestone_service = MilestoneService(db)
+
+    milestones = await milestone_service.get_all_milestones(
+        npc_id=npc_id,
+        user_id=user.id,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(milestones),
+        "milestones": [
+            {
+                "id": m.id,
+                "type": m.milestone_type.value,
+                "name": m.milestone_name,
+                "relationship_tier": m.relationship_tier,
+                "achieved_at": m.achieved_at.isoformat(),
+                "triggered_by": m.triggered_by,
+                "emotional_impact": m.emotional_impact.value if m.emotional_impact else None
+            }
+            for m in milestones
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/milestones/summary")
+async def get_milestone_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of relationship milestones
+    """
+    milestone_service = MilestoneService(db)
+
+    summary = await milestone_service.get_milestone_summary(
+        npc_id=npc_id,
+        user_id=user.id
+    )
+
+    return summary
+
+
+# ===== World Context Endpoints =====
+
+class RegisterWorldEventRequest(BaseModel):
+    """Request to register a world event"""
+    event_type: str = Field(..., description="Type of event (time_of_day, weather, story_event, etc.)")
+    event_name: str = Field(..., description="Event identifier")
+    event_description: str = Field(..., description="What happened")
+    relevance_score: float = Field(default=0.5, ge=0.0, le=1.0, description="How relevant to NPC")
+    duration_hours: Optional[float] = Field(None, description="How long event is relevant")
+    opinion: Optional[str] = Field(None, description="NPC's opinion on the event")
+
+
+@router.post("/npcs/{npc_id}/world-events")
+async def register_world_event(
+    npc_id: int,
+    req: RegisterWorldEventRequest,
+    db: DatabaseSession,
+    user: CurrentUser,
+    world_id: Optional[int] = None,
+    session_id: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Register a world event that an NPC is aware of
+
+    This allows NPCs to reference recent events in dialogue
+    """
+    from pixsim7_backend.domain.npc_memory import WorldEventType
+
+    # Validate event type
+    try:
+        event_type = WorldEventType(req.event_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid event type. Valid types: {[e.value for e in WorldEventType]}"
+        )
+
+    world_awareness_service = WorldAwarenessService(db)
+
+    context = await world_awareness_service.register_event(
+        npc_id=npc_id,
+        event_type=event_type,
+        event_name=req.event_name,
+        event_description=req.event_description,
+        world_id=world_id,
+        session_id=session_id,
+        relevance_score=req.relevance_score,
+        duration_hours=req.duration_hours,
+        opinion=req.opinion
+    )
+
+    return {
+        "success": True,
+        "event_id": context.id,
+        "event_name": context.event_name,
+        "relevance_score": context.relevance_score,
+        "expires_at": context.expires_at.isoformat() if context.expires_at else None
+    }
+
+
+@router.get("/npcs/{npc_id}/world-events")
+async def get_world_events(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    min_relevance: float = 0.3,
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Get relevant world events that an NPC is aware of
+    """
+    world_awareness_service = WorldAwarenessService(db)
+
+    events = await world_awareness_service.get_relevant_events(
+        npc_id=npc_id,
+        min_relevance=min_relevance,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(events),
+        "events": [
+            {
+                "id": e.id,
+                "type": e.event_type.value,
+                "name": e.event_name,
+                "description": e.event_description,
+                "relevance_score": e.relevance_score,
+                "occurred_at": e.occurred_at.isoformat(),
+                "opinion": e.opinion,
+                "emotional_response": e.emotional_response.value if e.emotional_response else None
+            }
+            for e in events
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/world-events/summary")
+async def get_world_context_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of NPC's world awareness
+    """
+    world_awareness_service = WorldAwarenessService(db)
+
+    summary = await world_awareness_service.get_world_context_summary(
+        npc_id=npc_id
+    )
+
+    return summary
+
+
+# ===== Personality Evolution Endpoints =====
+
+@router.get("/npcs/{npc_id}/personality/history")
+async def get_personality_history(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser,
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Get personality evolution history for an NPC
+    """
+    personality_service = PersonalityEvolutionService(db)
+
+    history = await personality_service.get_all_personality_history(
+        npc_id=npc_id,
+        user_id=user.id,
+        limit=limit
+    )
+
+    return {
+        "npc_id": npc_id,
+        "total": len(history),
+        "changes": [
+            {
+                "id": e.id,
+                "trait": e.trait_changed.value,
+                "old_value": e.old_value,
+                "new_value": e.new_value,
+                "change_amount": e.change_amount,
+                "triggered_by": e.triggered_by,
+                "changed_at": e.changed_at.isoformat()
+            }
+            for e in history
+        ]
+    }
+
+
+@router.get("/npcs/{npc_id}/personality/summary")
+async def get_personality_summary(
+    npc_id: int,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get summary of personality evolution
+    """
+    personality_service = PersonalityEvolutionService(db)
+
+    summary = await personality_service.get_personality_summary(
+        npc_id=npc_id
+    )
+
+    return summary
+
+
+@router.get("/npcs/{npc_id}/personality/trajectory/{trait}")
+async def get_trait_trajectory(
+    npc_id: int,
+    trait: str,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> Dict[str, Any]:
+    """
+    Get trajectory/trend for a specific personality trait
+    """
+    from pixsim7_backend.domain.npc_memory import PersonalityTrait
+
+    # Validate trait
+    try:
+        trait_enum = PersonalityTrait(trait)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid trait. Valid traits: {[t.value for t in PersonalityTrait]}"
+        )
+
+    personality_service = PersonalityEvolutionService(db)
+
+    trajectory = await personality_service.calculate_trait_trajectory(
+        npc_id=npc_id,
+        trait=trait_enum
+    )
+
+    return trajectory
+
+
+# ===== Dialogue Analytics Endpoints =====
+
+@router.get("/analytics/cost-summary")
+async def get_cost_summary(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get cost summary for dialogue generation
+
+    Shows LLM costs, cache savings, and usage statistics
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    summary = await analytics_service.get_cost_summary(
+        npc_id=npc_id,
+        user_id=user.id,
+        days=days
+    )
+
+    return summary
+
+
+@router.get("/analytics/engagement")
+async def get_engagement_metrics(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get player engagement metrics
+
+    Shows response rates, conversation continuation, and sentiment
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    metrics = await analytics_service.get_engagement_metrics(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return metrics
+
+
+@router.get("/analytics/quality")
+async def get_quality_metrics(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Get dialogue quality metrics
+
+    Shows memory reference rate, emotional consistency, and dialogue length
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    metrics = await analytics_service.get_quality_metrics(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return metrics
+
+
+@router.get("/analytics/model-performance")
+async def get_model_performance(
+    db: DatabaseSession,
+    user: CurrentUser,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Compare performance across different LLM models
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    performance = await analytics_service.get_model_performance(
+        days=days
+    )
+
+    return performance
+
+
+@router.get("/analytics/program-performance")
+async def get_program_performance(
+    db: DatabaseSession,
+    user: CurrentUser,
+    npc_id: Optional[int] = None,
+    days: int = 30
+) -> Dict[str, Any]:
+    """
+    Analyze performance by prompt program
+    """
+    analytics_service = DialogueAnalyticsService(db)
+
+    performance = await analytics_service.get_program_performance(
+        npc_id=npc_id,
+        days=days
+    )
+
+    return performance
