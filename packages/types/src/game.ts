@@ -1096,3 +1096,225 @@ export interface SessionNpcData {
   preferences?: NpcPreferences; // Session-specific overrides
   meta?: Record<string, unknown>;
 }
+
+// ===================
+// ECS Component Types (Task 19)
+// ===================
+
+/**
+ * Relationship core component
+ * Contains the fundamental relationship metrics between player and NPC
+ * Component key: "core"
+ */
+export interface RelationshipCoreComponent {
+  /** Affinity (0-100): how much the NPC likes the player */
+  affinity: number;
+  /** Trust (0-100): how much the NPC trusts the player */
+  trust: number;
+  /** Chemistry (0-100): romantic/physical attraction */
+  chemistry: number;
+  /** Tension (0-100): conflict or unresolved issues */
+  tension: number;
+  /** Computed relationship tier ID (e.g., "friend", "lover") */
+  tierId?: RelationshipTierId;
+  /** Computed intimacy level ID (e.g., "light_flirt", "intimate") */
+  intimacyLevelId?: IntimacyLevelId | null;
+}
+
+/**
+ * Romance state component
+ * Manages romance-specific state and progression
+ * Component key: "romance"
+ * Source: Typically owned by plugin:game-romance
+ */
+export interface RomanceComponent {
+  /** Arousal level (0-1) */
+  arousal?: number;
+  /** Consent level (0-1) */
+  consentLevel?: number;
+  /** Romance stage identifier */
+  stage?: string;
+  /** Romance-specific flags */
+  flags?: Record<string, unknown>;
+  /** Custom romance stats */
+  customStats?: Record<string, number>;
+}
+
+/**
+ * Stealth state component
+ * Manages stealth-related interactions and reputation
+ * Component key: "stealth"
+ * Source: Typically owned by plugin:game-stealth
+ */
+export interface StealthComponent {
+  /** Suspicion level (0-1) */
+  suspicion?: number;
+  /** Timestamp when player was last caught */
+  lastCaught?: number;
+  /** Reputation with guards/authorities */
+  guardReputation?: number;
+  /** Stealth-specific flags */
+  flags?: Record<string, unknown>;
+}
+
+/**
+ * Unified mood state component
+ * Combines general mood, intimacy mood, and active emotions
+ * Component key: "mood"
+ */
+export interface MoodStateComponent {
+  /** General mood (valence/arousal based) */
+  general?: {
+    moodId: string;
+    valence: number;
+    arousal: number;
+  };
+  /** Intimacy mood (romance context) */
+  intimacy?: {
+    moodId: string;
+    intensity: number;
+  };
+  /** Active discrete emotion from events */
+  activeEmotion?: {
+    emotionType: string;
+    intensity: number;
+    trigger?: string;
+    expiresAt?: number;
+  };
+}
+
+/**
+ * Quest participation component
+ * Tracks NPC involvement in quests/arcs
+ * Component key: "quests"
+ */
+export interface QuestParticipationComponent {
+  /** Active quests this NPC is involved in */
+  activeQuests?: string[];
+  /** Completed quests */
+  completedQuests?: string[];
+  /** Quest-specific progress flags */
+  questFlags?: Record<string, unknown>;
+}
+
+/**
+ * Behavior state component
+ * Tracks NPC's current activity and simulation tier
+ * Component key: "behavior"
+ */
+export interface BehaviorStateComponent {
+  /** Current activity ID */
+  currentActivity?: string;
+  /** Activity started timestamp */
+  activityStartedAt?: number;
+  /** Next decision time */
+  nextDecisionAt?: number;
+  /** Simulation tier (high_priority, medium_priority, background) */
+  simulationTier?: string;
+  /** Behavior tags */
+  tags?: string[];
+  /** Current location */
+  locationId?: string;
+}
+
+/**
+ * Interaction state component
+ * Tracks interaction cooldowns and chain progress
+ * Component key: "interactions"
+ */
+export interface InteractionStateComponent {
+  /** Timestamps when interactions were last used */
+  lastUsedAt?: Record<string, number>;
+  /** Interaction chain progress */
+  chainProgress?: Record<string, {
+    currentStep: number;
+    startedAt: number;
+    data?: Record<string, unknown>;
+  }>;
+  /** Interaction-specific flags */
+  flags?: Record<string, unknown>;
+}
+
+/**
+ * Plugin component
+ * Arbitrary plugin-owned component data
+ * Component key: "plugin:{pluginId}" or "plugin:{pluginId}:{componentName}"
+ */
+export interface PluginComponent {
+  [key: string]: unknown;
+}
+
+/**
+ * NPC Entity State (ECS model)
+ * Authoritative per-NPC state stored in GameSession.flags.npcs["npc:{id}"]
+ *
+ * This replaces the ad-hoc SessionNpcData structure with a component-based model.
+ * Components are keyed by standard names:
+ * - "core" - RelationshipCoreComponent
+ * - "romance" - RomanceComponent
+ * - "stealth" - StealthComponent
+ * - "mood" - MoodStateComponent
+ * - "quests" - QuestParticipationComponent
+ * - "behavior" - BehaviorStateComponent
+ * - "interactions" - InteractionStateComponent
+ * - "plugin:{id}" - PluginComponent
+ */
+export interface NpcEntityState {
+  /** Component data indexed by component name */
+  components: Record<string, unknown>;
+  /** Entity tags for quick filtering */
+  tags?: string[];
+  /** Additional metadata */
+  metadata?: {
+    /** Last seen location/scene */
+    lastSeenAt?: string;
+    /** Last interaction timestamp */
+    lastInteractionAt?: number;
+    /** Custom metadata */
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Metric definition for the metric registry
+ * Defines how to find and interpret a metric value
+ */
+export interface MetricDefinition {
+  /** Metric ID (e.g., "npcRelationship.affinity") */
+  id: string;
+  /** Metric type (float, int, enum, boolean) */
+  type: 'float' | 'int' | 'enum' | 'boolean';
+  /** Minimum value (for numeric types) */
+  min?: number;
+  /** Maximum value (for numeric types) */
+  max?: number;
+  /** Allowed values (for enum types) */
+  values?: string[];
+  /** Component where this metric lives */
+  component: string;
+  /** Path within component (dot notation, optional) */
+  path?: string;
+  /** Source plugin ID (optional) */
+  source?: string;
+  /** Human-readable label */
+  label?: string;
+  /** Description */
+  description?: string;
+}
+
+/**
+ * Metric registry configuration
+ * Stored in GameWorld.meta.metrics
+ */
+export interface MetricRegistry {
+  /** NPC relationship metrics */
+  npcRelationship?: Record<string, MetricDefinition>;
+  /** NPC behavior metrics */
+  npcBehavior?: Record<string, MetricDefinition>;
+  /** Player state metrics */
+  playerState?: Record<string, MetricDefinition>;
+  /** World state metrics */
+  worldState?: Record<string, MetricDefinition>;
+  /** Custom metric categories */
+  [category: string]: Record<string, MetricDefinition> | undefined;
+}
