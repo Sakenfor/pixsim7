@@ -4,6 +4,14 @@
 
 This document describes the social metrics system for PixSim7, which provides a unified framework for computing, previewing, and displaying derived social values like relationship tiers, NPC moods, and reputation bands.
 
+> **For Agents**
+> - Backend evaluators in `pixsim7_backend/domain/metrics/*` and the preview APIs are **authoritative** for metric values; TS helpers mirror them for tools and UI.
+> - When adding or changing a metric, update **both**: Python evaluators + TypeScript types (`packages/types/src/game.ts`) and game-core helpers.
+> - Do not compute relationship tiers/intimacy in arbitrary frontend code; use preview APIs or backend‑normalized session data.
+> - Related tasks (roadmap/status):  
+>   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
+>   - `claude-tasks/08-social-metrics-and-npc-systems.md`
+
 ## Overview
 
 The social metrics system consists of:

@@ -2,6 +2,15 @@
 
 > Relationship-aware content generation with explicit rating controls and user consent
 
+> **For Agents**
+> - Use this together with `RELATIONSHIPS_AND_ARCS.md` and `DYNAMIC_GENERATION_FOUNDATION.md` when working on intimacy‑aware generation.
+> - `GenerationSocialContext` (in `packages/types/src/generation.ts`) and `buildGenerationSocialContext` (in `packages/game-core/src/relationships/socialContext.ts`) define how relationship state flows into generation.
+> - Backend generation services should treat `social_context` as input for prompts and safety; do not hard‑code rating/relationship logic in random places.
+> - Related tasks (roadmap/status):  
+>   - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`  
+>   - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md`  
+>   - `claude-tasks/12-intimacy-scene-composer-and-progression-editor.md`
+
 ---
 
 ## Overview

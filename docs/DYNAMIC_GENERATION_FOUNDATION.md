@@ -2,6 +2,14 @@
 
 > Handoff guide: Phased implementation plan, data contracts, editor integration strategy, backend API outline, validation & caching approach.
 
+> **For Agents**
+> - Treat this doc + `docs/INTIMACY_AND_GENERATION.md` + `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` as the **spec** for generation; backend `Generation`/`GenerationArtifact` models and `generation_service` are the authority.
+> - When editing generation types or request shapes, keep `packages/types/src/generation.ts`, `packages/game-core/src/generation/*`, and backend generation APIs in sync.
+> - Use `GenerationSocialContext` for relationship/intimacy‑aware behavior; don’t hand‑code prompt logic directly in the frontend.
+> - Related tasks (roadmap/status):  
+>   - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`  
+>   - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md`
+
 ---
 ## 1. Why This System
 Static authored content struggles to cover pacing transitions, replay variability, and player-adaptive beats. A **Generation Node** encodes *intent + constraints* rather than fixed assets, delegating realization to a backend generation service. This enables:

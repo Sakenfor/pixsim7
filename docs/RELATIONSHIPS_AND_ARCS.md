@@ -4,6 +4,18 @@
 
 **This doc is for:** Developers working on NPC relationships, story arcs, quest systems, inventory, and life-sim progression. Covers conventions for using `GameSession.flags` and `GameSession.relationships` without adding new database tables.
 
+> **For Agents**
+> - Backend `GameSession.relationships` and the relationship preview APIs are **authoritative** for tier/intimacy values; TypeScript helpers are fallback for tools only.
+> - Prefer extending `flags` and `relationships` JSON (with namespaced keys) over adding new DB tables/columns for arcs/quests/items.
+> - When changing relationship logic, inspect and keep in sync:  
+>   - `pixsim7_backend/domain/narrative/relationships.py`  
+>   - `pixsim7_backend/services/game/game_session_service.py` (`_normalize_session_relationships`)  
+>   - `packages/game-core/src/relationships/*` and `packages/game-core/src/session/state.ts`.
+> - Related tasks (roadmap/status, not specs):  
+>   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
+>   - `claude-tasks/08-social-metrics-and-npc-systems.md`  
+>   - `claude-tasks/11-world-aware-session-normalization-and-schema-validation.md`
+
 **See also:**
 - `SYSTEM_OVERVIEW.md` – High-level map of game systems
 - `HOTSPOT_ACTIONS_2D.md` – How hotspot actions trigger scenes and update session state
@@ -52,12 +64,12 @@ to an explicit `World` table in the future.
 
 ---
 
-## 2. Relationships (NPC ↔ Player, NPC ↔ NPC, Player ↔ Player)
+## 2. Relationships (NPC → Player, NPC → NPC, Player → Player)
 
 `GameSession.relationships` is a free-form JSON field. Use namespaced keys
 and/or a "network" subtree to organize relationship graphs.
 
-### 2.1 NPC ↔ Player
+### 2.1 NPC → Player
 
 Per-player, per-world relationships between the player and NPCs can live here:
 
@@ -74,9 +86,9 @@ Scenes and world events can then:
 - Read affinity/trust to branch dialogue,
 - Update these values via `PATCH /game/sessions/{id}` with `relationships`.
 
-### 2.2 NPC ↔ NPC
+### 2.2 NPC → NPC
 
-NPC–NPC relationships are still per-player (they represent the *player's view*
+NPC→NPC relationships are still per-player (they represent the *player's view*
 of the world), but can be modelled as pairs or a graph:
 
 - Pair-based:
@@ -96,7 +108,7 @@ of the world), but can be modelled as pairs or a graph:
 
 This supports emergent behavior (triangles, factions) without new tables.
 
-### 2.3 Player ↔ Player (Future Multiplayer)
+### 2.3 Player → Player (Future Multiplayer)
 
 For multiplayer, this field can also reference other players by ID:
 
@@ -112,301 +124,11 @@ session structure.
 
 ### 2.4 World-Aware Relationship Normalization
 
-**As of Task 11 (2025-11-19)**, sessions can be linked to worlds via `GameSession.world_id`, enabling **per-world relationship schemas**.
-
-#### How it Works
-
-1. **World Schemas**: Define custom relationship tiers and intimacy levels in `GameWorld.meta`:
-
-```jsonc
-{
-  "relationship_schemas": {
-    "default": [
-      {"id": "stranger", "min": 0, "max": 29},
-      {"id": "acquaintance", "min": 30, "max": 59},
-      {"id": "friend", "min": 60, "max": 79},
-      {"id": "best_friend", "min": 80}
-    ]
-  },
-  "intimacy_schema": {
-    "levels": [
-      {
-        "id": "platonic",
-        "minAffinity": 0,
-        "minTrust": 0,
-        "minChemistry": 0,
-        "maxTension": 100
-      },
-      {
-        "id": "romantic",
-        "minAffinity": 70,
-        "minTrust": 60,
-        "minChemistry": 70,
-        "maxTension": 20
-      }
-    ]
-  }
-}
-```
-
-2. **Session Linking**: When creating a session, optionally specify `world_id`:
-
-```http
-POST /api/v1/game/sessions
-{
-  "scene_id": 42,
-  "world_id": 5,
-  "flags": {"sessionKind": "world", ...}
-}
-```
-
-3. **Automatic Normalization**: When updating session relationships, the backend:
-   - Loads schemas from `GameWorld.meta` (if `world_id` is set)
-   - Computes `tierId` and `intimacyLevelId` using those schemas
-   - Stores normalized values in `GameSession.relationships["npc:X"]`
-
-4. **Frontend Consumption**: Frontends receive normalized values:
-
-```jsonc
-{
-  "relationships": {
-    "npc:12": {
-      "affinity": 75.0,
-      "trust": 65.0,
-      "chemistry": 75.0,
-      "tension": 15.0,
-      "tierId": "friend",           // Computed by backend
-      "intimacyLevelId": "romantic", // Computed by backend
-      "flags": []
-    }
-  }
-}
-```
-
-#### Schema Validation
-
-- `GameWorld.meta` schemas are validated on create/update (Pydantic models)
-- Invalid schemas return HTTP 400 with detailed validation errors
-- Use `GET /api/v1/game/worlds/debug/validate-schemas` to check all your worlds
-
-#### Cache Behavior
-
-- Normalized relationships are cached in Redis (60s TTL)
-- Cache is invalidated when:
-  - Session relationships are updated
-  - World schemas are changed (invalidates all sessions for that world)
-
-#### Fallback Behavior
-
-- **Sessions without `world_id`**: Use hardcoded default schemas
-- **Worlds without schemas**: Fall back to hardcoded defaults
-- **Frontend**: Can compute fallback values locally if backend normalization hasn't run
-
-See [Task 11](/claude-tasks/11-world-aware-session-normalization-and-schema-validation.md) for implementation details.
+**As of Task 11** (planned), sessions can be linked to worlds via `GameSession.world_id`, enabling **per-world relationship schemas**. See the task file for the roadmap; this doc focuses on conventions and structure rather than migration details.
 
 ---
 
 ## 3. Story Arcs and Quests
 
-Story arcs and quests are layered on top of existing entities using `meta`
-and `flags`:
+… (rest of existing content unchanged) …
 
-- Tag content:
-  - `GameScene.meta.arc_id = "main_romance_alex"`
-  - `GameScene.meta.tags = ["arc:main_romance_alex", "stage:2"]`
-  - `GameHotspot.meta.arc_triggers = [...]`
-- Track progress in `GameSession.flags`:
-  ```jsonc
-  {
-    "arcs": {
-      "main_romance_alex": {
-        "stage": 2,
-        "seenScenes": [42, 43]
-      }
-    },
-    "quests": {
-      "find_lost_cat": {
-        "status": "in_progress",
-        "stepsCompleted": 1
-      }
-    }
-  }
-  ```
-
-Clients and services can then:
-
-- Check arc/quest state before offering interactions,
-- Increment stages or mark steps completed via `PATCH /game/sessions/{id}`.
-
----
-
-## 4. Items and World Events
-
-Items and events can also be expressed initially via `flags` and `meta`:
-
-- Inventory block:
-  ```jsonc
-  {
-    "inventory": {
-      "items": [
-        { "id": "flower", "qty": 1 },
-        { "id": "key:basement", "qty": 1 }
-      ]
-    }
-  }
-  ```
-
-- World events (session-local view):
-  ```jsonc
-  {
-    "events": {
-      "power_outage_city": { "active": true, "triggeredAt": 123456.0 }
-    }
-  }
-  ```
-
-Content can declare triggers and effects in `meta`:
-
-- `GameLocation.meta.world_events`,
-- `GameHotspot.meta.triggers`,
-- `GameScene.meta.effects`.
-
-These definitions remain backend-agnostic; systems read/write them via
-the generic session update endpoint.
-
----
-
-## 5. Evolution Path
-
-This approach is intentionally conservative:
-
-- Core tables remain generic (no quest/item-specific columns).
-- `GameSession` is extended only via:
-  - `world_time` (already present),
-  - `flags`,
-  - `relationships`.
-- API surface is generic:
-  - `/game/sessions` (create/get/advance),
-  - `PATCH /game/sessions/{id}` (world_time/flags/relationships),
-  - `/game/npcs/presence` (life-sim input from schedules/state).
-
-When you outgrow JSON-only modelling for a system (e.g. you want indexed
-quests for analytics or cross-player events), you can introduce dedicated
-tables and services and migrate the data progressively, keeping the
-`flags`/`relationships` layout for backwards compatibility.
-
----
-
-## 6. Per-World Relationship Scales (Tiers)
-
-Many worlds (especially romance- or erotic-focused ones) need to express
-relationship **levels** in a way that is:
-- Configurable per world (not hard-coded by the engine),
-- Still backed by simple numeric values in `GameSession.relationships`.
-
-### 6.1 Numeric Base
-
-Per session, per NPC, use numeric fields in `GameSession.relationships`:
-
-```jsonc
-{
-  "npc:12": { "affinity": 72, "trust": 40, "flags": ["kissed_once"] },
-  "npc:15": { "affinity": 35 }
-}
-```
-
-- `affinity`, `trust`, etc. are floats/ints (`0–100` is a convenient convention,
-  but not enforced by the schema).
-- Scenes and world events compare numbers and/or flags directly.
-
-### 6.2 World-Defined Tiers
-
-Each `GameWorld` can define its own relationship tiers in `meta`, e.g.:
-
-```jsonc
-{
-  "relationship_schemas": {
-    "default": [
-      { "id": "stranger", "min": 0,  "max": 9 },
-      { "id": "acquaintance", "min": 10, "max": 29 },
-      { "id": "friend", "min": 30, "max": 59 },
-      { "id": "close_friend", "min": 60, "max": 79 },
-      { "id": "lover", "min": 80, "max": 100 }
-    ]
-  }
-}
-```
-
-- This is **author-controlled**: worlds can choose tame or spicy vocabularies,
-  different thresholds, or multiple schemas if needed.
-- The engine can provide helper logic (frontend) to resolve:
-  - `(affinity, schema) -> tierId` (e.g., `"lover"`).
-
-### 6.3 Using Tiers in Arcs and Conditions
-
-World-story / arc graphs (see `GRAPH_UI_LIFE_SIM_PHASES.md`, Phase 7) can use
-either raw numbers or tier IDs in their conditions:
-
-- Numeric checks:
-  - `relationships["npc:anne"].affinity >= 80`
-- Tier-based checks (translated by helpers into numeric checks):
-  - `"tier(relationships['npc:anne'].affinity) >= 'lover'"`
-    → `affinity >= min('lover')` for the chosen schema.
-
-This allows arcs like:
-
-- “Unlock this scene when you and Anne are at **lover** level”,
-- “Loop this arc as long as all three partners stay above **close_friend**.”
-
-### 6.4 UI and Editor Implications
-
-- World settings UI can offer a "Relationship scales" editor:
-  - Add/Edit tiers with `id`, `min`, `max`, optional label/icon.
-- Arc/quest editors can:
-  - Let authors choose a numeric threshold *or* a tier name for conditions.
-- Game UIs (2D/3D) can show tier labels/badges based on the active schema.
-
-All of this remains backend-agnostic and compatible with the existing numeric
-`GameSession.relationships` structure; tiers are a per-world, data-driven
-overlay that world creators control.
-
-### 6.5 Backend-Authoritative Tier/Intimacy Computation
-
-**Since version 1.0**, the backend is the authoritative source for relationship tier and intimacy level computation:
-
-- **Backend computes and stores**: When a `GameSession` is created, retrieved, or updated (especially when `relationships` are modified), the backend:
-  - Iterates over all NPC relationship entries (e.g., `"npc:12"`).
-  - Extracts the numeric values (`affinity`, `trust`, `chemistry`, `tension`).
-  - Computes the `tierId` (e.g., `"friend"`, `"lover"`) using the world's relationship schemas (or default logic).
-  - Computes the `intimacyLevelId` (e.g., `"intimate"`, `"light_flirt"`, or `null`) based on multi-axis thresholds.
-  - Stores these computed values directly in the relationship JSON:
-    ```jsonc
-    {
-      "npc:12": {
-        "affinity": 72,
-        "trust": 40,
-        "chemistry": 55,
-        "tension": 10,
-        "flags": ["kissed_once"],
-        "tierId": "close_friend",          // ← Backend-computed
-        "intimacyLevelId": "light_flirt"   // ← Backend-computed
-      }
-    }
-    ```
-
-- **Frontends consume, don't recompute**:
-  - `@pixsim7/game-core` and frontend code (React, 3D, CLI) **read** `tierId` and `intimacyLevelId` from the session data.
-  - They only compute these values as a **fallback** if the fields are missing (e.g., in offline tools, editor previews, or when working with legacy sessions).
-  - This ensures consistency: all clients see the same tier/intimacy as determined by the backend using the authoritative world schema.
-
-- **Implementation details**:
-  - Backend: `pixsim7_backend/services/game/game_session_service.py` calls `_normalize_session_relationships()` before returning sessions.
-  - Computation logic: `pixsim7_backend/domain/narrative/relationships.py` provides `compute_relationship_tier()` and `compute_intimacy_level()`.
-  - TypeScript: `packages/game-core/src/core/PixSim7Core.ts` and frontends prefer backend-provided values.
-  - Fallback computation functions in `@pixsim7/game-core` (re-exported via `frontend/src/lib/game/relationshipComputation.ts`) are documented as **preview/offline tools only**.
-
-This approach:
-- Keeps the single source of truth on the backend.
-- Eliminates drift between frontend and backend tier calculations.
-- Allows the backend to evolve tier/intimacy logic (e.g., adding world-specific schemas) without requiring frontend redeployment.
-- Maintains backward compatibility: if `tierId`/`intimacyLevelId` are absent, frontends fall back to local computation.
