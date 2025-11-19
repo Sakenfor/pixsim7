@@ -1,0 +1,383 @@
+{
+  "description": "Example behavior config for a 2D life simulation game (Stardew Valley style)",
+  "version": 1,
+  "activityCategories": {
+    "work": {
+      "id": "work",
+      "label": "Work",
+      "icon": "💼",
+      "defaultWeight": 0.6,
+      "description": "Job-related activities that earn money"
+    },
+    "social": {
+      "id": "social",
+      "label": "Social",
+      "icon": "👥",
+      "defaultWeight": 0.7,
+      "description": "Activities involving other NPCs"
+    },
+    "leisure": {
+      "id": "leisure",
+      "label": "Leisure",
+      "icon": "🎮",
+      "defaultWeight": 0.6,
+      "description": "Relaxation and entertainment"
+    },
+    "routine": {
+      "id": "routine",
+      "label": "Routine",
+      "icon": "🏠",
+      "defaultWeight": 0.5,
+      "description": "Daily necessities (eating, sleeping, etc.)"
+    }
+  },
+  "activities": {
+    "activity:work_shop": {
+      "version": 1,
+      "id": "activity:work_shop",
+      "name": "Work at Shop",
+      "category": "work",
+      "requirements": {
+        "locationTypes": ["shop", "store"],
+        "minEnergy": 20,
+        "timeOfDay": ["morning", "afternoon"]
+      },
+      "effects": {
+        "energyDeltaPerHour": -12,
+        "moodImpact": {
+          "valence": -5,
+          "arousal": 5
+        },
+        "flagsSet": {
+          "dailyWorkCompleted": true
+        }
+      },
+      "visual": {
+        "dialogueContext": "at_work",
+        "icon": "🛒"
+      },
+      "minDurationSeconds": 3600,
+      "priority": 1.0
+    },
+    "activity:socialize_cafe": {
+      "version": 1,
+      "id": "activity:socialize_cafe",
+      "name": "Chat at Cafe",
+      "category": "social",
+      "requirements": {
+        "locationTypes": ["cafe", "restaurant"],
+        "minEnergy": 15,
+        "requiredNpcRolesOrIds": ["role:friend"]
+      },
+      "effects": {
+        "energyDeltaPerHour": -5,
+        "moodImpact": {
+          "valence": 15,
+          "arousal": 10
+        },
+        "relationshipChanges": {
+          "role:friend": {
+            "affinity": 3,
+            "trust": 1
+          }
+        }
+      },
+      "visual": {
+        "dialogueContext": "casual_chat",
+        "sceneIntent": "cafe_conversation",
+        "icon": "☕"
+      },
+      "minDurationSeconds": 1800,
+      "priority": 0.8
+    },
+    "activity:eat_meal": {
+      "version": 1,
+      "id": "activity:eat_meal",
+      "name": "Eat Meal",
+      "category": "routine",
+      "requirements": {
+        "locationTypes": ["home", "restaurant", "cafe"],
+        "maxEnergy": 80
+      },
+      "effects": {
+        "energyDeltaPerHour": 25,
+        "moodImpact": {
+          "valence": 8,
+          "arousal": -3
+        }
+      },
+      "visual": {
+        "dialogueContext": "eating",
+        "icon": "🍽️"
+      },
+      "minDurationSeconds": 900,
+      "cooldownSeconds": 14400,
+      "priority": 1.2
+    },
+    "activity:sleep": {
+      "version": 1,
+      "id": "activity:sleep",
+      "name": "Sleep",
+      "category": "routine",
+      "requirements": {
+        "locationTypes": ["home", "bedroom"],
+        "maxEnergy": 40,
+        "timeOfDay": ["night"]
+      },
+      "effects": {
+        "energyDeltaPerHour": 40,
+        "moodImpact": {
+          "valence": 5,
+          "arousal": -20
+        }
+      },
+      "visual": {
+        "icon": "😴"
+      },
+      "minDurationSeconds": 14400,
+      "priority": 2.0
+    },
+    "activity:read_book": {
+      "version": 1,
+      "id": "activity:read_book",
+      "name": "Read Book",
+      "category": "leisure",
+      "requirements": {
+        "locationTypes": ["home", "library"],
+        "minEnergy": 25
+      },
+      "effects": {
+        "energyDeltaPerHour": -3,
+        "moodImpact": {
+          "valence": 10,
+          "arousal": -5
+        }
+      },
+      "visual": {
+        "dialogueContext": "reading",
+        "icon": "📚"
+      },
+      "minDurationSeconds": 1800,
+      "priority": 0.5
+    }
+  },
+  "routines": {
+    "routine:shopkeeper_daily": {
+      "version": 1,
+      "id": "routine:shopkeeper_daily",
+      "name": "Shopkeeper Daily Routine",
+      "nodes": [
+        {
+          "id": "morning_work",
+          "nodeType": "time_slot",
+          "timeRangeSeconds": {
+            "start": 28800,
+            "end": 43200
+          },
+          "preferredActivities": [
+            {
+              "activityId": "activity:work_shop",
+              "weight": 2.0
+            },
+            {
+              "activityId": "activity:eat_meal",
+              "weight": 1.5,
+              "conditions": [
+                {
+                  "type": "energy_between",
+                  "min": 0,
+                  "max": 60
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "label": "Morning Work (8am-12pm)",
+            "position": {
+              "x": 100,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "afternoon_work",
+          "nodeType": "time_slot",
+          "timeRangeSeconds": {
+            "start": 43200,
+            "end": 61200
+          },
+          "preferredActivities": [
+            {
+              "activityId": "activity:work_shop",
+              "weight": 1.8
+            },
+            {
+              "activityId": "activity:socialize_cafe",
+              "weight": 0.6
+            }
+          ],
+          "meta": {
+            "label": "Afternoon Work (12pm-5pm)",
+            "position": {
+              "x": 300,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "evening_leisure",
+          "nodeType": "time_slot",
+          "timeRangeSeconds": {
+            "start": 61200,
+            "end": 75600
+          },
+          "preferredActivities": [
+            {
+              "activityId": "activity:socialize_cafe",
+              "weight": 1.2
+            },
+            {
+              "activityId": "activity:read_book",
+              "weight": 0.8
+            },
+            {
+              "activityId": "activity:eat_meal",
+              "weight": 1.5
+            }
+          ],
+          "meta": {
+            "label": "Evening Leisure (5pm-9pm)",
+            "position": {
+              "x": 500,
+              "y": 100
+            }
+          }
+        },
+        {
+          "id": "night_sleep",
+          "nodeType": "time_slot",
+          "timeRangeSeconds": {
+            "start": 75600,
+            "end": 28800
+          },
+          "preferredActivities": [
+            {
+              "activityId": "activity:sleep",
+              "weight": 3.0
+            }
+          ],
+          "meta": {
+            "label": "Night Sleep (9pm-8am)",
+            "position": {
+              "x": 300,
+              "y": 300
+            }
+          }
+        }
+      ],
+      "edges": [],
+      "defaultPreferences": {
+        "categoryWeights": {
+          "work": 0.8,
+          "social": 0.5,
+          "leisure": 0.4,
+          "routine": 0.7
+        },
+        "traitModifiers": {
+          "conscientiousness": 75,
+          "extraversion": 50
+        }
+      },
+      "meta": {
+        "description": "Standard daily routine for shopkeepers",
+        "tags": ["work", "daily"]
+      }
+    }
+  },
+  "scoringConfig": {
+    "version": 1,
+    "weights": {
+      "baseWeight": 1.0,
+      "activityPreference": 1.2,
+      "categoryPreference": 1.0,
+      "traitModifier": 0.6,
+      "moodCompatibility": 0.7,
+      "relationshipBonus": 0.5,
+      "urgency": 1.5,
+      "inertia": 0.3
+    }
+  },
+  "simulationConfig": {
+    "version": 1,
+    "tiers": [
+      {
+        "id": "same_location",
+        "tickFrequencySeconds": 1,
+        "detailLevel": "full"
+      },
+      {
+        "id": "nearby_location",
+        "tickFrequencySeconds": 60,
+        "detailLevel": "simplified"
+      },
+      {
+        "id": "far_away",
+        "tickFrequencySeconds": 3600,
+        "detailLevel": "schedule_only"
+      }
+    ],
+    "priorityRules": [
+      {
+        "condition": {
+          "type": "flag_equals",
+          "key": "player.current_location",
+          "value": "{npc.location}"
+        },
+        "tier": "same_location",
+        "priority": 100
+      }
+    ],
+    "defaultTier": "far_away",
+    "maxNpcsPerTick": 50
+  },
+  "presets": {
+    "npcPreferences": {
+      "workaholic": {
+        "id": "workaholic",
+        "name": "Workaholic",
+        "description": "Loves work, tolerates social activities",
+        "preferences": {
+          "categoryWeights": {
+            "work": 0.9,
+            "social": 0.4,
+            "leisure": 0.3,
+            "routine": 0.6
+          },
+          "traitModifiers": {
+            "conscientiousness": 90,
+            "extraversion": 30
+          }
+        },
+        "tags": ["work-focused"]
+      },
+      "social_butterfly": {
+        "id": "social_butterfly",
+        "name": "Social Butterfly",
+        "description": "Loves socializing, dislikes isolation",
+        "preferences": {
+          "categoryWeights": {
+            "work": 0.4,
+            "social": 0.95,
+            "leisure": 0.7,
+            "routine": 0.5
+          },
+          "traitModifiers": {
+            "extraversion": 95,
+            "agreeableness": 80
+          }
+        },
+        "tags": ["social"]
+      }
+    }
+  }
+}

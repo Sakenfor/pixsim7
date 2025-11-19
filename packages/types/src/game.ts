@@ -687,3 +687,412 @@ export interface ReputationBandPreviewResponse {
   targetType?: string;
   subjectId: number;
 }
+
+// ===================
+// NPC Behavior System Types (Task 13)
+// ===================
+
+/**
+ * Condition DSL for behavior system
+ * Reusable across routine graphs, activity requirements, and simulation prioritization
+ *
+ * Supports built-in condition types and extensible custom conditions
+ */
+export type Condition =
+  // Built-in conditions
+  | {
+      type: 'relationship_gt';
+      npcIdOrRole: string;
+      metric: 'affinity' | 'trust' | 'chemistry' | 'tension';
+      threshold: number;
+    }
+  | {
+      type: 'relationship_lt';
+      npcIdOrRole: string;
+      metric: 'affinity' | 'trust' | 'chemistry' | 'tension';
+      threshold: number;
+    }
+  | { type: 'flag_equals'; key: string; value: unknown }
+  | { type: 'flag_exists'; key: string }
+  | { type: 'mood_in'; moodTags: string[] }
+  | { type: 'energy_between'; min: number; max: number }
+  | { type: 'random_chance'; probability: number } // 0-1
+  | {
+      type: 'time_of_day_in';
+      times: Array<'morning' | 'afternoon' | 'evening' | 'night'>;
+    }
+  | { type: 'location_type_in'; locationTypes: string[] }
+  // Extensible custom conditions
+  | {
+      type: 'custom';
+      evaluatorId: string; // e.g., "evaluator:is_raining", "evaluator:quest_active"
+      params: Record<string, unknown>;
+    }
+  // Expression-based conditions (advanced, optional)
+  | {
+      type: 'expression';
+      expression: string; // e.g., "relationship.affinity > 60 && flags.arc_stage == 2"
+    };
+
+/**
+ * User-defined activity category configuration
+ * Stored in GameWorld.meta.behavior.activityCategories
+ */
+export interface ActivityCategoryConfig {
+  id: string; // "work", "combat", "magic", "crafting", etc.
+  label: string; // Display name
+  icon?: string; // Optional icon (emoji or icon name)
+  defaultWeight?: number; // 0-1, default preference weight
+  description?: string;
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Relationship delta for activity effects
+ */
+export interface RelationshipDelta {
+  affinity?: number;
+  trust?: number;
+  chemistry?: number;
+  tension?: number;
+}
+
+/**
+ * Custom effect for extensibility
+ * Allows worlds to define custom effect types without code changes
+ */
+export interface CustomEffect {
+  type: string; // "effect:give_item", "effect:grant_xp", "effect:spawn_event"
+  params: Record<string, unknown>;
+}
+
+/**
+ * Activity effects applied when NPC performs an activity
+ */
+export interface ActivityEffects {
+  // Core effects (always available)
+  energyDeltaPerHour?: number; // -100 to 100
+  moodImpact?: { valence: number; arousal: number }; // -100 to 100
+  relationshipChanges?: Record<string, RelationshipDelta>; // key: "npc:<id>" or "role:<key>"
+  flagsSet?: Record<string, unknown>; // e.g., { "arc:job_promotion.completed": true }
+
+  // Extensible custom effects
+  customEffects?: CustomEffect[];
+}
+
+/**
+ * Activity requirements (gates for when activity is available)
+ */
+export interface ActivityRequirements {
+  locationTypes?: string[]; // e.g., ["office", "shop"]
+  requiredNpcRolesOrIds?: string[]; // e.g., ["role:friend", "npc:alex"]
+  minEnergy?: number; // 0-100
+  maxEnergy?: number; // 0-100
+  moodTags?: string[]; // e.g., ["playful", "focused"]
+  timeOfDay?: Array<'morning' | 'afternoon' | 'evening' | 'night'>;
+  conditions?: Condition[]; // Additional condition gates
+}
+
+/**
+ * Visual/presentation metadata for activities
+ */
+export interface ActivityVisualMeta {
+  animationId?: string;
+  dialogueContext?: string; // "at_work", "eating", "flirting"
+  actionBlocks?: string[]; // IDs passed to generation / action block system
+  sceneIntent?: string; // high-level label, not hard scene IDs
+  icon?: string;
+  color?: string;
+}
+
+/**
+ * Activity template definition
+ * Describes a reusable "thing NPCs can do"
+ */
+export interface Activity {
+  version: number; // Schema version (start at 1, increment on breaking changes)
+  id: string; // "activity:work_office"
+  name: string;
+  category: string; // User-defined category (not enum!)
+
+  requirements?: ActivityRequirements;
+  effects?: ActivityEffects;
+  visual?: ActivityVisualMeta;
+
+  // Simulation tuning
+  minDurationSeconds?: number; // Avoid rapid thrashing
+  cooldownSeconds?: number; // Avoid repeating too often
+  priority?: number; // Base priority (higher = more preferred by default)
+
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * NPC personality trait modifiers (0-100 scale)
+ */
+export interface NpcTraitModifiers {
+  extraversion?: number; // 0 = introverted, 100 = extraverted
+  conscientiousness?: number; // 0 = spontaneous, 100 = organized
+  openness?: number; // 0 = traditional, 100 = experimental
+  agreeableness?: number; // 0 = competitive, 100 = cooperative
+  neuroticism?: number; // 0 = calm, 100 = anxious
+}
+
+/**
+ * NPC preferences configuration
+ * Defines what an NPC likes/dislikes
+ */
+export interface NpcPreferences {
+  // Per-activity weights (0-1, default 0.5 if missing)
+  activityWeights?: Record<string, number>;
+
+  // Category weights (0-1, default 0.5 if missing)
+  categoryWeights?: Record<string, number>; // e.g., { "work": 0.7, "social": 0.9 }
+
+  // Relationship / location preferences
+  preferredNpcIdsOrRoles?: string[]; // e.g., ["npc:alex", "role:best_friend"]
+  avoidedNpcIdsOrRoles?: string[];
+  favoriteLocations?: string[]; // e.g., ["location:cafe", "location:park"]
+
+  // Time-of-day preferences
+  morningPerson?: boolean;
+  nightOwl?: boolean;
+
+  // Personality traits
+  traitModifiers?: NpcTraitModifiers;
+
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Routine graph node types
+ */
+export type RoutineNodeType = 'time_slot' | 'decision' | 'activity';
+
+/**
+ * Routine graph node
+ */
+export interface RoutineNode {
+  id: string;
+  nodeType: RoutineNodeType;
+
+  // Time window (for time_slot nodes)
+  timeRangeSeconds?: { start: number; end: number }; // seconds in game day
+
+  // Activity candidates (for time_slot or activity nodes)
+  preferredActivities?: Array<{
+    activityId: string;
+    weight: number; // base weight before preferences
+    conditions?: Condition[];
+  }>;
+
+  // Decision logic (for decision nodes)
+  decisionConditions?: Condition[]; // used with edges; node-level default conditions
+
+  meta?: {
+    label?: string;
+    position?: { x: number; y: number }; // editor layout only
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Routine graph edge
+ */
+export interface RoutineEdge {
+  fromNodeId: string;
+  toNodeId: string;
+  conditions?: Condition[];
+  weight?: number; // for weighted transitions
+  transitionEffects?: ActivityEffects; // optional side-effects on transition
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Routine graph definition
+ * Describes when and under which conditions certain activities are considered
+ */
+export interface RoutineGraph {
+  version: number; // Schema version
+  id: string; // "routine:shopkeeper_daily"
+  name: string;
+  nodes: RoutineNode[];
+  edges: RoutineEdge[];
+
+  // Optional defaults applied when this routine is used
+  defaultPreferences?: Partial<NpcPreferences>;
+
+  meta?: {
+    description?: string;
+    tags?: string[]; // "work", "casual", "romantic"
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Scoring system configuration
+ * Defines how activity choices are weighted
+ */
+export interface ScoringConfig {
+  version: number; // Schema version
+
+  // Multiplier weights for each scoring factor
+  weights: {
+    baseWeight: number; // 1.0 default
+    activityPreference: number; // 1.0 default
+    categoryPreference: number; // 0.8 default
+    traitModifier: number; // 0.6 default
+    moodCompatibility: number; // 0.7 default
+    relationshipBonus: number; // 0.5 default
+    urgency: number; // 1.2 default (low energy → boost rest)
+    inertia: number; // 0.3 default (bias toward current activity)
+  };
+
+  // Advanced: custom scoring function ID
+  customScoringId?: string; // "scoring:romantic_heavy", "scoring:work_focused"
+
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Simulation tier configuration (game-agnostic)
+ */
+export interface SimulationTier {
+  id: string; // "high_priority", "medium_priority", "background"
+  tickFrequencySeconds: number; // How often to update
+  detailLevel: 'full' | 'simplified' | 'schedule_only';
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Priority rule for NPC simulation
+ * Determines which tier an NPC belongs to based on conditions
+ */
+export interface SimulationPriorityRule {
+  condition: Condition; // Use existing Condition DSL
+  tier: string; // Which tier to assign
+  priority: number; // Higher priority wins
+}
+
+/**
+ * Simulation configuration (game-agnostic)
+ * Supports different game types: 2D, 3D, text, visual novel, etc.
+ */
+export interface SimulationConfig {
+  version: number; // Schema version
+
+  // Simulation tiers (not distance-based!)
+  tiers: SimulationTier[];
+
+  // How to determine NPC priority (flexible, not just distance!)
+  priorityRules: SimulationPriorityRule[];
+
+  // Defaults
+  defaultTier: string; // "background"
+  maxNpcsPerTick?: number; // Hard limit (e.g., 50)
+
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Custom condition evaluator configuration
+ * Allows worlds to define custom condition types
+ */
+export interface CustomConditionEvaluator {
+  id: string; // "evaluator:is_raining"
+  description?: string;
+  implementation?: 'lua' | 'python' | 'expr'; // Different execution strategies
+  code?: string; // The actual evaluator code (if applicable)
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Custom effect handler configuration
+ * Allows worlds to define custom effect types
+ */
+export interface CustomEffectHandler {
+  id: string; // "effect:give_item"
+  description?: string;
+  implementation?: 'lua' | 'python' | 'expr';
+  code?: string; // The actual handler code (if applicable)
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * NPC behavior configuration presets
+ * Reusable preset configurations for NPC preferences
+ */
+export interface NpcPreferencePreset {
+  id: string;
+  name: string;
+  description?: string;
+  preferences: NpcPreferences;
+  tags?: string[]; // "workaholic", "social_butterfly", "night_owl", etc.
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Complete behavior configuration for a world
+ * Stored in GameWorld.meta.behavior
+ */
+export interface BehaviorConfig {
+  version: number; // Schema version (start at 1)
+
+  // Activity catalog
+  activityCategories?: Record<string, ActivityCategoryConfig>;
+  activities?: Record<string, Activity>;
+
+  // Routine graphs
+  routines?: Record<string, RoutineGraph>;
+
+  // Scoring configuration
+  scoringConfig?: ScoringConfig;
+
+  // Simulation configuration
+  simulationConfig?: SimulationConfig;
+
+  // Extensibility
+  customConditionEvaluators?: Record<string, CustomConditionEvaluator>;
+  customEffectHandlers?: Record<string, CustomEffectHandler>;
+
+  // Presets
+  presets?: {
+    npcPreferences?: Record<string, NpcPreferencePreset>;
+    [key: string]: unknown;
+  };
+
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Per-session NPC state
+ * Stored in GameSession.flags.npcs["npc:<id>"].state
+ */
+export interface NpcSessionState {
+  energy?: number; // 0-100
+  currentActivityId?: string; // "activity:work_office"
+  activityStartedAtSeconds?: number; // world_time when activity started
+  nextDecisionAtSeconds?: number; // world_time when to re-evaluate
+  currentLocationId?: string; // "location:office"
+  moodState?: {
+    valence: number;
+    arousal: number;
+    tags?: string[];
+  };
+  lastActivities?: Array<{
+    // Activity history for cooldown checks
+    activityId: string;
+    endedAtSeconds: number;
+  }>;
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Per-session NPC data
+ * Stored in GameSession.flags.npcs["npc:<id>"]
+ */
+export interface SessionNpcData {
+  state?: NpcSessionState;
+  preferences?: NpcPreferences; // Session-specific overrides
+  meta?: Record<string, unknown>;
+}
