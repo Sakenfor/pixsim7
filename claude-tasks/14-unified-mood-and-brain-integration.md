@@ -5,7 +5,8 @@
 > - Read these first for authoritative behavior and data shapes:  
 >   - `docs/SOCIAL_METRICS.md` – current mood metric behavior and schemas  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationship data conventions  
->   - `docs/INTIMACY_AND_GENERATION.md` – intimacy and social context (for intimate moods).
+>   - `docs/INTIMACY_AND_GENERATION.md` – intimacy and social context (for intimate moods).  
+>   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` – how unified mood feeds into NPC activities and routines.
 > - Backend metrics and schemas in `pixsim7_backend/domain/metrics/*` + `GameWorld.meta` are authoritative; game‑core/TS mirror them for tools and UI.
 > - When implementing phases here, **extend** the existing metric/preview system instead of introducing ad‑hoc mood logic.
 
@@ -281,4 +282,3 @@ Align documentation and task files with the new unified mood system.
   - `packages/types/src/game.ts` (mood types, UnifiedMoodState)  
   - `packages/game-core/src/metrics/preview.ts` (unified mood preview helper)  
   - `packages/game-core/src/npcs/brain.ts` (brain mood integration)
-

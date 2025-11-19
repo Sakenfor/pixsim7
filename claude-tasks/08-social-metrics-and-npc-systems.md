@@ -5,7 +5,8 @@
 > - Read these first for authoritative behavior and data shapes:  
 >   - `docs/APP_MAP.md` (social metrics / NPC sections)  
 >   - `docs/SOCIAL_METRICS.md` (metric system, schemas, preview APIs)  
->   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship data conventions).
+>   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship data conventions).  
+>   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` (NPC activities, preferences, and routine graphs built on these metrics).
 > - When adding a new metric, always wire it through `pixsim7_backend/domain/metrics/*` and the preview API pattern, and keep `packages/types/src/game.ts` + game‑core helpers in sync.
 > - Use the phase checklist below to coordinate work and record what’s done (with notes and file paths).
 
@@ -74,4 +75,3 @@ This task defines phases for turning NPC mood and reputation into **first‑clas
   - `packages/types/src/game.ts` (metric payload/response types)  
   - `packages/game-core/src/metrics/preview.ts` (generic preview client)  
   - `packages/game-core/src/npcs/brain.ts` (mood state usage)
-
