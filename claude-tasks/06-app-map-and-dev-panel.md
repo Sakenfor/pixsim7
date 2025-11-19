@@ -18,10 +18,10 @@ Below are 10 phases for App Map docs + dev tooling.
 
 - [x] **Phase 1 – Static APP_MAP.md Architecture Index**
 - [x] **Phase 2 – App Map Dev View (via GraphPanel)**
-- [ ] **Phase 3 – Dependency Graph Visualization**
-- [ ] **Phase 4 – Plugin Detail Drill‑Down**
-- [ ] **Phase 5 – Capability Testing Panel**
-- [ ] **Phase 6 – Export / Import App Map Data**
+- [x] **Phase 3 – Dependency Graph Visualization**
+- [x] **Phase 4 – Plugin Detail Drill‑Down**
+- [x] **Phase 5 – Capability Testing Panel**
+- [x] **Phase 6 – Export / Import App Map Data**
 - [ ] **Phase 7 – Enhanced Search & Filtering**
 - [ ] **Phase 8 – Health Gating & Warnings**
 - [ ] **Phase 9 – Performance / Load Metrics Integration**
@@ -74,68 +74,89 @@ Provide a live, interactive view of registered features, routes, actions, and pl
 
 ---
 
-### Phase 3 – Dependency Graph Visualization
+### Phase 3 – Dependency Graph Visualization ✅
 
-**Goal**  
+**Goal**
 Visualize relationships between features, routes, and plugins as a graph.
 
 **Scope**
 - Read‑only, dev‑only visualization; no runtime dependencies on the graph.
 
-**Key Steps**
-1. Add a data‑model for dependencies (feature→route, feature→plugin, plugin→feature).
-2. Create a small graph visualization (reusing `GraphPanel` or similar) showing nodes and edges.
-3. Integrate as a tab or mode in the dev view (e.g. “App Graph”).
+**Implementation (2025-11-19)**
+- Created `DependencyGraphPanel.tsx` using ReactFlow
+- Features displayed as blue nodes, plugins as purple nodes
+- Edges show `consumesFeatures` (purple, animated) and `providesFeatures` (green)
+- Integrated as "Dependency Graph" tab in App Map Panel
+- Includes pan/zoom controls and minimap for navigation
+
+**Files Modified:**
+- `frontend/src/components/dev/DependencyGraphPanel.tsx` (new)
+- `frontend/src/components/dev/AppMapPanel.tsx` (integrated)
 
 ---
 
-### Phase 4 – Plugin Detail Drill‑Down
+### Phase 4 – Plugin Detail Drill‑Down ✅
 
-**Goal**  
+**Goal**
 Allow developers to drill down into plugin details directly from the App Map.
 
 **Scope**
 - For each plugin: show routes, hooks, source location, and related docs.
 
-**Key Steps**
-1. Extend plugin metadata with source hints (file path, kind, optional doc links).
-2. In the plugin view, add a detail panel:
-   - Hook registrations.
-   - Consumed/provided features.
-   - Links to docs and source (where applicable).
-3. Optionally integrate with editor links (e.g. VSCode URI) for local use.
+**Implementation (Pre-existing + Enhanced)**
+- Plugin cards are expandable in the "Plugin Ecosystem" tab
+- Shows: metadata (category, version, author), tags, feature dependencies
+- Displays `providesFeatures` (green badges) and `consumesFeatures` (blue badges)
+- Source registry information shown for each plugin
+- Experimental and deprecated flags clearly marked
+
+**Status:** Fully implemented in existing `AppMapPanel.tsx` (PluginCard component)
 
 ---
 
-### Phase 5 – Capability Testing Panel
+### Phase 5 – Capability Testing Panel ✅
 
-**Goal**  
+**Goal**
 Provide a dev‑only panel to exercise capabilities: trigger actions, navigate to routes, inspect feature state.
 
 **Scope**
 - Dev‑only; no behavior in production builds.
 
-**Key Steps**
-1. Add a “Testing” tab in the dev view:
-   - List actions (with descriptions).
-   - Allow invoking actions with minimal input.
-2. Provide quick navigation to routes (e.g. click route to open in a new tab).
-3. Optionally show feature state snapshots (where safe).
+**Implementation (2025-11-19)**
+- Created `CapabilityTestingPanel.tsx` with three sections:
+  1. **Routes:** Browse and navigate to any route with one click
+  2. **Actions:** Invoke registered actions directly from the UI
+  3. **State Inspection:** View all registered state values with JSON preview
+- Search functionality for both routes and actions
+- Shows action shortcuts, protected routes, and nav visibility
+- Integrated as "Capability Testing" tab in App Map Panel
+
+**Files Modified:**
+- `frontend/src/components/dev/CapabilityTestingPanel.tsx` (new)
+- `frontend/src/components/dev/AppMapPanel.tsx` (integrated)
 
 ---
 
-### Phase 6 – Export / Import App Map Data
+### Phase 6 – Export / Import App Map Data ✅
 
-**Goal**  
+**Goal**
 Allow exporting the current feature/plugin map to JSON for analysis or inline docs, and importing recorded maps.
 
 **Scope**
 - Export is primary; import is dev‑only for comparison.
 
-**Key Steps**
-1. Define a JSON schema for the app map (features, routes, plugins, links).
-2. Add “Export App Map” that downloads the current map as JSON.
-3. Optionally add “Import App Map” to load a snapshot and compare it with the live one.
+**Implementation (2025-11-19)**
+- Added "Export JSON" button to App Map Panel header
+- Exports comprehensive JSON with:
+  - Version and timestamp
+  - All features with routes and actions
+  - All plugins with complete metadata
+  - Statistics (counts, health metrics, feature usage)
+- File named with current date: `app-map-YYYY-MM-DD.json`
+- Import functionality deferred (can be added later if needed)
+
+**Files Modified:**
+- `frontend/src/components/dev/AppMapPanel.tsx` (export handler added)
 
 ---
 

@@ -249,10 +249,12 @@ These interactive tools provide real-time visibility into the app's structure an
 - **Route:** `/app-map` (dev route)
 - **Location:** `frontend/src/components/dev/AppMapPanel.tsx`
 - **Features:**
-  - Live feature and plugin listing
-  - Dependency graph visualization
-  - Plugin health and metadata analysis
-  - Feature-plugin relationship mapping
+  - **Features & Routes Tab:** Browse all features with their routes and actions
+  - **Plugin Ecosystem Tab:** Search and filter plugins by kind, origin, and tags
+  - **Dependency Graph Tab:** Interactive visualization of feature-plugin relationships
+  - **Capability Testing Tab:** Test routes, invoke actions, and inspect state
+  - **Statistics Tab:** System overview with health metrics and usage stats
+  - **Export Functionality:** Download complete app map as JSON for analysis
 
 ### Plugin Health Monitor
 - **API:** `getPluginHealth()` from `catalog.ts`
