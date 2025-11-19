@@ -14,7 +14,8 @@ import type {
   WorldUiConfig,
   HudVisibilityCondition,
 } from './types';
-import { applyPlayerPreferences } from './playerHudPreferences';
+import { applyPlayerPreferences, getPlayerPreferences } from './playerHudPreferences';
+import { getProfileLayout, getActiveProfileId } from './hudProfiles';
 
 /**
  * Tools grouped by HUD region
@@ -133,23 +134,42 @@ function checkVisibilityCondition(
 
 /**
  * Get HUD configuration from world metadata
+ * Phase 6: Now considers active profile and view mode
  */
-export function getHudConfig(worldDetail: GameWorldDetail | null): HudToolPlacement[] | null {
+export function getHudConfig(
+  worldDetail: GameWorldDetail | null,
+  profileId?: string,
+  viewMode?: 'cinematic' | 'hud-heavy' | 'debug'
+): HudToolPlacement[] | null {
   if (!worldDetail?.meta) return null;
+
+  // Phase 6: Check for profile-specific layout first
+  if (profileId) {
+    const profileLayout = getProfileLayout(worldDetail, profileId, viewMode);
+    if (profileLayout) {
+      return profileLayout;
+    }
+  }
+
   const ui = worldDetail.meta.ui as WorldUiConfig | undefined;
   return ui?.hud || null;
 }
 
 /**
  * Build HUD layout from world configuration and available tools
+ * Phase 6: Automatically resolves active profile
  */
 export function buildHudLayout(
   tools: WorldToolPlugin[],
   worldDetail: GameWorldDetail | null,
   context: WorldToolContext
 ): HudLayout {
+  // Phase 6: Get active profile and view mode
+  const activeProfileId = worldDetail ? getActiveProfileId(worldDetail.id) : undefined;
+  const viewMode = context.viewMode as 'cinematic' | 'hud-heavy' | 'debug' | undefined;
+
   // Get HUD configuration or use default
-  const hudConfig = getHudConfig(worldDetail) || getDefaultLayout(tools);
+  const hudConfig = getHudConfig(worldDetail, activeProfileId, viewMode) || getDefaultLayout(tools);
 
   // Filter placements by visibility conditions
   let visiblePlacements = hudConfig.filter((placement) =>

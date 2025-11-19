@@ -16,7 +16,7 @@ Below are 10 phases for evolving the HUD system over time.
 - [x] **Phase 3 – HUD Layout Editor**
 - [x] **Phase 4 – Visibility Conditions (View Mode / Capability / Flags)**
 - [x] **Phase 5 – Local HUD Presets**
-- [ ] **Phase 6 – Player Profiles & View‑Mode‑Specific Layouts**
+- [x] **Phase 6 – Player Profiles & View‑Mode‑Specific Layouts** *(Completed 2025-11-19)*
 - [ ] **Phase 7 – Shared / Server‑Backed HUD Presets**
 - [ ] **Phase 8 – HUD Usage Analytics**
 - [ ] **Phase 9 – Layout Validation & Recommendations**
@@ -124,17 +124,34 @@ Make it easy to reuse HUD layouts across worlds by introducing presets stored on
 
 ### Phase 6 – Player Profiles & View‑Mode‑Specific Layouts
 
-**Goal**  
+**Goal**
 Allow different HUD layouts per player profile and/or view mode (e.g. cinematic vs hud‑heavy) using existing placements and presets.
 
 **Scope**
-- Layer “profile” on top of `WorldUiConfig` + presets.
+- Layer "profile" on top of `WorldUiConfig` + presets.
 
 **Key Steps**
 1. Introduce a notion of HUD profile (e.g. `profileId`) stored in user preferences or session flags.
 2. Extend HUD resolution to consider `(worldId, viewMode, profileId)` when selecting placements/presets.
 3. In `HudLayoutEditor`, add a profile selector and allow editing layout per profile.
 4. Provide a small toggle in Game2D to switch profiles and verify layout changes.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+- **Files Added:**
+  - `frontend/src/lib/worldTools/hudProfiles.ts` - Profile management with built-in profiles (default, minimal, streamer, debug)
+  - `frontend/src/components/game/HudProfileSwitcher.tsx` - UI components for switching profiles
+- **Files Modified:**
+  - `frontend/src/lib/worldTools/types.ts` - Added `HudProfile` interface and `profileLayouts` to `WorldUiConfig`, added `activeProfileId` to `PlayerHudPreferences`
+  - `frontend/src/lib/worldTools/hudLayout.ts` - Extended `getHudConfig()` and `buildHudLayout()` to resolve profile-specific layouts
+  - `frontend/src/components/game/HudLayoutEditor.tsx` - Added profile and view mode selectors, updated save logic
+  - `frontend/src/routes/Game2D.tsx` - Integrated `HudProfileSwitcherButton`
+- **Features:**
+  - 4 built-in profiles: Default, Minimal, Streamer, Debug
+  - Profile layouts stored per world in `GameWorld.meta.ui.profileLayouts` with key format `"profileId:viewMode"` or `"profileId"`
+  - Active profile stored in player preferences (localStorage)
+  - Editor allows editing layouts for specific profile + view mode combinations
+  - In-game profile switcher button for quick switching
+  - Automatic layout resolution based on active profile and current view mode
 
 ---
 

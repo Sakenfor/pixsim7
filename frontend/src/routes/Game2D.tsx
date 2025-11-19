@@ -56,6 +56,7 @@ import { RegionalHudLayout } from '../components/game/RegionalHudLayout';
 import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
+import { HudProfileSwitcherButton } from '../components/game/HudProfileSwitcher';
 import { UserPreferencesPanel } from '../components/game/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
@@ -866,6 +867,13 @@ export function Game2D() {
                 currentViewMode={viewMode}
                 onUpdate={() => {
                   // Trigger re-render when player preferences change
+                  setWorldDetail({ ...worldDetail });
+                }}
+              />
+              <HudProfileSwitcherButton
+                worldId={worldDetail.id}
+                onProfileChange={() => {
+                  // Trigger re-render when profile changes
                   setWorldDetail({ ...worldDetail });
                 }}
               />

@@ -24,6 +24,12 @@ import {
   importPreset,
   type HudLayoutPreset,
 } from '../../lib/worldTools/hudPresets';
+import {
+  getAvailableProfiles,
+  saveProfileLayout,
+  getProfileLayout,
+  type HudProfile,
+} from '../../lib/worldTools/hudProfiles';
 
 interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;
@@ -83,6 +89,11 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
   const [presetName, setPresetName] = useState('');
   const [presetDescription, setPresetDescription] = useState('');
 
+  // Phase 6: Profile and view mode selection
+  const [selectedProfile, setSelectedProfile] = useState<string>('default');
+  const [selectedViewMode, setSelectedViewMode] = useState<'all' | 'cinematic' | 'hud-heavy' | 'debug'>('all');
+  const [availableProfiles, setAvailableProfiles] = useState<HudProfile[]>([]);
+
   // Undo/Redo state
   const [history, setHistory] = useState<ToolPlacementRow[][]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -93,15 +104,28 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
   // Get all available tools
   const availableTools = useMemo(() => worldToolRegistry.getAll(), []);
 
-  // Load presets on mount
+  // Load presets and profiles on mount
   useEffect(() => {
     setPresets(loadPresets());
+    setAvailableProfiles(getAvailableProfiles());
   }, []);
 
-  // Initialize placements from world config
-  const [placements, setPlacements] = useState<ToolPlacementRow[]>(() => {
-    const config = getHudConfig(worldDetail);
+  // Helper function to load placements for current profile/view mode
+  const loadPlacementsForProfile = (profileId: string, viewMode: 'all' | 'cinematic' | 'hud-heavy' | 'debug'): ToolPlacementRow[] => {
     const toolMap = new Map(availableTools.map((t) => [t.id, t]));
+
+    // Get profile-specific layout if view mode is not 'all'
+    let config: HudToolPlacement[] | null = null;
+    if (viewMode !== 'all') {
+      config = getProfileLayout(worldDetail, profileId, viewMode);
+    }
+
+    // Fall back to base profile layout or default layout
+    if (!config) {
+      config = profileId === 'default'
+        ? getHudConfig(worldDetail)
+        : getProfileLayout(worldDetail, profileId) || getHudConfig(worldDetail);
+    }
 
     if (config && config.length > 0) {
       // Use existing configuration
@@ -125,7 +149,18 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
         order: index,
       }));
     }
-  });
+  };
+
+  // Initialize placements from world config
+  const [placements, setPlacements] = useState<ToolPlacementRow[]>(() =>
+    loadPlacementsForProfile('default', 'all')
+  );
+
+  // Reload placements when profile or view mode changes
+  useEffect(() => {
+    const newPlacements = loadPlacementsForProfile(selectedProfile, selectedViewMode);
+    setPlacements(newPlacements);
+  }, [selectedProfile, selectedViewMode, worldDetail]);
 
   // Group placements by region
   const placementsByRegion = useMemo(() => {
@@ -426,20 +461,33 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
         region: p.region,
         order: p.order,
         visibleWhen: p.visibleWhen,
+        size: p.size,
+        defaultCollapsed: p.defaultCollapsed,
+        zIndex: p.zIndex,
+        customClassName: p.customClassName,
       }));
 
-      // Update world metadata
-      const updatedMeta: Record<string, unknown> = {
-        ...worldDetail.meta,
-        ui: {
-          ...(worldDetail.meta?.ui as Record<string, unknown> | undefined),
-          hud: hudConfig,
-        } as WorldUiConfig,
-      };
+      let updatedMeta: Record<string, unknown>;
+
+      // Phase 6: Save to profile-specific layout if not default profile or specific view mode
+      if (selectedProfile !== 'default' || selectedViewMode !== 'all') {
+        const viewMode = selectedViewMode === 'all' ? undefined : selectedViewMode;
+        updatedMeta = saveProfileLayout(worldDetail, selectedProfile, hudConfig, viewMode);
+      } else {
+        // Save to default layout
+        updatedMeta = {
+          ...worldDetail.meta,
+          ui: {
+            ...(worldDetail.meta?.ui as Record<string, unknown> | undefined),
+            hud: hudConfig,
+          } as WorldUiConfig,
+        };
+      }
 
       const updatedWorld = await updateGameWorldMeta(worldDetail.id, updatedMeta);
 
-      setSuccessMessage('HUD layout saved successfully!');
+      const profileInfo = selectedProfile !== 'default' ? ` (Profile: ${selectedProfile}${selectedViewMode !== 'all' ? `, View: ${selectedViewMode}` : ''})` : '';
+      setSuccessMessage(`HUD layout saved successfully!${profileInfo}`);
       setTimeout(() => setSuccessMessage(null), 3000);
 
       if (onSave) {
@@ -607,6 +655,48 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
           </ul>
         </div>
       )}
+
+      {/* Phase 6: Profile and View Mode Selection */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded">
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            HUD Profile
+          </label>
+          <Select
+            value={selectedProfile}
+            onChange={(e) => setSelectedProfile(e.target.value)}
+            className="w-full"
+          >
+            {availableProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.icon} {profile.name}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            Choose which profile's layout to edit
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+            View Mode (Optional)
+          </label>
+          <Select
+            value={selectedViewMode}
+            onChange={(e) => setSelectedViewMode(e.target.value as any)}
+            className="w-full"
+          >
+            <option value="all">All View Modes</option>
+            <option value="cinematic">Cinematic</option>
+            <option value="hud-heavy">HUD Heavy</option>
+            <option value="debug">Debug</option>
+          </Select>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            Customize layout for specific view mode
+          </p>
+        </div>
+      </div>
 
       {/* Undo/Redo Controls */}
       <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">

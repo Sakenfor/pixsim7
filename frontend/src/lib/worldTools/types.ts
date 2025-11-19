@@ -260,8 +260,27 @@ export interface WorldUiConfig {
   /** Only tools that differ from inherited layout (when using inheritance) */
   overrides?: HudToolPlacement[];
 
+  // Phase 6: Per-profile layouts
+  /** Profile-specific layouts - key format: "profileId:viewMode" or "profileId" */
+  profileLayouts?: Record<string, HudToolPlacement[]>;
+
   /** Additional UI configuration */
   [key: string]: unknown;
+}
+
+/**
+ * Phase 6: HUD Profile definition
+ * Represents a named HUD configuration profile (e.g., 'default', 'minimal', 'streamer')
+ */
+export interface HudProfile {
+  /** Unique profile ID */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Optional description */
+  description?: string;
+  /** Icon or emoji */
+  icon?: string;
 }
 
 /**
@@ -279,6 +298,8 @@ export interface PlayerHudPreferences {
   viewModeOverride?: 'cinematic' | 'hud-heavy' | 'debug';
   /** Tool-specific overrides (size, position adjustments) */
   toolOverrides?: Record<string, Partial<HudToolPlacement>>;
+  /** Phase 6: Active HUD profile ID (e.g., 'default', 'minimal', 'streamer') */
+  activeProfileId?: string;
   /** Timestamp when preferences were last updated */
   lastUpdated: number;
 }
