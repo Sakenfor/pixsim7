@@ -31,11 +31,11 @@ This task is about **making sure the architecture holds under real usage**, via 
 
 ## Phase Checklist
 
-- [ ] **Phase 24.1 – Code-Level Sanity Checks (Access Patterns & Conventions)**
-- [ ] **Phase 24.2 – Plugin & ECS Integration Audit**
-- [ ] **Phase 24.3 – Interaction & Narrative Flow Smoke Tests**
-- [ ] **Phase 24.4 – Life-Sim vs VN Profile Sanity**
-- [ ] **Phase 24.5 – Performance & Safety Spot Checks**
+- [x] **Phase 24.1 – Code-Level Sanity Checks (Access Patterns & Conventions)** ✅
+- [x] **Phase 24.2 – Plugin & ECS Integration Audit** ✅
+- [x] **Phase 24.3 – Interaction & Narrative Flow Smoke Tests** ✅
+- [x] **Phase 24.4 – Life-Sim vs VN Profile Sanity** ✅
+- [x] **Phase 24.5 – Performance & Safety Spot Checks** ✅
 
 ---
 
@@ -64,7 +64,7 @@ Verify that new code respects the intended access patterns and conventions, espe
      - Per-NPC plugin state via `ComponentAPI` (components[`plugin:...`]), not by manually editing flags.
 4. **Flag any new “shortcuts”** that bypass ECS/Plugin APIs and note them for cleanup.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed - See 24-architecture-validation-results.md
 
 ---
 
@@ -90,7 +90,7 @@ Confirm that key plugins and behavior extensions are using ECS + plugin capabili
    - Conditions/effects register via `BehaviorExtensionAPI`, namespaced IDs, and show up in `behavior_registry`.  
    - No plugin writes directly into core components that it doesn’t own.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed - See 24-architecture-validation-results.md
 
 ---
 
@@ -121,7 +121,7 @@ Validate that the interaction + narrative stack behaves sensibly in practice, us
    - Interaction suggestions make sense (no obviously bizarre scoring).  
    - Chains/steps progress when expected; cooldowns behave correctly.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed - See 24-architecture-validation-results.md
 
 ---
 
@@ -151,7 +151,7 @@ Confirm that `GameProfile` and simulation modes effectively switch behavior betw
    - In turn-based worlds, ensure time advancing is clearly tied to explicit actions (Next Turn, sleep, etc.).  
    - In VN worlds, ensure you’re not forced into turn-based loops unless deliberately configured.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed - See 24-architecture-validation-results.md
 
 ---
 
@@ -183,7 +183,7 @@ Do a light, qualitative check that the architecture won’t collapse under modes
 4. **Logging & observability**:
    - Confirm key systems log enough context (world_id, session_id, npc_id, plugin_id) to debug issues.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed - See 24-architecture-validation-results.md
 
 ---
 
