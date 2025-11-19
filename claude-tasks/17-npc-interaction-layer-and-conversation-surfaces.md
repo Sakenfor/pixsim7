@@ -549,7 +549,43 @@ Define and implement how the system decides **which interactions are available**
    - Pure and testable.
    - Configurable via world meta (no hardcoded thresholds).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+**Implementation:**
+- Backend gating logic: `pixsim7_backend/domain/game/interaction_availability.py`
+- API endpoint: `pixsim7_backend/api/v1/npc_interactions.py`
+- Route plugin: `pixsim7_backend/routes/npc_interactions/`
+- Client API: `frontend/src/lib/api/interactions.ts`
+
+**Key Features:**
+1. **Comprehensive gating checks:**
+   - Time of day (periods and hour ranges)
+   - Relationship (tiers, affinity, trust, chemistry, tension, intimacy level)
+   - NPC behavior (state, activity, simulation tier)
+   - Mood/emotions (tags and intensity thresholds)
+   - Session flags (arcs, quests, events)
+   - Cooldowns
+
+2. **Integration with existing systems:**
+   - Relationship data from `GameSession.relationships`
+   - NPC state from `GameSession.flags.npcs["npc:<id>"]`
+   - World tier ordering from `GameWorld.meta.relationships.tiers`
+   - Behavior state from Task 13 system
+
+3. **Clear disabled reasons:**
+   - Enum-based reason codes (`DisabledReason`)
+   - Human-readable messages for UI display
+   - Includes current values when applicable
+
+4. **Flexible filtering:**
+   - By NPC ID or role patterns
+   - Optional inclusion of unavailable interactions (for debugging)
+   - Priority-based sorting
+
+5. **Pure, testable functions:**
+   - No DB dependencies in core gating logic
+   - Easy to unit test
+   - Context snapshot pattern for reproducibility
 
 ---
 
