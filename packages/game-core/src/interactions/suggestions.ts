@@ -3,9 +3,12 @@
  *
  * Context-aware suggestions for what interactions the player should try next.
  * Based on relationship state, game progress, available interactions, and player behavior patterns.
+ *
+ * Task 23: GameProfile integration - adjusts suggestion scoring based on game style and narrative profile.
  */
 
-import type { NpcInteractionInstance } from '@pixsim7/types';
+import type { NpcInteractionInstance, GameProfile } from '@pixsim7/types';
+import { getNarrativeEmphasisWeight } from '../world/gameProfile';
 
 /**
  * Suggestion reason/category
@@ -67,6 +70,8 @@ export interface SuggestionConfig {
   includeUsed?: boolean;
   /** Consider player history */
   considerHistory?: boolean;
+  /** GameProfile for world-specific tuning (Task 23) */
+  gameProfile?: GameProfile;
 }
 
 /**
@@ -116,10 +121,18 @@ export function generateSuggestions(
     priorityReasons = ['chain_continuation', 'quest_progress', 'time_sensitive'],
     includeUsed = false,
     considerHistory = true,
+    gameProfile,
   } = config;
 
   const suggestions: InteractionSuggestion[] = [];
   const now = Math.floor(Date.now() / 1000);
+
+  // Task 23: Derive suggestion tuning from GameProfile
+  const narrativeWeight = gameProfile?.narrativeProfile
+    ? getNarrativeEmphasisWeight(gameProfile.narrativeProfile)
+    : 0.5;
+  const isLifeSim = gameProfile?.style === 'life_sim';
+  const isVisualNovel = gameProfile?.style === 'visual_novel';
 
   for (const interaction of availableInteractions) {
     // Skip if already used (unless config allows)
@@ -138,7 +151,10 @@ export function generateSuggestions(
     );
 
     if (chainInfo) {
-      score += 40;
+      // Task 23: Boost chain continuation more for VN/heavy narrative
+      const chainBoost = isVisualNovel ? 50 : 40;
+      const narrativeBonus = narrativeWeight > 0.6 ? 10 : 0;
+      score += chainBoost + narrativeBonus;
       reason = 'chain_continuation';
       explanation = `Continue ${chainInfo.chainName} (step ${chainInfo.currentStep + 1}/${chainInfo.totalSteps})`;
       suggestionContext.chainInfo = {
@@ -187,7 +203,10 @@ export function generateSuggestions(
         const affinityNeeded = nextTierAffinity - currentAffinity;
 
         if (affinityNeeded > 0 && affinityNeeded <= 10) {
-          score += 25;
+          // Task 23: Boost relationship milestones more for VN/heavy narrative
+          const milestoneBoost = isVisualNovel ? 35 : 25;
+          const narrativeBonus = narrativeWeight > 0.6 ? 10 : 0;
+          score += milestoneBoost + narrativeBonus;
           if (reason === 'contextual') {
             reason = 'relationship_milestone';
             explanation = `Gain ${deltas.affinity} affinity (${affinityNeeded} needed for ${context.relationship.nextTier})`;
@@ -277,6 +296,26 @@ export function generateSuggestions(
         reason = 'npc_preference';
         explanation = 'They would really appreciate this';
       }
+    }
+
+    // Task 23: Boost everyday/ambient interactions for life-sim with light narrative
+    const isEverydayInteraction =
+      interaction.surface === 'inline' ||
+      interaction.surface === 'ambient' ||
+      interaction.label.toLowerCase().includes('talk') ||
+      interaction.label.toLowerCase().includes('chat') ||
+      interaction.label.toLowerCase().includes('hang out');
+
+    if (isEverydayInteraction && isLifeSim && narrativeWeight < 0.4) {
+      score += 15;
+      if (reason === 'contextual') {
+        explanation = 'Good casual interaction for daily routine';
+      }
+    }
+
+    // Task 23: Reduce everyday interaction priority for VN with heavy narrative
+    if (isEverydayInteraction && isVisualNovel && narrativeWeight > 0.6) {
+      score -= 10;
     }
 
     // Default explanation

@@ -286,6 +286,20 @@ export {
 
 export type { DynamicThemeRule, ThemeRuleCondition } from './world/dynamicThemeRules';
 
+// GameProfile (Task 23)
+export {
+  getDefaultScoringWeights,
+  getDefaultSimulationTierLimits,
+  getBehaviorScoringConfig,
+  getSimulationConfig,
+  getNarrativeEmphasisWeight,
+  isValidGameProfile,
+  getDefaultGameProfile,
+  getInteractionDefaults,
+  shouldFavorNarrativeProgram,
+  getNarrativeFrequency,
+} from './world/gameProfile';
+
 // ===== User Preferences =====
 export {
   loadUserPreferences,
