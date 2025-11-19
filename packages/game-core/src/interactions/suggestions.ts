@@ -101,6 +101,12 @@ export function generateSuggestions(
     }>;
     /** Current world time */
     worldTime?: number;
+    /** NPC mood state */
+    mood?: {
+      general: string;
+      intimacy?: string;
+      activeEmotions?: Array<{ emotion: string; intensity: number }>;
+    };
   },
   config: SuggestionConfig = {}
 ): InteractionSuggestion[] {
@@ -237,6 +243,29 @@ export function generateSuggestions(
       if (reason === 'contextual') {
         reason = 'rarely_used';
         explanation = 'Haven\'t tried this yet';
+      }
+    }
+
+    // Check mood compatibility
+    if (context.mood && interaction.gating?.mood) {
+      const moodGating = interaction.gating.mood;
+      const moodTags = [context.mood.general];
+      if (context.mood.intimacy) {
+        moodTags.push(context.mood.intimacy);
+      }
+
+      // Boost if matches allowed moods
+      if (moodGating.allowedMoods) {
+        const moodMatches = moodGating.allowedMoods.some((allowed) =>
+          moodTags.includes(allowed)
+        );
+        if (moodMatches) {
+          score += 20;
+          if (reason === 'contextual') {
+            reason = 'npc_preference';
+            explanation = `Perfect for their current mood (${context.mood.general})`;
+          }
+        }
       }
     }
 

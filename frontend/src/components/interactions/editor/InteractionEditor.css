@@ -1,0 +1,244 @@
+/**
+ * Interaction Editor Styles
+ */
+
+.interaction-editor {
+  background: rgba(25, 25, 35, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  max-width: 900px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+/* Header */
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.editor-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: rgba(100, 150, 255, 0.8);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: rgba(100, 150, 255, 1);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Errors */
+
+.editor-errors {
+  padding: 16px 24px;
+  background: rgba(255, 100, 100, 0.1);
+  border-bottom: 1px solid rgba(255, 100, 100, 0.3);
+}
+
+.editor-errors h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: rgba(255, 150, 150, 0.95);
+}
+
+.editor-errors ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: rgba(255, 200, 200, 0.9);
+}
+
+/* Tabs */
+
+.editor-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 24px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tab {
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab.active {
+  color: rgba(100, 150, 255, 0.95);
+  border-bottom-color: rgba(100, 150, 255, 0.8);
+  background: rgba(100, 150, 255, 0.1);
+}
+
+/* Content */
+
+.editor-content {
+  padding: 24px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.editor-section h3 {
+  margin: 16px 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.editor-section h3:first-child {
+  margin-top: 0;
+}
+
+/* Form controls */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.form-group.checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.form-group.checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.required {
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.form-group input[type='text'],
+.form-group input[type='number'],
+.form-group select,
+.form-group textarea {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.95);
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.form-group input[type='text']:focus,
+.form-group input[type='number']:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: rgba(100, 150, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.form-group input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.form-group small {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+.form-group select[multiple] {
+  min-height: 120px;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Responsive */
+
+@media (max-width: 768px) {
+  .editor-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .editor-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}

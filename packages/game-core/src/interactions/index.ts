@@ -12,3 +12,4 @@ export * from './chains';
 export * from './chainHelpers';
 export * from './behaviorIntegration';
 export * from './suggestions';
+export * from './moodIntegration';

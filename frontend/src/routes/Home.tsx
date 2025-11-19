@@ -162,6 +162,28 @@ export function Home() {
               <Button size="sm" variant="primary" onClick={() => window.open('/npc-portraits', '_self')}>Open NPC Portraits</Button>
             </div>
           </Panel>
+
+          <Panel className="space-y-2">
+            <h3 className="font-medium flex items-center gap-2">
+              <Icon name="sparkles" size={18} className="text-yellow-500" />
+              Interaction Studio
+            </h3>
+            <p className="text-xs text-neutral-500">Design and prototype NPC interactions visually</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/interaction-studio', '_self')}>Open Studio</Button>
+            </div>
+          </Panel>
+
+          <Panel className="space-y-2">
+            <h3 className="font-medium flex items-center gap-2">
+              <Icon name="play" size={18} className="text-green-500" />
+              Interaction Demo
+            </h3>
+            <p className="text-xs text-neutral-500">See all interaction components in action with live examples</p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" variant="primary" onClick={() => window.open('/interaction-demo', '_self')}>View Demo</Button>
+            </div>
+          </Panel>
         </div>
       </section>
 
