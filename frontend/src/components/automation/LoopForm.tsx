@@ -5,8 +5,7 @@ import {
   PresetExecutionMode,
   AccountSelectionMode,
 } from '../../types/automation';
-import { Button, Panel } from '@pixsim7/ui';
-import { useToast } from '../../stores/toastStore';
+import { Button, Panel, useToast } from '@pixsim7/ui';
 
 interface LoopFormProps {
   loop?: ExecutionLoop;

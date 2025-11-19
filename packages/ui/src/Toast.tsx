@@ -1,62 +1,118 @@
-import { useEffect } from 'react';
-import { clsx } from 'clsx';
+import { useEffect, useState } from 'react';
+import clsx from 'clsx';
+import type { Toast as ToastType } from './useToast';
+import { useToastStore } from './useToast';
 
-export type ToastType = 'success' | 'error' | 'warning' | 'info';
-
-export interface ToastProps {
-  id: string;
-  message: string;
-  type?: ToastType;
-  duration?: number;
-  onClose: () => void;
+interface ToastProps {
+  toast: ToastType;
+  onDismiss: (id: string) => void;
 }
 
-export function Toast({ id, message, type = 'info', duration = 4000, onClose }: ToastProps) {
+const TOAST_COLORS = {
+  success: 'bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700',
+  error: 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
+  info: 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+  warning: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
+  'cube-message': 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700',
+};
+
+export function Toast({ toast, onDismiss }: ToastProps) {
+  const [exiting, setExiting] = useState(false);
+
+  // Handle exit animation
+  const handleDismiss = () => {
+    setExiting(true);
+    setTimeout(() => onDismiss(toast.id), 200);
+  };
+
+  // Auto-dismiss on duration
   useEffect(() => {
-    if (duration > 0) {
-      const timer = setTimeout(onClose, duration);
+    if (toast.duration && toast.duration > 0) {
+      const timer = setTimeout(() => handleDismiss(), toast.duration - 200);
       return () => clearTimeout(timer);
     }
-  }, [duration, onClose]);
-
-  const typeStyles = {
-    success: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200',
-    error: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200',
-    warning: 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200',
-    info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200',
-  };
+  }, [toast.duration]);
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={clsx(
-        'flex items-start gap-3 p-4 rounded-lg border shadow-elevation-2 max-w-md animate-slide-in',
-        typeStyles[type]
+        'flex items-start gap-2 p-3 rounded border shadow-lg text-sm transition-all duration-200 min-w-[250px] max-w-md',
+        TOAST_COLORS[toast.type],
+        exiting ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
       )}
     >
-      <div className="flex-1 text-sm">{message}</div>
+      {/* Icon */}
+      {toast.icon && (
+        <span className="text-lg flex-shrink-0" aria-hidden="true">
+          {toast.icon}
+        </span>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        {/* Title */}
+        {toast.title && (
+          <div className="font-semibold mb-1">
+            {toast.title}
+          </div>
+        )}
+
+        {/* Message */}
+        <div className="break-words">
+          {toast.message}
+        </div>
+
+        {/* Cube message metadata */}
+        {toast.type === 'cube-message' && toast.fromCubeId && toast.toCubeId && (
+          <div className="text-xs opacity-70 mt-1 font-mono">
+            {toast.fromCubeId} → {toast.toCubeId}
+          </div>
+        )}
+      </div>
+
+      {/* Dismiss button */}
       <button
-        onClick={onClose}
-        className="p-0.5 rounded text-current opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5 transition-all focus:outline-none focus:ring-2 focus:ring-current"
-        aria-label="Close"
+        onClick={handleDismiss}
+        className="flex-shrink-0 text-current opacity-60 hover:opacity-100 transition-opacity"
+        aria-label="Dismiss notification"
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <path d="M4 4l8 8M12 4l-8 8" />
         </svg>
       </button>
     </div>
   );
 }
 
-export interface ToastContainerProps {
-  toasts: ToastProps[];
-}
+/**
+ * Toast notification container.
+ * Place this component at the root of your app to display toast notifications.
+ */
+export function ToastContainer() {
+  const toasts = useToastStore((s) => s.toasts);
+  const removeToast = useToastStore((s) => s.removeToast);
 
-export function ToastContainer({ toasts }: ToastContainerProps) {
+  if (toasts.length === 0) return null;
+
   return (
-    <div className="fixed top-4 right-4 z-[10001] flex flex-col gap-2 pointer-events-none">
+    <div
+      className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
-          <Toast {...toast} />
+          <Toast toast={toast} onDismiss={removeToast} />
         </div>
       ))}
     </div>

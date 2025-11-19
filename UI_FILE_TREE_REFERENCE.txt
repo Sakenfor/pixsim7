@@ -1,0 +1,410 @@
+================================================================================
+PIXSIM7 UI FILE STRUCTURE - COMPLETE REFERENCE
+================================================================================
+
+PROJECT ROOT: /home/user/pixsim7/
+
+================================================================================
+1. SHARED UI PACKAGE
+================================================================================
+packages/ui/src/
+├── Badge.tsx                     (27 lines) - Badge display component
+├── Button.tsx                    (37 lines) - Reusable button
+├── Dropdown.tsx                  (166 lines) - Dropdown menu
+├── FormField.tsx                 (116 lines) - Form field wrapper
+├── Input.tsx                     (51 lines) - Text input
+├── Modal.tsx                     (226 lines) - Modal dialog
+├── Panel.tsx                     (21 lines) - Simple panel wrapper
+├── ProgressBar.tsx               (79 lines) - Progress indicator
+├── PromptInput.tsx               (67 lines) - Prompt/input component
+├── Select.tsx                    (59 lines) - Select dropdown
+├── StatusBadge.tsx               (27 lines) - Status indicator
+├── Table.tsx                     (142 lines) - Table component
+├── Tabs.tsx                      (120 lines) - Tab navigation
+├── ThemeToggle.tsx               (12 lines) - Theme switcher
+├── Toast.tsx                     (64 lines) *** DUPLICATED IN frontend ***
+├── Tooltip.tsx                   (186 lines) - Tooltip with variants
+├── useToast.ts                   - Custom Toast hook (Zustand)
+├── useTheme.ts                   - Theme hook
+├── index.ts                      - Exports all components
+└── tsconfig.json
+
+packages/ui/package.json
+  - name: @pixsim7/ui
+  - Main exports: Button, Input, Modal, Toast, Tooltip, etc.
+  - Dependencies: clsx, zustand
+  - Peer: react>=18, react-dom>=18
+
+================================================================================
+2. GAME-SPECIFIC UI PACKAGE
+================================================================================
+packages/game-ui/src/
+├── ScenePlayer.tsx               - Game scene player
+├── MiniGameHost.tsx              - Minigame container
+└── minigames/
+    ├── ReflexMiniGame.tsx        - Reflex game implementation
+    └── registry.ts               - Game registry
+
+packages/game-ui/package.json
+  - name: @pixsim7/game-ui
+  - Dependencies: @pixsim7/ui, @pixsim7/game-core, @pixsim7/scene-gizmos
+  - Peer: react>=18, react-dom>=18
+
+================================================================================
+3. MAIN FRONTEND - ADMIN/EDITOR INTERFACE (134 COMPONENTS)
+================================================================================
+frontend/src/
+├── components/                   - 134 component files across 30 directories
+│
+├── components/common/            (3 files)
+│   ├── ErrorBoundary.tsx        - Error boundary wrapper
+│   ├── Toast.tsx                (94 lines) *** DUPLICATES packages/ui Toast ***
+│   └── ToastContainer.tsx       - Toast container
+│
+├── components/control/           (27 files) - Control center system
+│   ├── ControlCube.tsx
+│   ├── ControlCenterManager.tsx
+│   ├── ControlCenterDock.tsx     (14KB)
+│   ├── CubeSettingsPanel.tsx
+│   ├── CubeFaceContent.tsx
+│   ├── CubeFormationControlCenter.tsx
+│   ├── DraggableCube.tsx
+│   ├── DynamicParamForm.tsx
+│   ├── ArrayFieldInput.tsx
+│   ├── PanelActionEditor.tsx     (20KB)
+│   ├── JobStatusIndicator.tsx
+│   ├── PresetOperator.tsx
+│   ├── PresetsModule.tsx
+│   ├── preset-operator/
+│   │   ├── AssetCard.tsx
+│   │   ├── AssetPreview.tsx
+│   │   ├── AssetMetadataInputs.tsx
+│   │   ├── AssetSourceInputs.tsx
+│   │   ├── AssetTypeSelectors.tsx
+│   │   └── Timeline.tsx
+│   └── ... (additional control components)
+│
+├── components/automation/        (13 files) - Automation system UI
+│   ├── ActionBuilder.tsx
+│   ├── ActionTypeSelect.tsx
+│   ├── ActionParamsEditor.tsx
+│   ├── DeviceCard.tsx
+│   ├── DeviceList.tsx
+│   ├── ExecutionCard.tsx
+│   ├── ExecutionList.tsx         *** DUPLICATED IN ExecutionList_new.tsx ***
+│   ├── ExecutionList_new.tsx     - Refactored version
+│   ├── LoopCard.tsx
+│   ├── LoopForm.tsx
+│   ├── LoopList.tsx
+│   ├── PresetCard.tsx
+│   ├── PresetForm.tsx
+│   └── PresetList.tsx
+│
+├── components/inspector/         (16 files) - Node/property editors
+│   ├── ChoiceNodeEditor.tsx
+│   ├── ConditionNodeEditor.tsx
+│   ├── EndNodeEditor.tsx
+│   ├── GenerationNodeEditor.tsx
+│   ├── MiniGameNodeEditor.tsx
+│   ├── NpcResponseNodeEditor.tsx
+│   ├── QuestTriggerEditor.tsx
+│   ├── ReturnNodeEditor.tsx
+│   ├── SceneCallNodeEditor.tsx
+│   ├── SeductionNodeEditor.tsx
+│   ├── VideoNodeEditor.tsx
+│   ├── useNodeEditor.ts          - Shared editor logic
+│   └── InspectorPanel.tsx
+│
+├── components/game/              (14 files) - Game-specific UI
+│   ├── DialogueUI.tsx
+│   ├── GameNotification.tsx
+│   ├── HudCustomizationPanel.tsx
+│   ├── HudLayoutEditor.tsx
+│   ├── InteractionPresetEditor.tsx
+│   ├── InteractionPresetUsagePanel.tsx
+│   ├── InventoryPanel.tsx
+│   ├── QuestLog.tsx
+│   ├── RelationshipDashboard.tsx
+│   ├── RegionalHudLayout.tsx
+│   ├── UserPreferencesPanel.tsx
+│   ├── WorldThemeEditor.tsx
+│   ├── WorldToolsPanel.tsx
+│   └── HudTabs.tsx
+│
+├── components/graph/             (11 files) - Graph visualization
+│   ├── ChoiceNodeRenderer.tsx
+│   ├── ArcNodeRenderer.tsx
+│   ├── GraphTemplatePalette.tsx
+│   ├── MilestoneNodeRenderer.tsx
+│   ├── GraphCubeExpansion.tsx
+│   └── ... (additional graph components)
+│
+├── components/nodes/             (8 files) - Graph node components
+│   ├── Milestone, Choice, Decision nodes, etc.
+│
+├── components/capabilities/      (6 files) - Capability system
+│   ├── CapabilityBrowser.tsx
+│   ├── CapabilityAutocomplete.tsx
+│   ├── CapabilityHooksDemo.tsx
+│   ├── CapabilityReferenceEditor.tsx
+│   └── ... 
+│
+├── components/gizmos/            (6 files) - Visual gizmos
+│   ├── ConstellationGizmo.tsx
+│   ├── BodyMapGizmo.tsx
+│   ├── InteractiveTool.tsx
+│   ├── RingsGizmo.tsx
+│   ├── OrbGizmo.tsx
+│   ├── InteractiveTool.css
+│   ├── ConstellationGizmo.css
+│   └── ... (CSS files)
+│
+├── components/assets/            (4 files) - Asset management
+│   ├── MediaViewerCube.tsx
+│   ├── GalleryCubeExpansion.tsx
+│   ├── LocalFoldersPanel.tsx
+│   └── TreeFolderView.tsx
+│
+├── components/plugins/           (5 files) - Plugin system
+│   ├── PluginManager.tsx
+│   ├── PluginConfigPanel.tsx
+│   ├── PluginCatalogPanel.tsx
+│   ├── PluginOverlays.tsx
+│   └── ... 
+│
+├── components/minigames/         (5 files) - Minigame UI
+│   ├── SceneGizmoMiniGame.tsx
+│   └── ...
+│
+├── components/shapes/            (2 files) - Shape rendering
+│   ├── BrainShape.tsx
+│   └── BrainShape.css
+│
+├── components/layout/            (2 files) - Layout management
+│   ├── FloatingPanelsManager.tsx
+│   └── workspace-toolbar/
+│
+├── components/ROOT LEVEL/        (14 files) - Top-level panels
+│   ├── ArcGraphPanel.tsx
+│   ├── EdgeEffectsEditor.tsx
+│   ├── GraphPanel.tsx
+│   ├── HotspotEditor.tsx
+│   ├── NpcPreferencesEditor.tsx
+│   ├── NpcSlotEditor.tsx
+│   ├── PluginCatalogPanel.tsx
+│   ├── PluginConfigPanel.tsx
+│   ├── PluginManager.tsx
+│   ├── PluginOverlays.tsx
+│   ├── SceneBuilderPanel.tsx
+│   ├── SceneMetadataEditor.tsx
+│   ├── SessionStateViewer.tsx
+│   └── WorldContextSelector.tsx
+│
+├── stores/                       - State management
+│   ├── toastStore.ts            - Toast notifications state
+│   ├── graphStore/              - Graph state
+│   ├── arcGraphStore/           - Arc graph state
+│
+├── hooks/                        (12 custom hooks)
+│   ├── useAsset.ts
+│   ├── useAssets.ts
+│   ├── useCubeDocking.ts
+│   ├── useHoverScrubVideo.ts
+│   ├── useJobStatus.ts
+│   ├── useJobsSocket.ts
+│   ├── useLineageGraph.ts
+│   ├── useModal.ts
+│   ├── useProviderAccounts.ts
+│   ├── useProviderSpecs.ts
+│   ├── useProviders.ts
+│   └── useRegisterPanelActions.ts
+│
+├── modules/                      - Feature modules
+│   ├── app-map/
+│   ├── arc-graph/
+│   ├── assets/
+│   ├── automation/
+│   ├── control-center/
+│   ├── gallery/
+│   ├── game/
+│   ├── game-session/
+│   ├── generation/
+│   ├── graph-system/
+│   ├── plugin-bootstrap/
+│   ├── plugins/
+│   ├── scene-builder/
+│   └── workspace/
+│
+├── lib/                          - Utility libraries
+│   ├── api/
+│   ├── auth/
+│   ├── automation/
+│   ├── brainTools/
+│   ├── capabilities/
+│   ├── core/
+│   ├── gallery/
+│   ├── game/
+│   ├── gizmos/
+│   ├── graph/
+│   ├── jobs/
+│   ├── plugins/
+│   ├── polling/
+│   ├── preview-bridge/
+│   ├── providers/
+│   ├── shapes/
+│   ├── simulation/
+│   ├── theme/
+│   ├── theming/
+│   ├── time/
+│   ├── validation/
+│   └── worldTools/
+│
+├── index.css                     (243 lines) - Tailwind + Mosaic styling
+├── App.css                       - App styles
+├── App.tsx                       - Main app component
+├── main.tsx                      - Entry point
+├── vite-env.d.ts
+└── tsconfig.json
+
+frontend/package.json
+  - name: @pixsim7/frontend
+  - Dependencies: @pixsim7/ui, @pixsim7/game-ui, React 19, Vite, Tailwind
+  - Scripts: dev, build, lint
+
+================================================================================
+4. GAME FRONTEND (SVELTE)
+================================================================================
+game-frontend/src/
+├── components/
+│   ├── Game3DView.tsx           - 3D game view component
+│   └── ... (other Svelte components)
+├── scenes/                       - Scene components
+├── lib/                          - Utilities
+├── index.css                     - Tailwind styling
+└── App.svelte                    - Main app
+
+game-frontend/package.json
+  - Svelte-based client application
+
+================================================================================
+5. LAUNCHER (SVELTE)
+================================================================================
+launcher/web/src/
+├── lib/
+│   ├── components/
+│   │   ├── LogViewer.svelte     - Log display component
+│   │   └── ServiceCard.svelte   - Service status/control card
+│   ├── api/
+│   │   └── client.js            - API client
+│   └── stores/
+│       ├── services.js          - Service store
+│       └── websocket.js         - WebSocket management
+├── routes/
+│   ├── +layout.svelte           - Layout
+│   └── +page.svelte             - Home page
+├── app.css                       - Tailwind styling
+└── app.html
+
+launcher/web/package.json
+  - SvelteKit-based launcher application
+
+================================================================================
+6. CHROME EXTENSION
+================================================================================
+chrome-extension/
+└── widget.css                    - Extension styles
+
+================================================================================
+CSS/STYLING FILES SUMMARY
+================================================================================
+Tailwind CSS files:
+├── frontend/src/index.css        (243 lines)
+├── frontend/src/App.css
+├── frontend/src/components/gizmos/*.css (6 files)
+├── frontend/src/components/shapes/BrainShape.css
+├── frontend/src/components/examples/BrainShapeExample.css
+├── game-frontend/src/index.css
+├── launcher/web/src/app.css
+└── chrome-extension/widget.css
+
+Styling approach:
+- Utility-first Tailwind CSS (inline classNames)
+- No @apply directives found
+- Dark mode support with dark: prefix
+- Animation classes (animate-slide-in, fade-in, etc.)
+- Color scheme maps for consistency
+
+================================================================================
+COMPONENT CATEGORIZATION SUMMARY
+================================================================================
+
+BY CATEGORY:
+
+Panels (26 total):
+  ArcGraphPanel, GraphPanel, PluginCatalogPanel, PluginConfigPanel, 
+  SceneBuilderPanel, LocalFoldersPanel, BrainToolsPanel, CubeSettingsPanel,
+  AppMapPanel, GalleryToolsPanel, HudCustomizationPanel, 
+  InteractionPresetUsagePanel, InventoryPanel, UserPreferencesPanel,
+  WorldToolsPanel, HealthPanel, InspectorPanel, FloatingPanelsManager,
+  SceneLibraryPanel, ProviderSettingsPanel, SettingsPanel, ValidationPanel
+
+Editors (23 total):
+  EdgeEffectsEditor, HotspotEditor, NpcPreferencesEditor, NpcSlotEditor,
+  SceneMetadataEditor, ActionParamsEditor, CapabilityReferenceEditor,
+  PanelActionEditor, HudLayoutEditor, InteractionPresetEditor,
+  WorldThemeEditor, ChoiceNodeEditor, ConditionNodeEditor, EndNodeEditor,
+  GenerationNodeEditor, MiniGameNodeEditor, NpcResponseNodeEditor,
+  QuestTriggerEditor, ReturnNodeEditor, SceneCallNodeEditor,
+  SeductionNodeEditor, VideoNodeEditor, useNodeEditor hook
+
+Lists (5 total):
+  DeviceList, ExecutionList, ExecutionList_new, LoopList, PresetList
+
+Forms/Inputs:
+  ArrayFieldInput, DynamicParamForm, LoopForm, PresetForm, ActionParamsEditor
+
+Gizmos/Visual Components:
+  ConstellationGizmo, BodyMapGizmo, InteractiveTool, RingsGizmo, OrbGizmo
+
+================================================================================
+CRITICAL DUPLICATIONS
+================================================================================
+
+1. Toast Component (HIGH PRIORITY)
+   - packages/ui/src/Toast.tsx (64 lines) - Simple callback-based
+   - frontend/src/components/common/Toast.tsx (94 lines) - Enhanced, store-based
+   - Status: Frontend version is more advanced, not using packages/ui version
+
+2. ExecutionList (MEDIUM PRIORITY)  
+   - frontend/src/components/automation/ExecutionList.tsx (282 lines)
+   - frontend/src/components/automation/ExecutionList_new.tsx (268 lines)
+   - Status: Refactoring in progress, _new version is cleaner
+
+================================================================================
+UNUSED COMPONENTS IN packages/ui
+================================================================================
+
+Components exported but NOT imported in frontend:
+- Dropdown.tsx         (166 lines) - No imports found
+- Toast.tsx            (64 lines) - Frontend has own version
+- useToast.ts          - Frontend has own toastStore version
+- StatusBadge.tsx      (27 lines) - No imports found
+- Tabs.tsx             (120 lines) - No imports found
+- ThemeToggle.tsx      (12 lines) - No imports found
+
+Components imported:
+- Button             (8 files)
+- Panel              (8 files)
+- Select             (3 files)
+- Badge              (3 files)
+- Modal              (2 files)
+- PromptInput        (1 file)
+- Tooltip/CubeTooltip (2 files)
+- FormField          (Game components)
+- Input              (Game components)
+- ProgressBar        (Game/UI components)
+- Table              (Game/UI components)
+
+================================================================================
+END OF REFERENCE
+================================================================================

@@ -1,38 +1,70 @@
 import { create } from 'zustand';
-import type { ToastProps, ToastType } from './Toast';
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'cube-message';
+
+export interface Toast {
+  id: string;
+  message: string;
+  type: ToastType;
+  duration?: number;
+  title?: string;
+  icon?: string;
+  fromCubeId?: string;
+  toCubeId?: string;
+}
 
 interface ToastState {
-  toasts: ToastProps[];
-  addToast: (message: string, type?: ToastType, duration?: number) => void;
+  toasts: Toast[];
+  addToast: (toast: Omit<Toast, 'id'>) => string;
   removeToast: (id: string) => void;
   clearAll: () => void;
 }
 
+let toastIdCounter = 0;
+
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  addToast: (message, type = 'info', duration = 4000) => {
-    const id = `toast-${Date.now()}-${Math.random()}`;
-    const toast: ToastProps = {
-      id,
-      message,
-      type,
-      duration,
-      onClose: () => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
-    };
-    set((state) => ({ toasts: [...state.toasts, toast] }));
+  addToast: (toast) => {
+    const id = `toast-${++toastIdCounter}-${Date.now()}`;
+    const newToast: Toast = { ...toast, id };
+
+    set((s) => ({
+      toasts: [...s.toasts, newToast],
+    }));
+
+    // Auto-remove after duration (default 4s)
+    const duration = toast.duration ?? 4000;
+    if (duration > 0) {
+      setTimeout(() => {
+        set((s) => ({
+          toasts: s.toasts.filter((t) => t.id !== id),
+        }));
+      }, duration);
+    }
+
+    return id;
   },
-  removeToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+  removeToast: (id) =>
+    set((s) => ({
+      toasts: s.toasts.filter((t) => t.id !== id),
+    })),
   clearAll: () => set({ toasts: [] }),
 }));
 
+/**
+ * Hook for easy toast usage
+ */
 export function useToast() {
-  const addToast = useToastStore((state) => state.addToast);
+  const addToast = useToastStore((s) => s.addToast);
 
   return {
-    success: (message: string, duration?: number) => addToast(message, 'success', duration),
-    error: (message: string, duration?: number) => addToast(message, 'error', duration),
-    warning: (message: string, duration?: number) => addToast(message, 'warning', duration),
-    info: (message: string, duration?: number) => addToast(message, 'info', duration),
-    toast: addToast,
+    success: (message: string, duration?: number) =>
+      addToast({ message, type: 'success', duration }),
+    error: (message: string, duration?: number) =>
+      addToast({ message, type: 'error', duration }),
+    info: (message: string, duration?: number) =>
+      addToast({ message, type: 'info', duration }),
+    warning: (message: string, duration?: number) =>
+      addToast({ message, type: 'warning', duration }),
   };
 }

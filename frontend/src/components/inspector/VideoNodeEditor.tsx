@@ -5,7 +5,7 @@ import { validateVideoConfig, logValidationError } from './editorValidation';
 import type { SelectionStrategy, PlaybackMode } from '@pixsim7/types';
 import { useAssetPickerStore, type SelectedAsset } from '../../stores/assetPickerStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { useToast } from '../../stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 
 export function VideoNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const toast = useToast();

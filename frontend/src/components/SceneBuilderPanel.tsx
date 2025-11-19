@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@pixsim7/ui';
+import { Button, useToast } from '@pixsim7/ui';
 import { useGraphStore, type GraphState } from '../stores/graphStore';
-import { useToast } from '../stores/toastStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { useWorldContextStore } from '../stores/worldContextStore';
 import { logEvent } from '../lib/logging';

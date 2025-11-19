@@ -1,6 +1,6 @@
 import type { ArcStateCreator, ArcNodeManagementState } from './types';
 import type { ArcGraphNode, ArcGraphEdge } from '../../modules/arc-graph';
-import { useToastStore } from '../toastStore';
+import { useToastStore } from '@pixsim7/ui';
 
 /**
  * Arc Node Management Slice

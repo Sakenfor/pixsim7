@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { CubeFace } from '../../stores/controlCubeStore';
 import type { PanelAction, PanelActionsConfig } from '../../lib/panelActions';
-import { useToast } from '../../stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 import { clsx } from 'clsx';
 
 interface EditingAction extends PanelAction {

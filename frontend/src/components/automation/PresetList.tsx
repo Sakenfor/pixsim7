@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { type AppActionPreset } from '../../types/automation';
 import { automationService } from '../../lib/automation/automationService';
 import { getAccounts } from '../../lib/api/accounts';
-import { Button, Panel, ConfirmModal, Modal, Select } from '@pixsim7/ui';
+import { Button, Panel, ConfirmModal, Modal, Select, useToast } from '@pixsim7/ui';
 import { PresetCard } from './PresetCard';
 import { PresetForm } from './PresetForm';
-import { useToast } from '../../stores/toastStore';
 import { useConfirmModal } from '../../hooks/useModal';
 
 type View = 'list' | 'create' | 'edit';

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { useControlCenterStore } from './stores/controlCenterStore';
-import { useToast } from './stores/toastStore';
+import { useToast } from '@pixsim7/ui';
 import { registerModules, moduleRegistry } from './modules';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
@@ -28,8 +28,7 @@ import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager
 import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { ToastContainer } from './components/common/ToastContainer';
-import { useTheme } from '@pixsim7/ui';
+import { ToastContainer, useTheme } from '@pixsim7/ui';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
