@@ -31,13 +31,32 @@ from .schema import (
     NarrativeExecutionResponse,
 )
 
+# ECS Helpers
+from .ecs_helpers import (
+    get_narrative_state,
+    set_narrative_state,
+    clear_narrative_state,
+    start_program,
+    finish_program,
+    advance_to_node,
+    pause_program,
+    resume_program,
+    set_error,
+    clear_error,
+    is_program_active,
+    get_program_variable,
+    set_program_variable,
+    has_visited_node,
+    get_stack_depth,
+)
+
 __all__ = [
     # Legacy exports
     "NarrativeEngine",
     "NarrativeContext",
     "PromptProgram",
 
-    # Unified Narrative Runtime
+    # Unified Narrative Runtime - Schema
     "NarrativeProgram",
     "NarrativeNode",
     "NarrativeEdge",
@@ -55,4 +74,21 @@ __all__ = [
     "StartProgramRequest",
     "StepProgramRequest",
     "NarrativeExecutionResponse",
+
+    # Unified Narrative Runtime - ECS Helpers
+    "get_narrative_state",
+    "set_narrative_state",
+    "clear_narrative_state",
+    "start_program",
+    "finish_program",
+    "advance_to_node",
+    "pause_program",
+    "resume_program",
+    "set_error",
+    "clear_error",
+    "is_program_active",
+    "get_program_variable",
+    "set_program_variable",
+    "has_visited_node",
+    "get_stack_depth",
 ]

@@ -231,13 +231,33 @@ export interface NarrativeStateComponent {
 ```
 
 2. Add ECS helpers:
-   - `get_narrative_state(session, npcId)` / `set_narrative_state(session, npcId, state)`.  
+   - `get_narrative_state(session, npcId)` / `set_narrative_state(session, npcId, state)`.
 3. Ensure narrative state is *separate* from generic interaction history (so you can use it for multiple programs).
 4. Decide program lifecycles:
-   - When a new program is started (from interaction/behavior/intimacy composer).  
+   - When a new program is started (from interaction/behavior/intimacy composer).
    - When it finishes (terminal node) and how that is indicated in the component.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
+
+**Deliverables:**
+- ✅ Python ECS helpers: `pixsim7_backend/domain/narrative/ecs_helpers.py`
+- ✅ TypeScript ECS helpers: `packages/game-core/src/narrative/ecsHelpers.ts`
+- ✅ 15+ helper functions implemented:
+  * Core: `get_narrative_state`, `set_narrative_state`, `clear_narrative_state`
+  * Lifecycle: `start_program`, `finish_program`, `advance_to_node`
+  * Control: `pause_program`, `resume_program`, `set_error`, `clear_error`
+  * Query: `is_program_active`, `get_program_variable`, `set_program_variable`, `has_visited_node`, `get_stack_depth`
+- ✅ Automatic stack management for nested programs (interrupts, sub-conversations)
+- ✅ History tracking with choice/edge metadata
+- ✅ Error state management
+- ✅ Program variables separate from session flags
+
+**Program Lifecycle Design:**
+- **Start**: `start_program()` - pushes current program to stack if one is active, sets new active program
+- **Advance**: `advance_to_node()` - moves to next node, records in history
+- **Finish**: `finish_program()` - pops from stack if nested, otherwise clears state
+- **Pause/Resume**: `pause_program()` / `resume_program()` - for async operations
+- **Error**: `set_error()` - captures error context without losing program state
 
 ---
 
