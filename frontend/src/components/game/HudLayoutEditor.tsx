@@ -22,6 +22,11 @@ import {
   deletePreset,
   exportPreset,
   importPreset,
+  getAllPresets,
+  publishPresetToWorld,
+  copyWorldPresetToLocal,
+  deleteWorldPreset,
+  isWorldPreset,
   type HudLayoutPreset,
 } from '../../lib/worldTools/hudPresets';
 import {
@@ -106,9 +111,9 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
 
   // Load presets and profiles on mount
   useEffect(() => {
-    setPresets(loadPresets());
+    setPresets(getAllPresets(worldDetail));
     setAvailableProfiles(getAvailableProfiles());
-  }, []);
+  }, [worldDetail]);
 
   // Helper function to load placements for current profile/view mode
   const loadPlacementsForProfile = (profileId: string, viewMode: 'all' | 'cinematic' | 'hud-heavy' | 'debug'): ToolPlacementRow[] => {
@@ -517,7 +522,7 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
       }));
 
       createPreset(presetName.trim(), hudConfig, presetDescription.trim() || undefined);
-      setPresets(loadPresets());
+      setPresets(getAllPresets(worldDetail));
       setSuccessMessage(`Preset "${presetName}" created successfully!`);
       setTimeout(() => setSuccessMessage(null), 3000);
       setShowPresetModal(false);
@@ -553,16 +558,75 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
-  const handleDeletePreset = (presetId: string) => {
+  const handleDeletePreset = async (presetId: string) => {
     if (!confirm('Are you sure you want to delete this preset?')) return;
 
     try {
-      deletePreset(presetId);
-      setPresets(loadPresets());
+      // Check if it's a world preset
+      const isWorld = isWorldPreset(worldDetail, presetId);
+
+      if (isWorld) {
+        // Delete world preset
+        const updatedMeta = deleteWorldPreset(worldDetail, presetId);
+        if (updatedMeta) {
+          const updatedWorld = await updateGameWorldMeta(worldDetail.id, updatedMeta);
+          if (onSave) {
+            onSave(updatedWorld);
+          }
+        }
+      } else {
+        // Delete local preset
+        deletePreset(presetId);
+      }
+
+      setPresets(getAllPresets(worldDetail));
       setSuccessMessage('Preset deleted successfully');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setError(`Failed to delete preset: ${err.message || String(err)}`);
+    }
+  };
+
+  // Phase 7: Publish preset to world
+  const handlePublishToWorld = async (presetId: string) => {
+    if (!confirm('Publish this preset to the world? It will be available to all users.')) return;
+
+    try {
+      const updatedMeta = publishPresetToWorld(worldDetail, presetId);
+      if (!updatedMeta) {
+        setError('Failed to publish preset');
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+
+      const updatedWorld = await updateGameWorldMeta(worldDetail.id, updatedMeta);
+      if (onSave) {
+        onSave(updatedWorld);
+      }
+
+      setPresets(getAllPresets(worldDetail));
+      setSuccessMessage('Preset published to world successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(`Failed to publish preset: ${err.message || String(err)}`);
+    }
+  };
+
+  // Phase 7: Copy world preset to local
+  const handleCopyToLocal = (presetId: string) => {
+    try {
+      const copiedPreset = copyWorldPresetToLocal(worldDetail, presetId);
+      if (!copiedPreset) {
+        setError('Failed to copy preset');
+        setTimeout(() => setError(null), 3000);
+        return;
+      }
+
+      setPresets(getAllPresets(worldDetail));
+      setSuccessMessage(`Preset copied to local: ${copiedPreset.name}`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(`Failed to copy preset: ${err.message || String(err)}`);
     }
   };
 
@@ -605,7 +669,7 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
         return;
       }
 
-      setPresets(loadPresets());
+      setPresets(getAllPresets(worldDetail));
       setSuccessMessage(`Imported preset: ${preset.name}`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
@@ -985,52 +1049,94 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
             </p>
           ) : (
             <div className="space-y-2">
-              {presets.map((preset) => (
-                <div
-                  key={preset.id}
-                  className="flex items-center justify-between p-2 border border-neutral-300 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800/50"
-                >
-                  <div className="flex-1">
-                    <div className="font-medium text-sm text-neutral-800 dark:text-neutral-200">
-                      {preset.name}
-                    </div>
-                    {preset.description && (
-                      <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                        {preset.description}
+              {presets.map((preset) => {
+                const isWorld = preset.scope === 'world';
+                const isLocal = !isWorld;
+
+                return (
+                  <div
+                    key={preset.id}
+                    className={`flex items-center justify-between p-2 border rounded ${
+                      isWorld
+                        ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30'
+                        : 'border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium text-sm text-neutral-800 dark:text-neutral-200">
+                          {preset.name}
+                        </div>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded ${
+                            isWorld
+                              ? 'bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200'
+                              : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
+                          }`}
+                        >
+                          {isWorld ? '🌍 World' : '💾 Local'}
+                        </span>
                       </div>
-                    )}
-                    <div className="text-xs text-neutral-400 dark:text-neutral-500">
-                      {preset.placements.length} tools
+                      {preset.description && (
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                          {preset.description}
+                        </div>
+                      )}
+                      <div className="text-xs text-neutral-400 dark:text-neutral-500">
+                        {preset.placements.length} tools
+                      </div>
+                    </div>
+                    <div className="flex gap-1 flex-wrap justify-end">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => handleLoadPreset(preset.id)}
+                        title="Load this preset"
+                      >
+                        Load
+                      </Button>
+                      {isLocal && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handlePublishToWorld(preset.id)}
+                          title="Publish to world (share with all users)"
+                        >
+                          Publish
+                        </Button>
+                      )}
+                      {isWorld && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCopyToLocal(preset.id)}
+                          title="Copy to local presets"
+                        >
+                          Copy
+                        </Button>
+                      )}
+                      {isLocal && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleExportPreset(preset.id)}
+                          title="Export to clipboard"
+                        >
+                          Export
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeletePreset(preset.id)}
+                        title="Delete this preset"
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => handleLoadPreset(preset.id)}
-                      title="Load this preset"
-                    >
-                      Load
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleExportPreset(preset.id)}
-                      title="Export to clipboard"
-                    >
-                      Export
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDeletePreset(preset.id)}
-                      title="Delete this preset"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

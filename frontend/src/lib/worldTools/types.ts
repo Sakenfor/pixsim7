@@ -264,6 +264,17 @@ export interface WorldUiConfig {
   /** Profile-specific layouts - key format: "profileId:viewMode" or "profileId" */
   profileLayouts?: Record<string, HudToolPlacement[]>;
 
+  // Phase 7: Shared world-scoped presets
+  /** World-scoped HUD presets that can be shared across all users of this world */
+  worldPresets?: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    placements: HudToolPlacement[];
+    createdAt: number;
+    updatedAt: number;
+  }>;
+
   /** Additional UI configuration */
   [key: string]: unknown;
 }

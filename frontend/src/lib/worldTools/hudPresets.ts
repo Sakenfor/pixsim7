@@ -8,6 +8,11 @@
 import type { HudToolPlacement } from './types';
 
 /**
+ * Phase 7: Preset scope
+ */
+export type PresetScope = 'local' | 'world' | 'global';
+
+/**
  * HUD Layout Preset definition
  */
 export interface HudLayoutPreset {
@@ -19,6 +24,10 @@ export interface HudLayoutPreset {
   description?: string;
   /** Tool placements in this preset */
   placements: HudToolPlacement[];
+  /** Phase 7: Scope of the preset (local, world, or global) */
+  scope?: PresetScope;
+  /** Phase 7: World ID for world-scoped presets */
+  worldId?: number;
   /** Timestamp when created */
   createdAt: number;
   /** Timestamp when last modified */
@@ -186,4 +195,179 @@ export function importPreset(jsonString: string): HudLayoutPreset | null {
  */
 export function clearAllPresets(): void {
   localStorage.removeItem(PRESETS_STORAGE_KEY);
+}
+
+// ============================================================================
+// Phase 7: World-Scoped Presets
+// ============================================================================
+
+import type { GameWorldDetail, WorldUiConfig } from '../api/game';
+
+/**
+ * Get world presets from a GameWorld
+ */
+export function getWorldPresets(worldDetail: GameWorldDetail): HudLayoutPreset[] {
+  if (!worldDetail.meta?.ui) return [];
+
+  const ui = worldDetail.meta.ui as WorldUiConfig;
+  const worldPresets = ui.worldPresets || [];
+
+  // Convert to HudLayoutPreset format with scope
+  return worldPresets.map((preset) => ({
+    ...preset,
+    scope: 'world' as const,
+    worldId: worldDetail.id,
+  }));
+}
+
+/**
+ * Get all presets for a world (local + world-scoped)
+ * Returns presets sorted by scope (local first, then world)
+ */
+export function getAllPresets(worldDetail: GameWorldDetail | null): HudLayoutPreset[] {
+  const localPresets = loadPresets().map(p => ({
+    ...p,
+    scope: (p.scope || 'local') as PresetScope,
+  }));
+
+  if (!worldDetail) {
+    return localPresets;
+  }
+
+  const worldPresets = getWorldPresets(worldDetail);
+
+  // Merge and return (local first, then world)
+  return [...localPresets, ...worldPresets];
+}
+
+/**
+ * Publish a local preset to world scope
+ * Returns updated world metadata
+ */
+export function publishPresetToWorld(
+  worldDetail: GameWorldDetail,
+  presetId: string
+): Record<string, unknown> | null {
+  const preset = getPreset(presetId);
+  if (!preset) {
+    console.warn(`Preset not found: ${presetId}`);
+    return null;
+  }
+
+  const ui = (worldDetail.meta?.ui as WorldUiConfig) || {};
+  const existingWorldPresets = ui.worldPresets || [];
+
+  // Check if preset with same ID already exists in world presets
+  const existingIndex = existingWorldPresets.findIndex(p => p.id === presetId);
+
+  let updatedWorldPresets;
+  if (existingIndex >= 0) {
+    // Update existing world preset
+    updatedWorldPresets = [...existingWorldPresets];
+    updatedWorldPresets[existingIndex] = {
+      id: preset.id,
+      name: preset.name,
+      description: preset.description,
+      placements: preset.placements,
+      createdAt: preset.createdAt,
+      updatedAt: Date.now(),
+    };
+  } else {
+    // Add new world preset
+    updatedWorldPresets = [
+      ...existingWorldPresets,
+      {
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        placements: preset.placements,
+        createdAt: preset.createdAt,
+        updatedAt: Date.now(),
+      },
+    ];
+  }
+
+  const updatedMeta: Record<string, unknown> = {
+    ...worldDetail.meta,
+    ui: {
+      ...ui,
+      worldPresets: updatedWorldPresets,
+    },
+  };
+
+  return updatedMeta;
+}
+
+/**
+ * Copy a world preset to local presets
+ */
+export function copyWorldPresetToLocal(
+  worldDetail: GameWorldDetail,
+  presetId: string
+): HudLayoutPreset | null {
+  const worldPresets = getWorldPresets(worldDetail);
+  const preset = worldPresets.find(p => p.id === presetId);
+
+  if (!preset) {
+    console.warn(`World preset not found: ${presetId}`);
+    return null;
+  }
+
+  // Create a new local preset with a new ID to avoid conflicts
+  const now = Date.now();
+  const newId = `preset-${now}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const localPreset: HudLayoutPreset = {
+    id: newId,
+    name: `${preset.name} (Copy)`,
+    description: preset.description,
+    placements: JSON.parse(JSON.stringify(preset.placements)), // Deep clone
+    scope: 'local',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  // Save to localStorage
+  const presets = loadPresets();
+  presets.push(localPreset);
+  savePresetsToStorage(presets);
+
+  return localPreset;
+}
+
+/**
+ * Delete a world preset
+ * Returns updated world metadata
+ */
+export function deleteWorldPreset(
+  worldDetail: GameWorldDetail,
+  presetId: string
+): Record<string, unknown> | null {
+  const ui = (worldDetail.meta?.ui as WorldUiConfig) || {};
+  const existingWorldPresets = ui.worldPresets || [];
+
+  const filtered = existingWorldPresets.filter(p => p.id !== presetId);
+
+  if (filtered.length === existingWorldPresets.length) {
+    console.warn(`World preset not found: ${presetId}`);
+    return null;
+  }
+
+  const updatedMeta: Record<string, unknown> = {
+    ...worldDetail.meta,
+    ui: {
+      ...ui,
+      worldPresets: filtered,
+    },
+  };
+
+  return updatedMeta;
+}
+
+/**
+ * Check if a preset ID exists in world presets
+ */
+export function isWorldPreset(worldDetail: GameWorldDetail, presetId: string): boolean {
+  const worldPresets = getWorldPresets(worldDetail);
+  return worldPresets.some(p => p.id === presetId);
 }

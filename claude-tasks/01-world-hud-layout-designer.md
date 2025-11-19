@@ -17,7 +17,7 @@ Below are 10 phases for evolving the HUD system over time.
 - [x] **Phase 4 – Visibility Conditions (View Mode / Capability / Flags)**
 - [x] **Phase 5 – Local HUD Presets**
 - [x] **Phase 6 – Player Profiles & View‑Mode‑Specific Layouts** *(Completed 2025-11-19)*
-- [ ] **Phase 7 – Shared / Server‑Backed HUD Presets**
+- [x] **Phase 7 – Shared / Server‑Backed HUD Presets** *(Completed 2025-11-19)*
 - [ ] **Phase 8 – HUD Usage Analytics**
 - [ ] **Phase 9 – Layout Validation & Recommendations**
 - [ ] **Phase 10 – Responsive / Device‑Aware HUD Layouts**
@@ -168,8 +168,25 @@ Allow teams to share HUD presets across machines by syncing them to backend or `
 2. Add helpers to merge local presets with world‑scoped presets.
 3. Extend `HudLayoutEditor`:
    - Mark presets as local vs shared.
-   - Provide actions like “publish to world” / “copy from world”.
+   - Provide actions like "publish to world" / "copy from world".
 4. If needed, define a minimal backend API for global presets under a `game_hud` namespace.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+- **Files Modified:**
+  - `frontend/src/lib/worldTools/hudPresets.ts` - Added `PresetScope` type and world preset utilities (`getWorldPresets`, `getAllPresets`, `publishPresetToWorld`, `copyWorldPresetToLocal`, `deleteWorldPreset`, `isWorldPreset`)
+  - `frontend/src/lib/worldTools/types.ts` - Added `scope` and `worldId` fields to `HudLayoutPreset`, added `worldPresets` array to `WorldUiConfig`
+  - `frontend/src/components/game/HudLayoutEditor.tsx` - Updated to show preset scope with visual distinction, added "Publish" button for local presets, added "Copy" button for world presets, updated all preset handlers to work with both local and world presets
+- **Features:**
+  - Local presets stored in localStorage (per-user)
+  - World presets stored in `GameWorld.meta.ui.worldPresets` (shared across all users)
+  - Visual distinction: Local presets show "💾 Local" badge, World presets show "🌍 World" badge with blue background
+  - Publish local presets to world scope (makes them available to all users)
+  - Copy world presets to local scope (creates editable local copy)
+  - Delete works for both local and world presets (with appropriate permissions)
+  - Presets are automatically merged: `getAllPresets()` returns local + world presets
+  - Export/import only available for local presets (world presets managed via publish/copy)
+
+**Note:** Global backend API (Phase 7 step 4) deferred for future implementation. Current implementation focuses on local + world-scoped presets which covers the main use case.
 
 ---
 
