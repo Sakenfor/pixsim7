@@ -17,3 +17,6 @@ export type {
 
 export { ChainProgress, ChainList } from './ChainProgress';
 export type { ChainProgressProps } from './ChainProgress';
+
+export { InteractionSuggestions } from './InteractionSuggestions';
+export type { InteractionSuggestionsProps } from './InteractionSuggestions';

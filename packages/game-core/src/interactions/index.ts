@@ -10,3 +10,5 @@ export * from './cooldownUtils';
 export * from './validation';
 export * from './chains';
 export * from './chainHelpers';
+export * from './behaviorIntegration';
+export * from './suggestions';
