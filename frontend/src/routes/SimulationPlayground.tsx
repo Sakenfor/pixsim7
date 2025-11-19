@@ -71,6 +71,7 @@ import { WorldStateOverview } from '../components/simulation/WorldStateOverview'
 import { MultiRunComparison } from '../components/simulation/MultiRunComparison';
 import { ConstraintRunner } from '../components/simulation/ConstraintRunner';
 import { SimulationPluginsPanel } from '../components/simulation/SimulationPluginsPanel';
+import { ExportImportPanel } from '../components/simulation/ExportImportPanel';
 import {
   loadSavedRuns,
   saveSimulationRun,
@@ -139,6 +140,9 @@ export function SimulationPlayground() {
   // Phase 8: Plugin management
   const [showPluginsPanel, setShowPluginsPanel] = useState(false);
   const [plugins, setPlugins] = useState<any[]>([]);
+
+  // Phase 9: Export/Import
+  const [showExportImport, setShowExportImport] = useState(false);
 
   // Register simulation hooks on mount
   useEffect(() => {
@@ -477,6 +481,12 @@ export function SimulationPlayground() {
     setPlugins(simulationHooksRegistry.getPlugins());
   };
 
+  // Phase 9: Handle import complete
+  const handleImportComplete = () => {
+    setScenarios(loadScenarios());
+    setSavedRuns(loadSavedRuns());
+  };
+
   // Parse world time for display
   const worldTimeComponents = parseWorldTime(worldTime);
   const worldTimeDisplay = formatWorldTime(worldTime);
@@ -627,6 +637,13 @@ export function SimulationPlayground() {
           >
             🔌 Plugins ({plugins.filter((p) => p.enabled).length}/{plugins.length})
           </Button>
+          <Button
+            size="sm"
+            variant={showExportImport ? 'primary' : 'secondary'}
+            onClick={() => setShowExportImport(!showExportImport)}
+          >
+            📦 Export/Import
+          </Button>
         </div>
       </Panel>
 
@@ -775,6 +792,15 @@ export function SimulationPlayground() {
       {/* Phase 8: Plugins Panel */}
       {showPluginsPanel && (
         <SimulationPluginsPanel plugins={plugins} onTogglePlugin={handleTogglePlugin} />
+      )}
+
+      {/* Phase 9: Export/Import Panel */}
+      {showExportImport && (
+        <ExportImportPanel
+          scenarios={scenarios}
+          runs={savedRuns}
+          onImportComplete={handleImportComplete}
+        />
       )}
 
       {/* World Selection & Time Display */}

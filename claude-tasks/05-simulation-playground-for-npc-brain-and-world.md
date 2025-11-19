@@ -22,7 +22,7 @@ Below are 10 phases for building and extending the Simulation Playground.
 - [x] **Phase 6 – Multi‑World / Multi‑Session Comparison**
 - [x] **Phase 7 – Constraint‑Driven Simulation Runs**
 - [x] **Phase 8 – Plugin Hooks & Simulation‑Specific Events**
-- [ ] **Phase 9 – Export / Import Simulation Runs & Scenarios**
+- [x] **Phase 9 – Export / Import Simulation Runs & Scenarios**
 - [ ] **Phase 10 – Automation & Regression Harness**
 
 ---
