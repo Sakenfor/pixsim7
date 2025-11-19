@@ -152,10 +152,10 @@ Get a precise map of how narrative content is currently requested, built, and ex
    - Inputs required (NPC, world, relationship, arc state).  
    - Where prompts are built and with what templates.  
    - How results are returned and where they are stored in `flags`/`relationships`.
-3. Add an “Inventory Summary” section at the bottom of this file with a simple table mapping:
+3. Add an "Inventory Summary" section at the bottom of this file with a simple table mapping:
    - System → Entry point → Output (dialogue/action blocks/scene/generation).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
 
 ---
 
@@ -185,10 +185,18 @@ Define the canonical `NarrativeProgram` and node/edge types, shared between fron
    - Valid edge references.  
    - Content rating tags/intimacy vs world schemas (hook into existing validation where possible).
 4. Decide storage:
-   - Primary: `GameWorld.meta.narrative.programs` (JSON), keyed by program ID.  
+   - Primary: `GameWorld.meta.narrative.programs` (JSON), keyed by program ID.
    - Optional: continue using `action_blocks` table for reusable block content (unchanged).
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete (2025-11-19)
+
+**Deliverables:**
+- ✅ TypeScript schema: `packages/types/src/narrative.ts`
+- ✅ Pydantic schema: `pixsim7_backend/domain/narrative/schema.py`
+- ✅ 9 node types defined: Dialogue, Choice, Action, ActionBlock, Scene, Branch, Wait, ExternalCall, Comment
+- ✅ Validation methods in NarrativeProgram (structure validation)
+- ✅ Condition expression evaluation (reusing existing logic)
+- ✅ StateEffects for relationship/flag/arc/quest/inventory changes
 
 ---
 
@@ -395,12 +403,203 @@ Make the narrative runtime understandable and usable for designers and plugin au
 By the end of this task:
 
 - There is a **single narrative program model** that can express:
-  - Dialogue trees, choices, action block sequences, and scene/generation transitions.  
+  - Dialogue trees, choices, action block sequences, and scene/generation transitions.
   - Intimacy scenes, quest beats, and everyday conversations.
 - Narrative runtime state is stored in ECS components and interacts cleanly with:
-  - NPC behavior system (Task 13).  
-  - NPC interactions and chains (Task 17).  
+  - NPC behavior system (Task 13).
+  - NPC interactions and chains (Task 17).
   - Relationship/mood metrics and ECS components (Task 19).
 - Action blocks are **first-class nodes** in the narrative graph, not an entirely separate system.
 - Legacy dialogue/action-block flows continue to work via shims, but new work uses the narrative runtime as the canonical path.
+
+---
+
+## Inventory Summary (Phase 20.1 Complete)
+
+### Current Narrative Systems & Data Flows
+
+| System | Entry Points | Inputs | Outputs | Storage |
+|--------|-------------|--------|---------|---------|
+| **Narrative Engine** | `NarrativeEngine.build_dialogue_request()` | `NarrativeContext` (NPC, world, session, relationship, location, scene, player_input), `program_id` | `{llm_prompt, visual_prompt, metadata}` | PromptProgram JSON files or in-memory programs |
+| **Dialogue API** | `/api/v1/game_dialogue/next-line` (prompt only)<br>`/api/v1/game_dialogue/next-line/execute` (prompt + LLM call)<br>`/api/v1/game_dialogue/next-line/debug` | `DialogueNextLineRequest` (npc_id, session_id, scene_id, player_input, program_id) | `DialogueNextLineResponse` or `DialogueExecuteResponse` with LLM result | Session memory, emotion state, milestones in DB |
+| **Action Blocks System** | `ActionEngine.select_actions()`<br>`/api/v1/game_dialogue/actions/select`<br>`/api/v1/game_dialogue/actions/next` | `ActionSelectionContext` (location, pose, intimacy_level, mood, branch_intent, NPC IDs, required/exclude tags) | `ActionSelectionResponse` (blocks, prompts, segments, compatibility score) | `action_blocks` table, JSON packages, generated blocks cache |
+| **Action Blocks API** | `/api/v1/action_blocks` (CRUD)<br>`/api/v1/action_blocks/extract`<br>`/api/v1/action_blocks/compose` | Block CRUD data, complex prompts for extraction, block IDs for composition | Block data, extracted blocks, composed prompts | `action_blocks` table with metadata, tags, compatibility |
+| **Interaction System** | `interaction_execution.apply_*` functions<br>`/api/v1/npc-interactions/execute` | `InteractionOutcome` (relationship deltas, flag changes, inventory changes, scene/generation launches) | `ExecuteInteractionResponse` with applied effects, pending dialogue/generation | `GameSession.flags`, `GameSession.relationships`, pending state in `session.flags.pendingDialogue` |
+| **Intimacy Scene Composer** | `generateIntimacyPreview()` (frontend)<br>`deriveSocialContext()` | `IntimacySceneConfig`, `SimulatedRelationshipState`, rating constraints | `IntimacyPreviewResult` with generation ID and social context | Frontend workspace, generation requests in DB |
+| **Generation Pipeline** | `/api/v1/generations` | `GenerateContentRequest` with social context, action blocks, prompt config | `GenerationResponse` with generation ID, status, content | `generations` table, pending jobs |
+
+### Key Data Flow Patterns
+
+#### 1. Dialogue Generation Flow
+```
+User Action → /next-line/execute → NarrativeEngine.build_dialogue_request()
+  ↓
+  Loads NarrativeContext from:
+  - GameSession (flags, relationships, world_time)
+  - GameWorld (meta, relationship_schemas, intimacy_schema)
+  - GameNPC (personality, name)
+  - GameLocation (optional)
+  - GameScene/GameSceneNode (optional)
+  ↓
+  Executes PromptProgram stages:
+  - template (static text + variable substitution)
+  - conditional (relationship-based branching)
+  - selector (intimacy/tier matching)
+  - formatter (combine/append/prepend)
+  ↓
+  Returns llm_prompt + optional visual_prompt
+  ↓
+  Enhances with memory/emotion context
+  ↓
+  Calls LLMService.generate() with caching
+  ↓
+  Stores memory, records analytics, checks milestones
+  ↓
+  Returns generated dialogue text
+```
+
+#### 2. Action Block Selection Flow
+```
+User/Interaction → /actions/select or /actions/next
+  ↓
+  Builds ActionSelectionContext from:
+  - Explicit parameters (location, pose, mood, branch_intent)
+  - Session relationships → compute intimacy_level
+  - Session flags → extract last_narrative_intents
+  ↓
+  ActionEngine.select_actions():
+  - Filters blocks by tags (location, intimacy_level, mood)
+  - Scores compatibility based on previous_block_id
+  - Ranks by quality and compatibility
+  - Applies pose taxonomy for transitions
+  - Falls back if needed
+  ↓
+  Returns ActionSelectionResponse:
+  - Selected blocks (ordered list)
+  - Resolved images/prompts
+  - Compatibility score
+  - Segments for generation
+  ↓
+  Optional: Falls back to DynamicBlockGenerator if score low
+  ↓
+  Stores pending action blocks in session.flags or directly launches generation
+```
+
+#### 3. Interaction Execution Flow
+```
+User selects interaction → /npc-interactions/execute
+  ↓
+  Validates interaction availability (gating, cooldowns)
+  ↓
+  Applies InteractionOutcome:
+  - apply_relationship_deltas() → updates session.relationships[npc:id]
+  - apply_flag_changes() → updates session.flags (arcs, quests, events)
+  - apply_inventory_changes() → updates session.flags.inventory
+  - apply_npc_effects() (if implemented)
+  ↓
+  If SceneLaunch: transitions to scene
+  If GenerationLaunch:
+    - Builds generation request (action blocks, dialogue, social context)
+    - Stores in session.flags.pendingDialogue or pendingGeneration
+    - Frontend polls or waits for generation completion
+  ↓
+  Sets cooldowns in session.flags
+  ↓
+  Returns ExecuteInteractionResponse
+```
+
+#### 4. Intimacy Scene Composer Flow
+```
+Designer creates scene in composer →
+  ↓
+  Defines IntimacySceneConfig:
+  - Arc structure (intro/buildup/climax/resolution)
+  - Progression nodes with content rating gates
+  - Social context requirements
+  ↓
+  Simulates RelationshipState for testing
+  ↓
+  Calls generateIntimacyPreview():
+  - deriveSocialContext() → builds GenerationSocialContext
+  - Calls /api/v1/generations → creates generation
+  - Polls until completion
+  ↓
+  Returns preview with generated content
+  ↓
+  (Future) Exports as NarrativeProgram for runtime execution
+```
+
+### Current Pain Points (Confirmed)
+
+1. **Multiple Paths to Narrative Content**:
+   - Direct `/next-line` API calls
+   - `NarrativeEngine.build_dialogue_request()` internally
+   - Action block selection via `/actions/select`
+   - Interaction outcomes with pending dialogue
+   - Intimacy composer with generation previews
+   - No unified entry point
+
+2. **Fragmented State Management**:
+   - `session.flags.pendingDialogue` for dialogue requests
+   - `session.flags.pendingGeneration` for generation requests
+   - `session.flags.last_narrative_intents` for intent tracking
+   - No single "narrative runtime state" component
+
+3. **Action Blocks Separate from Dialogue**:
+   - Action blocks live in separate DB table and API
+   - Selection happens independently of dialogue generation
+   - No unified "narrative node" concept that encompasses both
+
+4. **No Execution State Tracking**:
+   - Can't track "current program + node" per NPC
+   - Can't stack nested programs (interrupts, sub-conversations)
+   - No history of visited nodes/choices
+   - Can't resume programs across sessions
+
+5. **Intimacy Composer Disconnected**:
+   - Builds scenes in frontend
+   - Generates previews independently
+   - No way to execute composed scenes as narrative programs in game
+   - Would need manual translation to interactions or dialogue
+
+### Recommended Unification Approach
+
+Based on this inventory, the unification should:
+
+1. **Introduce `NarrativeProgram` schema** that encompasses:
+   - Dialogue nodes (using existing PromptProgram stages)
+   - Action block nodes (referencing existing action_blocks)
+   - Choice nodes (with conditions and effects)
+   - Scene transition nodes
+   - Generation request nodes
+
+2. **Create ECS `narrative` component** in `session.flags.npcs[npc:id].components.narrative`:
+   - `activeProgramId`, `activeNodeId`
+   - `stack` for nested programs
+   - `history` for visited nodes
+
+3. **Build Narrative Runtime Service** (`pixsim7_backend/services/narrative/runtime.py`):
+   - `start_program()`, `step_program()` API
+   - Executes nodes and advances state
+   - Calls into existing NarrativeEngine, ActionEngine as needed
+   - Returns `NarrativeStepResult` with display text, choices, generation launches
+
+4. **Integrate with Interactions**:
+   - Add `narrativeProgramId` to `InteractionOutcome`
+   - Replace `pendingDialogue` with `start_program()` calls
+   - Interaction execution launches programs instead of ad-hoc generation
+
+5. **Export Path from Intimacy Composer**:
+   - Add export to `NarrativeProgram` JSON
+   - Programs can be loaded and executed by runtime
+   - Preview flow becomes: compose → export → load → execute
+
+6. **Shim Legacy Paths**:
+   - Existing `/next-line` wraps single `DialogueNode` in minimal program
+   - Existing `/actions/select` becomes `ActionBlockNode` resolution
+   - Maintain backward compatibility while encouraging new flow
+
+---
+
+**Status:** Phase 20.1 completed on 2025-11-19. Inventory summary added above.
 

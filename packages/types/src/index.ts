@@ -185,3 +185,9 @@ export * from './userPreferences'
 // ===================
 
 export * from './intimacy'
+
+// ===================
+// Narrative Runtime Types
+// ===================
+
+export * from './narrative'
