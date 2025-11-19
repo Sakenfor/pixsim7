@@ -516,7 +516,7 @@ function GenerationStatusDisplay({ generationId }: { generationId: number }) {
   };
 
   const statusColor = statusColors[generation.status] || statusColors.pending;
-  const canRetry = generation.status === 'failed' && generation.retry_count < 3;
+  const canRetry = generation.status === 'failed' && generation.retry_count < 10;
 
   return (
     <div className={`text-xs p-2 border rounded ${statusColor}`}>
@@ -536,7 +536,7 @@ function GenerationStatusDisplay({ generationId }: { generationId: number }) {
       <div className="mt-1">Status: {generation.status}</div>
       {generation.retry_count > 0 && (
         <div className="mt-1 text-xs opacity-75">
-          Retry attempt: {generation.retry_count}/3
+          Retry attempt: {generation.retry_count}/10
         </div>
       )}
       {generation.error_message && (

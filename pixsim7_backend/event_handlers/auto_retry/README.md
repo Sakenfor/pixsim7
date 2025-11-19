@@ -14,8 +14,8 @@ Controlled via environment variables in `.env`:
 # Enable/disable auto-retry (default: true)
 AUTO_RETRY_ENABLED=true
 
-# Maximum retry attempts per generation (default: 3, range: 1-10)
-AUTO_RETRY_MAX_ATTEMPTS=3
+# Maximum retry attempts per generation (default: 10, range: 1-20)
+AUTO_RETRY_MAX_ATTEMPTS=10
 ```
 
 To disable completely, set:
@@ -28,7 +28,7 @@ AUTO_RETRY_ENABLED=false
 - Listens to `job:failed` events
 - Checks if generation should be auto-retried using `GenerationService.should_auto_retry()`
 - Creates new generation with same parameters if appropriate
-- Max attempts configurable (default: 3, including original)
+- Max attempts configurable (default: 10, including original)
 - Preserves parent/child relationship
 - Silent/automatic - no user interaction needed
 
@@ -58,7 +58,9 @@ Temporary error keywords:
 ```
 Generation #123: "romantic scene" → FAILED (content filter)
   ↓ Auto-retry triggers
-Generation #124: "romantic scene" (retry 1/3) → PROCESSING...
+Generation #124: "romantic scene" (retry 1/10) → PROCESSING...
   ↓ Still fails
-Generation #125: "romantic scene" (retry 2/3) → COMPLETED ✓
+Generation #125: "romantic scene" (retry 2/10) → PROCESSING...
+  ↓ Still fails
+Generation #126: "romantic scene" (retry 3/10) → COMPLETED ✓
 ```

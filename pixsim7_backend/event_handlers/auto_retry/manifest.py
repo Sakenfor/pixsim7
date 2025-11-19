@@ -6,7 +6,7 @@ Automatically retries failed generations when appropriate:
 - Temporary provider errors
 - Rate limits and timeouts
 
-Max retry attempts configurable via settings (default: 3).
+Max retry attempts configurable via settings (default: 10).
 Can be disabled via AUTO_RETRY_ENABLED=false in .env
 """
 from pixsim7_backend.infrastructure.events.bus import Event

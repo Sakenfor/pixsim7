@@ -122,10 +122,10 @@ class Settings(BaseSettings):
         description="Enable automatic retry for failed generations (content filters, temporary errors)"
     )
     auto_retry_max_attempts: int = Field(
-        default=3,
+        default=10,
         ge=1,
-        le=10,
-        description="Maximum retry attempts per generation"
+        le=20,
+        description="Maximum retry attempts per generation (default: 10 for content filters)"
     )
 
     # ===== NETWORK =====
