@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
 import { useTemplateStore } from '../../lib/graph/templatesStore';
-import { validateTemplate, type TemplateCategory } from '../../lib/graph/graphTemplates';
+import { validateTemplate, validatePreconditions, type TemplateCategory } from '../../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../../lib/graph/graphTemplates';
+import type { DraftScene } from '../../modules/scene-builder';
 
 // Available categories for filtering
 const TEMPLATE_CATEGORIES: (TemplateCategory | 'All')[] = [
@@ -22,6 +23,9 @@ interface GraphTemplatePaletteProps {
 
   /** Current world ID for loading world templates */
   worldId?: number | null;
+
+  /** Current scene for precondition validation (Phase 8) */
+  currentScene?: DraftScene | null;
 
   /** Compact mode for smaller display */
   compact?: boolean;
@@ -63,6 +67,7 @@ function isValidTemplateJSON(obj: any): obj is GraphTemplate {
 export function GraphTemplatePalette({
   onInsertTemplate,
   worldId,
+  currentScene,
   compact = false,
 }: GraphTemplatePaletteProps) {
   const templates = useTemplateStore((state) => state.getTemplates(worldId));
@@ -388,6 +393,12 @@ export function GraphTemplatePalette({
   // Template rendering function (extracted for DRY)
   function renderTemplate(template: GraphTemplate) {
         const validation = validateTemplate(template);
+
+        // Phase 8: Validate preconditions against current scene
+        const preconditionCheck = currentScene
+          ? validatePreconditions(template, currentScene)
+          : { compatible: true, errors: [], warnings: [] };
+
         const isExpanded = expandedTemplateId === template.id;
         const isEditing = editingTemplateId === template.id;
         const sourceBadge = getSourceBadge(template);
@@ -517,6 +528,26 @@ export function GraphTemplatePalette({
                 </div>
               )}
 
+              {/* Phase 8: Precondition Errors */}
+              {preconditionCheck.errors.length > 0 && (
+                <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-800 dark:text-red-200">
+                  <div className="font-semibold mb-1">❌ Incompatible with current scene</div>
+                  {preconditionCheck.errors.map((err, i) => (
+                    <div key={i}>• {err}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Phase 8: Precondition Warnings */}
+              {preconditionCheck.warnings.length > 0 && preconditionCheck.errors.length === 0 && (
+                <div className="mb-2 p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded text-xs text-amber-800 dark:text-amber-200">
+                  <div className="font-semibold mb-1">⚠ Compatibility warnings</div>
+                  {preconditionCheck.warnings.map((warn, i) => (
+                    <div key={i}>• {warn}</div>
+                  ))}
+                </div>
+              )}
+
               {/* Action Buttons */}
               {!isEditing && (
                 <div className="flex gap-2">
@@ -524,8 +555,15 @@ export function GraphTemplatePalette({
                     size="sm"
                     variant="primary"
                     onClick={() => handleInsert(template)}
-                    disabled={!validation.valid}
+                    disabled={!validation.valid || !preconditionCheck.compatible}
                     className="flex-1"
+                    title={
+                      !preconditionCheck.compatible
+                        ? 'Template is incompatible with current scene'
+                        : !validation.valid
+                        ? 'Template has validation errors'
+                        : 'Insert template into scene'
+                    }
                   >
                     ➕ Insert
                   </Button>

@@ -711,7 +711,11 @@ export function GraphPanel() {
         {/* Template Palette Sidebar */}
         {showTemplatePalette && (
           <div className="w-80 border-r border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 p-3 overflow-y-auto">
-            <GraphTemplatePalette onInsertTemplate={handleInsertTemplate} worldId={worldId} />
+            <GraphTemplatePalette
+              onInsertTemplate={handleInsertTemplate}
+              worldId={worldId}
+              currentScene={currentScene}
+            />
           </div>
         )}
 
