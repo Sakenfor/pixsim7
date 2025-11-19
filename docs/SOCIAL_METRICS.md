@@ -1,0 +1,780 @@
+# Social Metrics System
+
+**Last Updated:** 2025-11-19
+
+This document describes the social metrics system for PixSim7, which provides a unified framework for computing, previewing, and displaying derived social values like relationship tiers, NPC moods, and reputation bands.
+
+## Overview
+
+The social metrics system consists of:
+
+1. **Backend Evaluators**: Python functions that compute metrics from session state and world schemas
+2. **Preview API**: REST endpoints for stateless metric computation ("what-if" scenarios)
+3. **TypeScript Types**: Shared type definitions in `@pixsim7/types`
+4. **Game-Core Helpers**: Client-side computation and API client functions
+5. **World Schemas**: JSON configuration in `GameWorld.meta` defining metric thresholds and bands
+
+The system is designed to be:
+- **Schema-driven**: Worlds can customize metric bands and thresholds
+- **Stateless**: Preview endpoints don't mutate game state
+- **Type-safe**: Full TypeScript types from backend to frontend
+- **Extensible**: Easy to add new metric types
+
+---
+
+## Supported Metrics
+
+### 1. Relationship Tier
+
+**Purpose**: Categorize player-NPC relationships based on affinity
+
+**Metric ID**: `relationship_tier`
+
+**Input**: Affinity value (0-100)
+
+**Output**: Tier ID (e.g., "stranger", "friend", "lover")
+
+**Default Tiers**:
+- `stranger` (0-20)
+- `acquaintance` (20-40)
+- `friend` (40-60)
+- `close_friend` (60-80)
+- `lover` (80-100)
+
+**Schema Location**: `GameWorld.meta.relationship_schemas[schema_key]`
+
+**Backend Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_tier`
+
+**Preview Endpoint**: `POST /api/v1/game/relationships/preview-tier`
+
+**Game-Core Helper**: `previewRelationshipTier(args)`
+
+---
+
+### 2. Intimacy Level
+
+**Purpose**: Determine romantic/physical intimacy level based on multiple relationship axes
+
+**Metric ID**: `relationship_intimacy`
+
+**Input**: Relationship values (affinity, trust, chemistry, tension)
+
+**Output**: Intimacy level ID (e.g., "light_flirt", "deep_flirt", "intimate") or null
+
+**Default Behavior**: Returns null if no match (no hardcoded fallback)
+
+**Schema Location**: `GameWorld.meta.intimacy_schema`
+
+**Backend Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_intimacy`
+
+**Preview Endpoint**: `POST /api/v1/game/relationships/preview-intimacy`
+
+**Game-Core Helper**: `previewIntimacyLevel(args)`
+
+---
+
+### 3. NPC Mood
+
+**Purpose**: Compute NPC emotional state using valence-arousal model
+
+**Metric ID**: `npc_mood`
+
+**Input**:
+- Relationship values (affinity, trust, chemistry, tension)
+- Optional: Emotional state from NPCEmotionalState table
+- Optional: Session ID for automatic relationship lookup
+
+**Output**:
+- `mood_id`: Mood quadrant label (e.g., "excited", "content", "anxious", "calm")
+- `valence`: Pleasure axis (0-100)
+- `arousal`: Energy/activation axis (0-100)
+- Optional: `emotion_type` and `emotion_intensity` from EmotionalState system
+
+**Computation**:
+```python
+valence = affinity * 0.6 + chemistry * 0.4
+arousal = chemistry * 0.5 + tension * 0.5
+```
+
+**Default Mood Quadrants**:
+- `excited`: High valence (50+), high arousal (50+)
+- `content`: High valence (50+), low arousal (<50)
+- `anxious`: Low valence (<50), high arousal (50+)
+- `calm`: Low valence (<50), low arousal (<50)
+
+**Schema Location**: `GameWorld.meta.npc_mood_schema`
+
+**Backend Evaluator**: `pixsim7_backend/domain/metrics/mood_evaluators.py::evaluate_npc_mood`
+
+**Preview Endpoint**: `POST /api/v1/game/npc/preview-mood`
+
+**Game-Core Helper**: `previewNpcMood(args)`
+
+**Client-Side Computation**: `buildNpcBrainState()` from `@pixsim7/game-core`
+
+---
+
+### 4. Reputation Band
+
+**Purpose**: Categorize reputation between entities (player-NPC, NPC-NPC, faction)
+
+**Metric ID**: `reputation_band`
+
+**Input**:
+- `subject_id`, `subject_type` (player or npc)
+- Optional: `target_id`, `target_type` (npc, faction, group)
+- Optional: `reputation_score` (explicit override)
+- Optional: `session_id` (for relationship lookup)
+- Optional: `faction_membership` (dict of faction standings)
+
+**Output**:
+- `reputation_band`: Band ID (e.g., "enemy", "neutral", "ally")
+- `reputation_score`: Numeric score (0-100)
+
+**Default Bands**:
+- `enemy` (0-20)
+- `hostile` (20-40)
+- `neutral` (40-60)
+- `friendly` (60-80)
+- `ally` (80-100)
+
+**Schema Location**: `GameWorld.meta.reputation_schemas[target_type]`
+
+**Target-Type-Specific Schemas**: Can define different bands for "npc", "faction", "group"
+
+**Backend Evaluator**: `pixsim7_backend/domain/metrics/reputation_evaluators.py::evaluate_reputation_band`
+
+**Preview Endpoint**: `POST /api/v1/game/reputation/preview-reputation`
+
+**Game-Core Helper**: `previewReputationBand(args)`
+
+---
+
+## Architecture
+
+### Backend Layer
+
+**Location**: `pixsim7_backend/domain/metrics/`
+
+**Components**:
+- `types.py`: MetricType enum and MetricEvaluator protocol
+- `registry.py`: Metric evaluator registration (future)
+- `relationship_evaluators.py`: Relationship tier and intimacy evaluators
+- `mood_evaluators.py`: NPC mood evaluator
+- `reputation_evaluators.py`: Reputation band evaluator
+
+**Evaluator Pattern**:
+```python
+async def evaluate_metric(
+    world_id: int,
+    payload: dict[str, Any],
+    db: AsyncSession
+) -> dict[str, Any]:
+    """
+    Args:
+        world_id: World ID for schema lookup
+        payload: Metric-specific input data
+        db: Database session
+
+    Returns:
+        Metric-specific result dictionary
+
+    Raises:
+        ValueError: Invalid input or world not found
+    """
+```
+
+### API Layer
+
+**Locations**: `pixsim7_backend/api/v1/game_*.py`
+
+**Endpoints**:
+- `POST /api/v1/game/relationships/preview-tier`
+- `POST /api/v1/game/relationships/preview-intimacy`
+- `POST /api/v1/game/npc/preview-mood`
+- `POST /api/v1/game/reputation/preview-reputation`
+
+**Route Plugins**: `pixsim7_backend/routes/game_*_preview/manifest.py`
+
+All endpoints:
+- Are **stateless** (no session mutations)
+- Use Pydantic models for request/response validation
+- Return 400 for invalid input, 404 for missing world
+- Support CORS for frontend access
+
+### Type Layer
+
+**Location**: `packages/types/src/game.ts`
+
+**Types**:
+- `MetricId`: Union type of all metric IDs
+- `MetricPreviewRequest<M>`: Generic preview request
+- `MetricPreviewResponse<M>`: Generic preview response
+- Specific request/response types for each metric
+
+**Design**: Generic types with type parameter `M` for metric-specific constraints
+
+### Game-Core Layer
+
+**Location**: `packages/game-core/src/`
+
+**Modules**:
+- `metrics/preview.ts`: API client for metric preview
+- `relationships/preview.ts`: Relationship-specific preview helpers (legacy)
+- `npcs/brain.ts`: Client-side mood computation
+
+**Functions**:
+- `previewNpcMood(args)`: Calls mood preview API
+- `previewReputationBand(args)`: Calls reputation preview API
+- `previewRelationshipTier(args)`: Calls tier preview API
+- `previewIntimacyLevel(args)`: Calls intimacy preview API
+- `buildNpcBrainState(params)`: Client-side mood computation (no API call)
+
+**Configuration**:
+```typescript
+configureMetricPreviewApi({
+  baseUrl: '/api/v1',
+  fetch: customFetch
+});
+```
+
+---
+
+## World Schema Configuration
+
+All metrics use `GameWorld.meta` for world-specific configuration.
+
+### Relationship Tier Schema
+
+```json
+{
+  "relationship_schemas": {
+    "default": {
+      "tiers": [
+        {
+          "id": "stranger",
+          "label": "Stranger",
+          "affinity_min": 0,
+          "affinity_max": 20
+        },
+        {
+          "id": "friend",
+          "label": "Friend",
+          "affinity_min": 40,
+          "affinity_max": 60
+        }
+      ]
+    },
+    "romantic": {
+      "tiers": [
+        {
+          "id": "crush",
+          "label": "Crush",
+          "affinity_min": 60,
+          "affinity_max": 80
+        }
+      ]
+    }
+  }
+}
+```
+
+**Multiple Schemas**: Use `schema_key` parameter to select specific schema
+
+### Intimacy Level Schema
+
+```json
+{
+  "intimacy_schema": {
+    "levels": [
+      {
+        "id": "light_flirt",
+        "label": "Light Flirt",
+        "affinity_min": 40,
+        "chemistry_min": 30,
+        "trust_min": 20,
+        "tension_max": 40
+      },
+      {
+        "id": "intimate",
+        "label": "Intimate",
+        "affinity_min": 70,
+        "chemistry_min": 70,
+        "trust_min": 60,
+        "tension_max": 40
+      }
+    ]
+  }
+}
+```
+
+**Multi-Axis Matching**: All conditions must be satisfied for a match
+
+### NPC Mood Schema
+
+```json
+{
+  "npc_mood_schema": {
+    "moods": [
+      {
+        "id": "excited",
+        "label": "Excited",
+        "valence_min": 50,
+        "valence_max": 100,
+        "arousal_min": 50,
+        "arousal_max": 100
+      },
+      {
+        "id": "content",
+        "label": "Content",
+        "valence_min": 50,
+        "valence_max": 100,
+        "arousal_min": 0,
+        "arousal_max": 50
+      }
+    ]
+  }
+}
+```
+
+**Valence/Arousal Quadrants**: Define mood regions in 2D emotional space
+
+### Reputation Band Schema
+
+```json
+{
+  "reputation_schemas": {
+    "default": {
+      "bands": [
+        {"id": "enemy", "min": 0, "max": 20},
+        {"id": "neutral", "min": 40, "max": 60},
+        {"id": "ally", "min": 80, "max": 100}
+      ]
+    },
+    "faction": {
+      "bands": [
+        {"id": "hated", "min": 0, "max": 25},
+        {"id": "honored", "min": 75, "max": 100}
+      ]
+    }
+  }
+}
+```
+
+**Target-Type-Specific**: Different bands for player-NPC vs faction reputation
+
+---
+
+## Session Data
+
+Metrics read from `GameSession` for runtime data.
+
+### Relationships
+
+**Location**: `GameSession.relationships`
+
+```json
+{
+  "npc:12": {
+    "affinity": 75.0,
+    "trust": 60.0,
+    "chemistry": 80.0,
+    "tension": 20.0,
+    "tierId": "close_friend",
+    "intimacyLevelId": "deep_flirt",
+    "flags": {"first_date": true}
+  },
+  "npcPair:12:15": {
+    "friendship": 0.8,
+    "rivalry": 0.2
+  }
+}
+```
+
+**Key Formats**:
+- `npc:{id}` - Player-NPC relationship
+- `npcPair:{id1}:{id2}` - NPC-NPC relationship
+
+### Emotional States
+
+**Location**: `npc_emotional_states` table (database)
+
+**Fields**:
+- `npc_id`, `session_id`
+- `emotion`: EmotionType enum (happy, sad, angry, etc.)
+- `intensity`: 0.0-1.0
+- `duration_seconds`, `decay_rate`
+- `triggered_by`, `context`
+- `is_active`, `expires_at`
+
+**Query**: By `npc_id` and `session_id`, ordered by intensity
+
+### NPC Flags
+
+**Location**: `GameSession.flags.npcs["npc:{id}"]`
+
+```json
+{
+  "npcs": {
+    "npc:12": {
+      "personality": {
+        "traits": {"openness": 75, "extraversion": 80},
+        "tags": ["playful", "romantic"],
+        "conversation_style": "warm"
+      },
+      "memories": [
+        {
+          "id": "mem1",
+          "timestamp": "2024-01-15T10:00:00Z",
+          "summary": "Player helped with quest",
+          "tags": ["helpful", "quest"]
+        }
+      ]
+    }
+  }
+}
+```
+
+---
+
+## Usage Patterns
+
+### When to Use Preview API vs Client-Side
+
+**Use Preview API** (`previewNpcMood`, `previewReputationBand`):
+- ✅ Editor tools showing "what-if" scenarios
+- ✅ Relationship sliders with live mood preview
+- ✅ Scenario planning tools
+- ✅ World schema editors testing threshold changes
+- ✅ Dialogue/action composition showing outcomes
+
+**Use Client-Side** (`buildNpcBrainState`):
+- ✅ Runtime display of current mood (like moodDebug tool)
+- ✅ Real-time updates during gameplay
+- ✅ Performance-critical UI (avoid API roundtrips)
+- ✅ Offline/local-only scenarios
+
+**Rule of Thumb**: Use preview API for hypothetical/planning scenarios, client-side for live gameplay display.
+
+### Example: Relationship Schema Editor
+
+```typescript
+import { previewRelationshipTier } from '@pixsim7/game-core';
+
+// User adjusts affinity slider
+const handleAffinityChange = async (newAffinity: number) => {
+  const preview = await previewRelationshipTier({
+    worldId: currentWorld.id,
+    affinity: newAffinity,
+    schemaKey: 'default'
+  });
+
+  setPreviewTier(preview.tierId);
+  // Show: "At affinity 75, relationship would be 'close_friend'"
+};
+```
+
+### Example: NPC Mood Preview in Dialogue Editor
+
+```typescript
+import { previewNpcMood } from '@pixsim7/game-core';
+
+// Show mood after dialogue choice applies relationship changes
+const previewChoiceOutcome = async (choice: DialogueChoice) => {
+  const currentRel = getCurrentRelationship(npcId);
+
+  // Apply choice effects
+  const newRel = {
+    affinity: currentRel.affinity + choice.effects.affinityChange,
+    trust: currentRel.trust + choice.effects.trustChange,
+    chemistry: currentRel.chemistry + choice.effects.chemistryChange,
+    tension: currentRel.tension + choice.effects.tensionChange,
+  };
+
+  const newMood = await previewNpcMood({
+    worldId: currentWorld.id,
+    npcId: npcId,
+    relationshipValues: newRel
+  });
+
+  // Display: "This choice would make NPC 'excited' (valence: 85, arousal: 60)"
+};
+```
+
+### Example: Live Mood Display
+
+```typescript
+import { buildNpcBrainState, getNpcRelationshipState } from '@pixsim7/game-core';
+
+// Runtime mood display (no API call)
+const DisplayNpcMood = ({ npcId, session }) => {
+  const relState = getNpcRelationshipState(session, npcId);
+  const brainState = buildNpcBrainState({
+    npcId,
+    session,
+    relationship: relState
+  });
+
+  return (
+    <div>
+      <Badge color={getMoodColor(brainState.mood.label)}>
+        {brainState.mood.label}
+      </Badge>
+      <span>Valence: {brainState.mood.valence.toFixed(1)}</span>
+      <span>Arousal: {brainState.mood.arousal.toFixed(1)}</span>
+    </div>
+  );
+};
+```
+
+---
+
+## Schema Editing Guidelines
+
+### Safe Schema Edits
+
+✅ **Adding new tiers/levels/moods/bands**:
+- Append to existing lists
+- Does not break existing session data
+- Example: Adding "best_friend" tier between "close_friend" and "lover"
+
+✅ **Adjusting thresholds**:
+- Change min/max values
+- Affects future computations only
+- Example: Changing "friend" from (40-60) to (45-65)
+
+✅ **Changing labels**:
+- Display text only
+- Does not affect logic
+- Example: "lover" → "romantic_partner"
+
+✅ **Adding target-type-specific schemas**:
+- Extend reputation_schemas with new target types
+- Example: Adding "guild" reputation schema
+
+### Unsafe Schema Edits
+
+❌ **Removing tiers/bands**:
+- Breaks session data referencing those IDs
+- Must migrate session data first
+- Example: Removing "acquaintance" tier
+
+❌ **Changing IDs**:
+- Breaks session references
+- Must migrate all affected sessions
+- Example: Changing "stranger" → "unknown"
+
+❌ **Creating overlapping ranges**:
+- Causes ambiguous matches
+- First match wins, but unpredictable
+- Example: "friend" (40-60) and "good_friend" (50-70)
+
+❌ **Invalid min/max values**:
+- Max < min causes no matches
+- Values outside 0-100 never match
+- Example: min=70, max=60
+
+### Migration Best Practices
+
+1. **Test in dev world first**: Create test world with new schema
+2. **Export/backup session data**: Before making breaking changes
+3. **Write migration script**: Update session data if changing IDs
+4. **Document custom schemas**: Add description to world meta
+5. **Keep default as fallback**: Don't remove default schema
+
+### Schema Validation (Phase 9)
+
+Future validation features:
+- Check for overlapping ranges
+- Ensure min < max for all ranges
+- Validate all values in 0-100 bounds
+- Warn on gaps in coverage
+- Preview impact on existing sessions
+
+---
+
+## Integration with Existing Systems
+
+### Relationship System
+
+**Files**:
+- `docs/RELATIONSHIPS_AND_ARCS.md`
+- `packages/game-core/src/relationships/`
+
+**Integration**: Metrics read from `GameSession.relationships`, compute derived values
+
+### NPC Brain System
+
+**Files**:
+- `packages/game-core/src/npcs/brain.ts`
+- `docs/NPC_PERSONA_ARCHITECTURE.md`
+
+**Integration**: `buildNpcBrainState()` includes mood computation, can optionally call preview API
+
+### Emotional State System
+
+**Files**:
+- `pixsim7_backend/domain/npc_memory.py`
+- `pixsim7_backend/services/npc/emotional_state_service.py`
+
+**Integration**: Mood evaluator reads from NPCEmotionalState table, returns dominant emotion
+
+### Action Block System
+
+**Files**:
+- `pixsim7_backend/domain/narrative/action_blocks/types.py`
+- `docs/ACTION_BLOCKS_UNIFIED_SYSTEM.md`
+
+**Integration**: Action blocks have separate mood tags (playful, tender, passionate) describing the action, not the NPC state
+
+### Mood Debug Tool
+
+**File**: `frontend/src/plugins/worldTools/moodDebug.tsx`
+
+**Integration**: Uses `buildNpcBrainState()` for live mood display
+
+---
+
+## Extension Points
+
+### Adding New Metrics
+
+1. **Add metric type to enum**: `MetricType` in `pixsim7_backend/domain/metrics/types.py`
+2. **Create evaluator**: New file in `pixsim7_backend/domain/metrics/`
+3. **Register evaluator**: Add to `__init__.py` exports
+4. **Create API endpoint**: New file in `pixsim7_backend/api/v1/`
+5. **Create route plugin**: New manifest in `pixsim7_backend/routes/`
+6. **Add TypeScript types**: Extend `packages/types/src/game.ts`
+7. **Add game-core helper**: Extend `packages/game-core/src/metrics/preview.ts`
+8. **Export from game-core**: Add to `packages/game-core/src/index.ts`
+9. **Document schema location**: Update this doc and Phase 7 summary
+10. **Update APP_MAP.md**: Add to social metrics section
+
+### Example: Skill Level Metric
+
+Potential future metric for skill progression:
+
+```python
+# Backend
+class MetricType(str, Enum):
+    SKILL_LEVEL = "skill_level"
+
+async def evaluate_skill_level(
+    world_id: int,
+    payload: dict[str, Any],
+    db: AsyncSession
+) -> dict[str, Any]:
+    skill_xp = payload["skill_xp"]
+    skill_type = payload["skill_type"]
+
+    # Load skill progression schema
+    world = await get_world(db, world_id)
+    skill_schema = world.meta.get("skill_schemas", {}).get(skill_type)
+
+    # Compute skill level from XP
+    skill_level = compute_level_from_xp(skill_xp, skill_schema)
+
+    return {
+        "skill_level": skill_level,
+        "skill_xp": skill_xp,
+        "skill_type": skill_type
+    }
+```
+
+```typescript
+// Frontend
+interface SkillLevelPreviewRequest {
+  worldId: number;
+  skillXp: number;
+  skillType: string;
+}
+
+interface SkillLevelPreviewResponse {
+  skillLevel: number;
+  skillXp: number;
+  skillType: string;
+}
+
+export async function previewSkillLevel(
+  args: SkillLevelPreviewRequest
+): Promise<SkillLevelPreviewResponse> {
+  // Call POST /api/v1/game/skills/preview-level
+}
+```
+
+---
+
+## Testing
+
+### Backend Tests
+
+Location: `pixsim7_backend/tests/domain/metrics/`
+
+Test cases:
+- Schema loading and fallback behavior
+- Range matching and boundary conditions
+- Invalid input handling
+- Multi-axis matching (intimacy)
+- Valence/arousal computation (mood)
+
+### Frontend Tests
+
+Location: `packages/game-core/src/metrics/__tests__/`
+
+Test cases:
+- API client calls with correct payloads
+- Error handling and retries
+- Configuration management
+- Type safety validation
+
+### Integration Tests
+
+Test scenarios:
+- End-to-end metric preview workflow
+- Schema changes affecting computations
+- Session data migration
+- Client-side vs API result consistency
+
+---
+
+## Performance Considerations
+
+### Caching
+
+**Current**: No caching (stateless endpoints)
+
+**Future**: Consider caching for:
+- World schema lookups (rarely change)
+- Dominant emotion queries (session-scoped)
+
+### Batching
+
+**Current**: One metric per API call
+
+**Future**: Batch preview endpoint for multiple metrics
+
+### Client-Side Optimization
+
+**Current**: `buildNpcBrainState()` is synchronous and fast
+
+**Recommendation**: Use client-side for runtime display, API for planning
+
+---
+
+## See Also
+
+- [RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md) - Relationship mechanics and session data
+- [NPC_PERSONA_ARCHITECTURE.md](./NPC_PERSONA_ARCHITECTURE.md) - NPC personality and brain state
+- [APP_MAP.md](./APP_MAP.md) - System architecture overview
+- Task 07: [07-relationship-preview-api-and-metrics.md](../claude-tasks/07-relationship-preview-api-and-metrics.md) - Relationship metrics implementation
+- Task 08: [08-social-metrics-and-npc-systems.md](../claude-tasks/08-social-metrics-and-npc-systems.md) - Social metrics implementation (this system)
+
+---
+
+## Changelog
+
+- **2025-11-19**: Initial documentation (Phase 8 of Task 08)
+  - All 4 metrics documented
+  - Schema locations defined
+  - Usage patterns established
+  - Integration points identified
