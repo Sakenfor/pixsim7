@@ -86,7 +86,71 @@ Get a clear picture of all plugin‑like mechanisms, where they live, and what t
    - What they’re *intended* to do (e.g. extend behavior vs add admin endpoints).
 3. Document the results in a short table appended to this file (plugin type, entrypoint module, allowed capabilities, notes).
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed
+
+### Inventory Results
+
+#### Plugin Categories
+
+| Plugin Type | Entrypoint Module | Manifest Type | Current Capabilities | Intended Use | Notes |
+|-------------|-------------------|---------------|---------------------|--------------|-------|
+| **Route Plugins** | `pixsim7_backend/routes/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access via `Depends(get_redis_client)`<br>- Direct import of services, models, utilities<br>- FastAPI router registration<br>- Access to all internal modules | Add core API endpoints for game/business logic | Used for primary API routes (auth, generations, game_worlds, game_behavior, etc.). Currently ~25+ route plugins. |
+| **Feature Plugins** | `pixsim7_backend/plugins/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access<br>- Direct import of domain models (`GameSession`, etc.)<br>- FastAPI router registration<br>- Can mutate session flags, relationships directly<br>- Access to all internal services | Add optional gameplay mechanics (stealth, romance, dialogue, NPCs) | Examples: `game_stealth`, `game_romance`, `game_dialogue`, `game_npcs`. Can directly query/mutate DB and session state. Currently ~4 feature plugins. |
+| **Event Handler Plugins** | `pixsim7_backend/event_handlers/{plugin}/manifest.py` | Custom `EventHandlerManifest` | - Subscribe to event patterns (`"*"` or specific types)<br>- Receive `Event` objects from event bus<br>- Can make arbitrary HTTP calls (webhooks)<br>- Can track metrics in-memory<br>- No enforced sandboxing | React to domain events (metrics, webhooks, analytics, notifications) | Examples: `metrics` (tracks event counts), `webhooks` (HTTP dispatching), `auto_retry` (retry logic). Subscribe via `event_bus.subscribe()`. Currently ~3 event handlers. |
+| **Middleware Plugins** | `pixsim7_backend/middleware/{plugin}/manifest.py` | `MiddlewareManifest` | - Full HTTP request/response access<br>- Can wrap all requests via `BaseHTTPMiddleware`<br>- Priority-based ordering<br>- Environment filtering<br>- Access to app instance | Wrap HTTP requests/responses for logging, auth, rate limiting, CORS | Uses Starlette middleware pattern. Registered in reverse priority order (LIFO). Can inject headers, modify responses, etc. |
+| **Behavior Extensions** (Planned) | TBD - registries in behavior system | TBD | - Custom condition evaluators (for activity selection)<br>- Custom effect handlers (for activity outcomes)<br>- Simulation tier configuration<br>- Scoring logic overrides | Extend NPC behavior system with custom conditions/effects | **Not yet implemented.** Planned for Task 13 (NPC behavior system). Would allow plugins to register custom evaluators/effects for activity graphs. |
+
+#### What Plugins Can Currently Access
+
+**All plugin types currently have unrestricted access to:**
+
+- **Database:** Full async DB sessions via `get_db()` or `get_async_session()`
+- **Redis:** Full Redis client access via `get_redis()` or `get_redis_client()`
+- **Services:** Can import and instantiate any service:
+  - `GenerationService` - submit generations
+  - `ProviderService` - access AI providers
+  - Session/world CRUD services
+- **Domain Models:** Full import and mutation of:
+  - `GameSession`, `GameWorld`, `GameNPC`, `GameScene`, etc.
+  - Can directly modify `session.flags`, `session.relationships`
+- **Internal Utilities:**
+  - `pixsim_logging` - structured logging
+  - Event bus - emit/subscribe to events
+  - Settings - read app configuration
+- **External Services:**
+  - HTTP clients (`httpx`) - make arbitrary outbound requests
+  - File system - read/write files (no restrictions)
+  - Environment variables
+
+**Permission Model:**
+- `PluginManifest.permissions` exists as a list of strings but is **not enforced**
+- `requires_db` and `requires_redis` are metadata only - plugins can access these regardless
+- No runtime checks or capability-based access control
+- Plugins execute in-process with full Python capabilities
+
+#### Current Plugin Loading & Lifecycle
+
+**Discovery & Registration:**
+1. `PluginManager.discover_plugins()` scans directories for `manifest.py` files
+2. Plugins loaded via dynamic `importlib` module loading
+3. Registered with FastAPI via `app.include_router()` (for route/feature plugins)
+4. Event handlers subscribe via `event_bus.subscribe(pattern, handler)`
+5. Middleware added via `app.add_middleware()` in priority order
+
+**Lifecycle Hooks (Optional):**
+- `on_load(app)` - called when plugin module loaded (before app starts)
+- `on_enable()` - called after app startup
+- `on_disable()` - called before app shutdown
+
+**Dependency Resolution:**
+- Topological sort based on `manifest.dependencies`
+- Plugins loaded in dependency order
+- Circular dependencies detected and rejected
+
+**Configuration:**
+- Global enable/disable via `manifest.enabled`
+- Allowlist/denylist via `settings.plugin_allowlist` / `settings.plugin_denylist`
+- No per-world or per-session scoping
 
 ---
 
@@ -128,7 +192,48 @@ Turn `PluginManifest.permissions` into a concrete, enforceable model and define 
    - Missing permission ⇒ deny capability and log a warning (do not crash app).
    - Unknown permission string ⇒ ignore or warn; do not grant extra power.
 
-**Status:** ☐ Not started
+**Status:** ✅ Completed
+
+### Implementation Summary
+
+**Files Created:**
+- `pixsim7_backend/infrastructure/plugins/permissions.py` - Complete permission system
+
+**Permissions Defined:**
+
+1. **World Access:** `world:read`
+2. **Session Access:** `session:read`, `session:write`
+3. **NPC Access:** `npc:read`, `npc:write`
+4. **Behavior Extensions:** `behavior:extend_conditions`, `behavior:extend_effects`, `behavior:configure_simulation`
+5. **Generation:** `generation:submit`, `generation:read`
+6. **Logging:** `log:emit`
+7. **Events:** `event:subscribe`, `event:emit`
+8. **Admin:** `admin:routes`
+9. **Database:** `db:read`, `db:write` (discouraged, use session/npc APIs instead)
+10. **Redis:** `redis:read`, `redis:write`
+
+**Permission Groups:**
+- `group:readonly` - Read-only access (world, session, NPC) + logging
+- `group:gameplay` - Full session/NPC read/write + logging
+- `group:behavior` - Behavior extensions + read access
+- `group:event_handler` - Event subscription + logging
+- `group:generation` - Generation submit/read + world/session read
+- `group:admin` - Admin routes + read access
+
+**Failure Modes:**
+- `PermissionDeniedBehavior.RAISE` - Raise exception (for critical operations)
+- `PermissionDeniedBehavior.WARN` - Log warning and return None (for optional features)
+- `PermissionDeniedBehavior.SILENT` - Silent fail (for capability checks)
+
+**Validation:**
+- Permission validation integrated into `PluginManager.load_plugin()`
+- Unknown permissions logged as warnings but don't block plugin loading (allow_unknown=True)
+- Permission groups automatically expanded to individual permissions
+- Dangerous permissions (db:write, admin:routes) trigger warnings
+
+**Updated Files:**
+- `pixsim7_backend/infrastructure/plugins/types.py` - Added detailed permission documentation to `PluginManifest.permissions`
+- `pixsim7_backend/infrastructure/plugins/manager.py` - Added permission validation during plugin load
 
 ---
 

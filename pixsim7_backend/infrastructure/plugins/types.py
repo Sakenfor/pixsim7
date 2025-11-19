@@ -34,8 +34,48 @@ class PluginManifest(BaseModel):
     # Lifecycle
     enabled: bool = True             # Is plugin enabled?
 
-    # Permissions (future: for sandboxed plugins)
-    permissions: list[str] = []      # e.g., ["db:read", "db:write", "redis:read"]
+    # Permissions - see pixsim7_backend/infrastructure/plugins/permissions.py
+    # for canonical permission definitions
+    permissions: list[str] = []
+    """
+    List of required permissions for this plugin.
+
+    Permissions control what capability APIs the plugin can access via PluginContext.
+    See PluginPermission enum in permissions.py for available permissions.
+
+    Common permissions:
+    - "world:read" - read world metadata, locations, NPCs
+    - "session:read" - read session flags, relationships
+    - "session:write" - mutate session flags, relationships
+    - "npc:read" - read NPC data
+    - "npc:write" - mutate NPC state
+    - "behavior:extend_conditions" - register custom behavior conditions
+    - "behavior:extend_effects" - register custom activity effects
+    - "generation:submit" - submit generation requests
+    - "log:emit" - emit structured logs (recommended for all plugins)
+    - "admin:routes" - expose admin-only endpoints
+
+    Permission groups (expand to multiple permissions):
+    - "group:readonly" - read-only world/session access + logging
+    - "group:gameplay" - full session/NPC read/write + logging
+    - "group:behavior" - behavior extensions + read access
+    - "group:event_handler" - event subscription + logging
+    - "group:generation" - generation submit/read + world/session read
+    - "group:admin" - admin routes + read access
+
+    Examples:
+        # Read-only plugin (analytics, exports)
+        permissions=["world:read", "session:read", "log:emit"]
+
+        # Gameplay plugin (stealth, romance)
+        permissions=["group:gameplay"]
+
+        # Behavior extension
+        permissions=["group:behavior", "behavior:configure_simulation"]
+
+        # Event handler
+        permissions=["event:subscribe", "log:emit"]
+    """
 
 
 class BackendPlugin(Protocol):

@@ -13,6 +13,11 @@ import structlog
 
 from pixsim7_backend.shared.config import settings
 from .types import PluginManifest, BackendPlugin, plugin_hooks, PluginEvents
+from .permissions import (
+    validate_permissions,
+    expand_permission_groups,
+    PermissionValidationResult,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -106,6 +111,34 @@ class PluginManager:
                 logger.warning(
                     f"Plugin ID mismatch: directory={plugin_name}, manifest={manifest.id}"
                 )
+
+            # Validate and expand permissions
+            expanded_permissions = expand_permission_groups(manifest.permissions)
+            validation = validate_permissions(expanded_permissions, allow_unknown=True)
+
+            if not validation.valid:
+                logger.error(
+                    f"Plugin {manifest.id} has invalid permissions",
+                    unknown=validation.unknown,
+                )
+                return False
+
+            # Log permission warnings
+            for warning in validation.warnings:
+                logger.warning(
+                    f"Plugin {manifest.id}: {warning}",
+                    plugin_id=manifest.id,
+                )
+
+            # Store validated permissions back in manifest
+            manifest.permissions = validation.granted
+
+            logger.debug(
+                f"Plugin {manifest.id} permissions validated",
+                plugin_id=manifest.id,
+                permissions=validation.granted,
+                warnings=len(validation.warnings),
+            )
 
             # Compute effective enabled state using manifest and settings
             effective_enabled = manifest.enabled
