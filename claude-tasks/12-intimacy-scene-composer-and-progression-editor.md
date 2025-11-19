@@ -86,10 +86,16 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Integrated into IntimacySceneComposer (Generation tab)
   - Preview mode added to ProgressionArcEditor
 
-- [ ] **Phase 8 – Generation Integration (Preview Intimacy Scenes)**
+- [x] **Phase 8 – Generation Integration (Preview Intimacy Scenes)** ✓
   - Backend integration for content generation
   - Social context auto-derivation
   - Preview generated content in editor
+  - Implemented in:
+    - `frontend/src/lib/intimacy/socialContextDerivation.ts`
+    - `frontend/src/lib/intimacy/generationPreview.ts`
+    - `frontend/src/components/intimacy/GenerationPreviewPanel.tsx`
+  - Integrated into IntimacySceneComposer (Generation tab)
+  - Documentation updated in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 3 section)
 
 - [ ] **Phase 9 – Templates & Preset Library**
   - Common scene templates
