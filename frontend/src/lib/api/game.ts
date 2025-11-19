@@ -15,6 +15,8 @@ import type {
   SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
+  SensualTouchRequest,
+  SensualTouchResponse,
   QuestObjectiveDTO,
   QuestDTO,
   InventoryItemDTO,
@@ -37,6 +39,8 @@ export type {
   SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
+  SensualTouchRequest,
+  SensualTouchResponse,
   QuestObjectiveDTO,
   QuestDTO,
   InventoryItemDTO,
@@ -136,6 +140,11 @@ export async function getGameScene(sceneId: number): Promise<Scene> {
 
 export async function attemptPickpocket(req: PickpocketRequest): Promise<PickpocketResponse> {
   const res = await apiClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
+  return res.data;
+}
+
+export async function attemptSensualTouch(req: SensualTouchRequest): Promise<SensualTouchResponse> {
+  const res = await apiClient.post<SensualTouchResponse>('/game/romance/sensual-touch', req);
   return res.data;
 }
 

@@ -15,12 +15,14 @@ import { talkPlugin } from './talk';
 import { pickpocketPlugin } from './pickpocket';
 import { giveItemInteraction } from './giveItem';
 import { persuadePlugin } from './persuade';
+import { sensualizePlugin } from './sensualize';
 
 // Register all built-in interactions
 interactionRegistry.register(talkPlugin);
 interactionRegistry.register(pickpocketPlugin);
 interactionRegistry.register(giveItemInteraction);
 interactionRegistry.register(persuadePlugin);
+interactionRegistry.register(sensualizePlugin);
 
 // Export registry and types for use in components
 // DEPRECATED: Import from @/lib/registries instead for consistency
@@ -40,6 +42,7 @@ export type { TalkConfig } from './talk';
 export type { PickpocketConfig } from './pickpocket';
 export type { GiveItemConfig } from './giveItem';
 export type { PersuadeConfig } from './persuade';
+export type { SensualizeConfig } from './sensualize';
 
 // Export the config form component
 export { InteractionConfigForm } from './InteractionConfigForm';

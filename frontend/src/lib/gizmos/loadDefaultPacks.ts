@@ -14,12 +14,14 @@
  * 2. Enhanced pack (adds feather)
  * 3. Water & Banana pack (adds water, banana)
  * 4. Rings pack (adds rings gizmo)
+ * 5. Romance pack (adds caress, feather, silk, pleasure, hand-3d)
  */
 
 import './registry';                  // Base pack
 import './registry-enhanced';         // Enhanced pack
 import './registry-water-banana';     // Water & Banana pack
 import './registry-rings';            // Rings pack
+import './registry-romance';          // Romance pack
 
 // Re-export registry functions for convenience
 export {
