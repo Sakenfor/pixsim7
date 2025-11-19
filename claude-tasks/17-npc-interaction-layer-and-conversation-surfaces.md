@@ -697,7 +697,42 @@ Define a **single execution pipeline** for NPC interactions that:
    - Messages for UI (success, failure, not available).
 4. Make execution side‑effect free in editor preview modes (e.g. toggled via a flag) so designers can simulate interactions without permanently altering sessions.
 
-**Status:** ☐ Not started
+**Status:** ✅ Complete
+
+**Implementation:**
+- Backend execution: `pixsim7_backend/domain/game/interaction_execution.py`
+- API endpoint: `pixsim7_backend/api/v1/npc_interactions.py` (POST /execute)
+- Client API: `frontend/src/lib/api/interactions.ts` (executeInteraction)
+
+**Key Features:**
+1. **Unified execution pipeline:**
+   - Validates availability before execution
+   - Applies all outcome effects atomically
+   - Tracks cooldowns automatically
+   - Persists changes to database
+
+2. **Outcome effects:**
+   - Relationship deltas (affinity, trust, chemistry, tension with clamping)
+   - Flag changes (set, delete, increment, arc stages, quest updates, events)
+   - Inventory changes (add/remove items with quantities)
+   - NPC effects (memory creation, emotion triggers, world event registration)
+   - Scene launches (with intent mapping from world meta)
+   - Generation launches (dialogue and action blocks)
+
+3. **Session updates:**
+   - All changes applied to GameSession.relationships and GameSession.flags
+   - Last interaction timestamp tracked
+   - Cooldown timestamps stored per interaction
+
+4. **Integration:**
+   - Scene intent → scene ID mapping from GameWorld.meta
+   - Pending dialogue/action block requests stored in session flags
+   - Returns updated session state to client
+
+5. **Error handling:**
+   - 400 if interaction not available
+   - 404 if world/session/NPC/interaction not found
+   - Clear error messages with reasons
 
 ---
 

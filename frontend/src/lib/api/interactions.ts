@@ -76,3 +76,24 @@ export async function getAllInteractions(
   });
   return response.interactions;
 }
+
+/**
+ * Execute an interaction (convenience wrapper)
+ */
+export async function executeInteraction(
+  worldId: number,
+  sessionId: number,
+  npcId: number,
+  interactionId: string,
+  playerInput?: string,
+  context?: Record<string, unknown>
+): Promise<ExecuteInteractionResponse> {
+  return executeNpcInteraction({
+    worldId,
+    sessionId,
+    npcId,
+    interactionId,
+    playerInput,
+    context,
+  });
+}

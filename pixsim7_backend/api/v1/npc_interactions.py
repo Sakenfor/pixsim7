@@ -17,6 +17,8 @@ from pixsim7_backend.domain.game.models import GameWorld, GameSession, GameNPC
 from pixsim7_backend.domain.game.npc_interactions import (
     ListInteractionsRequest,
     ListInteractionsResponse,
+    ExecuteInteractionRequest,
+    ExecuteInteractionResponse,
     NpcInteractionInstance,
     InteractionContext,
     RelationshipSnapshot,
@@ -26,6 +28,9 @@ from pixsim7_backend.domain.game.interaction_availability import (
     evaluate_interaction_availability,
     create_interaction_instance,
     filter_interactions_by_target,
+)
+from pixsim7_backend.domain.game.interaction_execution import (
+    execute_interaction as execute_interaction_logic,
 )
 
 
@@ -265,3 +270,93 @@ async def list_npc_interactions(
         sessionId=req.session_id,
         timestamp=current_time
     )
+
+
+@router.post("/execute", response_model=ExecuteInteractionResponse)
+async def execute_npc_interaction(
+    req: ExecuteInteractionRequest,
+    db: DatabaseSession,
+    user: CurrentUser
+) -> ExecuteInteractionResponse:
+    """
+    Execute an NPC interaction and apply all outcomes.
+
+    This endpoint:
+    1. Validates interaction availability
+    2. Applies all outcome effects (relationships, flags, inventory, NPC effects)
+    3. Launches scenes or generation flows if configured
+    4. Tracks cooldown
+    5. Persists session changes to database
+
+    Args:
+        req: Request with world/session/NPC/interaction IDs
+        db: Database session
+        user: Current user
+
+    Returns:
+        Execution response with results
+    """
+    # Load world
+    world = await db.get(GameWorld, req.world_id)
+    if not world:
+        raise HTTPException(status_code=404, detail="World not found")
+
+    # Load session
+    session = await db.get(GameSession, req.session_id)
+    if not session or session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Load NPC
+    npc = await db.get(GameNPC, req.npc_id)
+    if not npc:
+        raise HTTPException(status_code=404, detail="NPC not found")
+
+    # Load interaction definitions
+    definitions = await load_interaction_definitions(world, npc)
+
+    # Find the requested interaction
+    definition = next((d for d in definitions if d.id == req.interaction_id), None)
+    if not definition:
+        raise HTTPException(status_code=404, detail=f"Interaction {req.interaction_id} not found")
+
+    # Build context for availability check
+    context = build_interaction_context(session, req.npc_id, req.context.get("locationId") if req.context else None)
+
+    # Get world tier order
+    tier_order = get_world_tier_order(world)
+
+    # Check availability before executing
+    available, disabled_reason, disabled_msg = evaluate_interaction_availability(
+        definition,
+        context,
+        tier_order,
+        int(time.time())
+    )
+
+    if not available:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interaction not available: {disabled_msg or disabled_reason}"
+        )
+
+    # Execute interaction
+    result = await execute_interaction_logic(
+        db,
+        session,
+        req.npc_id,
+        definition,
+        req.player_input,
+        req.context
+    )
+
+    # Persist session changes
+    await db.commit()
+    await db.refresh(session)
+
+    # Attach updated session to response
+    result.updatedSession = {
+        "relationships": session.relationships,
+        "flags": session.flags,
+    }
+
+    return result
