@@ -208,6 +208,97 @@ The foundation is solid for implementing Phases 4-10, which will add social cont
 
 ---
 
+## ✅ Phase 5 - Validation & Health Panel for Generation Nodes (COMPLETE)
+
+### Summary
+Implemented comprehensive validation system with real-time feedback and developer health monitoring.
+
+### Implementation
+
+**✅ Enhanced Validator**
+- File: `packages/game-core/src/generation/validator.ts`
+- Added comprehensive validation rules:
+  - **Required Fields**: Validates generationType, purpose, strategy
+  - **Type/Purpose Combinations**: Warns about unusual combinations
+  - **Seed Source Validation**: Validates seed source against strategy
+  - **Style Rules Validation**: Validates pacing, transition type, mood consistency
+  - **Duration Validation**: Checks ranges, negative values, realistic durations
+  - **Constraints Validation**: Checks for conflicts, empty arrays, excessive constraints
+  - **Fallback Validation**: Validates completeness of fallback configuration
+  - **Strategy-Specific Warnings**: Performance and caching implications
+
+**✅ Helper Functions**
+- `getValidationStatus(result)` → 'ok' | 'warning' | 'error'
+- `getValidationSummary(result)` → Human-readable summary
+- `isGenerationNodeValid(config)` → Boolean check
+
+**✅ GenerationNodeEditor UI Enhancement**
+- File: `frontend/src/components/inspector/GenerationNodeEditor.tsx`
+- Features:
+  - **Real-time Validation**: Auto-validates on config changes
+  - **Status Badge**: Color-coded badge (✅ Valid / ⚠️ Has Warnings / ❌ Has Errors)
+  - **Collapsible Details Panel**: Shows errors, warnings, and suggestions separately
+  - **Auto-expand on Errors**: Validation panel opens automatically when errors occur
+  - **Integrated with Apply/Test**: Blocks actions when validation fails
+
+**✅ Generation Health View Component**
+- File: `frontend/src/components/dev/GenerationHealthView.tsx`
+- Features:
+  - **Aggregate Health Dashboard**: View all generation nodes at once
+  - **Filter by Status**: Filter nodes by error/warning/ok status
+  - **Summary Statistics**: Total, errors, warnings, healthy nodes
+  - **Expandable Node Details**: Click to see full validation results
+  - **Scene Context**: Shows which scene each node belongs to
+  - **Action Required Alerts**: Highlights deployment blockers
+
+### Validation Rules Summary
+
+**Errors (Blocking)**:
+- Missing required fields (generationType, purpose, strategy, fallback)
+- Invalid enum values (pacing, transition type, seed source)
+- Duration range violations (min > max, target out of range)
+- Negative duration values
+- Required/avoided element conflicts
+- Missing fallback configuration details
+
+**Warnings (Non-blocking)**:
+- Node disabled
+- Unusual type/purpose combinations
+- Timestamp seed with deterministic strategy
+- Missing mood transitions
+- Abrupt transitions with slow pacing
+- Empty constraint arrays
+- Excessive constraints
+- Very short/long durations
+- Retry fallback misconfigurations
+- Content rating conflicts
+
+**Suggestions (Recommendations)**:
+- Seed source alignment with strategy
+- Adding social context for dialogue/NPC responses
+- Style rules for transitions
+- Target duration specification
+- Fallback mode improvements
+
+### Usage
+
+**In Node Editor:**
+```tsx
+// Real-time validation display
+<GenerationNodeEditor node={selectedNode} onUpdate={handleUpdate} />
+```
+
+**In Dev Tools:**
+```tsx
+// Health monitoring across all nodes
+<GenerationHealthView
+  worldId={currentWorld.id}
+  nodes={allGenerationNodes}
+/>
+```
+
+---
+
 ## ✅ Phase 4 - Social Context & Intimacy Integration (COMPLETE)
 
 ### Summary

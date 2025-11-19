@@ -22,13 +22,16 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
 
 ### Phase Checklist
 
-- [x] **Phase 1 – Confirm Migration to Unified `Generation` Model**  
+- [x] **Phase 1 – Confirm Migration to Unified `Generation` Model**
   *Core model and service exist (Generation/GenerationArtifact, provider abstraction, GenerationService) – 2025‑11‑19*
-- [~] **Phase 2 – Wire Frontend Generation Nodes to Generation Service**  
-  *Generation nodes and request builder exist; full `GenerateContentRequest` → backend wiring needs verification*
-- [ ] **Phase 3 – Prompt Versioning & `prompt_config` Integration**
-- [ ] **Phase 4 – Social Context & Intimacy Integration**
-- [ ] **Phase 5 – Validation & Health Panel for Generation Nodes**
+- [x] **Phase 2 – Wire Frontend Generation Nodes to Generation Service**
+  *Complete unified generation API with structured GenerationNodeConfig support – 2025‑11‑19*
+- [x] **Phase 3 – Prompt Versioning & `prompt_config` Integration**
+  *Comprehensive prompt resolution from structured prompt_config with variable substitution – 2025‑11‑19*
+- [x] **Phase 4 – Social Context & Intimacy Integration**
+  *Full relationship/intimacy context integration with content rating enforcement – 2025‑11‑19*
+- [x] **Phase 5 – Validation & Health Panel for Generation Nodes**
+  *Comprehensive validation with real-time UI feedback and health monitoring dashboard – 2025‑11‑19*
 - [ ] **Phase 6 – Caching, Determinism & Seed Strategy**
 - [ ] **Phase 7 – Telemetry: Cost, Latency, Provider Health**
 - [ ] **Phase 8 – Safety & Content Rating Enforcement**
