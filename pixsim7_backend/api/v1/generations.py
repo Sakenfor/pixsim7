@@ -263,7 +263,8 @@ async def retry_generation(
     - Rate limits
 
     Only the generation owner or admin can retry.
-    Maximum 3 retry attempts per generation.
+    Maximum retry attempts per generation are limited by server configuration
+    (settings.auto_retry_max_attempts, default: 10).
     """
     try:
         new_generation = await generation_service.retry_generation(generation_id, user)

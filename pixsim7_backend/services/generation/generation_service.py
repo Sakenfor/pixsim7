@@ -830,7 +830,7 @@ class GenerationService:
         self,
         generation_id: int,
         user: User,
-        max_retries: int = 3
+        max_retries: int | None = None
     ) -> Generation:
         """
         Retry a failed generation
@@ -841,7 +841,8 @@ class GenerationService:
         Args:
             generation_id: Failed generation ID to retry
             user: User requesting retry
-            max_retries: Maximum retry attempts allowed (default: 3)
+            max_retries: Maximum retry attempts allowed. If None, uses
+                settings.auto_retry_max_attempts (default: 10, configurable).
 
         Returns:
             New generation created for retry
@@ -850,6 +851,11 @@ class GenerationService:
             ResourceNotFoundError: Generation not found
             InvalidOperationError: Cannot retry (wrong user, not failed, or max retries exceeded)
         """
+        # Resolve max_retries from settings if not provided
+        if max_retries is None:
+            from pixsim7_backend.shared.config import settings
+            max_retries = settings.auto_retry_max_attempts
+
         # Get original generation
         original = await self.get_generation(generation_id)
 
