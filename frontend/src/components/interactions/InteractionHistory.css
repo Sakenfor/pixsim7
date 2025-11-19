@@ -1,0 +1,209 @@
+/**
+ * Interaction History Panel Styles
+ */
+
+.interaction-history {
+  background: rgba(20, 20, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 320px;
+  max-width: 450px;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.interaction-history.empty {
+  padding: 20px;
+  text-align: center;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.history-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.history-count {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.history-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty-message {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* History Entry */
+
+.history-entry {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 10px;
+  transition: all 0.15s ease;
+}
+
+.history-entry.clickable {
+  cursor: pointer;
+}
+
+.history-entry.clickable:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(100, 150, 255, 0.3);
+  transform: translateX(2px);
+}
+
+.entry-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.entry-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.entry-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.entry-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.entry-time {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.entry-message {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  margin-bottom: 6px;
+  padding-left: 34px; /* Align with entry-main */
+}
+
+/* Outcomes */
+
+.entry-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 34px; /* Align with entry-main */
+  margin-top: 6px;
+}
+
+.outcome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.outcome-icon {
+  font-size: 11px;
+}
+
+.outcome.relationship {
+  background: rgba(255, 100, 150, 0.15);
+  border: 1px solid rgba(255, 100, 150, 0.3);
+  color: rgba(255, 150, 200, 0.9);
+}
+
+.outcome.inventory-add {
+  background: rgba(100, 200, 100, 0.15);
+  border: 1px solid rgba(100, 200, 100, 0.3);
+  color: rgba(150, 255, 150, 0.9);
+}
+
+.outcome.inventory-remove {
+  background: rgba(200, 100, 100, 0.15);
+  border: 1px solid rgba(200, 100, 100, 0.3);
+  color: rgba(255, 150, 150, 0.9);
+}
+
+.outcome.scene {
+  background: rgba(150, 100, 255, 0.15);
+  border: 1px solid rgba(150, 100, 255, 0.3);
+  color: rgba(200, 150, 255, 0.9);
+}
+
+.outcome.dialogue {
+  background: rgba(100, 150, 255, 0.15);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  color: rgba(150, 200, 255, 0.9);
+}
+
+.outcome.flags {
+  background: rgba(255, 200, 100, 0.15);
+  border: 1px solid rgba(255, 200, 100, 0.3);
+  color: rgba(255, 220, 150, 0.9);
+}
+
+/* More indicator */
+
+.history-more {
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 4px;
+}
+
+/* Responsive adjustments */
+
+@media (max-width: 640px) {
+  .interaction-history {
+    max-width: 100%;
+  }
+
+  .entry-label {
+    font-size: 12px;
+  }
+
+  .entry-message {
+    padding-left: 28px;
+  }
+
+  .entry-outcomes {
+    padding-left: 28px;
+  }
+}

@@ -97,3 +97,86 @@ export async function executeInteraction(
     context,
   });
 }
+
+/**
+ * Get pending dialogue requests from a session
+ */
+export async function getPendingDialogue(
+  sessionId: number
+): Promise<Array<{
+  requestId: string;
+  npcId: number;
+  programId: string;
+  systemPrompt?: string;
+  llmPrompt: string;
+  visualPrompt?: string;
+  playerInput?: string;
+  branchIntent?: string;
+  createdAt: number;
+  metadata?: Record<string, unknown>;
+}>> {
+  const response = await apiClient.get(
+    `/api/v1/game/sessions/${sessionId}`
+  );
+  const session = response.data;
+  return session.flags?.pendingDialogue || [];
+}
+
+/**
+ * Execute a pending dialogue request via LLM
+ */
+export async function executePendingDialogue(
+  sessionId: number,
+  requestId: string
+): Promise<{
+  text: string;
+  cached: boolean;
+  generationTimeMs?: number;
+  requestId: string;
+}> {
+  const pending = await getPendingDialogue(sessionId);
+  const request = pending.find((r) => r.requestId === requestId);
+
+  if (!request) {
+    throw new Error(`Pending dialogue request ${requestId} not found`);
+  }
+
+  // Call the dialogue generation endpoint directly
+  const response = await apiClient.post('/api/v1/game/dialogue/next-line/execute', {
+    npc_id: request.npcId,
+    session_id: sessionId,
+    player_input: request.playerInput,
+    program_id: request.programId,
+  });
+
+  return {
+    text: response.data.text,
+    cached: response.data.cached,
+    generationTimeMs: response.data.generation_time_ms,
+    requestId,
+  };
+}
+
+/**
+ * Clear a pending dialogue request from session
+ */
+export async function clearPendingDialogue(
+  sessionId: number,
+  requestId: string
+): Promise<void> {
+  // This would need a backend endpoint to modify session flags
+  // For now, we'll handle it client-side by filtering
+  const response = await apiClient.get(
+    `/api/v1/game/sessions/${sessionId}`
+  );
+  const session = response.data;
+  const pending = session.flags?.pendingDialogue || [];
+  const filtered = pending.filter((r: any) => r.requestId !== requestId);
+
+  await apiClient.patch(`/api/v1/game/sessions/${sessionId}`, {
+    flags: {
+      ...session.flags,
+      pendingDialogue: filtered,
+    },
+  });
+}

@@ -1,11 +1,16 @@
 /**
  * Interaction Menu Component
  *
- * Phase 17.4: Display and execute NPC interactions
+ * Phase 17.4+: Display and execute NPC interactions with cooldown timers
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { NpcInteractionInstance, InteractionSurface } from '@pixsim7/types';
+import {
+  getRemainingCooldown,
+  formatCooldownSmart,
+  getCooldownProgress,
+} from '@pixsim7/game-core/interactions/cooldownUtils';
 import './InteractionMenu.css';
 
 export interface InteractionMenuProps {
@@ -29,6 +34,12 @@ export interface InteractionMenuProps {
 
   /** Maximum interactions to show (for compact mode) */
   maxVisible?: number;
+
+  /** Cooldown data: map of interaction ID to last used timestamp */
+  cooldowns?: Record<string, number>;
+
+  /** Show cooldown timers (default: true) */
+  showCooldowns?: boolean;
 }
 
 /**
@@ -57,19 +68,51 @@ function getSurfaceIcon(surface: InteractionSurface): string {
 function InteractionMenuItem({
   interaction,
   onClick,
+  cooldownSeconds,
+  lastUsedTimestamp,
+  showCooldown = true,
 }: {
   interaction: NpcInteractionInstance;
   onClick: () => void;
+  cooldownSeconds?: number;
+  lastUsedTimestamp?: number;
+  showCooldown?: boolean;
 }) {
+  const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
+
+  // Update current time every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const isDisabled = !interaction.available;
+  const remainingCooldown = getRemainingCooldown(
+    lastUsedTimestamp,
+    cooldownSeconds,
+    currentTime
+  );
+  const onCooldown = remainingCooldown > 0;
+  const cooldownProgress = getCooldownProgress(
+    lastUsedTimestamp,
+    cooldownSeconds,
+    currentTime
+  );
 
   return (
     <button
-      className={`interaction-menu-item ${isDisabled ? 'disabled' : ''}`}
+      className={`interaction-menu-item ${isDisabled ? 'disabled' : ''} ${
+        onCooldown ? 'on-cooldown' : ''
+      }`}
       onClick={onClick}
-      disabled={isDisabled}
+      disabled={isDisabled || onCooldown}
       title={
-        isDisabled
+        onCooldown
+          ? `On cooldown: ${formatCooldownSmart(remainingCooldown)}`
+          : isDisabled
           ? interaction.disabledMessage || 'Not available'
           : interaction.label
       }
@@ -78,7 +121,22 @@ function InteractionMenuItem({
         {interaction.icon || getSurfaceIcon(interaction.surface)}
       </span>
       <span className="interaction-label">{interaction.label}</span>
-      {isDisabled && interaction.disabledMessage && (
+
+      {showCooldown && onCooldown && (
+        <span className="interaction-cooldown">
+          <span className="cooldown-icon">⏱️</span>
+          <span className="cooldown-time">{formatCooldownSmart(remainingCooldown)}</span>
+        </span>
+      )}
+
+      {showCooldown && onCooldown && (
+        <div
+          className="cooldown-progress-bar"
+          style={{ width: `${cooldownProgress}%` }}
+        />
+      )}
+
+      {isDisabled && !onCooldown && interaction.disabledMessage && (
         <span className="interaction-disabled-reason">
           {interaction.disabledMessage}
         </span>
@@ -98,6 +156,8 @@ export function InteractionMenu({
   className = '',
   loading = false,
   maxVisible,
+  cooldowns = {},
+  showCooldowns = true,
 }: InteractionMenuProps) {
   // Filter interactions
   const displayInteractions = showUnavailable
@@ -146,13 +206,23 @@ export function InteractionMenu({
         </span>
       </div>
       <div className="interaction-menu-body">
-        {visibleInteractions.map((interaction) => (
-          <InteractionMenuItem
-            key={interaction.id}
-            interaction={interaction}
-            onClick={() => onSelect(interaction)}
-          />
-        ))}
+        {visibleInteractions.map((interaction) => {
+          // Extract cooldown from interaction instance metadata
+          const lastUsed = cooldowns[interaction.id];
+          // Cooldown seconds should come from the interaction definition
+          const cooldownSeconds = (interaction as any).cooldownSeconds;
+
+          return (
+            <InteractionMenuItem
+              key={interaction.id}
+              interaction={interaction}
+              onClick={() => onSelect(interaction)}
+              cooldownSeconds={cooldownSeconds}
+              lastUsedTimestamp={lastUsed}
+              showCooldown={showCooldowns}
+            />
+          );
+        })}
         {hasMore && (
           <div className="interaction-menu-more">
             +{displayInteractions.length - maxVisible!} more
