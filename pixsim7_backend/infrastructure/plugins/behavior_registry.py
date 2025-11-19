@@ -85,6 +85,29 @@ class SimulationConfigProvider:
     """Priority (lower = higher priority, default configs have priority 1000)"""
 
 
+@dataclass
+class ComponentSchemaMetadata:
+    """Metadata for a registered component schema"""
+    component_name: str
+    """Component name (e.g., 'plugin:game-romance' or 'romance')"""
+
+    plugin_id: str
+    """Plugin that registered this component"""
+
+    schema: Dict[str, Any]
+    """Component schema (JSON schema or Pydantic-like definition)"""
+
+    description: Optional[str] = None
+    """Human-readable description"""
+
+    metrics: Dict[str, Dict[str, Any]] = None
+    """Metric definitions for this component (metricId -> definition)"""
+
+    def __post_init__(self):
+        if self.metrics is None:
+            self.metrics = {}
+
+
 # ===== GLOBAL REGISTRIES =====
 
 class BehaviorExtensionRegistry:
@@ -101,6 +124,7 @@ class BehaviorExtensionRegistry:
         self._conditions: Dict[str, ConditionMetadata] = {}
         self._effects: Dict[str, EffectMetadata] = {}
         self._simulation_configs: Dict[str, SimulationConfigProvider] = {}
+        self._component_schemas: Dict[str, ComponentSchemaMetadata] = {}
         self._locked = False  # Lock registry after initialization
 
     # ===== CONDITION REGISTRATION =====
@@ -333,6 +357,138 @@ class BehaviorExtensionRegistry:
         providers.sort(key=lambda p: p.priority)
         return providers
 
+    # ===== COMPONENT SCHEMA REGISTRATION =====
+
+    def register_component_schema(
+        self,
+        component_name: str,
+        plugin_id: str,
+        schema: Dict[str, Any],
+        description: Optional[str] = None,
+        metrics: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> bool:
+        """
+        Register a component schema and its associated metrics.
+
+        Args:
+            component_name: Component name (e.g., 'plugin:game-romance')
+            plugin_id: Plugin registering this schema
+            schema: Component schema (JSON schema or Pydantic-like definition)
+            description: Human-readable description
+            metrics: Metric definitions (metricId -> {type, min, max, component, ...})
+
+        Returns:
+            True if registered, False if already exists or locked
+
+        Example:
+            behavior_registry.register_component_schema(
+                component_name="plugin:game-romance",
+                plugin_id="game-romance",
+                schema={"arousal": {"type": "float"}, "stage": {"type": "str"}},
+                description="Romance system component",
+                metrics={
+                    "npcRelationship.arousal": {
+                        "type": "float",
+                        "min": 0,
+                        "max": 1,
+                        "component": "plugin:game-romance",
+                        "path": "arousal"
+                    }
+                }
+            )
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot register component schema - registry is locked",
+                component_name=component_name,
+                plugin_id=plugin_id,
+            )
+            return False
+
+        if component_name in self._component_schemas:
+            logger.warning(
+                "Component schema already registered",
+                component_name=component_name,
+                existing_plugin=self._component_schemas[component_name].plugin_id,
+                new_plugin=plugin_id,
+            )
+            return False
+
+        metadata = ComponentSchemaMetadata(
+            component_name=component_name,
+            plugin_id=plugin_id,
+            schema=schema,
+            description=description,
+            metrics=metrics or {},
+        )
+
+        self._component_schemas[component_name] = metadata
+
+        logger.info(
+            "Registered component schema",
+            component_name=component_name,
+            plugin_id=plugin_id,
+            metrics_count=len(metadata.metrics),
+        )
+
+        return True
+
+    def get_component_schema(self, component_name: str) -> Optional[ComponentSchemaMetadata]:
+        """Get component schema metadata by name"""
+        return self._component_schemas.get(component_name)
+
+    def list_component_schemas(self, plugin_id: Optional[str] = None) -> List[ComponentSchemaMetadata]:
+        """
+        List all registered component schemas.
+
+        Args:
+            plugin_id: Optional filter by plugin ID
+
+        Returns:
+            List of component schema metadata
+        """
+        schemas = list(self._component_schemas.values())
+
+        if plugin_id:
+            schemas = [s for s in schemas if s.plugin_id == plugin_id]
+
+        return schemas
+
+    def get_all_metrics(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get all registered metrics from all component schemas.
+
+        Returns:
+            Dict of metricId -> metric definition
+
+        Example:
+            {
+                "npcRelationship.arousal": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "plugin:game-romance",
+                    "source": "game-romance"
+                },
+                "npcRelationship.suspicion": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "plugin:game-stealth",
+                    "source": "game-stealth"
+                }
+            }
+        """
+        all_metrics = {}
+
+        for schema_meta in self._component_schemas.values():
+            for metric_id, metric_def in schema_meta.metrics.items():
+                # Merge with source plugin info
+                metric_with_source = {**metric_def, "source": schema_meta.plugin_id}
+                all_metrics[metric_id] = metric_with_source
+
+        return all_metrics
+
     # ===== LIFECYCLE =====
 
     def lock(self):
@@ -347,6 +503,7 @@ class BehaviorExtensionRegistry:
             conditions=len(self._conditions),
             effects=len(self._effects),
             simulation_configs=len(self._simulation_configs),
+            component_schemas=len(self._component_schemas),
         )
 
     def unlock(self):
@@ -359,6 +516,7 @@ class BehaviorExtensionRegistry:
         self._conditions.clear()
         self._effects.clear()
         self._simulation_configs.clear()
+        self._component_schemas.clear()
         logger.info("Behavior extension registry cleared")
 
     # ===== STATISTICS =====
@@ -378,6 +536,11 @@ class BehaviorExtensionRegistry:
             "simulation_configs": {
                 "total": len(self._simulation_configs),
                 "by_plugin": self._count_by_plugin(self._simulation_configs.values()),
+            },
+            "component_schemas": {
+                "total": len(self._component_schemas),
+                "by_plugin": self._count_by_plugin(self._component_schemas.values()),
+                "total_metrics": sum(len(s.metrics) for s in self._component_schemas.values()),
             },
         }
 

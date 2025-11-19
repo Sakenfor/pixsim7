@@ -507,6 +507,385 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         return True
 
 
+# ===== COMPONENT API =====
+
+class ComponentAPI(BaseCapabilityAPI):
+    """
+    Access to NPC ECS components (entity-component system).
+
+    Required permission: session:write (for write operations)
+
+    Provides structured access to NPC components stored in session.flags.npcs.
+    Plugins can define and manage their own components using namespaced keys.
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        permissions: set[str],
+        logger: structlog.BoundLogger,
+        db: Optional[AsyncSession] = None,
+    ):
+        super().__init__(plugin_id, permissions, logger)
+        self.db = db
+
+    async def get_component(
+        self,
+        session_id: int,
+        npc_id: int,
+        component_name: str,
+        default: Any = None,
+    ) -> Optional[dict]:
+        """
+        Get a component from an NPC entity.
+
+        Args:
+            session_id: Session ID
+            npc_id: NPC ID
+            component_name: Component name (will be namespaced for plugin components)
+            default: Default value if component doesn't exist
+
+        Returns:
+            Component data dict or default value
+
+        Example:
+            # Get plugin component
+            romance_data = await ctx.components.get_component(
+                session_id=123,
+                npc_id=456,
+                component_name="romance",  # Auto-namespaced to "plugin:my_plugin:romance"
+                default={}
+            )
+
+            # Get core component (requires exact name)
+            core = await ctx.components.get_component(
+                session_id=123,
+                npc_id=456,
+                component_name="core",
+                default={}
+            )
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_READ.value,
+            "ComponentAPI.get_component",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return default
+
+        if not self.db:
+            self.logger.error("ComponentAPI requires database access")
+            return default
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            self.logger.warning(
+                "Session not found",
+                plugin_id=self.plugin_id,
+                session_id=session_id,
+            )
+            return default
+
+        session_id_db, flags = row
+        flags = flags or {}
+
+        # Namespace component name for non-core components
+        # Core components: "core", "romance", "stealth", "mood", "behavior", "interactions"
+        core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
+        if component_name not in core_components and not component_name.startswith("plugin:"):
+            component_name = f"plugin:{self.plugin_id}:{component_name}"
+
+        # Use ECS helper to get component
+        from pixsim7_backend.domain.game.ecs import get_npc_component
+
+        # Create a simple object to mimic session
+        class SessionStub:
+            def __init__(self, flags_data):
+                self.flags = flags_data
+
+        session_stub = SessionStub(flags)
+        component_data = get_npc_component(session_stub, npc_id, component_name, default=default)
+
+        self.logger.debug(
+            "get_component",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            npc_id=npc_id,
+            component_name=component_name,
+            found=component_data != default,
+        )
+
+        return component_data
+
+    async def set_component(
+        self,
+        session_id: int,
+        npc_id: int,
+        component_name: str,
+        value: dict,
+        validate: bool = True,
+    ) -> bool:
+        """
+        Set a component for an NPC entity.
+
+        Args:
+            session_id: Session ID
+            npc_id: NPC ID
+            component_name: Component name (will be namespaced for plugin components)
+            value: Component data (must be a dict)
+            validate: Whether to validate against component schema (if available)
+
+        Returns:
+            True if successful, False otherwise
+
+        Example:
+            success = await ctx.components.set_component(
+                session_id=123,
+                npc_id=456,
+                component_name="romance",
+                value={
+                    "arousal": 0.5,
+                    "stage": "dating",
+                    "customStats": {"kissCount": 3}
+                }
+            )
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "ComponentAPI.set_component",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        if not self.db:
+            self.logger.error("ComponentAPI requires database access")
+            return False
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            self.logger.warning(
+                "Session not found",
+                plugin_id=self.plugin_id,
+                session_id=session_id,
+            )
+            return False
+
+        session_id_db, flags = row
+        flags = flags or {}
+
+        # Namespace component name for non-core components
+        core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
+        if component_name not in core_components and not component_name.startswith("plugin:"):
+            component_name = f"plugin:{self.plugin_id}:{component_name}"
+
+        # Use ECS helper to set component
+        from pixsim7_backend.domain.game.ecs import set_npc_component
+
+        # Create a simple object to mimic session
+        class SessionStub:
+            def __init__(self, flags_data):
+                self.flags = flags_data
+
+        session_stub = SessionStub(flags)
+        set_npc_component(session_stub, npc_id, component_name, value, validate=validate)
+
+        # Update session in database
+        await self.db.execute(
+            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
+            {"flags": session_stub.flags, "session_id": session_id}
+        )
+        await self.db.commit()
+
+        self.logger.info(
+            "set_component",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            npc_id=npc_id,
+            component_name=component_name,
+        )
+
+        return True
+
+    async def update_component(
+        self,
+        session_id: int,
+        npc_id: int,
+        component_name: str,
+        updates: dict,
+        validate: bool = True,
+    ) -> bool:
+        """
+        Update specific fields in a component (partial update).
+
+        Args:
+            session_id: Session ID
+            npc_id: NPC ID
+            component_name: Component name (will be namespaced for plugin components)
+            updates: Partial component data to merge
+            validate: Whether to validate against component schema (if available)
+
+        Returns:
+            True if successful, False otherwise
+
+        Example:
+            success = await ctx.components.update_component(
+                session_id=123,
+                npc_id=456,
+                component_name="romance",
+                updates={"arousal": 0.6}  # Only update arousal
+            )
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "ComponentAPI.update_component",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        if not self.db:
+            return False
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return False
+
+        session_id_db, flags = row
+        flags = flags or {}
+
+        # Namespace component name
+        core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
+        if component_name not in core_components and not component_name.startswith("plugin:"):
+            component_name = f"plugin:{self.plugin_id}:{component_name}"
+
+        # Use ECS helper to update component
+        from pixsim7_backend.domain.game.ecs import update_npc_component
+
+        class SessionStub:
+            def __init__(self, flags_data):
+                self.flags = flags_data
+
+        session_stub = SessionStub(flags)
+        update_npc_component(session_stub, npc_id, component_name, updates, validate=validate)
+
+        # Update session in database
+        await self.db.execute(
+            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
+            {"flags": session_stub.flags, "session_id": session_id}
+        )
+        await self.db.commit()
+
+        self.logger.info(
+            "update_component",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            npc_id=npc_id,
+            component_name=component_name,
+            updates=list(updates.keys()),
+        )
+
+        return True
+
+    async def delete_component(
+        self,
+        session_id: int,
+        npc_id: int,
+        component_name: str,
+    ) -> bool:
+        """
+        Delete a component from an NPC entity.
+
+        Args:
+            session_id: Session ID
+            npc_id: NPC ID
+            component_name: Component name (will be namespaced for plugin components)
+
+        Returns:
+            True if successful, False otherwise
+
+        Note:
+            Core components cannot be deleted. Only plugin-owned components can be removed.
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "ComponentAPI.delete_component",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        if not self.db:
+            return False
+
+        # Fetch session
+        result = await self.db.execute(
+            "SELECT id, flags FROM game_sessions WHERE id = :session_id",
+            {"session_id": session_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return False
+
+        session_id_db, flags = row
+        flags = flags or {}
+
+        # Namespace component name
+        core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
+        if component_name in core_components:
+            self.logger.warning(
+                "Cannot delete core component",
+                plugin_id=self.plugin_id,
+                component_name=component_name,
+            )
+            return False
+
+        if not component_name.startswith("plugin:"):
+            component_name = f"plugin:{self.plugin_id}:{component_name}"
+
+        # Use ECS helper to delete component
+        from pixsim7_backend.domain.game.ecs import delete_npc_component
+
+        class SessionStub:
+            def __init__(self, flags_data):
+                self.flags = flags_data
+
+        session_stub = SessionStub(flags)
+        delete_npc_component(session_stub, npc_id, component_name)
+
+        # Update session in database
+        await self.db.execute(
+            "UPDATE game_sessions SET flags = :flags WHERE id = :session_id",
+            {"flags": session_stub.flags, "session_id": session_id}
+        )
+        await self.db.commit()
+
+        self.logger.info(
+            "delete_component",
+            plugin_id=self.plugin_id,
+            session_id=session_id,
+            npc_id=npc_id,
+            component_name=component_name,
+        )
+
+        return True
+
+
 # ===== LOGGING API =====
 
 class LoggingAPI(BaseCapabilityAPI):
@@ -768,6 +1147,100 @@ class BehaviorExtensionAPI(BaseCapabilityAPI):
 
         return success
 
+    def register_component_schema(
+        self,
+        component_name: str,
+        schema: dict,
+        description: Optional[str] = None,
+        metrics: Optional[dict] = None,
+    ) -> bool:
+        """
+        Register a component schema and associated metrics for a plugin.
+
+        Args:
+            component_name: Component name (will be namespaced if not already)
+            schema: Component schema (JSON schema or dict of field definitions)
+            description: Human-readable description
+            metrics: Metric definitions (metricId -> {type, min, max, path, ...})
+
+        Returns:
+            True if registered, False if permission denied
+
+        Example:
+            success = ctx.behavior.register_component_schema(
+                component_name="romance",  # Auto-namespaced to "plugin:game-romance"
+                schema={
+                    "arousal": {"type": "float", "min": 0, "max": 1},
+                    "stage": {"type": "string", "enum": ["none", "flirting", "dating", "partner"]},
+                    "consentLevel": {"type": "float", "min": 0, "max": 1}
+                },
+                description="Romance system component for NPCs",
+                metrics={
+                    "npcRelationship.arousal": {
+                        "type": "float",
+                        "min": 0,
+                        "max": 1,
+                        "component": "plugin:game-romance",
+                        "path": "arousal",
+                        "label": "Arousal"
+                    },
+                    "npcRelationship.romanceStage": {
+                        "type": "enum",
+                        "values": ["none", "flirting", "dating", "partner"],
+                        "component": "plugin:game-romance",
+                        "path": "stage",
+                        "label": "Romance Stage"
+                    }
+                }
+            )
+        """
+        if not self._check_permission(
+            PluginPermission.BEHAVIOR_EXTEND_CONDITIONS.value,
+            "BehaviorExtensionAPI.register_component_schema",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return False
+
+        # Namespace component name for plugins
+        core_components = {"core", "romance", "stealth", "mood", "behavior", "interactions", "quests"}
+        if component_name in core_components:
+            self.logger.warning(
+                "Cannot register core component name",
+                plugin_id=self.plugin_id,
+                component_name=component_name,
+            )
+            return False
+
+        if not component_name.startswith("plugin:"):
+            component_name = f"plugin:{self.plugin_id}:{component_name}"
+
+        # Ensure metrics reference the correct component
+        if metrics:
+            for metric_id, metric_def in metrics.items():
+                if "component" not in metric_def:
+                    metric_def["component"] = component_name
+
+        # Register in global registry
+        from .behavior_registry import behavior_registry
+
+        success = behavior_registry.register_component_schema(
+            component_name=component_name,
+            plugin_id=self.plugin_id,
+            schema=schema,
+            description=description,
+            metrics=metrics,
+        )
+
+        if success:
+            self.logger.info(
+                "Registered component schema",
+                plugin_id=self.plugin_id,
+                component_name=component_name,
+                metrics_count=len(metrics) if metrics else 0,
+            )
+
+        return success
+
 
 # ===== PLUGIN CONTEXT =====
 
@@ -778,11 +1251,24 @@ class PluginContext:
     Provides permission-gated access to capability APIs instead of
     direct access to internal services, DB sessions, etc.
 
+    Available capability APIs:
+    - ctx.world: Read world metadata, locations, NPCs
+    - ctx.session: Read session flags, relationships
+    - ctx.session_write: Mutate session flags, relationships
+    - ctx.components: Read/write NPC ECS components (namespaced per plugin)
+    - ctx.behavior: Register custom behavior conditions, effects, configs
+    - ctx.log: Structured logging
+
     Usage in plugin routes:
         @router.get("/something")
         async def my_endpoint(ctx: PluginContext = Depends(get_plugin_context("my_plugin"))):
             world = await ctx.world.get_world(world_id)
             await ctx.session.set_session_flag(session_id, "my_flag", True)
+
+            # Use component API (auto-namespaced)
+            romance_data = await ctx.components.get_component(session_id, npc_id, "romance", default={})
+            await ctx.components.update_component(session_id, npc_id, "romance", {"arousal": 0.5})
+
             ctx.log.info("Did something")
     """
 
@@ -804,6 +1290,7 @@ class PluginContext:
         self.world = WorldReadAPI(plugin_id, self.permissions, self.logger, db)
         self.session = SessionReadAPI(plugin_id, self.permissions, self.logger, db)
         self.session_write = SessionMutationsAPI(plugin_id, self.permissions, self.logger, db)
+        self.components = ComponentAPI(plugin_id, self.permissions, self.logger, db)
         self.behavior = BehaviorExtensionAPI(plugin_id, self.permissions, self.logger)
         self.log = LoggingAPI(plugin_id, self.permissions, self.logger)
 
