@@ -23,7 +23,7 @@ Below are 10 phases for building and extending the Simulation Playground.
 - [x] **Phase 7 – Constraint‑Driven Simulation Runs**
 - [x] **Phase 8 – Plugin Hooks & Simulation‑Specific Events**
 - [x] **Phase 9 – Export / Import Simulation Runs & Scenarios**
-- [ ] **Phase 10 – Automation & Regression Harness**
+- [x] **Phase 10 – Automation & Regression Harness**
 
 ---
 
