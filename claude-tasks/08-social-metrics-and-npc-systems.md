@@ -21,8 +21,8 @@ This task defines phases for turning NPC mood and reputation into **first‑clas
 
 ### Phase Checklist
 
-- [ ] **Phase 1 – Inventory Existing NPC Mood & Social Signals**
-- [ ] **Phase 2 – Design Generic Metric Types (Backend + TS)**
+- [x] **Phase 1 – Inventory Existing NPC Mood & Social Signals** ✅ *2025-11-19*
+- [x] **Phase 2 – Design Generic Metric Types (Backend + TS)** ✅ *2025-11-19*
 - [ ] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)**
 - [ ] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)**
 - [ ] **Phase 5 – Add Generic Metric Preview Helper in Game-Core**
@@ -61,6 +61,127 @@ Map out what social data already exists (mood, tags, reputation‑like values) a
 
 ---
 
+**Phase 1 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Inventory of Existing NPC Mood & Social Signals
+
+#### 1. Backend Mood Systems
+
+**Database-Level Emotional States** (`pixsim7_backend/domain/npc_memory.py`):
+- **NPCEmotionalState** table with comprehensive emotion tracking
+- **EmotionType** enum with 17 emotion types:
+  - Positive: happy, excited, content, playful, affectionate, grateful
+  - Negative: sad, angry, frustrated, anxious, hurt, jealous
+  - Neutral/Complex: curious, thoughtful, surprised, confused, nervous, bored, tired
+- **Features**:
+  - Intensity (0.0-1.0)
+  - Duration and decay rate
+  - Trigger tracking (what caused the emotion)
+  - Session association
+  - Expiration and time-based decay
+- **Service** (`pixsim7_backend/services/npc/emotional_state_service.py`):
+  - Set/update emotions
+  - Get current dominant emotion
+  - Transition between emotions
+  - Get emotion modifiers for dialogue
+
+**Action Block Mood Tags** (`pixsim7_backend/domain/narrative/action_blocks/types.py`):
+- `ActionBlockTags.mood` field (e.g., "playful", "tender", "passionate", "conflicted")
+- Used in action selection context
+- Maps to visual generation prompts
+
+**Dialogue Emotional Context**:
+- Mood tags in composition engine
+- Emotional state service provides dialogue modifiers:
+  - Tone mapping (cheerful, energetic, calm, nervous, etc.)
+  - Expressiveness based on intensity
+  - Dialogue adjustments based on active emotions
+
+#### 2. Frontend/Game-Core Mood Systems
+
+**Valence-Arousal Model** (`packages/game-core/src/npcs/brain.ts`):
+- **computeMood()** function:
+  - **Valence** (0-100): Driven by `affinity * 0.6 + chemistry * 0.4`
+  - **Arousal** (0-100): Driven by `chemistry * 0.5 + tension * 0.5`
+  - **Label**: Derived from valence/arousal quadrants:
+    - `excited`: High valence, high arousal
+    - `content`: High valence, low arousal
+    - `anxious`: Low valence, high arousal
+    - `calm`: Low valence, low arousal
+
+**Mood Debug Tool** (`frontend/src/plugins/worldTools/moodDebug.tsx`):
+- Displays NPC mood for all NPCs in session
+- Shows valence, arousal, and label
+- Displays mood flags from relationship state
+- Color-coded badges: excited (yellow), content (green), anxious (red), calm (blue)
+
+**Brain Visualization** (`frontend/src/components/examples/BrainShapeExample.tsx`):
+- Mood inspector panel showing valence/arousal axes
+- Visual representation with sliders
+- Real-time updates from core
+
+#### 3. Relationship Context
+
+**Current Relationship Axes** (inputs to mood):
+- Affinity: 0-100 (how much they like the player)
+- Trust: 0-100 (how much they trust the player)
+- Chemistry: 0-100 (romantic/physical attraction)
+- Tension: 0-100 (conflict/stress in relationship)
+- Flags: Boolean/string tags for specific states
+
+**Relationship-Derived Labels** (from Task 07):
+- Tier ID (e.g., "stranger", "friend", "close_friend", "lover")
+- Intimacy Level ID (e.g., "light_flirt", "deep_flirt", "intimate")
+
+#### 4. Reputation/Faction Systems
+
+**Current Status**: Not implemented
+- No existing reputation or faction system found
+- RELATIONSHIPS_AND_ARCS.md mentions potential for NPC-NPC relationships but no faction mechanics
+- No world-level or group-level reputation tracking
+
+**Potential Inputs** (from existing data):
+- Could be derived from relationship affinity aggregates
+- Could use session flags for faction membership
+- Could track in GameWorld.meta for faction definitions
+
+#### 5. Summary Table
+
+| Metric ID | Data Source | Inputs | Current Outputs | Where Used |
+|-----------|-------------|--------|-----------------|------------|
+| **npc_mood** (valence/arousal) | Game-core computation | affinity, chemistry, tension | valence (0-100), arousal (0-100), label (excited/content/anxious/calm) | moodDebug.tsx, BrainShapeExample, buildNpcBrainState |
+| **npc_emotion** (discrete) | NPCEmotionalState table | event triggers, context | EmotionType enum (17 types), intensity (0-1), duration | emotional_state_service.py, dialogue modifiers |
+| **action_mood** | Action block tags | narrative context, intimacy level | mood string (playful, tender, passionate, conflicted) | Action selection, video generation prompts |
+| **reputation_band** | Not implemented | (planned) faction membership, aggregate affinity | (planned) enemy/neutral/ally bands | None yet |
+| **faction_standing** | Not implemented | (planned) world.meta faction schemas | (planned) numeric score + band | None yet |
+
+#### 6. Key Findings
+
+**Duplication Between Systems**:
+1. **Two Mood Models**: Database EmotionType (17 discrete emotions) vs. game-core valence/arousal (4 quadrants)
+2. **Different Use Cases**:
+   - EmotionType: Event-driven, persistent, used for dialogue modifiers
+   - Valence/Arousal: Computed on-the-fly from relationship state, used for debugging/visualization
+3. **No Integration**: These systems don't currently talk to each other
+
+**Schema Gaps**:
+- No world-level mood schema (valence/arousal quadrant thresholds are hardcoded)
+- No customizable emotion-to-mood mapping
+- No reputation schema defined
+
+**Opportunities for Metrics System**:
+- Unify mood computation behind preview API
+- Allow worlds to customize mood quadrant thresholds
+- Define emotion-to-mood-label mappings in world.meta
+- Add reputation as a new metric type with world-specific bands
+
+**No Breaking Changes Needed**:
+- Current UI already consumes mood data correctly
+- Can layer metrics system on top without disrupting existing code
+- Frontend tools already designed for preview-style interactions
+
+---
+
 ### Phase 2 – Design Generic Metric Types (Backend + TS)
 
 **Goal**  
@@ -92,6 +213,43 @@ Define common types for metrics and payloads in both backend and TS so new metri
      }
      ```
 3. Ensure the existing relationship preview endpoints can conceptually fit into this metric model (even if they currently have dedicated routes).
+
+---
+
+**Phase 2 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Backend Type Extensions
+
+**File**: `pixsim7_backend/domain/metrics/types.py`
+
+Added new metric types to the `MetricType` enum:
+```python
+class MetricType(str, Enum):
+    RELATIONSHIP_TIER = "relationship_tier"
+    RELATIONSHIP_INTIMACY = "relationship_intimacy"
+    NPC_MOOD = "npc_mood"  # NEW
+    REPUTATION_BAND = "reputation_band"  # NEW
+```
+
+The existing `MetricEvaluator` protocol already supports these new metrics without modification.
+
+### TypeScript Type Extensions
+
+**File**: `packages/types/src/game.ts`
+
+Added comprehensive type definitions:
+
+1. **Generic Metric Types**: `MetricId`, `MetricPreviewRequest`, `MetricPreviewResponse`
+2. **NPC Mood Metric Types**: `NpcMoodPreviewRequest`, `NpcMoodPreviewResponse` with valence/arousal/emotion fields
+3. **Reputation Metric Types**: `ReputationBandPreviewRequest`, `ReputationBandPreviewResponse` with band/score fields
+
+**Design Decisions**:
+- Dual system for mood (valence/arousal + discrete emotions)
+- Flexible reputation (player/NPC/faction)
+- Consistent with Task 07 pattern
+- Backward compatible
+
+**Verification**: ✅ Backend types extended, ✅ TypeScript types added, ✅ Types package builds successfully
 
 ---
 
