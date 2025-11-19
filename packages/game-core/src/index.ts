@@ -173,6 +173,22 @@ export {
   SESSION_OVERRIDE_PRESETS,
 } from './world/sessionUiOverride';
 
+export {
+  getAllThemePacks,
+  getThemePackById,
+  saveThemePack,
+  deleteThemePack,
+  exportThemePack,
+  importThemePack,
+  downloadThemePack,
+  createThemePackFromThemes,
+  loadCustomPacks,
+  clearCustomPacks,
+  BUILT_IN_THEME_PACKS,
+} from './world/themePacks';
+
+export type { ThemePack } from './world/themePacks';
+
 // ===== User Preferences =====
 export {
   loadUserPreferences,
