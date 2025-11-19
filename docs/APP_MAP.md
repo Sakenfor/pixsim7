@@ -2,7 +2,14 @@
 
 **Last Updated:** 2025-11-19
 
-This document serves as the central entry point for understanding the PixSim7 architecture. It provides an overview of major subsystems, links to detailed documentation, and points to live dev tools for exploring the system.
+This document is the **primary entry point for both humans and AI agents**.
+
+Use it to:
+- Find the **authoritative docs and code locations** for each subsystem.
+- See how systems relate (backend ↔ game-core ↔ frontend).
+- Discover **dev tools** (App Map, debug panels) for exploring behavior.
+
+> **For agents:** Before using any `claude-tasks/*.md` file, always start here and then open the referenced system docs. Treat task files as roadmaps/status notes, not the source of truth.
 
 ## Overview
 
