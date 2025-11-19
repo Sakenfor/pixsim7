@@ -327,6 +327,45 @@ async def track_interaction_cooldown(
     session.flags["npcs"] = npcs
 
 
+async def advance_interaction_chain(
+    session: GameSession,
+    chain_id: str,
+    step_id: str
+) -> None:
+    """
+    Advance an interaction chain to the next step.
+
+    Args:
+        session: Game session
+        chain_id: Chain ID
+        step_id: Completed step ID
+    """
+    # Ensure chains structure exists
+    chains = session.flags.get("chains", {})
+    if chain_id not in chains:
+        chains[chain_id] = {
+            "chainId": chain_id,
+            "currentStep": 0,
+            "completed": False,
+            "startedAt": int(time.time()),
+            "completedSteps": [],
+            "skippedSteps": [],
+        }
+
+    chain_state = chains[chain_id]
+
+    # Add to completed steps
+    if step_id not in chain_state["completedSteps"]:
+        chain_state["completedSteps"].append(step_id)
+
+    # Update last step time
+    chain_state["lastStepAt"] = int(time.time())
+
+    # Note: Auto-advance logic is handled client-side based on chain definition
+    # Backend just tracks completion of steps
+    session.flags["chains"] = chains
+
+
 # ===================
 # Main Execution
 # ===================
@@ -414,6 +453,13 @@ async def execute_interaction(
     # 7. Track cooldown
     if definition.gating and definition.gating.cooldown_seconds:
         await track_interaction_cooldown(session, npc_id, definition.id)
+
+    # 8. Chain progression (if this interaction is part of a chain)
+    chain_id = None
+    if context and "chainId" in context and "stepId" in context:
+        chain_id = context["chainId"]
+        step_id = context["stepId"]
+        await advance_interaction_chain(session, chain_id, step_id)
 
     # Determine success message
     message = outcome.success_message or f"{definition.label} completed"

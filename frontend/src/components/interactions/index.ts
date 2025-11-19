@@ -14,3 +14,6 @@ export type {
   InteractionHistoryProps,
   InteractionHistoryEntry,
 } from './InteractionHistory';
+
+export { ChainProgress, ChainList } from './ChainProgress';
+export type { ChainProgressProps } from './ChainProgress';
