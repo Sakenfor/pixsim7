@@ -50,13 +50,13 @@ Right now:
 
 ## Phase Checklist
 
-- [ ] **Phase 17.1 – Inventory Current Interaction & Dialogue Systems**
-- [ ] **Phase 17.2 – Canonical `NpcInteraction` Model (TS + Pydantic)**
-- [ ] **Phase 17.3 – Availability & Gating Logic (Who/When/Where)**
-- [ ] **Phase 17.4 – Interaction Menu Builder & UI Surfaces**
-- [ ] **Phase 17.5 – Execution Pipeline & Effects (Relationships, Flags, Scenes, Generation)**
-- [ ] **Phase 17.6 – NPC‑Initiated Interactions & Events**
-- [ ] **Phase 17.7 – Telemetry, Debugging & Tooling**
+- [x] **Phase 17.1 – Inventory Current Interaction & Dialogue Systems** ✅
+- [x] **Phase 17.2 – Canonical `NpcInteraction` Model (TS + Pydantic)** ✅
+- [x] **Phase 17.3 – Availability & Gating Logic (Who/When/Where)** ✅
+- [x] **Phase 17.4 – Interaction Menu Builder & UI Surfaces** ✅
+- [x] **Phase 17.5 – Execution Pipeline & Effects** ✅ (Note: Needs world_time fix - see below)
+- [x] **Phase 17.6 – NPC‑Initiated Interactions & Events** ✅ (Foundation Complete)
+- [x] **Phase 17.7 – Telemetry, Debugging & Tooling** ✅ (Foundation Complete)
 
 ---
 
@@ -733,6 +733,13 @@ Define a **single execution pipeline** for NPC interactions that:
    - 400 if interaction not available
    - 404 if world/session/NPC/interaction not found
    - Clear error messages with reasons
+
+**Follow-up (2025-11-19):**
+- ✅ Fixed `lastInteractionAt` to use `world_time` instead of real-time
+- Location: `interaction_execution.py:84-89`
+- Change: Added optional `world_time` parameter to `apply_relationship_deltas()`
+- Behavior: Uses `session.world_time` if available, falls back to real-time for backward compatibility
+- Impact: Unblocks Task 21.6 (Chain Timing) for proper world-time-based cooldowns and chain progression
 
 ---
 

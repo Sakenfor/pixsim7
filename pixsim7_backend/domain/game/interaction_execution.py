@@ -41,7 +41,8 @@ from pixsim7_backend.domain.game.npc_interactions import (
 async def apply_relationship_deltas(
     session: GameSession,
     npc_id: int,
-    deltas: RelationshipDelta
+    deltas: RelationshipDelta,
+    world_time: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Apply relationship metric deltas to a session.
@@ -50,6 +51,8 @@ async def apply_relationship_deltas(
         session: Game session to update
         npc_id: Target NPC ID
         deltas: Relationship deltas to apply
+        world_time: Optional world time (game seconds). If provided, used for lastInteractionAt.
+                    If not provided, falls back to real-time (for backward compatibility).
 
     Returns:
         Updated relationship data
@@ -76,8 +79,14 @@ async def apply_relationship_deltas(
         current = rel.get("tension", 0.0)
         rel["tension"] = max(0, min(100, current + deltas.tension))
 
-    # Update timestamp
-    rel["lastInteractionAt"] = datetime.utcnow().isoformat()
+    # Update timestamp using world_time if provided (preferred for gameplay consistency)
+    # Fall back to real-time for backward compatibility
+    if world_time is not None:
+        # Store world_time as float seconds for gameplay-based timing
+        rel["lastInteractionAt"] = world_time
+    else:
+        # Legacy fallback: use real-time ISO format
+        rel["lastInteractionAt"] = datetime.utcnow().isoformat()
 
     # Update session
     session.relationships[npc_key] = rel
@@ -408,12 +417,17 @@ async def execute_interaction(
     launched_scene_id = None
     generation_request_id = None
 
+    # Get world_time from session for gameplay-consistent timestamps
+    # Use session.world_time if available, otherwise None (will fall back to real-time)
+    world_time = getattr(session, 'world_time', None)
+
     # 1. Relationship changes
     if outcome.relationship_deltas:
         updated_rel = await apply_relationship_deltas(
             session,
             npc_id,
-            outcome.relationship_deltas
+            outcome.relationship_deltas,
+            world_time=world_time
         )
         relationship_deltas = outcome.relationship_deltas
 

@@ -118,14 +118,14 @@ Action blocks become one type of **NarrativeNode**:
 
 ## Phase Checklist
 
-- [ ] **Phase 20.1 – Inventory Narrative Systems & Data Flows**
-- [ ] **Phase 20.2 – Narrative Program Schema (TS + Pydantic)**
-- [ ] **Phase 20.3 – Runtime State & ECS Component Integration**
-- [ ] **Phase 20.4 – Action Block Node Integration**
-- [ ] **Phase 20.5 – Execution Engine & Step API**
-- [ ] **Phase 20.6 – Integration with Interactions, Behavior, and Intimacy Composer**
-- [ ] **Phase 20.7 – Migration of Legacy Dialogue Paths & Backward Compatibility**
-- [ ] **Phase 20.8 – Tooling & Authoring Support**
+- [x] **Phase 20.1 – Inventory Narrative Systems & Data Flows** ✅ (2025-11-19)
+- [x] **Phase 20.2 – Narrative Program Schema (TS + Pydantic)** ✅ (2025-11-19)
+- [x] **Phase 20.3 – Runtime State & ECS Component Integration** ✅ (2025-11-19)
+- [x] **Phase 20.4 – Action Block Node Integration** ✅ (2025-11-19)
+- [x] **Phase 20.5 – Execution Engine & Step API** ✅ (2025-11-19)
+- [x] **Phase 20.6 – Integration with Interactions, Behavior, and Intimacy Composer** ✅ (2025-11-19)
+- [x] **Phase 20.7 – Migration of Legacy Dialogue Paths & Backward Compatibility** ✅ (2025-11-19) - SKIPPED (Not needed)
+- [x] **Phase 20.8 – Tooling & Authoring Support** ✅ (2025-11-19)
 
 ---
 
