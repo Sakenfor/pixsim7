@@ -158,6 +158,8 @@ export * from './nodeTypeRegistry'
 export * from './builtinNodeTypes'
 export * from './arcNodeTypes'
 export * from './npcResponseNode'
+export * from './npcZones'
+export * from './npcZoneTracking'
 
 // ===================
 // Game DTO Types

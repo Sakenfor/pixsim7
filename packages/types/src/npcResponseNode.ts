@@ -5,6 +5,7 @@
  */
 
 import { nodeTypeRegistry, type NodeTypeDefinition } from './nodeTypeRegistry';
+import type { NpcZoneConfiguration } from './npcZones';
 
 // ============================================================================
 // NPC Response Data Structure
@@ -144,6 +145,9 @@ export interface NpcResponseMetadata {
     responseCooldown?: number; // ms between responses
     maxSessionDuration?: number; // ms
   };
+
+  // Interactive zones configuration (NEW)
+  zones?: NpcZoneConfiguration;
 
   // Preview/debug settings
   debug?: {

@@ -106,3 +106,35 @@ export {
   getCommonNpcStates,
   QUALITY_PRESETS,
 } from './videoGenerationManager';
+
+// Zone Utilities
+export {
+  isPointInZone,
+  findZoneAtPoint,
+  getZonesForSegment,
+  getZonesAtTimestamp,
+  getZoneById,
+  calculateEffectiveIntensity,
+  buildZoneContext,
+  getZoneShapeCSS,
+  getZoneEffectivenessDescription,
+  getZoneColorByEffectiveness,
+  validateZone,
+  validateSegmentZones,
+} from './zoneUtils';
+
+// Zone Tracking Utilities
+export {
+  generateZonesFromCorrespondences,
+  getTrackedZonesForSegment,
+  updateTrackedZone,
+  removeTrackedZone,
+  toPersistedFormat,
+  fromPersistedFormat,
+  saveZoneTrackingJSON,
+  loadZoneTrackingJSON,
+  loadZoneTrackingURL,
+  validateZoneTracking,
+  getZoneTrackingStats,
+  getTrackingCompleteness,
+} from './zoneTrackingUtils';
