@@ -22,7 +22,7 @@ Below are 10 phases for per‑world themes and view modes.
 - [x] **Phase 7 – Accessibility‑First Presets**
 - [x] **Phase 8 – Per‑Session / Arc‑Specific Overrides**
 - [x] **Phase 9 – Theme Packs & Sharing**
-- [ ] **Phase 10 – Dynamic Themes Driven by World State**
+- [x] **Phase 10 – Dynamic Themes Driven by World State**
 
 ---
 

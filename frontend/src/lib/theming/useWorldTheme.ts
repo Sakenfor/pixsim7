@@ -7,7 +7,7 @@
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@pixsim7/types';
 import {
   getWorldTheme,
   loadUserPreferences,
@@ -15,6 +15,9 @@ import {
   getEffectiveDensity,
   resolveMotionConfig,
   mergeThemeWithOverride,
+  getDynamicThemeOverride,
+  applyDynamicThemeRule,
+  loadDynamicThemeRules,
 } from '@pixsim7/game-core';
 
 /**
@@ -106,13 +109,15 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
 /**
  * React hook to automatically apply world theme when world changes
  * Respects user preferences for accessibility
- * Supports session-level theme overrides
+ * Supports session-level theme overrides and dynamic theme rules
  *
  * @param worldDetail - The current world
+ * @param session - Optional session (for dynamic theme rules)
  * @param sessionOverride - Optional session theme override (e.g., for dream sequences)
  */
 export function useWorldTheme(
   worldDetail: GameWorldDetail | null,
+  session?: GameSessionDTO,
   sessionOverride?: SessionUiOverride
 ) {
   useEffect(() => {
@@ -126,10 +131,18 @@ export function useWorldTheme(
     }
 
     // Get theme from world meta
-    const baseTheme = getWorldTheme(worldDetail);
+    let effectiveTheme = getWorldTheme(worldDetail);
 
-    // Merge with session override if present
-    const effectiveTheme = mergeThemeWithOverride(baseTheme, sessionOverride);
+    // Apply dynamic theme rules (if enabled)
+    const dynamicRules = loadDynamicThemeRules();
+    const dynamicOverride = getDynamicThemeOverride(dynamicRules, worldDetail, session);
+    if (dynamicOverride) {
+      effectiveTheme = applyDynamicThemeRule(effectiveTheme, dynamicOverride);
+      console.debug('[WorldTheme] Applied dynamic theme rule', { dynamicOverride });
+    }
+
+    // Merge with session override if present (session override takes precedence over dynamic rules)
+    effectiveTheme = mergeThemeWithOverride(effectiveTheme, sessionOverride);
 
     applyTheme(effectiveTheme, userPrefs);
 
@@ -137,7 +150,7 @@ export function useWorldTheme(
     return () => {
       applyTheme(undefined, userPrefs);
     };
-  }, [worldDetail, sessionOverride]);
+  }, [worldDetail, session, sessionOverride]);
 }
 
 /**

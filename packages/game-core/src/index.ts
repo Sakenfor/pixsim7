@@ -189,6 +189,22 @@ export {
 
 export type { ThemePack } from './world/themePacks';
 
+export {
+  findMatchingRule,
+  getDynamicThemeOverride,
+  applyDynamicThemeRule,
+  loadDynamicThemeRules,
+  saveDynamicThemeRules,
+  saveOrUpdateRule,
+  deleteRule,
+  toggleRuleEnabled,
+  resetToDefaultRules,
+  createTimeOfDayRule,
+  DYNAMIC_THEME_RULE_PRESETS,
+} from './world/dynamicThemeRules';
+
+export type { DynamicThemeRule, ThemeRuleCondition } from './world/dynamicThemeRules';
+
 // ===== User Preferences =====
 export {
   loadUserPreferences,
@@ -245,7 +261,7 @@ export type {
   QuestState,
   InventoryItem,
   EventState,
-} from './session/state';
+} from './session/sharedTypes';
 
 // ===== Session Helpers (Mutable API - for convenience) =====
 export {
