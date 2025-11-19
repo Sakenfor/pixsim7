@@ -16,7 +16,7 @@ Features:
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSON, UUID, TEXT
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID, TEXT
 from datetime import datetime
 
 revision = '1118actionblocks'
@@ -43,11 +43,11 @@ def upgrade() -> None:
         sa.Column('style', sa.String(100), nullable=True),
         sa.Column('duration_sec', sa.Float, nullable=False, server_default='6.0'),
 
-        # Structured Tags (JSON)
-        sa.Column('tags', JSON, nullable=False, server_default='{}'),
+        # Structured Tags (JSONB for GIN indexing)
+        sa.Column('tags', JSONB, nullable=False, server_default='{}'),
 
         # Compatibility
-        sa.Column('compatible_next', JSON, nullable=False, server_default='[]'),
+        sa.Column('compatible_next', JSONB, nullable=False, server_default='[]'),
         sa.Column('compatible_prev', JSON, nullable=False, server_default='[]'),
 
         # Reference Images

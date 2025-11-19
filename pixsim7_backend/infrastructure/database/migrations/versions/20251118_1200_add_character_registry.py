@@ -16,7 +16,7 @@ from datetime import datetime
 
 # revision identifiers
 revision = '20251118_1200'
-down_revision = '20251118_1100'  # Previous migration (action_blocks)
+down_revision = '1118actionblocks'  # Previous migration (action_blocks)
 branch_labels = None
 depends_on = None
 
@@ -47,7 +47,7 @@ def upgrade():
         sa.Column('reference_images', postgresql.JSON, nullable=False, server_default='[]'),
 
         # Game integration
-        sa.Column('game_npc_id', postgresql.UUID(as_uuid=True), nullable=True, index=True),
+        sa.Column('game_npc_id', sa.Integer(), nullable=True, index=True),
         sa.Column('sync_with_game', sa.Boolean, nullable=False, server_default='false'),
         sa.Column('game_metadata', postgresql.JSONB, nullable=False, server_default='{}'),
 
@@ -72,7 +72,7 @@ def upgrade():
         sa.Column('deleted_at', sa.DateTime, nullable=True),
 
         # Foreign keys
-        sa.ForeignKeyConstraint(['game_npc_id'], ['npcs.id'], ondelete='SET NULL'),
+        sa.ForeignKeyConstraint(['game_npc_id'], ['game_npcs.id'], ondelete='SET NULL'),
         sa.ForeignKeyConstraint(['previous_version_id'], ['characters.id'], ondelete='SET NULL')
     )
 

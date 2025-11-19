@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import JSON
 from datetime import datetime
 
 revision = '1118npcmemory'
-down_revision = '1118_1318_d1d65acf1153'
+down_revision = 'd1d65acf1153'
 branch_labels = None
 depends_on = None
 
