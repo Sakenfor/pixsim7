@@ -20,7 +20,7 @@ Below are 10 phases for killing the TS fallback logic and introducing a reusable
 - [x] **Phase 2 – Design Preview API & Metric Abstraction** ✅ *2025-11-19*
 - [x] **Phase 3 – Implement Backend Relationship Preview Endpoint(s)** ✅ *2025-11-19*
 - [x] **Phase 4 – Add Game-Core TS Wrappers & Types** ✅ *2025-11-19*
-- [ ] **Phase 5 – Migrate Editor/Tooling to Preview API**
+- [x] **Phase 5 – Migrate Editor/Tooling to Preview API** ✅ *2025-11-19* (No migration needed)
 - [ ] **Phase 6 – Remove TS Fallback Logic for Relationships**
 - [ ] **Phase 7 – Generalize Metric System for Future Social/Sim Derivations**
 - [ ] **Phase 8 – Documentation & App Map Updates**
@@ -794,6 +794,68 @@ Ensure all frontend/editor use cases that need “what would this label be?” u
    - Or, where the runtime session already has `tierId`/`intimacyLevelId`, read those from `GameSession.relationships` instead of recomputing.
 3. Add minimal UI debouncing where necessary (e.g. sliders) to avoid spamming preview requests.
 4. Confirm that **runtime** paths (Game2D, Simulation Playground) do **not** start using preview for canonical state; they should still rely on backend‑computed values in sessions.
+
+---
+
+**Phase 5 Implementation Summary** ✅ *Completed 2025-11-19*
+
+**Findings:**
+
+After auditing all frontend and game-core code for relationship computation usage, **no editor/preview use cases were found that require migration**. The current architecture is already correctly structured:
+
+1. **Runtime Display (RelationshipDashboard)**:
+   - Uses `getNpcRelationshipState()` from game-core
+   - Reads backend-computed `tierId` and `intimacyLevelId` from session
+   - Only uses fallback computation when backend values are missing
+   - **No changes needed** - already consumes backend authority
+
+2. **Fallback Computation**:
+   - `packages/game-core/src/core/PixSim7Core.ts:121-124` - Runtime fallback
+   - `packages/game-core/src/session/state.ts:78-81` - Runtime fallback
+   - These are **intentional fallbacks** for backward compatibility
+   - Will be addressed in Phase 6 (deprecation) and Phase 10 (offline strategy)
+
+3. **No Editor Preview Features Currently Exist**:
+   - No sliders with live tier/intimacy preview
+   - No "what-if" relationship calculators
+   - No relationship schema editors
+
+**Guidance for Future Development:**
+
+When implementing editor/preview features (e.g., relationship schema editor, tier threshold sliders), developers should:
+
+1. **Use the preview API**:
+   ```ts
+   import { previewRelationshipTier } from '@pixsim7/game-core';
+
+   const preview = await previewRelationshipTier({
+     worldId: 1,
+     affinity: sliderValue,
+     schemaKey: 'default'
+   });
+
+   setPreviewTier(preview.tierId);
+   ```
+
+2. **Never use deprecated compute functions**:
+   - `compute_relationship_tier()` - deprecated, only hardcoded defaults
+   - `compute_intimacy_level()` - deprecated, only hardcoded defaults
+
+3. **For runtime display**, read from session:
+   ```ts
+   const rel = getNpcRelationshipState(session, npcId);
+   // rel.tierId and rel.intimacyLevelId are backend-computed
+   ```
+
+**Verification:**
+
+- ✅ No editor/preview use cases found requiring migration
+- ✅ Runtime display already uses backend-computed values
+- ✅ Fallback logic is intentional for backward compatibility
+- ✅ Clear guidance documented for future editor features
+- ✅ Preview API ready and tested for when needed
+
+**Status**: Phase 5 complete - no code changes needed, architecture already correct.
 
 ---
 
