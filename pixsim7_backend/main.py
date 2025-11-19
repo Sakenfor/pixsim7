@@ -119,6 +119,11 @@ async def lifespan(app: FastAPI):
         simulation_configs=stats['simulation_configs']['total'],
     )
 
+    # Configure admin plugin diagnostics endpoint (Phase 16.5)
+    from pixsim7_backend.api.v1.admin_plugins import set_plugin_managers
+    set_plugin_managers(plugin_manager, routes_manager)
+    logger.info("Admin plugin diagnostics configured")
+
     # Enable all middleware (call lifecycle hooks)
     # Note: Middleware was already registered before lifespan, this just calls hooks
     from pixsim7_backend.infrastructure.middleware.manager import middleware_manager

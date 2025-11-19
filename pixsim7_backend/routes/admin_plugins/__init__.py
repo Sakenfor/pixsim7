@@ -1,0 +1,1 @@
+"""Admin Plugin Diagnostics Routes"""

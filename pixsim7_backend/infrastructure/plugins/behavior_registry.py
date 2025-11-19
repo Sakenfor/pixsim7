@@ -442,10 +442,16 @@ async def evaluate_condition(
             )
             return False
 
-    # Evaluate condition (with error handling)
+    # Evaluate condition (with error handling and metrics)
     try:
         result = metadata.evaluator(context)
-        return bool(result)
+        success = bool(result)
+
+        # Track metrics
+        from .observability import metrics_tracker
+        metrics_tracker.record_condition_evaluation(metadata.plugin_id, success=True)
+
+        return success
     except Exception as e:
         logger.error(
             "Condition evaluation failed",
@@ -454,6 +460,17 @@ async def evaluate_condition(
             error=str(e),
             exc_info=True,
         )
+
+        # Track failure metrics
+        from .observability import metrics_tracker
+        metrics_tracker.record_condition_evaluation(metadata.plugin_id, success=False)
+        metrics_tracker.record_error(
+            metadata.plugin_id,
+            "ConditionEvaluationError",
+            str(e),
+            {"condition_id": condition_id},
+        )
+
         return False  # Failed conditions = False
 
 
@@ -496,9 +513,14 @@ async def apply_effect(
     # Merge params with defaults
     merged_params = {**metadata.default_params, **(params or {})}
 
-    # Apply effect (with error handling)
+    # Apply effect (with error handling and metrics)
     try:
         result = metadata.handler(context, merged_params)
+
+        # Track metrics
+        from .observability import metrics_tracker
+        metrics_tracker.record_effect_application(metadata.plugin_id, success=True)
+
         return result
     except Exception as e:
         logger.error(
@@ -508,6 +530,17 @@ async def apply_effect(
             error=str(e),
             exc_info=True,
         )
+
+        # Track failure metrics
+        from .observability import metrics_tracker
+        metrics_tracker.record_effect_application(metadata.plugin_id, success=False)
+        metrics_tracker.record_error(
+            metadata.plugin_id,
+            "EffectApplicationError",
+            str(e),
+            {"effect_id": effect_id},
+        )
+
         return None  # Failed effects return None
 
 
