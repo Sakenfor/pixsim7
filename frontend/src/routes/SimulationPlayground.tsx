@@ -69,12 +69,14 @@ import { TimelineScrubber } from '../components/simulation/TimelineScrubber';
 import { ScenarioComparison } from '../components/simulation/ScenarioComparison';
 import { WorldStateOverview } from '../components/simulation/WorldStateOverview';
 import { MultiRunComparison } from '../components/simulation/MultiRunComparison';
+import { ConstraintRunner } from '../components/simulation/ConstraintRunner';
 import {
   loadSavedRuns,
   saveSimulationRun,
   deleteSavedRun,
   type SavedSimulationRun,
 } from '../lib/simulation/multiRunStorage';
+import type { ConstraintEvaluationContext } from '../lib/simulation/constraints';
 
 export function SimulationPlayground() {
   const { core, session: coreSession, loadSession } = usePixSim7Core();
@@ -127,6 +129,10 @@ export function SimulationPlayground() {
   const [isCreatingRun, setIsCreatingRun] = useState(false);
   const [newRunName, setNewRunName] = useState('');
   const [newRunDescription, setNewRunDescription] = useState('');
+
+  // Phase 7: Constraint-driven simulation
+  const [showConstraintRunner, setShowConstraintRunner] = useState(false);
+  const [isConstraintRunning, setIsConstraintRunning] = useState(false);
 
   // Register simulation hooks on mount
   useEffect(() => {
@@ -514,6 +520,19 @@ export function SimulationPlayground() {
     [brainToolContext]
   );
 
+  // Phase 7: Build constraint evaluation context
+  const constraintContext = useMemo<ConstraintEvaluationContext>(
+    () => ({
+      worldTime,
+      worldDetail: worldDetail!,
+      sessionFlags: gameSession?.flags || {},
+      npcPresences,
+      tickCount: simulationHistory?.snapshots.length || 0,
+      snapshot: simulationHistory?.snapshots[simulationHistory.snapshots.length - 1],
+    }),
+    [worldTime, worldDetail, gameSession, npcPresences, simulationHistory]
+  );
+
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
       {/* Header */}
@@ -575,6 +594,14 @@ export function SimulationPlayground() {
             disabled={savedRuns.length === 0}
           >
             🔬 Multi-Run Comparison ({savedRuns.length})
+          </Button>
+          <Button
+            size="sm"
+            variant={showConstraintRunner ? 'primary' : 'secondary'}
+            onClick={() => setShowConstraintRunner(!showConstraintRunner)}
+            disabled={!selectedWorldId}
+          >
+            🎯 Constraint Runner
           </Button>
         </div>
       </Panel>
@@ -707,6 +734,18 @@ export function SimulationPlayground() {
             </div>
           )}
         </Panel>
+      )}
+
+      {/* Phase 7: Constraint Runner */}
+      {showConstraintRunner && worldDetail && (
+        <ConstraintRunner
+          context={constraintContext}
+          onRunTick={async () => {
+            await handleAdvanceTime(tickSize);
+          }}
+          isRunning={isConstraintRunning}
+          onRunningChange={setIsConstraintRunning}
+        />
       )}
 
       {/* World Selection & Time Display */}
