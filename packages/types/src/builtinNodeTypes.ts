@@ -1,10 +1,14 @@
 import { nodeTypeRegistry } from './nodeTypeRegistry';
 import { registerNpcResponseNode } from './npcResponseNode';
+import { registerIntimacyNodeTypes } from './intimacyNodeTypes';
 
 /** Register all built-in node types */
 export function registerBuiltinNodeTypes() {
   // Register NPC Response node
   registerNpcResponseNode();
+
+  // Register Intimacy nodes
+  registerIntimacyNodeTypes();
 
   // Video node
   nodeTypeRegistry.register({
