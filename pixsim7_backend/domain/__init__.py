@@ -30,10 +30,6 @@ from .provider_submission import ProviderSubmission
 from .account import ProviderAccount
 from .provider_credit import ProviderCredit
 
-# Backward compatibility aliases (DEPRECATED - will be removed in future)
-# These are now in a separate compat module and issue deprecation warnings
-from .compat import Job, GenerationArtifact
-
 # Asset metadata tables
 from .asset_metadata import (
     Asset3DMetadata,
@@ -80,9 +76,6 @@ __all__ = [
     "ProviderSubmission",
     "ProviderAccount",
     "ProviderCredit",
-    # Backward compatibility (deprecated)
-    "Job",  # Alias for Generation
-    "GenerationArtifact",  # Alias for Generation
     # Asset metadata
     "Asset3DMetadata",
     "AssetAudioMetadata",

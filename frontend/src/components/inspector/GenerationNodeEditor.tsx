@@ -8,8 +8,6 @@ import type {
   DurationRule,
   ConstraintSet,
   FallbackConfig,
-  GenerateContentRequest,
-  GenerateContentResponse,
   SceneRef,
   GenerationValidationResult,
 } from '@pixsim7/types';
@@ -21,6 +19,7 @@ import {
   getValidationSummary,
   type ValidationStatus,
 } from '@pixsim7/game-core/generation/validator';
+import { createGeneration, type GenerationResponse } from '../../lib/api/generations';
 
 interface GenerationNodeEditorProps {
   node: DraftSceneNode;
@@ -64,7 +63,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
 
   // Test generation state
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<GenerateContentResponse | null>(null);
+  const [testResult, setTestResult] = useState<GenerationResponse | null>(null);
 
   // Validation state
   const [validationResult, setValidationResult] = useState<GenerationValidationResult>({
@@ -229,12 +228,6 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   }
 
   async function handleTestGeneration() {
-    // TODO: Migrate to canonical generation path (blocked on session context)
-    // This test harness currently uses legacy /api/v1/jobs endpoint.
-    // To migrate to buildGenerateContentRequest() + /api/v1/generations,
-    // we need access to GameSessionDTO for player context and social context.
-    // See: claude-tasks/15-unified-generation-request-path-and-job-deprecation.md Phase 4
-
     // Check validation
     if (validationResult.errors.length > 0) {
       toast.error(`Cannot test: ${validationResult.errors[0]}`);
@@ -259,66 +252,26 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           }
         : undefined;
 
-      // Build job request for existing jobs API (LEGACY)
-      // Use video_transition operation type as it's closest to content generation
-      const jobRequest = {
-        operation_type: 'video_transition',
+      // Use canonical generations API
+      const result = await createGeneration({
+        config,
         provider_id: 'pixverse',
-        params: {
-          // Store generation config in params
-          generation_type: config.generationType,
-          from_scene: fromScene,
-          style: config.style,
-          duration: config.duration,
-          constraints: config.constraints,
-          strategy: config.strategy,
-          fallback: config.fallback,
-          template_id: config.templateId,
-        },
+        from_scene: fromScene,
+        to_scene: undefined,
+        name: `Test: ${config.generationType}`,
+        description: 'Test generation from editor',
         priority: 5, // Medium priority for test generations
-      };
-
-      // Call existing jobs API
-      const response = await fetch('/api/v1/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(jobRequest),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const jobResponse = await response.json();
-
-      // Map JobResponse to GenerateContentResponse for compatibility
-      const result: GenerateContentResponse = {
-        status: jobResponse.status === 'completed' ? 'complete' :
-                jobResponse.status === 'processing' || jobResponse.status === 'queued' ? 'processing' :
-                jobResponse.status === 'failed' ? 'failed' : 'queued',
-        job_id: jobResponse.id.toString(),
-        error: jobResponse.error_message ? {
-          code: 'JOB_ERROR',
-          message: jobResponse.error_message,
-        } : undefined,
-        // Content will be populated when job completes
-        content: undefined,
-      };
 
       setTestResult(result);
-      toast.success(`Test generation job created (ID: ${jobResponse.id}). Check jobs list for status.`);
+      toast.success(
+        `Test generation created (ID: ${result.id}). ` +
+        `Status: ${result.status}. Check generations list for updates.`
+      );
     } catch (error) {
       toast.error(`Test generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setTestResult({
-        status: 'failed',
-        error: {
-          code: 'TEST_FAILED',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        },
-      });
+      // Create a minimal error result for display
+      setTestResult(null);
     } finally {
       setIsTesting(false);
     }
@@ -745,7 +698,7 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <div className="p-3 border rounded bg-neutral-50 dark:bg-neutral-800/50 dark:border-neutral-700">
             <div className="text-xs font-semibold mb-2">
               Status: <span className={`px-2 py-0.5 rounded ${
-                testResult.status === 'complete' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                testResult.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
                 testResult.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
                 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
               }`}>
@@ -753,69 +706,38 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
               </span>
             </div>
 
-            {testResult.error && (
-              <div className="text-xs text-red-600 dark:text-red-400 mb-2">
-                Error: {testResult.error.message}
+            <div className="space-y-2">
+              <div className="text-xs">
+                <strong>Generation ID:</strong>{' '}
+                <code className="px-1 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded">
+                  {testResult.id}
+                </code>
               </div>
-            )}
 
-            {testResult.content && (
-              <div className="space-y-2">
-                <div className="text-xs">
-                  <strong>Type:</strong> {testResult.content.type}
+              <div className="text-xs">
+                <strong>Provider:</strong> {testResult.provider_id}
+              </div>
+
+              <div className="text-xs">
+                <strong>Operation:</strong> {testResult.operation_type}
+              </div>
+
+              {testResult.error_message && (
+                <div className="text-xs text-red-600 dark:text-red-400">
+                  <strong>Error:</strong> {testResult.error_message}
                 </div>
-                {testResult.content.url && (
-                  <div className="text-xs">
-                    <strong>URL:</strong>{' '}
-                    <a
-                      href={testResult.content.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 underline"
-                    >
-                      {testResult.content.url}
-                    </a>
-                  </div>
-                )}
-                {testResult.content.duration && (
-                  <div className="text-xs">
-                    <strong>Duration:</strong> {testResult.content.duration}s
-                  </div>
-                )}
-                {testResult.content.dialogue && testResult.content.dialogue.length > 0 && (
-                  <div className="text-xs">
-                    <strong>Dialogue:</strong>
-                    <ul className="list-disc list-inside mt-1">
-                      {testResult.content.dialogue.map((line, i) => (
-                        <li key={i}>{line}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {testResult.content.choices && testResult.content.choices.length > 0 && (
-                  <div className="text-xs">
-                    <strong>Choices:</strong>
-                    <ul className="list-disc list-inside mt-1">
-                      {testResult.content.choices.map((choice, i) => (
-                        <li key={i}>{choice.text}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
 
-            {testResult.cost && (
-              <div className="text-xs text-neutral-500 mt-2">
-                Cost: {testResult.cost.tokens || 'N/A'} tokens, {testResult.cost.time_ms || 'N/A'}ms
-              </div>
-            )}
+              {testResult.asset_id && (
+                <div className="text-xs text-green-600 dark:text-green-400">
+                  <strong>Asset ID:</strong> {testResult.asset_id}
+                </div>
+              )}
 
-            {testResult.job_id && (
               <div className="text-xs text-neutral-500">
-                Job ID: <code className="px-1 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded">{testResult.job_id}</code>
+                <strong>Created:</strong> {new Date(testResult.created_at).toLocaleString()}
               </div>
-            )}
+            </div>
           </div>
         )}
       </div>
