@@ -16,6 +16,7 @@ import type {
   NpcMoodPreviewResponse,
   ReputationBandPreviewRequest,
   ReputationBandPreviewResponse,
+  UnifiedMoodState,
 } from '@pixsim7/types';
 
 // ===================
@@ -164,6 +165,81 @@ export async function previewNpcMood(
     emotionIntensity: data.emotion_intensity,
     npcId: data.npc_id,
   };
+}
+
+// ===================
+// Unified Mood Preview
+// ===================
+
+/**
+ * Preview unified NPC mood (general + intimacy + active emotion).
+ *
+ * This is a richer view over NPC mood that combines:
+ * - General valence/arousal mood
+ * - Optional intimacy mood based on relationship/intimacy context
+ * - Optional active discrete emotion
+ */
+export async function previewUnifiedMood(args: {
+  worldId: number;
+  npcId: number;
+  sessionId?: number;
+  relationshipValues?: {
+    affinity: number;
+    trust: number;
+    chemistry: number;
+    tension: number;
+  };
+  intimacyLevelId?: string | null;
+}): Promise<UnifiedMoodState> {
+  const url = `${config.baseUrl}/game/npc/preview-unified-mood`;
+
+  const response = await config.fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      world_id: args.worldId,
+      npc_id: args.npcId,
+      session_id: args.sessionId,
+      relationship_values: args.relationshipValues,
+      // Backend expects snake_case field; TS uses camelCase
+      intimacy_level_id: args.intimacyLevelId ?? undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Unified mood preview failed: ${response.status} ${error}`);
+  }
+
+  const data = await response.json();
+
+  const unified: UnifiedMoodState = {
+    generalMood: {
+      moodId: data.general_mood.mood_id,
+      valence: data.general_mood.valence,
+      arousal: data.general_mood.arousal,
+    },
+  };
+
+  if (data.intimacy_mood) {
+    unified.intimacyMood = {
+      moodId: data.intimacy_mood.mood_id,
+      intensity: data.intimacy_mood.intensity,
+    };
+  }
+
+  if (data.active_emotion) {
+    unified.activeEmotion = {
+      emotionType: data.active_emotion.emotion_type,
+      intensity: data.active_emotion.intensity,
+      trigger: data.active_emotion.trigger,
+      expiresAt: data.active_emotion.expires_at,
+    };
+  }
+
+  return unified;
 }
 
 // ===================

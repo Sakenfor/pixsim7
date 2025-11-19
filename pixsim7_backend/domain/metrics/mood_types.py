@@ -1,101 +1,79 @@
-"""
-Unified mood system types and enums.
+from __future__ import annotations
 
-This module defines mood domains (general, intimate, social) and their corresponding
-mood IDs. The unified mood system allows computing multiple mood aspects in a single
-call without requiring separate persistence.
+"""
+Shared mood domain types for metrics.
+
+Defines mood domains and IDs plus unified mood result models that can be
+used by both general and intimacy-aware mood evaluators.
 """
 
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 
 class MoodDomain(str, Enum):
-    """Mood domains for different contexts."""
-    GENERAL = "general"      # Day-to-day emotional state
-    INTIMATE = "intimate"    # Romantic/intimate interactions
-    SOCIAL = "social"        # Group dynamics, reputation-based
+    """Separate mood domains for different contexts."""
+
+    GENERAL = "general"   # Day-to-day emotional state
+    INTIMATE = "intimate"  # Romantic/intimate interactions
+    SOCIAL = "social"     # Group dynamics, reputation-based
 
 
 class GeneralMoodId(str, Enum):
-    """
-    General emotional states based on valence/arousal model.
+    """General emotional states (valence/arousal based)."""
 
-    Mapped to quadrants:
-    - High valence, high arousal → EXCITED
-    - High valence, low arousal → CONTENT
-    - Low valence, high arousal → ANXIOUS
-    - Low valence, low arousal → CALM
-    """
-    EXCITED = "excited"
-    CONTENT = "content"
-    ANXIOUS = "anxious"
-    CALM = "calm"
+    EXCITED = "excited"   # High valence, high arousal
+    CONTENT = "content"   # High valence, low arousal
+    ANXIOUS = "anxious"   # Low valence, high arousal
+    CALM = "calm"         # Low valence, low arousal
 
 
 class IntimacyMoodId(str, Enum):
-    """
-    Intimate/romantic mood states.
+    """Intimate/romantic mood states."""
 
-    These moods are computed when relationship has romantic/intimate context
-    (chemistry > threshold, intimacy level is not platonic).
-    """
-    PLAYFUL = "playful"          # Flirty, teasing (early stage)
-    TENDER = "tender"            # Affectionate, caring (high trust)
-    PASSIONATE = "passionate"    # Intense desire (high chemistry + tension)
-    CONFLICTED = "conflicted"    # Want/shouldn't tension (high chem, low trust)
-    SHY = "shy"                  # Nervous, hesitant (low values)
-    EAGER = "eager"              # Anticipatory, excited (future use)
+    PLAYFUL = "playful"       # Flirty, teasing
+    TENDER = "tender"         # Affectionate, caring
+    PASSIONATE = "passionate"  # Intense desire
+    CONFLICTED = "conflicted"  # Want/shouldn't tension
+    SHY = "shy"               # Nervous, hesitant
+    EAGER = "eager"           # Anticipatory, excited
 
 
 class GeneralMoodResult(BaseModel):
-    """Result of general mood computation."""
-    mood_id: GeneralMoodId = Field(..., description="Computed mood ID")
-    valence: float = Field(..., ge=0, le=100, description="Emotional valence (0-100)")
-    arousal: float = Field(..., ge=0, le=100, description="Emotional arousal (0-100)")
+    """Computed general mood from valence/arousal."""
+
+    mood_id: GeneralMoodId
+    valence: float
+    arousal: float
 
 
 class IntimacyMoodResult(BaseModel):
-    """Result of intimacy mood computation."""
-    mood_id: IntimacyMoodId = Field(..., description="Computed intimacy mood ID")
-    intensity: float = Field(..., ge=0, le=1, description="Mood intensity (0-1)")
+    """Computed intimacy mood from relationship/intimacy context."""
+
+    mood_id: IntimacyMoodId
+    intensity: float
 
 
 class ActiveEmotionResult(BaseModel):
-    """Active discrete emotion from NPCEmotionalState table."""
-    emotion_type: str = Field(..., description="Emotion type (from EmotionType enum)")
-    intensity: float = Field(..., ge=0, le=1, description="Emotion intensity (0-1)")
-    trigger: Optional[str] = Field(None, description="What triggered this emotion")
-    expires_at: Optional[str] = Field(None, description="ISO timestamp when emotion expires")
+    """Event-driven discrete emotion state."""
+
+    emotion_type: str
+    intensity: float
+    trigger: Optional[str] = None
+    expires_at: Optional[str] = None
 
 
 class UnifiedMoodResult(BaseModel):
     """
-    Complete mood state combining all mood domains.
+    Complete mood state for preview/computation.
 
-    This is a computed result, not persisted. Use preview APIs to compute on demand.
-
-    - general_mood: Always present (4-quadrant valence/arousal model)
-    - intimacy_mood: Present when relationship has romantic context
-    - active_emotion: Present when discrete emotion exists in NPCEmotionalState table
+    This is a pure computation result (no persistence); it can be used
+    by frontends, NPC brain projections, and generation/social context.
     """
-    general_mood: GeneralMoodResult = Field(..., description="General mood state (always present)")
-    intimacy_mood: Optional[IntimacyMoodResult] = Field(None, description="Intimacy mood (romantic contexts only)")
-    active_emotion: Optional[ActiveEmotionResult] = Field(None, description="Active discrete emotion (event-driven)")
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "general_mood": {
-                    "mood_id": "excited",
-                    "valence": 75.0,
-                    "arousal": 80.0
-                },
-                "intimacy_mood": {
-                    "mood_id": "playful",
-                    "intensity": 0.6
-                },
-                "active_emotion": None
-            }
-        }
+    general_mood: GeneralMoodResult
+    intimacy_mood: Optional[IntimacyMoodResult] = None
+    active_emotion: Optional[ActiveEmotionResult] = None
+

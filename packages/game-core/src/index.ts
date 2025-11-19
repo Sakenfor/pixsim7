@@ -42,6 +42,7 @@ export {
 // Generic metric preview (NPC mood, reputation, etc.)
 export {
   previewNpcMood,
+  previewUnifiedMood,
   previewReputationBand,
   configureMetricPreviewApi,
   resetMetricPreviewApiConfig,

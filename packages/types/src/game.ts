@@ -602,6 +602,40 @@ export interface NpcMoodPreviewResponse {
 }
 
 // ===================
+// Unified Mood Types
+// ===================
+
+export type MoodDomain = 'general' | 'intimate' | 'social';
+
+export type GeneralMoodId = 'excited' | 'content' | 'anxious' | 'calm';
+
+export type IntimacyMoodId =
+  | 'playful'
+  | 'tender'
+  | 'passionate'
+  | 'conflicted'
+  | 'shy'
+  | 'eager';
+
+export interface UnifiedMoodState {
+  generalMood: {
+    moodId: GeneralMoodId;
+    valence: number;
+    arousal: number;
+  };
+  intimacyMood?: {
+    moodId: IntimacyMoodId;
+    intensity: number;
+  };
+  activeEmotion?: {
+    emotionType: string;
+    intensity: number;
+    trigger?: string;
+    expiresAt?: string;
+  };
+}
+
+// ===================
 // Reputation Metric Types
 // ===================
 

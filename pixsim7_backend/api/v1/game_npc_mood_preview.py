@@ -16,7 +16,10 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7_backend.api.dependencies import get_database
-from pixsim7_backend.domain.metrics.mood_evaluators import evaluate_npc_mood
+from pixsim7_backend.domain.metrics.mood_evaluators import (
+    evaluate_npc_mood,
+    evaluate_unified_npc_mood,
+)
 
 router = APIRouter()
 
@@ -59,6 +62,38 @@ class PreviewMoodResponse(BaseModel):
     emotion_type: Optional[str] = None
     emotion_intensity: Optional[float] = None
     npc_id: int
+
+
+class UnifiedMoodGeneral(BaseModel):
+    """General mood portion of unified mood preview."""
+
+    mood_id: str
+    valence: float
+    arousal: float
+
+
+class UnifiedMoodIntimacy(BaseModel):
+    """Intimacy mood portion of unified mood preview."""
+
+    mood_id: str
+    intensity: float
+
+
+class UnifiedActiveEmotion(BaseModel):
+    """Active discrete emotion portion of unified mood preview."""
+
+    emotion_type: str
+    intensity: float
+    trigger: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class UnifiedMoodResponse(BaseModel):
+    """Response for unified NPC mood preview."""
+
+    general_mood: UnifiedMoodGeneral
+    intimacy_mood: Optional[UnifiedMoodIntimacy] = None
+    active_emotion: Optional[UnifiedActiveEmotion] = None
 
 
 # ===== Endpoints =====
@@ -138,4 +173,53 @@ async def preview_npc_mood(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         # Unexpected error
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@router.post("/preview-unified-mood", response_model=UnifiedMoodResponse)
+async def preview_unified_mood(
+    request: PreviewMoodRequest, db: AsyncSession = Depends(get_database)
+):
+    """
+    Preview unified NPC mood (general + intimacy + active emotion).
+
+    This endpoint mirrors preview-mood but returns richer data based on
+    the unified mood evaluator. It is stateless and does not modify
+    any game sessions.
+    """
+    try:
+        payload: Dict[str, Any] = {
+            "npc_id": request.npc_id,
+        }
+
+        if request.session_id:
+            payload["session_id"] = request.session_id
+
+        if request.relationship_values:
+            payload["relationship_values"] = {
+                "affinity": request.relationship_values.affinity,
+                "trust": request.relationship_values.trust,
+                "chemistry": request.relationship_values.chemistry,
+                "tension": request.relationship_values.tension,
+            }
+
+        if request.emotional_state:
+            payload["emotional_state"] = {
+                "emotion": request.emotional_state.emotion,
+                "intensity": request.emotional_state.intensity,
+            }
+
+        # Call unified evaluator
+        result = await evaluate_unified_npc_mood(
+            world_id=request.world_id,
+            payload=payload,
+            db=db,
+        )
+
+        # Pydantic will coerce the dict into UnifiedMoodResponse
+        return UnifiedMoodResponse(**result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")

@@ -1,15 +1,27 @@
 """
 NPC Mood Metric Evaluators
 
-Provides mood evaluation using valence-arousal model based on relationship state.
+Provides mood evaluation using valence-arousal model based on relationship state,
+and a unified mood view that combines general mood, intimacy mood, and active
+discrete emotion.
 """
 
 from typing import Any, Optional
+from datetime import datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7_backend.domain.game.models import GameWorld, GameSession
 from pixsim7_backend.domain.npc_memory import NPCEmotionalState, EmotionType
+from .mood_types import (
+    GeneralMoodId,
+    IntimacyMoodId,
+    GeneralMoodResult,
+    IntimacyMoodResult,
+    ActiveEmotionResult,
+    UnifiedMoodResult,
+)
 
 
 def _compute_valence_arousal(relationship_values: dict[str, Any]) -> tuple[float, float]:
@@ -236,3 +248,175 @@ async def evaluate_npc_mood(
             result_dict["emotion_intensity"] = dominant_emotion.intensity
 
     return result_dict
+
+
+async def evaluate_unified_npc_mood(
+    world_id: int,
+    payload: dict[str, Any],
+    db: AsyncSession,
+) -> dict[str, Any]:
+    """
+    Evaluate unified NPC mood based on relationship state and emotional state.
+
+    Combines existing general mood evaluation with an optional intimacy mood
+    computation and the active discrete emotion (if any).
+
+    This is a pure computation helper for preview tools; it does not persist
+    any state or modify sessions.
+
+    Args:
+        world_id: World ID for schema lookup
+        payload: Dict with:
+            - npc_id (int, required): NPC ID
+            - session_id (int, optional): Session ID for emotional state lookup
+            - relationship_values (dict, optional): Override relationship values
+            - intimacy_level_id (str, optional): Relationship intimacy level
+            - emotional_state (dict, optional): Override emotional state
+        db: Database session
+
+    Returns:
+        Dict representation of UnifiedMoodResult
+    """
+    # First, compute general mood via existing evaluator
+    general_result = await evaluate_npc_mood(world_id=world_id, payload=payload, db=db)
+
+    general_mood = GeneralMoodResult(
+        mood_id=GeneralMoodId(general_result["mood_id"]),
+        valence=general_result["valence"],
+        arousal=general_result["arousal"],
+    )
+
+    # Optionally compute intimacy mood
+    intimacy_mood: Optional[IntimacyMoodResult] = None
+    rel_values = payload.get("relationship_values", {}) or {}
+    intimacy_level_id = payload.get("intimacy_level_id")
+
+    if _should_compute_intimacy_mood(rel_values, intimacy_level_id):
+        intimacy_mood = _compute_intimacy_mood(
+            chemistry=float(rel_values.get("chemistry", 0.0)),
+            trust=float(rel_values.get("trust", 0.0)),
+            tension=float(rel_values.get("tension", 0.0)),
+            intimacy_level_id=str(intimacy_level_id),
+        )
+
+    # Optionally include active emotion
+    active_emotion: Optional[ActiveEmotionResult] = None
+    npc_id = payload.get("npc_id")
+    session_id = payload.get("session_id")
+
+    if npc_id is not None and session_id is not None:
+        active_emotion = await _get_active_emotion(int(npc_id), int(session_id), db)
+
+    unified = UnifiedMoodResult(
+        general_mood=general_mood,
+        intimacy_mood=intimacy_mood,
+        active_emotion=active_emotion,
+    )
+
+    return unified.dict()
+
+
+def _should_compute_intimacy_mood(
+    relationship_values: dict[str, Any],
+    intimacy_level_id: Optional[str],
+) -> bool:
+    """
+    Determine whether intimacy mood should be computed.
+
+    Only compute intimacy mood when relationship context suggests romance
+    (non-platonic intimacy level or sufficiently high chemistry).
+    """
+    if not intimacy_level_id or intimacy_level_id == "platonic":
+        return False
+
+    try:
+        chemistry = float(relationship_values.get("chemistry", 0.0))
+    except (TypeError, ValueError):
+        chemistry = 0.0
+
+    # Simple threshold for romantic context; can be refined per-world later
+    return chemistry > 20.0
+
+
+def _compute_intimacy_mood(
+    chemistry: float,
+    trust: float,
+    tension: float,
+    intimacy_level_id: str,
+) -> IntimacyMoodResult:
+    """
+    Compute intimacy mood from relationship axes.
+
+    Uses simple heuristics; worlds can later customize via schemas.
+    """
+    # High chemistry + low trust = conflicted
+    if chemistry > 60 and trust < 40:
+        return IntimacyMoodResult(
+            mood_id=IntimacyMoodId.CONFLICTED,
+            intensity=chemistry / 100.0,
+        )
+
+    # High chemistry + high tension = passionate
+    if chemistry > 70 and tension > 50:
+        return IntimacyMoodResult(
+            mood_id=IntimacyMoodId.PASSIONATE,
+            intensity=min(chemistry, tension) / 100.0,
+        )
+
+    # High trust + moderate chemistry = tender
+    if trust > 60 and chemistry > 40:
+        return IntimacyMoodResult(
+            mood_id=IntimacyMoodId.TENDER,
+            intensity=trust / 100.0,
+        )
+
+    # Early stage flirting = playful
+    if chemistry < 60 and intimacy_level_id in ("light_flirt", "deep_flirt"):
+        return IntimacyMoodResult(
+            mood_id=IntimacyMoodId.PLAYFUL,
+            intensity=chemistry / 100.0,
+        )
+
+    # Default = shy
+    return IntimacyMoodResult(
+        mood_id=IntimacyMoodId.SHY,
+        intensity=0.3,
+    )
+
+
+async def _get_active_emotion(
+    npc_id: int,
+    session_id: int,
+    db: AsyncSession,
+) -> Optional[ActiveEmotionResult]:
+    """
+    Get the most intense active emotion for an NPC in a session, if any.
+
+    Reads from NPCEmotionalState table and returns a lightweight projection
+    suitable for previews and brain/mood tools.
+    """
+    result = await db.execute(
+        select(NPCEmotionalState)
+        .where(
+            NPCEmotionalState.npc_id == npc_id,
+            NPCEmotionalState.session_id == session_id,
+            NPCEmotionalState.is_active == True,
+        )
+        .order_by(NPCEmotionalState.intensity.desc())
+        .limit(1)
+    )
+    emotion: Optional[NPCEmotionalState] = result.scalar_one_or_none()
+
+    if not emotion:
+        return None
+
+    expires_at_str: Optional[str] = (
+        emotion.expires_at.isoformat() if emotion.expires_at else None
+    )
+
+    return ActiveEmotionResult(
+        emotion_type=emotion.emotion.value,
+        intensity=emotion.intensity,
+        trigger=emotion.triggered_by,
+        expires_at=expires_at_str,
+    )
