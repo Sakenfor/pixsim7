@@ -313,6 +313,104 @@ export interface WorldGenerationConfig {
 }
 
 // ===================
+// GameProfile Types (Task 23)
+// ===================
+
+/**
+ * Game style identifier
+ * Defines the high-level gameplay approach for the world
+ */
+export type GameStyle = 'life_sim' | 'visual_novel' | 'hybrid';
+
+/**
+ * Simulation mode identifier
+ * Determines how time and simulation progress
+ */
+export type SimulationMode = 'real_time' | 'turn_based' | 'paused';
+
+/**
+ * Behavior profile identifier
+ * Influences default behavior scoring weights
+ */
+export type BehaviorProfile = 'work_focused' | 'relationship_focused' | 'balanced';
+
+/**
+ * Narrative profile identifier
+ * Determines how much to emphasize narrative programs vs free play
+ */
+export type NarrativeProfile = 'light' | 'moderate' | 'heavy';
+
+/**
+ * Turn-based configuration
+ * Defines turn length and limits for turn-based simulation
+ */
+export interface TurnConfig {
+  /** Default turn length in game seconds (e.g., 3600 = 1 hour) */
+  turnDeltaSeconds: number;
+  /** Maximum turns allowed per session (optional limit) */
+  maxTurnsPerSession?: number;
+}
+
+/**
+ * Game profile configuration stored in GameWorld.meta.gameProfile
+ * Defines the high-level style and simulation mode for a world
+ *
+ * This allows the same engine to support both life-sim and visual novel
+ * game styles through configuration rather than divergent code paths.
+ *
+ * Example:
+ * ```typescript
+ * world.meta = {
+ *   gameProfile: {
+ *     style: "life_sim",
+ *     simulationMode: "turn_based",
+ *     turnConfig: { turnDeltaSeconds: 3600 },
+ *     behaviorProfile: "work_focused",
+ *     narrativeProfile: "light"
+ *   }
+ * }
+ * ```
+ */
+export interface GameProfile {
+  /**
+   * Game style - determines overall gameplay emphasis
+   * - 'life_sim': Focus on NPC schedules, behavior, daily routines
+   * - 'visual_novel': Focus on narrative programs, scenes, choices
+   * - 'hybrid': Balanced approach between both styles
+   */
+  style: GameStyle;
+
+  /**
+   * Simulation mode - determines how time progresses
+   * - 'real_time': Continuous time progression with ticks
+   * - 'turn_based': Discrete turns advanced by player action
+   * - 'paused': Time frozen until manually advanced
+   */
+  simulationMode: SimulationMode;
+
+  /**
+   * Turn configuration (required for turn_based mode)
+   */
+  turnConfig?: TurnConfig;
+
+  /**
+   * Behavior profile - influences default behavior scoring
+   * - 'work_focused': Higher weights for work activities, urgency
+   * - 'relationship_focused': Higher relationship bonuses, social emphasis
+   * - 'balanced': Middle-of-the-road defaults
+   */
+  behaviorProfile?: BehaviorProfile;
+
+  /**
+   * Narrative profile - determines narrative emphasis
+   * - 'light': Sparse narrative programs, everyday interactions
+   * - 'moderate': Balanced narrative and free play
+   * - 'heavy': Frequent narrative programs, branching sequences
+   */
+  narrativeProfile?: NarrativeProfile;
+}
+
+// ===================
 // Session Types
 // ===================
 

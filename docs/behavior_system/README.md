@@ -708,6 +708,162 @@ def migrate_behavior_to_v2(config):
 4. Verify graph structure (edges reference existing nodes)
 5. Use `/validate` endpoint before saving
 
+## 🎮 GameProfile Integration (Task 23)
+
+**GameProfile** provides world-level configuration that unifies life-sim and visual novel gameplay styles under one engine.
+
+### What is GameProfile?
+
+GameProfile is stored in `GameWorld.meta.gameProfile` and defines:
+
+- **Game Style** - Overall gameplay emphasis (`life_sim`, `visual_novel`, or `hybrid`)
+- **Simulation Mode** - How time progresses (`real_time`, `turn_based`, or `paused`)
+- **Behavior Profile** - Default behavior scoring weights (`work_focused`, `relationship_focused`, or `balanced`)
+- **Narrative Profile** - Narrative program emphasis (`light`, `moderate`, or `heavy`)
+
+### Example GameProfile
+
+```json
+{
+  "meta": {
+    "gameProfile": {
+      "style": "life_sim",
+      "simulationMode": "turn_based",
+      "turnConfig": {
+        "turnDeltaSeconds": 3600
+      },
+      "behaviorProfile": "work_focused",
+      "narrativeProfile": "light"
+    }
+  }
+}
+```
+
+### How GameProfile Affects Behavior
+
+#### 1. Scoring Weights
+
+The `behaviorProfile` influences default scoring weights:
+
+**work_focused:**
+- Higher `categoryPreference` (1.0 vs 0.8)
+- Higher `urgency` (1.5 vs 1.2)
+- Lower `relationshipBonus` (0.3 vs 0.5)
+- Lower `moodCompatibility` (0.5 vs 0.7)
+
+**relationship_focused:**
+- Lower `categoryPreference` (0.6)
+- Lower `urgency` (0.8)
+- Higher `relationshipBonus` (0.9)
+- Higher `moodCompatibility` (0.9)
+
+**balanced:**
+- Default weights (as defined in ScoringConfig)
+
+**Priority:** Explicit `scoringConfig` > `behaviorProfile` defaults
+
+#### 2. Simulation Tiers
+
+The `style` influences default tier limits:
+
+**life_sim:**
+- More NPCs in `active` tier (150 vs 100)
+- Large ambient population (800 vs 500)
+- Emphasis on world liveliness
+
+**visual_novel:**
+- More NPCs in `detailed` tier (20 vs 15)
+- Fewer but more detailed NPCs (50 active vs 150)
+- Focus on narrative-relevant NPCs
+
+**hybrid:**
+- Balanced tier distribution
+
+#### 3. Interaction Suggestions
+
+The `narrativeProfile` affects interaction suggestion scoring:
+
+**light narrative:**
+- Boosts everyday/casual interactions (+15 score)
+- Sparse narrative programs (0.5 per hour)
+- Min 2 hours between programs
+
+**heavy narrative:**
+- Boosts chain continuation (+10 score)
+- Boosts relationship milestones (+10 score)
+- Reduces everyday interaction priority (-10 score)
+- Frequent narrative programs (3 per hour)
+- Min 20 minutes between programs
+
+### Using GameProfile in Code
+
+```typescript
+import {
+  getDefaultScoringWeights,
+  getBehaviorScoringConfig,
+  getSimulationConfig,
+  getNarrativeEmphasisWeight,
+  shouldFavorNarrativeProgram,
+  getNarrativeFrequency,
+} from '@pixsim7/game-core';
+
+// Get scoring weights from profile
+const weights = getDefaultScoringWeights('work_focused');
+
+// Get complete scoring config (with fallback to behaviorProfile)
+const scoringConfig = getBehaviorScoringConfig(gameProfile, explicitConfig);
+
+// Get narrative emphasis (0-1 weight)
+const narrativeWeight = getNarrativeEmphasisWeight('heavy'); // 0.9
+
+// Decide whether to launch narrative program
+const shouldLaunch = shouldFavorNarrativeProgram(gameProfile, {
+  interactionType: 'story',
+  relationshipTier: 'close_friend',
+  isStoryBeat: true,
+});
+
+// Get recommended narrative frequency
+const frequency = getNarrativeFrequency(gameProfile);
+// { programsPerHour: 3, minTimeBetweenPrograms: 1200, description: "..." }
+```
+
+### Simulation Mode
+
+The `simulationMode` determines how time progresses:
+
+**turn_based:**
+- Time advances only when player takes a turn
+- Requires `turnConfig.turnDeltaSeconds`
+- Game2D UI shows "End Turn" button
+- Session flags can override world defaults
+
+**real_time:**
+- Continuous time progression
+- Uses scheduler `timeScale` and tick intervals
+
+**paused:**
+- Time frozen until manually advanced
+- Useful for dialogue-heavy scenes
+
+### Best Practices
+
+1. **Set GameProfile early** - Define in world meta before authoring content
+2. **Use style-appropriate interactions** - Life-sim → casual/daily, VN → story/choice
+3. **Test both modes** - Ensure content works in turn-based and real-time
+4. **Allow session overrides** - Session flags can override world defaults
+5. **Document profile choices** - Explain why you chose a particular profile
+
+### Migration from Pre-GameProfile Worlds
+
+Worlds without `gameProfile` default to:
+- `style: "hybrid"`
+- `simulationMode: "real_time"`
+- `behaviorProfile: "balanced"`
+- `narrativeProfile: "moderate"`
+
+Explicit behavior/simulation configs always take precedence over GameProfile defaults.
+
 ## 📄 License
 
 Part of PixSim7. See main project license.

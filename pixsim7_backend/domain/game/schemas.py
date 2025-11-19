@@ -1313,3 +1313,141 @@ def get_default_world_scheduler_config() -> Dict:
         "meta": {}
     }
 
+
+# ===================
+# GameProfile Schemas (Task 23)
+# ===================
+
+class TurnConfigSchema(BaseModel):
+    """
+    Turn-based configuration for turn-based simulation mode.
+    Defines turn length and limits for turn-based gameplay.
+    """
+
+    turnDeltaSeconds: int = Field(
+        ge=1,
+        description="Default turn length in game seconds (e.g., 3600 = 1 hour)"
+    )
+    maxTurnsPerSession: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Maximum turns allowed per session (optional limit)"
+    )
+
+    class Config:
+        extra = "allow"
+
+
+class GameProfileSchema(BaseModel):
+    """
+    Game profile configuration for a world.
+    Stored in GameWorld.meta.gameProfile
+
+    Defines the high-level style and simulation mode for a world,
+    allowing the same engine to support both life-sim and visual novel
+    game styles through configuration.
+
+    Example:
+    {
+        "style": "life_sim",
+        "simulationMode": "turn_based",
+        "turnConfig": {"turnDeltaSeconds": 3600},
+        "behaviorProfile": "work_focused",
+        "narrativeProfile": "light"
+    }
+    """
+
+    style: str = Field(
+        description=(
+            "Game style - determines overall gameplay emphasis. "
+            "Options: 'life_sim', 'visual_novel', 'hybrid'"
+        )
+    )
+    simulationMode: str = Field(
+        description=(
+            "Simulation mode - determines how time progresses. "
+            "Options: 'real_time', 'turn_based', 'paused'"
+        )
+    )
+    turnConfig: Optional[TurnConfigSchema] = Field(
+        None,
+        description="Turn configuration (required for turn_based mode)"
+    )
+    behaviorProfile: Optional[str] = Field(
+        None,
+        description=(
+            "Behavior profile - influences default behavior scoring. "
+            "Options: 'work_focused', 'relationship_focused', 'balanced'"
+        )
+    )
+    narrativeProfile: Optional[str] = Field(
+        None,
+        description=(
+            "Narrative profile - determines narrative emphasis. "
+            "Options: 'light', 'moderate', 'heavy'"
+        )
+    )
+
+    @field_validator('style')
+    @classmethod
+    def validate_style(cls, v: str) -> str:
+        """Ensure style is one of the allowed values."""
+        allowed_styles = {'life_sim', 'visual_novel', 'hybrid'}
+        if v not in allowed_styles:
+            raise ValueError(f'style must be one of {allowed_styles}')
+        return v
+
+    @field_validator('simulationMode')
+    @classmethod
+    def validate_simulation_mode(cls, v: str) -> str:
+        """Ensure simulationMode is one of the allowed values."""
+        allowed_modes = {'real_time', 'turn_based', 'paused'}
+        if v not in allowed_modes:
+            raise ValueError(f'simulationMode must be one of {allowed_modes}')
+        return v
+
+    @field_validator('behaviorProfile')
+    @classmethod
+    def validate_behavior_profile(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure behaviorProfile is one of the allowed values."""
+        if v is not None:
+            allowed_profiles = {'work_focused', 'relationship_focused', 'balanced'}
+            if v not in allowed_profiles:
+                raise ValueError(f'behaviorProfile must be one of {allowed_profiles}')
+        return v
+
+    @field_validator('narrativeProfile')
+    @classmethod
+    def validate_narrative_profile(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure narrativeProfile is one of the allowed values."""
+        if v is not None:
+            allowed_profiles = {'light', 'moderate', 'heavy'}
+            if v not in allowed_profiles:
+                raise ValueError(f'narrativeProfile must be one of {allowed_profiles}')
+        return v
+
+    @model_validator(mode='after')
+    def validate_turn_config_required_for_turn_based(self):
+        """Ensure turnConfig is provided for turn_based mode."""
+        if self.simulationMode == 'turn_based' and self.turnConfig is None:
+            raise ValueError('turnConfig is required when simulationMode is "turn_based"')
+        return self
+
+    class Config:
+        extra = "allow"
+
+
+def get_default_game_profile() -> Dict:
+    """
+    Get default game profile configuration.
+
+    Returns a dict that can be stored in GameWorld.meta.gameProfile
+    Defaults to hybrid style with real-time simulation.
+    """
+    return {
+        "style": "hybrid",
+        "simulationMode": "real_time",
+        "behaviorProfile": "balanced",
+        "narrativeProfile": "moderate"
+    }
+

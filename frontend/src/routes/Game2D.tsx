@@ -88,16 +88,35 @@ function secondsToWorldTime(seconds: number): WorldTime {
 
 /**
  * Helper to check if session is in turn-based world mode
+ * Task 23: Also checks GameProfile.simulationMode if present
  */
-function isTurnBasedMode(sessionFlags?: Record<string, unknown>): boolean {
+function isTurnBasedMode(
+  sessionFlags?: Record<string, unknown>,
+  world?: GameWorldDetail | null
+): boolean {
   if (!sessionFlags) return false;
   const flags = sessionFlags as SessionFlags;
-  return flags.sessionKind === 'world' && flags.world?.mode === 'turn_based';
+
+  // Check session flags first (allows session-level override)
+  if (flags.sessionKind === 'world' && flags.world?.mode === 'turn_based') {
+    return true;
+  }
+
+  // Task 23: Check GameProfile.simulationMode from world meta
+  if (world?.meta && typeof world.meta === 'object' && 'gameProfile' in world.meta) {
+    const gameProfile = (world.meta as any).gameProfile;
+    if (gameProfile?.simulationMode === 'turn_based') {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
  * Get configured turn delta in seconds
- * Priority: session flags > world manifest > default (3600 = 1 hour)
+ * Task 23: Priority updated to include GameProfile.turnConfig
+ * Priority: session flags > GameProfile.turnConfig > world manifest > default (3600 = 1 hour)
  */
 function getTurnDelta(
   sessionFlags?: Record<string, unknown>,
@@ -111,7 +130,15 @@ function getTurnDelta(
     }
   }
 
-  // Second, check world manifest for default turn preset
+  // Task 23: Second, check GameProfile.turnConfig
+  if (world?.meta && typeof world.meta === 'object' && 'gameProfile' in world.meta) {
+    const gameProfile = (world.meta as any).gameProfile;
+    if (gameProfile?.turnConfig?.turnDeltaSeconds != null) {
+      return gameProfile.turnConfig.turnDeltaSeconds;
+    }
+  }
+
+  // Third, check world manifest for default turn preset
   if (world) {
     return getManifestTurnDelta(world);
   }
@@ -473,7 +500,7 @@ export function Game2D() {
   const advanceTime = () => {
     // Get turn delta from session flags or world manifest
     const deltaSeconds = getTurnDelta(gameSession?.flags, worldDetail);
-    const isTurnBased = isTurnBasedMode(gameSession?.flags);
+    const isTurnBased = isTurnBasedMode(gameSession?.flags, worldDetail);
 
     if (selectedWorldId) {
       (async () => {
@@ -814,8 +841,8 @@ export function Game2D() {
         <div>
           <h1 className="text-2xl font-semibold">PixSim7 2D Game</h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {isTurnBasedMode(gameSession?.flags) ? 'Turn-based' : 'Real-time'} world with locations, NPCs, and interactions.
-            {isTurnBasedMode(gameSession?.flags) && (
+            {isTurnBasedMode(gameSession?.flags, worldDetail) ? 'Turn-based' : 'Real-time'} world with locations, NPCs, and interactions.
+            {isTurnBasedMode(gameSession?.flags, worldDetail) && (
               <Badge className="ml-2 text-xs">Turn-Based Mode</Badge>
             )}
           </p>
@@ -825,14 +852,14 @@ export function Game2D() {
             <div className="flex flex-col text-xs">
               <span className="font-semibold">Day {worldTime.day}</span>
               <span>{worldTime.hour.toString().padStart(2, '0')}:00</span>
-              {isTurnBasedMode(gameSession?.flags) && (
+              {isTurnBasedMode(gameSession?.flags, worldDetail) && (
                 <span className="text-[10px] text-neutral-500">
                   Turn {((gameSession?.flags as SessionFlags)?.world?.turnNumber ?? 0) + 1}
                 </span>
               )}
             </div>
             <Button size="sm" variant="primary" onClick={advanceTime}>
-              {isTurnBasedMode(gameSession?.flags) ? (
+              {isTurnBasedMode(gameSession?.flags, worldDetail) ? (
                 <>End Turn ({getTurnDeltaLabel(getTurnDelta(gameSession?.flags, worldDetail))})</>
               ) : (
                 <>Next Hour</>
