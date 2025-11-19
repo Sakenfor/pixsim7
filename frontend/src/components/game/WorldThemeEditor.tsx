@@ -18,7 +18,7 @@ import {
   generateThemeId,
   type WorldUiThemePreset,
 } from '@pixsim7/game-core';
-import { Button, Select, Badge, Panel } from '@pixsim7/ui';
+import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/ui';
 import { getViewModeOptions } from '../../lib/theming/useViewMode';
 
 interface WorldThemeEditorProps {
@@ -326,55 +326,54 @@ export function WorldThemeEditor({ worldDetail, onSave, compact = false }: World
       )}
 
       {/* Save as Preset Dialog */}
-      {showSavePresetDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <Panel className="w-full max-w-md p-4 space-y-3">
-            <h3 className="text-lg font-semibold">Save Theme as Preset</h3>
+      <Modal
+        isOpen={showSavePresetDialog}
+        onClose={() => {
+          setShowSavePresetDialog(false);
+          setNewPresetName('');
+          setNewPresetDescription('');
+        }}
+        title="Save Theme as Preset"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <FormField label="Preset Name" required size="md">
+            <Input
+              type="text"
+              size="md"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="e.g., My Custom Theme"
+            />
+          </FormField>
 
-            <div>
-              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                Preset Name *
-              </label>
-              <input
-                type="text"
-                value={newPresetName}
-                onChange={(e) => setNewPresetName(e.target.value)}
-                placeholder="e.g., My Custom Theme"
-                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                Description (optional)
-              </label>
-              <textarea
-                value={newPresetDescription}
-                onChange={(e) => setNewPresetDescription(e.target.value)}
-                placeholder="Describe this theme..."
-                rows={2}
-                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-              />
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <Button onClick={handleSaveAsPreset} variant="primary">
-                Save Preset
-              </Button>
-              <Button
-                onClick={() => {
-                  setShowSavePresetDialog(false);
-                  setNewPresetName('');
-                  setNewPresetDescription('');
-                }}
-                variant="secondary"
-              >
-                Cancel
-              </Button>
-            </div>
-          </Panel>
+          <FormField label="Description" optional size="md">
+            <textarea
+              value={newPresetDescription}
+              onChange={(e) => setNewPresetDescription(e.target.value)}
+              placeholder="Describe this theme..."
+              rows={2}
+              className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            />
+          </FormField>
         </div>
-      )}
+
+        <div className="flex gap-2 justify-end mt-4">
+          <Button
+            onClick={() => {
+              setShowSavePresetDialog(false);
+              setNewPresetName('');
+              setNewPresetDescription('');
+            }}
+            variant="secondary"
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleSaveAsPreset} variant="primary">
+            Save Preset
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

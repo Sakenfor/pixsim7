@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Panel, Button, Select } from '@pixsim7/ui';
+import { Panel, Button, Select, Modal, FormField, Input } from '@pixsim7/ui';
 import type { GameWorldDetail } from '../../lib/api/game';
 import { updateGameWorldMeta } from '../../lib/api/game';
 import { worldToolRegistry } from '../../lib/worldTools/registry';
@@ -946,56 +946,54 @@ export function HudLayoutEditor({ worldDetail, onSave, onClose }: HudLayoutEdito
         </div>
 
         {/* Save Preset Modal */}
-        {showPresetModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <Panel className="w-full max-w-md space-y-3">
-              <h3 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-                Save Layout as Preset
-              </h3>
-              <div className="space-y-2">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                    Preset Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={presetName}
-                    onChange={(e) => setPresetName(e.target.value)}
-                    placeholder="e.g., Minimal HUD"
-                    className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                    Description (optional)
-                  </label>
-                  <textarea
-                    value={presetDescription}
-                    onChange={(e) => setPresetDescription(e.target.value)}
-                    placeholder="Describe this layout..."
-                    rows={3}
-                    className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setShowPresetModal(false);
-                    setPresetName('');
-                    setPresetDescription('');
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={handleSaveAsPreset}>
-                  Save Preset
-                </Button>
-              </div>
-            </Panel>
+        <Modal
+          isOpen={showPresetModal}
+          onClose={() => {
+            setShowPresetModal(false);
+            setPresetName('');
+            setPresetDescription('');
+          }}
+          title="Save Layout as Preset"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <FormField label="Preset Name" required size="md">
+              <Input
+                type="text"
+                size="md"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="e.g., Minimal HUD"
+              />
+            </FormField>
+
+            <FormField label="Description" optional size="md">
+              <textarea
+                value={presetDescription}
+                onChange={(e) => setPresetDescription(e.target.value)}
+                placeholder="Describe this layout..."
+                rows={3}
+                className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+              />
+            </FormField>
           </div>
-        )}
+
+          <div className="flex gap-2 justify-end mt-4">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowPresetModal(false);
+                setPresetName('');
+                setPresetDescription('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleSaveAsPreset}>
+              Save Preset
+            </Button>
+          </div>
+        </Modal>
 
         {/* Region Preview */}
         <div className="space-y-2">

@@ -6,7 +6,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import { Button, Panel, Badge } from '@pixsim7/ui';
+import { Button, Panel, Badge, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@pixsim7/ui';
 import type { GameWorldDetail } from '../../lib/api/game';
 import {
   getPresetUsageStatsWithDetails,
@@ -100,60 +100,55 @@ export function InteractionPresetUsagePanel({ world }: InteractionPresetUsagePan
           </div>
 
           <Panel className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700">
-                  <tr>
-                    <th className="text-left px-3 py-2 font-semibold">Rank</th>
-                    <th className="text-left px-3 py-2 font-semibold">Preset Name</th>
-                    <th className="text-left px-3 py-2 font-semibold">Scope</th>
-                    <th className="text-right px-3 py-2 font-semibold">Usage Count</th>
-                    <th className="text-left px-3 py-2 font-semibold">Last Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usageData.map((item, index) => (
-                    <tr
-                      key={item.presetId}
-                      className="border-b dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
-                    >
-                      <td className="px-3 py-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rank</TableHead>
+                  <TableHead>Preset Name</TableHead>
+                  <TableHead>Scope</TableHead>
+                  <TableHead align="right">Usage Count</TableHead>
+                  <TableHead>Last Used</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {usageData.map((item, index) => (
+                  <TableRow key={item.presetId}>
+                    <TableCell>
+                      <Badge
+                        color={index === 0 ? 'yellow' : index < 3 ? 'blue' : 'gray'}
+                        className="text-xs"
+                      >
+                        #{index + 1}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {item.presetName}
+                      <div className="text-xs text-neutral-500 font-normal">
+                        {item.presetId}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {item.scope ? (
                         <Badge
-                          color={index === 0 ? 'yellow' : index < 3 ? 'blue' : 'gray'}
+                          color={item.scope === 'global' ? 'blue' : 'purple'}
                           className="text-xs"
                         >
-                          #{index + 1}
+                          {item.scope === 'global' ? '🌍 Global' : '🗺️ World'}
                         </Badge>
-                      </td>
-                      <td className="px-3 py-2 font-medium">
-                        {item.presetName}
-                        <div className="text-xs text-neutral-500 font-normal">
-                          {item.presetId}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        {item.scope ? (
-                          <Badge
-                            color={item.scope === 'global' ? 'blue' : 'purple'}
-                            className="text-xs"
-                          >
-                            {item.scope === 'global' ? '🌍 Global' : '🗺️ World'}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-neutral-400">Unknown</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right font-semibold">
-                        {item.count}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-neutral-500">
-                        {formatDate(item.lastUsed)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400">Unknown</span>
+                      )}
+                    </TableCell>
+                    <TableCell align="right" className="font-semibold">
+                      {item.count}
+                    </TableCell>
+                    <TableCell className="text-xs text-neutral-500">
+                      {formatDate(item.lastUsed)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </Panel>
 
           <Panel className="p-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
