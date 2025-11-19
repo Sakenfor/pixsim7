@@ -18,7 +18,7 @@ Below are 10 phases for evolving the interaction preset system.
 - [x] **Phase 5 – Usage Summary (Dev‑Only)**
 - [x] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries** *(Completed 2025-11-19)*
 - [x] **Phase 7 – Outcome‑Aware Presets & Success Metrics** *(Completed 2025-11-19)*
-- [ ] **Phase 8 – Context‑Aware Preset Suggestions**
+- [x] **Phase 8 – Context‑Aware Preset Suggestions** *(Completed 2025-11-19)*
 - [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
 - [ ] **Phase 10 – Preset Playlists & Sequenced Interactions**
 
@@ -280,21 +280,76 @@ Give designers a sense of how different presets perform (e.g. success/fail rates
 
 ---
 
-### Phase 8 – Context‑Aware Preset Suggestions
+### Phase 8 – Context‑Aware Preset Suggestions ✅
 
-**Goal**  
+**Goal**
 Suggest relevant presets based on world context, NPC roles, or past usage, reducing decision load for designers.
 
 **Scope**
 - Heuristic, local suggestions; no external model required.
 
 **Key Steps**
-1. Add metadata to presets (recommended NPC roles, world tags, situation tags like “intro”, “intense”).
+1. Add metadata to presets (recommended NPC roles, world tags, situation tags like "intro", "intense").
 2. In `NpcSlotEditor` / hotspot editors, sort or highlight presets based on:
    - NPC role or tags.
    - Location/world tags.
    - Recent usage in the current world.
-3. Optionally add a “Recommended” section at the top of preset lists.
+3. Optionally add a "Recommended" section at the top of preset lists.
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added suggestion metadata and scoring algorithm
+- `frontend/src/components/NpcSlotEditor.tsx` - Added recommended presets section
+- `frontend/src/components/HotspotEditor.tsx` - Added recommended presets section
+
+**Features Implemented:**
+
+1. **Extended Preset Metadata**:
+   - `recommendedRoles`: NPC roles this preset works well with
+   - `worldTags`: World types suitable for this preset (fantasy, modern, sci-fi)
+   - `situationTags`: Situation context (intro, intense, casual, combat, romance)
+
+2. **Suggestion Scoring Algorithm** (0-100 points):
+   - **NPC Role Matching** (30 pts): Matches recommended roles
+   - **World Tags** (25 pts): Matches world context tags
+   - **Situation Tags** (25 pts): Matches current situation
+   - **Recent Usage** (20 pts): Used in last 24h/week/frequently
+   - **Success Rate Bonus** (10 pts): High/moderate success rate from Phase 7
+   - **Base Score** (10 pts): Minimum for any valid preset
+
+3. **Suggestion Functions**:
+   - `SuggestionContext` interface - Context for scoring
+   - `PresetSuggestion` interface - Preset with score and reasons
+   - `calculateSuggestionScore()` - Internal scoring logic
+   - `getSuggestedPresets()` - Get top N suggestions sorted by score
+   - `getRecommendedPresets()` - Get suggestions with minimum score threshold
+
+4. **NpcSlotEditor Integration**:
+   - "⭐ Recommended" section above preset selector
+   - Shows top 3 presets with score ≥ 30
+   - Context includes: NPC role, world tags
+   - One-click apply with hover tooltips showing reasons
+   - Score display with each recommendation
+
+5. **HotspotEditor Integration**:
+   - "⭐ Recommended Presets" section above all presets
+   - Context includes: World tags, situation tags ('hotspot')
+   - Yellow-themed UI to distinguish from NPC slots (blue)
+   - Similar one-click apply with scores
+
+**Scoring Examples:**
+- Perfect match (role + world + recent usage + high success): ~85 points
+- Good match (role + situation): ~55 points
+- Moderate (world tags only): ~25 points (below threshold)
+- Recent usage alone: ~30 points (just meets threshold)
+
+**Benefits:**
+- Reduces decision fatigue for designers
+- Promotes successful presets based on Phase 7 data
+- Contextual suggestions feel intelligent
+- No external dependencies (local heuristics only)
+- Transparent scoring with reason tooltips
 
 ---
 

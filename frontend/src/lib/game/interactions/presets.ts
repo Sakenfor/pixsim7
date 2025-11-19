@@ -38,6 +38,17 @@ export interface InteractionPreset {
 
   /** Icon/emoji for visual identification */
   icon?: string;
+
+  /** Phase 8: Context-aware suggestion metadata */
+
+  /** Recommended NPC roles this preset works well with */
+  recommendedRoles?: string[];
+
+  /** World tags this preset is suitable for (e.g., 'fantasy', 'modern', 'sci-fi') */
+  worldTags?: string[];
+
+  /** Situation tags (e.g., 'intro', 'intense', 'casual', 'combat', 'romance') */
+  situationTags?: string[];
 }
 
 /**
@@ -840,6 +851,165 @@ export async function importPresetsFromFile(
       presets: [],
     };
   }
+}
+
+/**
+ * PHASE 8: Context-Aware Preset Suggestions
+ * Suggest relevant presets based on NPC roles, world tags, and usage patterns
+ */
+
+export interface SuggestionContext {
+  /** Current NPC role (if applicable) */
+  npcRole?: string;
+
+  /** World tags from current world metadata */
+  worldTags?: string[];
+
+  /** Situation tags describing current context */
+  situationTags?: string[];
+
+  /** Current world detail for usage stats */
+  world?: GameWorldDetail | null;
+
+  /** Selected interaction ID to filter by */
+  interactionId?: string;
+}
+
+export interface PresetSuggestion extends PresetWithScope {
+  /** Suggestion score (0-100, higher is better) */
+  score: number;
+
+  /** Reasons why this preset was suggested */
+  reasons: string[];
+}
+
+/**
+ * Calculate suggestion score for a preset based on context
+ */
+function calculateSuggestionScore(
+  preset: PresetWithScope,
+  context: SuggestionContext,
+  usageStats: ReturnType<typeof getPresetUsageStatsWithDetails>
+): { score: number; reasons: string[] } {
+  let score = 0;
+  const reasons: string[] = [];
+
+  // Filter by interaction type (essential)
+  if (context.interactionId && preset.interactionId !== context.interactionId) {
+    return { score: 0, reasons: [] };
+  }
+
+  // 1. NPC Role matching (30 points max)
+  if (context.npcRole && preset.recommendedRoles?.length) {
+    const roleMatch = preset.recommendedRoles.some(
+      (role) => role.toLowerCase() === context.npcRole?.toLowerCase()
+    );
+    if (roleMatch) {
+      score += 30;
+      reasons.push(`Matches NPC role: ${context.npcRole}`);
+    }
+  }
+
+  // 2. World tags matching (25 points max)
+  if (context.worldTags?.length && preset.worldTags?.length) {
+    const matchingWorldTags = preset.worldTags.filter((tag) =>
+      context.worldTags?.some((wt) => wt.toLowerCase() === tag.toLowerCase())
+    );
+    if (matchingWorldTags.length > 0) {
+      const tagScore = Math.min(25, matchingWorldTags.length * 10);
+      score += tagScore;
+      reasons.push(`World tags: ${matchingWorldTags.join(', ')}`);
+    }
+  }
+
+  // 3. Situation tags matching (25 points max)
+  if (context.situationTags?.length && preset.situationTags?.length) {
+    const matchingSituationTags = preset.situationTags.filter((tag) =>
+      context.situationTags?.some((st) => st.toLowerCase() === tag.toLowerCase())
+    );
+    if (matchingSituationTags.length > 0) {
+      const tagScore = Math.min(25, matchingSituationTags.length * 10);
+      score += tagScore;
+      reasons.push(`Situation: ${matchingSituationTags.join(', ')}`);
+    }
+  }
+
+  // 4. Recent usage in current world (20 points max)
+  const stats = usageStats.find((s) => s.presetId === preset.id);
+  if (stats && stats.count > 0) {
+    // More recent usage gets higher score
+    const now = Date.now();
+    const hoursSinceLastUse = (now - stats.lastUsed) / (1000 * 60 * 60);
+
+    if (hoursSinceLastUse < 24) {
+      score += 20;
+      reasons.push('Used recently (< 24h)');
+    } else if (hoursSinceLastUse < 168) {
+      // < 1 week
+      score += 15;
+      reasons.push('Used this week');
+    } else if (stats.count >= 3) {
+      score += 10;
+      reasons.push('Frequently used');
+    }
+  }
+
+  // 5. Success rate bonus (Phase 7 integration, max 10 points)
+  if (stats?.successRate !== null && stats.successRate !== undefined) {
+    if (stats.successRate >= 70) {
+      score += 10;
+      reasons.push(`High success rate (${stats.successRate.toFixed(0)}%)`);
+    } else if (stats.successRate >= 40) {
+      score += 5;
+      reasons.push(`Moderate success rate (${stats.successRate.toFixed(0)}%)`);
+    }
+  }
+
+  // 6. Base score for any preset without context (ensures all presets get some score)
+  if (score === 0) {
+    score = 10; // Minimum score for any valid preset
+  }
+
+  return { score: Math.min(100, score), reasons };
+}
+
+/**
+ * Get suggested presets for a given context, sorted by relevance
+ */
+export function getSuggestedPresets(
+  presets: PresetWithScope[],
+  context: SuggestionContext,
+  maxSuggestions: number = 5
+): PresetSuggestion[] {
+  const usageStats = getPresetUsageStatsWithDetails(context.world || null);
+
+  const suggestions = presets
+    .map((preset) => {
+      const { score, reasons } = calculateSuggestionScore(preset, context, usageStats);
+      return {
+        ...preset,
+        score,
+        reasons,
+      };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxSuggestions);
+
+  return suggestions;
+}
+
+/**
+ * Get top N recommended presets with a minimum score threshold
+ */
+export function getRecommendedPresets(
+  presets: PresetWithScope[],
+  context: SuggestionContext,
+  minScore: number = 30,
+  maxResults: number = 3
+): PresetSuggestion[] {
+  const suggestions = getSuggestedPresets(presets, context, maxResults * 2);
+  return suggestions.filter((s) => s.score >= minScore).slice(0, maxResults);
 }
 
 /**

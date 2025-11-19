@@ -16,8 +16,10 @@ import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfi
 import {
   getCombinedPresets,
   applyPresetToSlot,
+  getRecommendedPresets,
   type InteractionPreset,
   type PresetWithScope,
+  type SuggestionContext,
 } from '../lib/game/interactions/presets';
 
 interface HotspotEditorProps {
@@ -244,12 +246,54 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
 
               {expandedInteractions[idx] && (
                 <div className="mt-2 space-y-2">
+                  {/* Phase 8: Recommended Presets */}
+                  {(() => {
+                    const suggestionContext: SuggestionContext = {
+                      worldTags: (worldDetail?.meta as any)?.tags || [],
+                      situationTags: ['hotspot'],
+                      world: worldDetail,
+                    };
+                    const recommendedPresets = getRecommendedPresets(availablePresets, suggestionContext, 30, 3);
+
+                    if (recommendedPresets.length > 0) {
+                      return (
+                        <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                          <div className="flex items-center gap-1 mb-2">
+                            <span className="text-xs font-semibold text-yellow-900 dark:text-yellow-100">
+                              ⭐ Recommended Presets
+                            </span>
+                            <span className="text-xs text-yellow-600 dark:text-yellow-400">
+                              (based on context)
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {recommendedPresets.map((recommended) => (
+                              <button
+                                key={recommended.id}
+                                onClick={() => applyPreset(idx, recommended)}
+                                className="px-2 py-1 text-xs bg-white dark:bg-neutral-800 border border-yellow-300 dark:border-yellow-700 rounded hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors"
+                                title={recommended.reasons.join(', ')}
+                              >
+                                {recommended.scope === 'global' ? '🌍 ' : '🗺️ '}
+                                {recommended.name}
+                                <span className="ml-1 text-yellow-600 dark:text-yellow-400 font-semibold">
+                                  {recommended.score}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {/* Preset Palette */}
                   {availablePresets.length > 0 && (
                     <div className="p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-semibold text-blue-900 dark:text-blue-100">
-                          Quick Apply Presets
+                          All Presets
                         </span>
                         <Badge color="blue" className="text-[10px]">
                           {availablePresets.length}

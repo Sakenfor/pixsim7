@@ -5,7 +5,13 @@ import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '../lib/api/
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
 import { interactionRegistry } from '../lib/registries';
 import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
-import { getCombinedPresets, applyPresetToSlot, type PresetWithScope } from '../lib/game/interactions/presets';
+import {
+  getCombinedPresets,
+  applyPresetToSlot,
+  getRecommendedPresets,
+  type PresetWithScope,
+  type SuggestionContext,
+} from '../lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -354,6 +360,15 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                   // Get presets for this plugin
                   const pluginPresets = presets.filter(p => p.interactionId === plugin.id);
 
+                  // Phase 8: Get recommended presets based on context
+                  const suggestionContext: SuggestionContext = {
+                    npcRole: selectedSlot.npcRole,
+                    worldTags: (world?.meta as any)?.tags || [],
+                    world: world,
+                    interactionId: plugin.id,
+                  };
+                  const recommendedPresets = getRecommendedPresets(presets, suggestionContext, 30, 3);
+
                   return (
                     <div key={plugin.id} className="mb-3">
                       <label className="flex items-center gap-2 mb-2">
@@ -380,11 +395,48 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                         </span>
                       </label>
 
+                      {/* Phase 8: Recommended Presets */}
+                      {enabled && recommendedPresets.length > 0 && (
+                        <div className="ml-6 mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-xs font-semibold text-blue-900 dark:text-blue-100">
+                              ⭐ Recommended
+                            </span>
+                            <span className="text-xs text-blue-600 dark:text-blue-400">
+                              (based on context)
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {recommendedPresets.map(recommended => (
+                              <button
+                                key={recommended.id}
+                                className="px-2 py-1 text-xs bg-white dark:bg-neutral-800 border border-blue-300 dark:border-blue-700 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                onClick={() => {
+                                  updateSlot(selectedSlot.id, {
+                                    interactions: {
+                                      ...selectedSlot.interactions,
+                                      [plugin.id]: applyPresetToSlot(recommended),
+                                    },
+                                  });
+                                }}
+                                title={recommended.reasons.join(', ')}
+                              >
+                                {recommended.scope === 'global' ? '🌍 ' : '🗺️ '}
+                                {recommended.name}
+                                <span className="ml-1 text-blue-600 dark:text-blue-400 font-semibold">
+                                  {recommended.score}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Preset Selector */}
                       {enabled && pluginPresets.length > 0 && (
                         <div className="ml-6 mb-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded">
                           <label className="block text-xs text-neutral-500 mb-1">
-                            Quick Apply Preset:
+                            All Presets:
                           </label>
                           <div className="flex gap-2">
                             <Select
