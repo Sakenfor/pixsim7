@@ -2,47 +2,57 @@
 
 **Last Updated:** 2025-11-19
 
----
+This document is the **primary entry point for both humans and AI agents**.
 
-# For AI Agents: START HERE
+Use it to:
+- Find the **authoritative docs and code locations** for each subsystem.
+- See how systems relate (backend ↔ game-core ↔ frontend).
+- Discover **dev tools** (App Map, debug panels) for exploring behavior.
 
-**This is the canonical entry point for understanding PixSim7's architecture.**
-
-## Workflow for Agents
-
-1. **Read APP_MAP.md first** (this file) - Get the big picture and locate subsystems
-2. **Follow links to system docs** - Read authoritative specifications for each system
-3. **Check code locations** - Examine implementation details
-4. **Then consult task files** - Use for roadmap/status context only
-
-## What Each Document Type Means
-
-- **APP_MAP.md** = The index/directory - tells you where to find everything
-- **System docs** (`SYSTEM_OVERVIEW.md`, `SOCIAL_METRICS.md`, etc.) = The authoritative specifications - how systems work
-- **Code** = The reality - what actually runs
-- **Task files** (`claude-tasks/*.md`) = Roadmap and status tracking - NOT primary specifications
-
-## Task Files Are NOT Specs
-
-Task files in `claude-tasks/` are:
-- Roadmaps showing planned work and progress
-- Status trackers with phase checklists
-- Implementation notes documenting what was done
-- Context for understanding development history
-
-Task files are NOT:
-- The primary specification for how systems work
-- Authoritative documentation for current implementation
-- The place to look up API contracts or data models
-- Guaranteed to be up-to-date with latest code
-
-**Always read system docs before task files.** Task files complement the docs, they don't replace them.
-
----
+> **For agents:** Before using any `claude-tasks/*.md` file, always start here and then open the referenced system docs. Treat task files as roadmaps/status notes, not the source of truth.
 
 ## Overview
 
 PixSim7 is a plugin-based game/simulation platform with the following major subsystems:
+
+- **Capability Registry**: Manages features, routes, actions, and reactive state. Enables modular feature registration and permission-based access control.
+- **Plugin Ecosystem**: Extensible plugin system supporting multiple plugin kinds (helpers, interactions, node types, gallery tools, world tools, UI plugins, generation providers).
+- **Module System**: Feature modules that register capabilities and initialize subsystems on app startup.
+- **Scene/Quest Editor**: Graph-based visual editor for creating interactive scenes, quests, and narrative flows.
+- **Game Frontends**: Multiple game/simulation UIs including Game2D (2D world exploration), NpcBrainLab (NPC behavior testing), and Simulation Playground (system testing).
+- **Generation System**: AI-powered content generation with pluggable UI providers and prompt engineering tools.
+
+---
+
+## System Index
+
+### 1. Capabilities & Modules
+
+**Purpose:** Centralized registry for app features, routes, actions, and state. Modules register capabilities during app initialization.
+
+**Code Locations:**
+- `frontend/src/lib/capabilities/` - Core capability registry and hooks
+- `frontend/src/modules/` - Feature modules (scene-builder, automation, gallery, etc.)
+- `frontend/src/lib/capabilities/registerCoreFeatures.ts` - Core feature registration
+
+**Key Hooks:**
+- `useFeatures()` - Get all enabled features
+- `useFeatureRoutes(featureId)` - Get routes for a feature
+- `useActions()` - Get all registered actions
+- `useStateValue<T>(id)` - Reactive state access
+- `useCapabilityPermission()` - Permission checking
+
+**Documentation:**
+- [APP_CAPABILITY_REGISTRY.md](./APP_CAPABILITY_REGISTRY.md) - Capability system architecture
+- [CAPABILITY_HOOKS.md](./CAPABILITY_HOOKS.md) - Hook API reference and usage patterns
+- [CAPABILITY_PLUGIN_INTEGRATION.md](./CAPABILITY_PLUGIN_INTEGRATION.md) - Plugin-capability integration
+
+**How It Works:**
+- Modules call `registerCompleteFeature()` to register a feature with its routes, actions, and state
+- Capability store (`useCapabilityStore`) maintains the registry
+- React hooks provide reactive access to capabilities throughout the app
+- Permission system controls feature/action access based on user roles
+
 ---
 
 ### 2. Plugin System
