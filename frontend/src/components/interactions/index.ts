@@ -20,3 +20,6 @@ export type { ChainProgressProps } from './ChainProgress';
 
 export { InteractionSuggestions } from './InteractionSuggestions';
 export type { InteractionSuggestionsProps } from './InteractionSuggestions';
+
+export { MoodIndicator } from './MoodIndicator';
+export type { MoodIndicatorProps } from './MoodIndicator';
