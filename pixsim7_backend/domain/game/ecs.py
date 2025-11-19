@@ -794,3 +794,168 @@ def get_metric_definition(world: Any, metric_id: str) -> Optional[Dict[str, Any]
     registry = get_metric_registry(world)
     category_metrics = registry.get(category, {})
     return category_metrics.get(metric_name)
+
+
+# ===================
+# Migration & Projection Helpers
+# ===================
+
+
+def migrate_relationship_to_components(
+    session: Any, npc_id: int, relationship_data: Dict[str, Any]
+) -> None:
+    """
+    Migrate legacy relationship data to ECS components.
+
+    Reads from session.relationships["npc:{id}"] and writes to
+    components["core"] in the entity state.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+        relationship_data: Legacy relationship dictionary
+
+    Example:
+        rel = session.relationships.get("npc:123", {})
+        migrate_relationship_to_components(session, 123, rel)
+    """
+    # Extract core relationship fields
+    core_component = {
+        "affinity": relationship_data.get("affinity", 50.0),
+        "trust": relationship_data.get("trust", 50.0),
+        "chemistry": relationship_data.get("chemistry", 50.0),
+        "tension": relationship_data.get("tension", 0.0),
+    }
+
+    # Include computed fields if present
+    if "tierId" in relationship_data:
+        core_component["tierId"] = relationship_data["tierId"]
+    if "intimacyLevelId" in relationship_data:
+        core_component["intimacyLevelId"] = relationship_data["intimacyLevelId"]
+
+    # Write to components
+    set_npc_component(session, npc_id, "core", core_component, validate=True)
+
+    logger.debug(f"Migrated relationship data for npc:{npc_id} to core component")
+
+
+def project_components_to_relationship(session: Any, npc_id: int) -> Dict[str, Any]:
+    """
+    Project ECS components to legacy relationship format.
+
+    Reads from components["core"] and returns a dictionary compatible
+    with session.relationships["npc:{id}"].
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+
+    Returns:
+        Relationship dictionary in legacy format
+
+    Example:
+        rel_data = project_components_to_relationship(session, 123)
+        session.relationships[f"npc:{npc_id}"] = rel_data
+    """
+    core = get_npc_component(session, npc_id, "core", default={})
+
+    relationship = {
+        "affinity": core.get("affinity", 50.0),
+        "trust": core.get("trust", 50.0),
+        "chemistry": core.get("chemistry", 50.0),
+        "tension": core.get("tension", 0.0),
+    }
+
+    # Include computed fields if present
+    if "tierId" in core:
+        relationship["tierId"] = core["tierId"]
+    if "intimacyLevelId" in core:
+        relationship["intimacyLevelId"] = core["intimacyLevelId"]
+
+    # Add metadata to indicate this is a projection
+    relationship["meta"] = {"last_modified_by": "relationship_core_projection"}
+
+    return relationship
+
+
+def sync_relationship_to_components(session: Any, npc_id: int) -> None:
+    """
+    Sync legacy relationship data to components (one-way: relationships → components).
+
+    This is useful during transition period where code may still update
+    session.relationships directly.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+
+    Example:
+        # After legacy code updates relationships
+        sync_relationship_to_components(session, 123)
+    """
+    npc_key = f"npc:{npc_id}"
+    relationships = session.relationships or {}
+
+    if npc_key in relationships:
+        migrate_relationship_to_components(session, npc_id, relationships[npc_key])
+
+
+def sync_components_to_relationship(session: Any, npc_id: int) -> None:
+    """
+    Sync components to legacy relationship data (one-way: components → relationships).
+
+    This keeps session.relationships updated for backward compatibility.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+
+    Example:
+        # After updating components via ECS
+        sync_components_to_relationship(session, 123)
+    """
+    npc_key = f"npc:{npc_id}"
+
+    if session.relationships is None:
+        session.relationships = {}
+
+    session.relationships[npc_key] = project_components_to_relationship(session, npc_id)
+
+
+def ensure_npc_entity_initialized(session: Any, npc_id: int) -> None:
+    """
+    Ensure an NPC entity exists with default core component.
+
+    If the entity doesn't exist yet, initialize it with default values.
+    If legacy relationship data exists, migrate it.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+
+    Example:
+        # Before reading/writing NPC data
+        ensure_npc_entity_initialized(session, 123)
+    """
+    entity = get_npc_entity(session, npc_id)
+
+    # Check if core component exists
+    if "core" not in entity.get("components", {}):
+        # Check if legacy relationship data exists
+        npc_key = f"npc:{npc_id}"
+        relationships = session.relationships or {}
+
+        if npc_key in relationships:
+            # Migrate from legacy
+            migrate_relationship_to_components(session, npc_id, relationships[npc_key])
+            logger.debug(f"Initialized npc:{npc_id} entity from legacy relationship data")
+        else:
+            # Create default core component
+            default_core = {
+                "affinity": 50.0,
+                "trust": 50.0,
+                "chemistry": 50.0,
+                "tension": 0.0,
+            }
+            set_npc_component(session, npc_id, "core", default_core, validate=True)
+            logger.debug(f"Initialized npc:{npc_id} entity with default core component")
