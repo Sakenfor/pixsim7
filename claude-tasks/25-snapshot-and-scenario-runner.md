@@ -43,11 +43,11 @@ What’s missing is a **systematic way to test**:
 
 ## Phase Checklist
 
-- [ ] **Phase 25.1 – Snapshot Format & Capture/Restore APIs**
-- [ ] **Phase 25.2 – Scenario Script Model**
-- [ ] **Phase 25.3 – Headless Runner & Execution Engine**
-- [ ] **Phase 25.4 – Assertion & Reporting Framework**
-- [ ] **Phase 25.5 – Example Scenarios & CI Hook**
+- [x] **Phase 25.1 – Snapshot Format & Capture/Restore APIs**
+- [x] **Phase 25.2 – Scenario Script Model**
+- [x] **Phase 25.3 – Headless Runner & Execution Engine**
+- [x] **Phase 25.4 – Assertion & Reporting Framework**
+- [x] **Phase 25.5 – Example Scenarios & CI Hook**
 
 ---
 

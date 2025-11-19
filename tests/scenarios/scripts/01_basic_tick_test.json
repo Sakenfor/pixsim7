@@ -1,0 +1,36 @@
+{
+  "id": "basic_tick_test",
+  "name": "Basic Tick Test",
+  "description": "Tests basic world time advancement through ticks",
+  "snapshot": {
+    "world_id": 1,
+    "world_meta": {
+      "relationship_schemas": {},
+      "intimacy_schema": null
+    },
+    "world_time": 0.0,
+    "sessions": []
+  },
+  "steps": [
+    {
+      "kind": "tick",
+      "world_id": 1,
+      "delta_seconds": 3600.0
+    },
+    {
+      "kind": "assert",
+      "assert_id": "time_advanced_1h",
+      "description": "World time should be 3600s (1 hour)"
+    },
+    {
+      "kind": "tick",
+      "world_id": 1,
+      "delta_seconds": 3600.0
+    },
+    {
+      "kind": "assert",
+      "assert_id": "time_advanced_2h",
+      "description": "World time should be 7200s (2 hours)"
+    }
+  ]
+}
