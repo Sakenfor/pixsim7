@@ -1,26 +1,32 @@
 **Task: Social Metrics & NPC Systems Built on Preview API (Multi‑Phase)**
 
 **Context**
-- Task 07 introduces a **relationship preview API** and a generic **metric** abstraction:
-  - Backend: `game_relationship_preview` endpoints and metric evaluators.
-  - Game-core: `previewRelationshipTier`, `previewIntimacyLevel`, and (eventually) a generic metric preview helper.
-- Backend remains the **only authority** for persisted derived values; preview APIs are for “what‑if” editor/tool use.
-- We want to **reuse this metric pattern** for future social/NPC systems, instead of:
+- Task 07 introduces a **relationship preview API** and a generic **metrics** layer:
+  - Backend: `game_relationship_preview` endpoints and metric evaluators in `pixsim7_backend/domain/metrics/`.
+  - Game-core: `previewRelationshipTier`, `previewIntimacyLevel`, and preview API config.
+- The codebase already has several **social/NPC concepts**, but they are not yet unified as metrics:
+  - NPC mood and emotional state (e.g. `frontend/src/plugins/worldTools/moodDebug.tsx`, `BrainShapeExample`).
+  - Mood and intensity tags in action blocks and dialogue:
+    - `pixsim7_backend/domain/narrative/action_blocks/types*.py`
+    - `pixsim7_backend/services/action_blocks/composition_engine.py`
+    - `pixsim7_backend/api/v1/game_dialogue.py` and plugin manifest.
+  - Implicit notions of reputation/faction standing (planned/partial in docs).
+- We want to **reuse the metric+preview pattern** from Task 07 for these systems, instead of:
   - Duplicating computation in TS, or
-  - Designing one-off APIs per derived label.
+  - Designing one‑off APIs per derived label.
 
-This task defines phases for building **new social metrics** (e.g. NPC mood, reputation, social rank) on top of the metric/preview infrastructure created in Task 07.
+This task defines phases for turning NPC mood and reputation into **first‑class metrics** with preview support, wired into existing tools (Mood Debug, dialogue plugins, etc.).
 
-> **For agents:** Do not start this task until Task 07 has implemented the core metric/preview plumbing (at least Phases 2–4). When you add a new metric, wire it into the same registry + preview pattern instead of inventing new one-off logic.
+> **For agents:** Do not start this task until Task 07 has implemented the core relationship metric/preview plumbing (at least Phases 2–4). When you add a new metric, wire it into the same `domain/metrics` registry and game-core preview helpers instead of inventing new one‑off logic.
 
 ### Phase Checklist
 
-- [ ] **Phase 1 – Inventory Existing & Planned Social Concepts**
-- [ ] **Phase 2 – Design Generic `Metric` & `MetricPayload` Types**
+- [ ] **Phase 1 – Inventory Existing NPC Mood & Social Signals**
+- [ ] **Phase 2 – Design Generic Metric Types (Backend + TS)**
 - [ ] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)**
 - [ ] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)**
 - [ ] **Phase 5 – Add Generic Metric Preview Helper in Game-Core**
-- [ ] **Phase 6 – Integrate Social Metrics into Editor & Dev Panels**
+- [ ] **Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)**
 - [ ] **Phase 7 – Define Schema Locations in World/Session Meta**
 - [ ] **Phase 8 – Extend Docs & App Map to Cover Social Metrics**
 - [ ] **Phase 9 – Validation & Cross-Metric Consistency Checks**
@@ -28,83 +34,104 @@ This task defines phases for building **new social metrics** (e.g. NPC mood, rep
 
 ---
 
-### Phase 1 – Inventory Existing & Planned Social Concepts
+### Phase 1 – Inventory Existing NPC Mood & Social Signals
 
 **Goal**  
-Determine which social/NPC systems should use the metric/preview pattern.
+Map out what social data already exists (mood, tags, reputation‑like values) and where it lives.
 
 **Scope**
-- Existing concepts (even if not fully implemented) and near‑term plans.
+- Backend and frontend sources of social state; no new code yet.
 
 **Key Steps**
-1. Scan docs (e.g. `RELATIONSHIPS_AND_ARCS.md`, NPC design docs) and code for:
-   - NPC mood / emotional state.
-   - Reputation / faction standing.
-   - Social rank, trust tiers, or similar.
-2. Produce a short list in this file with:
+1. Backend:
+   - Collect current mood‑related APIs and domains:
+     - Dialogue and action block systems (`game_dialogue`, `action_blocks`, mood tags).
+     - NPC memory / brain state where mood is described in docs/code.
+   - Note how mood is represented today (labels, valence/arousal, tags).
+2. Frontend:
+   - Inspect `frontend/src/plugins/worldTools/moodDebug.tsx` and `BrainShapeExample` to see how mood is visualized.
+   - Note any implicit “banding” (e.g. neutral/happy/angry) already used in UI.
+3. Reputation:
+   - Check docs for any planned or partial reputation/faction systems.
+   - Note what inputs/outputs are envisioned (e.g. numeric 0–100, bands like enemy/neutral/ally).
+4. Record a small table in this task file summarizing:
    - Metric ID (e.g. `npc_mood`, `reputation_band`).
-   - Inputs (axes/flags).
-   - Desired output (label/intensity).
+   - Inputs (fields/axes).
+   - Existing outputs (labels/tags) and where they show up.
 
 ---
 
-### Phase 2 – Design Generic `Metric` & `MetricPayload` Types
+### Phase 2 – Design Generic Metric Types (Backend + TS)
 
 **Goal**  
 Define common types for metrics and payloads in both backend and TS so new metrics follow a consistent pattern.
 
 **Scope**
-- Types/interfaces only; no new logic yet.
+- Types/interfaces only; no new evaluator logic yet.
 
 **Key Steps**
 1. Backend:
    - Extend `pixsim7_backend/domain/metrics/types.py` with:
-     - `MetricId` type (e.g. `Literal` of known metric strings).
-     - Generic payload/result type hints.
+     - `MetricId` type (e.g. `Literal` or Enum for known metric ids like `'relationship_tier'`, `'npc_mood'`, `'reputation_band'`).
+     - Generic payload/result typing helpers.
 2. Game-core / types:
    - Add corresponding TS types in `@pixsim7/types`, e.g.:
      ```ts
      export type MetricId = 'relationship_tier' | 'relationship_intimacy' | 'npc_mood' | 'reputation_band';
-     export interface MetricPreviewRequest<M extends MetricId = MetricId> { /* metric + payload */ }
-     export interface MetricPreviewResponse<M extends MetricId = MetricId> { /* typed result */ }
+
+     export interface MetricPreviewRequest<M extends MetricId = MetricId> {
+       metric: M;
+       worldId: number;
+       payload: Record<string, unknown>;
+     }
+
+     export interface MetricPreviewResponse<M extends MetricId = MetricId> {
+       metric: M;
+       worldId: number;
+       result: Record<string, unknown>;
+     }
      ```
-3. Ensure the existing relationship preview endpoints fit into this metric model cleanly.
+3. Ensure the existing relationship preview endpoints can conceptually fit into this metric model (even if they currently have dedicated routes).
 
 ---
 
 ### Phase 3 – Implement NPC Mood Metric (Backend + Preview)
 
 **Goal**  
-Add a simple NPC mood metric that can be previewed via the metric system.
+Add a simple NPC mood metric that can be evaluated and previewed via the metrics system.
 
 **Scope**
-- Backend evaluator + preview API; no gameplay changes yet.
+- Backend evaluator + optional dedicated preview route; no changes to how dialogue/prompt builders work yet.
 
 **Key Steps**
-1. Define a minimal mood schema (e.g. in `GameWorld.meta.npc_mood_schema`):
-   - Inputs: recent events, relationship deltas, schedule stress, etc. (start simple: maybe just affinity + recent flags).
-   - Outputs: `mood_id` (e.g. `neutral`, `happy`, `annoyed`).
-2. Implement `evaluate_npc_mood` in a new metrics module (e.g. `metrics/npc_mood_evaluators.py`).
-3. Register `npc_mood` metric in the metrics registry.
-4. Add a preview endpoint (or extend existing generic preview endpoint) to support `metric: "npc_mood"`.
+1. Define what the mood metric should output, e.g.:
+   - `mood_id` (e.g. `neutral`, `happy`, `annoyed`, `tense`).
+   - Optional continuous axes (valence/arousal) if they’re already modeled.
+2. Decide schema source:
+   - Prefer `GameWorld.meta.npc_mood_schema` (e.g. thresholds, labels) so worlds can customize.
+3. Implement `evaluate_npc_mood` in `pixsim7_backend/domain/metrics`:
+   - Inputs: world id, NPC id, and any needed state (recent events, relationship deltas, flags).
+   - Implementation for v1 can be simple (e.g. based on a few flags/axes).
+4. Expose a preview endpoint:
+   - Either as a dedicated route (e.g. `/game/npc_mood/preview`) or via a generic metrics preview endpoint extended from Task 07.
 
 ---
 
 ### Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)
 
 **Goal**  
-Add a reputation/faction metric suitable for world‑level or NPC‑pair reputation checks.
+Add a reputation/faction metric suitable for world‑level or NPC‑pair reputation checks, using the same metrics framework.
 
 **Scope**
-- Backend evaluator + preview; reuse world meta for schemas.
+- Backend evaluator + preview; rely on world meta for schemas.
 
 **Key Steps**
-1. Define where reputation config lives (e.g. `GameWorld.meta.reputation_schemas`).
+1. Define where reputation config lives (e.g. `GameWorld.meta.reputation_schemas`), similar to relationship schemas.
 2. Implement `evaluate_reputation_band`:
-   - Inputs: numeric reputation score and/or flags.
+   - Inputs: world id, subject (e.g. player or NPC), target (faction or NPC), and numeric reputation or flags.
    - Outputs: `reputation_band` (e.g. `enemy`, `neutral`, `ally`).
-3. Register `reputation_band` as a metric in the metrics registry.
-4. Extend the preview endpoint to handle `metric: "reputation_band"`.
+3. Register this evaluator in the metrics registry.
+4. Expose a preview path via the metrics preview API.
 
 ---
 
@@ -114,38 +141,38 @@ Add a reputation/faction metric suitable for world‑level or NPC‑pair reputat
 Provide a single TS helper in game-core for previewing any metric, with relationship/mood/reputation wrappers on top.
 
 **Scope**
-- Game-core only.
+- Game-core only; no frontend changes yet.
 
 **Key Steps**
-1. Implement `previewMetric` in `packages/game-core/src/metrics/preview.ts` (or similar):
+1. Implement `previewMetric` in a new module, e.g. `packages/game-core/src/metrics/preview.ts`:
    ```ts
    export async function previewMetric<M extends MetricId>(
-     metric: M,
-     payload: MetricPreviewRequest<M>
-   ): Promise<MetricPreviewResponse<M>> { /* calls backend */ }
+     args: MetricPreviewRequest<M>
+   ): Promise<MetricPreviewResponse<M>> { /* calls backend metrics preview */ }
    ```
-2. Update relationship preview helpers (`previewRelationshipTier`, `previewIntimacyLevel`) to use `previewMetric` internally.
-3. Add new helpers for `npc_mood` and `reputation_band` on top of `previewMetric`:
+2. Update relationship preview helpers (`previewRelationshipTier`, `previewIntimacyLevel`) to use `previewMetric` internally (or keep them as separate routes if necessary but align types).
+3. Add typed wrappers for:
    - `previewNpcMood(...)`
    - `previewReputationBand(...)`.
 
 ---
 
-### Phase 6 – Integrate Social Metrics into Editor & Dev Panels
+### Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)
 
 **Goal**  
-Wire new metrics into relevant editor UIs and dev/debug panels.
+Wire new metrics into existing visual/debug tools and, where appropriate, into dialogue/action block flows.
 
 **Scope**
-- Editor flows only; no runtime gameplay decisions.
+- Editor and dev tools; core gameplay decisions should still rely on backend‑stored values where applicable.
 
 **Key Steps**
-1. Identify where NPC mood and reputation would be most useful in UI:
-   - Npc Brain Lab.
-   - Relationship dashboards.
-   - World/scene editors.
-2. Call `previewNpcMood` / `previewReputationBand` from those tools when inputs change.
-3. Display metric outputs alongside existing labels (e.g. tier/intimacy).
+1. Mood Debug:
+   - Update `frontend/src/plugins/worldTools/moodDebug.tsx` to consume `previewNpcMood` where appropriate (e.g. what mood would result from a hypothetical change).
+   - Keep existing “live” mood display for current state, but add preview affordances if useful.
+2. Dialogue / action blocks:
+   - Identify places where mood tags are chosen or checked (e.g. in composition/selection UI).
+   - Optionally use `previewNpcMood` to show what mood label the system would infer, given current state.
+3. Ensure UI labels map cleanly to metric outputs (`mood_id`, `reputation_band`).
 
 ---
 
@@ -158,29 +185,31 @@ Ensure all social metrics have well‑defined schema locations in world/session 
 - Schema placement and naming; no new UI.
 
 **Key Steps**
-1. Document where each metric’s schema lives:
-   - Relationships: `GameWorld.meta.relationship_schemas`, `intimacy_schema`.
-   - Mood: `GameWorld.meta.npc_mood_schema`.
-   - Reputation: `GameWorld.meta.reputation_schemas`.
-2. Update `RELATIONSHIPS_AND_ARCS.md` (or a new social systems doc) to describe these schemas and how they should be edited.
+1. For each metric (relationship, mood, reputation), document:
+   - Which `GameWorld.meta` keys it reads (e.g. `relationship_schemas`, `intimacy_schema`, `npc_mood_schema`, `reputation_schemas`).
+   - Any session‑level data it depends on (`GameSession.flags`/`relationships`).
+2. Update appropriate docs (likely `RELATIONSHIPS_AND_ARCS.md` or a new `SOCIAL_METRICS.md`) with:
+   - Schema examples.
+   - Guidance on how to edit these safely.
 
 ---
 
 ### Phase 8 – Extend Docs & App Map to Cover Social Metrics
 
 **Goal**  
-Make the new metric system first‑class in docs and the App Map.
+Make the social metrics system first‑class in docs and the App Map.
 
 **Scope**
 - Documentation + App Map UI.
 
 **Key Steps**
-1. Extend `docs/RELATIONSHIPS_AND_ARCS.md` (or a new `SOCIAL_METRICS.md`) to:
-   - Explain the role of each metric.
-   - Show example schemas and preview calls.
+1. Update docs:
+   - Extend `RELATIONSHIPS_AND_ARCS.md` or create `SOCIAL_METRICS.md` to describe:
+     - Relationship, mood, and reputation metrics.
+     - How preview APIs are used (editor vs runtime).
 2. Update `docs/APP_MAP.md` and `06-app-map-and-dev-panel.md` to:
-   - Mention social metrics under “Game & Simulation Systems”.
-   - Optionally add a small pane in the App Map dev panel listing available metrics and where they are used.
+   - Mention metric preview endpoints under “Game & Simulation Systems”.
+   - Optionally surface metrics in the App Map dev panel (e.g. which metrics are registered and where they’re consumed).
 
 ---
 
@@ -190,33 +219,33 @@ Make the new metric system first‑class in docs and the App Map.
 Ensure social metrics don’t contradict each other in obvious ways and behave sensibly across worlds.
 
 **Scope**
-- Validation logic and tests; no UI.
+- Validation logic and tests; no new UI.
 
 **Key Steps**
 1. Write tests that:
-   - Spot‑check metric outputs under different schemas.
-   - Check relationships between metrics (e.g. very high affinity should rarely produce “hostile” reputation).
+   - Spot‑check metric outputs for mood/reputation under various schemas.
+   - Verify relationships between metrics where it matters (e.g. extremely high affinity should rarely yield “hostile” reputation).
 2. Add optional backend validation functions that:
-   - Inspect world meta for contradictory schema definitions.
-   - Emit warnings (in logs or dev tools) when schemas are inconsistent.
+   - Inspect world meta for inconsistent schema definitions.
+   - Emit warnings when schemas conflict (e.g. a reputation band that contradicts relationship tiers).
 
 ---
 
 ### Phase 10 – Long-Term Extensibility & Guardrails
 
 **Goal**  
-Set guidelines so new social metrics are added in a disciplined way via the metric system, not as ad‑hoc logic.
+Establish patterns so new social metrics are added in a structured way via the metric system, not as ad‑hoc logic scattered around.
 
 **Scope**
 - Process and guardrails; minimal code.
 
 **Key Steps**
-1. Document a short “Adding a new metric” checklist:
-   - Add schema.
-   - Implement backend evaluator.
-   - Register in metrics registry.
-   - Add preview helper in game-core.
-   - Wire into docs and, optionally, App Map.
-2. Add linting/CI checks where feasible (e.g. ensuring new metric IDs are declared in both backend and types).
-3. Cross‑link this task from `07-relationship-preview-api-and-metrics.md` so future agents discover it when extending the system.
+1. Document a short “Adding a new social metric” checklist:
+   - Define schema in world meta.
+   - Implement backend evaluator under `domain/metrics`.
+   - Register it with the metrics registry and, if needed, preview endpoints.
+   - Add a TS type and game-core preview helper.
+   - Wire into docs and dev tools.
+2. Add basic checks in CI or linting (where feasible) so new metric IDs are declared consistently in backend and TS types.
+3. Cross‑link this task from Tasks 07 and 09 so future work on relationships/intimacy/generation keeps the metrics system in mind.
 
