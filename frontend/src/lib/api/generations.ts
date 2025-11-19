@@ -142,6 +142,17 @@ export async function cancelGeneration(id: number): Promise<GenerationResponse> 
 }
 
 /**
+ * Retry a failed generation
+ *
+ * Creates a new generation with the same parameters.
+ * Useful for content filter rejections or temporary errors.
+ */
+export async function retryGeneration(id: number): Promise<GenerationResponse> {
+  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry`);
+  return res.data;
+}
+
+/**
  * Validate a generation config without creating it
  */
 export async function validateGenerationConfig(

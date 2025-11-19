@@ -1,7 +1,7 @@
 """
 API v1 routers
 """
-from . import auth, users, assets, admin, services, accounts, automation, prompts, generations
+from . import auth, users, assets, admin, services, accounts, automation, prompts, generations, websocket
 
 __all__ = [
 	"auth",
@@ -13,4 +13,5 @@ __all__ = [
 	"accounts",
 	"automation",
 	"prompts",
+	"websocket",
 ]

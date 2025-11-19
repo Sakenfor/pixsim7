@@ -826,6 +826,130 @@ class GenerationService:
         await self.db.refresh(generation)
         return generation
 
+    async def retry_generation(
+        self,
+        generation_id: int,
+        user: User,
+        max_retries: int = 3
+    ) -> Generation:
+        """
+        Retry a failed generation
+
+        Creates a new generation with the same parameters as the failed one.
+        Useful for generations that failed due to content filtering or temporary provider issues.
+
+        Args:
+            generation_id: Failed generation ID to retry
+            user: User requesting retry
+            max_retries: Maximum retry attempts allowed (default: 3)
+
+        Returns:
+            New generation created for retry
+
+        Raises:
+            ResourceNotFoundError: Generation not found
+            InvalidOperationError: Cannot retry (wrong user, not failed, or max retries exceeded)
+        """
+        # Get original generation
+        original = await self.get_generation(generation_id)
+
+        # Check authorization
+        if original.user_id != user.id and not user.is_admin():
+            raise InvalidOperationError("Cannot retry other users' generations")
+
+        # Check if can be retried
+        if original.status not in {JobStatus.FAILED, JobStatus.CANCELLED}:
+            raise InvalidOperationError(f"Can only retry failed or cancelled generations, not {original.status.value}")
+
+        # Check retry count
+        if original.retry_count >= max_retries:
+            raise InvalidOperationError(f"Maximum retry attempts ({max_retries}) exceeded")
+
+        # Create new generation with same params
+        logger.info(f"Retrying generation {generation_id} (attempt {original.retry_count + 1}/{max_retries})")
+
+        new_generation = await self.create_generation(
+            user=user,
+            operation_type=original.operation_type,
+            provider_id=original.provider_id,
+            params=original.raw_params,  # Use original raw params
+            workspace_id=original.workspace_id,
+            name=f"Retry: {original.name}" if original.name else None,
+            description=original.description,
+            priority=original.priority,
+            parent_generation_id=generation_id,  # Link to original
+            prompt_version_id=original.prompt_version_id,
+        )
+
+        # Copy retry count from parent and increment
+        new_generation.retry_count = original.retry_count + 1
+        await self.db.commit()
+        await self.db.refresh(new_generation)
+
+        logger.info(f"Created retry generation {new_generation.id} for {generation_id}")
+
+        return new_generation
+
+    async def should_auto_retry(self, generation: Generation) -> bool:
+        """
+        Determine if a failed generation should be automatically retried
+
+        Auto-retry is triggered for:
+        - Content filtering rejections (romantic/erotic content that might pass on retry)
+        - Provider temporary errors
+        - Not for: validation errors, quota errors, permanent failures
+
+        Args:
+            generation: Failed generation to check
+
+        Returns:
+            True if should auto-retry
+        """
+        if generation.status != JobStatus.FAILED:
+            return False
+
+        if not generation.error_message:
+            return False
+
+        # Check retry count against configured max
+        from pixsim7_backend.shared.config import settings
+        max_retries = settings.auto_retry_max_attempts
+
+        if generation.retry_count >= max_retries:
+            return False
+
+        error_msg = generation.error_message.lower()
+
+        # Content filtering indicators
+        content_filter_keywords = [
+            "content filter",
+            "content policy",
+            "inappropriate content",
+            "safety filter",
+            "moderation",
+            "nsfw",
+            "adult content",
+            "explicit content",
+        ]
+
+        # Temporary error indicators
+        temporary_error_keywords = [
+            "timeout",
+            "rate limit",
+            "temporarily unavailable",
+            "try again",
+            "service unavailable",
+            "server error",
+        ]
+
+        # Check for content filter or temporary errors
+        for keyword in content_filter_keywords + temporary_error_keywords:
+            if keyword in error_msg:
+                logger.info(f"Generation {generation.id} should auto-retry: '{keyword}' detected in error")
+                return True
+
+        return False
+
     # ===== PROMPT VERSIONING INTEGRATION =====
 
     async def _increment_prompt_metrics(self, prompt_version_id: UUID) -> None:
