@@ -2,154 +2,205 @@
 
 **Context**
 - Game2D already uses `WorldToolPlugin` + `WorldToolsPanel` to show tools (Relationships, Quest Log, Inventory, World Info, Mood Debug, etc.).
-- Placement is still effectively “one cluster” controlled in `Game2D.tsx`.
-- Designers should be able to shape the HUD (which tools, where, and how many) per‑world without touching code.
+- Initial placement lived as a single “cluster” controlled in `Game2D.tsx`.
+- Designers should be able to shape the HUD (which tools, where, and how many) **per‑world** without touching code.
 
-Below are 5 incremental phases for evolving the HUD system. Each phase should be independently shippable and realistic.
+Below are 10 phases for evolving the HUD system over time.
+
+> **For agents:** When you complete or extend a phase, update the checklist and add a short note (files/PR/date). Treat phases 1–5 as “shipped v1”; phases 6–10 are forward‑looking.
+
+### Phase Checklist
+
+- [x] **Phase 1 – Minimal Per‑World HUD Config**
+- [x] **Phase 2 – Regions & Basic Layout**
+- [x] **Phase 3 – HUD Layout Editor**
+- [x] **Phase 4 – Visibility Conditions (View Mode / Capability / Flags)**
+- [x] **Phase 5 – Local HUD Presets**
+- [ ] **Phase 6 – Player Profiles & View‑Mode‑Specific Layouts**
+- [ ] **Phase 7 – Shared / Server‑Backed HUD Presets**
+- [ ] **Phase 8 – HUD Usage Analytics**
+- [ ] **Phase 9 – Layout Validation & Recommendations**
+- [ ] **Phase 10 – Responsive / Device‑Aware HUD Layouts**
 
 ---
 
 ### Phase 1 – Minimal Per‑World HUD Config
 
-**Goal**
-Introduce a very small per‑world HUD config that controls which tools are visible, without changing the overall layout.
+**Goal**  
+Introduce a per‑world HUD config that controls which tools are visible, without changing the overall layout.
 
 **Scope**
-- Add a list of enabled world tools per world, stored in `GameWorld.meta`.
-- Game2D filters `worldToolRegistry.getVisible(context)` using this list.
-- No new UI editor yet; editing can be done via JSON or a simple debug panel.
+- Add HUD config under `GameWorld.meta`.
+- Filter `worldToolRegistry.getVisible(context)` based on this config.
 
 **Key Steps**
-1. Add types (frontend‑only) for HUD config, e.g.:
-   ```ts
-   interface HudToolConfig {
-     toolId: string;
-     enabled: boolean;
-   }
-
-   interface WorldUiConfig {
-     hudTools?: HudToolConfig[];
-   }
-   ```
-2. Add small helpers to read/write `WorldUiConfig` from `GameWorldDetail.meta`.
-3. In `Game2D.tsx`, after building `WorldToolContext`:
-   - Compute `enabledToolIds` from `WorldUiConfig` (fallback: all tools enabled if no config).
-   - Filter `worldToolRegistry.getVisible(context)` by `enabledToolIds` before passing to `WorldToolsPanel`.
-4. Keep default behavior unchanged when no HUD config is present.
+1. Define HUD config types (now in `WorldUiConfig` in `@pixsim7/types`).
+2. Add helpers in `@pixsim7/game-core/world/worldUiConfig.ts` to read/write `WorldUiConfig` from `GameWorldDetail.meta`.
+3. In Game2D, after building `WorldToolContext`, compute `enabledToolIds` from config and filter `worldToolRegistry.getVisible(context)` before passing tools to the HUD layout.
+4. Preserve default behavior when no HUD config is present (all tools enabled).
 
 ---
 
-### Phase 2 – Simple Regions (Left/Right/Bottom)
+### Phase 2 – Regions & Basic Layout
 
-**Goal**
-Allow placing tools into a few coarse regions (e.g. left column, right column, bottom panel) while still keeping implementation simple.
+**Goal**  
+Allow placing tools into coarse regions (top/left/right/bottom/overlay) while keeping implementation simple.
 
 **Scope**
-- Extend HUD config with a `region` and `order` field.
-- Add a small layout helper in Game2D to group tools by region.
-- Use multiple `WorldToolsPanel` instances or a new layout component.
+- Extend HUD config with region + order.
+- Introduce a layout helper and regional HUD component.
 
 **Key Steps**
-1. Extend types:
-   ```ts
-   type HudRegion = 'left' | 'right' | 'bottom';
-
-   interface HudToolPlacement {
-     toolId: string;
-     region: HudRegion;
-     order?: number;
-   }
-
-   interface WorldUiConfig {
-     hudPlacements?: HudToolPlacement[];
-   }
-   ```
-2. Write a helper that, given:
+1. Define `HudRegion` and `HudToolPlacement` (see `frontend/src/lib/worldTools/types.ts`).
+2. Add helpers that, given:
    - `visibleTools` from `worldToolRegistry.getVisible(context)`,
    - `hudPlacements` from config,
-   returns three arrays: `leftTools`, `rightTools`, `bottomTools`, sorted by `order`.
-3. In `Game2D.tsx`, render up to three `WorldToolsPanel` instances (or a simple layout component) in appropriate regions of the UI.
-4. If there’s no placement info, fall back to the previous “single cluster” behavior.
+   return tools grouped and sorted by region.
+3. Implement `RegionalHudLayout` to render separate `WorldToolsPanel` instances (or wrappers) for each region.
+4. Fall back to the legacy “single cluster” when no placement info exists.
 
 ---
 
-### Phase 3 – Basic HUD Layout Editor
+### Phase 3 – HUD Layout Editor
 
-**Goal**
-Provide a simple in‑app editor so designers can choose which tools appear and in which region, per world.
+**Goal**  
+Provide an in‑app editor so designers can choose which tools appear and in which region, per world.
 
 **Scope**
-- Editor just manipulates `HudToolPlacement` data; no conditions or presets yet.
-- Integrated into an existing world‑editing surface (e.g. GameWorld route or floating panel).
+- Editor manipulates `HudToolPlacement` data and persists to world meta.
 
 **Key Steps**
-1. Create `frontend/src/components/game/HudLayoutEditor.tsx`:
-   - Props:
-     - `world: GameWorldDetail`
-     - `onWorldUpdate(world: GameWorldDetail): void`
-   - Behaviour:
-     - Reads current `WorldUiConfig` from `world.meta`.
-     - Lists `worldToolRegistry.getAll()` as available tools.
-     - For each tool, allow:
-       - Selecting region from a `<select>` (`left/right/bottom/hidden`).
-       - Setting order via a small number input or simple up/down buttons.
-     - On save, writes config back to world via existing world meta save API.
-2. Wire the editor into an appropriate place (e.g. “HUD Layout” panel on the `GameWorld` route or a floating panel in workspace).
-3. Confirm that worlds without any HUD data continue to work as before.
+1. Implement `frontend/src/components/game/HudLayoutEditor.tsx`:
+   - Props: `worldDetail`, `onSave`, `onClose`.
+   - Reads HUD configuration from `worldDetail.meta`.
+   - Lists `worldToolRegistry.getAll()` as available tools.
+   - Lets designers:
+     - Choose region (`top/bottom/left/right/overlay/hidden`).
+     - Set order (`order` field).
+2. Wire the editor into Game2D HUD customization (e.g. HUD customization button/panel).
+3. Confirm worlds without HUD data continue to work with sensible defaults.
 
 ---
 
-### Phase 4 – Light Conditions (View Mode / Capability)
+### Phase 4 – Visibility Conditions (View Mode / Capability / Flags)
 
-**Goal**
-Allow simple conditions on HUD placements based on view mode or capability flags, without building a full rule engine.
+**Goal**  
+Allow simple conditions on HUD placements based on view mode, capabilities, time, flags, etc., without building a full rule engine.
 
 **Scope**
-- Add optional conditions like “only show in debug view mode” or “only if a feature is enabled”.
-- Keep condition types minimal and evaluate them in a small helper.
+- Optional visibility conditions on placements.
+- Small evaluation helper.
 
 **Key Steps**
-1. Extend `HudToolPlacement` with optional condition fields, e.g.:
-   ```ts
-   interface HudToolPlacement {
-     toolId: string;
-     region: HudRegion;
-     order?: number;
-     onlyInViewMode?: 'cinematic' | 'hud-heavy' | 'debug';
-     requiresFeatureId?: string; // capability feature id, e.g. 'game'
-   }
-   ```
+1. Extend `HudToolPlacement` with a `visibleWhen` object (already present) that can represent:
+   - View‑mode gating.
+   - Capability presence.
+   - Session flags, location, time slots, quest states, relationships.
 2. Add a helper that filters placements by:
-   - Current `viewMode` for the world (from `WorldUiConfig` or a default).
-   - Current capabilities (from the capability registry feature list).
-3. Extend `HudLayoutEditor` minimally to let designers pick `onlyInViewMode` and `requiresFeatureId` using dropdowns.
+   - Current `viewMode` (`WorldUiConfig.viewMode`).
+   - Current capabilities (from the capability registry).
+   - Current world/session state (flags, time, location).
+3. Extend `HudLayoutEditor` so designers can choose a `visibleWhen.kind` and configure basic parameters (e.g. flag id, capability id).
 
 ---
 
-### Phase 5 – Local HUD Presets (Optional)
+### Phase 5 – Local HUD Presets
 
-**Goal**
-Make it easier to reuse HUD layouts across worlds by introducing simple presets stored on the frontend (no backend changes).
+**Goal**  
+Make it easy to reuse HUD layouts across worlds by introducing presets stored on the frontend.
 
 **Scope**
-- Presets are named collections of `HudToolPlacement` saved in localStorage or a small JSON file.
-- Worlds can “copy from preset” but still store their own config in `world.meta`.
+- Presets are named collections of `HudToolPlacement`.
+- Stored in localStorage; no backend requirement for v1.
 
 **Key Steps**
-1. Define a `HudLayoutPreset` type in a small helper module:
-   ```ts
-   interface HudLayoutPreset {
-     id: string;
-     name: string;
-     description?: string;
-     placements: HudToolPlacement[];
-   }
-   ```
-2. Add a preset store (e.g. `hudLayoutPresetsStore.ts`) that:
-   - Loads/saves presets from localStorage.
-   - Provides `getPresets()`, `savePreset(preset)`, `deletePreset(id)`.
-3. Extend `HudLayoutEditor` to:
+1. Define `HudLayoutPreset` and a small preset store (see `frontend/src/lib/worldTools/hudPresets.ts`).
+2. Extend `HudLayoutEditor` to:
    - “Save current layout as preset” (name + optional description).
-   - “Apply preset” which overwrites the world’s HUD placements with the preset (world still persists its own copy).
-4. Keep everything opt‑in and local; avoid backend changes and keep the logic simple.
+   - “Apply preset” to overwrite the world’s HUD placements.
+3. Keep everything opt‑in and local; avoid backend changes in this phase.
+
+---
+
+### Phase 6 – Player Profiles & View‑Mode‑Specific Layouts
+
+**Goal**  
+Allow different HUD layouts per player profile and/or view mode (e.g. cinematic vs hud‑heavy) using existing placements and presets.
+
+**Scope**
+- Layer “profile” on top of `WorldUiConfig` + presets.
+
+**Key Steps**
+1. Introduce a notion of HUD profile (e.g. `profileId`) stored in user preferences or session flags.
+2. Extend HUD resolution to consider `(worldId, viewMode, profileId)` when selecting placements/presets.
+3. In `HudLayoutEditor`, add a profile selector and allow editing layout per profile.
+4. Provide a small toggle in Game2D to switch profiles and verify layout changes.
+
+---
+
+### Phase 7 – Shared / Server‑Backed HUD Presets
+
+**Goal**  
+Allow teams to share HUD presets across machines by syncing them to backend or `GameWorld.meta`, instead of only localStorage.
+
+**Scope**
+- Keep local presets; add optional world/global shared presets.
+
+**Key Steps**
+1. Define a serializable HUD preset shape suitable for `GameWorld.meta` or a dedicated endpoint.
+2. Add helpers to merge local presets with world‑scoped presets.
+3. Extend `HudLayoutEditor`:
+   - Mark presets as local vs shared.
+   - Provide actions like “publish to world” / “copy from world”.
+4. If needed, define a minimal backend API for global presets under a `game_hud` namespace.
+
+---
+
+### Phase 8 – HUD Usage Analytics
+
+**Goal**  
+Help designers understand which HUD tools are actually used or opened during playtests, to inform layout decisions.
+
+**Scope**
+- Dev‑only usage metrics (local or lightweight backend aggregation).
+
+**Key Steps**
+1. Instrument world tool panels to record when they are opened/closed and how long they remain visible.
+2. Store usage counts per `toolId` (and optionally per world) in localStorage or a dev‑only backend.
+3. Add a “HUD Analytics” dev panel that:
+   - Lists tools by usage frequency.
+   - Shows distribution by region/view mode.
+4. Optionally surface hints in `HudLayoutEditor` (e.g. low‑usage tools flagged subtly).
+
+---
+
+### Phase 9 – Layout Validation & Recommendations
+
+**Goal**  
+Automatically flag problematic HUD layouts (e.g. too many tools in one region) and suggest simple fixes.
+
+**Scope**
+- Static validation on placements and conditions.
+
+**Key Steps**
+1. Define validation rules (e.g. max tools per region, conflicting visibility conditions).
+2. Add a validator that runs on the current layout and returns warnings + recommendations.
+3. Show warnings inline in `HudLayoutEditor` (e.g. under the table or in a sidebar).
+4. Provide “auto‑fix” options where safe (e.g. normalize order, move rarely used tools to overlay).
+
+---
+
+### Phase 10 – Responsive / Device‑Aware HUD Layouts
+
+**Goal**  
+Adapt HUD layouts for different display modes (desktop vs narrow/mobile) and resolutions without duplicating all placement data.
+
+**Scope**
+- Extend layout resolution to consider viewport size and device type.
+
+**Key Steps**
+1. Add optional responsive hints to placements (e.g. `hideOnNarrow`, `collapseToOverlay`).
+2. Update `RegionalHudLayout` to read viewport metrics and apply responsive rules when rendering.
+3. Ensure existing configs behave the same on desktop; treat responsive behavior as opt‑in.
+4. Document responsive conventions in `docs/HUD_LAYOUT_PHASES_6-10_IMPLEMENTATION_GUIDE.md`.
 

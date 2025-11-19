@@ -1,137 +1,222 @@
 **Task: Interaction Presets & Designer-Friendly Palettes (Multi‑Phase)**
 
 **Context**
-- NPC interactions are plugin-based (`InteractionPlugin` via `interactionRegistry`) and configured in `NpcSlotEditor` and hotspot definitions.
-- Designers currently tweak low-level config fields (numbers, flags) for each slot/hotspot.
-- We want higher-level “interaction presets” that bundle plugin config into reusable, named configurations.
+- NPC interactions are plugin‑based (`InteractionPlugin` via `interactionRegistry`) and configured in `NpcSlotEditor` and hotspot definitions.
+- Designers currently tweak low‑level config fields (numbers, flags) for each slot/hotspot.
+- We want higher‑level “interaction presets” that bundle plugin config into reusable, named configurations.
 
-Below are 5 incremental phases for evolving the interaction preset system.
+Below are 10 phases for evolving the interaction preset system.
+
+> **For agents:** When you add new preset features or change how presets are stored, update the checklist below with a brief note (files/PR/date) so others can see what’s done.
+
+### Phase Checklist
+
+- [x] **Phase 1 – Basic Preset Type & Apply in NpcSlotEditor**
+- [x] **Phase 2 – Preset Editor Component**
+- [x] **Phase 3 – Hotspot Editor Integration**
+- [x] **Phase 4 – Per‑World Presets & Categorization**
+- [x] **Phase 5 – Usage Summary (Dev‑Only)**
+- [ ] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries**
+- [ ] **Phase 7 – Outcome‑Aware Presets & Success Metrics**
+- [ ] **Phase 8 – Context‑Aware Preset Suggestions**
+- [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
+- [ ] **Phase 10 – Preset Playlists & Sequenced Interactions**
 
 ---
 
 ### Phase 1 – Basic Preset Type & Apply in NpcSlotEditor
 
-**Goal**
+**Goal**  
 Let designers define simple named presets and apply them to NPC slots in `NpcSlotEditor`, without any dedicated editor UI yet.
 
 **Scope**
-- Presets are defined as data structures in a small TS module.
-- NpcSlotEditor can apply a preset to a slot, populating interaction config.
+- Presets are defined as data structures in a TS module.
+- `NpcSlotEditor` can apply a preset to a slot, populating interaction config.
 
 **Key Steps**
-1. Define `InteractionPreset` in a new module, e.g. `frontend/src/lib/game/interactions/presets.ts`:
-   ```ts
-   export interface InteractionPreset {
-     id: string;                  // 'flirt_friendly'
-     name: string;                // 'Flirt (Friendly)'
-     interactionId: string;       // plugin id, e.g. 'persuade'
-     config: Record<string, any>; // plugin-specific config
-   }
-   ```
-2. Add helpers to load/save presets:
-   - For now, localStorage or a simple in-memory list is fine.
-   - Later, this can move to `GameWorld.meta` or a backend endpoint.
-3. In `NpcSlotEditor`:
-   - Load available presets at component init.
-   - For the selected slot, add a small dropdown:
-     - Shows `InteractionPreset.name` grouped by `interactionId`.
-     - “Apply preset” button sets:
-       ```ts
-       slot.interactions[preset.interactionId] = {
-         enabled: true,
-         ...preset.config,
-       };
-       ```
-   - Allow designers to further tweak config via existing `InteractionConfigForm` after applying.
-
----
-
-### Phase 2 – Simple Preset Editor Component
-
-**Goal**
-Provide a basic UI to create, edit, and delete presets, reusing existing interaction config forms.
-
-**Scope**
-- Editor is a standalone component that works with the preset store.
-- It’s enough to edit presets for the current world or globally; we don’t need complex scoping yet.
-
-**Key Steps**
-1. Implement `frontend/src/components/game/InteractionPresetEditor.tsx`:
-   - Shows list of presets.
-   - “New preset” flow:
-     - Pick `interactionId` from `interactionRegistry` (simple select).
-     - Use `InteractionConfigForm` to edit `config`.
-     - Enter `name` and `id` (or auto-generate id from name).
-   - “Edit” and “Delete” actions for existing presets.
-2. Wire the editor into an appropriate place:
-   - e.g. as a floating panel in workspace or a route under a dev/settings section.
-3. Ensure that saving presets updates the store used by `NpcSlotEditor` (either via shared store or re-fetch).
-
----
-
-### Phase 3 – Hotspot Editor Integration
-
-**Goal**
-Let designers apply the same presets when configuring interactions on hotspots, for consistency with NPC slots.
-
-**Scope**
-- Reuse the same preset data and UI patterns.
-- Only show presets relevant to the current interaction type.
-
-**Key Steps**
-1. Identify hotspot editing component(s) (e.g. 2D location editor/hotspot editor).
-2. For each hotspot interaction that uses the plugin system:
-   - Load presets.
-   - Filter presets whose `interactionId` matches the hotspot’s interaction plugin.
-   - Provide the same “Apply preset” button to populate config.
-3. Keep the UI minimal; the key is reuse of the presets, not an elaborate editor.
-
----
-
-### Phase 4 – Per‑World Presets & Basic Categorization
-
-**Goal**
-Support both global presets and per‑world presets, with simple categories/tags to help organize them.
-
-**Scope**
-- Extend `InteractionPreset` with optional categorization fields.
-- Allow separate sets for “global defaults” and “world overrides”.
-
-**Key Steps**
-1. Extend type:
+1. Define `InteractionPreset` (now in the interaction preset helpers):
    ```ts
    export interface InteractionPreset {
      id: string;
      name: string;
      interactionId: string;
      config: Record<string, any>;
-     category?: string; // 'romance', 'trade', 'combat'
-     tags?: string[];
    }
    ```
+2. Add helpers to load/save presets:
+   - For v1, localStorage or a simple in‑memory list is fine.
+3. In `NpcSlotEditor`:
+   - Load available presets at component init.
+   - Provide a dropdown listing presets (grouped by `interactionId`).
+   - “Apply preset” sets:
+     ```ts
+     slot.interactions[preset.interactionId] = {
+       enabled: true,
+       ...preset.config,
+     };
+     ```
+   - Allow further tweaking via existing `InteractionConfigForm`.
+
+---
+
+### Phase 2 – Preset Editor Component
+
+**Goal**  
+Provide a basic UI to create, edit, and delete presets, reusing existing interaction config forms.
+
+**Scope**
+- Editor works with the preset store.
+- Enough to edit presets for the current world or globally; no complex scoping yet.
+
+**Key Steps**
+1. Implement `frontend/src/components/game/InteractionPresetEditor.tsx`:
+   - Shows list of presets.
+   - “New preset” flow:
+     - Pick `interactionId` from `interactionRegistry`.
+     - Use `InteractionConfigForm` to edit `config`.
+     - Enter `name` and `id` (or auto‑generate id from name).
+   - “Edit” and “Delete” actions for existing presets.
+2. Wire the editor:
+   - E.g. as a panel on `GameWorld` route or a dev/settings route.
+3. Ensure saving presets updates the store used by `NpcSlotEditor` (shared store or re‑fetch).
+
+---
+
+### Phase 3 – Hotspot Editor Integration
+
+**Goal**  
+Let designers apply the same presets when configuring interactions on hotspots, for consistency with NPC slots.
+
+**Scope**
+- Reuse preset data and UI patterns.
+- Only show presets relevant to the current interaction type.
+
+**Key Steps**
+1. Identify hotspot editing components (e.g. 2D location editor / `HotspotEditor`).
+2. For each interaction that uses the plugin system:
+   - Load presets.
+   - Filter presets whose `interactionId` matches the hotspot’s plugin.
+   - Provide an “Apply preset” action to populate config.
+3. Keep UI minimal; focus on reuse of presets.
+
+---
+
+### Phase 4 – Per‑World Presets & Categorization
+
+**Goal**  
+Support both global presets and per‑world presets, with simple categories/tags to help organize them.
+
+**Scope**
+- Extend `InteractionPreset` with categorization fields.
+- Separate sets for global defaults vs world overrides.
+
+**Key Steps**
+1. Extend type with optional `category` and `tags`.
 2. Update the preset store to support:
-   - Global presets (e.g. stored in localStorage under one key).
-   - World-specific presets (e.g. stored in `GameWorld.meta.interactionPresets`).
-3. In editors (NpcSlotEditor, hotspot editor):
-   - Show combined list (global + world) with a badge indicating scope.
+   - Global presets (localStorage key).
+   - World‑specific presets (e.g. `GameWorld.meta.interactionPresets`).
+3. In editors:
+   - Show combined list (global + world) with scope badges.
    - Optionally allow “promote to global” or “copy to world” actions.
 
 ---
 
-### Phase 5 – Optional Usage Summary (Dev‑Only)
+### Phase 5 – Usage Summary (Dev‑Only)
 
-**Goal**
+**Goal**  
 Give designers a rough sense of which presets are actually used during playtests, without building a full analytics system.
 
 **Scope**
-- Dev‑only counters for “preset used N times”.
+- Dev‑only counters like “preset used N times”.
 - A simple dev panel to view counts.
 
 **Key Steps**
-1. When applying a preset to a slot/hotspot, attach its `presetId` in a small metadata field on the interaction config (e.g. `config.__presetId`).
+1. When applying a preset to a slot/hotspot, attach its `presetId` in metadata on the interaction config (e.g. `config.__presetId`).
 2. In the interaction executor, when an interaction runs:
-   - If `config.__presetId` exists, increment an in-memory/localStorage counter for that preset ID.
-3. Add a minimal dev component (e.g. `InteractionPresetUsagePanel`) that:
-   - Lists presets with their usage counts.
-   - Is only reachable via a dev route or flag.
+   - If `config.__presetId` exists, increment a counter for that preset ID (localStorage or in‑memory).
+3. Add `InteractionPresetUsagePanel` that:
+   - Lists presets with usage counts.
+   - Is reachable via a dev route or flag only.
+
+---
+
+### Phase 6 – Cross‑World / Cross‑Project Preset Libraries
+
+**Goal**  
+Allow teams to share interaction presets across worlds and projects via import/export and simple library management.
+
+**Scope**
+- Keep existing global/per‑world separation; add library import/export.
+
+**Key Steps**
+1. Define a stable JSON format for `InteractionPreset` collections (with optional scope metadata).
+2. Add helpers to export selected presets to a `.json` file and import them into another project.
+3. Extend `InteractionPresetEditor` with “Export” / “Import” controls and basic validation.
+4. Document how to handle ID collisions (rename or generate new IDs).
+
+---
+
+### Phase 7 – Outcome‑Aware Presets & Success Metrics
+
+**Goal**  
+Give designers a sense of how different presets perform (e.g. success/fail rates) without heavy analytics.
+
+**Scope**
+- Light, dev‑only metrics tied to interaction outcomes (success/failure/neutral).
+
+**Key Steps**
+1. Define a small outcome schema for interactions that can be attached to preset executions.
+2. Extend the interaction executor to record outcome counts per `presetId` alongside usage counts.
+3. Enhance `InteractionPresetUsagePanel` to show both usage counts and outcome ratios (e.g. success %).
+4. Provide filters to find underperforming or overused presets.
+
+---
+
+### Phase 8 – Context‑Aware Preset Suggestions
+
+**Goal**  
+Suggest relevant presets based on world context, NPC roles, or past usage, reducing decision load for designers.
+
+**Scope**
+- Heuristic, local suggestions; no external model required.
+
+**Key Steps**
+1. Add metadata to presets (recommended NPC roles, world tags, situation tags like “intro”, “intense”).
+2. In `NpcSlotEditor` / hotspot editors, sort or highlight presets based on:
+   - NPC role or tags.
+   - Location/world tags.
+   - Recent usage in the current world.
+3. Optionally add a “Recommended” section at the top of preset lists.
+
+---
+
+### Phase 9 – Preset Conflict & Compatibility Checks
+
+**Goal**  
+Detect when multiple presets applied to the same slot/hotspot might conflict (e.g. contradictory flags or timing).
+
+**Scope**
+- Static analysis of preset configs for obvious conflicts.
+
+**Key Steps**
+1. Define a small set of conflict rules (e.g. two presets both enabling mutually exclusive modes).
+2. Add a validation helper that inspects active presets for a slot/hotspot and returns warnings.
+3. Surface warnings in editors (inline badges or a summary panel).
+4. Provide suggestions where possible (e.g. “remove X” / “adjust Y”).
+
+---
+
+### Phase 10 – Preset Playlists & Sequenced Interactions
+
+**Goal**  
+Allow designers to define small sequences of presets (playlists) that run over time or in response to state changes.
+
+**Scope**
+- Build on existing presets; do not replace them.
+
+**Key Steps**
+1. Define a `PresetPlaylist` type that orders multiple `InteractionPreset` IDs with optional conditions/delays.
+2. Extend editors to let designers build and assign playlists to NPC slots or hotspots.
+3. Add execution logic to step through playlists while respecting existing interaction rules.
+4. Ensure playlists degrade gracefully when some presets are missing or disabled.
 
