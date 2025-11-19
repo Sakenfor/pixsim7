@@ -12,11 +12,13 @@ class MetricType(str, Enum):
 
     RELATIONSHIP_TIER = "relationship_tier"
     RELATIONSHIP_INTIMACY = "relationship_intimacy"
+    NPC_MOOD = "npc_mood"
+    REPUTATION_BAND = "reputation_band"
 
     # Future metrics can be added here:
-    # NPC_MOOD = "npc_mood"
-    # REPUTATION_BAND = "reputation_band"
     # SKILL_LEVEL = "skill_level"
+    # FACTION_STANDING = "faction_standing"
+    # SOCIAL_STANDING = "social_standing"
 
 
 class MetricEvaluator(Protocol):

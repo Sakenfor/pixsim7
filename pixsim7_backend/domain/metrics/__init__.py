@@ -12,6 +12,9 @@ from .relationship_evaluators import (
     evaluate_relationship_tier,
     evaluate_relationship_intimacy,
 )
+from .mood_evaluators import (
+    evaluate_npc_mood,
+)
 
 __all__ = [
     "MetricType",
@@ -19,4 +22,5 @@ __all__ = [
     "get_metric_registry",
     "evaluate_relationship_tier",
     "evaluate_relationship_intimacy",
+    "evaluate_npc_mood",
 ]

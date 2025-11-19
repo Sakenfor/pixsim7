@@ -420,3 +420,155 @@ export interface RelationshipIntimacyPreviewResponse {
   intimacyLevelId: string | null;
   relationshipValues: RelationshipValues;
 }
+
+// ===================
+// Generic Metric System Types
+// ===================
+
+/**
+ * Supported metric types for preview/evaluation
+ * Matches backend MetricType enum
+ */
+export type MetricId =
+  | 'relationship_tier'
+  | 'relationship_intimacy'
+  | 'npc_mood'
+  | 'reputation_band';
+
+/**
+ * Generic metric preview request
+ * Type parameter M constrains the metric ID
+ */
+export interface MetricPreviewRequest<M extends MetricId = MetricId> {
+  metric: M;
+  worldId: number;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Generic metric preview response
+ * Type parameter M constrains the metric ID
+ */
+export interface MetricPreviewResponse<M extends MetricId = MetricId> {
+  metric: M;
+  worldId: number;
+  result: Record<string, unknown>;
+}
+
+// ===================
+// NPC Mood Metric Types
+// ===================
+
+/**
+ * NPC mood metric payload
+ */
+export interface NpcMoodMetricPayload {
+  npcId: number;
+  sessionId?: number;
+  /** Optional relationship values override (if not reading from session) */
+  relationshipValues?: {
+    affinity: number;
+    trust: number;
+    chemistry: number;
+    tension: number;
+  };
+  /** Optional emotional state override */
+  emotionalState?: {
+    emotion: string;
+    intensity: number;
+  };
+}
+
+/**
+ * NPC mood metric result
+ */
+export interface NpcMoodMetricResult {
+  moodId: string;
+  valence: number;
+  arousal: number;
+  emotionType?: string;
+  emotionIntensity?: number;
+}
+
+/**
+ * Request payload for NPC mood preview
+ */
+export interface NpcMoodPreviewRequest {
+  worldId: number;
+  npcId: number;
+  sessionId?: number;
+  relationshipValues?: {
+    affinity: number;
+    trust: number;
+    chemistry: number;
+    tension: number;
+  };
+  emotionalState?: {
+    emotion: string;
+    intensity: number;
+  };
+}
+
+/**
+ * Response from NPC mood preview API
+ */
+export interface NpcMoodPreviewResponse {
+  moodId: string;
+  valence: number;
+  arousal: number;
+  emotionType?: string;
+  emotionIntensity?: number;
+  npcId: number;
+}
+
+// ===================
+// Reputation Metric Types
+// ===================
+
+/**
+ * Reputation metric payload
+ */
+export interface ReputationMetricPayload {
+  subjectId: number;
+  subjectType: 'player' | 'npc';
+  targetId?: number;
+  targetType?: 'npc' | 'faction' | 'group';
+  /** Optional reputation score override (if not reading from session) */
+  reputationScore?: number;
+  /** Optional faction membership data */
+  factionMembership?: Record<string, number>;
+}
+
+/**
+ * Reputation metric result
+ */
+export interface ReputationMetricResult {
+  reputationBand: string;
+  reputationScore: number;
+  targetId?: number;
+  targetType?: string;
+}
+
+/**
+ * Request payload for reputation band preview
+ */
+export interface ReputationBandPreviewRequest {
+  worldId: number;
+  subjectId: number;
+  subjectType: 'player' | 'npc';
+  targetId?: number;
+  targetType?: 'npc' | 'faction' | 'group';
+  reputationScore?: number;
+  factionMembership?: Record<string, number>;
+}
+
+/**
+ * Response from reputation band preview API
+ */
+export interface ReputationBandPreviewResponse {
+  reputationBand: string;
+  reputationScore: number;
+  targetId?: number;
+  targetType?: string;
+  subjectId: number;
+}
