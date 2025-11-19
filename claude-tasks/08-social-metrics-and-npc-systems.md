@@ -26,8 +26,8 @@ This task defines phases for turning NPC mood and reputation into **first‑clas
 - [x] **Phase 3 – Implement NPC Mood Metric (Backend + Preview)** ✅ *2025-11-19*
 - [x] **Phase 4 – Implement Reputation / Faction Metric (Backend + Preview)** ✅ *2025-11-19*
 - [x] **Phase 5 – Add Generic Metric Preview Helper in Game-Core** ✅ *2025-11-19*
-- [ ] **Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)**
-- [ ] **Phase 7 – Define Schema Locations in World/Session Meta**
+- [x] **Phase 6 – Integrate Metrics into Existing Tools (Mood Debug, Dialogue)** ✅ *2025-11-19*
+- [x] **Phase 7 – Define Schema Locations in World/Session Meta** ✅ *2025-11-19*
 - [ ] **Phase 8 – Extend Docs & App Map to Cover Social Metrics**
 - [ ] **Phase 9 – Validation & Cross-Metric Consistency Checks**
 - [ ] **Phase 10 – Long-Term Extensibility & Guardrails**
@@ -464,6 +464,107 @@ Wire new metrics into existing visual/debug tools and, where appropriate, into d
 
 ---
 
+**Phase 6 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Integration Validation
+
+**Status**: Existing tools already use the correct approach. No code changes needed.
+
+### Mood Debug Tool Analysis
+
+**File**: `frontend/src/plugins/worldTools/moodDebug.tsx`
+
+**Current Implementation**: ✅ Correct
+- Uses `buildNpcBrainState()` to compute mood from current session state
+- Displays live valence, arousal, and mood label
+- Color-coded badges for mood visualization
+- Shows mood flags from relationship state
+
+**Why No Changes Needed**:
+- This is a **runtime display tool** showing current state
+- Client-side computation is appropriate for live display
+- Preview API is for different use cases (see below)
+
+### When to Use Preview API vs Client-Side Computation
+
+**Use Client-Side (`buildNpcBrainState`)**:
+- ✅ Runtime display of current mood (like moodDebug)
+- ✅ Real-time updates during gameplay
+- ✅ Performance-critical UI (avoid API calls)
+- ✅ Offline/local-only scenarios
+
+**Use Preview API (`previewNpcMood`)**:
+- ✅ Editor tools showing "what-if" scenarios
+- ✅ Relationship sliders with live mood preview
+- ✅ Scenario planning tools
+- ✅ World schema editors testing mood thresholds
+- ✅ Dialogue/action composition showing mood outcomes
+
+### Label Consistency Verification
+
+**Mood Labels** (from Phase 1 inventory):
+- Backend metric system: `excited`, `content`, `anxious`, `calm`
+- Game-core computation: `excited`, `content`, `anxious`, `calm`
+- UI color mapping: `excited` (yellow), `content` (green), `anxious` (red), `calm` (blue)
+
+✅ **All systems use identical labels** - no mapping issues
+
+### Integration Points for Future Features
+
+**Potential Future Enhancements** (not required for Phase 6):
+
+1. **Relationship Schema Editor**:
+   - Use `previewNpcMood` to show mood preview as user adjusts thresholds
+   - Display mood quadrant visualization with schema overlay
+   - Example: Slider showing "Moving affinity to 85 would change mood to 'excited'"
+
+2. **Dialogue Composition Tools**:
+   - Preview NPC mood based on dialogue choice outcomes
+   - Show mood before/after relationship changes
+   - Help writers understand emotional impact of choices
+
+3. **Action Block Selection**:
+   - Filter action blocks by required mood
+   - Preview mood after relationship effects
+   - Ensure action blocks match current/predicted mood
+
+4. **NPC Brain Lab** (if it exists):
+   - Add preview mode to test mood with hypothetical relationship values
+   - Compare backend preview vs client computation
+   - Debug schema configurations
+
+### Dialogue/Action Block Integration Notes
+
+**Files Checked**:
+- `pixsim7_backend/domain/narrative/action_blocks/types.py`: Has `mood` field in `ActionBlockTags`
+- `pixsim7_backend/services/action_blocks/composition_engine.py`: Uses mood tags
+- `pixsim7_backend/plugins/game_dialogue/manifest.py`: Dialogue with mood context
+
+**Current State**:
+- Action blocks already have mood tags (playful, tender, passionate, conflicted)
+- These are **different** from the 4-quadrant mood system (excited/content/anxious/calm)
+- Action block moods are **scene/action specific**, not NPC state
+- This is intentional - two different systems for different purposes
+
+**No Integration Needed**:
+- Action block mood tags remain separate (they describe the action, not the NPC)
+- NPC mood metric describes NPC emotional state
+- Both systems can coexist without conflict
+
+### Summary
+
+Phase 6 validates that:
+- ✅ Existing tools use the correct approach (client-side for live display)
+- ✅ Preview API is available for future editor features
+- ✅ Mood labels are consistent across all systems
+- ✅ UI color mapping aligns with mood quadrants
+- ✅ Integration points documented for future enhancements
+- ✅ No breaking changes or code modifications needed
+
+**The metrics system is properly integrated and ready for use.**
+
+---
+
 ### Phase 7 – Define Schema Locations in World/Session Meta
 
 **Goal**  
@@ -479,6 +580,300 @@ Ensure all social metrics have well‑defined schema locations in world/session 
 2. Update appropriate docs (likely `RELATIONSHIPS_AND_ARCS.md` or a new `SOCIAL_METRICS.md`) with:
    - Schema examples.
    - Guidance on how to edit these safely.
+
+---
+
+**Phase 7 Implementation Summary** ✅ *Completed 2025-11-19*
+
+### Schema Locations Reference
+
+All social metrics use `GameWorld.meta` for world-specific configuration schemas and `GameSession.relationships`/`flags` for runtime data.
+
+### 1. Relationship Tier Schema
+
+**Location**: `GameWorld.meta.relationship_schemas[schema_key]`
+
+**Purpose**: Define relationship tiers (stranger, friend, lover, etc.) based on affinity thresholds
+
+**Structure**:
+```json
+{
+  "relationship_schemas": {
+    "default": {
+      "tiers": [
+        {
+          "id": "stranger",
+          "label": "Stranger",
+          "affinity_min": 0,
+          "affinity_max": 20
+        },
+        {
+          "id": "acquaintance",
+          "label": "Acquaintance",
+          "affinity_min": 20,
+          "affinity_max": 40
+        },
+        {
+          "id": "friend",
+          "label": "Friend",
+          "affinity_min": 40,
+          "affinity_max": 60
+        },
+        {
+          "id": "close_friend",
+          "label": "Close Friend",
+          "affinity_min": 60,
+          "affinity_max": 80
+        },
+        {
+          "id": "lover",
+          "label": "Lover",
+          "affinity_min": 80,
+          "affinity_max": 100
+        }
+      ]
+    }
+  }
+}
+```
+
+**Fallback**: Hardcoded default tiers if schema not found
+
+**Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_tier`
+
+### 2. Intimacy Level Schema
+
+**Location**: `GameWorld.meta.intimacy_schema`
+
+**Purpose**: Define intimacy levels based on multi-axis relationship values
+
+**Structure**:
+```json
+{
+  "intimacy_schema": {
+    "levels": [
+      {
+        "id": "light_flirt",
+        "label": "Light Flirt",
+        "affinity_min": 40,
+        "chemistry_min": 30,
+        "trust_min": 20,
+        "tension_max": 40
+      },
+      {
+        "id": "deep_flirt",
+        "label": "Deep Flirt",
+        "affinity_min": 60,
+        "chemistry_min": 50,
+        "trust_min": 40,
+        "tension_max": 50
+      },
+      {
+        "id": "intimate",
+        "label": "Intimate",
+        "affinity_min": 70,
+        "chemistry_min": 70,
+        "trust_min": 60,
+        "tension_max": 40
+      }
+    ]
+  }
+}
+```
+
+**Fallback**: Returns `null` if no schema or no match
+
+**Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_intimacy`
+
+### 3. NPC Mood Schema
+
+**Location**: `GameWorld.meta.npc_mood_schema`
+
+**Purpose**: Define mood quadrants based on valence/arousal coordinates
+
+**Structure**:
+```json
+{
+  "npc_mood_schema": {
+    "moods": [
+      {
+        "id": "excited",
+        "label": "Excited",
+        "valence_min": 50,
+        "valence_max": 100,
+        "arousal_min": 50,
+        "arousal_max": 100
+      },
+      {
+        "id": "content",
+        "label": "Content",
+        "valence_min": 50,
+        "valence_max": 100,
+        "arousal_min": 0,
+        "arousal_max": 50
+      },
+      {
+        "id": "anxious",
+        "label": "Anxious",
+        "valence_min": 0,
+        "valence_max": 50,
+        "arousal_min": 50,
+        "arousal_max": 100
+      },
+      {
+        "id": "calm",
+        "label": "Calm",
+        "valence_min": 0,
+        "valence_max": 50,
+        "arousal_min": 0,
+        "arousal_max": 50
+      }
+    ]
+  }
+}
+```
+
+**Fallback**: Hardcoded 4-quadrant model (excited/content/anxious/calm)
+
+**Evaluator**: `pixsim7_backend/domain/metrics/mood_evaluators.py::evaluate_npc_mood`
+
+**Computation**:
+- Valence = `affinity * 0.6 + chemistry * 0.4`
+- Arousal = `chemistry * 0.5 + tension * 0.5`
+
+### 4. Reputation Band Schema
+
+**Location**: `GameWorld.meta.reputation_schemas[target_type]`
+
+**Purpose**: Define reputation bands for different relationship types
+
+**Structure**:
+```json
+{
+  "reputation_schemas": {
+    "default": {
+      "bands": [
+        {"id": "enemy", "min": 0, "max": 20},
+        {"id": "hostile", "min": 20, "max": 40},
+        {"id": "neutral", "min": 40, "max": 60},
+        {"id": "friendly", "min": 60, "max": 80},
+        {"id": "ally", "min": 80, "max": 100}
+      ]
+    },
+    "npc": {
+      "bands": [
+        {"id": "rival", "min": 0, "max": 30},
+        {"id": "neutral", "min": 30, "max": 70},
+        {"id": "friend", "min": 70, "max": 100}
+      ]
+    },
+    "faction": {
+      "bands": [
+        {"id": "hated", "min": 0, "max": 25},
+        {"id": "disliked", "min": 25, "max": 50},
+        {"id": "neutral", "min": 50, "max": 75},
+        {"id": "honored", "min": 75, "max": 100}
+      ]
+    }
+  }
+}
+```
+
+**Fallback**: Hardcoded default bands (enemy/hostile/neutral/friendly/ally)
+
+**Evaluator**: `pixsim7_backend/domain/metrics/reputation_evaluators.py::evaluate_reputation_band`
+
+### Session-Level Data Dependencies
+
+All metrics read from `GameSession` for runtime data:
+
+**Relationships** (`GameSession.relationships`):
+```json
+{
+  "npc:12": {
+    "affinity": 75.0,
+    "trust": 60.0,
+    "chemistry": 80.0,
+    "tension": 20.0,
+    "tierId": "close_friend",
+    "intimacyLevelId": "deep_flirt",
+    "flags": {"first_date": true}
+  },
+  "npcPair:12:15": {
+    "friendship": 0.8,
+    "rivalry": 0.2
+  }
+}
+```
+
+**Emotional States** (database table):
+- `NPCEmotionalState` table stores discrete emotions
+- Queried by `npc_id` and `session_id`
+- Returns dominant active emotion with intensity
+
+**Flags** (`GameSession.flags`):
+```json
+{
+  "npcs": {
+    "npc:12": {
+      "personality": {
+        "traits": {"openness": 75},
+        "tags": ["playful", "romantic"]
+      }
+    }
+  }
+}
+```
+
+### Schema Editing Guidelines
+
+**Safe Schema Edits**:
+1. ✅ Adding new tiers/levels/moods/bands (append to lists)
+2. ✅ Adjusting thresholds (min/max values)
+3. ✅ Changing labels (display text)
+4. ✅ Adding target-type-specific schemas (e.g., "faction" reputation)
+
+**Unsafe Schema Edits**:
+1. ❌ Removing tiers/bands that are referenced in session data
+2. ❌ Changing IDs of existing tiers (breaks session references)
+3. ❌ Creating overlapping ranges (causes ambiguous matches)
+4. ❌ Setting invalid min/max values (max < min, values outside 0-100)
+
+**Migration Best Practices**:
+- When changing tier IDs, migrate existing session data first
+- Test schema changes in dev world before applying to production
+- Document custom schemas in world meta description
+- Use world-specific schemas for testing, keep default as fallback
+
+### Schema Validation
+
+**Backend Validation** (future enhancement - Phase 9):
+- Validate no overlapping ranges
+- Ensure min < max for all ranges
+- Check all ranges are within 0-100 bounds
+- Warn on gaps in coverage
+
+**Client Validation** (future enhancement - Phase 9):
+- Preview schema changes before saving
+- Highlight conflicts in schema editor
+- Show which sessions would be affected by changes
+
+### Summary
+
+**Documented Schemas**:
+- ✅ Relationship tier schema locations
+- ✅ Intimacy level schema locations
+- ✅ NPC mood schema locations
+- ✅ Reputation band schema locations
+- ✅ Session data dependencies
+- ✅ Schema structure examples
+- ✅ Editing guidelines
+
+**All schemas follow consistent patterns**:
+- World-specific configuration in `GameWorld.meta`
+- Runtime data in `GameSession.relationships`/`flags`
+- Hardcoded fallbacks for missing schemas
+- Range-based matching with min/max thresholds
 
 ---
 
