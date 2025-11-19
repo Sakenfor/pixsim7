@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/ui';
 import { useTemplateStore } from '../../lib/graph/templatesStore';
-import { validateTemplate, validatePreconditions, type TemplateCategory } from '../../lib/graph/graphTemplates';
+import {
+  validateTemplate,
+  validatePreconditions,
+  downloadTemplatePack,
+  importTemplatePack,
+  type TemplateCategory,
+} from '../../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../../lib/graph/graphTemplates';
 import type { DraftScene } from '../../modules/scene-builder';
 
@@ -77,6 +83,12 @@ export function GraphTemplatePalette({
   const toggleFavorite = useTemplateStore((state) => state.toggleFavorite);
   const loadWorldTemplates = useTemplateStore((state) => state.loadWorldTemplates);
 
+  // Phase 9: Pack management
+  const packs = useTemplateStore((state) => state.getPacks());
+  const getPack = useTemplateStore((state) => state.getPack);
+  const getTemplatesByPack = useTemplateStore((state) => state.getTemplatesByPack);
+  const createPack = useTemplateStore((state) => state.createPack);
+
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -87,6 +99,9 @@ export function GraphTemplatePalette({
   const [searchQuery, setSearchQuery] = useState('');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
+  // Phase 9: Pack filtering
+  const [selectedPackId, setSelectedPackId] = useState<string | 'All' | 'None'>('All');
+
   // Load world templates when world changes
   useEffect(() => {
     if (worldId !== null && worldId !== undefined) {
@@ -94,7 +109,7 @@ export function GraphTemplatePalette({
     }
   }, [worldId, loadWorldTemplates]);
 
-  // Phase 6 & 7: Filter templates
+  // Phase 6, 7, 9: Filter templates
   const filteredTemplates = templates.filter((template) => {
     // Phase 6: Favorites filter
     if (showFavoritesOnly && !template.isFavorite) {
@@ -104,6 +119,15 @@ export function GraphTemplatePalette({
     // Category filter
     if (selectedCategory !== 'All' && template.category !== selectedCategory) {
       return false;
+    }
+
+    // Phase 9: Pack filter
+    if (selectedPackId !== 'All') {
+      if (selectedPackId === 'None' && template.packId) {
+        return false; // Show only templates without a pack
+      } else if (selectedPackId !== 'None' && template.packId !== selectedPackId) {
+        return false; // Show only templates in selected pack
+      }
     }
 
     // Search filter (name, description, tags)
@@ -265,6 +289,87 @@ export function GraphTemplatePalette({
     input.click();
   };
 
+  // Phase 9: Export pack
+  const handleExportPack = (packId: string) => {
+    const pack = getPack(packId);
+    if (!pack) {
+      alert('Pack not found');
+      return;
+    }
+
+    const packTemplates = getTemplatesByPack(packId);
+    if (packTemplates.length === 0) {
+      alert('Pack has no templates to export');
+      return;
+    }
+
+    try {
+      downloadTemplatePack(pack, packTemplates);
+    } catch (error) {
+      alert(`Failed to export pack: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Phase 9: Import pack
+  const handleImportPack = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const result = importTemplatePack(text);
+
+        if (!result.valid) {
+          alert(`Failed to import pack:\n${result.errors.join('\n')}`);
+          return;
+        }
+
+        // Generate new pack ID to avoid collisions
+        const importedPack = {
+          ...result.pack,
+          id: `pack_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        };
+
+        // Create the pack
+        const createdPack = createPack(importedPack);
+
+        // Import all templates with the new pack ID
+        let successCount = 0;
+        for (const template of result.templates) {
+          try {
+            await addTemplate({
+              ...template,
+              id: `template_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+              packId: createdPack.id,
+              source: 'user',
+              worldId: undefined,
+            }, worldId);
+            successCount++;
+          } catch (error) {
+            console.error(`Failed to import template ${template.name}:`, error);
+          }
+        }
+
+        alert(
+          `Successfully imported pack "${createdPack.name}"!\n` +
+          `Imported ${successCount} of ${result.templates.length} templates.`
+        );
+
+        // Switch to the imported pack filter
+        setSelectedPackId(createdPack.id);
+      } catch (error) {
+        alert(`Failed to import pack: ${error instanceof Error ? error.message : 'Invalid JSON file'}`);
+      }
+    };
+
+    input.click();
+  };
+
   const toggleExpanded = (templateId: string) => {
     setExpandedTemplateId(expandedTemplateId === templateId ? null : templateId);
   };
@@ -290,14 +395,24 @@ export function GraphTemplatePalette({
             <div className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
               Graph Templates ({templates.length})
             </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleImport}
-              title="Import template from JSON file"
-            >
-              ↑ Import
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleImport}
+                title="Import template from JSON file"
+              >
+                ↑ Template
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleImportPack}
+                title="Import template pack from JSON file"
+              >
+                📦 Pack
+              </Button>
+            </div>
           </div>
 
           {/* Phase 7: Search and filter controls */}
@@ -324,6 +439,34 @@ export function GraphTemplatePalette({
               ))}
             </select>
 
+            {/* Phase 9: Pack filter */}
+            <div className="flex gap-1">
+              <select
+                value={selectedPackId}
+                onChange={(e) => setSelectedPackId(e.target.value)}
+                className="flex-1 px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              >
+                <option value="All">All Packs</option>
+                <option value="None">No Pack</option>
+                {packs.map((pack) => (
+                  <option key={pack.id} value={pack.id}>
+                    {pack.icon && `${pack.icon} `}{pack.name} ({getTemplatesByPack(pack.id).length})
+                  </option>
+                ))}
+              </select>
+              {selectedPackId !== 'All' && selectedPackId !== 'None' && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleExportPack(selectedPackId)}
+                  title="Export this pack as JSON"
+                  className="px-2"
+                >
+                  ↓
+                </Button>
+              )}
+            </div>
+
             {/* Phase 6: Favorites filter toggle */}
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
@@ -338,7 +481,7 @@ export function GraphTemplatePalette({
             </label>
 
             {/* Filter summary */}
-            {(selectedCategory !== 'All' || searchQuery.trim() || showFavoritesOnly) && (
+            {(selectedCategory !== 'All' || searchQuery.trim() || showFavoritesOnly || selectedPackId !== 'All') && (
               <div className="text-xs text-neutral-500 dark:text-neutral-400">
                 Showing {filteredTemplates.length} of {templates.length} templates
               </div>
