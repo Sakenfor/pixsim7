@@ -50,6 +50,48 @@ def _split_world_time(world_time: float) -> Tuple[int, float]:
     return day_of_week, seconds_in_day
 
 
+def _serialize_expression(expression) -> NpcExpressionDTO:
+    """Convert an expression ORM row into the API DTO."""
+
+    return NpcExpressionDTO(
+        id=expression.id,
+        state=expression.state,
+        asset_id=expression.asset_id,
+        crop=expression.crop,
+        meta=expression.meta,
+    )
+
+
+def _filter_schedules_by_location(
+    schedules: List[NPCSchedule], location_id: Optional[int]
+) -> List[NPCSchedule]:
+    if location_id is None:
+        return schedules
+    return [s for s in schedules if s.location_id == location_id]
+
+
+def _build_presence_entry(
+    schedule: NPCSchedule, npc_state: Optional[NPCState]
+) -> NpcPresenceDTO:
+    base_state: Dict[str, Any] = {}
+    if npc_state and npc_state.state:
+        base_state = dict(npc_state.state)
+
+    # Include lightweight schedule context so callers can derive activity.
+    state = dict(base_state)
+    schedule_info = state.setdefault("schedule", {})
+    if isinstance(schedule_info, dict):
+        schedule_info.setdefault("day_of_week", schedule.day_of_week)
+        schedule_info.setdefault("start_time", schedule.start_time)
+        schedule_info.setdefault("end_time", schedule.end_time)
+
+    return NpcPresenceDTO(
+        npc_id=schedule.npc_id,
+        location_id=schedule.location_id,
+        state=state,
+    )
+
+
 @router.get("/", response_model=List[NpcSummary])
 async def list_npcs(
     db: DatabaseSession,
@@ -75,16 +117,7 @@ async def get_npc_expressions(
     Get all expression mappings for an NPC.
     """
     expressions = await npc_expression_service.list_expressions(npc_id)
-    return [
-        NpcExpressionDTO(
-            id=e.id,
-            state=e.state,
-            asset_id=e.asset_id,
-            crop=e.crop,
-            meta=e.meta,
-        )
-        for e in expressions
-    ]
+    return [_serialize_expression(e) for e in expressions]
 
 
 @router.put("/{npc_id}/expressions", response_model=List[NpcExpressionDTO])
@@ -110,16 +143,7 @@ async def replace_npc_expressions(
         raise HTTPException(status_code=400, detail="expressions must be a list")
 
     created = await npc_expression_service.replace_expressions(npc_id, rows)
-    return [
-        NpcExpressionDTO(
-            id=e.id,
-            state=e.state,
-            asset_id=e.asset_id,
-            crop=e.crop,
-            meta=e.meta,
-        )
-        for e in created
-    ]
+    return [_serialize_expression(e) for e in created]
 
 
 @router.get("/presence", response_model=List[NpcPresenceDTO])
@@ -167,9 +191,7 @@ async def get_npc_presence(
         )
     )
     schedules = list(schedules_result.scalars().all())
-
-    if location_id is not None:
-        schedules = [s for s in schedules if s.location_id == location_id]
+    schedules = _filter_schedules_by_location(schedules, location_id)
 
     if not schedules:
         return []
@@ -181,27 +203,7 @@ async def get_npc_presence(
     state_rows = list(states_result.scalars().all())
     state_by_npc: Dict[int, NPCState] = {row.npc_id: row for row in state_rows}
 
-    presences: List[NpcPresenceDTO] = []
-    for sched in schedules:
-        base_state: Dict[str, Any] = {}
-        npc_state = state_by_npc.get(sched.npc_id)
-        if npc_state and npc_state.state:
-            base_state = dict(npc_state.state)
-
-        # Include lightweight schedule context so callers can derive activity.
-        state = dict(base_state)
-        schedule_info = state.setdefault("schedule", {})
-        if isinstance(schedule_info, dict):
-            schedule_info.setdefault("day_of_week", sched.day_of_week)
-            schedule_info.setdefault("start_time", sched.start_time)
-            schedule_info.setdefault("end_time", sched.end_time)
-
-        presences.append(
-            NpcPresenceDTO(
-                npc_id=sched.npc_id,
-                location_id=sched.location_id,
-                state=state,
-            )
-        )
-
-    return presences
+    return [
+        _build_presence_entry(sched, state_by_npc.get(sched.npc_id))
+        for sched in schedules
+    ]

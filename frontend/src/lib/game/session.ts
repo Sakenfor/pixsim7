@@ -48,6 +48,35 @@ export function saveWorldSession(state: WorldSessionState): void {
   }
 }
 
+interface WorldSessionFlagOptions {
+  worldId: string;
+  mode: WorldMode;
+  turnDeltaSeconds?: number;
+  currentLocationId?: number;
+}
+
+function createWorldSessionFlags({
+  worldId,
+  mode,
+  turnDeltaSeconds,
+  currentLocationId,
+}: WorldSessionFlagOptions): SessionFlags {
+  const worldFlags: SessionFlags['world'] = {
+    id: worldId,
+    mode,
+    currentLocationId,
+  };
+
+  if (typeof turnDeltaSeconds === 'number') {
+    worldFlags.turnDeltaSeconds = turnDeltaSeconds;
+  }
+
+  return {
+    sessionKind: 'world',
+    world: worldFlags,
+  };
+}
+
 /**
  * Create session flags for turn-based world mode
  * @param worldId - Unique identifier for the world
@@ -59,15 +88,12 @@ export function createTurnBasedSessionFlags(
   turnDeltaSeconds: number = 3600,
   currentLocationId?: number
 ): SessionFlags {
-  return {
-    sessionKind: 'world',
-    world: {
-      id: worldId,
-      mode: 'turn_based',
-      turnDeltaSeconds,
-      currentLocationId,
-    },
-  };
+  return createWorldSessionFlags({
+    worldId,
+    mode: 'turn_based',
+    turnDeltaSeconds,
+    currentLocationId,
+  });
 }
 
 /**
@@ -79,12 +105,9 @@ export function createRealTimeSessionFlags(
   worldId: string,
   currentLocationId?: number
 ): SessionFlags {
-  return {
-    sessionKind: 'world',
-    world: {
-      id: worldId,
-      mode: 'real_time',
-      currentLocationId,
-    },
-  };
+  return createWorldSessionFlags({
+    worldId,
+    mode: 'real_time',
+    currentLocationId,
+  });
 }
