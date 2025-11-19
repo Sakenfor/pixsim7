@@ -19,7 +19,7 @@ Below are 10 incremental phases for introducing and maturing graph templates.
 - [x] **Phase 6 – Template Library UX (Search, Tags, Favorites)** ✅ *Search, tags, category filters, and favorites complete - 2025-11-19*
 - [x] **Phase 7 – Template Wizards for Common Patterns** ✅ *5 built-in wizards (Quest Intro, Dialogue Branch, Relationship Check, Flirt, Sequential Dialogue) with form-based UI - 2025-11-19*
 - [x] **Phase 8 – Template Validation & Compatibility** ✅ *validateTemplate, preview, and precondition validation (roles, arcs, flags, node count) with UI warnings - 2025-11-19*
-- [ ] **Phase 9 – Cross‑World Template Packs**
+- [x] **Phase 9 – Cross‑World Template Packs** ✅ *TemplatePack interface, pack store management, pack filtering UI, bulk pack export/import - 2025-11-19*
 - [~] **Phase 10 – Template Usage Analytics & Refactoring Hints** 🚧 *Parameter substitution done; analytics pending*
 
 ---

@@ -69,10 +69,42 @@ export interface GraphTemplate {
   // Phase 8: Preconditions for compatibility checking
   preconditions?: TemplatePreconditions;
 
+  // Phase 9: Template pack ID
+  packId?: string;
+
   data: {
     nodes: DraftSceneNode[];
     edges: DraftEdge[];
   };
+}
+
+/**
+ * Phase 9: Template Pack - Collection of related templates
+ *
+ * Packs allow grouping templates for organization and bulk export/import
+ */
+export interface TemplatePack {
+  id: string;
+  name: string;
+  description?: string;
+  author?: string;
+  version?: string;
+  createdAt: number;
+  updatedAt?: number;
+  worldId?: number; // Optional world scope
+  tags?: string[];
+  icon?: string; // Emoji or icon identifier
+
+  // Pack metadata
+  templateCount?: number; // Cached count, updated when templates change
+}
+
+/**
+ * Phase 9: Template Pack with templates for export
+ */
+export interface TemplatePackExport {
+  pack: TemplatePack;
+  templates: GraphTemplate[];
 }
 
 /**
@@ -558,4 +590,97 @@ export function generateTemplatePreview(template: GraphTemplate): string {
   // Return as data URL
   const svgString = svgParts.join('');
   return `data:image/svg+xml;base64,${btoa(svgString)}`;
+}
+
+/**
+ * Phase 9: Export a template pack with all its templates
+ */
+export function exportTemplatePack(
+  pack: TemplatePack,
+  templates: GraphTemplate[]
+): string {
+  const packExport: TemplatePackExport = {
+    pack: {
+      ...pack,
+      templateCount: templates.length,
+    },
+    templates: templates.map((t) => ({
+      ...t,
+      packId: pack.id, // Ensure templates reference this pack
+    })),
+  };
+
+  return JSON.stringify(packExport, null, 2);
+}
+
+/**
+ * Phase 9: Import a template pack from JSON
+ */
+export function importTemplatePack(jsonString: string): {
+  pack: TemplatePack;
+  templates: GraphTemplate[];
+  valid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+
+  try {
+    const parsed = JSON.parse(jsonString);
+
+    // Validate structure
+    if (!parsed.pack || !parsed.templates) {
+      errors.push('Invalid pack format: missing pack or templates');
+      return { pack: null as any, templates: [], valid: false, errors };
+    }
+
+    if (!parsed.pack.id || !parsed.pack.name) {
+      errors.push('Invalid pack: missing id or name');
+      return { pack: null as any, templates: [], valid: false, errors };
+    }
+
+    if (!Array.isArray(parsed.templates)) {
+      errors.push('Invalid pack: templates must be an array');
+      return { pack: null as any, templates: [], valid: false, errors };
+    }
+
+    // Validate each template
+    parsed.templates.forEach((template: any, index: number) => {
+      if (!template.id || !template.name) {
+        errors.push(`Template ${index + 1}: missing id or name`);
+      }
+      if (!template.data || !Array.isArray(template.data.nodes) || !Array.isArray(template.data.edges)) {
+        errors.push(`Template ${index + 1}: invalid data structure`);
+      }
+    });
+
+    if (errors.length > 0) {
+      return { pack: null as any, templates: [], valid: false, errors };
+    }
+
+    return {
+      pack: parsed.pack,
+      templates: parsed.templates,
+      valid: true,
+      errors: [],
+    };
+  } catch (error) {
+    errors.push(`JSON parse error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    return { pack: null as any, templates: [], valid: false, errors };
+  }
+}
+
+/**
+ * Phase 9: Download template pack as JSON file
+ */
+export function downloadTemplatePack(pack: TemplatePack, templates: GraphTemplate[]): void {
+  const jsonString = exportTemplatePack(pack, templates);
+  const filename = `template-pack-${pack.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.json`;
+
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

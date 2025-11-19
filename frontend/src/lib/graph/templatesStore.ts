@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { GraphTemplate, TemplateSource } from './graphTemplates';
+import type { GraphTemplate, TemplateSource, TemplatePack } from './graphTemplates';
 import { getGameWorld, saveGameWorldMeta } from '../api/game';
 import type { GameWorldDetail } from '@pixsim7/types';
 import builtinTemplatesJson from '../../data/graphTemplates.json';
@@ -17,6 +17,9 @@ interface TemplateStoreState {
 
   /** Per-world templates cache */
   worldTemplatesCache: Map<number, GraphTemplate[]>;
+
+  /** Phase 9: Template packs */
+  packs: TemplatePack[];
 
   /** Initialize built-in templates */
   initBuiltinTemplates: () => void;
@@ -47,6 +50,14 @@ interface TemplateStoreState {
 
   /** Clear user templates */
   clearUserTemplates: () => void;
+
+  /** Phase 9: Pack management */
+  getPacks: () => TemplatePack[];
+  getPack: (id: string) => TemplatePack | null;
+  createPack: (pack: Omit<TemplatePack, 'id' | 'createdAt'>) => TemplatePack;
+  updatePack: (id: string, updates: Partial<TemplatePack>) => void;
+  deletePack: (id: string) => void;
+  getTemplatesByPack: (packId: string) => GraphTemplate[];
 }
 
 /**
@@ -86,6 +97,7 @@ export const useTemplateStore = create<TemplateStoreState>()(
       userTemplates: [],
       builtinTemplates: [],
       worldTemplatesCache: new Map(),
+      packs: [],
 
       initBuiltinTemplates: () => {
         // Load built-in templates from JSON
@@ -278,13 +290,64 @@ export const useTemplateStore = create<TemplateStoreState>()(
       clearUserTemplates: () => {
         set({ userTemplates: [] });
       },
+
+      // Phase 9: Pack management
+      getPacks: () => {
+        return get().packs;
+      },
+
+      getPack: (id: string) => {
+        return get().packs.find((p) => p.id === id) || null;
+      },
+
+      createPack: (pack) => {
+        const newPack: TemplatePack = {
+          ...pack,
+          id: `pack_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+
+        set((state) => ({
+          packs: [...state.packs, newPack],
+        }));
+
+        return newPack;
+      },
+
+      updatePack: (id, updates) => {
+        set((state) => ({
+          packs: state.packs.map((p) =>
+            p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
+          ),
+        }));
+      },
+
+      deletePack: (id) => {
+        // Remove pack
+        set((state) => ({
+          packs: state.packs.filter((p) => p.id !== id),
+        }));
+
+        // Remove pack ID from templates
+        set((state) => ({
+          userTemplates: state.userTemplates.map((t) =>
+            t.packId === id ? { ...t, packId: undefined } : t
+          ),
+        }));
+      },
+
+      getTemplatesByPack: (packId) => {
+        return get().getTemplates().filter((t) => t.packId === packId);
+      },
     }),
     {
       name: 'pixsim7-graph-templates', // localStorage key
-      version: 2, // Bumped version for new structure
+      version: 3, // Bumped version for pack support
       partialize: (state) => ({
-        // Only persist user templates
+        // Persist user templates and packs
         userTemplates: state.userTemplates,
+        packs: state.packs,
       }),
     }
   )
