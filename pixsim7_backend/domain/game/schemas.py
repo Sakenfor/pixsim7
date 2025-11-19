@@ -1160,3 +1160,118 @@ class MetricRegistrySchema(BaseModel):
     class Config:
         extra = "allow"  # Allow custom metric categories
 
+
+# ===================
+# World Simulation Scheduler Schemas (Task 21)
+# ===================
+
+class WorldSchedulerTierConfigSchema(BaseModel):
+    """
+    Per-tier NPC limits for world simulation scheduler.
+    Defines how many NPCs can be in each tier simultaneously.
+    """
+
+    maxNpcs: int = Field(ge=0, description="Maximum NPCs allowed in this tier")
+    description: Optional[str] = Field(None, description="Tier description")
+
+    class Config:
+        extra = "allow"
+
+
+class WorldSchedulerConfigSchema(BaseModel):
+    """
+    World simulation scheduler configuration.
+    Stored in GameWorld.meta.simulation
+
+    Controls world time advancement, NPC simulation scheduling,
+    and generation job backpressure.
+
+    Example:
+    {
+        "timeScale": 60,
+        "maxNpcTicksPerStep": 50,
+        "maxJobOpsPerStep": 10,
+        "tickIntervalSeconds": 1.0,
+        "tiers": {
+            "detailed": {"maxNpcs": 20},
+            "active": {"maxNpcs": 100},
+            "ambient": {"maxNpcs": 500},
+            "dormant": {"maxNpcs": 5000}
+        }
+    }
+    """
+
+    timeScale: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=1000.0,
+        description="Game time multiplier (1 real second = timeScale game seconds)"
+    )
+    maxNpcTicksPerStep: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum NPC simulation ticks per scheduler step"
+    )
+    maxJobOpsPerStep: int = Field(
+        default=10,
+        ge=0,
+        description="Maximum generation job operations per scheduler step"
+    )
+    tickIntervalSeconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=60.0,
+        description="Real-time interval between scheduler ticks (seconds)"
+    )
+    tiers: Dict[str, WorldSchedulerTierConfigSchema] = Field(
+        default_factory=lambda: {
+            "detailed": WorldSchedulerTierConfigSchema(maxNpcs=20),
+            "active": WorldSchedulerTierConfigSchema(maxNpcs=100),
+            "ambient": WorldSchedulerTierConfigSchema(maxNpcs=500),
+            "dormant": WorldSchedulerTierConfigSchema(maxNpcs=5000),
+        },
+        description="Per-tier NPC limits"
+    )
+    pauseSimulation: bool = Field(
+        default=False,
+        description="If true, scheduler will not advance world_time or process ticks"
+    )
+    meta: Optional[Dict] = Field(None, description="Additional scheduler metadata")
+
+    @model_validator(mode='after')
+    def validate_tiers_defined(self):
+        """Ensure standard tiers are defined."""
+        standard_tiers = {"detailed", "active", "ambient", "dormant"}
+        defined_tiers = set(self.tiers.keys())
+        missing = standard_tiers - defined_tiers
+        if missing:
+            raise ValueError(
+                f'WorldSchedulerConfig must define standard tiers: {missing}'
+            )
+        return self
+
+    class Config:
+        extra = "allow"
+
+
+def get_default_world_scheduler_config() -> Dict:
+    """
+    Get default world simulation scheduler configuration.
+
+    Returns a dict that can be stored in GameWorld.meta.simulation
+    """
+    return {
+        "timeScale": 60.0,  # 1 real second = 60 game seconds (1 minute)
+        "maxNpcTicksPerStep": 50,
+        "maxJobOpsPerStep": 10,
+        "tickIntervalSeconds": 1.0,
+        "tiers": {
+            "detailed": {"maxNpcs": 20, "description": "NPCs near player or critical to scene"},
+            "active": {"maxNpcs": 100, "description": "NPCs relevant to current session/arcs"},
+            "ambient": {"maxNpcs": 500, "description": "NPCs in same world but not focused"},
+            "dormant": {"maxNpcs": 5000, "description": "NPCs not actively simulated"},
+        },
+        "pauseSimulation": False,
+        "meta": {}
+    }
+
