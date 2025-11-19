@@ -61,15 +61,6 @@ def get_generation_service(
     return GenerationService(db, user_service)
 
 
-# Backward compatibility alias
-def get_job_service(
-    db: AsyncSession = Depends(get_database),
-    user_service: UserService = Depends(get_user_service)
-) -> GenerationService:
-    """Get GenerationService instance (backward compatibility alias for get_generation_service)"""
-    return GenerationService(db, user_service)
-
-
 def get_provider_service(db: AsyncSession = Depends(get_database)) -> ProviderService:
     """Get ProviderService instance"""
     return ProviderService(db)
@@ -210,7 +201,6 @@ UserSvc = Annotated[UserService, Depends(get_user_service)]
 AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
-JobSvc = Annotated[GenerationService, Depends(get_job_service)]  # Backward compatibility
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
