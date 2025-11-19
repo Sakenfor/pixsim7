@@ -40,12 +40,6 @@ from pixsim7_backend.domain.game.ecs import (
     update_npc_metric,
     list_metrics_for_category,
     get_metric_definition,
-    # Migration & projection
-    migrate_relationship_to_components,
-    project_components_to_relationship,
-    sync_relationship_to_components,
-    sync_components_to_relationship,
-    ensure_npc_entity_initialized,
 )
 
 __all__ = [
@@ -83,10 +77,4 @@ __all__ = [
     "update_npc_metric",
     "list_metrics_for_category",
     "get_metric_definition",
-    # Migration & projection
-    "migrate_relationship_to_components",
-    "project_components_to_relationship",
-    "sync_relationship_to_components",
-    "sync_components_to_relationship",
-    "ensure_npc_entity_initialized",
 ]
