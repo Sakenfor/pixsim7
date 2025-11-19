@@ -2,34 +2,40 @@
 Game Romance Plugin
 
 Provides sensual touch and romance mechanics with gizmo integration.
-Converted to plugin format following game_stealth pattern.
+Migrated to use PluginContext for permission-aware capability access.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from typing import Any
 import random
 
-from pixsim7_backend.db import get_db
-from pixsim7_backend.domain.game.session import GameSession
 from pixsim7_backend.infrastructure.plugins.types import PluginManifest
+from pixsim7_backend.infrastructure.plugins.dependencies import get_plugin_context
+from pixsim7_backend.infrastructure.plugins.context import PluginContext
 
 # ===== PLUGIN MANIFEST =====
 
 manifest = PluginManifest(
     id="game-romance",
     name="Game Romance & Sensual Touch",
-    version="1.0.0",
+    version="2.0.0",  # Updated to use PluginContext
     description="Provides romance mechanics including sensual touch interactions with gizmo integration",
     author="PixSim Team",
     kind="feature",
     prefix="/api/v1",
     tags=["game-romance"],
     dependencies=[],  # Could depend on "game-sessions" plugin
-    requires_db=True,
+    requires_db=True,  # PluginContext will provide DB access via capabilities
     requires_redis=False,
     enabled=True,
+
+    # NEW: Declare permissions for capability access
+    permissions=[
+        "session:read",   # Read session state and relationships
+        "session:write",  # Modify session flags and relationships
+        "log:emit",       # Structured logging
+    ],
 )
 
 # ===== API ROUTER =====
@@ -194,9 +200,9 @@ def determine_tool_unlock(
 # ============================================================================
 
 @router.post("/sensual-touch", response_model=SensualTouchResponse)
-def attempt_sensual_touch(
+async def attempt_sensual_touch(
     req: SensualTouchRequest,
-    db: Session = Depends(get_db),
+    ctx: PluginContext = Depends(get_plugin_context("game-romance")),  # NEW: Use PluginContext
 ) -> SensualTouchResponse:
     """
     Attempt a sensual touch interaction with an NPC.
@@ -212,6 +218,8 @@ def attempt_sensual_touch(
     - Relationship changes
     - Unlocked tools
     - Romance flags
+
+    Uses PluginContext capability APIs for permission-aware data access.
     """
     # Validate intensity
     if not (0 <= req.base_intensity <= 1):
@@ -220,21 +228,34 @@ def attempt_sensual_touch(
             detail="base_intensity must be between 0 and 1"
         )
 
-    # Fetch the game session
-    session = db.query(GameSession).filter(GameSession.id == req.session_id).first()
+    # NEW: Use PluginContext logging (auto-tagged with plugin_id)
+    ctx.log.info(
+        "Sensual touch attempt",
+        session_id=req.session_id,
+        npc_id=req.npc_id,
+        tool_id=req.tool_id,
+        pattern=req.pattern,
+    )
+
+    # NEW: Fetch session using capability API (permission-checked)
+    session = await ctx.session.get_session(req.session_id)
     if not session:
+        ctx.log.warning("Session not found", session_id=req.session_id)
         raise HTTPException(
             status_code=404,
             detail=f"GameSession {req.session_id} not found"
         )
 
-    # Get NPC relationship
-    relationships = session.relationships or {}
+    # NEW: Get NPC relationship using capability API
     npc_key = f"npc:{req.npc_id}"
-    if npc_key not in relationships:
-        relationships[npc_key] = {'score': 50, 'flags': {}, 'affinity': 50}
+    npc_rel = await ctx.session.get_relationship(req.session_id, npc_key)
 
-    npc_rel = relationships[npc_key]
+    if not npc_rel:
+        # Initialize relationship if it doesn't exist
+        npc_rel = {'score': 50, 'flags': {}, 'affinity': 50}
+        await ctx.session_write.update_relationship(req.session_id, npc_key, npc_rel)
+        ctx.log.info("Initialized relationship for NPC", npc_id=req.npc_id)
+
     current_affinity = npc_rel.get('affinity', npc_rel.get('score', 50))
 
     # Check consent/availability
@@ -242,13 +263,18 @@ def attempt_sensual_touch(
     has_consent = flags.get('romance:consented', False)
 
     if not has_consent and current_affinity < 50:
+        ctx.log.warning(
+            "Sensual touch denied - insufficient affinity",
+            npc_id=req.npc_id,
+            current_affinity=current_affinity,
+        )
         return SensualTouchResponse(
             success=False,
             pleasure_score=0.0,
             arousal_change=0.0,
             affinity_change=-5,
             tool_unlocked=None,
-            updated_flags=session.flags or {},
+            updated_flags=session.get("flags", {}),
             message=f"NPC #{req.npc_id} isn't comfortable with this yet. Build your relationship first."
         )
 
@@ -281,42 +307,52 @@ def attempt_sensual_touch(
     # Check for tool unlock
     tool_unlocked = determine_tool_unlock(current_affinity, new_affinity)
 
-    # Update session data
-    # -----------------
+    # NEW: Update session data using capability APIs
+    # ------------------------------------------------
 
-    # Update relationship
-    npc_rel['affinity'] = new_affinity
-    if 'score' in npc_rel:
-        npc_rel['score'] = new_affinity
+    # Prepare relationship updates
+    relationship_updates = {
+        'affinity': new_affinity,
+        'score': new_affinity,
+    }
 
     # Update arousal level
-    if 'arousal' not in npc_rel:
-        npc_rel['arousal'] = 0.0
-    npc_rel['arousal'] = max(0.0, min(1.0, npc_rel['arousal'] + arousal_change))
+    current_arousal = npc_rel.get('arousal', 0.0)
+    relationship_updates['arousal'] = max(0.0, min(1.0, current_arousal + arousal_change))
 
     # Update flags
+    updated_flags = npc_rel.get('flags', {}).copy()
     if success:
-        npc_rel['flags']['romance:sensual_touch_success'] = True
-        npc_rel['flags'][f'romance:tool_used_{req.tool_id}'] = True
+        updated_flags['romance:sensual_touch_success'] = True
+        updated_flags[f'romance:tool_used_{req.tool_id}'] = True
     else:
-        npc_rel['flags']['romance:sensual_touch_failed'] = True
+        updated_flags['romance:sensual_touch_failed'] = True
 
     # Unlock tool if applicable
     if tool_unlocked:
-        if 'unlocked_tools' not in npc_rel['flags']:
-            npc_rel['flags']['unlocked_tools'] = []
-        if tool_unlocked not in npc_rel['flags']['unlocked_tools']:
-            npc_rel['flags']['unlocked_tools'].append(tool_unlocked)
+        if 'unlocked_tools' not in updated_flags:
+            updated_flags['unlocked_tools'] = []
+        if tool_unlocked not in updated_flags['unlocked_tools']:
+            updated_flags['unlocked_tools'].append(tool_unlocked)
 
-    relationships[npc_key] = npc_rel
-    session.relationships = relationships
+    relationship_updates['flags'] = updated_flags
 
-    # Update global session flags
-    session_flags = session.flags or {}
-    if 'romance' not in session_flags:
-        session_flags['romance'] = {}
+    # NEW: Update relationship using capability API (permission-checked, provenance tracked)
+    await ctx.session_write.update_relationship(req.session_id, npc_key, relationship_updates)
 
-    romance_flags = session_flags['romance']
+    ctx.log.info(
+        "Updated NPC relationship",
+        npc_id=req.npc_id,
+        affinity_change=affinity_change,
+        arousal_change=arousal_change,
+        new_affinity=new_affinity,
+    )
+
+    # NEW: Update global session flags using capability API
+    # Get current romance flags
+    current_session_flags = session.get("flags", {})
+    romance_flags = current_session_flags.get('romance', {})
+
     if 'sensual_touch_attempts' not in romance_flags:
         romance_flags['sensual_touch_attempts'] = []
 
@@ -333,11 +369,8 @@ def attempt_sensual_touch(
     }
     romance_flags['sensual_touch_attempts'].append(attempt_record)
 
-    session.flags = session_flags
-
-    # Commit changes
-    db.commit()
-    db.refresh(session)
+    # NEW: Save flags using capability API (auto-namespaced under plugin:game-romance:*)
+    await ctx.session_write.set_session_flag(req.session_id, "romance", romance_flags)
 
     # Generate message
     if success:
@@ -353,28 +386,38 @@ def attempt_sensual_touch(
     else:
         message = f"😕 NPC #{req.npc_id} didn't enjoy that very much. ({affinity_change} affinity)"
 
+    ctx.log.info(
+        "Sensual touch completed",
+        success=success,
+        pleasure_score=pleasure_score,
+        tool_unlocked=tool_unlocked,
+    )
+
     return SensualTouchResponse(
         success=success,
         pleasure_score=pleasure_score,
         arousal_change=arousal_change,
         affinity_change=affinity_change,
         tool_unlocked=tool_unlocked,
-        updated_flags=session_flags,
+        updated_flags={"romance": romance_flags},  # Return the structure we set
         message=message,
     )
 
 
 @router.get("/npc-preferences/{npc_id}")
-def get_npc_romance_preferences(
+async def get_npc_romance_preferences(
     npc_id: int,
-    db: Session = Depends(get_db),
+    ctx: PluginContext = Depends(get_plugin_context("game-romance")),  # NEW: Use PluginContext
 ) -> dict[str, Any]:
     """
     Get NPC's romance preferences for debugging/UI hints.
 
     TODO: This should be gated by relationship level in production
     (players shouldn't see exact preferences unless they've learned them)
+
+    Uses PluginContext for logging.
     """
+    ctx.log.info("Fetching NPC romance preferences", npc_id=npc_id)
     return get_npc_preferences(npc_id)
 
 
@@ -384,7 +427,7 @@ def on_load(app):
     """Called when plugin is loaded (before app starts)"""
     from pixsim_logging import configure_logging
     logger = configure_logging("plugin.game-romance")
-    logger.info("Game Romance plugin loaded")
+    logger.info("Game Romance plugin loaded (v2.0 - using PluginContext)")
 
 
 async def on_enable():
