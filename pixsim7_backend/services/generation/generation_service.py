@@ -911,8 +911,11 @@ class GenerationService:
         if not generation.error_message:
             return False
 
-        # Check retry count
-        if generation.retry_count >= 3:
+        # Check retry count against configured max
+        from pixsim7_backend.shared.config import settings
+        max_retries = settings.auto_retry_max_attempts
+
+        if generation.retry_count >= max_retries:
             return False
 
         error_msg = generation.error_message.lower()

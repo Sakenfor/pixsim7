@@ -116,6 +116,18 @@ class Settings(BaseSettings):
     api_title: str = "PixSim7 API"
     api_version: str = "0.1.0"
 
+    # ===== GENERATION =====
+    auto_retry_enabled: bool = Field(
+        default=True,
+        description="Enable automatic retry for failed generations (content filters, temporary errors)"
+    )
+    auto_retry_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum retry attempts per generation"
+    )
+
     # ===== NETWORK =====
     host: str = Field(
         default="0.0.0.0",
