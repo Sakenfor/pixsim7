@@ -172,6 +172,50 @@ export {
 
 export type { WorldUiThemePreset } from './world/worldUiThemePresets';
 
+export {
+  applySessionOverride,
+  applySessionOverridePreset,
+  clearSessionOverride,
+  getSessionOverride,
+  hasSessionOverride,
+  mergeThemeWithOverride,
+  getSessionOverridePresetIds,
+  getSessionOverridePreset,
+  SESSION_OVERRIDE_PRESETS,
+} from './world/sessionUiOverride';
+
+export {
+  getAllThemePacks,
+  getThemePackById,
+  saveThemePack,
+  deleteThemePack,
+  exportThemePack,
+  importThemePack,
+  downloadThemePack,
+  createThemePackFromThemes,
+  loadCustomPacks,
+  clearCustomPacks,
+  BUILT_IN_THEME_PACKS,
+} from './world/themePacks';
+
+export type { ThemePack } from './world/themePacks';
+
+export {
+  findMatchingRule,
+  getDynamicThemeOverride,
+  applyDynamicThemeRule,
+  loadDynamicThemeRules,
+  saveDynamicThemeRules,
+  saveOrUpdateRule,
+  deleteRule,
+  toggleRuleEnabled,
+  resetToDefaultRules,
+  createTimeOfDayRule,
+  DYNAMIC_THEME_RULE_PRESETS,
+} from './world/dynamicThemeRules';
+
+export type { DynamicThemeRule, ThemeRuleCondition } from './world/dynamicThemeRules';
+
 // ===== User Preferences =====
 export {
   loadUserPreferences,
@@ -228,7 +272,7 @@ export type {
   QuestState,
   InventoryItem,
   EventState,
-} from './session/state';
+} from './session/sharedTypes';
 
 // ===== Session Helpers (Mutable API - for convenience) =====
 export {

@@ -132,7 +132,7 @@ export function setNpcRelationshipState(
 
 // ===== Arc Helpers =====
 
-import type { ArcState, QuestState, InventoryItem } from './sharedTypes';
+import type { ArcState, QuestState, InventoryItem, EventState } from './sharedTypes';
 
 /**
  * Get arc state from session
@@ -213,15 +213,6 @@ export function setQuestState(
 }
 
 // ===== Inventory Helpers =====
-
-/**
- * Inventory item structure
- */
-export interface InventoryItem {
-  id: string;
-  qty: number;
-  [key: string]: any; // Allow custom metadata
-}
 
 /**
  * Get all inventory items from session
@@ -312,15 +303,6 @@ export function removeInventoryItem(
 }
 
 // ===== Event Helpers =====
-
-/**
- * Event state structure
- */
-export interface EventState {
-  active: boolean;
-  triggeredAt?: number;
-  [key: string]: any;
-}
 
 /**
  * Get event state from session

@@ -210,6 +210,28 @@ export interface WorldUiConfig {
   [key: string]: unknown;
 }
 
+/**
+ * Temporary UI theme override for sessions/arcs
+ * Applied at runtime without modifying world meta
+ * Used for special moments like dream sequences, flashbacks, etc.
+ */
+export interface SessionUiOverride {
+  /** Unique identifier for this override (e.g., 'dream-sequence', 'flashback') */
+  id: string;
+  /** Partial theme to merge with world theme */
+  themeOverride?: Partial<WorldUiTheme>;
+  /** When this override was applied (timestamp) */
+  appliedAt?: number;
+  /** Optional metadata for tracking */
+  metadata?: {
+    /** Reason for override (for debugging/logging) */
+    reason?: string;
+    /** Source that applied the override (scene, plugin, etc.) */
+    source?: string;
+    [key: string]: unknown;
+  };
+}
+
 // ===================
 // Session Types
 // ===================
@@ -248,6 +270,8 @@ export interface SessionFlags {
   sessionKind?: SessionKind;
   /** World-specific configuration */
   world?: WorldSessionFlags;
+  /** Temporary UI theme override for this session */
+  ui?: SessionUiOverride;
   /** Additional custom flags */
   [key: string]: unknown;
 }

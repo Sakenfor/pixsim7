@@ -3,16 +3,21 @@
  *
  * React hook for applying per-world UI themes.
  * Reads theme configuration from GameWorld.meta.ui and applies CSS variables.
+ * Supports session-level theme overrides for special moments.
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, UserUiPreferences } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride, GameSessionDTO } from '@pixsim7/types';
 import {
   getWorldTheme,
   loadUserPreferences,
   isHighContrastEnabled,
   getEffectiveDensity,
   resolveMotionConfig,
+  mergeThemeWithOverride,
+  getDynamicThemeOverride,
+  applyDynamicThemeRule,
+  loadDynamicThemeRules,
 } from '@pixsim7/game-core';
 
 /**
@@ -104,8 +109,17 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
 /**
  * React hook to automatically apply world theme when world changes
  * Respects user preferences for accessibility
+ * Supports session-level theme overrides and dynamic theme rules
+ *
+ * @param worldDetail - The current world
+ * @param session - Optional session (for dynamic theme rules)
+ * @param sessionOverride - Optional session theme override (e.g., for dream sequences)
  */
-export function useWorldTheme(worldDetail: GameWorldDetail | null) {
+export function useWorldTheme(
+  worldDetail: GameWorldDetail | null,
+  session?: GameSessionDTO,
+  sessionOverride?: SessionUiOverride
+) {
   useEffect(() => {
     // Load user preferences
     const userPrefs = loadUserPreferences();
@@ -117,14 +131,26 @@ export function useWorldTheme(worldDetail: GameWorldDetail | null) {
     }
 
     // Get theme from world meta
-    const theme = getWorldTheme(worldDetail);
-    applyTheme(theme, userPrefs);
+    let effectiveTheme = getWorldTheme(worldDetail);
+
+    // Apply dynamic theme rules (if enabled)
+    const dynamicRules = loadDynamicThemeRules();
+    const dynamicOverride = getDynamicThemeOverride(dynamicRules, worldDetail, session);
+    if (dynamicOverride) {
+      effectiveTheme = applyDynamicThemeRule(effectiveTheme, dynamicOverride);
+      console.debug('[WorldTheme] Applied dynamic theme rule', { dynamicOverride });
+    }
+
+    // Merge with session override if present (session override takes precedence over dynamic rules)
+    effectiveTheme = mergeThemeWithOverride(effectiveTheme, sessionOverride);
+
+    applyTheme(effectiveTheme, userPrefs);
 
     // Cleanup on unmount or world change
     return () => {
       applyTheme(undefined, userPrefs);
     };
-  }, [worldDetail]);
+  }, [worldDetail, session, sessionOverride]);
 }
 
 /**
