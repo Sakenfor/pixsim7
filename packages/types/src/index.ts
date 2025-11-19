@@ -158,6 +158,7 @@ export * from './nodeTypeRegistry'
 export * from './builtinNodeTypes'
 export * from './arcNodeTypes'
 export * from './npcResponseNode'
+export * from './intimacyNodeTypes'
 export * from './npcZones'
 export * from './npcZoneTracking'
 
@@ -172,3 +173,9 @@ export * from './game'
 // ===================
 
 export * from './userPreferences'
+
+// ===================
+// Intimacy & Progression Types
+// ===================
+
+export * from './intimacy'
