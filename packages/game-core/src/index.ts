@@ -161,6 +161,18 @@ export {
 
 export type { WorldUiThemePreset } from './world/worldUiThemePresets';
 
+export {
+  applySessionOverride,
+  applySessionOverridePreset,
+  clearSessionOverride,
+  getSessionOverride,
+  hasSessionOverride,
+  mergeThemeWithOverride,
+  getSessionOverridePresetIds,
+  getSessionOverridePreset,
+  SESSION_OVERRIDE_PRESETS,
+} from './world/sessionUiOverride';
+
 // ===== User Preferences =====
 export {
   loadUserPreferences,

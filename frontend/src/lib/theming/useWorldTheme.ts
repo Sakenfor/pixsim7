@@ -3,16 +3,18 @@
  *
  * React hook for applying per-world UI themes.
  * Reads theme configuration from GameWorld.meta.ui and applies CSS variables.
+ * Supports session-level theme overrides for special moments.
  */
 
 import { useEffect } from 'react';
-import type { GameWorldDetail, WorldUiTheme, UserUiPreferences } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiTheme, UserUiPreferences, SessionUiOverride } from '@pixsim7/types';
 import {
   getWorldTheme,
   loadUserPreferences,
   isHighContrastEnabled,
   getEffectiveDensity,
   resolveMotionConfig,
+  mergeThemeWithOverride,
 } from '@pixsim7/game-core';
 
 /**
@@ -104,8 +106,15 @@ function applyTheme(theme: WorldUiTheme | undefined, userPrefs: UserUiPreference
 /**
  * React hook to automatically apply world theme when world changes
  * Respects user preferences for accessibility
+ * Supports session-level theme overrides
+ *
+ * @param worldDetail - The current world
+ * @param sessionOverride - Optional session theme override (e.g., for dream sequences)
  */
-export function useWorldTheme(worldDetail: GameWorldDetail | null) {
+export function useWorldTheme(
+  worldDetail: GameWorldDetail | null,
+  sessionOverride?: SessionUiOverride
+) {
   useEffect(() => {
     // Load user preferences
     const userPrefs = loadUserPreferences();
@@ -117,14 +126,18 @@ export function useWorldTheme(worldDetail: GameWorldDetail | null) {
     }
 
     // Get theme from world meta
-    const theme = getWorldTheme(worldDetail);
-    applyTheme(theme, userPrefs);
+    const baseTheme = getWorldTheme(worldDetail);
+
+    // Merge with session override if present
+    const effectiveTheme = mergeThemeWithOverride(baseTheme, sessionOverride);
+
+    applyTheme(effectiveTheme, userPrefs);
 
     // Cleanup on unmount or world change
     return () => {
       applyTheme(undefined, userPrefs);
     };
-  }, [worldDetail]);
+  }, [worldDetail, sessionOverride]);
 }
 
 /**
