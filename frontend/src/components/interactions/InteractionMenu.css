@@ -72,6 +72,12 @@
   cursor: not-allowed;
 }
 
+.interaction-menu-item.on-cooldown {
+  opacity: 0.6;
+  cursor: not-allowed;
+  position: relative;
+}
+
 .interaction-icon {
   font-size: 16px;
   width: 20px;
@@ -89,6 +95,36 @@
   color: rgba(255, 100, 100, 0.8);
   font-style: italic;
   margin-left: auto;
+}
+
+/* Cooldown display */
+
+.interaction-cooldown {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(255, 200, 100, 0.9);
+  font-weight: 600;
+}
+
+.cooldown-icon {
+  font-size: 12px;
+}
+
+.cooldown-time {
+  font-family: monospace;
+}
+
+.cooldown-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(100, 200, 255, 0.6), rgba(100, 255, 200, 0.6));
+  transition: width 1s linear;
+  border-radius: 0 0 4px 0;
 }
 
 /* Empty state */

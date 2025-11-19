@@ -1,0 +1,177 @@
+/**
+ * Interaction Suggestions Styles
+ */
+
+.interaction-suggestions {
+  background: rgba(25, 25, 35, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.interaction-suggestions.compact {
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+/* Header */
+
+.suggestions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.suggestions-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.suggestions-count {
+  padding: 2px 8px;
+  background: rgba(100, 150, 255, 0.2);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(150, 200, 255, 0.9);
+}
+
+/* Suggestions list */
+
+.suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.interaction-suggestions.compact .suggestions-list {
+  gap: 6px;
+}
+
+/* Suggestion card */
+
+.suggestion-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid rgba(100, 150, 255, 0.6);
+  border-radius: 4px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.suggestion-card.compact {
+  padding: 8px 10px;
+}
+
+.suggestion-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-left-width: 4px;
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Card header */
+
+.suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.suggestion-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.suggestion-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.suggestion-stars {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Explanation */
+
+.suggestion-explanation {
+  margin-top: 6px;
+  margin-left: 30px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.4;
+}
+
+/* Context */
+
+.suggestion-context {
+  margin-top: 8px;
+  margin-left: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.context-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+
+.context-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.context-value {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.context-value.time-sensitive {
+  color: rgba(255, 150, 100, 0.9);
+  font-weight: 600;
+}
+
+/* Context types */
+
+.tier-progress .context-value {
+  color: rgba(255, 100, 150, 0.9);
+}
+
+.chain-info .context-value {
+  color: rgba(100, 150, 255, 0.9);
+}
+
+/* Responsive */
+
+@media (max-width: 640px) {
+  .interaction-suggestions {
+    padding: 12px;
+  }
+
+  .suggestion-explanation {
+    margin-left: 24px;
+  }
+
+  .suggestion-context {
+    margin-left: 24px;
+  }
+}

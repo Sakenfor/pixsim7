@@ -327,6 +327,45 @@ async def track_interaction_cooldown(
     session.flags["npcs"] = npcs
 
 
+async def advance_interaction_chain(
+    session: GameSession,
+    chain_id: str,
+    step_id: str
+) -> None:
+    """
+    Advance an interaction chain to the next step.
+
+    Args:
+        session: Game session
+        chain_id: Chain ID
+        step_id: Completed step ID
+    """
+    # Ensure chains structure exists
+    chains = session.flags.get("chains", {})
+    if chain_id not in chains:
+        chains[chain_id] = {
+            "chainId": chain_id,
+            "currentStep": 0,
+            "completed": False,
+            "startedAt": int(time.time()),
+            "completedSteps": [],
+            "skippedSteps": [],
+        }
+
+    chain_state = chains[chain_id]
+
+    # Add to completed steps
+    if step_id not in chain_state["completedSteps"]:
+        chain_state["completedSteps"].append(step_id)
+
+    # Update last step time
+    chain_state["lastStepAt"] = int(time.time())
+
+    # Note: Auto-advance logic is handled client-side based on chain definition
+    # Backend just tracks completion of steps
+    session.flags["chains"] = chains
+
+
 # ===================
 # Main Execution
 # ===================
@@ -415,6 +454,13 @@ async def execute_interaction(
     if definition.gating and definition.gating.cooldown_seconds:
         await track_interaction_cooldown(session, npc_id, definition.id)
 
+    # 8. Chain progression (if this interaction is part of a chain)
+    chain_id = None
+    if context and "chainId" in context and "stepId" in context:
+        chain_id = context["chainId"]
+        step_id = context["stepId"]
+        await advance_interaction_chain(session, chain_id, step_id)
+
     # Determine success message
     message = outcome.success_message or f"{definition.label} completed"
 
@@ -486,20 +532,76 @@ async def prepare_generation_launch(
     Returns:
         Generation request ID (or None if not launched)
     """
-    # TODO: Integrate with existing dialogue generation system
-    # For now, return a placeholder ID
+    # Integrate with dialogue generation system
     if launch.dialogue_request:
+        # Actually trigger dialogue generation via the dialogue engine
+        from pixsim7_backend.domain.narrative import NarrativeEngine
+
         request_id = f"dialogue:{npc_id}:{int(time.time())}"
-        # Store pending dialogue request in session
+
+        # Initialize narrative engine
+        engine = NarrativeEngine()
+
+        # Load NPC data
+        npc = await db.get(GameNPC, npc_id)
+        if not npc:
+            return None
+
+        # Load world data
+        world = await db.get(GameWorld, session.world_id) if session.world_id else None
+        world_data = {
+            "id": world.id if world else 0,
+            "name": world.name if world else "Default World",
+            "meta": world.meta if world and world.meta else {}
+        }
+
+        npc_data = {
+            "id": npc.id,
+            "name": npc.name,
+            "personality": npc.personality or {},
+            "home_location_id": npc.home_location_id
+        }
+
+        session_data = {
+            "id": session.id,
+            "world_time": session.world_time,
+            "flags": session.flags,
+            "relationships": session.relationships
+        }
+
+        # Build context
+        context = engine.build_context(
+            world_id=world_data["id"],
+            session_id=session.id,
+            npc_id=npc_id,
+            world_data=world_data,
+            session_data=session_data,
+            npc_data=npc_data,
+            location_data=None,
+            scene_data=None,
+            player_input=player_input
+        )
+
+        # Generate the dialogue request
+        program_id = launch.dialogue_request.program_id or "default_dialogue"
+        result = engine.build_dialogue_request(
+            context=context,
+            program_id=program_id
+        )
+
+        # Store dialogue prompt in session for client to execute
         pending = session.flags.get("pendingDialogue", [])
         pending.append({
             "requestId": request_id,
             "npcId": npc_id,
-            "programId": launch.dialogue_request.program_id,
+            "programId": program_id,
             "systemPrompt": launch.dialogue_request.system_prompt,
+            "llmPrompt": result["llm_prompt"],
+            "visualPrompt": result.get("visual_prompt"),
             "playerInput": player_input,
             "branchIntent": launch.branch_intent,
-            "createdAt": int(time.time())
+            "createdAt": int(time.time()),
+            "metadata": result.get("metadata", {})
         })
         session.flags["pendingDialogue"] = pending
         return request_id

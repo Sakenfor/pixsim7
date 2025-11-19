@@ -1,0 +1,161 @@
+/**
+ * Pending Dialogue Panel Styles
+ */
+
+.pending-dialogue-panel {
+  background: rgba(30, 30, 40, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 300px;
+  max-width: 400px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.pending-dialogue-panel.loading,
+.pending-dialogue-panel.error {
+  padding: 20px;
+  text-align: center;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.count-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(100, 150, 255, 0.3);
+  border: 1px solid rgba(100, 150, 255, 0.5);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dialogue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialogue-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.dialogue-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(100, 150, 255, 0.3);
+}
+
+.dialogue-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.npc-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(100, 200, 255, 0.9);
+}
+
+.program-id {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: monospace;
+}
+
+.player-input {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.timestamp {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+}
+
+.dialogue-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.execute-btn,
+.clear-btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.execute-btn {
+  background: rgba(100, 200, 100, 0.2);
+  border-color: rgba(100, 200, 100, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: rgba(100, 200, 100, 0.3);
+  border-color: rgba(100, 200, 100, 0.6);
+}
+
+.execute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-btn {
+  background: rgba(255, 100, 100, 0.2);
+  border-color: rgba(255, 100, 100, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+  width: 32px;
+  padding: 6px;
+}
+
+.clear-btn:hover:not(:disabled) {
+  background: rgba(255, 100, 100, 0.3);
+  border-color: rgba(255, 100, 100, 0.6);
+}
+
+.clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading-spinner,
+.error-message {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.error-message {
+  color: rgba(255, 100, 100, 0.9);
+}
