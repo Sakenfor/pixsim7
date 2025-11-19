@@ -20,6 +20,8 @@ import {
   type PluginKind,
   type PluginOrigin,
 } from '../../lib/plugins/catalog';
+import { DependencyGraphPanel } from './DependencyGraphPanel';
+import { CapabilityTestingPanel } from './CapabilityTestingPanel';
 
 /**
  * AppMapPanel - Live visualization of app architecture, features, and plugins
@@ -35,12 +37,23 @@ export function AppMapPanel() {
   const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<PluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'features' | 'plugins' | 'stats'>('features');
+  const [activeTab, setActiveTab] = useState<'features' | 'plugins' | 'graph' | 'testing' | 'stats'>('features');
 
   // Data from capability registry
   const allFeatures = useFeatures();
   const allActions = useActions();
   const selectedFeatureRoutes = useFeatureRoutes(selectedFeatureId || '');
+
+  // Collect all routes from all features
+  const allRoutes = useMemo(() => {
+    const routes: RouteCapability[] = [];
+    allFeatures.forEach(feature => {
+      if (feature.routes) {
+        routes.push(...feature.routes);
+      }
+    });
+    return routes;
+  }, [allFeatures]);
 
   // Data from plugin catalog
   const allPlugins = useMemo(() => listAllPlugins(), []);
@@ -78,6 +91,68 @@ export function AppMapPanel() {
 
   const selectedFeature = allFeatures.find(f => f.id === selectedFeatureId);
 
+  // Export app map data
+  const handleExport = () => {
+    const appMapData = {
+      version: '1.0',
+      timestamp: new Date().toISOString(),
+      features: allFeatures.map(f => ({
+        id: f.id,
+        name: f.name,
+        description: f.description,
+        category: f.category,
+        icon: f.icon,
+        priority: f.priority,
+        routes: f.routes?.map(r => ({
+          path: r.path,
+          name: r.name,
+          description: r.description,
+          protected: r.protected,
+          showInNav: r.showInNav,
+        })),
+      })),
+      actions: allActions.map(a => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        featureId: a.featureId,
+        shortcut: a.shortcut,
+      })),
+      plugins: allPlugins.map(p => ({
+        id: p.id,
+        label: p.label,
+        description: p.description,
+        kind: p.kind,
+        origin: p.origin,
+        category: p.category,
+        version: p.version,
+        author: p.author,
+        tags: p.tags,
+        providesFeatures: p.providesFeatures,
+        consumesFeatures: p.consumesFeatures,
+        experimental: p.experimental,
+        deprecated: p.deprecated,
+      })),
+      stats: {
+        featureCount: allFeatures.length,
+        actionCount: allActions.length,
+        pluginCount: allPlugins.length,
+        routeCount: allRoutes.length,
+        pluginCounts,
+        originCounts,
+        featureUsageStats,
+      },
+    };
+
+    const blob = new Blob([JSON.stringify(appMapData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `app-map-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
       {/* Header */}
@@ -91,12 +166,18 @@ export function AppMapPanel() {
               Live visualization of features, routes, actions, and plugins
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3 items-center">
             <div className="text-sm text-neutral-600 dark:text-neutral-400">
               <span className="font-medium">{allFeatures.length}</span> features
               {' • '}
               <span className="font-medium">{allPlugins.length}</span> plugins
             </div>
+            <button
+              onClick={handleExport}
+              className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-md transition-colors"
+            >
+              Export JSON
+            </button>
           </div>
         </div>
 
@@ -121,6 +202,26 @@ export function AppMapPanel() {
             }`}
           >
             Plugin Ecosystem
+          </button>
+          <button
+            onClick={() => setActiveTab('graph')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'graph'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+            }`}
+          >
+            Dependency Graph
+          </button>
+          <button
+            onClick={() => setActiveTab('testing')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'testing'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+            }`}
+          >
+            Capability Testing
           </button>
           <button
             onClick={() => setActiveTab('stats')}
@@ -157,6 +258,18 @@ export function AppMapPanel() {
             onKindFilterChange={setKindFilter}
             onOriginFilterChange={setOriginFilter}
             onSearchQueryChange={setSearchQuery}
+          />
+        )}
+
+        {activeTab === 'graph' && (
+          <DependencyGraphPanel features={allFeatures} plugins={allPlugins} />
+        )}
+
+        {activeTab === 'testing' && (
+          <CapabilityTestingPanel
+            features={allFeatures}
+            routes={allRoutes}
+            actions={allActions}
           />
         )}
 
