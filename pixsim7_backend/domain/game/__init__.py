@@ -32,6 +32,14 @@ from pixsim7_backend.domain.game.ecs import (
     set_npc_metadata,
     update_npc_metadata,
     validate_entity,
+    # Metric registry
+    get_metric_registry,
+    resolve_metric,
+    get_npc_metric,
+    set_npc_metric,
+    update_npc_metric,
+    list_metrics_for_category,
+    get_metric_definition,
 )
 
 __all__ = [
@@ -61,4 +69,12 @@ __all__ = [
     "set_npc_metadata",
     "update_npc_metadata",
     "validate_entity",
+    # Metric registry
+    "get_metric_registry",
+    "resolve_metric",
+    "get_npc_metric",
+    "set_npc_metric",
+    "update_npc_metric",
+    "list_metrics_for_category",
+    "get_metric_definition",
 ]

@@ -473,3 +473,324 @@ def validate_entity(session: Any, npc_id: int) -> tuple[bool, Optional[str]]:
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+# ===================
+# Metric Registry Integration
+# ===================
+
+
+def get_metric_registry(world: Any) -> Dict[str, Dict[str, Any]]:
+    """
+    Get the metric registry from a GameWorld.
+
+    Args:
+        world: GameWorld instance
+
+    Returns:
+        Metric registry dictionary (from world.meta.metrics)
+
+    Example:
+        registry = get_metric_registry(world)
+        npc_rel_metrics = registry.get("npcRelationship", {})
+    """
+    meta = world.meta or {}
+    return meta.get("metrics", {})
+
+
+def resolve_metric(
+    world: Any, metric_id: str
+) -> Optional[tuple[str, str, Optional[str]]]:
+    """
+    Resolve a metric ID to its component, category, and path.
+
+    Args:
+        world: GameWorld instance
+        metric_id: Metric ID (e.g., "npcRelationship.affinity")
+
+    Returns:
+        Tuple of (category, component, path) or None if not found.
+        Path is optional (may be None if metric maps directly to component field).
+
+    Example:
+        result = resolve_metric(world, "npcRelationship.affinity")
+        if result:
+            category, component, path = result
+            # category = "npcRelationship"
+            # component = "core"
+            # path = None (or "affinity" if nested)
+    """
+    registry = get_metric_registry(world)
+
+    # Parse metric ID: category.metricName
+    if "." not in metric_id:
+        logger.warning(f"Invalid metric ID format: {metric_id} (expected 'category.name')")
+        return None
+
+    category, metric_name = metric_id.split(".", 1)
+
+    # Look up in registry
+    category_metrics = registry.get(category, {})
+    if metric_name not in category_metrics:
+        logger.warning(
+            f"Metric '{metric_id}' not found in registry category '{category}'"
+        )
+        return None
+
+    metric_def = category_metrics[metric_name]
+    component = metric_def.get("component")
+    path = metric_def.get("path")  # Optional path within component
+
+    if not component:
+        logger.warning(f"Metric '{metric_id}' has no component specified")
+        return None
+
+    return category, component, path
+
+
+def get_npc_metric(
+    session: Any, npc_id: int, metric_id: str, world: Any, default: Any = None
+) -> Any:
+    """
+    Get a metric value for an NPC using the metric registry.
+
+    The registry maps metric IDs to components and paths, allowing metrics
+    to be read without knowing the underlying component structure.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+        metric_id: Metric ID (e.g., "npcRelationship.affinity")
+        world: GameWorld instance (for registry lookup)
+        default: Default value if metric not found
+
+    Returns:
+        Metric value, or default if not found
+
+    Example:
+        affinity = get_npc_metric(session, 123, "npcRelationship.affinity", world)
+        arousal = get_npc_metric(session, 123, "npcRelationship.arousal", world, default=0.0)
+    """
+    resolution = resolve_metric(world, metric_id)
+    if not resolution:
+        logger.warning(f"Could not resolve metric '{metric_id}'")
+        return default
+
+    category, component_name, path = resolution
+    component = get_npc_component(session, npc_id, component_name, default={})
+
+    # Navigate path if specified
+    if path:
+        # Support dot notation for nested paths
+        parts = path.split(".")
+        value = component
+        for part in parts:
+            if isinstance(value, dict):
+                value = value.get(part)
+                if value is None:
+                    return default
+            else:
+                return default
+        return value
+    else:
+        # Metric name maps directly to field in component
+        metric_name = metric_id.split(".", 1)[1]
+        return component.get(metric_name, default)
+
+
+def set_npc_metric(
+    session: Any,
+    npc_id: int,
+    metric_id: str,
+    value: Any,
+    world: Any,
+    validate: bool = True,
+) -> bool:
+    """
+    Set a metric value for an NPC using the metric registry.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+        metric_id: Metric ID (e.g., "npcRelationship.affinity")
+        value: New value
+        world: GameWorld instance (for registry lookup)
+        validate: Whether to validate/clamp value (default True)
+
+    Returns:
+        True if successful, False otherwise
+
+    Example:
+        set_npc_metric(session, 123, "npcRelationship.affinity", 75.0, world)
+        set_npc_metric(session, 123, "npcRelationship.arousal", 0.5, world)
+    """
+    resolution = resolve_metric(world, metric_id)
+    if not resolution:
+        logger.warning(f"Could not resolve metric '{metric_id}'")
+        return False
+
+    category, component_name, path = resolution
+    registry = get_metric_registry(world)
+    category_metrics = registry.get(category, {})
+    metric_name = metric_id.split(".", 1)[1]
+    metric_def = category_metrics.get(metric_name, {})
+
+    # Validate/clamp value if requested
+    if validate:
+        value = _validate_metric_value(value, metric_def)
+
+    # Get current component
+    component = get_npc_component(session, npc_id, component_name, default={})
+
+    # Set value (handle path if specified)
+    if path:
+        # Support dot notation for nested paths
+        parts = path.split(".")
+        current = component
+        for i, part in enumerate(parts[:-1]):
+            if part not in current:
+                current[part] = {}
+            current = current[part]
+        current[parts[-1]] = value
+    else:
+        # Metric name maps directly to field in component
+        component[metric_name] = value
+
+    # Write back component
+    set_npc_component(session, npc_id, component_name, component, validate=False)
+    logger.debug(f"Set metric '{metric_id}' = {value} for npc:{npc_id}")
+    return True
+
+
+def _validate_metric_value(value: Any, metric_def: Dict[str, Any]) -> Any:
+    """
+    Validate and clamp a metric value based on its definition.
+
+    Args:
+        value: Raw value
+        metric_def: Metric definition from registry
+
+    Returns:
+        Validated/clamped value
+    """
+    metric_type = metric_def.get("type", "float")
+    min_val = metric_def.get("min")
+    max_val = metric_def.get("max")
+    allowed_values = metric_def.get("values")
+
+    # Type conversion
+    if metric_type == "float":
+        value = float(value)
+    elif metric_type == "int":
+        value = int(value)
+    elif metric_type == "boolean":
+        value = bool(value)
+
+    # Clamp numeric values
+    if metric_type in ("float", "int"):
+        if min_val is not None and value < min_val:
+            logger.debug(f"Clamping value {value} to min {min_val}")
+            value = min_val
+        if max_val is not None and value > max_val:
+            logger.debug(f"Clamping value {value} to max {max_val}")
+            value = max_val
+
+    # Validate enum values
+    if metric_type == "enum" and allowed_values:
+        if value not in allowed_values:
+            logger.warning(
+                f"Value '{value}' not in allowed values {allowed_values}, using first"
+            )
+            value = allowed_values[0] if allowed_values else value
+
+    return value
+
+
+def update_npc_metric(
+    session: Any,
+    npc_id: int,
+    metric_id: str,
+    delta: float,
+    world: Any,
+    validate: bool = True,
+) -> bool:
+    """
+    Update (add to) a numeric metric value.
+
+    Args:
+        session: GameSession instance
+        npc_id: NPC ID
+        metric_id: Metric ID (e.g., "npcRelationship.affinity")
+        delta: Amount to add (can be negative)
+        world: GameWorld instance (for registry lookup)
+        validate: Whether to validate/clamp result (default True)
+
+    Returns:
+        True if successful, False otherwise
+
+    Example:
+        # Increase affinity by 5
+        update_npc_metric(session, 123, "npcRelationship.affinity", 5.0, world)
+
+        # Decrease trust by 3
+        update_npc_metric(session, 123, "npcRelationship.trust", -3.0, world)
+    """
+    current = get_npc_metric(session, npc_id, metric_id, world, default=0)
+
+    # Convert to numeric
+    try:
+        current_val = float(current)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"Metric '{metric_id}' current value '{current}' is not numeric"
+        )
+        return False
+
+    new_val = current_val + delta
+    return set_npc_metric(session, npc_id, metric_id, new_val, world, validate=validate)
+
+
+def list_metrics_for_category(world: Any, category: str) -> list[str]:
+    """
+    List all metric names in a category.
+
+    Args:
+        world: GameWorld instance
+        category: Category name (e.g., "npcRelationship")
+
+    Returns:
+        List of metric names
+
+    Example:
+        metrics = list_metrics_for_category(world, "npcRelationship")
+        # ["affinity", "trust", "chemistry", "tension", "arousal", ...]
+    """
+    registry = get_metric_registry(world)
+    category_metrics = registry.get(category, {})
+    return list(category_metrics.keys())
+
+
+def get_metric_definition(world: Any, metric_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get the full metric definition from the registry.
+
+    Args:
+        world: GameWorld instance
+        metric_id: Metric ID (e.g., "npcRelationship.affinity")
+
+    Returns:
+        Metric definition dictionary or None if not found
+
+    Example:
+        definition = get_metric_definition(world, "npcRelationship.affinity")
+        if definition:
+            print(f"Type: {definition.get('type')}")
+            print(f"Range: {definition.get('min')}-{definition.get('max')}")
+    """
+    if "." not in metric_id:
+        return None
+
+    category, metric_name = metric_id.split(".", 1)
+    registry = get_metric_registry(world)
+    category_metrics = registry.get(category, {})
+    return category_metrics.get(metric_name)
