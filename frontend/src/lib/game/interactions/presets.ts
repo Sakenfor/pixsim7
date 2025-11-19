@@ -1013,6 +1013,205 @@ export function getRecommendedPresets(
 }
 
 /**
+ * PHASE 9: Preset Conflict & Compatibility Checks
+ * Detect when multiple presets might conflict or have compatibility issues
+ */
+
+export type ConflictSeverity = 'warning' | 'error' | 'info';
+
+export interface ConflictWarning {
+  /** Severity level of the conflict */
+  severity: ConflictSeverity;
+
+  /** Human-readable conflict message */
+  message: string;
+
+  /** IDs of presets involved in the conflict */
+  presetIds: string[];
+
+  /** Suggested resolution */
+  suggestion?: string;
+
+  /** Conflict type identifier */
+  type: string;
+}
+
+/**
+ * Check for duplicate interaction types (multiple presets for same plugin)
+ */
+function checkDuplicateInteractions(
+  activePresets: Array<{ presetId: string; interactionId: string; presetName: string }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+  const interactionGroups = new Map<string, Array<{ presetId: string; presetName: string }>>();
+
+  // Group presets by interaction type
+  for (const preset of activePresets) {
+    if (!interactionGroups.has(preset.interactionId)) {
+      interactionGroups.set(preset.interactionId, []);
+    }
+    interactionGroups.get(preset.interactionId)!.push({
+      presetId: preset.presetId,
+      presetName: preset.presetName,
+    });
+  }
+
+  // Check for duplicates
+  for (const [interactionId, group] of interactionGroups.entries()) {
+    if (group.length > 1) {
+      warnings.push({
+        severity: 'warning',
+        message: `Multiple presets configured for ${interactionId}: ${group.map((p) => p.presetName).join(', ')}`,
+        presetIds: group.map((p) => p.presetId),
+        suggestion: 'Consider using only one preset per interaction type, or ensure configurations are compatible',
+        type: 'duplicate-interaction',
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Check for conflicting configuration values
+ */
+function checkConfigConflicts(
+  activePresets: Array<{
+    presetId: string;
+    presetName: string;
+    config: Record<string, any>;
+  }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  // Check for mutually exclusive flags
+  const exclusiveFlags: Record<string, string[]> = {
+    aggressive: ['friendly', 'passive'],
+    friendly: ['aggressive', 'hostile'],
+    hostile: ['friendly', 'passive'],
+    stealth: ['loud', 'obvious'],
+  };
+
+  for (let i = 0; i < activePresets.length; i++) {
+    for (let j = i + 1; j < activePresets.length; j++) {
+      const preset1 = activePresets[i];
+      const preset2 = activePresets[j];
+
+      // Check for conflicting flags in config
+      for (const [flag, exclusives] of Object.entries(exclusiveFlags)) {
+        if (preset1.config[flag] && exclusives.some((ex) => preset2.config[ex])) {
+          warnings.push({
+            severity: 'error',
+            message: `Conflicting flags: "${preset1.presetName}" has ${flag}, "${preset2.presetName}" has conflicting behavior`,
+            presetIds: [preset1.presetId, preset2.presetId],
+            suggestion: `Remove one of the conflicting presets or adjust their configurations`,
+            type: 'config-conflict',
+          });
+        }
+      }
+
+      // Check for contradictory boolean flags
+      const sharedKeys = Object.keys(preset1.config).filter((k) =>
+        Object.keys(preset2.config).includes(k)
+      );
+      for (const key of sharedKeys) {
+        const val1 = preset1.config[key];
+        const val2 = preset2.config[key];
+
+        // Check boolean contradictions
+        if (typeof val1 === 'boolean' && typeof val2 === 'boolean' && val1 !== val2) {
+          warnings.push({
+            severity: 'warning',
+            message: `Contradictory setting "${key}": "${preset1.presetName}" sets to ${val1}, "${preset2.presetName}" sets to ${val2}`,
+            presetIds: [preset1.presetId, preset2.presetId],
+            suggestion: 'Verify which setting should take precedence',
+            type: 'boolean-contradiction',
+          });
+        }
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Check for performance concerns (too many presets active)
+ */
+function checkPerformanceConcerns(
+  activePresets: Array<{ presetId: string; presetName: string }>
+): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  if (activePresets.length > 5) {
+    warnings.push({
+      severity: 'info',
+      message: `${activePresets.length} presets active. This may impact performance.`,
+      presetIds: activePresets.map((p) => p.presetId),
+      suggestion: 'Consider consolidating presets or disabling unused ones',
+      type: 'performance',
+    });
+  }
+
+  return warnings;
+}
+
+/**
+ * Validate active presets for conflicts and compatibility issues
+ */
+export function validateActivePresets(interactions: Record<string, any>): ConflictWarning[] {
+  const warnings: ConflictWarning[] = [];
+
+  // Extract active presets from interactions
+  const activePresets: Array<{
+    presetId: string;
+    presetName: string;
+    interactionId: string;
+    config: Record<string, any>;
+  }> = [];
+
+  for (const [interactionId, config] of Object.entries(interactions)) {
+    if (config?.enabled && config?.__presetId) {
+      activePresets.push({
+        presetId: config.__presetId,
+        presetName: config.__presetName || config.__presetId,
+        interactionId,
+        config,
+      });
+    }
+  }
+
+  // Skip validation if no presets are active
+  if (activePresets.length === 0) {
+    return [];
+  }
+
+  // Run all conflict checks
+  warnings.push(...checkDuplicateInteractions(activePresets));
+  warnings.push(...checkConfigConflicts(activePresets));
+  warnings.push(...checkPerformanceConcerns(activePresets));
+
+  return warnings;
+}
+
+/**
+ * Get a summary of conflicts by severity
+ */
+export function getConflictSummary(warnings: ConflictWarning[]): {
+  errors: number;
+  warnings: number;
+  info: number;
+  total: number;
+} {
+  return {
+    errors: warnings.filter((w) => w.severity === 'error').length,
+    warnings: warnings.filter((w) => w.severity === 'warning').length,
+    info: warnings.filter((w) => w.severity === 'info').length,
+    total: warnings.length,
+  };
+}
+
+/**
  * Built-in preset examples (can be used as templates)
  */
 export const EXAMPLE_PRESETS: InteractionPreset[] = [

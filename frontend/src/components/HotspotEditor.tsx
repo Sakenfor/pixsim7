@@ -17,6 +17,8 @@ import {
   getCombinedPresets,
   applyPresetToSlot,
   getRecommendedPresets,
+  validateActivePresets,
+  getConflictSummary,
   type InteractionPreset,
   type PresetWithScope,
   type SuggestionContext,
@@ -286,6 +288,63 @@ export function HotspotEditor({ hotspots, worldDetail, onChange }: HotspotEditor
                       );
                     }
                     return null;
+                  })()}
+
+                  {/* Phase 9: Conflict Warnings */}
+                  {(() => {
+                    const interactions = ((h.meta as any)?.interactions as Record<string, any>) || {};
+                    const conflicts = validateActivePresets(interactions);
+                    const summary = getConflictSummary(conflicts);
+
+                    if (conflicts.length === 0) return null;
+
+                    return (
+                      <div className="p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-orange-900 dark:text-orange-100">
+                            ⚠️ Preset Conflicts
+                          </span>
+                          <div className="flex gap-1">
+                            {summary.errors > 0 && (
+                              <Badge color="red" className="text-[10px]">
+                                {summary.errors} error{summary.errors !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            {summary.warnings > 0 && (
+                              <Badge color="yellow" className="text-[10px]">
+                                {summary.warnings} warning{summary.warnings !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            {summary.info > 0 && (
+                              <Badge color="blue" className="text-[10px]">
+                                {summary.info} info
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          {conflicts.map((conflict, conflictIdx) => (
+                            <div
+                              key={conflictIdx}
+                              className={`text-xs p-1.5 rounded ${
+                                conflict.severity === 'error'
+                                  ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                  : conflict.severity === 'warning'
+                                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
+                                  : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                              }`}
+                            >
+                              <div className="font-medium">{conflict.message}</div>
+                              {conflict.suggestion && (
+                                <div className="text-[10px] opacity-75 mt-0.5">
+                                  💡 {conflict.suggestion}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
                   })()}
 
                   {/* Preset Palette */}

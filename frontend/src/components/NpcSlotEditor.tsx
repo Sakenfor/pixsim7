@@ -347,6 +347,64 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                 </p>
               </div>
 
+              {/* Phase 9: Conflict Warnings */}
+              {(() => {
+                const conflicts = validateActivePresets(selectedSlot.interactions || {});
+                const summary = getConflictSummary(conflicts);
+
+                if (conflicts.length === 0) return null;
+
+                return (
+                  <div className="border-t pt-3 dark:border-neutral-700 mb-3">
+                    <div className="p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-orange-900 dark:text-orange-100">
+                          ⚠️ Preset Conflicts Detected
+                        </span>
+                        <div className="flex gap-1">
+                          {summary.errors > 0 && (
+                            <Badge color="red" className="text-[10px]">
+                              {summary.errors} error{summary.errors !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {summary.warnings > 0 && (
+                            <Badge color="yellow" className="text-[10px]">
+                              {summary.warnings} warning{summary.warnings !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {summary.info > 0 && (
+                            <Badge color="blue" className="text-[10px]">
+                              {summary.info} info
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {conflicts.map((conflict, idx) => (
+                          <div
+                            key={idx}
+                            className={`text-xs p-2 rounded ${
+                              conflict.severity === 'error'
+                                ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                                : conflict.severity === 'warning'
+                                ? 'bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800'
+                                : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
+                            }`}
+                          >
+                            <div className="font-medium mb-1">{conflict.message}</div>
+                            {conflict.suggestion && (
+                              <div className="text-[10px] opacity-75">
+                                💡 {conflict.suggestion}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Interactions Section */}
               <div className="border-t pt-3 dark:border-neutral-700">
                 <h4 className="text-xs font-semibold mb-2">Interactions</h4>

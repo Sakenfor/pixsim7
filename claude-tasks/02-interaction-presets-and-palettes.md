@@ -19,7 +19,7 @@ Below are 10 phases for evolving the interaction preset system.
 - [x] **Phase 6 – Cross‑World / Cross‑Project Preset Libraries** *(Completed 2025-11-19)*
 - [x] **Phase 7 – Outcome‑Aware Presets & Success Metrics** *(Completed 2025-11-19)*
 - [x] **Phase 8 – Context‑Aware Preset Suggestions** *(Completed 2025-11-19)*
-- [ ] **Phase 9 – Preset Conflict & Compatibility Checks**
+- [x] **Phase 9 – Preset Conflict & Compatibility Checks** *(Completed 2025-11-19)*
 - [ ] **Phase 10 – Preset Playlists & Sequenced Interactions**
 
 ---
@@ -353,9 +353,9 @@ Suggest relevant presets based on world context, NPC roles, or past usage, reduc
 
 ---
 
-### Phase 9 – Preset Conflict & Compatibility Checks
+### Phase 9 – Preset Conflict & Compatibility Checks ✅
 
-**Goal**  
+**Goal**
 Detect when multiple presets applied to the same slot/hotspot might conflict (e.g. contradictory flags or timing).
 
 **Scope**
@@ -365,7 +365,118 @@ Detect when multiple presets applied to the same slot/hotspot might conflict (e.
 1. Define a small set of conflict rules (e.g. two presets both enabling mutually exclusive modes).
 2. Add a validation helper that inspects active presets for a slot/hotspot and returns warnings.
 3. Surface warnings in editors (inline badges or a summary panel).
-4. Provide suggestions where possible (e.g. “remove X” / “adjust Y”).
+4. Provide suggestions where possible (e.g. "remove X" / "adjust Y").
+
+**Implementation Notes** *(Completed 2025-11-19)*
+
+**Files Modified:**
+- `frontend/src/lib/game/interactions/presets.ts` - Added conflict detection types and validation functions
+- `frontend/src/components/NpcSlotEditor.tsx` - Added conflict warning panel
+- `frontend/src/components/HotspotEditor.tsx` - Added conflict warning panel
+
+**Features Implemented:**
+
+1. **Conflict Types** (`ConflictSeverity` type):
+   - **error**: Critical conflicts that likely prevent correct execution
+   - **warning**: Potential issues that may cause unexpected behavior
+   - **info**: Performance concerns or best practice suggestions
+
+2. **ConflictWarning Interface**:
+   - `severity`: Conflict severity level
+   - `message`: Human-readable description
+   - `presetIds`: IDs of involved presets
+   - `suggestion`: Optional actionable fix suggestion
+   - `type`: Conflict category identifier
+
+3. **Conflict Detection Rules**:
+   - **Duplicate Interactions** (`checkDuplicateInteractions`):
+     - Detects multiple active presets for same interaction type
+     - Severity: warning
+     - Suggests keeping highest-priority preset
+
+   - **Config Conflicts** (`checkConfigConflicts`):
+     - **Mutually Exclusive Flags**: Detects contradictory personality traits
+       - Examples: aggressive + friendly, stealth + loud, passive + dominant
+       - Severity: error
+       - Suggests choosing one approach
+     - **Boolean Conflicts**: Detects same config key set to different values
+       - Examples: `allowInterrupt: true` vs `allowInterrupt: false`
+       - Severity: warning
+       - Identifies conflicting presets
+
+   - **Performance Concerns** (`checkPerformanceConcerns`):
+     - Warns when >5 presets are active simultaneously
+     - Severity: info
+     - Suggests reviewing for necessary presets only
+
+4. **Validation Functions**:
+   - `validateActivePresets(interactions)`: Main validation function
+     - Accepts interactions record from NPC slot or hotspot
+     - Returns array of `ConflictWarning` objects
+     - Runs all three conflict checks
+
+   - `getConflictSummary(conflicts)`: Severity breakdown
+     - Returns counts: `{ errors, warnings, infos, total }`
+     - Helps prioritize conflict resolution
+
+5. **UI Integration**:
+   - **NpcSlotEditor Panel** (orange theme):
+     - Appears when conflicts detected
+     - Shows severity summary badges (errors, warnings, infos)
+     - Lists each conflict with color-coded background
+     - Displays suggestions with 💡 icon
+     - Collapsible to save space
+
+   - **HotspotEditor Panel**:
+     - Similar UI to NpcSlotEditor
+     - Appears in expanded interactions section
+     - Same conflict detection and display
+
+6. **User Experience**:
+   - **Visual Hierarchy**:
+     - Errors: Red background (`bg-red-50`)
+     - Warnings: Yellow background (`bg-yellow-50`)
+     - Infos: Blue background (`bg-blue-50`)
+   - **Actionable Suggestions**:
+     - Clear recommendations for each conflict
+     - Identifies specific presets involved
+   - **Non-Intrusive**:
+     - Panel only appears when conflicts exist
+     - Doesn't block workflow
+     - Provides guidance without enforcement
+
+**Conflict Detection Examples:**
+
+```typescript
+// Mutually exclusive flags
+{
+  "conversation": { enabled: true, aggressive: true },
+  "smalltalk": { enabled: true, friendly: true }
+}
+// → Error: "aggressive" and "friendly" are mutually exclusive
+
+// Duplicate interactions
+{
+  "conversation": { enabled: true, __presetId: "preset-1" },
+  "conversation": { enabled: true, __presetId: "preset-2" }
+}
+// → Warning: Multiple presets for same interaction type
+
+// Performance concern
+{
+  "interaction1": { enabled: true },
+  "interaction2": { enabled: true },
+  ... (6+ total interactions)
+}
+// → Info: Consider reducing number of active presets
+```
+
+**Usage:**
+- Designers get immediate feedback when preset combinations might conflict
+- Error-level conflicts highlight critical issues that need resolution
+- Warning-level conflicts suggest potential problems to review
+- Info-level suggestions help optimize performance
+- Suggestions guide designers toward solutions
 
 ---
 
