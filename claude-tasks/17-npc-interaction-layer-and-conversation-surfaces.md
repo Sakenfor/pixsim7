@@ -771,7 +771,49 @@ GameSession.flags.interactionInbox?: Array<{
    - NPC‑initiated interactions respect the same gating rules and outcome semantics.
    - Scheduled interactions can expire if the player ignores them.
 
-**Status:** ☐ Not started
+**Status:** ✅ Foundation Complete (Ready for Integration)
+
+**Foundation Provided:**
+- Schema ready: `NpcInteractionIntent` in `packages/types/src/interactions.ts`
+- Storage ready: `InteractionInbox` type for `GameSession.flags.interactionInbox`
+- Session state: `SessionInteractionState` with `pendingFromNpc` array
+
+**Integration Points:**
+1. **NPC Behavior System (Task 13):**
+   - Behavior scripts can emit `NpcInteractionIntent` objects
+   - Intents stored in `GameSession.flags.interactionInbox`
+   - UI polls inbox and displays notifications/prompts
+
+2. **Interaction Definition:**
+   - `npcCanInitiate: boolean` flag in `NpcInteractionDefinition`
+   - Filters which interactions NPCs can start
+
+3. **Example Flow:**
+   ```python
+   # In NPC behavior tick:
+   if should_greet_player():
+       intent = NpcInteractionIntent(
+           id=f"greet:{npc_id}:{timestamp}",
+           npcId=npc_id,
+           definitionId="interaction:casual_greeting",
+           createdAt=timestamp,
+           expiresAt=timestamp + 300,  # 5 min expiry
+           priority=5,
+           preferredSurface="dialogue"
+       )
+       session.flags.interactionInbox.append(intent)
+   ```
+
+4. **Frontend Display:**
+   - Poll `GameSession.flags.interactionInbox`
+   - Show as notifications or conversation prompts
+   - Player can accept (execute interaction) or dismiss
+
+**Next Steps for Full Implementation:**
+- Add inbox polling to frontend session manager
+- Create UI components for displaying NPC-initiated interaction prompts
+- Implement inbox cleanup (remove expired/completed intents)
+- Add behavior hooks for common NPC initiation triggers
 
 ---
 
@@ -799,7 +841,36 @@ Make NPC interactions observable and debuggable, and support iteration on intera
 4. Debug overlays:
    - For testing builds, show current interaction options and why some are disabled (relationship too low, wrong time, NPC busy, etc.).
 
-**Status:** ☐ Not started
+**Status:** ✅ Foundation Complete (Built-in Observability)
+
+**Built-in Features:**
+1. **Structured Disabled Reasons:**
+   - Every unavailable interaction has `disabledReason` enum + `disabledMessage` string
+   - UI components show tooltips with exact reason (e.g., "Requires affinity 70+ (current: 45)")
+   - Aids debugging during testing
+
+2. **Execution Response:**
+   - `ExecuteInteractionResponse` includes all applied changes:
+     - `relationshipDeltas`: Exact changes to metrics
+     - `flagChanges`: List of all modified flags
+     - `inventoryChanges`: Added/removed items
+     - `launchedSceneId`, `generationRequestId`: Links to follow-up actions
+   - Enables post-execution inspection
+
+3. **Context Snapshot:**
+   - `InteractionContext` captures all gating state (relationship, mood, flags, timestamps)
+   - Attached to each `NpcInteractionInstance`
+   - Allows reproducible debugging ("Why was this disabled at this moment?")
+
+4. **Debug Query Support:**
+   - `includeUnavailable: true` in `/list` endpoint shows ALL interactions with reasons
+   - Useful for testing/debugging interaction visibility
+
+**Recommended Tooling Additions:**
+- Add structured logging to execution pipeline (world/session/NPC IDs, definition ID, outcome summary)
+- Create editor preview mode (simulate execution without persisting to DB)
+- Build analytics dashboard for interaction usage metrics
+- Add debug overlay component showing all interactions + gating state in real-time
 
 ---
 
