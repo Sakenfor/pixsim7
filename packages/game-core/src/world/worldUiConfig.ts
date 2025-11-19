@@ -5,7 +5,33 @@
  * stored in GameWorld.meta.ui (nested under a 'ui' key).
  */
 
-import type { GameWorldDetail, WorldUiConfig, WorldUiTheme, ViewMode } from '@pixsim7/types';
+import type { GameWorldDetail, WorldUiConfig, WorldUiTheme, ViewMode, MotionPreset, MotionConfig } from '@pixsim7/types';
+
+/**
+ * Built-in motion presets with their configurations
+ */
+export const MOTION_PRESETS: Record<MotionPreset, MotionConfig> = {
+  none: {
+    duration: 0,
+    easing: 'linear',
+    respectReducedMotion: true,
+  },
+  calm: {
+    duration: 400,
+    easing: 'cubic-bezier(0.4, 0, 0.2, 1)', // ease-in-out
+    respectReducedMotion: true,
+  },
+  comfortable: {
+    duration: 250,
+    easing: 'cubic-bezier(0.4, 0, 0.2, 1)', // ease-in-out
+    respectReducedMotion: true,
+  },
+  snappy: {
+    duration: 150,
+    easing: 'cubic-bezier(0.4, 0, 0.6, 1)', // Custom snappy curve
+    respectReducedMotion: true,
+  },
+};
 
 /**
  * Predefined theme presets
@@ -15,6 +41,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
     id: 'default',
     colors: {},
     density: 'comfortable',
+    motion: 'comfortable',
   },
   'neo-noir': {
     id: 'neo-noir',
@@ -25,6 +52,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#e0e0e0',
     },
     density: 'compact',
+    motion: 'snappy',
   },
   'bright-minimal': {
     id: 'bright-minimal',
@@ -35,6 +63,7 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#1f2937',
     },
     density: 'spacious',
+    motion: 'calm',
   },
   'fantasy-rpg': {
     id: 'fantasy-rpg',
@@ -45,6 +74,52 @@ export const THEME_PRESETS: Record<string, WorldUiTheme> = {
       text: '#fef3c7',
     },
     density: 'comfortable',
+    motion: 'comfortable',
+  },
+  // Accessibility-focused presets
+  'high-contrast': {
+    id: 'high-contrast',
+    colors: {
+      primary: '#ffff00',
+      secondary: '#00ffff',
+      background: '#000000',
+      text: '#ffffff',
+    },
+    density: 'comfortable',
+    motion: 'comfortable',
+  },
+  'reduced-motion': {
+    id: 'reduced-motion',
+    colors: {
+      primary: '#3b82f6',
+      secondary: '#8b5cf6',
+      background: '#ffffff',
+      text: '#1f2937',
+    },
+    density: 'comfortable',
+    motion: 'none',
+  },
+  'large-ui': {
+    id: 'large-ui',
+    colors: {
+      primary: '#2563eb',
+      secondary: '#7c3aed',
+      background: '#f9fafb',
+      text: '#111827',
+    },
+    density: 'spacious',
+    motion: 'calm',
+  },
+  'maximum-accessibility': {
+    id: 'maximum-accessibility',
+    colors: {
+      primary: '#ffff00',
+      secondary: '#00ffff',
+      background: '#000000',
+      text: '#ffffff',
+    },
+    density: 'spacious',
+    motion: 'none',
   },
 };
 
@@ -173,4 +248,98 @@ export function hasCustomTheme(world: GameWorldDetail): boolean {
  */
 export function resetWorldUiConfig(world: GameWorldDetail): GameWorldDetail {
   return setWorldUiConfig(world, createDefaultWorldUiConfig());
+}
+
+/**
+ * Resolve motion configuration from theme
+ * Converts preset names to MotionConfig or returns custom config
+ */
+export function resolveMotionConfig(motion?: MotionPreset | MotionConfig): MotionConfig {
+  if (!motion) {
+    // Default to comfortable preset
+    return MOTION_PRESETS.comfortable;
+  }
+
+  if (typeof motion === 'string') {
+    // It's a preset name
+    return MOTION_PRESETS[motion] || MOTION_PRESETS.comfortable;
+  }
+
+  // It's a custom MotionConfig
+  return {
+    duration: motion.duration ?? MOTION_PRESETS.comfortable.duration,
+    easing: motion.easing ?? MOTION_PRESETS.comfortable.easing,
+    respectReducedMotion: motion.respectReducedMotion ?? true,
+  };
+}
+
+/**
+ * Get motion configuration from a world theme
+ */
+export function getMotionConfig(world: GameWorldDetail): MotionConfig {
+  const theme = getWorldTheme(world);
+  return resolveMotionConfig(theme?.motion);
+}
+
+/**
+ * Get all available motion preset names
+ */
+export function getMotionPresetNames(): MotionPreset[] {
+  return Object.keys(MOTION_PRESETS) as MotionPreset[];
+}
+
+/**
+ * List of accessibility-focused theme preset IDs
+ */
+export const ACCESSIBILITY_PRESET_IDS = [
+  'high-contrast',
+  'reduced-motion',
+  'large-ui',
+  'maximum-accessibility',
+] as const;
+
+/**
+ * Check if a theme preset is accessibility-focused
+ */
+export function isAccessibilityPreset(themeId: string): boolean {
+  return ACCESSIBILITY_PRESET_IDS.includes(themeId as any);
+}
+
+/**
+ * Get accessibility-focused theme presets
+ */
+export function getAccessibilityPresets(): WorldUiTheme[] {
+  return ACCESSIBILITY_PRESET_IDS.map(id => THEME_PRESETS[id]).filter(Boolean);
+}
+
+/**
+ * Get recommended accessibility preset based on user preferences
+ * Returns undefined if no specific recommendation
+ */
+export function getRecommendedAccessibilityPreset(userPrefs: {
+  prefersHighContrast?: boolean;
+  prefersReducedMotion?: boolean;
+  preferredDensity?: 'compact' | 'comfortable' | 'spacious';
+}): string | undefined {
+  // Maximum accessibility for users with both high contrast and reduced motion
+  if (userPrefs.prefersHighContrast && userPrefs.prefersReducedMotion) {
+    return 'maximum-accessibility';
+  }
+
+  // High contrast preset for users preferring high contrast
+  if (userPrefs.prefersHighContrast) {
+    return 'high-contrast';
+  }
+
+  // Reduced motion preset for users preferring reduced motion
+  if (userPrefs.prefersReducedMotion) {
+    return 'reduced-motion';
+  }
+
+  // Large UI preset for users preferring spacious density
+  if (userPrefs.preferredDensity === 'spacious') {
+    return 'large-ui';
+  }
+
+  return undefined;
 }

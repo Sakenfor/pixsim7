@@ -135,6 +135,27 @@ export interface WorldManifest {
 }
 
 /**
+ * Motion/animation preset names
+ * - 'none': No animations, instant transitions (accessibility-friendly)
+ * - 'calm': Slow, gentle animations (400ms)
+ * - 'comfortable': Balanced animations (250ms, default)
+ * - 'snappy': Fast, punchy animations (150ms)
+ */
+export type MotionPreset = 'none' | 'calm' | 'comfortable' | 'snappy';
+
+/**
+ * Custom motion configuration for UI animations
+ */
+export interface MotionConfig {
+  /** Transition duration in milliseconds */
+  duration?: number;
+  /** CSS timing function (e.g., 'ease', 'ease-in-out', 'cubic-bezier(...)') */
+  easing?: string;
+  /** Whether to respect prefers-reduced-motion */
+  respectReducedMotion?: boolean;
+}
+
+/**
  * Per-world UI theme configuration stored in GameWorld.meta.ui.theme
  * Defines visual styling and density preferences for a specific world
  *
@@ -149,7 +170,8 @@ export interface WorldManifest {
  *         secondary: '#ff00e5',
  *         background: '#0a0a0f'
  *       },
- *       density: 'compact'
+ *       density: 'compact',
+ *       motion: 'snappy'
  *     },
  *     viewMode: 'cinematic'
  *   }
@@ -163,6 +185,8 @@ export interface WorldUiTheme {
   colors?: Record<string, string>;
   /** UI density preference */
   density?: 'compact' | 'comfortable' | 'spacious';
+  /** Motion/animation preset or custom configuration */
+  motion?: MotionPreset | MotionConfig;
 }
 
 /**
