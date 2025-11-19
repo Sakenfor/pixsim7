@@ -36,6 +36,28 @@ class UpdateWorldMetaRequest(BaseModel):
     meta: Dict[str, Any]
 
 
+async def _get_owned_world(world_id: int, user: CurrentUser, game_world_service: GameWorldSvc):
+    """Fetch a world and ensure the requesting user owns it."""
+
+    world = await game_world_service.get_world(world_id)
+    if not world or world.owner_user_id != user.id:
+        raise HTTPException(status_code=404, detail="World not found")
+    return world
+
+
+async def _build_world_detail(
+    world,
+    game_world_service: GameWorldSvc,
+    *,
+    state=None,
+) -> GameWorldDetail:
+    """Serialize a world with its current global time."""
+
+    world_state = state or await game_world_service.get_world_state(world.id)
+    world_time = world_state.world_time if world_state else 0.0
+    return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
+
+
 @router.get("/", response_model=List[GameWorldSummary])
 async def list_worlds(
     game_world_service: GameWorldSvc,
@@ -63,8 +85,7 @@ async def create_world(
         meta=req.meta or {},
     )
     state = await game_world_service.get_world_state(world.id)
-    world_time = state.world_time if state else 0.0
-    return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
+    return await _build_world_detail(world, game_world_service, state=state)
 
 
 @router.get("/{world_id}", response_model=GameWorldDetail)
@@ -76,13 +97,8 @@ async def get_world(
     """
     Get a world and its current global time.
     """
-    world = await game_world_service.get_world(world_id)
-    if not world or world.owner_user_id != user.id:
-        raise HTTPException(status_code=404, detail="World not found")
-
-    state = await game_world_service.get_world_state(world.id)
-    world_time = state.world_time if state else 0.0
-    return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
+    world = await _get_owned_world(world_id, user, game_world_service)
+    return await _build_world_detail(world, game_world_service)
 
 
 @router.post("/{world_id}/advance", response_model=GameWorldDetail)
@@ -98,9 +114,7 @@ async def advance_world_time(
     This is primarily intended for development and editor tools; production
     environments may advance time via background jobs instead.
     """
-    world = await game_world_service.get_world(world_id)
-    if not world or world.owner_user_id != user.id:
-        raise HTTPException(status_code=404, detail="World not found")
+    world = await _get_owned_world(world_id, user, game_world_service)
 
     try:
         state = await game_world_service.advance_world_time(
@@ -112,7 +126,7 @@ async def advance_world_time(
             raise HTTPException(status_code=404, detail="World not found")
         raise
 
-    return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=state.world_time)
+    return await _build_world_detail(world, game_world_service, state=state)
 
 
 @router.put("/{world_id}/meta", response_model=GameWorldDetail)
@@ -128,21 +142,11 @@ async def update_world_meta(
     This allows designers to configure per-world settings like HUD layouts,
     enabled plugins, and other UI/UX customizations.
     """
-    world = await game_world_service.get_world(world_id)
-    if not world or world.owner_user_id != user.id:
-        raise HTTPException(status_code=404, detail="World not found")
+    await _get_owned_world(world_id, user, game_world_service)
 
     # Update the world metadata
     updated_world = await game_world_service.update_world_meta(world_id, req.meta)
 
     # Get current world time
-    state = await game_world_service.get_world_state(world_id)
-    world_time = state.world_time if state else 0.0
-
-    return GameWorldDetail(
-        id=updated_world.id,
-        name=updated_world.name,
-        meta=updated_world.meta,
-        world_time=world_time
-    )
+    return await _build_world_detail(updated_world, game_world_service)
 

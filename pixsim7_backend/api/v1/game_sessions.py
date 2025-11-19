@@ -10,6 +10,15 @@ from pixsim7_backend.api.dependencies import CurrentUser, GameSessionSvc
 router = APIRouter()
 
 
+async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+    """Fetch a session and ensure it belongs to the current user."""
+
+    gs = await game_session_service.get_session(session_id)
+    if not gs or gs.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return gs
+
+
 class CreateSessionRequest(BaseModel):
     scene_id: int
     flags: Optional[Dict[str, Any]] = None
@@ -80,9 +89,7 @@ async def get_session(
     user: CurrentUser,
 ):
     """Get a game session by ID"""
-    gs = await game_session_service.get_session(session_id)
-    if not gs or gs.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Session not found")
+    gs = await _get_owned_session(session_id, user, game_session_service)
     return GameSessionResponse.from_model(gs)
 
 
@@ -94,9 +101,7 @@ async def advance_session(
     user: CurrentUser,
 ):
     """Advance a game session by selecting an edge"""
-    gs = await game_session_service.get_session(session_id)
-    if not gs or gs.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Session not found")
+    await _get_owned_session(session_id, user, game_session_service)
     try:
         gs = await game_session_service.advance_session(session_id=session_id, edge_id=req.edge_id)
     except ValueError as e:
@@ -125,10 +130,7 @@ async def update_session(
     Supports optimistic locking: if expected_version is provided and doesn't
     match the current version, returns 409 Conflict with the current session state.
     """
-    gs = await game_session_service.get_session(session_id)
-    if not gs or gs.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    await _get_owned_session(session_id, user, game_session_service)
     try:
         gs = await game_session_service.update_session(
             session_id=session_id,
