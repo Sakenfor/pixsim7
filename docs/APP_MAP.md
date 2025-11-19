@@ -1,6 +1,6 @@
 # App Map & Architecture Index
 
-**Last Updated:** 2025-11-18
+**Last Updated:** 2025-11-19
 
 This document serves as the central entry point for understanding the PixSim7 architecture. It provides an overview of major subsystems, links to detailed documentation, and points to live dev tools for exploring the system.
 
@@ -151,12 +151,70 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Documentation:**
 - [HOTSPOT_ACTIONS_2D.md](./HOTSPOT_ACTIONS_2D.md) - Hotspot and interaction system
 - [RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md) - Relationship mechanics
+- [SOCIAL_METRICS.md](./SOCIAL_METRICS.md) - Social metrics system (tiers, mood, reputation)
 - [ACTION_ENGINE_USAGE.md](./ACTION_ENGINE_USAGE.md) - Action execution system
 - [ACTION_BLOCKS_UNIFIED_SYSTEM.md](./ACTION_BLOCKS_UNIFIED_SYSTEM.md) - Action blocks architecture
 
 ---
 
-### 5. Generation System
+### 5. Social Metrics System
+
+**Purpose:** Unified framework for computing, previewing, and displaying derived social values (relationship tiers, NPC moods, reputation bands).
+
+**Code Locations:**
+- `pixsim7_backend/domain/metrics/` - Backend evaluators and types
+- `pixsim7_backend/api/v1/game_*_preview.py` - Preview API endpoints
+- `packages/types/src/game.ts` - Shared TypeScript types
+- `packages/game-core/src/metrics/` - API client and helpers
+- `packages/game-core/src/npcs/brain.ts` - Client-side mood computation
+
+**Supported Metrics:**
+
+| Metric | Input | Output | Schema Location |
+|--------|-------|--------|-----------------|
+| **Relationship Tier** | Affinity (0-100) | Tier ID (stranger, friend, lover) | `GameWorld.meta.relationship_schemas` |
+| **Intimacy Level** | Affinity, trust, chemistry, tension | Intimacy ID (light_flirt, intimate) or null | `GameWorld.meta.intimacy_schema` |
+| **NPC Mood** | Relationship values | Mood ID, valence, arousal, optional emotion | `GameWorld.meta.npc_mood_schema` |
+| **Reputation Band** | Subject/target, reputation score | Band ID (enemy, neutral, ally) | `GameWorld.meta.reputation_schemas` |
+
+**API Endpoints:**
+- `POST /api/v1/game/relationships/preview-tier` - Preview relationship tier
+- `POST /api/v1/game/relationships/preview-intimacy` - Preview intimacy level
+- `POST /api/v1/game/npc/preview-mood` - Preview NPC mood state
+- `POST /api/v1/game/reputation/preview-reputation` - Preview reputation band
+
+**Game-Core Helpers:**
+- `previewRelationshipTier(args)` - Call tier preview API
+- `previewIntimacyLevel(args)` - Call intimacy preview API
+- `previewNpcMood(args)` - Call mood preview API
+- `previewReputationBand(args)` - Call reputation preview API
+- `buildNpcBrainState(params)` - Client-side mood computation (no API call)
+
+**Key Features:**
+- **Schema-Driven**: Worlds customize thresholds and bands via `GameWorld.meta`
+- **Stateless Previews**: API endpoints for "what-if" scenarios without mutating state
+- **Type-Safe**: Full TypeScript types from backend to frontend
+- **Dual Computation**: Preview API for planning, client-side for live display
+- **Extensible**: Easy to add new metric types (skill levels, social standing, etc.)
+
+**Usage Patterns:**
+- **Use Preview API**: Editor tools, scenario planning, schema testing, "what-if" calculations
+- **Use Client-Side**: Runtime display, real-time updates, performance-critical UI, offline mode
+
+**Documentation:**
+- [SOCIAL_METRICS.md](./SOCIAL_METRICS.md) - Complete social metrics reference
+- [RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md) - Relationship mechanics and session data
+- [NPC_PERSONA_ARCHITECTURE.md](./NPC_PERSONA_ARCHITECTURE.md) - NPC brain state and personality
+
+**Related Systems:**
+- Relationship system (session data source)
+- NPC brain system (mood computation)
+- Emotional state system (discrete emotions)
+- Action block system (separate mood tags for actions)
+
+---
+
+### 6. Generation System
 
 **Purpose:** AI-powered content generation with pluggable UI providers, prompt engineering, and concept discovery.
 
