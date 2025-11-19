@@ -393,11 +393,23 @@ export async function copyPresetToWorld(
 
 const PRESET_USAGE_KEY = 'pixsim7:preset-usage-stats';
 
+/**
+ * PHASE 7: Outcome tracking for presets
+ */
+export type InteractionOutcome = 'success' | 'failure' | 'neutral';
+
+export interface PresetOutcomeData {
+  success: number;
+  failure: number;
+  neutral: number;
+}
+
 export interface PresetUsageStats {
   [presetId: string]: {
     count: number;
     lastUsed: number; // timestamp
     presetName?: string;
+    outcomes?: PresetOutcomeData; // Phase 7: outcome tracking
   };
 }
 
@@ -438,11 +450,51 @@ export function trackPresetUsage(presetId: string, presetName?: string): void {
       count: 0,
       lastUsed: Date.now(),
       presetName,
+      outcomes: { success: 0, failure: 0, neutral: 0 },
     };
   }
 
   stats[presetId].count += 1;
   stats[presetId].lastUsed = Date.now();
+  if (presetName) {
+    stats[presetId].presetName = presetName;
+  }
+
+  // Ensure outcomes object exists (for backward compatibility)
+  if (!stats[presetId].outcomes) {
+    stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
+  }
+
+  savePresetUsageStats(stats);
+}
+
+/**
+ * PHASE 7: Track preset outcome (success/failure/neutral)
+ */
+export function trackPresetOutcome(
+  presetId: string,
+  outcome: InteractionOutcome,
+  presetName?: string
+): void {
+  const stats = getPresetUsageStats();
+
+  if (!stats[presetId]) {
+    stats[presetId] = {
+      count: 0,
+      lastUsed: Date.now(),
+      presetName,
+      outcomes: { success: 0, failure: 0, neutral: 0 },
+    };
+  }
+
+  // Ensure outcomes object exists
+  if (!stats[presetId].outcomes) {
+    stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
+  }
+
+  // Increment the specific outcome counter
+  stats[presetId].outcomes[outcome] += 1;
+
   if (presetName) {
     stats[presetId].presetName = presetName;
   }
@@ -462,23 +514,42 @@ export function clearPresetUsageStats(): void {
 }
 
 /**
- * Get preset usage statistics with preset details
+ * Get preset usage statistics with preset details (Phase 7: includes outcome data)
  */
 export function getPresetUsageStatsWithDetails(
   world: GameWorldDetail | null
-): Array<{ presetId: string; presetName: string; count: number; lastUsed: number; scope?: 'global' | 'world' }> {
+): Array<{
+  presetId: string;
+  presetName: string;
+  count: number;
+  lastUsed: number;
+  scope?: 'global' | 'world';
+  outcomes: PresetOutcomeData;
+  successRate: number | null;
+  totalOutcomes: number;
+}> {
   const stats = getPresetUsageStats();
   const presets = getCombinedPresets(world);
 
   return Object.entries(stats)
     .map(([presetId, data]) => {
-      const preset = presets.find(p => p.id === presetId);
+      const preset = presets.find((p) => p.id === presetId);
+
+      // Phase 7: Calculate outcome metrics
+      const outcomes = data.outcomes || { success: 0, failure: 0, neutral: 0 };
+      const totalOutcomes = outcomes.success + outcomes.failure + outcomes.neutral;
+      const successRate =
+        totalOutcomes > 0 ? (outcomes.success / totalOutcomes) * 100 : null;
+
       return {
         presetId,
         presetName: preset?.name || data.presetName || presetId,
         count: data.count,
         lastUsed: data.lastUsed,
         scope: preset?.scope,
+        outcomes,
+        successRate,
+        totalOutcomes,
       };
     })
     .sort((a, b) => b.count - a.count); // Sort by usage count descending
