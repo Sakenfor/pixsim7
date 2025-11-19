@@ -109,16 +109,25 @@ class GenerationService:
         if not params:
             raise InvalidOperationError("Generation parameters are required")
 
-        # Operation-specific validation
-        if operation_type == OperationType.TEXT_TO_VIDEO:
-            if 'prompt' not in params:
-                raise InvalidOperationError("'prompt' is required for text_to_video")
-        elif operation_type == OperationType.IMAGE_TO_VIDEO:
-            if 'prompt' not in params or 'image_url' not in params:
-                raise InvalidOperationError("'prompt' and 'image_url' are required for image_to_video")
-        elif operation_type == OperationType.VIDEO_EXTEND:
-            if 'video_url' not in params:
-                raise InvalidOperationError("'video_url' is required for video_extend")
+        # Check if params use new structured format (from unified generations API)
+        # Structured format has keys: generation_config, scene_context, player_context, social_context
+        is_structured = 'generation_config' in params or 'scene_context' in params
+
+        if is_structured:
+            # New structured format - validation handled by schema
+            # Just verify we have the necessary context for the operation
+            logger.info(f"Structured params detected for {operation_type.value}")
+        else:
+            # Legacy flat format - apply operation-specific validation
+            if operation_type == OperationType.TEXT_TO_VIDEO:
+                if 'prompt' not in params:
+                    raise InvalidOperationError("'prompt' is required for text_to_video")
+            elif operation_type == OperationType.IMAGE_TO_VIDEO:
+                if 'prompt' not in params or 'image_url' not in params:
+                    raise InvalidOperationError("'prompt' and 'image_url' are required for image_to_video")
+            elif operation_type == OperationType.VIDEO_EXTEND:
+                if 'video_url' not in params:
+                    raise InvalidOperationError("'video_url' is required for video_extend")
 
         # Canonicalize params (using existing parameter mappers)
         canonical_params = await self._canonicalize_params(
@@ -203,7 +212,18 @@ class GenerationService:
         Canonicalize parameters using parameter mappers
 
         This extracts common fields and normalizes them into a provider-agnostic format.
+        Handles both legacy flat params and new structured params.
         """
+        # Check if params are already structured (from unified generations API)
+        is_structured = 'generation_config' in params or 'scene_context' in params
+
+        if is_structured:
+            # Already structured - return as-is
+            # The structured format is already canonical
+            logger.info("Params already structured, using as canonical")
+            return params
+
+        # Legacy flat params - canonicalize to common format
         # For now, just copy params as-is
         # In the full pipeline refactor, we'd use parameter mappers here
         # Example: from pixsim7_backend.services.submission.parameter_mappers import get_mapper
@@ -238,6 +258,8 @@ class GenerationService:
         """
         Extract input references from params
 
+        Handles both legacy flat params and new structured params.
+
         Returns:
             List of input references like:
             [{"role": "seed_image", "remote_url": "https://..."}]
@@ -245,6 +267,41 @@ class GenerationService:
         """
         inputs = []
 
+        # Check if structured format
+        is_structured = 'generation_config' in params or 'scene_context' in params
+
+        if is_structured:
+            # Extract inputs from scene context
+            scene_context = params.get("scene_context", {})
+            from_scene = scene_context.get("from_scene")
+            to_scene = scene_context.get("to_scene")
+
+            # For transitions, both scenes are inputs
+            if operation_type == OperationType.VIDEO_TRANSITION:
+                if from_scene:
+                    inputs.append({
+                        "role": "from_scene",
+                        "scene_id": from_scene.get("id"),
+                        "metadata": from_scene
+                    })
+                if to_scene:
+                    inputs.append({
+                        "role": "to_scene",
+                        "scene_id": to_scene.get("id"),
+                        "metadata": to_scene
+                    })
+            # For image_to_video, from_scene might have an asset
+            elif operation_type == OperationType.IMAGE_TO_VIDEO:
+                if from_scene:
+                    inputs.append({
+                        "role": "seed_image",
+                        "scene_id": from_scene.get("id"),
+                        "metadata": from_scene
+                    })
+
+            return inputs
+
+        # Legacy flat params format
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             if "image_url" in params:
                 inputs.append({

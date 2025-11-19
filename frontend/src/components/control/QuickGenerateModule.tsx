@@ -10,8 +10,7 @@ import { useProviderSpecs } from '../../hooks/useProviderSpecs';
 import { generateAsset } from '../../lib/api/controlCenter';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
-import { useJobsStore } from '../../stores/jobsStore';
-import { JobStatusIndicator } from './JobStatusIndicator';
+import { useGenerationsStore, isGenerationTerminal } from '../../stores/generationsStore';
 import { ccSelectors } from '../../stores/selectors';
 import { logEvent } from '../../lib/logging';
 import { GenerationPluginRenderer } from '../../lib/providers';
@@ -40,9 +39,9 @@ export function QuickGenerateModule() {
 
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [jobId, setJobId] = useState<number | null>(null);
-  const setLastCreatedJob = useJobsStore(s => s.setLastCreatedJob);
-  const addOrUpdateJob = useJobsStore(s => s.addOrUpdateJob);
+  const [generationId, setGenerationId] = useState<number | null>(null);
+  const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
+  const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
 
   // Dynamic params from operation_specs
   const [dynamicParams, setDynamicParams] = useState<Record<string, any>>({});
@@ -132,7 +131,7 @@ export function QuickGenerateModule() {
     setError(null);
     if (p) pushPrompt(p);
     setGenerating(true);
-    setJobId(null);
+    setGenerationId(null);
 
     try {
       // Build params - merge preset params, dynamic params, and operation-specific params
@@ -157,36 +156,47 @@ export function QuickGenerateModule() {
         presetParams,
       });
 
-      // Clear prompt and show job ID
+      // Clear prompt and show generation ID
       setPrompt('');
-      setJobId(result.job_id);
-      setLastCreatedJob(result.job_id);
+      const genId = result.job_id;
+      setGenerationId(genId);
+      setWatchingGeneration(genId);
 
-      // Seed store with initial job status (queued/pending)
-      // Pass originalParams for retry capability
-      addOrUpdateJob({
-        id: result.job_id,
+      // Seed store with initial generation status
+      addOrUpdateGeneration({
+        id: genId,
         user_id: 0, // unknown client-side until fetched
         workspace_id: null,
         operation_type: operationType,
         provider_id: providerId || 'pixverse',
-        params: params,
-        status: result.status,
-        error_message: null,
-        retry_count: 0,
-        priority: 0,
-        parent_job_id: null,
+        raw_params: params,
+        canonical_params: params,
+        inputs: [],
+        reproducible_hash: null,
+        prompt_version_id: null,
+        final_prompt: p,
+        prompt_config: null,
+        prompt_source_type: 'inline',
+        status: result.status || 'pending',
+        priority: 5,
         scheduled_at: null,
-        created_at: new Date().toISOString(),
         started_at: null,
         completed_at: null,
-      }, params); // Pass params as originalParams
+        error_message: null,
+        retry_count: 0,
+        parent_generation_id: null,
+        asset_id: null,
+        name: null,
+        description: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
 
-      logEvent('INFO', 'generation_job_created', {
-        jobId: result.job_id,
+      logEvent('INFO', 'generation_created', {
+        generationId: genId,
         operationType,
         providerId: providerId || 'pixverse',
-        status: result.status
+        status: result.status || 'pending'
       });
     } catch (err: any) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
@@ -310,11 +320,9 @@ export function QuickGenerateModule() {
             </div>
           )}
 
-          {/* Job status indicator */}
-          {jobId && (
-            <div>
-              <JobStatusIndicator jobId={jobId} />
-            </div>
+          {/* Generation status indicator */}
+          {generationId && (
+            <GenerationStatusDisplay generationId={generationId} />
           )}
         </div>
 
@@ -419,6 +427,78 @@ export function QuickGenerateModule() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Simple inline generation status display with polling
+ * Replaces the deleted JobStatusIndicator
+ */
+function GenerationStatusDisplay({ generationId }: { generationId: number }) {
+  const generation = useGenerationsStore(s => s.generations.get(generationId));
+  const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
+
+  // Poll for status updates
+  useEffect(() => {
+    if (!generationId) return;
+
+    // Check if generation is in terminal state
+    if (generation && isGenerationTerminal(generation.status)) {
+      // Stop polling if completed, failed, or cancelled
+      return;
+    }
+
+    // Poll every 2 seconds
+    const interval = setInterval(async () => {
+      try {
+        const { getGeneration } = await import('../../lib/api/generations');
+        const updated = await getGeneration(generationId);
+        addOrUpdateGeneration(updated);
+
+        // Stop polling if terminal state reached
+        if (isGenerationTerminal(updated.status)) {
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error(`Failed to poll generation ${generationId}:`, err);
+        // Continue polling even on error
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [generationId, generation?.status, addOrUpdateGeneration]);
+
+  if (!generation) {
+    return (
+      <div className="text-xs p-2 bg-neutral-100 dark:bg-neutral-800 rounded">
+        Generation #{generationId} (loading...)
+      </div>
+    );
+  }
+
+  const statusColors: Record<string, string> = {
+    pending: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300',
+    processing: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300',
+    completed: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300',
+    failed: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
+    cancelled: 'bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300',
+  };
+
+  const statusColor = statusColors[generation.status] || statusColors.pending;
+
+  return (
+    <div className={`text-xs p-2 border rounded ${statusColor}`}>
+      <div className="font-medium">Generation #{generationId}</div>
+      <div className="mt-1">Status: {generation.status}</div>
+      {generation.error_message && (
+        <div className="mt-1 text-red-600 dark:text-red-400">
+          Error: {generation.error_message}
+        </div>
+      )}
+      {generation.asset_id && (
+        <div className="mt-1">Asset ID: {generation.asset_id}</div>
+      )}
     </div>
   );
 }
