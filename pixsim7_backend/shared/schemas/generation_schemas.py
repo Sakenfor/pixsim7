@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
-from pixsim7_backend.domain.enums import JobStatus, OperationType
+from pixsim7_backend.domain.enums import GenerationStatus, OperationType
 
 
 # ===== GENERATION CONFIG SCHEMAS =====
@@ -213,7 +213,7 @@ class GenerationResponse(BaseModel):
     prompt_source_type: Optional[str]
 
     # Lifecycle
-    status: JobStatus
+    status: GenerationStatus
     priority: int
     scheduled_at: Optional[datetime]
     started_at: Optional[datetime]

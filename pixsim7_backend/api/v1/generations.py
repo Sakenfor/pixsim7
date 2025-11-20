@@ -20,7 +20,7 @@ from pixsim7_backend.shared.schemas.generation_schemas import (
 from pixsim7_backend.services.generation.social_context_builder import (
     build_generation_social_context,
 )
-from pixsim7_backend.domain.enums import JobStatus, OperationType
+from pixsim7_backend.domain.enums import GenerationStatus, OperationType
 from pixsim7_backend.shared.errors import (
     ResourceNotFoundError,
     ValidationError as DomainValidationError,
@@ -177,7 +177,7 @@ async def list_generations(
     user: CurrentUser,
     generation_service: GenerationSvc,
     workspace_id: Optional[int] = Query(None),
-    status: Optional[JobStatus] = Query(None),
+    status: Optional[GenerationStatus] = Query(None),
     operation_type: Optional[OperationType] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),

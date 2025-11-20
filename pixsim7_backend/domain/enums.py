@@ -20,8 +20,8 @@ class SyncStatus(str, Enum):
     ERROR = "error"            # Download failed
 
 
-class JobStatus(str, Enum):
-    """Job execution status"""
+class GenerationStatus(str, Enum):
+    """Generation execution status"""
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

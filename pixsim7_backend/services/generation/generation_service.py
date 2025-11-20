@@ -12,7 +12,7 @@ from uuid import UUID
 
 from pixsim7_backend.domain import (
     Generation,
-    JobStatus,
+    GenerationStatus,
     OperationType,
     User,
     ProviderSubmission,
@@ -162,7 +162,7 @@ class GenerationService:
             priority=priority,
             scheduled_at=scheduled_at,
             parent_generation_id=parent_generation_id,
-            status=JobStatus.PENDING,
+            status=GenerationStatus.PENDING,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -481,7 +481,7 @@ class GenerationService:
     async def update_status(
         self,
         generation_id: int,
-        status: JobStatus,
+        status: GenerationStatus,
         error_message: Optional[str] = None
     ) -> Generation:
         """
@@ -505,9 +505,9 @@ class GenerationService:
         generation.updated_at = datetime.utcnow()
 
         # Update timestamps
-        if status == JobStatus.PROCESSING and not generation.started_at:
+        if status == GenerationStatus.PROCESSING and not generation.started_at:
             generation.started_at = datetime.utcnow()
-        elif status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+        elif status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             generation.completed_at = datetime.utcnow()
 
         # Update error message
@@ -518,21 +518,21 @@ class GenerationService:
         await self.db.refresh(generation)
 
         # Emit status change events (include user_id for WebSocket filtering)
-        if status == JobStatus.PROCESSING:
+        if status == GenerationStatus.PROCESSING:
             await event_bus.publish(JOB_STARTED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value
             })
-        elif status == JobStatus.COMPLETED:
+        elif status == GenerationStatus.COMPLETED:
             await event_bus.publish(JOB_COMPLETED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value
             })
-        elif status == JobStatus.FAILED:
+        elif status == GenerationStatus.FAILED:
             await event_bus.publish(JOB_FAILED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
@@ -540,7 +540,7 @@ class GenerationService:
                 "status": status.value,
                 "error": error_message
             })
-        elif status == JobStatus.CANCELLED:
+        elif status == GenerationStatus.CANCELLED:
             await event_bus.publish(JOB_CANCELLED, {
                 "job_id": generation_id,
                 "generation_id": generation_id,
@@ -552,7 +552,7 @@ class GenerationService:
 
     async def mark_started(self, generation_id: int) -> Generation:
         """Mark generation as started"""
-        return await self.update_status(generation_id, JobStatus.PROCESSING)
+        return await self.update_status(generation_id, GenerationStatus.PROCESSING)
 
     async def mark_completed(self, generation_id: int, asset_id: int) -> Generation:
         """
@@ -575,11 +575,11 @@ class GenerationService:
         if generation.prompt_version_id:
             await self._increment_prompt_metrics(generation.prompt_version_id)
 
-        return await self.update_status(generation_id, JobStatus.COMPLETED)
+        return await self.update_status(generation_id, GenerationStatus.COMPLETED)
 
     async def mark_failed(self, generation_id: int, error_message: str) -> Generation:
         """Mark generation as failed"""
-        return await self.update_status(generation_id, JobStatus.FAILED, error_message)
+        return await self.update_status(generation_id, GenerationStatus.FAILED, error_message)
 
     async def cancel_generation(self, generation_id: int, user: User) -> Generation:
         """
@@ -607,7 +607,7 @@ class GenerationService:
             raise InvalidOperationError(f"Generation already {generation.status.value}")
 
         # Cancel on provider if processing
-        if generation.status == JobStatus.PROCESSING:
+        if generation.status == GenerationStatus.PROCESSING:
             try:
                 from pixsim7_backend.services.provider import ProviderService
 
@@ -639,7 +639,7 @@ class GenerationService:
                 logger.error(f"Failed to cancel generation on provider: {e}")
                 # Continue with local cancellation even if provider cancel fails
 
-        return await self.update_status(generation_id, JobStatus.CANCELLED)
+        return await self.update_status(generation_id, GenerationStatus.CANCELLED)
 
     # ===== GENERATION RETRIEVAL =====
 
@@ -688,7 +688,7 @@ class GenerationService:
         self,
         user: User,
         workspace_id: Optional[int] = None,
-        status: Optional[JobStatus] = None,
+        status: Optional[GenerationStatus] = None,
         operation_type: Optional[OperationType] = None,
         limit: int = 50,
         offset: int = 0
@@ -737,7 +737,7 @@ class GenerationService:
         self,
         user: User,
         workspace_id: Optional[int] = None,
-        status: Optional[JobStatus] = None,
+        status: Optional[GenerationStatus] = None,
         operation_type: Optional[OperationType] = None,
     ) -> int:
         """
@@ -786,7 +786,7 @@ class GenerationService:
         Returns:
             List of pending generations (sorted by priority)
         """
-        query = select(Generation).where(Generation.status == JobStatus.PENDING)
+        query = select(Generation).where(Generation.status == GenerationStatus.PENDING)
 
         if provider_id:
             query = query.where(Generation.provider_id == provider_id)
@@ -864,7 +864,7 @@ class GenerationService:
             raise InvalidOperationError("Cannot retry other users' generations")
 
         # Check if can be retried
-        if original.status not in {JobStatus.FAILED, JobStatus.CANCELLED}:
+        if original.status not in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             raise InvalidOperationError(f"Can only retry failed or cancelled generations, not {original.status.value}")
 
         # Check retry count
@@ -911,7 +911,7 @@ class GenerationService:
         Returns:
             True if should auto-retry
         """
-        if generation.status != JobStatus.FAILED:
+        if generation.status != GenerationStatus.FAILED:
             return False
 
         if not generation.error_message:

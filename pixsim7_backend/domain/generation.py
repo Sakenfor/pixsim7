@@ -20,7 +20,7 @@ from sqlalchemy import JSON
 import hashlib
 import json
 
-from .enums import OperationType, JobStatus  # or introduce GenerationStatus
+from .enums import OperationType, GenerationStatus
 
 
 class Generation(SQLModel, table=True):
@@ -109,8 +109,8 @@ class Generation(SQLModel, table=True):
     )
 
     # Lifecycle
-    status: JobStatus = Field(
-        default=JobStatus.PENDING,
+    status: GenerationStatus = Field(
+        default=GenerationStatus.PENDING,
         index=True,
         description="Generation status (you can introduce GenerationStatus later)",
     )
@@ -165,9 +165,9 @@ class Generation(SQLModel, table=True):
     def is_terminal(self) -> bool:
         """Check if generation is in a terminal state"""
         return self.status in {
-            JobStatus.COMPLETED,
-            JobStatus.FAILED,
-            JobStatus.CANCELLED
+            GenerationStatus.COMPLETED,
+            GenerationStatus.FAILED,
+            GenerationStatus.CANCELLED
         }
 
     @staticmethod

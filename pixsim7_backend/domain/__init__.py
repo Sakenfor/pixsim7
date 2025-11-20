@@ -14,7 +14,7 @@ Design principles:
 from .enums import (
     MediaType,
     SyncStatus,
-    JobStatus,
+    GenerationStatus,
     OperationType,
     AccountStatus,
     VideoStatus,
@@ -59,7 +59,7 @@ __all__ = [
     # Enums
     "MediaType",
     "SyncStatus",
-    "JobStatus",
+    "GenerationStatus",
     "OperationType",
     "AccountStatus",
     "VideoStatus",

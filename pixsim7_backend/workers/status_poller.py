@@ -11,7 +11,7 @@ from pixsim_logging import configure_logging
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from pixsim7_backend.domain import Generation, ProviderSubmission, ProviderAccount
-from pixsim7_backend.domain.enums import JobStatus, VideoStatus
+from pixsim7_backend.domain.enums import GenerationStatus, VideoStatus
 from pixsim7_backend.services.generation import GenerationService
 from pixsim7_backend.services.provider import ProviderService
 from pixsim7_backend.services.asset import AssetService
@@ -50,7 +50,7 @@ async def poll_job_statuses() -> dict:
             # Get all PROCESSING generations
             result = await db.execute(
                 select(Generation)
-                .where(Generation.status == JobStatus.PROCESSING)
+                .where(Generation.status == GenerationStatus.PROCESSING)
                 .order_by(Generation.started_at)
             )
             processing_generations = list(result.scalars().all())
