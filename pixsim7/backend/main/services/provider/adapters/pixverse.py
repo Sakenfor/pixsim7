@@ -78,6 +78,7 @@ class PixverseProvider(Provider):
         return [
             OperationType.TEXT_TO_VIDEO,
             OperationType.IMAGE_TO_VIDEO,
+            OperationType.IMAGE_TO_IMAGE,
             OperationType.VIDEO_EXTEND,
             OperationType.VIDEO_TRANSITION,
             OperationType.FUSION,
@@ -219,6 +220,10 @@ class PixverseProvider(Provider):
 
         # Operation-specific parameters
         if operation_type == OperationType.IMAGE_TO_VIDEO:
+            if "image_url" in params:
+                mapped["image_url"] = params["image_url"]
+
+        elif operation_type == OperationType.IMAGE_TO_IMAGE:
             if "image_url" in params:
                 mapped["image_url"] = params["image_url"]
 

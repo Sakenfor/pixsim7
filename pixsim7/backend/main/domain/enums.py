@@ -33,6 +33,7 @@ class OperationType(str, Enum):
     """Video generation operation types"""
     TEXT_TO_VIDEO = "text_to_video"
     IMAGE_TO_VIDEO = "image_to_video"
+    IMAGE_TO_IMAGE = "image_to_image"
     VIDEO_EXTEND = "video_extend"
     VIDEO_TRANSITION = "video_transition"
     FUSION = "fusion"
