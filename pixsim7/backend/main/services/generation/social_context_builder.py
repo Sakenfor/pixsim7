@@ -12,7 +12,10 @@ from typing import Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
+# Lazy import of game models to avoid loading game domain in lightweight APIs
+# These are only imported when build_social_context() is actually called
+# from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
+
 from pixsim7.backend.main.domain.narrative.relationships import (
     compute_relationship_tier,
     compute_intimacy_level,
@@ -145,6 +148,9 @@ async def build_generation_social_context(
     Raises:
         ValueError: If world not found
     """
+    # Lazy import to avoid loading game domain in lightweight APIs
+    from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
+
     # Load world and schemas
     result = await db.execute(select(GameWorld).where(GameWorld.id == world_id))
     world = result.scalar_one_or_none()
