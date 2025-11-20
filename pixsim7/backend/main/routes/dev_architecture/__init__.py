@@ -1,0 +1,3 @@
+"""
+Dev Architecture Routes Plugin
+"""

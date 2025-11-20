@@ -38,7 +38,7 @@ def create_services():
             key="backend",
             title="Backend API",
             program="python",
-            args=["-m", "uvicorn", "pixsim7_backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            args=["-m", "uvicorn", "pixsim7.backend.main.main:app", "--host", "0.0.0.0", "--port", "8000"],
             cwd=str(Path(__file__).parent.parent.parent.parent),
             env_overrides={
                 "PYTHONPATH": str(Path(__file__).parent.parent.parent.parent),

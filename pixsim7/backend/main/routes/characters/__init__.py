@@ -1,0 +1,1 @@
+"""Characters API Routes Plugin"""

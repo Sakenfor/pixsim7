@@ -22,7 +22,7 @@
       "depends_on": ["db"],
       "enabled": true,
       "type": "python",
-      "module": "pixsim7_backend.main:app",
+      "module": "pixsim7.backend.main.main:app",
       "tags": ["core", "api", "game"]
     },
     {
@@ -38,7 +38,7 @@
       "depends_on": ["db"],
       "enabled": true,
       "type": "python",
-      "module": "generation_api.main:app",
+      "module": "pixsim7.backend.generation.main:app",
       "tags": ["api", "generation", "ai", "microservice"],
       "provides": ["generations", "prompts", "providers", "analytics"]
     }
@@ -113,7 +113,7 @@
       "description": "Background task worker",
       "type": "python",
       "module": "arq",
-      "args": ["pixsim7_backend.workers.arq_worker.WorkerSettings"],
+      "args": ["pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
       "depends_on": ["db"],
       "auto_start": false,
       "enabled": true
@@ -122,17 +122,6 @@
 
   "future_services": {
     "_comment": "Examples of services that might be split out later",
-    "generation-api": {
-      "id": "generation-api",
-      "name": "Generation API",
-      "description": "AI generation and prompt management (future split)",
-      "port_env": "GENERATION_API_PORT",
-      "default_port": 8001,
-      "enabled": false,
-      "module": "generation_api.main:app",
-      "provides": ["generations", "prompts", "providers"],
-      "depends_on": ["db"]
-    },
     "game-api": {
       "id": "game-api",
       "name": "Game API",
@@ -140,7 +129,7 @@
       "port_env": "GAME_API_PORT",
       "default_port": 8002,
       "enabled": false,
-      "module": "game_api.main:app",
+      "module": "pixsim7.backend.game.main:app",
       "provides": ["worlds", "sessions", "npcs", "dialogue"],
       "depends_on": ["db"]
     }

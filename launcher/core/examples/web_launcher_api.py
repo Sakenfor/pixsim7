@@ -87,7 +87,7 @@ def create_services():
             key="backend",
             title="Backend API",
             program="python",
-            args=["-m", "uvicorn", "pixsim7_backend.main:app"],
+            args=["-m", "uvicorn", "pixsim7.backend.main.main:app"],
             cwd=str(Path(__file__).parent.parent.parent.parent),
             health_url="http://localhost:8000/health",
         ),
