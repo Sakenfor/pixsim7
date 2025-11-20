@@ -7,13 +7,23 @@ Handles dynamic generation and testing of action blocks for narrative scenes.
 from __future__ import annotations
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7_backend.api.dependencies import (
+    CurrentUser,
+    DatabaseSession,
+    get_narrative_engine,
+    get_action_engine,
+    get_block_generator,
+    NarrativeEng,
+    ActionEng,
+    BlockGenerator
+)
 from pixsim7_backend.domain.game.models import GameSession, GameWorld, GameNPC
 from pixsim7_backend.domain.narrative import NarrativeEngine
+from pixsim7_backend.domain.narrative.action_blocks import ActionEngine
 from pixsim7_backend.domain.narrative.action_blocks.generator import (
     DynamicBlockGenerator,
     GenerationRequest,
@@ -24,26 +34,6 @@ from pixsim7_backend.domain.narrative.action_blocks.types_v2 import ContentRatin
 
 
 router = APIRouter()
-
-# Singletons
-_narrative_engine = None
-_block_generator = None
-
-
-def get_narrative_engine() -> NarrativeEngine:
-    """Get or create the narrative engine singleton."""
-    global _narrative_engine
-    if _narrative_engine is None:
-        _narrative_engine = NarrativeEngine()
-    return _narrative_engine
-
-
-def get_block_generator() -> DynamicBlockGenerator:
-    """Get or create the block generator singleton."""
-    global _block_generator
-    if _block_generator is None:
-        _block_generator = DynamicBlockGenerator(use_claude_api=False)
-    return _block_generator
 
 
 class PreviousSegmentInput(BaseModel):
@@ -79,6 +69,7 @@ def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[
     )
 
 
+class GenerateActionBlockRequest(BaseModel):
     """Request for generating a new action block dynamically."""
     concept_type: str  # e.g., "creature_interaction", "position_maintenance"
     parameters: Dict[str, Any]

@@ -24,6 +24,12 @@ from pixsim7_backend.services.asset import AssetService
 from pixsim7_backend.services.provider.provider_service import ProviderService
 from pixsim7_backend.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
 
+# Narrative engine imports (lazy-loaded)
+from pixsim7_backend.domain.narrative import NarrativeEngine
+from pixsim7_backend.domain.narrative.action_blocks import ActionEngine
+from pixsim7_backend.domain.narrative.action_blocks.generator import DynamicBlockGenerator
+from pixsim7_backend.services.llm import LLMService
+
 
 # ===== DATABASE DEPENDENCY =====
 
@@ -109,6 +115,48 @@ async def get_game_world_service(
 ) -> GameWorldService:
     """Get GameWorldService instance with Redis support"""
     return GameWorldService(db, redis)
+
+
+# ===== NARRATIVE ENGINE SINGLETONS =====
+# Centralized singleton management for narrative engines and action systems
+
+_narrative_engine: Optional[NarrativeEngine] = None
+_action_engine: Optional[ActionEngine] = None
+_block_generator: Optional[DynamicBlockGenerator] = None
+_llm_service: Optional[LLMService] = None
+
+
+def get_narrative_engine() -> NarrativeEngine:
+    """Get or create the narrative engine singleton."""
+    global _narrative_engine
+    if _narrative_engine is None:
+        _narrative_engine = NarrativeEngine()
+    return _narrative_engine
+
+
+def get_action_engine() -> ActionEngine:
+    """Get or create the action engine singleton."""
+    global _action_engine
+    if _action_engine is None:
+        _action_engine = ActionEngine(narrative_engine=get_narrative_engine())
+    return _action_engine
+
+
+def get_block_generator() -> DynamicBlockGenerator:
+    """Get or create the block generator singleton."""
+    global _block_generator
+    if _block_generator is None:
+        _block_generator = DynamicBlockGenerator(use_claude_api=False)
+    return _block_generator
+
+
+async def get_llm_service() -> LLMService:
+    """Get or create the LLM service singleton."""
+    global _llm_service
+    if _llm_service is None:
+        redis_client = await get_redis()
+        _llm_service = LLMService(redis_client, provider="anthropic")
+    return _llm_service
 
 
 # ===== AUTHENTICATION DEPENDENCY =====
@@ -207,3 +255,9 @@ GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
 GameWorldSvc = Annotated[GameWorldService, Depends(get_game_world_service)]
+
+# Narrative engine type aliases
+NarrativeEng = Annotated[NarrativeEngine, Depends(get_narrative_engine)]
+ActionEng = Annotated[ActionEngine, Depends(get_action_engine)]
+BlockGenerator = Annotated[DynamicBlockGenerator, Depends(get_block_generator)]
+LLMSvc = Annotated[LLMService, Depends(get_llm_service)]

@@ -5,13 +5,22 @@ Handles action selection, progression, and library browsing for narrative scenes
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7_backend.api.dependencies import (
+    CurrentUser,
+    DatabaseSession,
+    get_narrative_engine,
+    get_action_engine,
+    get_block_generator,
+    NarrativeEng,
+    ActionEng,
+    BlockGenerator
+)
 from pixsim7_backend.domain.game.models import GameSession, GameWorld, GameNPC
 from pixsim7_backend.domain.narrative import NarrativeEngine
 from pixsim7_backend.domain.narrative.action_blocks import (
@@ -19,31 +28,17 @@ from pixsim7_backend.domain.narrative.action_blocks import (
     ActionSelectionContext,
     BranchIntent
 )
+from pixsim7_backend.domain.narrative.action_blocks.generator import (
+    DynamicBlockGenerator,
+    GenerationRequest,
+    GenerateActionBlockRequest
+)
 
 
 router = APIRouter()
 
-# Singletons
-_narrative_engine = None
-_action_engine = None
 
-
-def get_narrative_engine() -> NarrativeEngine:
-    """Get or create the narrative engine singleton."""
-    global _narrative_engine
-    if _narrative_engine is None:
-        _narrative_engine = NarrativeEngine()
-    return _narrative_engine
-
-
-def get_action_engine() -> ActionEngine:
-    """Get or create the action engine singleton."""
-    global _action_engine
-    if _action_engine is None:
-        _action_engine = ActionEngine(narrative_engine=get_narrative_engine())
-    return _action_engine
-
-
+class ActionSelectionRequest(BaseModel):
     """Request for selecting action blocks."""
     location_tag: Optional[str] = None
     pose: Optional[str] = None
