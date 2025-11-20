@@ -32,6 +32,35 @@ api/v1/
 
 ---
 
+### context.py → 7 Capability Modules (2025-11-20)
+
+**Before:** Single 1324-line file with all plugin capability APIs
+
+**After:** Split into capability modules + orchestrator:
+```
+infrastructure/plugins/
+├── context.py              109 lines  (PluginContext orchestrator)
+├── context_base.py          61 lines  (BaseCapabilityAPI)
+├── capabilities/
+│   ├── __init__.py          20 lines  (Re-exports)
+│   ├── world.py            180 lines  (WorldReadAPI)
+│   ├── session.py          256 lines  (SessionReadAPI + SessionMutationsAPI)
+│   ├── components.py       378 lines  (ComponentAPI - ECS operations)
+│   ├── behaviors.py        300 lines  (BehaviorExtensionAPI - registration)
+│   └── logging.py           67 lines  (LoggingAPI)
+```
+
+**Benefits:**
+- Each capability API has a dedicated module
+- PluginContext is now a clean orchestrator (~100 lines)
+- Easier to find and maintain specific capabilities
+- Better separation of concerns (world vs session vs components)
+- Average file size: ~200 lines per capability module
+
+**Updated:** No external imports needed updating (PluginContext still exported from context.py)
+
+---
+
 ## Top 10 Largest Files
 
 | File | Lines | Type | Recommendation |
