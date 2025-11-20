@@ -254,6 +254,11 @@ These interactive tools provide real-time visibility into the app's structure an
   - **Dependency Graph Tab:** Interactive visualization of feature-plugin relationships
   - **Capability Testing Tab:** Test routes, invoke actions, and inspect state
   - **Statistics Tab:** System overview with health metrics and usage stats
+  - **Backend Architecture Tab:** Live backend introspection showing:
+    - Service composition tree (God Object splits)
+    - Routes mapped to capability APIs
+    - All capability APIs with methods
+    - Permission matrix across plugins
   - **Export Functionality:** Download complete app map as JSON for analysis
 
 ### Plugin Health Monitor

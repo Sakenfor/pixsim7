@@ -838,6 +838,59 @@ Don't split when:
 
 ---
 
+## Live Visualization Tool
+
+### App Map Backend Architecture Tab
+
+A live visualization tool is available in the App Map dev panel (`/app-map` → "Backend Architecture" tab) that provides real-time insights into the modernized backend:
+
+**Features:**
+1. **Service Composition Tree** - Visual representation of how services were split:
+   - Shows composition layers and sub-services
+   - Displays line counts for each module
+   - Documents single responsibility of each service
+
+2. **Routes & Capabilities** - API route mapping:
+   - All FastAPI routes grouped by tag
+   - HTTP methods color-coded (GET, POST, PUT, DELETE)
+   - Plugin permissions shown for each route
+   - Links routes to their plugin manifests
+
+3. **Capability APIs** - Available capabilities:
+   - Organized by category (read, write, ecs, behavior, logging)
+   - Shows methods available in each API
+   - Documents required permissions
+   - Links to source files
+
+4. **Permission Matrix** - Permission usage visualization:
+   - Which plugins use which permissions
+   - Permission usage counts
+   - Modernization progress tracking
+   - Unique permission catalog
+
+**Architecture Metrics:**
+- Total services and sub-services
+- Average module size (~250 lines)
+- Total routes and route tags
+- Modernized plugin count
+- Permission usage statistics
+
+**How to Access:**
+```
+1. Start the app
+2. Navigate to /app-map
+3. Click "Backend Architecture" tab
+4. Explore the 4 sub-views
+```
+
+**Backend API:**
+- Endpoint: `GET /dev/architecture/map`
+- Returns: JSON with routes, capabilities, services, plugins, metrics
+- Auto-discovers: Route plugins, service composition, capability APIs
+- No manual updates needed - reflects current codebase
+
+This tool was created specifically to visualize the results of the backend modernization work and help AI agents/developers understand the clean architecture layers.
+
 ## Future Work
 
 ### Remaining Routes to Modernize

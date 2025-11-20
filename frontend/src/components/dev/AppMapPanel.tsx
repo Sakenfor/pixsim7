@@ -22,6 +22,7 @@ import {
 } from '../../lib/plugins/catalog';
 import { DependencyGraphPanel } from './DependencyGraphPanel';
 import { CapabilityTestingPanel } from './CapabilityTestingPanel';
+import { BackendArchitecturePanel } from './BackendArchitecturePanel';
 
 /**
  * AppMapPanel - Live visualization of app architecture, features, and plugins
@@ -37,7 +38,7 @@ export function AppMapPanel() {
   const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
   const [originFilter, setOriginFilter] = useState<PluginOrigin | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'features' | 'plugins' | 'graph' | 'testing' | 'stats'>('features');
+  const [activeTab, setActiveTab] = useState<'features' | 'plugins' | 'graph' | 'testing' | 'stats' | 'backend'>('features');
 
   // Data from capability registry
   const allFeatures = useFeatures();
@@ -233,6 +234,16 @@ export function AppMapPanel() {
           >
             Statistics
           </button>
+          <button
+            onClick={() => setActiveTab('backend')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'backend'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+            }`}
+          >
+            Backend Architecture
+          </button>
         </div>
       </div>
 
@@ -282,6 +293,10 @@ export function AppMapPanel() {
             allFeatures={allFeatures}
             allActions={allActions}
           />
+        )}
+
+        {activeTab === 'backend' && (
+          <BackendArchitecturePanel />
         )}
       </div>
     </div>
