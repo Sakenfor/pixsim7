@@ -9,9 +9,9 @@
 >   - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md` (task overview).
 > - Use this file to understand what phases are already implemented and where code lives.
 
-**Date**: 2025-11-19  
-**Task**: `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md`  
-**Phases Completed**: 1–2 (Phase 3 partially explored)
+**Last Updated**: 2025-11-20
+**Task**: `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md`
+**Phases Completed**: 1–5, 8
 
 ---
 
@@ -175,10 +175,45 @@ async def _resolve_prompt_config(
 - Latency metrics (p95, p99)
 - Provider health monitoring
 
-### Phase 8 - Safety & Content Rating
-- Enforce world/user content rating constraints
-- Clamp or reject violating requests
-- Log violations for dev tools
+## ✅ Phase 8 - Safety & Content Rating (COMPLETE)
+
+### Summary
+Content rating enforcement implemented in GenerationService (2025-11-20).
+
+### Implementation
+
+**✅ Content Rating Validation**
+- Location: `pixsim7_backend/services/generation/generation_service.py:332`
+- Method: `_validate_content_rating(params, world_meta, user_preferences)`
+- Validates against world/user maxContentRating constraints
+- Returns (is_valid, violation_message, clamped_social_context)
+
+**✅ Enforcement in Generation Creation**
+- Location: `pixsim7_backend/services/generation/generation_service.py:133-171`
+- Phase 8 content rating enforcement integrated into `create_generation()`
+- Checks structured params with social_context
+- Validates against world and user constraints
+
+**✅ Clamping Behavior**
+- Invalid ratings → Reject request with InvalidOperationError
+- Exceeds world max → Clamp to world max, log warning
+- Exceeds user max → Clamp to user max, log warning
+- Clamped context includes: `_ratingClamped`, `_originalRating` flags
+
+**✅ Logging for Dev Tools**
+- Warning logs: "CONTENT_RATING_VIOLATION: {message} (clamped to '{rating}')"
+- Info logs: "Content rating clamped: {violation_msg}"
+- TODO: Event emission for dev panel (commented in code)
+
+**✅ Rating Hierarchy Used**
+- Imported from: `social_context_builder.RATING_ORDER`
+- Values: `['sfw', 'romantic', 'mature_implied', 'restricted']`
+
+### Future Enhancements
+- Fetch world_meta from GameWorld model in DB (currently accepts as param)
+- Fetch user_preferences from user settings (currently accepts as param)
+- Emit `CONTENT_RATING_CLAMPED` event for dev tools dashboard
+- Add metrics/telemetry for violation tracking
 
 ### Phase 9 - Regression Harness
 - Test fixtures for GenerationNodeConfigs
@@ -194,10 +229,8 @@ async def _resolve_prompt_config(
 
 ## 🔍 Technical Debt & Future Work
 
-1. **Rename JobStatus → GenerationStatus** - Consider renaming for clarity
-2. **Remove Legacy Code**:
-   - `pixsim7_backend/services/job/job_service.py`
-   - Backward compatibility aliases in `domain/__init__.py`
+1. ~~**Rename JobStatus → GenerationStatus**~~ - ✅ COMPLETED (2025-11-20)
+2. ~~**Remove Legacy Code**~~ - ✅ COMPLETED (2025-11-20) - No legacy code existed
 3. **Enhanced Variable Substitution** - Add formatters, type coercion
 4. **Parameter Mappers** - Complete canonicalization with provider-specific mappers
 5. **Prompt Caching** - Cache resolved prompts to reduce DB queries
@@ -206,12 +239,20 @@ async def _resolve_prompt_config(
 
 ## ✨ Summary
 
-**Phases 1-3 are complete and functional.** The unified generation pipeline now has:
+**Phases 1-5 and 8 are complete and functional.** The unified generation pipeline now has:
 - ✅ Unified `Generation` model with database migrations
 - ✅ Complete REST API for generation management
 - ✅ Structured prompt versioning with auto-select and variable substitution
 - ✅ Frontend types and UI components for Generation Nodes
 - ✅ Validation endpoint for editor-time feedback
+- ✅ Social context integration with intimacy-aware generation
+- ✅ Content rating enforcement with world/user constraint validation
+
+**Remaining phases:**
+- Phase 6: Caching & Determinism
+- Phase 7: Telemetry (Cost, Latency, Provider Health)
+- Phase 9: Regression Harness
+- Phase 10: Developer Tools & App Map
 
 The foundation is solid for implementing Phases 4-10, which will add social context, validation, caching, telemetry, safety, testing, and developer tools.
 
