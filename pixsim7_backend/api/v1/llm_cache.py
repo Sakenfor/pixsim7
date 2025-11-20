@@ -8,25 +8,11 @@ from typing import Dict, Any
 
 from fastapi import APIRouter, Depends
 
-from pixsim7_backend.api.dependencies import CurrentUser
+from pixsim7_backend.api.dependencies import CurrentUser, get_llm_service, LLMSvc
 from pixsim7_backend.services.llm import LLMService, LLMCacheStats, CacheInvalidationRequest
-from pixsim7_backend.infrastructure.redis.client import get_redis
 
 
 router = APIRouter()
-
-
-# Singleton for LLM service
-_llm_service = None
-
-
-async def get_llm_service() -> LLMService:
-    """Get or create the LLM service singleton."""
-    global _llm_service
-    if _llm_service is None:
-        redis_client = await get_redis()
-        _llm_service = LLMService(redis_client, provider="anthropic")
-    return _llm_service
 
 
 @router.get("/cache/stats", response_model=LLMCacheStats)

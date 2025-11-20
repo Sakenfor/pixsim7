@@ -7,29 +7,27 @@ Handles narrative dialogue flow: next-line generation, execution, and debugging.
 from __future__ import annotations
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7_backend.api.dependencies import (
+    CurrentUser,
+    DatabaseSession,
+    get_narrative_engine,
+    get_llm_service,
+    NarrativeEng,
+    LLMSvc
+)
 from pixsim7_backend.domain.game.models import GameSession, GameWorld, GameNPC
 from pixsim7_backend.domain.narrative import NarrativeEngine
+from pixsim7_backend.services.llm import LLMService, LLMRequest
 
 
 router = APIRouter()
 
-# Singleton for narrative engine
-_narrative_engine = None
 
-
-def get_narrative_engine() -> NarrativeEngine:
-    """Get or create the narrative engine singleton."""
-    global _narrative_engine
-    if _narrative_engine is None:
-        _narrative_engine = NarrativeEngine()
-    return _narrative_engine
-
-
+class DialogueNextLineRequest(BaseModel):
     """Request for generating the next dialogue line."""
     npc_id: int
     scene_id: Optional[int] = None

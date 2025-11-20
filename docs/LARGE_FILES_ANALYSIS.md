@@ -114,6 +114,54 @@ api/v1/prompts/
 
 ---
 
+### prompt_version_service.py → 4 Focused Services (2025-11-20)
+
+**Before:** Single 1212-line "God Object" service mixing 12 different responsibilities
+
+**After:** Split into focused services:
+```
+services/prompts/
+├── family_service.py        207 lines (Families & versions CRUD)
+├── variant_service.py        212 lines (Variant feedback & metrics)
+├── analytics_service.py      318 lines (Diff, compare, analytics)
+└── operations_service.py     547 lines (Batch, import/export, inference, search, templates, validation)
+```
+
+**Benefits:**
+- Single responsibility per service (no more God Object)
+- AI agents load ~250 lines vs 1200+ lines
+- Clear dependencies and boundaries
+- Better testability and maintainability
+- Backward compatibility via PromptVersionService composition
+
+**Updated:** prompt_version_service.py now composes all 4 services for backward compatibility
+
+---
+
+### asset_service.py → 4 Focused Services (2025-11-20)
+
+**Before:** Single 1164-line "God Object" service mixing 10 different responsibilities
+
+**After:** Split into focused services:
+```
+services/asset/
+├── core_service.py           404 lines (CRUD, search, listing, deletion)
+├── sync_service.py           441 lines (Download mgmt, sync, provider ops)
+├── enrichment_service.py     280 lines (Recognition, embedded extraction, paused frames)
+└── quota_service.py           99 lines (User quotas, storage tracking, deduplication)
+```
+
+**Benefits:**
+- Clear separation of concerns (CRUD vs sync vs enrichment vs quotas)
+- AI agents can work on specific aspects without loading entire service
+- Easier to understand and modify focused services
+- Better for parallel development
+- Backward compatibility via AssetService composition
+
+**Updated:** asset_service.py now composes all 4 services for backward compatibility
+
+---
+
 ## Top 10 Largest Files
 
 | File | Lines | Type | Recommendation |
