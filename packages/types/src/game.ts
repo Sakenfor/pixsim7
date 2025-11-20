@@ -317,10 +317,19 @@ export interface WorldGenerationConfig {
 // ===================
 
 /**
- * Game style identifier
+ * Core game style identifiers (built-in styles)
  * Defines the high-level gameplay approach for the world
  */
-export type GameStyle = 'life_sim' | 'visual_novel' | 'hybrid';
+export type CoreGameStyle = 'life_sim' | 'visual_novel' | 'hybrid';
+
+/**
+ * Game style identifier
+ * Supports both built-in styles and custom plugin-defined styles
+ *
+ * Note: This type allows string extensions for maximum flexibility.
+ * Built-in styles get autocomplete, but custom styles are also allowed.
+ */
+export type GameStyle = CoreGameStyle | (string & {});
 
 /**
  * Simulation mode identifier

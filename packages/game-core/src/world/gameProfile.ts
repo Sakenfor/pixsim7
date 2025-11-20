@@ -10,6 +10,7 @@ import type {
   BehaviorProfile,
   NarrativeProfile,
   GameStyle,
+  CoreGameStyle,
   ScoringConfig,
   SimulationConfig,
 } from '@pixsim7/types';
@@ -89,49 +90,81 @@ export function getDefaultScoringWeights(
 }
 
 /**
- * Get default simulation tier priorities based on game style
+ * Default simulation tier limits per game style
+ *
+ * These defaults can be overridden per-world via world.meta.simulationConfig.tierLimits
+ * Only built-in core styles are defined here; custom styles fall back to 'hybrid'.
+ */
+const STYLE_DEFAULT_TIER_LIMITS: Record<CoreGameStyle, {
+  detailed: number;
+  active: number;
+  ambient: number;
+  dormant: number;
+}> = {
+  life_sim: {
+    detailed: 10, // Immediate NPCs (player's location)
+    active: 150, // Many NPCs actively simulated
+    ambient: 800, // Large ambient population
+    dormant: 10000, // Huge dormant pool
+  },
+  visual_novel: {
+    detailed: 20, // More detailed simulation for key NPCs
+    active: 50, // Fewer NPCs, but more detailed
+    ambient: 200, // Smaller ambient population
+    dormant: 2000, // Smaller dormant pool
+  },
+  hybrid: {
+    detailed: 15,
+    active: 100,
+    ambient: 500,
+    dormant: 5000,
+  },
+};
+
+/**
+ * Get simulation tier limits based on game style
+ *
+ * Checks world metadata first for custom tier limits, then falls back to style defaults.
  *
  * For life_sim worlds:
  * - More NPCs at 'active' tier; frequent updates
  *
  * For visual_novel worlds:
  * - Fewer NPCs at 'detailed' tier; focus on narrative-relevant NPCs
+ *
+ * @param style - The game style
+ * @param worldMeta - Optional world metadata that may contain custom tier limits
+ * @returns Simulation tier limits
  */
-export function getDefaultSimulationTierLimits(style: GameStyle): {
+export function getDefaultSimulationTierLimits(
+  style: GameStyle,
+  worldMeta?: { simulationConfig?: { tierLimits?: Record<string, number> } }
+): {
   detailed: number;
   active: number;
   ambient: number;
   dormant: number;
 } {
-  switch (style) {
-    case 'life_sim':
-      // Life-sim: More NPCs in active simulation for world liveliness
-      return {
-        detailed: 10, // Immediate NPCs (player's location)
-        active: 150, // Many NPCs actively simulated
-        ambient: 800, // Large ambient population
-        dormant: 10000, // Huge dormant pool
-      };
+  // First, check for world-specific tier limit overrides
+  if (worldMeta?.simulationConfig?.tierLimits) {
+    const overrides = worldMeta.simulationConfig.tierLimits;
 
-    case 'visual_novel':
-      // Visual novel: Focus on fewer, key NPCs
-      return {
-        detailed: 20, // More detailed simulation for key NPCs
-        active: 50, // Fewer NPCs, but more detailed
-        ambient: 200, // Smaller ambient population
-        dormant: 2000, // Smaller dormant pool
-      };
+    // Merge overrides with defaults for this style
+    // For custom styles, fall back to 'hybrid' defaults
+    const styleKey = (style in STYLE_DEFAULT_TIER_LIMITS ? style : 'hybrid') as CoreGameStyle;
+    const styleDefaults = STYLE_DEFAULT_TIER_LIMITS[styleKey];
 
-    case 'hybrid':
-    default:
-      // Hybrid: Balanced approach
-      return {
-        detailed: 15,
-        active: 100,
-        ambient: 500,
-        dormant: 5000,
-      };
+    return {
+      detailed: overrides.detailed ?? styleDefaults.detailed,
+      active: overrides.active ?? styleDefaults.active,
+      ambient: overrides.ambient ?? styleDefaults.ambient,
+      dormant: overrides.dormant ?? styleDefaults.dormant,
+    };
   }
+
+  // Fall back to style defaults (or 'hybrid' for custom styles)
+  const styleKey = (style in STYLE_DEFAULT_TIER_LIMITS ? style : 'hybrid') as CoreGameStyle;
+  return STYLE_DEFAULT_TIER_LIMITS[styleKey];
 }
 
 /**
@@ -174,10 +207,16 @@ export function getBehaviorScoringConfig(
  * Merge explicit simulation config with defaults from GameProfile
  *
  * Adjusts simulation tier limits based on game style if no explicit config.
+ * Supports custom tier limits defined in world metadata.
+ *
+ * @param gameProfile - The game profile
+ * @param explicitSimulationConfig - Explicit simulation config to use
+ * @param worldMeta - Optional world metadata that may contain custom tier limits
  */
 export function getSimulationConfig(
   gameProfile: GameProfile | undefined,
-  explicitSimulationConfig?: SimulationConfig
+  explicitSimulationConfig?: SimulationConfig,
+  worldMeta?: { simulationConfig?: { tierLimits?: Record<string, number> } }
 ): SimulationConfig | undefined {
   // If explicit config exists, use it
   if (explicitSimulationConfig) {
@@ -189,8 +228,8 @@ export function getSimulationConfig(
     return undefined;
   }
 
-  // Derive tier limits from game style
-  const tierLimits = getDefaultSimulationTierLimits(gameProfile.style);
+  // Derive tier limits from game style (with world metadata overrides)
+  const tierLimits = getDefaultSimulationTierLimits(gameProfile.style, worldMeta);
 
   // Create default simulation config based on style
   return {
@@ -244,6 +283,7 @@ export function getSimulationConfig(
     defaultTier: 'ambient',
     meta: {
       derivedFrom: `gameProfile.style=${gameProfile.style}`,
+      customTierLimitsUsed: worldMeta?.simulationConfig?.tierLimits !== undefined,
     },
   };
 }
