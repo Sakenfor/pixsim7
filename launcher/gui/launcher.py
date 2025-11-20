@@ -21,7 +21,7 @@ _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 load_dotenv(_env_path)
 
 try:
-    from .services import build_services, ServiceDef
+    from .services import build_services_with_fallback, ServiceDef
     from .config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
@@ -38,7 +38,7 @@ try:
     from .dialogs.log_management_dialog import show_log_management_dialog
 except ImportError:
     # Fallback for running directly
-    from services import build_services, ServiceDef
+    from services import build_services_with_fallback, ServiceDef
     from config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
@@ -194,7 +194,7 @@ class LauncherWindow(QWidget):
         if self.ui_state.window_x >= 0 and self.ui_state.window_y >= 0:
             self.move(self.ui_state.window_x, self.ui_state.window_y)
 
-        self.services = build_services()
+        self.services = build_services_with_fallback()
 
         # Initialize service management
         # Use new launcher_core if available, otherwise fall back to old implementation
@@ -1115,7 +1115,7 @@ class LauncherWindow(QWidget):
                 pass
 
         # Rebuild services and processes
-        self.services = build_services()
+        self.services = build_services_with_fallback()
         old_processes = self.processes
         self.processes = {}
 

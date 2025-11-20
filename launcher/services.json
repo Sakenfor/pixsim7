@@ -12,7 +12,7 @@
     {
       "id": "main-api",
       "name": "Main Backend API",
-      "description": "Core API handling game, users, assets, and generations",
+      "description": "Core API handling game, users, assets, dialogue, and actions",
       "port_env": "BACKEND_PORT",
       "default_port": 8000,
       "info_endpoint": "/dev/info",
@@ -23,7 +23,24 @@
       "enabled": true,
       "type": "python",
       "module": "pixsim7_backend.main:app",
-      "tags": ["core", "api"]
+      "tags": ["core", "api", "game"]
+    },
+    {
+      "id": "generation-api",
+      "name": "Generation API",
+      "description": "AI generation and prompt management microservice",
+      "port_env": "GENERATION_API_PORT",
+      "default_port": 8001,
+      "info_endpoint": "/dev/info",
+      "health_endpoint": "/health",
+      "docs_endpoint": "/docs",
+      "auto_start": false,
+      "depends_on": ["db"],
+      "enabled": true,
+      "type": "python",
+      "module": "generation_api.main:app",
+      "tags": ["api", "generation", "ai", "microservice"],
+      "provides": ["generations", "prompts", "providers", "analytics"]
     }
   ],
 
@@ -37,6 +54,10 @@
       "directory": "admin",
       "command": "npm",
       "args": ["run", "dev"],
+      "env_overrides": {
+        "VITE_ADMIN_PORT": "$PORT",
+        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+      },
       "auto_start": false,
       "enabled": true,
       "type": "npm"
@@ -50,6 +71,10 @@
       "directory": "frontend",
       "command": "pnpm",
       "args": ["dev", "--port"],
+      "env_overrides": {
+        "VITE_GAME_URL": "http://localhost:$GAME_FRONTEND_PORT",
+        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+      },
       "auto_start": false,
       "enabled": true,
       "type": "pnpm"
@@ -63,6 +88,9 @@
       "directory": "game-frontend",
       "command": "pnpm",
       "args": ["dev", "--port"],
+      "env_overrides": {
+        "VITE_BACKEND_URL": "http://localhost:$BACKEND_PORT"
+      },
       "auto_start": false,
       "enabled": true,
       "type": "pnpm"

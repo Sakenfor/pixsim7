@@ -11,11 +11,11 @@ from pathlib import Path
 from PySide6.QtCore import QObject
 
 try:
-    from .services import ServiceDef, build_services
+    from .services import ServiceDef, build_services_with_fallback
     from .qt_bridge import QtEventBridge
     from .config import ROOT, UIState, load_ui_state
 except ImportError:
-    from services import ServiceDef, build_services
+    from services import ServiceDef, build_services_with_fallback
     from qt_bridge import QtEventBridge
     from config import ROOT, UIState, load_ui_state
 
@@ -141,7 +141,7 @@ class LauncherFacade(QObject):
         super().__init__(parent)
 
         # Load service definitions
-        service_defs = build_services()
+        service_defs = build_services_with_fallback()
         core_services = [convert_service_def(sd) for sd in service_defs]
 
         # Create Qt event bridge

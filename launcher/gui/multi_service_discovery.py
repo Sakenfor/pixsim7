@@ -14,6 +14,11 @@ import logging
 
 from .service_discovery import ServiceDiscovery, ArchitectureMetrics
 
+try:
+    from .services import _resolve_port
+except ImportError:
+    from services import _resolve_port
+
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +71,7 @@ class MultiServiceDiscovery:
 
         for service_config in self.services_config:
             service_id = service_config['id']
-            port = self._resolve_port(service_config)
+            port = _resolve_port(service_config)
             base_url = f"http://localhost:{port}"
 
             try:
@@ -195,21 +200,6 @@ class MultiServiceDiscovery:
     def get_total_configured(self) -> int:
         """Get count of configured services (enabled)."""
         return len([s for s in self.services_config if s.get('enabled', True)])
-
-    def _resolve_port(self, service_config: Dict) -> int:
-        """
-        Resolve port from environment variable or use default.
-
-        Args:
-            service_config: Service configuration dict
-
-        Returns:
-            Port number
-        """
-        port_env = service_config.get('port_env')
-        if port_env and os.getenv(port_env):
-            return int(os.getenv(port_env))
-        return service_config.get('default_port', 8000)
 
 
 def load_services_config(config_path: Optional[str] = None) -> Optional[List[Dict]]:
