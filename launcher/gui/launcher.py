@@ -74,6 +74,13 @@ except Exception:
     from widgets.service_card import ServiceCard
 
 try:
+    from .widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
+    from .service_discovery import ServiceDiscovery
+except Exception:
+    from widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
+    from service_discovery import ServiceDiscovery
+
+try:
     from .processes import ServiceProcess
 except Exception:
     from processes import ServiceProcess
@@ -377,6 +384,10 @@ class LauncherWindow(QWidget):
         settings_tab = self._create_settings_tab()
         self.main_tabs.addTab(settings_tab, "⚙ Settings")
 
+        # === TAB 5: BACKEND ARCHITECTURE ===
+        architecture_tab = self._create_architecture_tab()
+        self.main_tabs.addTab(architecture_tab, "🏗️ Architecture")
+
         # Setup all connections
         self._setup_connections()
 
@@ -606,6 +617,52 @@ class LauncherWindow(QWidget):
         settings_layout.addStretch()
         return settings_tab
 
+    def _create_architecture_tab(self):
+        """Create the backend architecture tab"""
+        architecture_tab = QWidget()
+        architecture_layout = QVBoxLayout(architecture_tab)
+        architecture_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
+        architecture_layout.setSpacing(theme.SPACING_LG)
+
+        # Header
+        header_label = QLabel("Backend Architecture")
+        header_label.setStyleSheet(f"font-size: {theme.FONT_SIZE_XL}; font-weight: bold; color: {theme.ACCENT_PRIMARY};")
+        architecture_layout.addWidget(header_label)
+
+        desc_label = QLabel(
+            "Live introspection of backend routes, services, and plugins.\n"
+            "This data is fetched from the /dev/architecture/map endpoint."
+        )
+        desc_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+        desc_label.setWordWrap(True)
+        architecture_layout.addWidget(desc_label)
+
+        # Architecture metrics panel
+        self.architecture_panel = ArchitectureMetricsPanel()
+        architecture_layout.addWidget(self.architecture_panel)
+
+        # Routes preview
+        self.routes_preview = RoutesPreviewWidget()
+        architecture_layout.addWidget(self.routes_preview)
+
+        # Initialize service discovery (will connect when backend starts)
+        ports = read_env_ports()
+        self.service_discovery = ServiceDiscovery(f"http://localhost:{ports.backend}")
+        self.architecture_panel.set_discovery(self.service_discovery)
+
+        # Connect metrics updates to routes preview
+        self.architecture_panel.metrics_updated.connect(self._on_architecture_metrics_updated)
+
+        architecture_layout.addStretch()
+        return architecture_tab
+
+    def _on_architecture_metrics_updated(self, metrics):
+        """Handle architecture metrics update."""
+        # Update routes preview
+        if self.service_discovery:
+            routes_by_tag = self.service_discovery.get_routes_by_tag()
+            self.routes_preview.update_routes(routes_by_tag)
+
     def _setup_connections(self):
         """Setup all button connections"""
         # Main control buttons
@@ -803,6 +860,11 @@ class LauncherWindow(QWidget):
             # Update button states based on running flag
             card.start_btn.setEnabled(not sp.running and sp.tool_available)
             card.stop_btn.setEnabled(sp.running)
+
+        # Refresh architecture panel when backend becomes healthy
+        if key == "backend" and status == HealthStatus.HEALTHY and old_status != status:
+            if hasattr(self, 'architecture_panel'):
+                QTimer.singleShot(2000, self.architecture_panel.refresh_metrics)  # 2s delay for backend to fully start
 
     def update_ports_label(self):
         p = read_env_ports()
