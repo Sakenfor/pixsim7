@@ -1,0 +1,9 @@
+{
+  "name": "@pixsim7/shared.config",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "files": [
+    "index.js"
+  ]
+}

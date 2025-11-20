@@ -1,4 +1,3 @@
 packages:
-  - 'frontend'
-  - 'game-frontend'
-  - 'packages/*'
+  - 'apps/*'
+  - 'packages/*/*'
