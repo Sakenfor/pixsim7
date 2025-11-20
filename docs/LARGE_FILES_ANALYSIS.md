@@ -5,6 +5,33 @@
 
 ---
 
+## ✅ Completed Refactorings
+
+### game_dialogue.py → 6 Focused Modules (2025-11-20)
+
+**Before:** Single 2179-line file mixing dialogue, actions, generation, NPC state, LLM cache, and analytics
+
+**After:** Split into 6 focused modules:
+```
+api/v1/
+├── dialogue.py        819 lines  (Dialogue execution: next-line, execute, debug)
+├── actions.py         329 lines  (Action selection & playback)
+├── generation.py      386 lines  (Action block generation & testing)
+├── npc_state.py       ~470 lines (NPC memories, emotions, milestones, personality)
+├── llm_cache.py       95 lines   (LLM cache management)
+└── analytics.py       123 lines  (Dialogue analytics & metrics)
+```
+
+**Benefits:**
+- Each module has a single, clear responsibility
+- Easier to find and modify specific functionality
+- Better code organization (narrative vs NPC state vs ops)
+- Average file size reduced from 2179 → ~370 lines per module
+
+**Updated:** `api/v1/__init__.py` to import all new routers
+
+---
+
 ## Top 10 Largest Files
 
 | File | Lines | Type | Recommendation |
