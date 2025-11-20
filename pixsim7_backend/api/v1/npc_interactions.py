@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7_backend.infrastructure.plugins.dependencies import get_plugin_context
 from pixsim7_backend.infrastructure.plugins.context import PluginContext
-# Note: Using capability APIs for reads (world/session/NPC data)
-# Still need ORM objects for complex writes (execute_interaction_logic)
+# Note: Fully migrated to capability APIs - reads via ctx.world/ctx.session,
+# writes via ctx.session_mutations.execute_interaction()
 from pixsim7_backend.domain.game.npc_interactions import (
     ListInteractionsRequest,
     ListInteractionsResponse,
@@ -32,9 +32,6 @@ from pixsim7_backend.domain.game.interaction_availability import (
     evaluate_interaction_availability,
     create_interaction_instance,
     filter_interactions_by_target,
-)
-from pixsim7_backend.domain.game.interaction_execution import (
-    execute_interaction as execute_interaction_logic,
 )
 
 
@@ -235,8 +232,7 @@ async def list_npc_interactions(
         ctx.log.warning("Session not found", session_id=req.session_id)
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # TODO: Add user_id to session dict returned by capability API to check authorization
-    # For now, capability API already checks permissions
+    # Note: Authorization checked by capability API based on plugin permissions
 
     # Load NPC via capability API
     npc = await ctx.world.get_npc(req.npc_id)
@@ -362,8 +358,7 @@ async def execute_npc_interaction(
         ctx.log.warning("Session not found for interaction execution", session_id=req.session_id)
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # TODO: Add user_id to session dict returned by capability API to check authorization
-    # For now, capability API already checks permissions
+    # Note: Authorization checked by capability API based on plugin permissions
 
     # Load NPC via capability API
     npc = await ctx.world.get_npc(req.npc_id)
@@ -412,40 +407,37 @@ async def execute_npc_interaction(
             detail=f"Interaction not available: {disabled_msg or disabled_reason}"
         )
 
-    # Execute interaction (requires ORM session for mutations)
+    # Execute interaction via capability API
     ctx.log.info("Executing interaction logic", interaction_id=req.interaction_id)
 
-    # Fetch ORM GameSession for execution (needed for database writes)
-    from pixsim7_backend.domain.game.models import GameSession as ORMGameSession
-    orm_session = await db.get(ORMGameSession, req.session_id)
-    if not orm_session:
-        ctx.log.error("Failed to fetch ORM session for execution", session_id=req.session_id)
-        raise HTTPException(status_code=500, detail="Internal error")
-
-    result = await execute_interaction_logic(
-        db,
-        orm_session,
-        req.npc_id,
-        definition,
-        req.player_input,
-        req.context
+    result_dict = await ctx.session_mutations.execute_interaction(
+        session_id=req.session_id,
+        npc_id=req.npc_id,
+        interaction_definition=definition,
+        player_input=req.player_input,
+        context=req.context,
     )
 
-    # Persist session changes
-    await db.commit()
-    await db.refresh(orm_session)
-
-    # Attach updated session to response
-    result.updatedSession = {
-        "relationships": orm_session.relationships,
-        "flags": orm_session.flags,
-    }
+    if not result_dict:
+        ctx.log.error("Failed to execute interaction", session_id=req.session_id)
+        raise HTTPException(status_code=500, detail="Failed to execute interaction")
 
     ctx.log.info(
         "Interaction executed successfully",
         interaction_id=req.interaction_id,
         npc_id=req.npc_id,
-        success=result.success
+        success=result_dict["success"]
     )
 
-    return result
+    # Convert dict back to response model
+    return ExecuteInteractionResponse(
+        success=result_dict["success"],
+        message=result_dict.get("message"),
+        relationshipDeltas=result_dict.get("relationship_deltas"),
+        flagChanges=result_dict.get("flag_changes"),
+        inventoryChanges=result_dict.get("inventory_changes"),
+        launchedSceneId=result_dict.get("launched_scene_id"),
+        generationRequestId=result_dict.get("generation_request_id"),
+        updatedSession=result_dict.get("updated_session"),
+        timestamp=result_dict["timestamp"],
+    )

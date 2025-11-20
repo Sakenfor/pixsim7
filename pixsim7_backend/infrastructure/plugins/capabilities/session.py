@@ -267,3 +267,105 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         )
 
         return True
+
+    async def execute_interaction(
+        self,
+        session_id: int,
+        npc_id: int,
+        interaction_definition: Any,  # NpcInteractionDefinition
+        player_input: Optional[str] = None,
+        context: Optional[dict] = None,
+    ) -> Optional[dict]:
+        """
+        Execute an NPC interaction and apply all outcomes.
+
+        This is a high-level method that wraps the domain execution logic,
+        applying relationship deltas, flag changes, inventory changes, etc.
+
+        Args:
+            session_id: Session ID
+            npc_id: Target NPC ID
+            interaction_definition: Interaction definition with outcomes
+            player_input: Optional player input text
+            context: Optional execution context
+
+        Returns:
+            Execution response dict or None if failed
+        """
+        if not self._check_permission(
+            PluginPermission.SESSION_WRITE.value,
+            "SessionMutationsAPI.execute_interaction",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return None
+
+        if not self.db:
+            self.logger.error("SessionMutationsAPI requires database access")
+            return None
+
+        try:
+            # Import domain execution logic
+            from pixsim7_backend.domain.game.interaction_execution import (
+                execute_interaction as execute_interaction_logic
+            )
+            from pixsim7_backend.domain.game.models import GameSession as ORMGameSession
+
+            # Fetch ORM session for execution (domain logic requires it)
+            orm_session = await self.db.get(ORMGameSession, session_id)
+            if not orm_session:
+                self.logger.warning(
+                    "Session not found for interaction execution",
+                    plugin_id=self.plugin_id,
+                    session_id=session_id,
+                )
+                return None
+
+            # Execute interaction using domain logic
+            result = await execute_interaction_logic(
+                self.db,
+                orm_session,
+                npc_id,
+                interaction_definition,
+                player_input,
+                context or {},
+            )
+
+            # Commit changes
+            await self.db.commit()
+            await self.db.refresh(orm_session)
+
+            # Convert to dict response
+            response_dict = {
+                "success": result.success,
+                "message": result.message,
+                "relationship_deltas": result.relationshipDeltas.dict() if result.relationshipDeltas else None,
+                "flag_changes": result.flagChanges,
+                "inventory_changes": result.inventoryChanges.dict() if result.inventoryChanges else None,
+                "launched_scene_id": result.launchedSceneId,
+                "generation_request_id": result.generationRequestId,
+                "updated_session": {
+                    "relationships": orm_session.relationships,
+                    "flags": orm_session.flags,
+                },
+                "timestamp": result.timestamp,
+            }
+
+            self.logger.info(
+                "execute_interaction",
+                plugin_id=self.plugin_id,
+                session_id=session_id,
+                npc_id=npc_id,
+                success=result.success,
+            )
+
+            return response_dict
+
+        except Exception as e:
+            self.logger.error(
+                "Failed to execute interaction",
+                plugin_id=self.plugin_id,
+                session_id=session_id,
+                npc_id=npc_id,
+                error=str(e),
+            )
+            return None
