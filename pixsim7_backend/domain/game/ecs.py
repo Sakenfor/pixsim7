@@ -57,18 +57,6 @@ from pixsim7_backend.domain.game.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Component schema registry for validation (DEPRECATED - use behavior_registry)
-# Kept for backward compatibility during migration
-COMPONENT_SCHEMAS = {
-    "core": RelationshipCoreComponentSchema,
-    "romance": RomanceComponentSchema,
-    "stealth": StealthComponentSchema,
-    "mood": MoodStateComponentSchema,
-    "quests": QuestParticipationComponentSchema,
-    "behavior": BehaviorStateComponentSchema,
-    "interactions": InteractionStateComponentSchema,
-}
-
 
 def register_core_components():
     """
@@ -328,26 +316,17 @@ def set_npc_component(
     """
     # Validate if schema exists and validation is enabled
     if validate:
-        # Try behavior_registry first (unified approach)
+        # Query behavior_registry for component schema
         from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
         schema_metadata = behavior_registry.get_component_schema(component_name)
 
         if schema_metadata:
             # Component is registered in behavior_registry
             # For now, skip Pydantic validation as behavior_registry uses dict schemas
-            # Full validation can be added in Phase 27.4
+            # Full validation can be added in future if needed
             logger.debug(f"Component '{component_name}' found in behavior_registry")
-        elif component_name in COMPONENT_SCHEMAS:
-            # Fall back to local COMPONENT_SCHEMAS (backward compatibility)
-            schema_cls = COMPONENT_SCHEMAS[component_name]
-            try:
-                schema_cls(**value)
-            except Exception as e:
-                raise ValueError(
-                    f"Component '{component_name}' validation failed: {e}"
-                ) from e
         else:
-            # Component not found in either registry
+            # Component not found - log and skip validation
             logger.debug(f"Component '{component_name}' has no schema - skipping validation")
 
     entity = get_npc_entity(session, npc_id)

@@ -21,20 +21,30 @@ logger = logging.getLogger(__name__)
 EffectHandler = Callable[[Dict[str, Any], Dict[str, Any]], None]
 
 
-# Global registry of custom effect handlers
-EFFECT_HANDLERS: Dict[str, EffectHandler] = {}
-
-
 def register_effect_handler(effect_type: str, handler: EffectHandler) -> None:
     """
     Register a custom effect handler.
+
+    This is a convenience wrapper around behavior_registry.register_effect().
+    All effects are registered in the unified behavior_registry.
 
     Args:
         effect_type: Effect type ID (e.g., "effect:give_item")
         handler: Function that takes (params, context) and applies the effect
     """
-    EFFECT_HANDLERS[effect_type] = handler
-    logger.info(f"Registered custom effect handler: {effect_type}")
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+    success = behavior_registry.register_effect(
+        effect_id=effect_type,
+        plugin_id="core",  # Built-in effects use "core" as plugin_id
+        handler=handler,
+        description=f"Effect handler: {effect_type}"
+    )
+
+    if success:
+        logger.info(f"Registered effect handler: {effect_type}")
+    else:
+        logger.warning(f"Effect handler '{effect_type}' already registered")
 
 
 def apply_activity_effects(
@@ -90,10 +100,15 @@ def apply_custom_effect(effect: Dict[str, Any], context: Dict[str, Any]) -> None
         logger.warning("Custom effect missing 'type' field")
         return
 
-    handler = EFFECT_HANDLERS.get(effect_type)
-    if not handler:
+    # Query behavior_registry for effect handler
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+    effect_metadata = behavior_registry.get_effect(effect_type)
+
+    if not effect_metadata:
         logger.warning(f"Custom effect handler not found: {effect_type}")
         return
+
+    handler = effect_metadata.handler
 
     try:
         handler(params, context)

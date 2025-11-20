@@ -32,9 +32,6 @@ ScoringFactorFunc = Callable[
     float
 ]
 
-# Registry of scoring factors (built-in + plugin-registered)
-SCORING_FACTORS: Dict[str, ScoringFactorFunc] = {}
-
 
 # Default scoring weights (can be overridden per-world)
 DEFAULT_SCORING_WEIGHTS = {
@@ -57,6 +54,9 @@ def register_scoring_factor(
     """
     Register a custom scoring factor.
 
+    This is a convenience wrapper around behavior_registry.register_scoring_factor().
+    All scoring factors are registered in the unified behavior_registry.
+
     Args:
         factor_id: Unique ID for the factor (e.g., "weather_preference", "plugin:my_plugin:social_fatigue")
         evaluator: Function that calculates the factor contribution
@@ -72,11 +72,19 @@ def register_scoring_factor(
 
         register_scoring_factor("weather_preference", my_weather_factor, 0.5)
     """
-    if factor_id in SCORING_FACTORS:
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+    success = behavior_registry.register_scoring_factor(
+        factor_id=factor_id,
+        plugin_id="core",  # Built-in factors use "core" as plugin_id
+        evaluator=evaluator,
+        default_weight=default_weight,
+        description=f"Scoring factor: {factor_id}"
+    )
+
+    if not success:
         logger.warning(f"Scoring factor '{factor_id}' already registered")
         return False
-
-    SCORING_FACTORS[factor_id] = evaluator
 
     # Add default weight if not already present
     if factor_id not in DEFAULT_SCORING_WEIGHTS:
@@ -125,7 +133,7 @@ def calculate_activity_score(
     """
     Calculate score for an activity based on NPC preferences and context.
 
-    Uses pluggable scoring factors from SCORING_FACTORS registry.
+    Uses pluggable scoring factors registered in behavior_registry.
 
     Args:
         activity: Activity dict
@@ -146,8 +154,15 @@ def calculate_activity_score(
     # Start with base score
     score = base_weight
 
-    # Apply all registered scoring factors
-    for factor_id, factor_func in SCORING_FACTORS.items():
+    # Apply all registered scoring factors from behavior_registry
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+    scoring_factors = behavior_registry.list_scoring_factors()
+
+    for factor_metadata in scoring_factors:
+        factor_id = factor_metadata.factor_id
+        factor_func = factor_metadata.evaluator
+
         # Get weight for this factor (default to 1.0 if not specified)
         factor_weight = weights.get(factor_id, 1.0)
 
@@ -555,7 +570,7 @@ def _register_builtin_scoring_factors():
     """
     Register all built-in scoring factors.
 
-    This function is called at module load time to populate the SCORING_FACTORS registry.
+    This function is called at module load time to register built-in factors with behavior_registry.
     Built-in factors use the same registration pathway as plugin factors.
     """
     # Note: We use DEFAULT_SCORING_WEIGHTS to get the default weight for each factor
@@ -567,7 +582,9 @@ def _register_builtin_scoring_factors():
     register_scoring_factor("urgency", _factor_urgency, DEFAULT_SCORING_WEIGHTS["urgency"])
     register_scoring_factor("inertia", _factor_inertia, DEFAULT_SCORING_WEIGHTS["inertia"])
 
-    logger.info(f"Registered {len(SCORING_FACTORS)} built-in scoring factors")
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+    factor_count = len(behavior_registry.list_scoring_factors())
+    logger.info(f"Registered {factor_count} built-in scoring factors")
 
 
 # Register built-in scoring factors at module load time

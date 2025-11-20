@@ -1,7 +1,7 @@
 """
 Behavior Extension Registry
 
-Central registry for plugin-provided behavior extensions (conditions, effects, simulation config).
+Central registry for plugin-provided behavior extensions (conditions, effects, scoring factors, simulation config).
 Used by the NPC behavior system (Task 13) to discover and execute plugin extensions.
 
 Plugins register extensions via BehaviorExtensionAPI (permission-checked).
@@ -9,6 +9,7 @@ The behavior system queries this registry to find available extensions.
 
 See: claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md Phase 16.4
      claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md
+     claude-tasks/28-extensible-scoring-and-simulation-config.md
 """
 
 from typing import Callable, Any, Optional, Dict, List
@@ -108,6 +109,25 @@ class ComponentSchemaMetadata:
             self.metrics = {}
 
 
+@dataclass
+class ScoringFactorMetadata:
+    """Metadata for a registered scoring factor"""
+    factor_id: str
+    """Scoring factor ID (e.g., 'baseWeight' or 'plugin:custom_factor')"""
+
+    plugin_id: str
+    """Plugin that registered this factor ('core' for built-ins)"""
+
+    evaluator: Callable
+    """Scoring function: (activity, npc_state, context) -> float"""
+
+    default_weight: float = 1.0
+    """Default weight for this factor in scoring config"""
+
+    description: Optional[str] = None
+    """Human-readable description"""
+
+
 # ===== GLOBAL REGISTRIES =====
 
 class BehaviorExtensionRegistry:
@@ -125,6 +145,7 @@ class BehaviorExtensionRegistry:
         self._effects: Dict[str, EffectMetadata] = {}
         self._simulation_configs: Dict[str, SimulationConfigProvider] = {}
         self._component_schemas: Dict[str, ComponentSchemaMetadata] = {}
+        self._scoring_factors: Dict[str, ScoringFactorMetadata] = {}
         self._locked = False  # Lock registry after initialization
 
     # ===== CONDITION REGISTRATION =====
@@ -453,6 +474,84 @@ class BehaviorExtensionRegistry:
             schemas = [s for s in schemas if s.plugin_id == plugin_id]
 
         return schemas
+
+    # ===== SCORING FACTOR REGISTRATION =====
+
+    def register_scoring_factor(
+        self,
+        factor_id: str,
+        plugin_id: str,
+        evaluator: Callable,
+        default_weight: float = 1.0,
+        description: Optional[str] = None,
+    ) -> bool:
+        """
+        Register a scoring factor for activity selection.
+
+        Args:
+            factor_id: Unique identifier (e.g., 'baseWeight', 'plugin:custom_factor')
+            plugin_id: Plugin registering this factor ('core' for built-ins)
+            evaluator: Function(activity, npc_state, context) -> float
+            default_weight: Default weight in scoring config
+            description: Human-readable description
+
+        Returns:
+            True if registered, False if already exists or locked
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot register scoring factor - registry is locked",
+                factor_id=factor_id,
+                plugin_id=plugin_id,
+            )
+            return False
+
+        if factor_id in self._scoring_factors:
+            logger.warning(
+                "Scoring factor already registered",
+                factor_id=factor_id,
+                existing_plugin=self._scoring_factors[factor_id].plugin_id,
+                new_plugin=plugin_id,
+            )
+            return False
+
+        self._scoring_factors[factor_id] = ScoringFactorMetadata(
+            factor_id=factor_id,
+            plugin_id=plugin_id,
+            evaluator=evaluator,
+            default_weight=default_weight,
+            description=description,
+        )
+
+        logger.info(
+            "Registered scoring factor",
+            factor_id=factor_id,
+            plugin_id=plugin_id,
+            default_weight=default_weight,
+        )
+
+        return True
+
+    def get_scoring_factor(self, factor_id: str) -> Optional[ScoringFactorMetadata]:
+        """Get scoring factor metadata by ID"""
+        return self._scoring_factors.get(factor_id)
+
+    def list_scoring_factors(self, plugin_id: Optional[str] = None) -> List[ScoringFactorMetadata]:
+        """
+        List all registered scoring factors.
+
+        Args:
+            plugin_id: Optional filter by plugin ID
+
+        Returns:
+            List of scoring factor metadata
+        """
+        factors = list(self._scoring_factors.values())
+
+        if plugin_id:
+            factors = [f for f in factors if f.plugin_id == plugin_id]
+
+        return factors
 
     def get_all_metrics(self) -> Dict[str, Dict[str, Any]]:
         """
