@@ -125,11 +125,52 @@ def build_services() -> List[ServiceDef]:
     ]
 
 
+def _resolve_port(service_config: Dict) -> int:
+    """Resolve port from environment variable or use default."""
+    port_env = service_config.get('port_env')
+    if port_env and os.getenv(port_env):
+        return int(os.getenv(port_env))
+    return service_config.get('default_port', 8000)
+
+
+def _get_command_executable(command: str) -> str:
+    """Get platform-specific command executable (adds .cmd on Windows for npm/pnpm)."""
+    import sys
+    if sys.platform == "win32" and command in ['npm', 'pnpm']:
+        return f"{command}.cmd"
+    return command
+
+
+def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int = None) -> Dict[str, str]:
+    """Substitute port placeholders in environment variables.
+
+    Args:
+        env_overrides: Dict with potential $PORT, $BACKEND_PORT, etc. placeholders
+        ports: Ports object with all port values
+        service_port: The port for this specific service (replaces $PORT)
+    """
+    if not env_overrides:
+        return {}
+
+    substituted = {}
+    for key, value in env_overrides.items():
+        # Replace port placeholders with actual port values
+        if service_port is not None:
+            value = value.replace('$PORT', str(service_port))
+        value = value.replace('$BACKEND_PORT', str(ports.backend))
+        value = value.replace('$FRONTEND_PORT', str(ports.frontend))
+        value = value.replace('$GAME_FRONTEND_PORT', str(ports.game_frontend))
+        value = value.replace('$ADMIN_PORT', str(ports.admin))
+        substituted[key] = value
+
+    return substituted
+
+
 def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     """Convert a backend service from services.json to ServiceDef."""
     python_exe = find_python_executable()
     service_id = service_config['id']
-    port = int(os.getenv(service_config.get('port_env', 'BACKEND_PORT'), service_config.get('default_port', 8000)))
+    port = _resolve_port(service_config)
 
     # Parse module (e.g., "pixsim7_backend.main:app")
     module = service_config.get('module', 'pixsim7_backend.main:app')
@@ -155,36 +196,23 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
 
 def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     """Convert a frontend service from services.json to ServiceDef."""
-    import sys
     service_id = service_config['id']
-    port = int(os.getenv(service_config.get('port_env', 'FRONTEND_PORT'), service_config.get('default_port', 5173)))
+    port = _resolve_port(service_config)
 
-    # Determine command executable
-    command = service_config.get('command', 'pnpm')
-    if sys.platform == "win32" and command in ['npm', 'pnpm']:
-        command = f"{command}.cmd"
+    # Get command executable (handles Windows .cmd extension)
+    command = _get_command_executable(service_config.get('command', 'pnpm'))
 
-    # Build args
+    # Build args (add port if needed)
     args = service_config.get('args', ['dev', '--port'])
     if '--port' in args or 'dev' in args:
         args = args + [str(port)]
 
-    # Build env overrides
-    env_overrides = {}
-    if service_id == 'admin':
-        env_overrides = {
-            "VITE_ADMIN_PORT": str(port),
-            "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-        }
-    elif service_id == 'frontend':
-        env_overrides = {
-            "VITE_GAME_URL": f"http://localhost:{ports.game_frontend}",
-            "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-        }
-    elif service_id == 'game_frontend':
-        env_overrides = {
-            "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-        }
+    # Substitute port placeholders in env_overrides from JSON
+    env_overrides = _substitute_env_vars(
+        service_config.get('env_overrides', {}),
+        ports,
+        service_port=port
+    )
 
     return ServiceDef(
         key=service_id,
