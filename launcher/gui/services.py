@@ -74,7 +74,7 @@ def build_services() -> List[ServiceDef]:
             url=None,
             health_url=None,  # No HTTP health check for worker
             health_grace_attempts=10,
-            depends_on=["db"],  # Worker requires database and Redis (both in db service)
+            depends_on=["backend"],  # Worker should start with backend
         ),
         ServiceDef(
             key="admin",
