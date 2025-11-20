@@ -89,6 +89,12 @@ async def lifespan(app: FastAPI):
     from pixsim7_backend.infrastructure.events.websocket_handler import register_websocket_handlers
     register_websocket_handlers()
 
+    # Register core ECS components (Task 27, Phase 27.2)
+    # This must happen before plugins are loaded so plugins can see core components
+    from pixsim7_backend.domain.game.ecs import register_core_components
+    core_components_count = register_core_components()
+    logger.info(f"Registered {core_components_count} core ECS components")
+
     # Initialize plugin system (feature plugins)
     plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
     logger.info(f"Loaded {len(plugin_manager.list_plugins())} feature plugins")

@@ -15,17 +15,16 @@ import type {
 } from '@pixsim7/types';
 
 /**
- * Get default scoring weights based on behavior profile
+ * Built-in behavior profile definitions
  *
- * Maps behaviorProfile to default scoring weights as per Task 13 safeguards.
- * - work_focused: higher categoryPreference for work, higher urgency, conservative relationship weights
- * - relationship_focused: higher relationshipBonus, moodCompatibility, lower work emphasis
- * - balanced: middle-of-the-road defaults
+ * These are the default behavior profiles that can be extended or overridden
+ * by world metadata (meta.behavior.behaviorProfiles).
+ *
+ * Following the "dogfooding" principle: if plugins can define profiles,
+ * built-ins should use the same data structure.
  */
-export function getDefaultScoringWeights(
-  behaviorProfile: BehaviorProfile
-): ScoringConfig['weights'] {
-  const baseWeights = {
+const BUILTIN_BEHAVIOR_PROFILES: Record<BehaviorProfile, ScoringConfig['weights']> = {
+  balanced: {
     baseWeight: 1.0,
     activityPreference: 1.0,
     categoryPreference: 0.8,
@@ -34,31 +33,59 @@ export function getDefaultScoringWeights(
     relationshipBonus: 0.5,
     urgency: 1.2,
     inertia: 0.3,
-  };
+  },
+  work_focused: {
+    baseWeight: 1.0,
+    activityPreference: 1.0,
+    categoryPreference: 1.0, // Stronger preference for assigned work categories
+    traitModifier: 0.6,
+    moodCompatibility: 0.5, // Mood less important for work
+    relationshipBonus: 0.3, // Lower relationship influence
+    urgency: 1.5, // Higher urgency (low energy → boost rest more aggressively)
+    inertia: 0.3,
+  },
+  relationship_focused: {
+    baseWeight: 1.0,
+    activityPreference: 1.0,
+    categoryPreference: 0.6, // Less strict about work categories
+    traitModifier: 0.6,
+    moodCompatibility: 0.9, // Mood very important
+    relationshipBonus: 0.9, // High relationship influence
+    urgency: 0.8, // Lower urgency
+    inertia: 0.3,
+  },
+};
 
-  switch (behaviorProfile) {
-    case 'work_focused':
-      return {
-        ...baseWeights,
-        categoryPreference: 1.0, // Stronger preference for assigned work categories
-        urgency: 1.5, // Higher urgency (low energy → boost rest more aggressively)
-        relationshipBonus: 0.3, // Lower relationship influence
-        moodCompatibility: 0.5, // Mood less important for work
-      };
-
-    case 'relationship_focused':
-      return {
-        ...baseWeights,
-        categoryPreference: 0.6, // Less strict about work categories
-        urgency: 0.8, // Lower urgency
-        relationshipBonus: 0.9, // High relationship influence
-        moodCompatibility: 0.9, // Mood very important
-      };
-
-    case 'balanced':
-    default:
-      return baseWeights;
+/**
+ * Get default scoring weights based on behavior profile
+ *
+ * Supports custom behavior profiles defined in world metadata.
+ * Falls back to built-in profiles if not found.
+ *
+ * @param behaviorProfile - The behavior profile to look up
+ * @param worldMeta - Optional world metadata that may contain custom profiles
+ * @returns Scoring weights for the profile
+ */
+export function getDefaultScoringWeights(
+  behaviorProfile: BehaviorProfile,
+  worldMeta?: { behavior?: { behaviorProfiles?: Record<string, ScoringConfig['weights']> } }
+): ScoringConfig['weights'] {
+  // First, try to find custom profile in world metadata
+  if (worldMeta?.behavior?.behaviorProfiles) {
+    const customProfile = worldMeta.behavior.behaviorProfiles[behaviorProfile];
+    if (customProfile) {
+      return customProfile;
+    }
   }
+
+  // Fall back to built-in profiles
+  const builtinProfile = BUILTIN_BEHAVIOR_PROFILES[behaviorProfile];
+  if (builtinProfile) {
+    return builtinProfile;
+  }
+
+  // Ultimate fallback: return balanced profile
+  return BUILTIN_BEHAVIOR_PROFILES.balanced;
 }
 
 /**
@@ -112,25 +139,33 @@ export function getDefaultSimulationTierLimits(style: GameStyle): {
  *
  * If world has explicit behavior.scoringConfig, use that.
  * Otherwise, derive defaults from behaviorProfile.
+ *
+ * Supports custom behavior profiles defined in world metadata.
+ *
+ * @param gameProfile - The game profile
+ * @param explicitScoringConfig - Explicit scoring config to use
+ * @param worldMeta - Optional world metadata that may contain custom behavior profiles
  */
 export function getBehaviorScoringConfig(
   gameProfile: GameProfile | undefined,
-  explicitScoringConfig?: ScoringConfig
+  explicitScoringConfig?: ScoringConfig,
+  worldMeta?: { behavior?: { behaviorProfiles?: Record<string, ScoringConfig['weights']> } }
 ): ScoringConfig {
   // If explicit config exists, use it
   if (explicitScoringConfig) {
     return explicitScoringConfig;
   }
 
-  // Otherwise, derive from behaviorProfile
+  // Otherwise, derive from behaviorProfile (with custom profiles support)
   const behaviorProfile = gameProfile?.behaviorProfile ?? 'balanced';
-  const weights = getDefaultScoringWeights(behaviorProfile);
+  const weights = getDefaultScoringWeights(behaviorProfile, worldMeta);
 
   return {
     version: 1,
     weights,
     meta: {
       derivedFrom: `gameProfile.behaviorProfile=${behaviorProfile}`,
+      customProfileUsed: worldMeta?.behavior?.behaviorProfiles?.[behaviorProfile] !== undefined,
     },
   };
 }
