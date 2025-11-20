@@ -2,6 +2,7 @@
 NPC Interaction API Endpoints
 
 Phase 17.3+: REST API for listing and executing NPC interactions
+Updated: Phase 2.0 - Uses PluginContext for modern patterns
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7_backend.infrastructure.plugins.dependencies import get_plugin_context
+from pixsim7_backend.infrastructure.plugins.context import PluginContext
 from pixsim7_backend.domain.game.models import GameWorld, GameSession, GameNPC
 from pixsim7_backend.domain.game.npc_interactions import (
     ListInteractionsRequest,
@@ -177,8 +180,9 @@ def get_world_tier_order(world: GameWorld) -> Optional[List[str]]:
 @router.post("/list", response_model=ListInteractionsResponse)
 async def list_npc_interactions(
     req: ListInteractionsRequest,
-    db: DatabaseSession,
-    user: CurrentUser
+    ctx: PluginContext = Depends(get_plugin_context("npc_interactions")),
+    db: DatabaseSession = None,
+    user: CurrentUser = None
 ) -> ListInteractionsResponse:
     """
     List available interactions for an NPC at the current moment.
@@ -189,30 +193,49 @@ async def list_npc_interactions(
     3. Evaluates gating for each interaction
     4. Returns list of interaction instances with availability flags
 
+    Uses PluginContext for logging and capability-based operations.
+
     Args:
         req: Request with world/session/NPC IDs
+        ctx: Plugin context (provides logging and capabilities)
         db: Database session
         user: Current user
 
     Returns:
         List of interaction instances
     """
+    # TODO: Eventually migrate database queries to capability APIs
+    ctx.log.info(
+        "Listing NPC interactions",
+        world_id=req.world_id,
+        session_id=req.session_id,
+        npc_id=req.npc_id,
+        include_unavailable=req.include_unavailable
+    )
     # Load world
     world = await db.get(GameWorld, req.world_id)
     if not world:
+        ctx.log.warning("World not found", world_id=req.world_id)
         raise HTTPException(status_code=404, detail="World not found")
 
     # Load session
     session = await db.get(GameSession, req.session_id)
     if not session or session.user_id != user.id:
+        ctx.log.warning(
+            "Session not found or unauthorized",
+            session_id=req.session_id,
+            user_id=user.id
+        )
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Load NPC
     npc = await db.get(GameNPC, req.npc_id)
     if not npc:
+        ctx.log.warning("NPC not found", npc_id=req.npc_id)
         raise HTTPException(status_code=404, detail="NPC not found")
 
     # Load interaction definitions
+    ctx.log.debug("Loading interaction definitions", world_id=req.world_id, npc_id=req.npc_id)
     definitions = await load_interaction_definitions(world, npc)
 
     # Get NPC roles (from world NPC mappings)
@@ -263,6 +286,13 @@ async def list_npc_interactions(
     # Sort by priority (descending), then by label
     instances.sort(key=lambda x: (-x.priority, x.label))
 
+    ctx.log.info(
+        "Interactions listed successfully",
+        npc_id=req.npc_id,
+        total_interactions=len(instances),
+        available_count=sum(1 for i in instances if i.available)
+    )
+
     return ListInteractionsResponse(
         interactions=instances,
         npcId=req.npc_id,
@@ -275,8 +305,9 @@ async def list_npc_interactions(
 @router.post("/execute", response_model=ExecuteInteractionResponse)
 async def execute_npc_interaction(
     req: ExecuteInteractionRequest,
-    db: DatabaseSession,
-    user: CurrentUser
+    ctx: PluginContext = Depends(get_plugin_context("npc_interactions")),
+    db: DatabaseSession = None,
+    user: CurrentUser = None
 ) -> ExecuteInteractionResponse:
     """
     Execute an NPC interaction and apply all outcomes.
@@ -288,35 +319,59 @@ async def execute_npc_interaction(
     4. Tracks cooldown
     5. Persists session changes to database
 
+    Uses PluginContext for logging and capability-based operations.
+
     Args:
         req: Request with world/session/NPC/interaction IDs
+        ctx: Plugin context (provides logging and capabilities)
         db: Database session
         user: Current user
 
     Returns:
         Execution response with results
     """
+    # TODO: Eventually migrate database queries to capability APIs
+    ctx.log.info(
+        "Executing NPC interaction",
+        world_id=req.world_id,
+        session_id=req.session_id,
+        npc_id=req.npc_id,
+        interaction_id=req.interaction_id
+    )
     # Load world
     world = await db.get(GameWorld, req.world_id)
     if not world:
+        ctx.log.warning("World not found for interaction execution", world_id=req.world_id)
         raise HTTPException(status_code=404, detail="World not found")
 
     # Load session
     session = await db.get(GameSession, req.session_id)
     if not session or session.user_id != user.id:
+        ctx.log.warning(
+            "Session not found or unauthorized for interaction execution",
+            session_id=req.session_id,
+            user_id=user.id
+        )
         raise HTTPException(status_code=404, detail="Session not found")
 
     # Load NPC
     npc = await db.get(GameNPC, req.npc_id)
     if not npc:
+        ctx.log.warning("NPC not found for interaction execution", npc_id=req.npc_id)
         raise HTTPException(status_code=404, detail="NPC not found")
 
     # Load interaction definitions
+    ctx.log.debug("Loading interaction definitions for execution")
     definitions = await load_interaction_definitions(world, npc)
 
     # Find the requested interaction
     definition = next((d for d in definitions if d.id == req.interaction_id), None)
     if not definition:
+        ctx.log.warning(
+            "Interaction definition not found",
+            interaction_id=req.interaction_id,
+            available_definitions=[d.id for d in definitions]
+        )
         raise HTTPException(status_code=404, detail=f"Interaction {req.interaction_id} not found")
 
     # Build context for availability check
@@ -326,6 +381,7 @@ async def execute_npc_interaction(
     tier_order = get_world_tier_order(world)
 
     # Check availability before executing
+    ctx.log.debug("Checking interaction availability")
     available, disabled_reason, disabled_msg = evaluate_interaction_availability(
         definition,
         context,
@@ -334,12 +390,19 @@ async def execute_npc_interaction(
     )
 
     if not available:
+        ctx.log.warning(
+            "Interaction not available",
+            interaction_id=req.interaction_id,
+            disabled_reason=disabled_reason,
+            disabled_msg=disabled_msg
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Interaction not available: {disabled_msg or disabled_reason}"
         )
 
     # Execute interaction
+    ctx.log.info("Executing interaction logic", interaction_id=req.interaction_id)
     result = await execute_interaction_logic(
         db,
         session,
@@ -358,5 +421,12 @@ async def execute_npc_interaction(
         "relationships": session.relationships,
         "flags": session.flags,
     }
+
+    ctx.log.info(
+        "Interaction executed successfully",
+        interaction_id=req.interaction_id,
+        npc_id=req.npc_id,
+        success=result.success
+    )
 
     return result
