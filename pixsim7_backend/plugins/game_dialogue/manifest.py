@@ -12,7 +12,16 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from pixsim7_backend.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7_backend.api.dependencies import (
+    CurrentUser,
+    DatabaseSession,
+    get_narrative_engine,
+    get_action_engine,
+    get_block_generator,
+    NarrativeEng,
+    ActionEng,
+    BlockGenerator
+)
 from pixsim7_backend.domain.game.models import (
     GameSession, GameWorld, GameNPC, GameLocation,
     GameScene, GameSceneNode
@@ -55,36 +64,8 @@ manifest = PluginManifest(
 
 router = APIRouter(prefix="/game/dialogue", tags=["game-dialogue"])
 
-# Initialize the engines (singletons)
-_narrative_engine = None
-_action_engine = None
-_block_generator = None
 
-
-def get_narrative_engine() -> NarrativeEngine:
-    """Get or create the narrative engine singleton."""
-    global _narrative_engine
-    if _narrative_engine is None:
-        _narrative_engine = NarrativeEngine()
-    return _narrative_engine
-
-
-def get_action_engine() -> ActionEngine:
-    """Get or create the action engine singleton."""
-    global _action_engine
-    if _action_engine is None:
-        # Share the narrative engine for template rendering
-        _action_engine = ActionEngine(narrative_engine=get_narrative_engine())
-    return _action_engine
-
-
-def get_block_generator() -> DynamicBlockGenerator:
-    """Get or create the block generator singleton."""
-    global _block_generator
-    if _block_generator is None:
-        _block_generator = DynamicBlockGenerator(use_claude_api=False)
-    return _block_generator
-
+# ===== HELPER FUNCTIONS =====
 
 def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[PreviousSegmentSnapshot]:
     """Convert API input into a dataclass snapshot."""
