@@ -1,39 +1,198 @@
-# Example: Generation API Split
+# Generation API - Lightweight Development Server
 
-A concrete example showing how to split the generation service into a separate API.
+✅ **Status:** Complete and working
+🎯 **Use Case:** Development without heavy game engine features
 
-## Project Structure After Split
+## Quick Start
+
+### When to Use Generation API (Port 8001)
+
+**Use this when you're working on:**
+- ✅ Image generation and prompts
+- ✅ Chrome extension integration
+- ✅ Provider account management
+- ✅ Testing generation features
+
+**Benefits:**
+- ⚡ Faster startup (no game engine loading)
+- 🪶 Lightweight (excludes NPCs, dialogue, worlds, quests, etc.)
+- 🔌 Chrome extension compatible
+- 📦 Shares same codebase (no duplication)
+
+**Start it:**
+```bash
+python pixsim7/backend/generation/main.py
+# or via launcher GUI
+```
+
+### When to Use Main Backend (Port 8000)
+
+**Use this when you need:**
+- ✅ Full game engine features
+- ✅ NPCs, dialogue, worlds, quests
+- ✅ Everything in one service
+
+## Project Structure (Current)
 
 ```
-pixsim7/
-├── pixsim7_backend/           # Main backend (game, users, assets, dialogue)
-│   ├── routes/
-│   │   ├── game/
-│   │   ├── users/
-│   │   ├── dialogue/
-│   │   └── ...
-│   └── main.py
+pixsim7/backend/
+├── main/                      # Shared codebase
+│   ├── api/v1/               # All route implementations
+│   │   ├── auth.py
+│   │   ├── accounts.py
+│   │   ├── users.py
+│   │   ├── providers.py
+│   │   ├── generations.py
+│   │   └── ... (game routes)
+│   ├── services/             # Business logic
+│   └── domain_models/        # Database models
 │
-├── generation_api/            # NEW: Separate generation service
-│   ├── __init__.py
-│   ├── main.py               # FastAPI app
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   ├── generations.py    # Moved from pixsim7_backend
-│   │   ├── prompts.py        # Moved from pixsim7_backend
-│   │   └── providers.py      # Moved from pixsim7_backend
-│   ├── services/
-│   │   ├── generation_service.py  # Core generation logic
-│   │   └── ...
-│   └── models.py             # Database models
-│
-└── launcher/
-    └── services.json         # Updated with generation-api entry
+├── main.py                   # Main Backend (port 8000) - Full system
+└── generation/
+    └── main.py               # Generation API (port 8001) - Lightweight
 ```
+
+**Both services import from `pixsim7/backend/main/` - no file duplication!**
+
+## What Generation API Provides
+
+### Endpoints Available
+
+✅ **Generation & Prompts:**
+- `/api/v1/generations/*` - Create, list, retry generations
+- `/api/v1/prompts/*` - Prompt management, variants, families
+- `/api/v1/providers` - Provider detection and listing
+- `/api/v1/analytics` - Generation metrics
+
+✅ **Chrome Extension Support:**
+- `/api/v1/auth/login` - User authentication
+- `/api/v1/users/me` - User profile
+- `/api/v1/accounts` - Provider account management
+
+✅ **Developer Tools:**
+- `/health` - Health check
+- `/docs` - OpenAPI documentation
+- `/dev/info` - Service metadata
+- `/dev/architecture/map` - Architecture introspection
+
+### What's EXCLUDED (Use Main Backend Instead)
+
+❌ Game engine features:
+- NPCs, dialogue, worlds, quests
+- Game sessions, inventory, locations
+- Character graphs, relationships
+- Stealth, reputation systems
+- Admin plugins
+
+## Chrome Extension Configuration
+
+Your chrome extension is already configured for port 8001:
+
+```javascript
+// chrome-extension/background.js
+const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
+```
+
+Just start generation API and the extension works!
+
+## How It Works (Implementation Details)
+
+**Generation API imports routes from main backend:**
+
+```python
+# pixsim7/backend/generation/main.py
+from pixsim7.backend.main.api.v1.generations import router as generations_router
+from pixsim7.backend.main.api.v1.auth import router as auth_router
+from pixsim7.backend.main.api.v1.accounts import router as accounts_router
+# ... etc
+
+app.include_router(generations_router, prefix="", tags=["generations"])
+app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
+# ... etc
+```
+
+**Shares infrastructure:**
+- Same database connection
+- Same domain models
+- Same service layer
+- Same event bus
+
+**Excludes on startup:**
+- No plugin system loading (faster startup)
+- No game component registration
+- No middleware chain
+- Minimal dependencies
+
+## Launcher Integration
+
+The launcher automatically manages both services:
+
+```json
+// launcher/services.json
+{
+  "backend_services": [
+    {
+      "id": "main-api",
+      "port": 8000,
+      "module": "pixsim7.backend.main.main:app",
+      "auto_start": true
+    },
+    {
+      "id": "generation-api",
+      "port": 8001,
+      "module": "pixsim7.backend.generation.main:app",
+      "auto_start": false
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### Development Workflow 1: Generation Only
+```bash
+# Start generation API only
+python pixsim7/backend/generation/main.py
+
+# Use chrome extension
+# Test generation features
+# Fast iteration
+```
+
+### Development Workflow 2: Full System
+```bash
+# Start main backend
+python pixsim7/backend/main/main.py
+
+# Use all features
+# Game engine + generation
+```
+
+### Production Deployment
+```bash
+# Both services can run simultaneously
+# Main: 8000 (game + everything)
+# Generation: 8001 (scalable generation workers)
+
+# Scale generation independently:
+docker-compose scale generation-api=5
+```
+
+## Advantages
+
+✅ **Faster development** - Start only what you need
+✅ **No code duplication** - Both import same codebase
+✅ **Chrome extension works** - Has auth + accounts
+✅ **Independent scaling** - Scale generation separately in production
+✅ **Cleaner separation** - Generation vs game logic
 
 ---
 
-## 1. Create generation_api/main.py
+**Old implementation details below (for reference):**
+
+---
+
+## 1. Create generation_api/main.py (OLD DOCS - OUTDATED)
 
 ```python
 """

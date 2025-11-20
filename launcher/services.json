@@ -28,7 +28,7 @@
     {
       "id": "generation-api",
       "name": "Generation API",
-      "description": "AI generation and prompt management microservice",
+      "description": "Lightweight API for generation + chrome extension (excludes game engine). Perfect for development when you don't need NPCs, dialogue, worlds, etc.",
       "port_env": "GENERATION_API_PORT",
       "default_port": 8001,
       "info_endpoint": "/dev/info",
@@ -39,8 +39,8 @@
       "enabled": true,
       "type": "python",
       "module": "pixsim7.backend.generation.main:app",
-      "tags": ["api", "generation", "ai", "microservice"],
-      "provides": ["generations", "prompts", "providers", "analytics"]
+      "tags": ["api", "generation", "ai", "microservice", "chrome-extension", "lightweight"],
+      "provides": ["generations", "prompts", "providers", "analytics", "auth", "accounts"]
     }
   ],
 
