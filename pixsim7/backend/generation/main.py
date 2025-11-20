@@ -21,8 +21,9 @@ sys.path.insert(0, str(ROOT))
 
 # Import shared backend infrastructure
 from pixsim7.backend.main.shared.config import settings
-from pixsim7.backend.main.shared.database import engine, Base
+from pixsim7.backend.main.infrastructure.database.session import sync_engine
 from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
+from sqlmodel import SQLModel
 
 # Import routes from main backend (re-use existing code)
 from pixsim7.backend.main.api.v1.generations import router as generations_router
@@ -38,6 +39,9 @@ from pixsim7.backend.main.api.v1.auth import router as auth_router
 from pixsim7.backend.main.api.v1.users import router as users_router
 from pixsim7.backend.main.api.v1.accounts import router as accounts_router
 from pixsim7.backend.main.api.v1.providers import router as providers_router
+
+# Automation routes (device management, execution loops)
+from pixsim7.backend.main.api.v1.automation import router as automation_router
 
 # Import for architecture introspection
 from pixsim7.backend.main.api.v1.dev_architecture import (
@@ -58,13 +62,14 @@ app = FastAPI(
     - **Providers**: AI provider configuration
     - **Analytics**: Generation metrics and statistics
     - **Chrome Extension**: Auth, accounts, and provider management
+    - **Automation**: Device management, execution loops, and action presets
 
     ## Architecture
 
-    This is a lightweight API for development, containing generation capabilities
-    and chrome extension support, while excluding heavy game engine features.
+    This is a lightweight API for development, containing generation capabilities,
+    chrome extension support, and automation, while excluding heavy game engine features.
 
-    Perfect for development when you only need generation + chrome extension.
+    Perfect for development when you only need generation + chrome extension + automation.
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -118,6 +123,7 @@ async def service_info():
             "analytics",       # Generation analytics
             "auth",            # Authentication (for chrome extension)
             "accounts",        # Account management (for chrome extension)
+            "automation",      # Device management, execution loops, presets
         ],
 
         # Dependencies
@@ -169,7 +175,7 @@ async def health():
     # Check database connection
     try:
         from sqlalchemy import text
-        with engine.connect() as conn:
+        with sync_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         health_status["database"] = "connected"
     except Exception as e:
@@ -322,6 +328,13 @@ app.include_router(
     tags=["providers"]
 )
 
+# Automation (device management, execution loops, presets)
+app.include_router(
+    automation_router,
+    prefix="/api/v1",
+    tags=["automation"]
+)
+
 
 # ===== STARTUP/SHUTDOWN EVENTS =====
 
@@ -332,7 +345,7 @@ async def startup():
         # Tables are already created by main backend
         # Just verify connection
         from sqlalchemy import text
-        with engine.connect() as conn:
+        with sync_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
 
         # Register providers (needed for chrome extension)
@@ -344,6 +357,7 @@ async def startup():
         print(f"Port: {os.getenv('GENERATION_API_PORT', 8001)}")
         print(f"Docs: http://localhost:{os.getenv('GENERATION_API_PORT', 8001)}/docs")
         print(f"Chrome Extension: Supported (auth, accounts, providers)")
+        print(f"Automation: Supported (devices, loops, presets)")
         print("=" * 70)
     except Exception as e:
         print(f"Startup error: {e}")

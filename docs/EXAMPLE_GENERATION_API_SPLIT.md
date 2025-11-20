@@ -11,12 +11,14 @@
 - ✅ Image generation and prompts
 - ✅ Chrome extension integration
 - ✅ Provider account management
+- ✅ Automation (device management, execution loops)
 - ✅ Testing generation features
 
 **Benefits:**
 - ⚡ Faster startup (no game engine loading)
 - 🪶 Lightweight (excludes NPCs, dialogue, worlds, quests, etc.)
 - 🔌 Chrome extension compatible
+- 🤖 Full automation support
 - 📦 Shares same codebase (no duplication)
 
 **Start it:**
@@ -68,6 +70,11 @@ pixsim7/backend/
 - `/api/v1/auth/login` - User authentication
 - `/api/v1/users/me` - User profile
 - `/api/v1/accounts` - Provider account management
+
+✅ **Automation:**
+- `/api/v1/automation/devices` - Android device management (ADB)
+- `/api/v1/automation/loops` - Execution loops (scheduled tasks)
+- `/api/v1/automation/presets` - Action presets (automation recipes)
 
 ✅ **Developer Tools:**
 - `/health` - Health check
