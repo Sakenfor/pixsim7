@@ -1,13 +1,19 @@
 """
-GenerationService - unified generation creation and lifecycle management
+GenerationService - Backward compatibility layer
 
-Replaces JobService, integrating with the unified Generation model.
+Composes focused services to maintain existing API.
+Split into focused services for better maintainability and AI agent navigation.
+
+Services:
+- GenerationCreationService: Creation, validation, canonicalization
+- GenerationLifecycleService: Status transitions
+- GenerationQueryService: Retrieval and listing
+- GenerationRetryService: Retry logic
 """
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from uuid import UUID
 
 from pixsim7_backend.domain import (
@@ -15,30 +21,29 @@ from pixsim7_backend.domain import (
     GenerationStatus,
     OperationType,
     User,
-    ProviderSubmission,
-    ProviderAccount,
 )
-from pixsim7_backend.shared.errors import (
-    ResourceNotFoundError,
-    InvalidOperationError,
-    QuotaError,
-)
-from pixsim7_backend.infrastructure.events.bus import event_bus, JOB_CREATED, JOB_STARTED, JOB_COMPLETED, JOB_FAILED, JOB_CANCELLED
 from pixsim7_backend.services.user.user_service import UserService
-from pixsim7_backend.services.generation.social_context_builder import RATING_ORDER
+
+# Import focused services
+from .creation_service import GenerationCreationService
+from .lifecycle_service import GenerationLifecycleService
+from .query_service import GenerationQueryService
+from .retry_service import GenerationRetryService
 
 logger = logging.getLogger(__name__)
 
 
 class GenerationService:
     """
-    Generation management service - replaces JobService
+    Generation management service - backward compatibility layer
 
-    Handles:
-    - Generation creation with quota checks and canonicalization
-    - Generation status tracking
-    - Generation lifecycle management
-    - Prompt versioning integration
+    Delegates to focused services:
+    - Creation: GenerationCreationService
+    - Lifecycle: GenerationLifecycleService
+    - Query: GenerationQueryService
+    - Retry: GenerationRetryService
+
+    This maintains backward compatibility while providing a cleaner architecture.
     """
 
     def __init__(
@@ -49,7 +54,13 @@ class GenerationService:
         self.db = db
         self.users = user_service
 
-    # ===== GENERATION CREATION =====
+        # Compose focused services
+        self._creation = GenerationCreationService(db, user_service)
+        self._lifecycle = GenerationLifecycleService(db)
+        self._query = GenerationQueryService(db)
+        self._retry = GenerationRetryService(db, self._creation)
+
+    # ===== CREATION METHODS =====
 
     async def create_generation(
         self,
@@ -65,536 +76,22 @@ class GenerationService:
         parent_generation_id: Optional[int] = None,
         prompt_version_id: Optional[UUID] = None,
     ) -> Generation:
-        """
-        Create new generation with canonicalization and prompt versioning
-
-        Args:
-            user: User creating the generation
-            operation_type: Operation type
-            provider_id: Target provider
-            params: Raw generation parameters (from API request)
-            workspace_id: Optional workspace
-            name: Optional generation name
-            description: Optional description
-            priority: Generation priority (0=highest, 10=lowest)
-            scheduled_at: Optional schedule time
-            parent_generation_id: Optional parent generation (for retries)
-            prompt_version_id: Optional prompt version to use
-
-        Returns:
-            Created generation
-
-        Raises:
-            QuotaError: User exceeded quotas
-            InvalidOperationError: Invalid operation or parameters
-        """
-        # Check user quota
-        await self.users.check_can_create_job(user)
-
-        # Validate provider exists and supports operation
-        from pixsim7_backend.services.provider.registry import registry
-
-        try:
-            provider = registry.get(provider_id)
-        except Exception:
-            raise InvalidOperationError(f"Provider '{provider_id}' not found or not registered")
-
-        # Check if provider supports the operation
-        if operation_type not in provider.supported_operations:
-            raise InvalidOperationError(
-                f"Provider '{provider_id}' does not support operation '{operation_type.value}'. "
-                f"Supported operations: {[op.value for op in provider.supported_operations]}"
-            )
-
-        # Validate parameters (basic validation)
-        if not params:
-            raise InvalidOperationError("Generation parameters are required")
-
-        # Check if params use new structured format (from unified generations API)
-        # Structured format has keys: generation_config, scene_context, player_context, social_context
-        is_structured = 'generation_config' in params or 'scene_context' in params
-
-        if is_structured:
-            # New structured format - validation handled by schema
-            # Just verify we have the necessary context for the operation
-            logger.info(f"Structured params detected for {operation_type.value}")
-        else:
-            # Legacy flat format - apply operation-specific validation
-            if operation_type == OperationType.TEXT_TO_VIDEO:
-                if 'prompt' not in params:
-                    raise InvalidOperationError("'prompt' is required for text_to_video")
-            elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                if 'prompt' not in params or 'image_url' not in params:
-                    raise InvalidOperationError("'prompt' and 'image_url' are required for image_to_video")
-            elif operation_type == OperationType.VIDEO_EXTEND:
-                if 'video_url' not in params:
-                    raise InvalidOperationError("'video_url' is required for video_extend")
-
-        # === PHASE 8: Content Rating Enforcement ===
-        # Validate content rating against world/user constraints
-        if is_structured and params.get("social_context"):
-            # Extract world_meta if available (may come from world lookup or be embedded in params)
-            world_meta = None
-            player_context = params.get("player_context", {})
-            world_id = player_context.get("world_id")
-
-            # Note: In a full implementation, we'd fetch world_meta from DB here
-            # For now, assume world_meta is passed in params if available
-            # This can be enhanced later to fetch from GameWorld model
-
-            # Extract user preferences if available
-            user_preferences = None  # Could be passed from frontend or fetched from user settings
-
-            # Validate content rating
-            is_valid, violation_msg, clamped_context = self._validate_content_rating(
-                params,
-                world_meta=world_meta,
-                user_preferences=user_preferences
-            )
-
-            if not is_valid:
-                # Unclampable violation - reject the request
-                logger.error(f"Content rating violation: {violation_msg}")
-                raise InvalidOperationError(f"Content rating violation: {violation_msg}")
-
-            if clamped_context:
-                # Apply clamped context and log for dev tools
-                params = params.copy()
-                params["social_context"] = clamped_context
-                logger.info(f"Content rating clamped: {violation_msg}")
-                # TODO: Emit event for dev tools to track violations
-                # await event_bus.publish(CONTENT_RATING_CLAMPED, {
-                #     "generation_id": ...,  # Will be available after creation
-                #     "violation": violation_msg,
-                #     "original_rating": clamped_context.get("_originalRating"),
-                #     "clamped_rating": clamped_context.get("contentRating"),
-                # })
-
-        # Canonicalize params (using existing parameter mappers)
-        canonical_params = await self._canonicalize_params(
-            params, operation_type, provider_id
-        )
-
-        # Derive inputs from params
-        inputs = self._extract_inputs(params, operation_type)
-
-        # Compute reproducible hash
-        reproducible_hash = Generation.compute_hash(canonical_params, inputs)
-
-        # Resolve prompt if version provided
-        final_prompt = None
-        if prompt_version_id:
-            final_prompt = await self._resolve_prompt(prompt_version_id, params)
-
-        # Create generation
-        generation = Generation(
-            user_id=user.id,
+        """Delegate to creation service"""
+        return await self._creation.create_generation(
+            user=user,
             operation_type=operation_type,
             provider_id=provider_id,
-            raw_params=params,
-            canonical_params=canonical_params,
-            inputs=inputs,
-            reproducible_hash=reproducible_hash,
-            prompt_version_id=prompt_version_id,
-            final_prompt=final_prompt,
+            params=params,
             workspace_id=workspace_id,
             name=name,
             description=description,
             priority=priority,
             scheduled_at=scheduled_at,
             parent_generation_id=parent_generation_id,
-            status=GenerationStatus.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            prompt_version_id=prompt_version_id,
         )
 
-        self.db.add(generation)
-        await self.db.commit()
-        await self.db.refresh(generation)
-
-        # Increment user's job count
-        await self.users.increment_job_count(user)
-
-        # Emit event for orchestration
-        await event_bus.publish(JOB_CREATED, {
-            "job_id": generation.id,  # Keep "job_id" for backward compatibility
-            "generation_id": generation.id,
-            "user_id": user.id,
-            "operation_type": operation_type.value,
-            "provider_id": provider_id,
-            "params": canonical_params,  # Use canonical params for consistency
-            "priority": priority,
-        })
-
-        # Queue generation for processing via ARQ
-        try:
-            from pixsim7_backend.infrastructure.redis import get_arq_pool
-            arq_pool = await get_arq_pool()
-            await arq_pool.enqueue_job(
-                "process_generation",  # ARQ worker function (see workers/job_processor.py)
-                generation_id=generation.id,
-                _queue_name="default",
-            )
-            logger.info(f"Generation {generation.id} queued for processing")
-        except Exception as e:
-            logger.error(f"Failed to queue generation {generation.id}: {e}")
-            # Don't fail generation creation if ARQ is down
-            # Worker can pick it up later via scheduled polling
-
-        return generation
-
-    async def _canonicalize_params(
-        self,
-        params: Dict[str, Any],
-        operation_type: OperationType,
-        provider_id: str
-    ) -> Dict[str, Any]:
-        """
-        Canonicalize parameters using parameter mappers
-
-        This extracts common fields and normalizes them into a provider-agnostic format.
-        Handles both legacy flat params and new structured params.
-        """
-        # Check if params are already structured (from unified generations API)
-        is_structured = 'generation_config' in params or 'scene_context' in params
-
-        if is_structured:
-            # Already structured - return as-is
-            # The structured format is already canonical
-            logger.info("Params already structured, using as canonical")
-            return params
-
-        # Legacy flat params - canonicalize to common format
-        # For now, just copy params as-is
-        # In the full pipeline refactor, we'd use parameter mappers here
-        # Example: from pixsim7_backend.services.submission.parameter_mappers import get_mapper
-        # mapper = get_mapper(operation_type)
-        # return mapper.canonicalize(params, provider_id)
-
-        # Simple canonicalization for now
-        canonical = {
-            "prompt": params.get("prompt"),
-            "negative_prompt": params.get("negative_prompt"),
-            "quality": params.get("quality"),
-            "duration": params.get("duration"),
-            "aspect_ratio": params.get("aspect_ratio"),
-            "seed": params.get("seed"),
-            "model": params.get("model"),
-        }
-
-        # Add operation-specific fields
-        if operation_type == OperationType.IMAGE_TO_VIDEO:
-            canonical["image_url"] = params.get("image_url")
-        elif operation_type == OperationType.VIDEO_EXTEND:
-            canonical["video_url"] = params.get("video_url")
-
-        # Remove None values
-        return {k: v for k, v in canonical.items() if v is not None}
-
-    def _extract_inputs(
-        self,
-        params: Dict[str, Any],
-        operation_type: OperationType
-    ) -> List[Dict[str, Any]]:
-        """
-        Extract input references from params
-
-        Handles both legacy flat params and new structured params.
-
-        Returns:
-            List of input references like:
-            [{"role": "seed_image", "remote_url": "https://..."}]
-            [{"role": "source_video", "asset_id": 123}]
-        """
-        inputs = []
-
-        # Check if structured format
-        is_structured = 'generation_config' in params or 'scene_context' in params
-
-        if is_structured:
-            # Extract inputs from scene context
-            scene_context = params.get("scene_context", {})
-            from_scene = scene_context.get("from_scene")
-            to_scene = scene_context.get("to_scene")
-
-            # For transitions, both scenes are inputs
-            if operation_type == OperationType.VIDEO_TRANSITION:
-                if from_scene:
-                    inputs.append({
-                        "role": "from_scene",
-                        "scene_id": from_scene.get("id"),
-                        "metadata": from_scene
-                    })
-                if to_scene:
-                    inputs.append({
-                        "role": "to_scene",
-                        "scene_id": to_scene.get("id"),
-                        "metadata": to_scene
-                    })
-            # For image_to_video, from_scene might have an asset
-            elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                if from_scene:
-                    inputs.append({
-                        "role": "seed_image",
-                        "scene_id": from_scene.get("id"),
-                        "metadata": from_scene
-                    })
-
-            return inputs
-
-        # Legacy flat params format
-        if operation_type == OperationType.IMAGE_TO_VIDEO:
-            if "image_url" in params:
-                inputs.append({
-                    "role": "seed_image",
-                    "remote_url": params["image_url"]
-                })
-            if "image_asset_id" in params:
-                inputs.append({
-                    "role": "seed_image",
-                    "asset_id": params["image_asset_id"]
-                })
-
-        elif operation_type == OperationType.VIDEO_EXTEND:
-            if "video_url" in params:
-                inputs.append({
-                    "role": "source_video",
-                    "remote_url": params["video_url"]
-                })
-            if "video_asset_id" in params:
-                inputs.append({
-                    "role": "source_video",
-                    "asset_id": params["video_asset_id"]
-                })
-
-        return inputs
-
-    def _validate_content_rating(
-        self,
-        params: Dict[str, Any],
-        world_meta: Optional[Dict[str, Any]] = None,
-        user_preferences: Optional[Dict[str, Any]] = None
-    ) -> tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
-        """
-        Validate and optionally clamp content rating in generation request
-
-        Enforces world and user content rating constraints according to Task 10 Phase 8.
-
-        Args:
-            params: Generation parameters (may contain social_context)
-            world_meta: Optional world metadata with maxContentRating
-            user_preferences: Optional user preferences with maxContentRating
-
-        Returns:
-            Tuple of (is_valid, violation_message, clamped_social_context)
-            - is_valid: False if rating violation cannot be clamped
-            - violation_message: Description of violation for logging
-            - clamped_social_context: Modified social context with clamped rating (if clamping applied)
-        """
-        # Extract social context
-        social_context = params.get("social_context")
-        if not social_context:
-            # No social context = no rating to validate
-            return (True, None, None)
-
-        content_rating = social_context.get("contentRating", "sfw")
-
-        # Get constraints
-        world_max_rating = None
-        if world_meta:
-            generation_config = world_meta.get("generation", {})
-            world_max_rating = generation_config.get("maxContentRating")
-
-        user_max_rating = None
-        if user_preferences:
-            user_max_rating = user_preferences.get("maxContentRating")
-
-        # Validate content rating is in valid range
-        if content_rating not in RATING_ORDER:
-            return (False, f"Invalid content rating '{content_rating}' - must be one of {RATING_ORDER}", None)
-
-        # Check world constraint
-        if world_max_rating and world_max_rating in RATING_ORDER:
-            if RATING_ORDER.index(content_rating) > RATING_ORDER.index(world_max_rating):
-                # Violation: rating exceeds world maximum
-                violation_msg = f"Content rating '{content_rating}' exceeds world maximum '{world_max_rating}'"
-
-                # Clamp to world maximum
-                clamped_context = social_context.copy()
-                clamped_context["contentRating"] = world_max_rating
-                clamped_context["_ratingClamped"] = True
-                clamped_context["_originalRating"] = content_rating
-
-                logger.warning(f"CONTENT_RATING_VIOLATION: {violation_msg} (clamped to '{world_max_rating}')")
-                return (True, violation_msg, clamped_context)
-
-        # Check user constraint (if stricter than world)
-        if user_max_rating and user_max_rating in RATING_ORDER:
-            if RATING_ORDER.index(content_rating) > RATING_ORDER.index(user_max_rating):
-                # Violation: rating exceeds user maximum
-                violation_msg = f"Content rating '{content_rating}' exceeds user maximum '{user_max_rating}'"
-
-                # Clamp to user maximum
-                clamped_context = social_context.copy()
-                clamped_context["contentRating"] = user_max_rating
-                clamped_context["_ratingClamped"] = True
-                clamped_context["_originalRating"] = content_rating
-
-                logger.warning(f"CONTENT_RATING_VIOLATION: {violation_msg} (clamped to '{user_max_rating}')")
-                return (True, violation_msg, clamped_context)
-
-        # No violations
-        return (True, None, None)
-
-    async def _resolve_prompt(
-        self,
-        prompt_version_id: UUID,
-        params: Dict[str, Any]
-    ) -> Optional[str]:
-        """
-        LEGACY: Resolve prompt from prompt version with variable substitution
-
-        This is kept for backward compatibility. New code should use
-        _resolve_prompt_config with structured prompt_config.
-
-        Args:
-            prompt_version_id: Prompt version to use
-            params: Parameters for variable substitution
-
-        Returns:
-            Final prompt after substitution, or None if version not found
-        """
-        from pixsim7_backend.domain.prompt_versioning import PromptVersion
-
-        result = await self.db.execute(
-            select(PromptVersion).where(PromptVersion.id == prompt_version_id)
-        )
-        prompt_version = result.scalar_one_or_none()
-
-        if not prompt_version:
-            logger.warning(f"Prompt version {prompt_version_id} not found")
-            return None
-
-        # Simple variable substitution
-        final_prompt = prompt_version.prompt_text
-
-        # Replace {{variable}} with values from params
-        for key, value in params.items():
-            placeholder = f"{{{{{key}}}}}"
-            if placeholder in final_prompt:
-                final_prompt = final_prompt.replace(placeholder, str(value))
-
-        return final_prompt
-
-    async def _resolve_prompt_config(
-        self,
-        prompt_config: Dict[str, Any]
-    ) -> tuple[Optional[str], Optional[UUID], str]:
-        """
-        Resolve prompt from structured prompt_config
-
-        This is the new canonical way to resolve prompts, supporting:
-        - Direct version ID reference
-        - Family ID with auto-select latest
-        - Variable substitution
-        - Inline prompts (deprecated, for testing only)
-
-        Args:
-            prompt_config: Structured configuration:
-                {
-                    "versionId": "uuid",         // Specific version
-                    "familyId": "uuid",          // Family with auto-select
-                    "autoSelectLatest": true,    // Use latest version
-                    "variables": {...},          // Template variables
-                    "inlinePrompt": "..."        // DEPRECATED: inline prompt
-                }
-
-        Returns:
-            Tuple of (final_prompt, prompt_version_id, source_type)
-            source_type is one of: "versioned", "inline", "unknown"
-        """
-        from pixsim7_backend.domain.prompt_versioning import PromptVersion, PromptFamily
-
-        # Check for inline prompt (deprecated path)
-        if "inlinePrompt" in prompt_config and prompt_config["inlinePrompt"]:
-            logger.warning("Using deprecated inline prompt - use versioned prompts instead")
-            return prompt_config["inlinePrompt"], None, "inline"
-
-        # Get variables for substitution
-        variables = prompt_config.get("variables", {})
-
-        # Path 1: Direct version ID
-        if "versionId" in prompt_config and prompt_config["versionId"]:
-            version_id = UUID(prompt_config["versionId"]) if isinstance(prompt_config["versionId"], str) else prompt_config["versionId"]
-
-            result = await self.db.execute(
-                select(PromptVersion).where(PromptVersion.id == version_id)
-            )
-            prompt_version = result.scalar_one_or_none()
-
-            if not prompt_version:
-                logger.error(f"Prompt version {version_id} not found")
-                return None, None, "unknown"
-
-            final_prompt = self._substitute_variables(prompt_version.prompt_text, variables)
-            return final_prompt, prompt_version.id, "versioned"
-
-        # Path 2: Family ID with auto-select latest
-        if "familyId" in prompt_config and prompt_config["familyId"]:
-            family_id = UUID(prompt_config["familyId"]) if isinstance(prompt_config["familyId"], str) else prompt_config["familyId"]
-            auto_select = prompt_config.get("autoSelectLatest", True)
-
-            if not auto_select:
-                logger.warning(f"familyId provided but autoSelectLatest=false - no version specified")
-                return None, None, "unknown"
-
-            # Get latest version from family (highest version_number)
-            result = await self.db.execute(
-                select(PromptVersion)
-                .where(PromptVersion.family_id == family_id)
-                .order_by(PromptVersion.version_number.desc())
-                .limit(1)
-            )
-            prompt_version = result.scalar_one_or_none()
-
-            if not prompt_version:
-                logger.error(f"No versions found for prompt family {family_id}")
-                return None, None, "unknown"
-
-            logger.info(f"Auto-selected prompt version {prompt_version.id} (v{prompt_version.version_number}) from family {family_id}")
-
-            final_prompt = self._substitute_variables(prompt_version.prompt_text, variables)
-            return final_prompt, prompt_version.id, "versioned"
-
-        # No valid prompt source
-        logger.warning("prompt_config has no versionId, familyId, or inlinePrompt")
-        return None, None, "unknown"
-
-    def _substitute_variables(self, prompt_text: str, variables: Dict[str, Any]) -> str:
-        """
-        Substitute template variables in prompt text
-
-        Replaces {{variable_name}} with values from variables dict.
-        Supports simple substitution and basic formatting.
-
-        Args:
-            prompt_text: Prompt text with {{variable}} placeholders
-            variables: Dict of variable values
-
-        Returns:
-            Prompt text with variables substituted
-        """
-        final_prompt = prompt_text
-
-        # Replace {{variable}} with values from variables dict
-        for key, value in variables.items():
-            placeholder = f"{{{{{key}}}}}"
-            if placeholder in final_prompt:
-                final_prompt = final_prompt.replace(placeholder, str(value))
-
-        return final_prompt
-
-    # ===== GENERATION STATUS MANAGEMENT =====
+    # ===== LIFECYCLE METHODS =====
 
     async def update_status(
         self,
@@ -602,205 +99,34 @@ class GenerationService:
         status: GenerationStatus,
         error_message: Optional[str] = None
     ) -> Generation:
-        """
-        Update generation status
-
-        Args:
-            generation_id: Generation ID
-            status: New status
-            error_message: Optional error message (for failed generations)
-
-        Returns:
-            Updated generation
-
-        Raises:
-            ResourceNotFoundError: Generation not found
-        """
-        generation = await self.get_generation(generation_id)
-
-        # Update status
-        generation.status = status
-        generation.updated_at = datetime.utcnow()
-
-        # Update timestamps
-        if status == GenerationStatus.PROCESSING and not generation.started_at:
-            generation.started_at = datetime.utcnow()
-        elif status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
-            generation.completed_at = datetime.utcnow()
-
-        # Update error message
-        if error_message:
-            generation.error_message = error_message
-
-        await self.db.commit()
-        await self.db.refresh(generation)
-
-        # Emit status change events (include user_id for WebSocket filtering)
-        if status == GenerationStatus.PROCESSING:
-            await event_bus.publish(JOB_STARTED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-        elif status == GenerationStatus.COMPLETED:
-            await event_bus.publish(JOB_COMPLETED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-        elif status == GenerationStatus.FAILED:
-            await event_bus.publish(JOB_FAILED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value,
-                "error": error_message
-            })
-        elif status == GenerationStatus.CANCELLED:
-            await event_bus.publish(JOB_CANCELLED, {
-                "job_id": generation_id,
-                "generation_id": generation_id,
-                "user_id": generation.user_id,
-                "status": status.value
-            })
-
-        return generation
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.update_status(generation_id, status, error_message)
 
     async def mark_started(self, generation_id: int) -> Generation:
-        """Mark generation as started"""
-        return await self.update_status(generation_id, GenerationStatus.PROCESSING)
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.mark_started(generation_id)
 
     async def mark_completed(self, generation_id: int, asset_id: int) -> Generation:
-        """
-        Mark generation as completed
-
-        Args:
-            generation_id: Generation ID
-            asset_id: Generated asset ID
-
-        Returns:
-            Updated generation
-        """
-        generation = await self.get_generation(generation_id)
-        generation.asset_id = asset_id
-        generation.updated_at = datetime.utcnow()
-        await self.db.commit()
-        await self.db.refresh(generation)
-
-        # Increment prompt version metrics if applicable
-        if generation.prompt_version_id:
-            await self._increment_prompt_metrics(generation.prompt_version_id)
-
-        return await self.update_status(generation_id, GenerationStatus.COMPLETED)
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.mark_completed(generation_id, asset_id)
 
     async def mark_failed(self, generation_id: int, error_message: str) -> Generation:
-        """Mark generation as failed"""
-        return await self.update_status(generation_id, GenerationStatus.FAILED, error_message)
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.mark_failed(generation_id, error_message)
 
     async def cancel_generation(self, generation_id: int, user: User) -> Generation:
-        """
-        Cancel generation (user request)
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.cancel_generation(generation_id, user)
 
-        Args:
-            generation_id: Generation ID
-            user: User requesting cancellation
-
-        Returns:
-            Cancelled generation
-
-        Raises:
-            ResourceNotFoundError: Generation not found
-            InvalidOperationError: Cannot cancel (wrong user or completed)
-        """
-        generation = await self.get_generation(generation_id)
-
-        # Check authorization
-        if generation.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot cancel other users' generations")
-
-        # Check if can be cancelled
-        if generation.is_terminal:
-            raise InvalidOperationError(f"Generation already {generation.status.value}")
-
-        # Cancel on provider if processing
-        if generation.status == GenerationStatus.PROCESSING:
-            try:
-                from pixsim7_backend.services.provider import ProviderService
-
-                provider_service = ProviderService(self.db)
-
-                # Get latest submission
-                result = await self.db.execute(
-                    select(ProviderSubmission)
-                    .where(ProviderSubmission.generation_id == generation.id)
-                    .order_by(ProviderSubmission.submitted_at.desc())
-                    .limit(1)
-                )
-                submission = result.scalar_one_or_none()
-
-                if submission and submission.account_id:
-                    # Get account
-                    account = await self.db.get(ProviderAccount, submission.account_id)
-                    if account:
-                        # Try to cancel on provider
-                        cancelled = await provider_service.cancel_job(submission, account)
-                        if cancelled:
-                            logger.info(f"Generation {generation_id} cancelled on provider")
-
-                        # Decrement account's concurrent job count
-                        if account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
-                            await self.db.commit()
-            except Exception as e:
-                logger.error(f"Failed to cancel generation on provider: {e}")
-                # Continue with local cancellation even if provider cancel fails
-
-        return await self.update_status(generation_id, GenerationStatus.CANCELLED)
-
-    # ===== GENERATION RETRIEVAL =====
+    # ===== QUERY METHODS =====
 
     async def get_generation(self, generation_id: int) -> Generation:
-        """
-        Get generation by ID
-
-        Args:
-            generation_id: Generation ID
-
-        Returns:
-            Generation
-
-        Raises:
-            ResourceNotFoundError: Generation not found
-        """
-        generation = await self.db.get(Generation, generation_id)
-        if not generation:
-            raise ResourceNotFoundError("Generation", generation_id)
-        return generation
+        """Delegate to query service"""
+        return await self._query.get_generation(generation_id)
 
     async def get_generation_for_user(self, generation_id: int, user: User) -> Generation:
-        """
-        Get generation with authorization check
-
-        Args:
-            generation_id: Generation ID
-            user: Current user
-
-        Returns:
-            Generation
-
-        Raises:
-            ResourceNotFoundError: Generation not found
-            InvalidOperationError: Not authorized
-        """
-        generation = await self.get_generation(generation_id)
-
-        # Authorization check
-        if generation.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot access other users' generations")
-
-        return generation
+        """Delegate to query service"""
+        return await self._query.get_generation_for_user(generation_id, user)
 
     async def list_generations(
         self,
@@ -810,46 +136,16 @@ class GenerationService:
         operation_type: Optional[OperationType] = None,
         limit: int = 50,
         offset: int = 0
-    ) -> list[Generation]:
-        """
-        List generations for user
-
-        Args:
-            user: User (or admin)
-            workspace_id: Filter by workspace
-            status: Filter by status
-            operation_type: Filter by operation type
-            limit: Max results
-            offset: Pagination offset
-
-        Returns:
-            List of generations
-        """
-        query = select(Generation)
-
-        # Filter by user (unless admin)
-        if not user.is_admin():
-            query = query.where(Generation.user_id == user.id)
-
-        # Apply filters
-        if workspace_id:
-            query = query.where(Generation.workspace_id == workspace_id)
-        if status:
-            query = query.where(Generation.status == status)
-        if operation_type:
-            query = query.where(Generation.operation_type == operation_type)
-
-        # Order by priority and creation time
-        query = query.order_by(
-            Generation.priority.asc(),  # Lower priority number = higher priority
-            Generation.created_at.desc()
+    ) -> List[Generation]:
+        """Delegate to query service"""
+        return await self._query.list_generations(
+            user=user,
+            workspace_id=workspace_id,
+            status=status,
+            operation_type=operation_type,
+            limit=limit,
+            offset=offset
         )
-
-        # Pagination
-        query = query.limit(limit).offset(offset)
-
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
 
     async def count_generations(
         self,
@@ -858,91 +154,27 @@ class GenerationService:
         status: Optional[GenerationStatus] = None,
         operation_type: Optional[OperationType] = None,
     ) -> int:
-        """
-        Count generations for user with filters
-
-        Args:
-            user: User (or admin)
-            workspace_id: Filter by workspace
-            status: Filter by status
-            operation_type: Filter by operation type
-
-        Returns:
-            Total count of matching generations
-        """
-        from sqlalchemy import func
-
-        query = select(func.count(Generation.id))
-
-        # Filter by user (unless admin)
-        if not user.is_admin():
-            query = query.where(Generation.user_id == user.id)
-
-        # Apply same filters as list_generations
-        if workspace_id:
-            query = query.where(Generation.workspace_id == workspace_id)
-        if status:
-            query = query.where(Generation.status == status)
-        if operation_type:
-            query = query.where(Generation.operation_type == operation_type)
-
-        result = await self.db.execute(query)
-        return result.scalar() or 0
+        """Delegate to query service"""
+        return await self._query.count_generations(
+            user=user,
+            workspace_id=workspace_id,
+            status=status,
+            operation_type=operation_type
+        )
 
     async def get_pending_generations(
         self,
         provider_id: Optional[str] = None,
         limit: int = 10
-    ) -> list[Generation]:
-        """
-        Get pending generations for processing
+    ) -> List[Generation]:
+        """Delegate to query service"""
+        return await self._query.get_pending_generations(provider_id=provider_id, limit=limit)
 
-        Args:
-            provider_id: Filter by provider
-            limit: Max results
-
-        Returns:
-            List of pending generations (sorted by priority)
-        """
-        query = select(Generation).where(Generation.status == GenerationStatus.PENDING)
-
-        if provider_id:
-            query = query.where(Generation.provider_id == provider_id)
-
-        # Check if scheduled time has passed
-        now = datetime.utcnow()
-        query = query.where(
-            (Generation.scheduled_at == None) |
-            (Generation.scheduled_at <= now)
-        )
-
-        # Order by priority (lowest number first)
-        query = query.order_by(
-            Generation.priority.asc(),
-            Generation.created_at.asc()
-        ).limit(limit)
-
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
-
-    # ===== RETRY LOGIC =====
+    # ===== RETRY METHODS =====
 
     async def increment_retry(self, generation_id: int) -> Generation:
-        """
-        Increment retry count
-
-        Args:
-            generation_id: Generation ID
-
-        Returns:
-            Updated generation
-        """
-        generation = await self.get_generation(generation_id)
-        generation.retry_count += 1
-        generation.updated_at = datetime.utcnow()
-        await self.db.commit()
-        await self.db.refresh(generation)
-        return generation
+        """Delegate to retry service"""
+        return await self._retry.increment_retry(generation_id)
 
     async def retry_generation(
         self,
@@ -950,148 +182,15 @@ class GenerationService:
         user: User,
         max_retries: int | None = None
     ) -> Generation:
-        """
-        Retry a failed generation
-
-        Creates a new generation with the same parameters as the failed one.
-        Useful for generations that failed due to content filtering or temporary provider issues.
-
-        Args:
-            generation_id: Failed generation ID to retry
-            user: User requesting retry
-            max_retries: Maximum retry attempts allowed. If None, uses
-                settings.auto_retry_max_attempts (default: 10, configurable).
-
-        Returns:
-            New generation created for retry
-
-        Raises:
-            ResourceNotFoundError: Generation not found
-            InvalidOperationError: Cannot retry (wrong user, not failed, or max retries exceeded)
-        """
-        # Resolve max_retries from settings if not provided
-        if max_retries is None:
-            from pixsim7_backend.shared.config import settings
-            max_retries = settings.auto_retry_max_attempts
-
-        # Get original generation
-        original = await self.get_generation(generation_id)
-
-        # Check authorization
-        if original.user_id != user.id and not user.is_admin():
-            raise InvalidOperationError("Cannot retry other users' generations")
-
-        # Check if can be retried
-        if original.status not in {GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
-            raise InvalidOperationError(f"Can only retry failed or cancelled generations, not {original.status.value}")
-
-        # Check retry count
-        if original.retry_count >= max_retries:
-            raise InvalidOperationError(f"Maximum retry attempts ({max_retries}) exceeded")
-
-        # Create new generation with same params
-        logger.info(f"Retrying generation {generation_id} (attempt {original.retry_count + 1}/{max_retries})")
-
-        new_generation = await self.create_generation(
-            user=user,
-            operation_type=original.operation_type,
-            provider_id=original.provider_id,
-            params=original.raw_params,  # Use original raw params
-            workspace_id=original.workspace_id,
-            name=f"Retry: {original.name}" if original.name else None,
-            description=original.description,
-            priority=original.priority,
-            parent_generation_id=generation_id,  # Link to original
-            prompt_version_id=original.prompt_version_id,
-        )
-
-        # Copy retry count from parent and increment
-        new_generation.retry_count = original.retry_count + 1
-        await self.db.commit()
-        await self.db.refresh(new_generation)
-
-        logger.info(f"Created retry generation {new_generation.id} for {generation_id}")
-
-        return new_generation
+        """Delegate to retry service"""
+        return await self._retry.retry_generation(generation_id, user, max_retries)
 
     async def should_auto_retry(self, generation: Generation) -> bool:
-        """
-        Determine if a failed generation should be automatically retried
-
-        Auto-retry is triggered for:
-        - Content filtering rejections (romantic/erotic content that might pass on retry)
-        - Provider temporary errors
-        - Not for: validation errors, quota errors, permanent failures
-
-        Args:
-            generation: Failed generation to check
-
-        Returns:
-            True if should auto-retry
-        """
-        if generation.status != GenerationStatus.FAILED:
-            return False
-
-        if not generation.error_message:
-            return False
-
-        # Check retry count against configured max
-        from pixsim7_backend.shared.config import settings
-        max_retries = settings.auto_retry_max_attempts
-
-        if generation.retry_count >= max_retries:
-            return False
-
-        error_msg = generation.error_message.lower()
-
-        # Content filtering indicators
-        content_filter_keywords = [
-            "content filter",
-            "content policy",
-            "inappropriate content",
-            "safety filter",
-            "moderation",
-            "nsfw",
-            "adult content",
-            "explicit content",
-        ]
-
-        # Temporary error indicators
-        temporary_error_keywords = [
-            "timeout",
-            "rate limit",
-            "temporarily unavailable",
-            "try again",
-            "service unavailable",
-            "server error",
-        ]
-
-        # Check for content filter or temporary errors
-        for keyword in content_filter_keywords + temporary_error_keywords:
-            if keyword in error_msg:
-                logger.info(f"Generation {generation.id} should auto-retry: '{keyword}' detected in error")
-                return True
-
-        return False
+        """Delegate to retry service"""
+        return await self._retry.should_auto_retry(generation)
 
     # ===== PROMPT VERSIONING INTEGRATION =====
 
     async def _increment_prompt_metrics(self, prompt_version_id: UUID) -> None:
-        """
-        Increment prompt version metrics
-
-        Args:
-            prompt_version_id: Prompt version ID
-        """
-        from pixsim7_backend.domain.prompt_versioning import PromptVersion
-
-        result = await self.db.execute(
-            select(PromptVersion).where(PromptVersion.id == prompt_version_id)
-        )
-        prompt_version = result.scalar_one_or_none()
-
-        if prompt_version:
-            prompt_version.generation_count += 1
-            prompt_version.successful_assets += 1
-            await self.db.commit()
-            logger.info(f"Incremented metrics for prompt version {prompt_version_id}")
+        """Delegate to lifecycle service (internal method)"""
+        return await self._lifecycle._increment_prompt_metrics(prompt_version_id)
