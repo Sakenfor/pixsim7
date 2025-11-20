@@ -25,16 +25,12 @@ logger = logging.getLogger(__name__)
 ConditionEvaluator = Callable[[Dict[str, Any], Dict[str, Any]], bool]
 
 
-# Global registry of custom condition evaluators (DEPRECATED - use behavior_registry)
-CONDITION_EVALUATORS: Dict[str, ConditionEvaluator] = {}
-
-
 # ==================
 # Built-in Condition Registry
 # ==================
 
 # Registry of built-in condition evaluators
-# These are registered with behavior_registry at startup
+# These are registered at module load time for bootstrap before plugin system
 BUILTIN_CONDITIONS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], bool]] = {}
 
 
@@ -42,12 +38,38 @@ def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluato
     """
     Register a custom condition evaluator.
 
+    This is a convenience wrapper around behavior_registry.register_condition().
+    All custom evaluators are registered in the unified behavior_registry.
+
+    Note: For legacy "custom" type conditions with evaluatorId.
+    New code should use plugin-namespaced condition types instead.
+
     Args:
         evaluator_id: Unique ID for the evaluator (e.g., "evaluator:is_raining")
         evaluator: Function that takes (condition, context) and returns bool
     """
-    CONDITION_EVALUATORS[evaluator_id] = evaluator
-    logger.info(f"Registered custom condition evaluator: {evaluator_id}")
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+    # Wrap the evaluator to match behavior_registry signature
+    # behavior_registry expects evaluator(context), but legacy evaluators expect (params, context)
+    def wrapped_evaluator(context: Dict[str, Any]) -> bool:
+        # Extract params from condition if available
+        # For legacy evaluators, params come from the condition itself
+        condition = context.get("_condition", {})
+        params = condition.get("params", {})
+        return evaluator(params, context)
+
+    success = behavior_registry.register_condition(
+        condition_id=evaluator_id,
+        plugin_id="core",  # Legacy evaluators use "core" as plugin_id
+        evaluator=wrapped_evaluator,
+        description=f"Legacy condition evaluator: {evaluator_id}"
+    )
+
+    if success:
+        logger.info(f"Registered condition evaluator: {evaluator_id}")
+    else:
+        logger.warning(f"Condition evaluator '{evaluator_id}' already registered")
 
 
 def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
@@ -273,15 +295,20 @@ def _eval_location_type_in(condition: Dict[str, Any], context: Dict[str, Any]) -
 def _eval_custom(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     """Evaluate custom condition using registered evaluators."""
     evaluator_id = condition.get("evaluatorId", "")
-    params = condition.get("params", {})
 
-    evaluator = CONDITION_EVALUATORS.get(evaluator_id)
-    if not evaluator:
+    # Query behavior_registry for the evaluator
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+    metadata = behavior_registry.get_condition(evaluator_id)
+
+    if not metadata:
         logger.warning(f"Custom evaluator not found: {evaluator_id}")
         return False
 
-    # Pass both params and full context to evaluator
-    return evaluator(params, context)
+    # Add condition to context so wrapped evaluator can extract params
+    context_with_condition = {**context, "_condition": condition}
+
+    # Call the evaluator
+    return metadata.evaluator(context_with_condition)
 
 
 def _eval_expression(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
