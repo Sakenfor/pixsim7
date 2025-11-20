@@ -12,26 +12,29 @@ importers:
         specifier: ^4.20.6
         version: 4.20.6
 
-  frontend:
+  apps/admin:
     dependencies:
-      '@pixsim7/game-core':
+      '@pixsim7/game.components':
         specifier: workspace:*
-        version: link:../packages/game-core
-      '@pixsim7/game-ui':
+        version: link:../../packages/game/components
+      '@pixsim7/game.engine':
         specifier: workspace:*
-        version: link:../packages/game-ui
-      '@pixsim7/scene-gizmos':
+        version: link:../../packages/game/engine
+      '@pixsim7/scene.cubes':
         specifier: workspace:*
-        version: link:../packages/scene-gizmos
-      '@pixsim7/semantic-shapes':
+        version: link:../../packages/scene/cubes
+      '@pixsim7/scene.gizmos':
         specifier: workspace:*
-        version: link:../packages/semantic-shapes
-      '@pixsim7/types':
+        version: link:../../packages/scene/gizmos
+      '@pixsim7/scene.shapes':
         specifier: workspace:*
-        version: link:../packages/types
-      '@pixsim7/ui':
+        version: link:../../packages/scene/shapes
+      '@pixsim7/shared.types':
         specifier: workspace:*
-        version: link:../packages/ui
+        version: link:../../packages/shared/types
+      '@pixsim7/shared.ui':
+        specifier: workspace:*
+        version: link:../../packages/shared/ui
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -47,9 +50,6 @@ importers:
       lucide-react:
         specifier: ^0.553.0
         version: 0.553.0(react@19.2.0)
-      pixcubes:
-        specifier: workspace:*
-        version: link:../packages/pixcubes
       react:
         specifier: ^19.2.0
         version: 19.2.0
@@ -75,9 +75,9 @@ importers:
       '@eslint/js':
         specifier: ^9.39.1
         version: 9.39.1
-      '@pixsim7/config-tailwind':
+      '@pixsim7/shared.config':
         specifier: workspace:*
-        version: link:../packages/config-tailwind
+        version: link:../../packages/shared/config
       '@types/node':
         specifier: ^24.10.0
         version: 24.10.1
@@ -121,17 +121,17 @@ importers:
         specifier: ^7.2.2
         version: 7.2.2(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)
 
-  game-frontend:
+  apps/game:
     dependencies:
-      '@pixsim7/game-ui':
+      '@pixsim7/game.components':
         specifier: workspace:*
-        version: link:../packages/game-ui
-      '@pixsim7/types':
+        version: link:../../packages/game/components
+      '@pixsim7/shared.types':
         specifier: workspace:*
-        version: link:../packages/types
-      '@pixsim7/ui':
+        version: link:../../packages/shared/types
+      '@pixsim7/shared.ui':
         specifier: workspace:*
-        version: link:../packages/ui
+        version: link:../../packages/shared/ui
       babylonjs:
         specifier: ^7.42.0
         version: 7.54.3
@@ -145,9 +145,9 @@ importers:
         specifier: ^19.2.0
         version: 19.2.0(react@19.2.0)
     devDependencies:
-      '@pixsim7/config-tailwind':
+      '@pixsim7/shared.config':
         specifier: workspace:*
-        version: link:../packages/config-tailwind
+        version: link:../../packages/shared/config
       '@types/react':
         specifier: ^19.2.2
         version: 19.2.3
@@ -173,41 +173,20 @@ importers:
         specifier: ^7.2.2
         version: 7.2.2(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)
 
-  packages/config-tailwind: {}
-
-  packages/game-core:
+  packages/game/components:
     dependencies:
-      '@pixsim7/types':
+      '@pixsim7/game.engine':
         specifier: workspace:*
-        version: link:../types
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.1
-        version: 24.10.1
-      tsx:
-        specifier: ^4.20.6
-        version: 4.20.6
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-      vitest:
-        specifier: ^1.0.0
-        version: 1.6.1(@types/node@24.10.1)
-
-  packages/game-ui:
-    dependencies:
-      '@pixsim7/game-core':
+        version: link:../engine
+      '@pixsim7/scene.gizmos':
         specifier: workspace:*
-        version: link:../game-core
-      '@pixsim7/scene-gizmos':
+        version: link:../../scene/gizmos
+      '@pixsim7/shared.types':
         specifier: workspace:*
-        version: link:../scene-gizmos
-      '@pixsim7/types':
+        version: link:../../shared/types
+      '@pixsim7/shared.ui':
         specifier: workspace:*
-        version: link:../types
-      '@pixsim7/ui':
-        specifier: workspace:*
-        version: link:../ui
+        version: link:../../shared/ui
       react:
         specifier: '>=18'
         version: 19.2.0
@@ -225,7 +204,26 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/pixcubes:
+  packages/game/engine:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.10.1
+      tsx:
+        specifier: ^4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@24.10.1)
+
+  packages/scene/cubes:
     dependencies:
       react:
         specifier: '>=18'
@@ -233,9 +231,6 @@ importers:
       react-dom:
         specifier: '>=18'
         version: 19.2.0(react@19.2.0)
-      zustand:
-        specifier: '>=4'
-        version: 5.0.8(@types/react@18.3.27)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
     devDependencies:
       '@types/react':
         specifier: ^18.0.0
@@ -243,30 +238,35 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      zustand:
+        specifier: ^4.0.0
+        version: 4.5.7(@types/react@18.3.27)(react@19.2.0)
 
-  packages/scene-gizmos:
+  packages/scene/gizmos:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/semantic-shapes:
+  packages/scene/shapes:
     dependencies:
-      '@pixsim7/game-core':
+      '@pixsim7/game.engine':
         specifier: workspace:*
-        version: link:../game-core
+        version: link:../../game/engine
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/types:
+  packages/shared/config: {}
+
+  packages/shared/types:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/ui:
+  packages/shared/ui:
     dependencies:
       clsx:
         specifier: ^2.1.1
@@ -1313,9 +1313,6 @@ packages:
     resolution: {integrity: sha512-/Tb/JcjK111nNScGob5MNtsntNM1aCNUDipB/TkwZFhyDrrE47SOx/18wF2bbjgc3ZzCSKW1T5nt5EbFoAz/Vg==}
     engines: {node: '>=4'}
     hasBin: true
-
-  csstype@3.1.3:
-    resolution: {integrity: sha512-M1uQkMl8rQK/szD0LNhtqxIPLpimGm8sOBwU7lLnCpSbTyY3yeU1Vc7l4KT5zT4s/yOxHH5O7tIuuLOCnLADRw==}
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
@@ -3110,7 +3107,7 @@ snapshots:
 
   '@types/react@19.2.3':
     dependencies:
-      csstype: 3.1.3
+      csstype: 3.2.3
 
   '@typescript-eslint/eslint-plugin@8.46.4(@typescript-eslint/parser@8.46.4(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3))(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3)':
     dependencies:
@@ -3421,8 +3418,6 @@ snapshots:
       which: 2.0.2
 
   cssesc@3.0.0: {}
-
-  csstype@3.1.3: {}
 
   csstype@3.2.3: {}
 
@@ -4486,18 +4481,19 @@ snapshots:
 
   yocto-queue@1.2.2: {}
 
+  zustand@4.5.7(@types/react@18.3.27)(react@19.2.0):
+    dependencies:
+      use-sync-external-store: 1.6.0(react@19.2.0)
+    optionalDependencies:
+      '@types/react': 18.3.27
+      react: 19.2.0
+
   zustand@4.5.7(@types/react@19.2.3)(react@19.2.0):
     dependencies:
       use-sync-external-store: 1.6.0(react@19.2.0)
     optionalDependencies:
       '@types/react': 19.2.3
       react: 19.2.0
-
-  zustand@5.0.8(@types/react@18.3.27)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
-    optionalDependencies:
-      '@types/react': 18.3.27
-      react: 19.2.0
-      use-sync-external-store: 1.6.0(react@19.2.0)
 
   zustand@5.0.8(@types/react@19.2.3)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)):
     optionalDependencies:
