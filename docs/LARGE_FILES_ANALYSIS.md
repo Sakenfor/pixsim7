@@ -61,6 +61,32 @@ infrastructure/plugins/
 
 ---
 
+### schemas.py → 5 Domain Schema Modules (2025-11-20)
+
+**Before:** Single 1453-line file with all game configuration schemas
+
+**After:** Split into domain-specific schema modules:
+```
+domain/game/schemas/
+├── __init__.py           150 lines  (Re-exports)
+├── relationship.py       464 lines  (Relationship tiers, intimacy, mood, reputation)
+├── behavior.py           486 lines  (Activities, routines, conditions, effects, scoring)
+├── components.py         182 lines  (ECS component schemas)
+├── metrics.py             60 lines  (Metric definitions)
+└── simulation.py         298 lines  (Game state, scheduler, turn config, profiles)
+```
+
+**Benefits:**
+- Domain-focused modules (relationship vs behavior vs components)
+- Easier to find specific schema types
+- Better organization for configuration schemas
+- Average file size: ~290 lines per module
+- Backward compatibility maintained via schemas.py re-exports
+
+**Updated:** schemas.py now a compatibility layer re-exporting from schemas/ package
+
+---
+
 ## Top 10 Largest Files
 
 | File | Lines | Type | Recommendation |
