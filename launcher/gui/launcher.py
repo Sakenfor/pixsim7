@@ -882,10 +882,13 @@ class LauncherWindow(QWidget):
             card.start_btn.setEnabled(not sp.running and sp.tool_available)
             card.stop_btn.setEnabled(sp.running)
 
-        # Refresh architecture panel when backend becomes healthy
-        if key == "backend" and status == HealthStatus.HEALTHY and old_status != status:
+        # Refresh architecture panel when ANY backend service becomes healthy
+        # Check if this is a backend service (main-api, generation-api, etc.)
+        is_backend_service = key in ["backend", "main-api", "generation-api"] or key.endswith("-api")
+        if is_backend_service and status == HealthStatus.HEALTHY and old_status != status:
             if hasattr(self, 'architecture_panel'):
-                QTimer.singleShot(2000, self.architecture_panel.refresh_metrics)  # 2s delay for backend to fully start
+                # Delay refresh to let service fully initialize
+                QTimer.singleShot(2000, self.architecture_panel.refresh_metrics)
 
     def update_ports_label(self):
         p = read_env_ports()
