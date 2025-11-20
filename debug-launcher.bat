@@ -13,7 +13,7 @@ echo Running launcher with full error output...
 echo.
 
 REM Run with python.exe (NOT pythonw.exe) so we can see errors
-"%_PY%" -u scripts/launcher.py
+"%_PY%" -u launcher/gui/launcher.py
 echo.
 echo ========================================
 echo Launcher exited with code: %ERRORLEVEL%

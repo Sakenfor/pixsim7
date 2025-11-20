@@ -287,5 +287,5 @@ echo.
 echo Starting Desktop Launcher...
 set _PY=%cd%\.venv\Scripts\python.exe
 if not exist "%_PY%" set _PY=python
-start "PixSim7 Desktop Launcher" cmd /c "%_PY% scripts\launcher_gui\launcher.py"
+start "PixSim7 Desktop Launcher" cmd /c "%_PY% launcher\gui\launcher.py"
 goto INTERACTIVE

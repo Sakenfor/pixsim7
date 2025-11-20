@@ -47,7 +47,7 @@ if exist "%~dp0data\launcher\launcher.pid" (
 REM Try pythonw first (preferred - no console window)
 if exist "%_PYW%" (
     echo Using pythonw.exe - launcher will run without console window
-    start "" "%_PYW%" "%~dp0scripts\launcher.py"
+    start "" "%_PYW%" "%~dp0launcher\gui\launcher.py"
     if errorlevel 1 (
         echo ERROR: Failed to start launcher!
         pause
@@ -63,7 +63,7 @@ if exist "%_PYW%" (
 
 REM Fallback to regular python with detached start
 echo Using python.exe - launcher will have its own console window
-start "PixSim7 Launcher" /I "%_PY%" "%~dp0scripts\launcher.py"
+start "PixSim7 Launcher" /I "%_PY%" "%~dp0launcher\gui\launcher.py"
 if errorlevel 1 (
     echo ERROR: Failed to start launcher!
     pause
