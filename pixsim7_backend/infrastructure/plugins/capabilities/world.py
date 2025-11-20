@@ -178,3 +178,46 @@ class WorldReadAPI(BaseCapabilityAPI):
         )
 
         return npcs
+
+    async def get_npc(self, npc_id: int) -> Optional[dict]:
+        """
+        Get NPC by ID.
+
+        Returns:
+            NPC data (id, name, personality, meta, home_location_id) or None if not found
+        """
+        if not self._check_permission(
+            PluginPermission.WORLD_READ.value,
+            "WorldReadAPI.get_npc",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return None
+
+        if not self.db:
+            self.logger.error("WorldReadAPI requires database access")
+            return None
+
+        from pixsim7_backend.domain.game.models import GameNPC
+
+        result = await self.db.execute(
+            "SELECT id, name, personality, meta, home_location_id FROM game_npcs WHERE id = :npc_id",
+            {"npc_id": npc_id}
+        )
+        row = result.fetchone()
+
+        if not row:
+            return None
+
+        self.logger.debug(
+            "get_npc",
+            plugin_id=self.plugin_id,
+            npc_id=npc_id,
+        )
+
+        return {
+            "id": row[0],
+            "name": row[1],
+            "personality": row[2],
+            "meta": row[3],
+            "home_location_id": row[4],
+        }
