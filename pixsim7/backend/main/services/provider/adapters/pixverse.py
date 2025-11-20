@@ -201,7 +201,11 @@ class PixverseProvider(Provider):
         if "model" in params:
             mapped["model"] = params["model"]
         else:
-            mapped["model"] = "v5"  # Default model
+            # Default model depends on operation type
+            if operation_type == OperationType.IMAGE_TO_IMAGE:
+                mapped["model"] = "qwen-image"
+            else:
+                mapped["model"] = "v5"
 
         if "quality" in params:
             mapped["quality"] = params["quality"]
@@ -277,6 +281,10 @@ class PixverseProvider(Provider):
             "name": "model", "type": "enum", "required": False, "default": "v5",
             "enum": ["v5"], "description": "Pixverse model version", "group": "core"
         }
+        image_model = {
+            "name": "model", "type": "enum", "required": False, "default": "qwen-image",
+            "enum": ["qwen-image"], "description": "Pixverse image model", "group": "core"
+        }
         motion_mode = {
             "name": "motion_mode", "type": "enum", "required": False, "default": None,
             "enum": ["cinematic", "dynamic", "steady"], "description": "Camera/motion style", "group": "style"
@@ -320,6 +328,7 @@ class PixverseProvider(Provider):
         spec = {
             "text_to_video": {"parameters": [base_prompt, model, quality, duration, aspect_ratio, seed, motion_mode, style, negative_prompt, template_id]},
             "image_to_video": {"parameters": [base_prompt, image_url, model, quality, duration, aspect_ratio, seed, camera_movement, motion_mode, style, negative_prompt]},
+            "image_to_image": {"parameters": [base_prompt, image_url, image_model, quality, aspect_ratio, seed]},
             "video_extend": {"parameters": [base_prompt, video_url, original_video_id, model, quality, duration, seed]},
             "video_transition": {"parameters": [image_urls, prompts, quality, duration]},
             "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, seed]},
@@ -360,6 +369,9 @@ class PixverseProvider(Provider):
 
             elif operation_type == OperationType.IMAGE_TO_VIDEO:
                 video = await self._generate_image_to_video(client, params)
+
+            elif operation_type == OperationType.IMAGE_TO_IMAGE:
+                video = await self._generate_image_to_image(client, params)
 
             elif operation_type == OperationType.VIDEO_EXTEND:
                 video = await self._extend_video(client, params)
@@ -481,6 +493,26 @@ class PixverseProvider(Provider):
         )
 
         return video
+
+    async def _generate_image_to_image(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate image-to-image (i2i)"""
+        # Call pixverse-py SDK's create_image method
+        # Returns an Image object (pixverse.models.Image)
+        image = await asyncio.to_thread(
+            client.create_image,
+            prompt=params.get("prompt", ""),
+            image_url=params["image_url"],  # Required
+            model=params.get("model", "qwen-image"),
+            quality=params.get("quality", "720p"),
+            aspect_ratio=params.get("aspect_ratio", "9:16"),
+            seed=params.get("seed", 0),
+        )
+
+        return image
 
     async def _extend_video(
         self,
