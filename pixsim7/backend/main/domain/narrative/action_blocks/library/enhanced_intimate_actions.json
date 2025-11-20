@@ -1,0 +1,215 @@
+[
+  {
+    "id": "intimate_slow_rotation_tease",
+    "kind": "single_state",
+    "tags": {
+      "location": "bedroom",
+      "pose": "standing_close",
+      "intimacy_level": "very_intimate",
+      "mood": "seductive",
+      "content_rating": "intimate",
+      "requires_age_verification": false,
+      "intensity": 7,
+      "branch_type": "escalate"
+    },
+    "referenceImage": {
+      "tags": ["standing", "intimate", "bedroom"],
+      "crop": "full_body"
+    },
+    "isImageToVideo": true,
+    "startPose": "standing_facing",
+    "endPose": "standing_embrace",
+    "cameraMovement": {
+      "type": "rotation",
+      "speed": "slow",
+      "path": "circular",
+      "focus": "both_characters"
+    },
+    "consistency": {
+      "maintainPose": false,
+      "preserveLighting": true,
+      "preserveClothing": true,
+      "preservePosition": false
+    },
+    "intensityProgression": {
+      "start": 5,
+      "peak": 8,
+      "end": 7,
+      "pattern": "building"
+    },
+    "prompt": "{{lead}} and {{partner}} stand facing each other in soft bedroom lighting. {{lead}} maintains confident eye contact while slowly stepping closer. As camera begins slow rotation around them, {{lead}} reaches out to trace fingers along {{partner}}'s arm, creating visible shivers. {{partner}} leans into the touch, breathing becoming shallow. Camera continues circling as {{lead}} moves even closer, bodies almost touching but maintaining tantalizing gap. Intensity builds as {{lead}} whispers something that makes {{partner}} gasp softly. Both maintain their positions relative to each other as camera completes rotation. Lighting remains consistently intimate throughout.",
+    "style": "soft_cinema",
+    "durationSec": 8.0,
+    "compatibleNext": ["intimate_first_touch", "intimate_kiss_neck", "intimate_pull_closer"],
+    "compatiblePrev": ["bedroom_approach", "intimate_conversation_close"]
+  },
+  {
+    "id": "intimate_maintain_position_tease",
+    "kind": "single_state",
+    "tags": {
+      "location": "couch",
+      "pose": "sitting_leaning",
+      "intimacy_level": "intimate",
+      "mood": "playful",
+      "content_rating": "suggestive",
+      "requires_age_verification": false,
+      "intensity": 6,
+      "branch_type": "maintain"
+    },
+    "referenceImage": {
+      "tags": ["sitting", "couch", "close"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_close",
+    "cameraMovement": {
+      "type": "dolly",
+      "speed": "slow",
+      "path": "linear",
+      "focus": "faces"
+    },
+    "consistency": {
+      "maintainPose": true,
+      "preserveLighting": true,
+      "preserveClothing": true,
+      "preservePosition": true
+    },
+    "prompt": "{{lead}} sits on couch maintaining exact position throughout, body angled toward {{partner}}. Without changing position, {{lead}} displays increasing awareness through subtle expressions - eyes dilating, lips parting slightly, breath catching. Camera slowly dollies in toward their faces. {{lead}}'s fingers grip the couch cushion, knuckles whitening, while maintaining seated pose. Small involuntary movements - a swallow, tongue moistening lips, chest rising with deeper breath. {{partner}} remains close, their presence felt. Camera continues slow push in. {{lead}} maintains position but energy builds through micro-expressions and breathing changes. Lighting and positions remain exactly consistent.",
+    "style": "intimate_realism",
+    "durationSec": 7.0,
+    "compatibleNext": ["couch_lean_in", "couch_break_tension", "couch_touch_face"],
+    "compatiblePrev": ["couch_conversation", "couch_sit_closer"]
+  },
+  {
+    "id": "dance_handheld_passionate",
+    "kind": "single_state",
+    "tags": {
+      "location": "dance_floor",
+      "pose": "dancing_close",
+      "intimacy_level": "very_intimate",
+      "mood": "passionate",
+      "content_rating": "intimate",
+      "requires_age_verification": false,
+      "intensity": 8,
+      "branch_type": "escalate"
+    },
+    "referenceImage": {
+      "tags": ["dancing", "embrace", "movement"],
+      "crop": "full_body"
+    },
+    "isImageToVideo": true,
+    "startPose": "dancing_close",
+    "endPose": "dancing_pressed",
+    "cameraMovement": {
+      "type": "handheld",
+      "speed": "medium",
+      "path": "arc",
+      "focus": "dancers"
+    },
+    "consistency": {
+      "maintainPose": false,
+      "preserveLighting": false,
+      "preserveClothing": true,
+      "preservePosition": false
+    },
+    "intensityProgression": {
+      "start": 6,
+      "peak": 9,
+      "end": 8,
+      "pattern": "building"
+    },
+    "prompt": "Dance floor with pulsing lights. {{lead}} and {{partner}} move together to slow, sensual rhythm. Handheld camera captures their movement with natural sway. Bodies pressed close, {{lead}}'s hands on {{partner}}'s waist, pulling them impossibly closer with each beat. {{partner}}'s arms around {{lead}}'s neck, fingers in their hair. They move as one, hips swaying in sync. Camera arcs around them, catching glimpses through other dancers. Intensity builds as {{lead}} dips {{partner}} slightly, faces inches apart, breathing the same air. Lights shift across them creating dynamic shadows. Camera movement adds energy while maintaining focus on their connection.",
+    "negativePrompt": "static camera, separated bodies",
+    "style": "cinematic_handheld",
+    "durationSec": 9.0,
+    "compatibleNext": ["dance_kiss", "dance_exit_together", "dance_forehead_touch"],
+    "compatiblePrev": ["dance_approach", "dance_pull_close"]
+  },
+  {
+    "id": "shower_door_steam_reveal",
+    "kind": "transition",
+    "tags": {
+      "location": "bathroom",
+      "intimacy_level": "intimate",
+      "mood": "tension",
+      "content_rating": "suggestive",
+      "requires_age_verification": false,
+      "intensity": 6,
+      "branch_type": "escalate"
+    },
+    "from": {
+      "referenceImage": {
+        "tags": ["bathroom", "steam", "obscured"],
+        "crop": "waist_up"
+      },
+      "pose": "standing_behind_glass"
+    },
+    "to": {
+      "referenceImage": {
+        "tags": ["bathroom", "steam", "partial_clear"],
+        "crop": "waist_up"
+      },
+      "pose": "standing_visible"
+    },
+    "cameraMovement": {
+      "type": "static",
+      "focus": "shower_door"
+    },
+    "consistency": {
+      "maintainPose": true,
+      "preserveLighting": true,
+      "preserveClothing": false,
+      "preservePosition": true
+    },
+    "prompt": "Steamy bathroom. Camera static on frosted shower door. {{lead}}'s silhouette visible behind steam and glass. Smooth transition as steam slowly clears in patches, revealing glimpses - shoulder, collarbone, neck. {{lead}} maintains position throughout, aware of being watched. Hand presses against glass from inside, leaving clear print in condensation. More steam dissipates naturally. Artistic shadows and steam preserve modesty while building tension. Lighting remains soft and atmospheric throughout transition.",
+    "style": "artistic_silhouette",
+    "durationSec": 8.0,
+    "compatibleNext": ["shower_door_open", "shower_turn_away", "bathroom_wrapped_towel"],
+    "compatiblePrev": ["bathroom_enter", "shower_running_sound"]
+  },
+  {
+    "id": "intimate_tracking_approach",
+    "kind": "single_state",
+    "tags": {
+      "location": "hallway",
+      "pose": "walking",
+      "intimacy_level": "deep_flirt",
+      "mood": "anticipation",
+      "content_rating": "suggestive",
+      "requires_age_verification": false,
+      "intensity": 5,
+      "branch_type": "escalate"
+    },
+    "referenceImage": {
+      "tags": ["walking", "hallway", "approaching"],
+      "crop": "full_body"
+    },
+    "isImageToVideo": true,
+    "startPose": "walking_neutral",
+    "endPose": "standing_close",
+    "cameraMovement": {
+      "type": "tracking",
+      "speed": "medium",
+      "path": "linear",
+      "focus": "lead_character"
+    },
+    "consistency": {
+      "maintainPose": false,
+      "preserveLighting": true,
+      "preserveClothing": true,
+      "preservePosition": false
+    },
+    "intensityProgression": {
+      "start": 3,
+      "peak": 6,
+      "end": 5,
+      "pattern": "building"
+    },
+    "prompt": "Camera tracks {{lead}} walking down dimly lit hallway toward {{partner}}'s door. Confident stride but subtle nervousness - adjusting hair, smoothing clothes. Camera follows from behind at medium distance. {{lead}}'s hand hovers over door handle, hesitates. Deep breath visible in shoulder movement. Finally knocks softly. Door opens revealing {{partner}}, backlit. Camera continues tracking as {{lead}} steps closer. Moment of recognition, pupils dilating. Both aware of the tension. Camera settles as they stand in doorway, neither moving to let the other in yet. Anticipation palpable.",
+    "style": "noir_atmosphere",
+    "durationSec": 7.0,
+    "compatibleNext": ["doorway_invitation", "hallway_kiss", "apartment_enter"],
+    "compatiblePrev": ["elevator_exit", "hallway_walk"]
+  }
+]

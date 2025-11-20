@@ -1,0 +1,141 @@
+{
+  "package_info": {
+    "name": "vampire_seduction",
+    "version": "1.0.0",
+    "author": "Claude Sonnet + User Example",
+    "description": "Vampire seduction and hypnotic interaction blocks",
+    "content_rating_max": "intimate",
+    "created_date": "2024-01-15"
+  },
+  "creatures": {
+    "ancient_vampire": {
+      "base_type": "vampire",
+      "special_features": [
+        "ancient_power",
+        "hypnotic_gaze",
+        "mist_form",
+        "telepathic_influence"
+      ],
+      "texture_descriptors": [
+        "marble-cold skin",
+        "silken touch",
+        "ethereal presence"
+      ],
+      "unique_actions": [
+        "mesmerizing",
+        "mind_reading",
+        "dream_walking",
+        "blood_calling"
+      ],
+      "size_category": "medium"
+    }
+  },
+  "templates": {
+    "vampire_hypnotic_seduction": {
+      "name": "Vampire Hypnotic Seduction Template",
+      "template": "{{character}} {{initial_state}}, {{mental_state}}. {{vampire_description}} materializes {{appearance_style}}. {{hypnotic_action}} creating {{effect_description}}. {{character}} {{character_response}} as {{escalation}}. Camera {{camera_movement}} capturing {{focus_element}}. {{consistency_note}}.",
+      "required_params": [
+        "character",
+        "initial_state",
+        "vampire_description",
+        "hypnotic_action",
+        "character_response"
+      ],
+      "optional_params": [
+        "mental_state",
+        "appearance_style",
+        "effect_description",
+        "escalation",
+        "camera_movement",
+        "focus_element",
+        "consistency_note"
+      ],
+      "camera_template": "Camera {{camera_style}} with {{camera_focus}}.",
+      "consistency_defaults": {
+        "maintainPose": true,
+        "preserveLighting": false,
+        "preservePosition": true
+      }
+    }
+  },
+  "action_blocks": [
+    {
+      "id": "vampire_mirror_seduction",
+      "kind": "single_state",
+      "prompt": "She stands before an ornate mirror, unable to look away from her own reflection. The vampire materializes behind her, his image absent from the glass. Cold fingers hover just above her shoulders, never quite touching, creating an electric anticipation. His voice whispers directly into her mind, bypassing her ears entirely. She watches her own reactions in the mirror as invisible hands seem to caress her reflection. The vampire's presence grows stronger, his influence seeping into her thoughts. Camera slowly dollies in on the mirror, focusing on her mesmerized expression. Her position remains fixed, only her breathing and subtle trembling revealing the intensity.",
+      "tags": {
+        "creature": "vampire",
+        "location": "chamber",
+        "pose": "standing_mesmerized",
+        "mood": "hypnotic",
+        "intimacy_level": "intimate",
+        "content_rating": "intimate",
+        "intensity": 7,
+        "custom": ["mirror_scene", "mental_influence", "no_reflection"]
+      },
+      "referenceImage": {
+        "tags": ["standing", "mirror", "vampire_scene"],
+        "crop": "full_body"
+      },
+      "startPose": "standing_neutral",
+      "endPose": "standing_affected",
+      "cameraMovement": {
+        "type": "dolly",
+        "speed": "slow",
+        "path": "linear",
+        "focus": "mirror_reflection"
+      },
+      "consistency": {
+        "maintainPose": true,
+        "preserveLighting": false,
+        "preserveClothing": true,
+        "preservePosition": true
+      },
+      "intensityProgression": {
+        "start": 5,
+        "peak": 8,
+        "end": 7,
+        "pattern": "building"
+      },
+      "durationSec": 8.0,
+      "compatibleNext": ["vampire_bite", "vampire_embrace", "character_surrender"],
+      "compatiblePrev": ["vampire_approach", "character_waiting"],
+      "style": "gothic_atmospheric"
+    },
+    {
+      "id": "vampire_blood_trance",
+      "kind": "single_state",
+      "prompt": "She remains frozen in place, eyes glazed with the vampire's hypnotic influence. He circles her slowly, predatory grace in every movement. Without touching, he controls her breathing, each inhale deeper than the last. Her pulse becomes visible at her throat, beating in time with his gestures. The vampire's fangs extend as he draws closer, savoring the anticipation. She can only watch through her trance as he positions himself behind her. Camera rotates counter to his movement, creating a disorienting spiral effect. The hypnotic hold maintains her pose while her body responds involuntarily to his proximity.",
+      "tags": {
+        "creature": "vampire",
+        "pose": "standing_entranced",
+        "mood": "intense",
+        "intimacy_level": "very_intimate",
+        "content_rating": "intimate",
+        "intensity": 9,
+        "custom": ["hypnotic_control", "blood_focus", "trance_state"]
+      },
+      "cameraMovement": {
+        "type": "rotation",
+        "speed": "medium",
+        "path": "circular",
+        "focus": "both_subjects"
+      },
+      "consistency": {
+        "maintainPose": true,
+        "preserveLighting": true,
+        "preserveClothing": true,
+        "preservePosition": true
+      },
+      "intensityProgression": {
+        "start": 7,
+        "peak": 9,
+        "end": 8,
+        "pattern": "pulsing"
+      },
+      "durationSec": 9.0,
+      "compatibleNext": ["vampire_bite", "vampire_feeding", "character_awakening"],
+      "compatiblePrev": ["vampire_mirror_seduction", "vampire_hypnosis"]
+    }
+  ]
+}

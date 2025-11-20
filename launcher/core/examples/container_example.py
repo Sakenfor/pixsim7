@@ -35,7 +35,7 @@ def create_demo_services():
             key="backend",
             title="Backend API",
             program="python",
-            args=["-m", "uvicorn", "pixsim7_backend.main:app", "--port", "8000"],
+            args=["-m", "uvicorn", "pixsim7.backend.main.main:app", "--port", "8000"],
             cwd=str(root),
             env_overrides={"PYTHONPATH": str(root)},
             health_url="http://localhost:8000/health",
@@ -45,7 +45,7 @@ def create_demo_services():
             key="worker",
             title="ARQ Worker",
             program="python",
-            args=["-m", "arq", "pixsim7_backend.workers.arq_worker.WorkerSettings"],
+            args=["-m", "arq", "pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
             cwd=str(root),
             env_overrides={"PYTHONPATH": str(root)},
             health_grace_attempts=10

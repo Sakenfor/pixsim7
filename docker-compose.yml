@@ -41,7 +41,7 @@ services:
   # FastAPI Backend
   backend:
     build:
-      context: ./pixsim7_backend
+      context: ./pixsim7/backend/main
       dockerfile: Dockerfile
     container_name: pixsim7-backend
     depends_on:
@@ -64,12 +64,12 @@ services:
       - "${BACKEND_PORT:-8001}:${BACKEND_INTERNAL_PORT:-8000}"  # Configurable, default 8001:8000
     volumes:
       # Code for hot-reload
-      - ./pixsim7_backend:/app/pixsim7_backend
+      - ./pixsim7:/app/pixsim7
       # All application data in ./data
       - ./data/storage:/app/storage  # User uploads, generated videos
       - ./data/logs:/app/logs        # Application logs
       - ./data/cache:/app/cache      # Any cache files
-    command: uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -80,7 +80,7 @@ services:
   # ARQ Worker (Background Jobs)
   worker:
     build:
-      context: ./pixsim7_backend
+      context: ./pixsim7/backend/main
       dockerfile: Dockerfile
     container_name: pixsim7-worker
     depends_on:
@@ -97,12 +97,12 @@ services:
       ARQ_MAX_TRIES: ${ARQ_MAX_TRIES:-3}
     volumes:
       # Code for hot-reload
-      - ./pixsim7_backend:/app/pixsim7_backend
+      - ./pixsim7:/app/pixsim7
       # All application data in ./data (shared with backend)
       - ./data/storage:/app/storage  # User uploads, generated videos
       - ./data/logs:/app/logs        # Application logs
       - ./data/cache:/app/cache      # Any cache files
-    command: arq pixsim7_backend.workers.arq_worker.WorkerSettings
+    command: arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
     restart: unless-stopped
     logging:
       driver: "json-file"

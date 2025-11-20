@@ -1,0 +1,253 @@
+[
+  {
+    "id": "bench_approach_and_sit",
+    "kind": "transition",
+    "tags": {
+      "location": "bench_park",
+      "intimacy_level": "light_flirt",
+      "mood": "casual",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "maintain"
+    },
+    "from": {
+      "referenceImage": {
+        "npcId": null,
+        "tags": ["standing", "park", "evening"],
+        "crop": "full_body"
+      },
+      "pose": "standing_near"
+    },
+    "to": {
+      "referenceImage": {
+        "npcId": null,
+        "tags": ["sitting", "bench", "evening"],
+        "crop": "full_body"
+      },
+      "pose": "sitting_neutral"
+    },
+    "prompt": "Smooth transition from {{lead}} standing near the park bench to sitting down on it. The movement is casual and natural, maintaining the evening park atmosphere. Camera stays at medium distance showing full body. Preserve character appearance and lighting throughout.",
+    "style": "soft_cinema",
+    "durationSec": 5.0,
+    "compatibleNext": ["bench_sit_closer", "bench_turn_toward_partner"],
+    "compatiblePrev": ["park_walking_together"]
+  },
+  {
+    "id": "bench_sit_closer",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_neutral",
+      "intimacy_level": "deep_flirt",
+      "mood": "intimate",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "escalate",
+      "intensity": 4
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting", "bench", "couple"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_neutral",
+    "endPose": "sitting_close",
+    "prompt": "From this shot of {{lead}} and {{partner}} sitting on a park bench, {{lead}} subtly shifts closer to {{partner}}, closing the gap between them. The movement is gentle and deliberate, suggesting growing intimacy. Soft evening light, maintain facial features and clothing from reference.",
+    "style": "soft_cinema",
+    "durationSec": 6.0,
+    "compatibleNext": ["bench_hair_tuck", "bench_hand_touch", "bench_lean_together"],
+    "compatiblePrev": ["bench_approach_and_sit", "bench_neutral_conversation"]
+  },
+  {
+    "id": "bench_hair_tuck",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "intimate",
+      "mood": "tender",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "escalate",
+      "intensity": 6
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting_close", "bench", "intimate"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_close",
+    "prompt": "From this intimate shot of {{lead}} and {{partner}} sitting close on a park bench, {{lead}} reaches over and gently tucks a strand of {{partner}}'s hair behind their ear. The gesture is tender and intimate. Both are looking into each other's eyes. Soft focus background, golden hour lighting.",
+    "style": "soft_cinema",
+    "durationSec": 7.0,
+    "compatibleNext": ["bench_almost_kiss", "bench_forehead_touch", "bench_pull_back_shy"],
+    "compatiblePrev": ["bench_sit_closer", "bench_lean_together"]
+  },
+  {
+    "id": "bench_almost_kiss",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "very_intimate",
+      "mood": "passionate",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "escalate",
+      "intensity": 8
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting_close", "faces_close", "intimate"],
+      "crop": "portrait"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "almost_kiss",
+    "prompt": "Close intimate shot of {{lead}} and {{partner}} on the bench. They lean toward each other slowly, faces drawing close, lips almost touching, eyes starting to close. The tension is palpable. Hold at the moment just before the kiss. Shallow depth of field, warm lighting, highly emotional.",
+    "negativePrompt": "actual kissing, lips touching",
+    "style": "soft_cinema",
+    "durationSec": 8.0,
+    "compatibleNext": ["bench_first_kiss", "bench_pull_back_nervous", "bench_interrupted"],
+    "compatiblePrev": ["bench_hair_tuck", "bench_hand_touch"]
+  },
+  {
+    "id": "bench_first_kiss",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "very_intimate",
+      "mood": "passionate",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "escalate",
+      "intensity": 9,
+      "custom": ["milestone", "romantic"]
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting_close", "kissing", "intimate"],
+      "crop": "portrait"
+    },
+    "isImageToVideo": true,
+    "startPose": "almost_kiss",
+    "endPose": "kissing",
+    "prompt": "From the moment of almost kissing, {{lead}} and {{partner}} finally close the distance. Their lips meet in a soft, tender first kiss. The kiss is gentle and emotional, lasting a few seconds before they slowly pull back, eyes still closed. Intimate close-up, warm lighting, deeply romantic.",
+    "style": "soft_cinema",
+    "durationSec": 8.0,
+    "compatibleNext": ["bench_after_kiss_smile", "bench_second_kiss", "bench_embrace"],
+    "compatiblePrev": ["bench_almost_kiss"]
+  },
+  {
+    "id": "bench_pull_back_shy",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "intimate",
+      "mood": "nervous",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "cool_down",
+      "intensity": 3
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting", "bench", "shy"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_turned",
+    "prompt": "{{lead}} starts to lean in but then pulls back shyly, looking away with a nervous smile. {{partner}} also looks slightly embarrassed but pleased. The moment is sweet and awkward. They both laugh softly. Natural lighting, genuine emotions.",
+    "style": "soft_cinema",
+    "durationSec": 6.0,
+    "compatibleNext": ["bench_nervous_laugh", "bench_hand_hold", "bench_look_at_stars"],
+    "compatiblePrev": ["bench_hair_tuck", "bench_almost_kiss"]
+  },
+  {
+    "id": "bench_hand_touch",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "deep_flirt",
+      "mood": "tender",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "escalate",
+      "intensity": 5
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting", "bench", "hands"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_close",
+    "prompt": "Medium shot showing {{lead}} and {{partner}} sitting close on the bench. {{lead}}'s hand slowly moves to rest near {{partner}}'s hand on the bench. Their fingers brush, then gently intertwine. Focus shifts to their joined hands, then back to their faces showing soft smiles.",
+    "style": "soft_cinema",
+    "durationSec": 7.0,
+    "compatibleNext": ["bench_lean_together", "bench_hair_tuck", "bench_stand_up_together"],
+    "compatiblePrev": ["bench_sit_closer", "bench_pull_back_shy"]
+  },
+  {
+    "id": "bench_lean_together",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "intimate",
+      "mood": "comfortable",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "maintain",
+      "intensity": 6
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting_leaning", "bench", "couple"],
+      "crop": "full_body"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_leaning",
+    "prompt": "Wide shot of {{lead}} and {{partner}} on the park bench. {{partner}} leans their head onto {{lead}}'s shoulder. {{lead}} gently rests their head against {{partner}}'s. They sit in comfortable silence, watching the evening sky. Peaceful and intimate mood.",
+    "style": "soft_cinema",
+    "durationSec": 8.0,
+    "compatibleNext": ["bench_kiss_forehead", "bench_whisper", "bench_stand_up_together"],
+    "compatiblePrev": ["bench_hand_touch", "bench_hair_tuck"]
+  },
+  {
+    "id": "bench_interrupted",
+    "kind": "single_state",
+    "tags": {
+      "location": "bench_park",
+      "pose": "sitting_close",
+      "intimacy_level": "intimate",
+      "mood": "surprised",
+      "time_of_day": "evening",
+      "indoors": false,
+      "branch_type": "side_branch",
+      "intensity": 2
+    },
+    "referenceImage": {
+      "npcId": null,
+      "tags": ["sitting", "bench", "surprised"],
+      "crop": "waist_up"
+    },
+    "isImageToVideo": true,
+    "startPose": "sitting_close",
+    "endPose": "sitting_turned",
+    "prompt": "{{lead}} and {{partner}} are leaning close when something off-screen catches their attention. They both turn to look in the same direction, creating distance between them. The intimate moment is broken but they share an amused look. Natural reaction to interruption.",
+    "style": "soft_cinema",
+    "durationSec": 5.0,
+    "compatibleNext": ["bench_nervous_laugh", "bench_stand_up_together"],
+    "compatiblePrev": ["bench_almost_kiss", "bench_hair_tuck"]
+  }
+]
