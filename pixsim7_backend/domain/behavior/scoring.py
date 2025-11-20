@@ -5,18 +5,35 @@ Handles:
 - Activity scoring based on preferences, traits, mood, relationships
 - Activity selection (weighted random choice)
 - Preference merging (defaults + overrides)
+
+Task 28.1: Pluggable scoring factors - plugins can register custom factors
 """
 
 from __future__ import annotations
 
 import random
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import logging
 
 from .conditions import evaluate_conditions_all
 
 logger = logging.getLogger(__name__)
+
+
+# ==================
+# Scoring Factor Registry
+# ==================
+
+# Type alias for scoring factor functions
+# Function signature: (activity, npc_preferences, npc_state, context, factor_weight) -> float
+ScoringFactorFunc = Callable[
+    [Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], float],
+    float
+]
+
+# Registry of scoring factors (built-in + plugin-registered)
+SCORING_FACTORS: Dict[str, ScoringFactorFunc] = {}
 
 
 # Default scoring weights (can be overridden per-world)
@@ -30,6 +47,43 @@ DEFAULT_SCORING_WEIGHTS = {
     "urgency": 1.2,
     "inertia": 0.3,
 }
+
+
+def register_scoring_factor(
+    factor_id: str,
+    evaluator: ScoringFactorFunc,
+    default_weight: float = 1.0
+) -> bool:
+    """
+    Register a custom scoring factor.
+
+    Args:
+        factor_id: Unique ID for the factor (e.g., "weather_preference", "plugin:my_plugin:social_fatigue")
+        evaluator: Function that calculates the factor contribution
+        default_weight: Default weight for this factor in DEFAULT_SCORING_WEIGHTS
+
+    Returns:
+        True if registered successfully, False if already exists
+
+    Example:
+        def my_weather_factor(activity, npc_prefs, npc_state, context, weight):
+            # Custom logic here
+            return 1.0  # multiplier
+
+        register_scoring_factor("weather_preference", my_weather_factor, 0.5)
+    """
+    if factor_id in SCORING_FACTORS:
+        logger.warning(f"Scoring factor '{factor_id}' already registered")
+        return False
+
+    SCORING_FACTORS[factor_id] = evaluator
+
+    # Add default weight if not already present
+    if factor_id not in DEFAULT_SCORING_WEIGHTS:
+        DEFAULT_SCORING_WEIGHTS[factor_id] = default_weight
+
+    logger.info(f"Registered scoring factor: {factor_id} (weight={default_weight})")
+    return True
 
 
 def merge_preferences(
@@ -71,6 +125,8 @@ def calculate_activity_score(
     """
     Calculate score for an activity based on NPC preferences and context.
 
+    Uses pluggable scoring factors from SCORING_FACTORS registry.
+
     Args:
         activity: Activity dict
         npc_preferences: Merged NPC preferences
@@ -87,41 +143,37 @@ def calculate_activity_score(
 
     weights = {**DEFAULT_SCORING_WEIGHTS, **scoring_weights}
 
-    # Start with base weight
-    score = base_weight * weights["baseWeight"]
+    # Start with base score
+    score = base_weight
 
-    # Activity-specific preference
-    activity_id = activity.get("id", "")
-    activity_weights = npc_preferences.get("activityWeights", {})
-    activity_pref = activity_weights.get(activity_id, 0.5)  # Default to neutral
-    score *= activity_pref * weights["activityPreference"]
+    # Apply all registered scoring factors
+    for factor_id, factor_func in SCORING_FACTORS.items():
+        # Get weight for this factor (default to 1.0 if not specified)
+        factor_weight = weights.get(factor_id, 1.0)
 
-    # Category preference
-    category = activity.get("category", "")
-    category_weights = npc_preferences.get("categoryWeights", {})
-    category_pref = category_weights.get(category, 0.5)  # Default to neutral
-    score *= category_pref * weights["categoryPreference"]
+        if factor_weight == 0:
+            # Skip factors with zero weight
+            continue
 
-    # Personality trait modifiers
-    trait_mult = _calculate_trait_multiplier(activity, npc_preferences)
-    score *= (1 + (trait_mult - 1) * weights["traitModifier"])
+        try:
+            # Call factor function to get its contribution
+            factor_contribution = factor_func(
+                activity,
+                npc_preferences,
+                npc_state,
+                context,
+                factor_weight
+            )
 
-    # Mood compatibility
-    mood_mult = _calculate_mood_compatibility(activity, npc_state)
-    score *= (1 + (mood_mult - 1) * weights["moodCompatibility"])
+            # Apply factor contribution to score
+            score *= factor_contribution
 
-    # Relationship bonuses
-    rel_mult = _calculate_relationship_multiplier(activity, context)
-    score *= (1 + (rel_mult - 1) * weights["relationshipBonus"])
-
-    # Urgency (low energy → boost rest activities, etc.)
-    urgency_mult = _calculate_urgency_multiplier(activity, npc_state)
-    score *= (1 + (urgency_mult - 1) * weights["urgency"])
-
-    # Inertia (prefer current activity)
-    current_activity_id = npc_state.get("currentActivityId")
-    if current_activity_id == activity_id:
-        score *= (1 + weights["inertia"])
+        except Exception as e:
+            logger.error(
+                f"Error calculating scoring factor '{factor_id}': {e}",
+                exc_info=True
+            )
+            # Continue with other factors (don't let one broken factor kill scoring)
 
     # Ensure score never reaches exactly 0
     return max(0.001, score)
@@ -400,3 +452,123 @@ def _meets_requirements(
     # - timeOfDay
 
     return True
+
+
+# ==================
+# Built-in Scoring Factors
+# ==================
+
+def _factor_activity_preference(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Activity-specific preference scoring factor."""
+    activity_id = activity.get("id", "")
+    activity_weights = npc_preferences.get("activityWeights", {})
+    activity_pref = activity_weights.get(activity_id, 0.5)  # Default to neutral
+    return activity_pref * weight
+
+
+def _factor_category_preference(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Category preference scoring factor."""
+    category = activity.get("category", "")
+    category_weights = npc_preferences.get("categoryWeights", {})
+    category_pref = category_weights.get(category, 0.5)  # Default to neutral
+    return category_pref * weight
+
+
+def _factor_trait_modifier(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Personality trait modifier scoring factor."""
+    trait_mult = _calculate_trait_multiplier(activity, npc_preferences)
+    return 1 + (trait_mult - 1) * weight
+
+
+def _factor_mood_compatibility(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Mood compatibility scoring factor."""
+    mood_mult = _calculate_mood_compatibility(activity, npc_state)
+    return 1 + (mood_mult - 1) * weight
+
+
+def _factor_relationship_bonus(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Relationship bonus scoring factor."""
+    rel_mult = _calculate_relationship_multiplier(activity, context)
+    return 1 + (rel_mult - 1) * weight
+
+
+def _factor_urgency(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Urgency scoring factor (low energy → boost rest activities)."""
+    urgency_mult = _calculate_urgency_multiplier(activity, npc_state)
+    return 1 + (urgency_mult - 1) * weight
+
+
+def _factor_inertia(
+    activity: Dict[str, Any],
+    npc_preferences: Dict[str, Any],
+    npc_state: Dict[str, Any],
+    context: Dict[str, Any],
+    weight: float
+) -> float:
+    """Inertia scoring factor (prefer current activity)."""
+    activity_id = activity.get("id", "")
+    current_activity_id = npc_state.get("currentActivityId")
+
+    if current_activity_id == activity_id:
+        return 1 + weight
+    else:
+        return 1.0
+
+
+def _register_builtin_scoring_factors():
+    """
+    Register all built-in scoring factors.
+
+    This function is called at module load time to populate the SCORING_FACTORS registry.
+    Built-in factors use the same registration pathway as plugin factors.
+    """
+    # Note: We use DEFAULT_SCORING_WEIGHTS to get the default weight for each factor
+    register_scoring_factor("activityPreference", _factor_activity_preference, DEFAULT_SCORING_WEIGHTS["activityPreference"])
+    register_scoring_factor("categoryPreference", _factor_category_preference, DEFAULT_SCORING_WEIGHTS["categoryPreference"])
+    register_scoring_factor("traitModifier", _factor_trait_modifier, DEFAULT_SCORING_WEIGHTS["traitModifier"])
+    register_scoring_factor("moodCompatibility", _factor_mood_compatibility, DEFAULT_SCORING_WEIGHTS["moodCompatibility"])
+    register_scoring_factor("relationshipBonus", _factor_relationship_bonus, DEFAULT_SCORING_WEIGHTS["relationshipBonus"])
+    register_scoring_factor("urgency", _factor_urgency, DEFAULT_SCORING_WEIGHTS["urgency"])
+    register_scoring_factor("inertia", _factor_inertia, DEFAULT_SCORING_WEIGHTS["inertia"])
+
+    logger.info(f"Registered {len(SCORING_FACTORS)} built-in scoring factors")
+
+
+# Register built-in scoring factors at module load time
+_register_builtin_scoring_factors()

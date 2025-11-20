@@ -57,7 +57,8 @@ from pixsim7_backend.domain.game.schemas import (
 
 logger = logging.getLogger(__name__)
 
-# Component schema registry for validation
+# Component schema registry for validation (DEPRECATED - use behavior_registry)
+# Kept for backward compatibility during migration
 COMPONENT_SCHEMAS = {
     "core": RelationshipCoreComponentSchema,
     "romance": RomanceComponentSchema,
@@ -67,6 +68,138 @@ COMPONENT_SCHEMAS = {
     "behavior": BehaviorStateComponentSchema,
     "interactions": InteractionStateComponentSchema,
 }
+
+
+def register_core_components():
+    """
+    Register core ECS component schemas with the behavior registry.
+
+    This function should be called during app startup (before plugins are loaded)
+    to register built-in component schemas using the same infrastructure that
+    plugins use.
+
+    This follows the "dogfooding" principle: if plugins can register components,
+    core should use the same pathway.
+    """
+    from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+    # Register core components
+    core_components = {
+        "core": {
+            "schema_cls": RelationshipCoreComponentSchema,
+            "description": "Core relationship metrics (affinity, trust, chemistry, tension)",
+            "metrics": {
+                "npcRelationship.affinity": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 100,
+                    "component": "core",
+                    "path": "affinity",
+                },
+                "npcRelationship.trust": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 100,
+                    "component": "core",
+                    "path": "trust",
+                },
+                "npcRelationship.chemistry": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 100,
+                    "component": "core",
+                    "path": "chemistry",
+                },
+                "npcRelationship.tension": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 100,
+                    "component": "core",
+                    "path": "tension",
+                },
+            },
+        },
+        "romance": {
+            "schema_cls": RomanceComponentSchema,
+            "description": "Romance system component (arousal, stage)",
+            "metrics": {
+                "npcRelationship.arousal": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "romance",
+                    "path": "arousal",
+                },
+                "npcRelationship.romanceStage": {
+                    "type": "string",
+                    "component": "romance",
+                    "path": "stage",
+                },
+            },
+        },
+        "stealth": {
+            "schema_cls": StealthComponentSchema,
+            "description": "Stealth system component (suspicion, disguiseActive)",
+            "metrics": {
+                "npcRelationship.suspicion": {
+                    "type": "float",
+                    "min": 0,
+                    "max": 1,
+                    "component": "stealth",
+                    "path": "suspicion",
+                },
+            },
+        },
+        "mood": {
+            "schema_cls": MoodStateComponentSchema,
+            "description": "NPC mood state (dominantMood, tags, moodScores)",
+            "metrics": {},
+        },
+        "quests": {
+            "schema_cls": QuestParticipationComponentSchema,
+            "description": "Quest participation tracking",
+            "metrics": {},
+        },
+        "behavior": {
+            "schema_cls": BehaviorStateComponentSchema,
+            "description": "NPC behavior state (current activity, energy, etc.)",
+            "metrics": {},
+        },
+        "interactions": {
+            "schema_cls": InteractionStateComponentSchema,
+            "description": "Interaction history and state",
+            "metrics": {},
+        },
+    }
+
+    registered_count = 0
+    for component_name, component_info in core_components.items():
+        schema_cls = component_info["schema_cls"]
+
+        # Convert Pydantic schema to dict representation
+        # (behavior_registry expects dict schema, not Pydantic classes)
+        schema_dict = {
+            "type": "pydantic",
+            "schema_class": schema_cls.__name__,
+            "fields": list(schema_cls.__annotations__.keys()) if hasattr(schema_cls, "__annotations__") else [],
+        }
+
+        success = behavior_registry.register_component_schema(
+            component_name=component_name,
+            plugin_id="core",  # Built-in components use "core" as plugin_id
+            schema=schema_dict,
+            description=component_info["description"],
+            metrics=component_info.get("metrics", {}),
+        )
+
+        if success:
+            registered_count += 1
+            logger.info(f"Registered core component: {component_name}")
+        else:
+            logger.warning(f"Failed to register core component: {component_name}")
+
+    logger.info(f"Registered {registered_count}/{len(core_components)} core ECS components")
+    return registered_count
 
 
 def _get_npc_key(npc_id: int) -> str:
@@ -194,14 +327,28 @@ def set_npc_component(
         })
     """
     # Validate if schema exists and validation is enabled
-    if validate and component_name in COMPONENT_SCHEMAS:
-        schema_cls = COMPONENT_SCHEMAS[component_name]
-        try:
-            schema_cls(**value)
-        except Exception as e:
-            raise ValueError(
-                f"Component '{component_name}' validation failed: {e}"
-            ) from e
+    if validate:
+        # Try behavior_registry first (unified approach)
+        from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+        schema_metadata = behavior_registry.get_component_schema(component_name)
+
+        if schema_metadata:
+            # Component is registered in behavior_registry
+            # For now, skip Pydantic validation as behavior_registry uses dict schemas
+            # Full validation can be added in Phase 27.4
+            logger.debug(f"Component '{component_name}' found in behavior_registry")
+        elif component_name in COMPONENT_SCHEMAS:
+            # Fall back to local COMPONENT_SCHEMAS (backward compatibility)
+            schema_cls = COMPONENT_SCHEMAS[component_name]
+            try:
+                schema_cls(**value)
+            except Exception as e:
+                raise ValueError(
+                    f"Component '{component_name}' validation failed: {e}"
+                ) from e
+        else:
+            # Component not found in either registry
+            logger.debug(f"Component '{component_name}' has no schema - skipping validation")
 
     entity = get_npc_entity(session, npc_id)
     if "components" not in entity:

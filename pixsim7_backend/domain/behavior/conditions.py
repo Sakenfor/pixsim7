@@ -7,6 +7,8 @@ Provides a DSL for evaluating conditions in:
 - Simulation prioritization
 
 Supports built-in condition types and extensible custom evaluators.
+
+Built-in conditions now use the behavior_registry for uniform registration.
 """
 
 from __future__ import annotations
@@ -23,8 +25,17 @@ logger = logging.getLogger(__name__)
 ConditionEvaluator = Callable[[Dict[str, Any], Dict[str, Any]], bool]
 
 
-# Global registry of custom condition evaluators
+# Global registry of custom condition evaluators (DEPRECATED - use behavior_registry)
 CONDITION_EVALUATORS: Dict[str, ConditionEvaluator] = {}
+
+
+# ==================
+# Built-in Condition Registry
+# ==================
+
+# Registry of built-in condition evaluators
+# These are registered with behavior_registry at startup
+BUILTIN_CONDITIONS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], bool]] = {}
 
 
 def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluator) -> None:
@@ -42,6 +53,8 @@ def register_condition_evaluator(evaluator_id: str, evaluator: ConditionEvaluato
 def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
     """
     Evaluate a single condition using the Condition DSL.
+
+    Uses unified registry lookup for both built-in and plugin conditions.
 
     Args:
         condition: Condition dict with 'type' and type-specific fields
@@ -64,32 +77,30 @@ def evaluate_condition(condition: Dict[str, Any], context: Dict[str, Any]) -> bo
         return False
 
     try:
-        # Built-in condition types
-        if cond_type == "relationship_gt":
-            return _eval_relationship_gt(condition, context)
-        elif cond_type == "relationship_lt":
-            return _eval_relationship_lt(condition, context)
-        elif cond_type == "flag_equals":
-            return _eval_flag_equals(condition, context)
-        elif cond_type == "flag_exists":
-            return _eval_flag_exists(condition, context)
-        elif cond_type == "mood_in":
-            return _eval_mood_in(condition, context)
-        elif cond_type == "energy_between":
-            return _eval_energy_between(condition, context)
-        elif cond_type == "random_chance":
-            return _eval_random_chance(condition, context)
-        elif cond_type == "time_of_day_in":
-            return _eval_time_of_day_in(condition, context)
-        elif cond_type == "location_type_in":
-            return _eval_location_type_in(condition, context)
-        elif cond_type == "custom":
+        # Try built-in conditions registry first
+        if cond_type in BUILTIN_CONDITIONS:
+            evaluator = BUILTIN_CONDITIONS[cond_type]
+            return evaluator(condition, context)
+
+        # Try plugin conditions via behavior_registry
+        # Plugin conditions are registered with fully qualified IDs (e.g., "plugin:my_plugin:my_condition")
+        if cond_type.startswith("plugin:"):
+            from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+            metadata = behavior_registry.get_condition(cond_type)
+            if metadata:
+                # Plugin conditions expect just the context, not (condition, context)
+                return metadata.evaluator(context)
+            else:
+                logger.warning(f"Plugin condition not found in registry: {cond_type}")
+                return False
+
+        # Special handling for 'custom' type (legacy compatibility)
+        if cond_type == "custom":
             return _eval_custom(condition, context)
-        elif cond_type == "expression":
-            return _eval_expression(condition, context)
-        else:
-            logger.warning(f"Unknown condition type: {cond_type}")
-            return False
+
+        # Unknown condition type
+        logger.warning(f"Unknown condition type: {cond_type}")
+        return False
 
     except Exception as e:
         logger.error(f"Error evaluating condition {cond_type}: {e}", exc_info=True)
@@ -319,7 +330,36 @@ def _example_evaluator_has_item(params: Dict[str, Any], context: Dict[str, Any])
     return inventory.get(item_id, 0) >= quantity
 
 
-# Register example evaluators
+# Register example evaluators (DEPRECATED - kept for backward compatibility)
 register_condition_evaluator("evaluator:is_raining", _example_evaluator_is_raining)
 register_condition_evaluator("evaluator:quest_active", _example_evaluator_quest_active)
 register_condition_evaluator("evaluator:has_item", _example_evaluator_has_item)
+
+
+# ==================
+# Register Built-in Conditions
+# ==================
+
+def _register_builtin_conditions():
+    """
+    Register all built-in condition evaluators.
+
+    This function is called at module load time to populate the BUILTIN_CONDITIONS registry.
+    Built-in conditions use the same lookup pathway as plugin conditions.
+    """
+    BUILTIN_CONDITIONS["relationship_gt"] = _eval_relationship_gt
+    BUILTIN_CONDITIONS["relationship_lt"] = _eval_relationship_lt
+    BUILTIN_CONDITIONS["flag_equals"] = _eval_flag_equals
+    BUILTIN_CONDITIONS["flag_exists"] = _eval_flag_exists
+    BUILTIN_CONDITIONS["mood_in"] = _eval_mood_in
+    BUILTIN_CONDITIONS["energy_between"] = _eval_energy_between
+    BUILTIN_CONDITIONS["random_chance"] = _eval_random_chance
+    BUILTIN_CONDITIONS["time_of_day_in"] = _eval_time_of_day_in
+    BUILTIN_CONDITIONS["location_type_in"] = _eval_location_type_in
+    BUILTIN_CONDITIONS["expression"] = _eval_expression
+
+    logger.info(f"Registered {len(BUILTIN_CONDITIONS)} built-in condition evaluators")
+
+
+# Register built-in conditions at module load time
+_register_builtin_conditions()
