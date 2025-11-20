@@ -49,6 +49,24 @@ export {
   getMetricPreviewApiConfig,
 } from './metrics/preview';
 
+// ===== Scenarios =====
+
+// Snapshot & scenario runner types
+export type {
+  SessionSnapshot,
+  WorldSnapshot,
+  SnapshotCaptureResult,
+  SnapshotRestoreResult,
+  ScenarioStep,
+  TickStep,
+  InteractionStep,
+  NarrativeStep,
+  AssertStep,
+  ScenarioScript,
+  ScenarioScriptMetadata,
+} from './scenarios';
+export { extractScenarioMetadata } from './scenarios';
+
 // Social Context (for generation system)
 export {
   buildGenerationSocialContext,

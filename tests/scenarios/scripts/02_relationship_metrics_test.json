@@ -1,0 +1,59 @@
+{
+  "id": "relationship_metrics_test",
+  "name": "Relationship Metrics Test",
+  "description": "Tests relationship metric validation and tier computation",
+  "snapshot": {
+    "world_id": 1,
+    "world_meta": {
+      "relationship_schemas": {
+        "stranger": { "min": -100, "max": 20 },
+        "acquaintance": { "min": 20, "max": 50 },
+        "friend": { "min": 50, "max": 80 },
+        "close_friend": { "min": 80, "max": 100 }
+      },
+      "intimacy_schema": {
+        "none": { "min_affinity": 0, "min_trust": 0 },
+        "friendly": { "min_affinity": 40, "min_trust": 30 },
+        "intimate": { "min_affinity": 70, "min_trust": 60 }
+      }
+    },
+    "world_time": 0.0,
+    "sessions": [
+      {
+        "session_id": 1,
+        "flags": {
+          "sessionKind": "world"
+        },
+        "relationships": {
+          "npc:1": {
+            "affinity": 55,
+            "trust": 45,
+            "chemistry": 50,
+            "tension": 10,
+            "tierId": "friend",
+            "intimacyLevelId": "friendly"
+          }
+        },
+        "world_time": 0.0,
+        "version": 1
+      }
+    ]
+  },
+  "steps": [
+    {
+      "kind": "assert",
+      "assert_id": "initial_affinity",
+      "description": "NPC 1 affinity should be 55"
+    },
+    {
+      "kind": "assert",
+      "assert_id": "initial_tier",
+      "description": "NPC 1 should be at 'friend' tier"
+    },
+    {
+      "kind": "assert",
+      "assert_id": "consent_check",
+      "description": "No intimate scenes without consent"
+    }
+  ]
+}
