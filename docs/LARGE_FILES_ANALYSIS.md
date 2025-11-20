@@ -87,6 +87,33 @@ domain/game/schemas/
 
 ---
 
+### prompts.py → 5 Focused Modules (2025-11-20)
+
+**Before:** Single 1058-line file with 26 routes across multiple prompt management phases
+
+**After:** Split into focused modules:
+```
+api/v1/prompts/
+├── __init__.py           26 lines  (Router aggregation)
+├── schemas.py           100 lines  (Request/Response models)
+├── families.py          316 lines  (Family & Version CRUD endpoints)
+├── variants.py          129 lines  (Variant feedback & ratings)
+├── analytics.py         152 lines  (Diff, compare, analytics)
+└── operations.py        410 lines  (Batch, import/export, search, templates, validation)
+```
+
+**Benefits:**
+- AI agents can read entire focused modules without context truncation
+- Clear intent from filenames (analytics.py vs scrolling through 1058 lines)
+- Multiple agents can work on different modules simultaneously
+- Average file size: ~190 lines per module vs 1058 lines
+- Better navigation for autonomous AI exploration
+- Backward compatibility maintained via prompts.py re-export
+
+**Updated:** prompts.py now a compatibility layer re-exporting from prompts/ package
+
+---
+
 ## Top 10 Largest Files
 
 | File | Lines | Type | Recommendation |
