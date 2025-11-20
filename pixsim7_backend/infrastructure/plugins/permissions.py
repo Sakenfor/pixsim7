@@ -522,14 +522,13 @@ class CapabilityMetadata(BaseModel):
     """Example use cases"""
 
 
-# Capability registry (populated when capability APIs are implemented in Phase 16.3)
-CAPABILITY_REGISTRY: dict[str, CapabilityMetadata] = {}
-
-
-def register_capability(metadata: CapabilityMetadata) -> None:
-    """
-    Register a capability API with the permission system.
-
-    Called by capability API implementations to register themselves.
-    """
-    CAPABILITY_REGISTRY[metadata.name] = metadata
+# ===== CAPABILITY REGISTRY - REMOVED (Dead Code) =====
+#
+# NOTE: Capability registry was removed as dead code (2025-11-20)
+# - Was defined and written to, but never read from anywhere in the codebase
+# - Capability APIs directly check permissions via BaseCapabilityAPI._check_permission()
+# - No introspection/documentation use case materialized
+#
+# If capability introspection is needed in the future, consider:
+# - Auto-generating capability docs from CapabilityMetadata docstrings
+# - Using type hints for IDE autocomplete instead of runtime registry
