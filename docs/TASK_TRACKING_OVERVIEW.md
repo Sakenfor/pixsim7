@@ -28,7 +28,7 @@ This document provides a **single source of truth** for what's been completed an
 | 07 | Relationship Preview API & Metrics | ✅ Mostly Complete | 9.5/10 | Phase 6 partial (TS fallback deprecated) |
 | 08 | Social Metrics & NPC Systems | ✅ Complete | 10/10 | All phases implemented |
 | 09 | Intimacy & Scene Generation Prompts | ✅ Complete | 10/10 | Reference implementation complete |
-| 10 | Unified Generation Pipeline | ⏸️ Partial | 5/10 | Core phases 1-5 done; 6-10 pending |
+| 10 | Unified Generation Pipeline | ⏸️ Partial | 6/10 | Phases 1-5, 8 done; 6-7, 9-10 pending |
 | 11 | World-Aware Session Normalization | ✅ Complete | 10/10 | All phases implemented with migration |
 | 12 | Intimacy Scene Composer | ✅ Complete | 7/7 | All phases implemented |
 | 13 | NPC Behavior System | 📝 Design | 0/N | Design document only, not implemented |
@@ -45,8 +45,8 @@ This document provides a **single source of truth** for what's been completed an
 | 24 | Architecture Validation | ✅ Complete | 5/5 | Validation completed 2025-11-19 |
 | 25 | Snapshot & Scenario Runner | ⏸️ Partial | 5/5 | All phases marked complete but needs verification |
 | 26 | Character Identity & Scene-Asset Graph | ✅ Complete | 5/5 | All phases complete; graph API + frontend browser |
-| 27 | Registry Unification & Dogfooding | 🔄 In Progress | 0/4 | Removes if/elif chains; makes core use plugin APIs |
-| 28 | Extensible Scoring & Simulation Config | 🔄 In Progress | 0/5 | Enables plugin-added scoring factors & custom styles |
+| 27 | Registry Unification & Dogfooding | ✅ Complete | 4/4 | All phases complete; core now uses plugin APIs |
+| 28 | Extensible Scoring & Simulation Config | ✅ Complete | 5/5 | All phases complete; pluggable scoring + custom styles |
 
 **Legend:**
 - ✅ Complete: All or nearly all phases done
@@ -293,6 +293,63 @@ This document provides a **single source of truth** for what's been completed an
 
 ---
 
+#### Task 27: Registry Unification & Built-in Dogfooding
+**Status:** ✅ All 4 phases complete (2025-11-20)
+
+**What it does:**
+- Unified registration patterns so core features use the same plugin infrastructure they offer to plugins
+- Philosophy: "If a plugin could do X, core should use the same pathway when doing X built-in"
+
+**Complete:**
+- Phase 1: Registry-ify built-in conditions (replaced 40+ line if/elif chain with `BUILTIN_CONDITIONS` dict)
+- Phase 2: Unify component registration (core ECS components now register through `behavior_registry`)
+- Phase 3: Data-driven behavior profiles (custom profiles definable in world metadata)
+- Phase 4: Testing & documentation
+
+**Key Changes:**
+- `conditions.py`: Built-in conditions use registry lookup instead of if/elif chain
+- `ecs.py`: Added `register_core_components()` called at startup
+- `gameProfile.ts`: Behavior profiles lookup world metadata first, then fall back to built-ins
+- Uniform code paths for core and plugins
+
+**Key Files:**
+- `pixsim7_backend/domain/behavior/conditions.py`
+- `pixsim7_backend/domain/game/ecs.py`
+- `pixsim7_backend/main.py`
+- `packages/game-core/src/world/gameProfile.ts`
+- `claude-tasks/27-registry-unification-and-builtin-dogfooding.md`
+
+---
+
+#### Task 28: Extensible Scoring & Simulation Configuration
+**Status:** ✅ All 5 phases complete (2025-11-20)
+
+**What it does:**
+- Pluggable scoring factors for activity selection
+- Per-world simulation tier overrides
+- Custom game styles and behavior profiles
+
+**Complete:**
+- Phase 1: Pluggable scoring factor registry (plugins can register custom scoring factors)
+- Phase 2: Default scoring factor set (baseWeight, activityPreference, categoryPreference, traitModifier, etc.)
+- Phase 3: Per-world scoring overrides via `world.meta.behavior.scoringConfig`
+- Phase 4: Simulation tier overrides via `world.meta.simulationConfig.tierLimits`
+- Phase 5: Testing & documentation
+
+**Key Changes:**
+- `scoring.py`: Added `SCORING_FACTORS` registry and `register_scoring_factor()` API
+- `gameProfile.ts`: Added `getDefaultSimulationTierLimits()` with world metadata support
+- Custom behavior profiles: Worlds can define profiles in `meta.behavior.behaviorProfiles`
+- Custom game styles: Non-core styles fall back to 'hybrid' defaults
+
+**Key Files:**
+- `pixsim7_backend/domain/behavior/scoring.py`
+- `packages/game-core/src/world/gameProfile.ts`
+- `packages/types/src/game.ts`
+- `claude-tasks/28-extensible-scoring-and-simulation-config.md`
+
+---
+
 ### ⏸️ PARTIALLY COMPLETE TASKS
 
 #### Task 01: World HUD Layout Designer
@@ -364,7 +421,7 @@ This document provides a **single source of truth** for what's been completed an
 ---
 
 #### Task 10: Unified Generation Pipeline
-**Status:** 5/10 phases complete
+**Status:** 6/10 phases complete (Phase 8 added 2025-11-20)
 
 **Complete:**
 - Phase 1: Migration to unified `Generation` model
@@ -372,11 +429,11 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 3: Prompt versioning & `prompt_config` integration
 - Phase 4: Social context & intimacy integration
 - Phase 5: Validation & health panel
+- Phase 8: Safety & content rating enforcement (2025-11-20)
 
 **Pending:**
 - Phase 6: Caching, determinism & seed strategy
 - Phase 7: Telemetry (cost, latency, provider health)
-- Phase 8: Safety & content rating enforcement
 - Phase 9: Regression harness for generations
 - Phase 10: Developer tools & App Map integration
 
