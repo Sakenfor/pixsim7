@@ -101,13 +101,13 @@ class ArchitectureMetricsPanel(QWidget):
         super().__init__(parent)
         self.discovery: Optional[ServiceDiscovery] = None
         self.multi_discovery: Optional[MultiServiceDiscovery] = None
-        self.auto_refresh_enabled = True
+        self.auto_refresh_enabled = False  # Disabled by default to avoid UI freezing
         self.setup_ui()
 
-        # Auto-refresh timer (every 10 seconds)
+        # Auto-refresh timer (every 30 seconds when enabled)
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.refresh_metrics)
-        self.refresh_timer.setInterval(10000)  # 10 seconds
+        self.refresh_timer.setInterval(30000)  # 30 seconds (was 10s)
 
     def setup_ui(self):
         """Set up the UI layout."""
@@ -150,6 +150,13 @@ class ArchitectureMetricsPanel(QWidget):
         self.refresh_btn.clicked.connect(self.refresh_metrics)
         self.refresh_btn.setMaximumWidth(100)
         button_layout.addWidget(self.refresh_btn)
+
+        self.auto_refresh_btn = QPushButton("Auto: OFF")
+        self.auto_refresh_btn.clicked.connect(self.toggle_auto_refresh)
+        self.auto_refresh_btn.setMaximumWidth(100)
+        self.auto_refresh_btn.setCheckable(True)
+        self.auto_refresh_btn.setToolTip("Toggle automatic refresh every 30 seconds")
+        button_layout.addWidget(self.auto_refresh_btn)
 
         self.app_map_btn = QPushButton("Open App Map")
         self.app_map_btn.clicked.connect(self.open_app_map)
@@ -266,6 +273,17 @@ class ArchitectureMetricsPanel(QWidget):
         if self.discovery:
             url = f"{self.discovery.backend_url}/app-map"
             webbrowser.open(url)
+
+    def toggle_auto_refresh(self):
+        """Toggle automatic refresh on/off."""
+        self.auto_refresh_enabled = not self.auto_refresh_enabled
+
+        if self.auto_refresh_enabled:
+            self.auto_refresh_btn.setText("Auto: ON")
+            self.refresh_timer.start()
+        else:
+            self.auto_refresh_btn.setText("Auto: OFF")
+            self.refresh_timer.stop()
 
     def stop_auto_refresh(self):
         """Stop the auto-refresh timer."""
