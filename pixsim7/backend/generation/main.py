@@ -36,7 +36,6 @@ try:
     # Import shared backend infrastructure
     from pixsim7.backend.main.shared.config import settings
     from pixsim7.backend.main.infrastructure.database.session import sync_engine
-    from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
     from sqlmodel import SQLModel
     print("[Generation API] ✓ Backend infrastructure imported")
 except ImportError as e:
@@ -211,13 +210,6 @@ async def health():
         health_status["database"] = "disconnected"
         health_status["error"] = str(e)
         return JSONResponse(content=health_status, status_code=503)
-
-    # Check event bus
-    try:
-        event_bus = get_event_bus()
-        health_status["event_bus"] = "available" if event_bus else "unavailable"
-    except Exception:
-        health_status["event_bus"] = "unavailable"
 
     return health_status
 
