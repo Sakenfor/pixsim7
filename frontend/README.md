@@ -210,9 +210,12 @@ export const sceneBuilderModule: SceneBuilderModule = {
 - `POST /api/v1/assets` - Upload asset
 - `GET /api/v1/assets/{id}` - Get asset details
 
-**Jobs** (for video generation):
-- `POST /api/v1/jobs` - Create generation job
-- `GET /api/v1/jobs/{id}` - Get job status
+**Generations** (for content generation):
+- `POST /api/v1/generations` - Create generation
+- `GET /api/v1/generations/{id}` - Get generation details
+- `GET /api/v1/generations` - List generations
+- `POST /api/v1/generations/{id}/cancel` - Cancel generation
+- `POST /api/v1/generations/validate` - Validate config
 
 **Scenes** (for scene-builder):
 - Backend has Scene, SceneAsset, SceneConnection models ready

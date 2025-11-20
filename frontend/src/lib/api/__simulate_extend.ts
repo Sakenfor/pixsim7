@@ -3,6 +3,9 @@
  *
  * Run this in browser console or use as reference for testing.
  * This is NOT production code - it's for understanding the data flow.
+ *
+ * @deprecated This file demonstrates legacy payload structures.
+ * Use the canonical generations API: frontend/src/lib/api/generations.ts
  */
 
 // ============================================================================
@@ -47,7 +50,7 @@ function simulateExtendWithUrl(): void {
   // Parameter merging in QuickGenerateModule.onGenerate()
   // const mergedParams = { prompt: scenario.prompt, ...scenario.presetParams, ...dynamicParams }
 
-  // Final payload sent to POST /api/v1/jobs
+  // Final payload sent to POST /api/v1/generations (legacy: /api/v1/jobs)
   const payload = {
     operation_type: scenario.operationType,
     provider_id: scenario.providerId,

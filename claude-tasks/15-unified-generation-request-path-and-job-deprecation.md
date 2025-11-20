@@ -44,7 +44,7 @@ This task consolidates everything onto **one generation request path** and depre
 - [x] **Phase 4 – Wrap or Migrate Existing Ad‑Hoc Request Builders** (Deferred - see status)
 
 - [x] **Phase 5 – Confine Legacy Job Aliases & Code Paths**
-- [ ] **Phase 6 – Update Frontend to Use Unified Endpoint(s) Only**
+- [x] **Phase 6 – Update Frontend to Use Unified Endpoint(s) Only**
 - [ ] **Phase 7 – Tests & Backward Compatibility Checks**
 - [ ] **Phase 8 – Clean Up Docs (Jobs → Generations)**
 - [ ] **Phase 9 – Deprecation Notice & Grace Period**
@@ -436,7 +436,7 @@ Limit “job” concepts to compatibility shims and prevent new usages.
 
 ### Phase 6 – Update Frontend to Use Unified Endpoint(s) Only
 
-**Goal**  
+**Goal**
 Ensure the frontend only targets the unified generation endpoint(s), not legacy jobs.
 
 **Scope**
@@ -450,6 +450,37 @@ Ensure the frontend only targets the unified generation endpoint(s), not legacy 
    - API client methods that call `/api/v1/generations` (and optional `/validate` endpoints).
    - The standardized `GenerateContentRequest/Response` types from `@pixsim7/types`.
 3. Update any test fixtures or mocks to use the new endpoints and response shapes.
+
+**Status**: ✅ COMPLETED
+
+**Implementation:**
+
+1. **Frontend API Client Already Migrated**:
+   - ✅ `frontend/src/lib/api/generations.ts` exists with complete canonical API client
+   - ✅ Exports `createGeneration()`, `getGeneration()`, `listGenerations()`, `cancelGeneration()`, `retryGeneration()`, `validateGenerationConfig()`, `buildSocialContext()`
+   - ✅ Uses proper types from `@pixsim7/types`
+   - ✅ All calls target `/api/v1/generations` endpoint
+
+2. **Components Already Using Canonical API**:
+   - ✅ `GenerationNodeEditor.tsx` uses `createGeneration()` from canonical API (line 256)
+   - ✅ No imports from legacy "jobs" module found
+   - ✅ No direct fetch/axios calls to `/api/v1/jobs` endpoint in frontend source
+
+3. **Documentation Updated**:
+   - ✅ Updated `frontend/README.md` to reference `/api/v1/generations` endpoint
+   - ✅ Updated `frontend/src/lib/api/PAYLOAD_EXAMPLES.md` with deprecation notice
+   - ✅ Updated `frontend/src/lib/api/__simulate_extend.ts` with @deprecated tag
+
+**Findings:**
+
+The frontend migration was already complete. No active code paths use the legacy `/api/v1/jobs` endpoint. References were limited to:
+- Documentation (now updated)
+- Example/simulation files (now marked as deprecated)
+
+**Files Modified:**
+- `frontend/README.md` - Updated endpoint documentation
+- `frontend/src/lib/api/PAYLOAD_EXAMPLES.md` - Added deprecation notice
+- `frontend/src/lib/api/__simulate_extend.ts` - Added @deprecated tag
 
 ---
 

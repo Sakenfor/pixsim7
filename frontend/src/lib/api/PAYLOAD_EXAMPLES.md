@@ -1,6 +1,8 @@
 # Control Center API Payload Examples
 
-This document shows example payloads for each operation type that would be sent to `POST /api/v1/jobs`.
+This document shows example payloads for each operation type that would be sent to `POST /api/v1/generations`.
+
+> **Note:** The legacy `/api/v1/jobs` endpoint is deprecated. Use `/api/v1/generations` for all new code.
 
 ## Text to Video
 
@@ -236,13 +238,13 @@ Backend should handle provider-specific param mapping via operation_specs.
    }
    ```
 
-4. **Network tab** shows actual POST to `/api/v1/jobs`
+4. **Network tab** shows actual POST to `/api/v1/generations`
 
 ---
 
-## Backend Job Response
+## Backend Generation Response
 
-When the job is created, backend returns:
+When the generation is created, backend returns:
 
 ```json
 {
