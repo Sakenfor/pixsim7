@@ -170,7 +170,10 @@ class ArchitectureMetricsPanel(QWidget):
         """Set the service discovery instance and fetch initial data."""
         self.discovery = discovery
         self.multi_discovery = None
-        self.refresh_metrics()
+
+        # Defer initial discovery to avoid blocking UI during startup
+        # Use QTimer.singleShot to run after event loop starts
+        QTimer.singleShot(100, self.refresh_metrics)
 
         # Start auto-refresh timer
         if self.auto_refresh_enabled:
@@ -180,7 +183,10 @@ class ArchitectureMetricsPanel(QWidget):
         """Set the multi-service discovery instance and fetch initial data."""
         self.multi_discovery = multi_discovery
         self.discovery = None
-        self.refresh_metrics()
+
+        # Defer initial discovery to avoid blocking UI during startup
+        # Use QTimer.singleShot to run after event loop starts
+        QTimer.singleShot(100, self.refresh_metrics)
 
         # Start auto-refresh timer
         if self.auto_refresh_enabled:

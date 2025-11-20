@@ -294,22 +294,33 @@ def build_services_from_json() -> Optional[List[ServiceDef]]:
         # Convert backend services
         for backend_config in config.get('backend_services', []):
             if backend_config.get('enabled', True):
-                services.append(_convert_backend_service_to_def(backend_config, ports))
+                try:
+                    services.append(_convert_backend_service_to_def(backend_config, ports))
+                except Exception as e:
+                    print(f"Warning: Failed to convert backend service {backend_config.get('id', 'unknown')}: {e}")
 
         # Convert frontend services
         for frontend_config in config.get('frontend_services', []):
             if frontend_config.get('enabled', True):
-                services.append(_convert_frontend_service_to_def(frontend_config, ports))
+                try:
+                    services.append(_convert_frontend_service_to_def(frontend_config, ports))
+                except Exception as e:
+                    print(f"Warning: Failed to convert frontend service {frontend_config.get('id', 'unknown')}: {e}")
 
         # Convert infrastructure services
         for infra_config in config.get('infrastructure_services', []):
             if infra_config.get('enabled', True):
-                services.append(_convert_infrastructure_service_to_def(infra_config, ports))
+                try:
+                    services.append(_convert_infrastructure_service_to_def(infra_config, ports))
+                except Exception as e:
+                    print(f"Warning: Failed to convert infrastructure service {infra_config.get('id', 'unknown')}: {e}")
 
         return services
 
     except Exception as e:
         print(f"Warning: Failed to load services.json: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
