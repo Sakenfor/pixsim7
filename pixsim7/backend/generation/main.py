@@ -21,8 +21,9 @@ sys.path.insert(0, str(ROOT))
 
 # Import shared backend infrastructure
 from pixsim7.backend.main.shared.config import settings
-from pixsim7.backend.main.shared.database import engine, Base
+from pixsim7.backend.main.infrastructure.database.session import sync_engine
 from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
+from sqlmodel import SQLModel
 
 # Import routes from main backend (re-use existing code)
 from pixsim7.backend.main.api.v1.generations import router as generations_router
@@ -174,7 +175,7 @@ async def health():
     # Check database connection
     try:
         from sqlalchemy import text
-        with engine.connect() as conn:
+        with sync_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         health_status["database"] = "connected"
     except Exception as e:
@@ -344,7 +345,7 @@ async def startup():
         # Tables are already created by main backend
         # Just verify connection
         from sqlalchemy import text
-        with engine.connect() as conn:
+        with sync_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
 
         # Register providers (needed for chrome extension)
