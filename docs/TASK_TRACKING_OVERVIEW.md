@@ -561,6 +561,407 @@ Recommended sequence for design-only tasks:
 
 ---
 
+## Architectural Analysis: Design Flexibility & Dynamic Loading
+
+### Overview
+
+This section identifies areas where the architecture might be "cornering itself" with hardcoded patterns, and opportunities for more dynamic, plugin-driven approaches.
+
+### 🟢 Excellent Dynamic Patterns (Already Implemented)
+
+#### 1. **Behavior Extension Registry** (`behavior_registry.py`)
+**Status:** ✅ Excellent plugin architecture
+
+**What's Good:**
+- Fully dynamic condition/effect/component registration
+- Plugins can register at runtime via `BehaviorExtensionAPI`
+- Permission-checked access through `PluginContext`
+- Clean separation: registry is locked after startup, preventing runtime corruption
+- Metrics tracking per plugin for observability
+
+**Example:**
+```python
+behavior_registry.register_condition(
+    "plugin:game-stealth:has_disguise",
+    plugin_id="game-stealth",
+    evaluator=check_disguise_fn
+)
+```
+
+#### 2. **Provider Registry** (`services/provider/registry.py`)
+**Status:** ✅ Clean registry pattern
+
+**What's Good:**
+- Simple registration API
+- Auto-discovery capability
+- Easy to add new providers without code changes
+
+---
+
+### 🟡 Partially Hardcoded (Opportunities for Improvement)
+
+#### 1. **Condition Types in Behavior System** (`conditions.py`)
+**Current State:** 10 hardcoded condition types with giant if/elif chain
+
+```python
+if cond_type == "relationship_gt":
+    return _eval_relationship_gt(condition, context)
+elif cond_type == "relationship_lt":
+    return _eval_relationship_lt(condition, context)
+elif cond_type == "flag_equals":
+    return _eval_flag_equals(condition, context)
+# ... 7 more hardcoded types
+elif cond_type == "custom":
+    return _eval_custom(condition, context)  # Plugin escape hatch
+```
+
+**Issues:**
+- Core condition types are hardcoded
+- Adding new built-in conditions requires code changes
+- `custom` type exists as escape hatch, but all built-ins are still hardcoded
+
+**Better Approach:**
+```python
+# Register built-in conditions at module load
+BUILTIN_CONDITIONS = {
+    "relationship_gt": _eval_relationship_gt,
+    "relationship_lt": _eval_relationship_lt,
+    "flag_equals": _eval_flag_equals,
+    # ... etc
+}
+
+def evaluate_condition(condition, context):
+    cond_type = condition.get("type")
+
+    # Try built-in registry first
+    if cond_type in BUILTIN_CONDITIONS:
+        return BUILTIN_CONDITIONS[cond_type](condition, context)
+
+    # Fall back to custom evaluators
+    if cond_type in CONDITION_EVALUATORS:
+        return CONDITION_EVALUATORS[cond_type](condition, context)
+
+    logger.warning(f"Unknown condition type: {cond_type}")
+    return False
+```
+
+**Benefits:**
+- Built-ins and plugins use same pathway
+- Easy to move built-ins to plugins if needed
+- Reduces code duplication
+
+---
+
+#### 2. **ECS Component Schemas** (`ecs.py` lines 61-69)
+**Current State:** Hardcoded component schema registry
+
+```python
+COMPONENT_SCHEMAS = {
+    "core": RelationshipCoreComponentSchema,
+    "romance": RomanceComponentSchema,
+    "stealth": StealthComponentSchema,
+    "mood": MoodStateComponentSchema,
+    "quests": QuestParticipationComponentSchema,
+    "behavior": BehaviorStateComponentSchema,
+    "interactions": InteractionStateComponentSchema,
+}
+```
+
+**Issues:**
+- Core component types are hardcoded in ECS module
+- Plugins can register via `behavior_registry.register_component_schema()`, but core components bypass this
+- Two different registration paths (core vs plugin)
+
+**Better Approach:**
+```python
+# In ecs.py - just access the behavior_registry
+from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+
+def get_component_schema(component_name: str):
+    """Get component schema from unified registry"""
+    schema_meta = behavior_registry.get_component_schema(component_name)
+    if schema_meta:
+        return schema_meta.schema
+    return None  # No schema validation for dynamic components
+```
+
+**During startup (in app initialization):**
+```python
+# Register core components through same API as plugins
+behavior_registry.register_component_schema(
+    "core",
+    plugin_id="__core__",
+    schema=RelationshipCoreComponentSchema,
+    metrics={...}
+)
+```
+
+**Benefits:**
+- Single source of truth for all components
+- Core and plugins treated uniformly
+- Easier introspection for tooling
+
+---
+
+#### 3. **GameProfile Scoring Weights** (`gameProfile.ts` lines 25-62)
+**Current State:** Hardcoded switch statement for behavior profiles
+
+```typescript
+switch (behaviorProfile) {
+  case 'work_focused':
+    return { categoryPreference: 1.0, urgency: 1.5, ... };
+  case 'relationship_focused':
+    return { categoryPreference: 0.6, urgency: 0.8, ... };
+  case 'balanced':
+  default:
+    return baseWeights;
+}
+```
+
+**Issues:**
+- Only 3 behavior profiles hardcoded
+- Custom profiles require code changes
+- Can't define new profiles via world metadata
+
+**Better Approach:**
+```typescript
+// In world.meta or as presets
+"behaviorProfiles": {
+  "work_focused": {
+    "weights": { "categoryPreference": 1.0, "urgency": 1.5, ... }
+  },
+  "relationship_focused": {
+    "weights": { "categoryPreference": 0.6, ... }
+  },
+  "custom_night_owl": {
+    "weights": { "timeOfDayPreference": 2.0, ... }
+  }
+}
+
+// Function becomes a lookup with fallback
+export function getScoringWeights(
+  behaviorProfile: string,
+  worldProfiles?: Record<string, BehaviorProfileDef>
+): ScoringConfig['weights'] {
+  // Try world-defined profiles first
+  if (worldProfiles?.[behaviorProfile]) {
+    return worldProfiles[behaviorProfile].weights;
+  }
+
+  // Fall back to built-in presets
+  return BUILTIN_PROFILES[behaviorProfile] ?? BUILTIN_PROFILES.balanced;
+}
+```
+
+**Benefits:**
+- Designers can create custom behavior profiles per world
+- No code changes needed for new profiles
+- Built-ins remain as sensible defaults
+
+---
+
+#### 4. **GameStyle & GameMode Enums** (`types/game.ts`)
+**Current State:** Hardcoded union types
+
+```typescript
+export type GameStyle = 'life_sim' | 'visual_novel' | 'hybrid';
+export type GameMode = 'map' | 'room' | 'scene' | 'conversation' | 'menu';
+export type BehaviorProfile = 'work_focused' | 'relationship_focused' | 'balanced';
+```
+
+**Issues:**
+- Can't add new game styles without touching types
+- Plugins can't define new modes
+- Limits experimentation (e.g., "roguelike" or "tactical" styles)
+
+**Better Approach:**
+```typescript
+// Core types remain for validation, but allow extensions
+export type CoreGameStyle = 'life_sim' | 'visual_novel' | 'hybrid';
+export type GameStyle = CoreGameStyle | string;  // Allow custom styles
+
+// Or use a registry pattern
+export const GAME_STYLES = new Set(['life_sim', 'visual_novel', 'hybrid']);
+
+export function registerGameStyle(style: string, config: GameStyleConfig) {
+  GAME_STYLES.add(style);
+  GAME_STYLE_CONFIGS.set(style, config);
+}
+
+// Usage
+registerGameStyle('roguelike', {
+  simulationDefaults: { ... },
+  behaviorProfile: 'exploration_focused',
+  narrativeProfile: 'light'
+});
+```
+
+**Trade-offs:**
+- Lose type safety for custom styles
+- But gain flexibility for mods/plugins
+- Could use const assertions for known styles while allowing extensions
+
+---
+
+### 🔴 Potential Design Corners
+
+#### 1. **Scoring System Fixed to 8 Factors** (`scoring.py`)
+**Current State:** Scoring calculation hardcoded to specific factors
+
+```python
+# Start with base weight
+score = base_weight * weights["baseWeight"]
+
+# Activity-specific preference
+score *= activity_pref * weights["activityPreference"]
+
+# Category preference
+score *= category_pref * weights["categoryPreference"]
+
+# ... 5 more hardcoded factors
+```
+
+**Issue:**
+- Plugins can't add new scoring factors
+- Must modify core code to add dimensions (e.g., "weather preference", "social fatigue")
+
+**Better Approach:**
+```python
+# Define scoring factors as a registry
+SCORING_FACTORS = {
+    'base': lambda activity, npc, ctx, w: w['baseWeight'],
+    'activity_pref': lambda activity, npc, ctx, w: calculate_activity_pref(...),
+    'category_pref': lambda activity, npc, ctx, w: calculate_category_pref(...),
+    # ... etc
+}
+
+def calculate_activity_score(activity, npc_preferences, npc_state, context, scoring_weights):
+    score = 1.0
+
+    for factor_id, factor_fn in SCORING_FACTORS.items():
+        factor_value = factor_fn(activity, npc_preferences, npc_state, context, scoring_weights)
+        score *= factor_value
+
+    return score
+
+# Plugins can register factors
+def register_scoring_factor(factor_id, factor_fn):
+    SCORING_FACTORS[factor_id] = factor_fn
+```
+
+**Benefits:**
+- Plugins can add scoring dimensions
+- Core factors still work the same
+- More modular testing
+
+---
+
+#### 2. **Simulation Tier Limits Hardcoded per Style** (`gameProfile.ts` lines 73-107)
+**Current State:** Tier limits hardcoded in switch statement
+
+```typescript
+switch (style) {
+  case 'life_sim':
+    return { detailed: 10, active: 150, ambient: 800, dormant: 10000 };
+  case 'visual_novel':
+    return { detailed: 20, active: 50, ambient: 200, dormant: 2000 };
+  // ...
+}
+```
+
+**Issue:**
+- Can't configure tier limits per world without code change
+- Assumes all life-sim worlds want same limits
+- No way to override for specific world needs
+
+**Better Approach:**
+```typescript
+// World metadata can override defaults
+"simulationConfig": {
+  "tierLimits": {
+    "detailed": 15,    // Override for this specific world
+    "active": 75,
+    "ambient": 300
+  }
+}
+
+// Function checks world first, then style defaults
+export function getSimulationTierLimits(
+  world: GameWorld,
+  style?: GameStyle
+): TierLimits {
+  // Explicit world config wins
+  if (world.meta?.simulationConfig?.tierLimits) {
+    return world.meta.simulationConfig.tierLimits;
+  }
+
+  // Fall back to style defaults
+  return STYLE_DEFAULT_TIER_LIMITS[style ?? world.meta?.gameProfile?.style ?? 'hybrid'];
+}
+```
+
+---
+
+### 🎯 Recommendations
+
+#### High Priority (Easy Wins)
+
+1. **Unify Component Registration**
+   - Move core components to use `behavior_registry` during startup
+   - Eliminate `COMPONENT_SCHEMAS` hardcoded dict
+   - File: `pixsim7_backend/domain/game/ecs.py`
+
+2. **Registry-ify Built-in Conditions**
+   - Convert if/elif chain to registry lookup
+   - Treat built-ins as "always registered" conditions
+   - File: `pixsim7_backend/domain/behavior/conditions.py`
+
+3. **Make Behavior Profiles Data-Driven**
+   - Move hardcoded switch to preset lookup
+   - Allow world.meta to define custom profiles
+   - File: `packages/game-core/src/world/gameProfile.ts`
+
+#### Medium Priority (More Invasive)
+
+4. **Extensible Scoring Factors**
+   - Refactor scoring to use factor registry
+   - Allow plugins to register scoring dimensions
+   - File: `pixsim7_backend/domain/behavior/scoring.py`
+
+5. **Per-World Simulation Overrides**
+   - Check world metadata before style defaults
+   - Allow fine-tuning per world
+   - File: `packages/game-core/src/world/gameProfile.ts`
+
+#### Low Priority (Design Discussion Needed)
+
+6. **Extensible Type System**
+   - Decide on string unions vs registries for GameStyle/GameMode
+   - Balance type safety vs flexibility
+   - May require breaking changes
+
+---
+
+### Summary
+
+**Current State:**
+- ✅ Plugin system is excellent (behavior_registry, provider_registry)
+- 🟡 Some systems use plugins but keep built-ins hardcoded
+- 🔴 A few areas locked to specific sets (profiles, scoring factors)
+
+**Philosophy:**
+The codebase already has the **right infrastructure** (registries, plugin APIs, permission system). The opportunity is to **dogfood it** - make core features use the same extensibility they offer to plugins.
+
+**Key Principle:**
+> "If a plugin could theoretically do X, the core should use the same pathway when doing X built-in."
+
+This creates:
+- Uniform code paths (easier to maintain)
+- Better testing (core features exercise plugin APIs)
+- True extensibility (anything core can do, plugins can do)
+
+---
+
 **Last Updated:** 2025-11-20
 **Generated By:** Claude Code Task Analysis Agent
 **Source:** Analysis of all files in `claude-tasks/` directory
