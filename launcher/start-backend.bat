@@ -7,7 +7,7 @@ echo   Starting PixSim7 Backend API
 echo ========================================
 echo.
 
-cd /d %~dp0
+cd /d %~dp0..
 
 set PYTHONPATH=%cd%
 

@@ -9,7 +9,7 @@ echo   PixSim7 Development Launcher
 echo ========================================
 echo.
 
-cd /d %~dp0
+cd /d %~dp0..
 
 REM Load env defaults (fallback if missing)
 set BACKEND_PORT=8001
@@ -287,5 +287,5 @@ echo.
 echo Starting Desktop Launcher...
 set _PY=%cd%\.venv\Scripts\python.exe
 if not exist "%_PY%" set _PY=python
-start "PixSim7 Desktop Launcher" cmd /c "%_PY% launcher\gui\launcher.py"
+start "PixSim7 Desktop Launcher" cmd /c "cd /d %cd% && %_PY% -m launcher.gui.launcher"
 goto INTERACTIVE

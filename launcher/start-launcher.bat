@@ -7,14 +7,14 @@ echo Starting PixSim7 Desktop Launcher (detached)...
 echo.
 
 REM Use script's directory, not current directory
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 REM Find Python executable
-set _PY=%~dp0.venv\Scripts\python.exe
+set _PY=%~dp0..\.venv\Scripts\python.exe
 if not exist "%_PY%" set _PY=python
 
 REM Check if pythonw.exe exists (Windows GUI Python - no console)
-set _PYW=%~dp0.venv\Scripts\pythonw.exe
+set _PYW=%~dp0..\.venv\Scripts\pythonw.exe
 if not exist "%_PYW%" set _PYW=pythonw
 
 REM Verify Python is available
@@ -28,8 +28,8 @@ if errorlevel 1 (
 )
 
 REM Check if launcher is already running using PID file
-if exist "%~dp0data\launcher\launcher.pid" (
-    set /p EXISTING_PID=<"%~dp0data\launcher\launcher.pid"
+if exist "%~dp0..\data\launcher\launcher.pid" (
+    set /p EXISTING_PID=<"%~dp0..\data\launcher\launcher.pid"
     REM Verify the PID is actually running
     tasklist /FI "PID eq !EXISTING_PID!" /NH 2>nul | find "!EXISTING_PID!" >nul 2>&1
     if not errorlevel 1 (
@@ -40,14 +40,14 @@ if exist "%~dp0data\launcher\launcher.pid" (
         exit /b 1
     ) else (
         REM Stale PID file, delete it
-        del "%~dp0data\launcher\launcher.pid" >nul 2>&1
+        del "%~dp0..\data\launcher\launcher.pid" >nul 2>&1
     )
 )
 
 REM Try pythonw first (preferred - no console window)
 if exist "%_PYW%" (
     echo Using pythonw.exe - launcher will run without console window
-    start "" "%_PYW%" "%~dp0launcher\gui\launcher.py"
+    start "" "%_PYW%" "-m" "launcher.gui.launcher"
     if errorlevel 1 (
         echo ERROR: Failed to start launcher!
         pause
@@ -63,7 +63,7 @@ if exist "%_PYW%" (
 
 REM Fallback to regular python with detached start
 echo Using python.exe - launcher will have its own console window
-start "PixSim7 Launcher" /I "%_PY%" "%~dp0launcher\gui\launcher.py"
+start "PixSim7 Launcher" /I "%_PY%" "-m" "launcher.gui.launcher"
 if errorlevel 1 (
     echo ERROR: Failed to start launcher!
     pause

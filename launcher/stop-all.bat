@@ -7,7 +7,7 @@ echo   Stopping PixSim7
 echo ========================================
 echo.
 
-cd /d %~dp0
+cd /d %~dp0..
 
 REM Load backend port from .env if present; default to 8001
 set BACKEND_PORT=8001

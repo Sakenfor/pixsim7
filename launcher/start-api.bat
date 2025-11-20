@@ -2,7 +2,7 @@
 REM Start PixSim7 Launcher API
 REM Runs the FastAPI server on port 8100
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 echo ========================================================================
 echo Starting PixSim7 Launcher API

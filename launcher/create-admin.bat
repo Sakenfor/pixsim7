@@ -7,7 +7,7 @@ echo   Create Admin User
 echo ========================================
 echo.
 
-cd /d %~dp0
+cd /d %~dp0..
 set PYTHONPATH=%cd%
 
 python create_admin.py
