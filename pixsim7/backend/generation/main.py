@@ -8,47 +8,75 @@ Provides:
 
 This service can be scaled independently from the main backend.
 """
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import os
 import sys
 from pathlib import Path
 
 # Add project root to path for imports
-ROOT = Path(__file__).parent.parent
+# __file__ = .../pixsim7/pixsim7/backend/generation/main.py
+# ROOT should be .../pixsim7/ (project root)
+ROOT = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
-# Import shared backend infrastructure
-from pixsim7.backend.main.shared.config import settings
-from pixsim7.backend.main.infrastructure.database.session import sync_engine
-from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
-from sqlmodel import SQLModel
+print(f"[Generation API] Python: {sys.executable}")
+print(f"[Generation API] Project root: {ROOT}")
+print(f"[Generation API] Importing dependencies...")
 
-# Import routes from main backend (re-use existing code)
-from pixsim7.backend.main.api.v1.generations import router as generations_router
-from pixsim7.backend.main.api.v1.prompts import (
-    operations_router,
-    analytics_router,
-    variants_router,
-    families_router,
-)
+try:
+    from fastapi import FastAPI, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    print("[Generation API] ✓ FastAPI imported")
+except ImportError as e:
+    print(f"[Generation API] ✗ Failed to import FastAPI: {e}")
+    raise
 
-# Lightweight routes for chrome extension support
-from pixsim7.backend.main.api.v1.auth import router as auth_router
-from pixsim7.backend.main.api.v1.users import router as users_router
-from pixsim7.backend.main.api.v1.accounts import router as accounts_router
-from pixsim7.backend.main.api.v1.providers import router as providers_router
+print("[Generation API] Importing backend infrastructure...")
+try:
+    # Import shared backend infrastructure
+    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.infrastructure.database.session import sync_engine
+    from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
+    from sqlmodel import SQLModel
+    print("[Generation API] ✓ Backend infrastructure imported")
+except ImportError as e:
+    print(f"[Generation API] ✗ Failed to import backend infrastructure: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
-# Automation routes (device management, execution loops)
-from pixsim7.backend.main.api.v1.automation import router as automation_router
+print("[Generation API] Importing API routes...")
+try:
+    # Import routes from main backend (re-use existing code)
+    from pixsim7.backend.main.api.v1.generations import router as generations_router
+    from pixsim7.backend.main.api.v1.prompts import (
+        operations_router,
+        analytics_router,
+        variants_router,
+        families_router,
+    )
 
-# Import for architecture introspection
-from pixsim7.backend.main.api.v1.dev_architecture import (
-    discover_routes,
-    discover_services,
-    calculate_metrics,
-)
+    # Lightweight routes for chrome extension support
+    from pixsim7.backend.main.api.v1.auth import router as auth_router
+    from pixsim7.backend.main.api.v1.users import router as users_router
+    from pixsim7.backend.main.api.v1.accounts import router as accounts_router
+    from pixsim7.backend.main.api.v1.providers import router as providers_router
+
+    # Automation routes (device management, execution loops)
+    from pixsim7.backend.main.api.v1.automation import router as automation_router
+
+    # Import for architecture introspection
+    from pixsim7.backend.main.api.v1.dev_architecture import (
+        discover_routes,
+        discover_services,
+        calculate_metrics,
+    )
+    print("[Generation API] ✓ All routes imported")
+except ImportError as e:
+    print(f"[Generation API] ✗ Failed to import routes: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
 app = FastAPI(
     title="PixSim7 Generation API",
@@ -341,26 +369,39 @@ app.include_router(
 @app.on_event("startup")
 async def startup():
     """Initialize database tables and resources."""
+    print("=" * 70)
+    print("Generation API starting...")
+    print("=" * 70)
+
     try:
         # Tables are already created by main backend
         # Just verify connection
+        print("Checking database connection...")
         from sqlalchemy import text
         with sync_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
+        print("✓ Database connected")
 
         # Register providers (needed for chrome extension)
+        print("Registering providers...")
         from pixsim7.backend.main.services.provider import register_default_providers
         register_default_providers()
+        print("✓ Providers registered")
 
         print("=" * 70)
-        print("Generation API started successfully")
+        print("✓ Generation API started successfully")
         print(f"Port: {os.getenv('GENERATION_API_PORT', 8001)}")
         print(f"Docs: http://localhost:{os.getenv('GENERATION_API_PORT', 8001)}/docs")
         print(f"Chrome Extension: Supported (auth, accounts, providers)")
         print(f"Automation: Supported (devices, loops, presets)")
         print("=" * 70)
     except Exception as e:
-        print(f"Startup error: {e}")
+        print("=" * 70)
+        print("✗ STARTUP FAILED")
+        print(f"Error: {e}")
+        print("=" * 70)
+        import traceback
+        traceback.print_exc()
         raise
 
 
