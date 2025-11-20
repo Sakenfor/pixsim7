@@ -19,9 +19,11 @@ import webbrowser
 
 try:
     from ..service_discovery import ServiceDiscovery, ArchitectureMetrics
+    from ..multi_service_discovery import MultiServiceDiscovery
     from .. import theme
 except ImportError:
     from service_discovery import ServiceDiscovery, ArchitectureMetrics
+    from multi_service_discovery import MultiServiceDiscovery
     import theme
 
 
@@ -98,6 +100,7 @@ class ArchitectureMetricsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.discovery: Optional[ServiceDiscovery] = None
+        self.multi_discovery: Optional[MultiServiceDiscovery] = None
         self.auto_refresh_enabled = True
         self.setup_ui()
 
@@ -166,6 +169,17 @@ class ArchitectureMetricsPanel(QWidget):
     def set_discovery(self, discovery: ServiceDiscovery):
         """Set the service discovery instance and fetch initial data."""
         self.discovery = discovery
+        self.multi_discovery = None
+        self.refresh_metrics()
+
+        # Start auto-refresh timer
+        if self.auto_refresh_enabled:
+            self.refresh_timer.start()
+
+    def set_multi_discovery(self, multi_discovery: MultiServiceDiscovery):
+        """Set the multi-service discovery instance and fetch initial data."""
+        self.multi_discovery = multi_discovery
+        self.discovery = None
         self.refresh_metrics()
 
         # Start auto-refresh timer
@@ -174,24 +188,42 @@ class ArchitectureMetricsPanel(QWidget):
 
     def refresh_metrics(self):
         """Refresh architecture metrics from backend."""
-        if not self.discovery:
-            return
+        if self.multi_discovery:
+            # Multi-service discovery
+            results = self.multi_discovery.discover_all_services()
+            discovered_count = self.multi_discovery.get_discovered_count()
+            total_count = self.multi_discovery.get_total_configured()
 
-        success = self.discovery.discover_architecture()
+            if discovered_count > 0:
+                metrics = self.multi_discovery.get_combined_metrics()
+                self.update_metrics(metrics)
+                self.status_label.setText(f"✓ {discovered_count}/{total_count} services discovered")
+                self.status_label.setStyleSheet("color: #4CAF50; font-size: 10px;")
+                self.app_map_btn.setEnabled(True)
+                self.metrics_updated.emit(metrics)
+            else:
+                self.set_disconnected_state()
+                self.status_label.setText(f"✗ No services available ({total_count} configured)")
+                self.status_label.setStyleSheet("color: #F44336; font-size: 10px;")
+                self.app_map_btn.setEnabled(False)
 
-        if success:
-            metrics = self.discovery.get_metrics()
-            self.update_metrics(metrics)
-            self.status_label.setText("✓ Connected")
-            self.status_label.setStyleSheet("color: #4CAF50; font-size: 10px;")
-            self.app_map_btn.setEnabled(True)
-            self.metrics_updated.emit(metrics)
-        else:
-            self.set_disconnected_state()
-            error = self.discovery.last_fetch_error or "Unknown error"
-            self.status_label.setText(f"✗ {error}")
-            self.status_label.setStyleSheet("color: #F44336; font-size: 10px;")
-            self.app_map_btn.setEnabled(False)
+        elif self.discovery:
+            # Single service discovery
+            success = self.discovery.discover_architecture()
+
+            if success:
+                metrics = self.discovery.get_metrics()
+                self.update_metrics(metrics)
+                self.status_label.setText("✓ Connected")
+                self.status_label.setStyleSheet("color: #4CAF50; font-size: 10px;")
+                self.app_map_btn.setEnabled(True)
+                self.metrics_updated.emit(metrics)
+            else:
+                self.set_disconnected_state()
+                error = self.discovery.last_fetch_error or "Unknown error"
+                self.status_label.setText(f"✗ {error}")
+                self.status_label.setStyleSheet("color: #F44336; font-size: 10px;")
+                self.app_map_btn.setEnabled(False)
 
     def update_metrics(self, metrics: ArchitectureMetrics):
         """Update metric cards with new data."""

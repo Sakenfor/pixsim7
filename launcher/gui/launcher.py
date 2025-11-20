@@ -76,9 +76,11 @@ except Exception:
 try:
     from .widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
     from .service_discovery import ServiceDiscovery
+    from .multi_service_discovery import MultiServiceDiscovery, load_services_config
 except Exception:
     from widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
     from service_discovery import ServiceDiscovery
+    from multi_service_discovery import MultiServiceDiscovery, load_services_config
 
 try:
     from .processes import ServiceProcess
@@ -646,9 +648,20 @@ class LauncherWindow(QWidget):
         architecture_layout.addWidget(self.routes_preview)
 
         # Initialize service discovery (will connect when backend starts)
-        ports = read_env_ports()
-        self.service_discovery = ServiceDiscovery(f"http://localhost:{ports.backend}")
-        self.architecture_panel.set_discovery(self.service_discovery)
+        # Try to load services.json for multi-service discovery
+        services_config = load_services_config()
+
+        if services_config:
+            # Use multi-service discovery
+            self.multi_service_discovery = MultiServiceDiscovery(services_config)
+            self.service_discovery = None  # Legacy single service
+            self.architecture_panel.set_multi_discovery(self.multi_service_discovery)
+        else:
+            # Fall back to single service discovery
+            ports = read_env_ports()
+            self.service_discovery = ServiceDiscovery(f"http://localhost:{ports.backend}")
+            self.multi_service_discovery = None
+            self.architecture_panel.set_discovery(self.service_discovery)
 
         # Connect metrics updates to routes preview
         self.architecture_panel.metrics_updated.connect(self._on_architecture_metrics_updated)
@@ -659,7 +672,15 @@ class LauncherWindow(QWidget):
     def _on_architecture_metrics_updated(self, metrics):
         """Handle architecture metrics update."""
         # Update routes preview
-        if self.service_discovery:
+        if self.multi_service_discovery:
+            # For multi-service, show routes from all services
+            all_routes = self.multi_service_discovery.get_all_routes_by_service()
+            # Flatten for preview (or we could enhance preview to show per-service)
+            if all_routes:
+                # Take routes from first available service for now
+                first_service = next(iter(all_routes.values()), {})
+                self.routes_preview.update_routes(first_service)
+        elif self.service_discovery:
             routes_by_tag = self.service_discovery.get_routes_by_tag()
             self.routes_preview.update_routes(routes_by_tag)
 
