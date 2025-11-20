@@ -1,6 +1,6 @@
 # PixSim7 Task Tracking Overview
 
-**Generated:** 2025-11-20
+**Last Updated:** 2025-11-20
 **Purpose:** Comprehensive status of all Claude tasks to enable quick coordination between agents and humans without redundant analysis.
 
 ---
@@ -33,21 +33,24 @@ This document provides a **single source of truth** for what's been completed an
 | 12 | Intimacy Scene Composer | ✅ Complete | 7/7 | All phases implemented |
 | 13 | NPC Behavior System | 📝 Design | 0/N | Design document only, not implemented |
 | 14 | Unified Mood & Brain Integration | ✅ Complete | 10/10 | All phases implemented |
-| 15 | Unified Generation Request Path | ⏸️ Partial | 5/10 | Canonical path established; cleanup pending |
+| 15 | Unified Generation Request Path | ✅ Complete | 10/10 | All phases complete; JobStatus→GenerationStatus renamed |
 | 16 | Backend Plugin Capabilities | 📝 Design | 0/7 | Design document only, not implemented |
 | 17 | NPC Interaction Layer | ✅ Complete | 7/7 | All phases complete (with world_time fix) |
 | 18 | Frontend UI Structure Audit | ✅ Complete | 6/6 | Audit completed 2025-11-19 |
 | 19 | NPC ECS & Plugin Metrics | 📝 Design | 0/N | Design document only, not implemented |
 | 20 | Narrative Runtime Unification | ✅ Complete | 8/8 | All phases complete 2025-11-19 |
-| 21 | World Time & Simulation Scheduler | ⏸️ Mostly Complete | 5/7 | Phases 1-4, 7 done; 5-6 deferred |
+| 21 | World Time & Simulation Scheduler | ⏸️ Mostly Complete | 6/7 | Phases 1-4, 6-7 done; Phase 5 deferred |
 | 22 | Game Mode & ViewState Model | 📝 Design | 0/5 | Design document only, not implemented |
 | 23 | World GameProfile & Simulation Modes | 📝 Design | 0/5 | Design document only, not implemented |
 | 24 | Architecture Validation | ✅ Complete | 5/5 | Validation completed 2025-11-19 |
 | 25 | Snapshot & Scenario Runner | ⏸️ Partial | 5/5 | All phases marked complete but needs verification |
-| 26 | Character Identity & Scene-Asset Graph | ⏸️ Partial | 1/5 | Phase 1 inventory done; rest pending |
+| 26 | Character Identity & Scene-Asset Graph | ✅ Complete | 5/5 | All phases complete; graph API + frontend browser |
+| 27 | Registry Unification & Dogfooding | 🔄 In Progress | 0/4 | Removes if/elif chains; makes core use plugin APIs |
+| 28 | Extensible Scoring & Simulation Config | 🔄 In Progress | 0/5 | Enables plugin-added scoring factors & custom styles |
 
 **Legend:**
 - ✅ Complete: All or nearly all phases done
+- 🔄 In Progress: Currently being worked on
 - ⏸️ Partial: Some phases done, significant work remains
 - 📝 Design: Design document exists but not implemented
 
@@ -242,6 +245,54 @@ This document provides a **single source of truth** for what's been completed an
 
 ---
 
+#### Task 15: Unified Generation Request Path & Job Deprecation
+**Status:** ✅ All 10 phases complete (2025-11-20)
+
+**What it does:**
+- Unified generation model with canonical `/api/v1/generations` endpoint
+- Renamed `JobStatus` → `GenerationStatus` for clarity
+- Zero legacy code or backward compatibility needed
+- Clean, debt-free codebase with single generation path
+
+**Key Changes:**
+- Phases 1-5: Canonical path established, no legacy job infrastructure found
+- Phase 6: Frontend already using `/api/v1/generations` exclusively
+- Phases 7-10: No backward compatibility, deprecation, or cleanup needed
+- Renamed JobStatus → GenerationStatus across 7 backend files
+
+**Key Files:**
+- `pixsim7_backend/domain/generation.py`
+- `pixsim7_backend/api/v1/generations.py`
+- `frontend/src/lib/api/generations.ts`
+- `claude-tasks/15-unified-generation-request-path-and-job-deprecation.md`
+
+---
+
+#### Task 26: Character Identity & Scene-Asset Graph Unification
+**Status:** ✅ All 5 phases complete
+
+**What it does:**
+- Unified character identity graph connecting templates, instances, NPCs, scenes, assets, generations
+- Backend graph traversal and query APIs with filtering
+- Standardized character linkage conventions for scenes and assets
+- Frontend character graph browser with interactive visualization
+
+**Complete:**
+- Phase 1: Inventory of character/scene/asset links
+- Phase 2: TypeScript graph model types (9 node types, 13 edge types)
+- Phase 3: Backend graph access & query APIs with admin routes
+- Phase 4: Scene & asset linkage via standardized metadata conventions
+- Phase 5: Frontend CharacterGraphBrowser component with 4 view modes
+
+**Key Files:**
+- `pixsim7_backend/domain/character_graph.py`
+- `pixsim7_backend/api/v1/character_graph.py`
+- `packages/types/src/characterGraph.ts`
+- `frontend/src/components/character-graph/CharacterGraphBrowser.tsx`
+- `docs/CHARACTER_LINKAGE_CONVENTIONS.md`
+
+---
+
 ### ⏸️ PARTIALLY COMPLETE TASKS
 
 #### Task 01: World HUD Layout Designer
@@ -335,36 +386,26 @@ This document provides a **single source of truth** for what's been completed an
 
 ---
 
-#### Task 15: Unified Generation Request Path
-**Status:** 5/10 phases complete
-
-**Complete:**
-- Phase 1: Inventory of generation request paths
-- Phase 2: Canonical request shape confirmation
-- Phase 3: Route new work through request builder
-- Phase 4: Deferred (ad-hoc builders identified)
-- Phase 5: Legacy job aliases confined
-
-**Pending:**
-- Phase 6: Update frontend to use unified endpoints only
-- Phase 7: Tests & backward compatibility checks
-- Phase 8: Clean up docs (Jobs → Generations)
-- Phase 9: Deprecation notice & grace period
-- Phase 10: Final removal of dead code
-
----
-
 #### Task 21: World Time & Simulation Scheduler
-**Status:** 5/7 phases complete
+**Status:** 6/7 phases complete (2025-11-20)
 
 **Complete:**
-- Phases 1-4, 7: Time tracking, scheduler design, basic tick loop, tier-based simulation, telemetry
+- Phases 1-4: Time tracking, scheduler design, basic tick loop, tier-based simulation
+- Phase 6: Chain timing & cooldowns now use world_time (unblocked 2025-11-20)
+- Phase 7: Telemetry integration
 
 **Deferred:**
-- Phase 5: Integration with generation service (integration points ready)
-- Phase 6: Chain timing & cooldowns (was blocked by Task 17.5, now unblocked)
+- Phase 5: Generation service integration (integration points ready, low priority)
 
-**Blocker Removed:** Task 17.5 world_time fix applied (2025-11-19)
+**Key Changes (Phase 6):**
+- Fixed `apply_npc_effects()`, `track_interaction_cooldown()`, `advance_interaction_chain()`
+- All functions now accept optional `world_time` parameter
+- Maintains backward compatibility with real-time fallback
+- Ensures gameplay consistency using world_time instead of real-time
+
+**Key Files:**
+- `pixsim7_backend/domain/game/interaction_execution.py`
+- `pixsim7_backend/domain/game/interaction_availability.py`
 
 ---
 
@@ -379,20 +420,6 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 5: Example scenarios & CI hook
 
 **Note:** Status shows complete but may need verification of actual implementation
-
----
-
-#### Task 26: Character Identity & Scene-Asset Graph
-**Status:** 1/5 phases complete
-
-**Complete:**
-- Phase 1: Inventory of current character/scene/asset links (✅ completed)
-
-**Pending:**
-- Phase 2: Character identity graph model (conceptual)
-- Phase 3: Backend graph access & query APIs
-- Phase 4: Scene & asset linkage (roles & tags)
-- Phase 5: Tools & usage views
 
 ---
 
