@@ -445,13 +445,16 @@ Interaction chain timing requires coordination with the interaction system:
    - Should standardize: world_time for gameplay, real-time for providers
    - Update cooldown checks to use world_time from context
 
-5. **Future Implementation**:
-   - Fix `lastInteractionAt` to use world_time
-   - Add chain progression helper that uses world_time
-   - Update cooldown checks in interaction availability
-   - Add chain wait helpers (waitSeconds/Minutes/Hours/Days)
+5. **Implementation Completed** (2025-11-20):
+   - ✅ Fixed `lastInteractionAt` to use world_time (interaction_execution.py:84-89)
+   - ✅ Updated chain progression to use world_time (interaction_execution.py:351-393)
+   - ✅ Updated cooldown tracking to use world_time (interaction_execution.py:319-348)
+   - ✅ Updated NPC effects (memory, emotion) to use world_time (interaction_execution.py:244-316)
+   - ✅ Updated `execute_interaction()` to pass world_time to all helpers (lines 464, 506, 513)
+   - ✅ Documented cooldown checks to use world_time (interaction_availability.py:373-439)
+   - All timing now uses gameplay world_time with real-time fallback for backward compatibility
 
-**Status:** ⏸️ Deferred (documented, requires interaction system updates)
+**Status:** ✅ Complete (Task 17.5 world_time fix unblocked this phase)
 
 ---
 

@@ -378,8 +378,18 @@ def check_cooldown(
     """
     Check if cooldown has expired.
 
+    Args:
+        cooldown_seconds: Cooldown duration in seconds
+        last_used_at: Timestamp when interaction was last used (world_time or unix timestamp)
+        current_time: Current time for comparison. Should be world_time for gameplay consistency.
+                     Falls back to real-time if not provided (for backward compatibility).
+
     Returns:
         (passes, disabled_reason_message)
+
+    Note:
+        For gameplay consistency, always pass world_time as current_time.
+        Real-time fallback is for backward compatibility only.
     """
     if cooldown_seconds is None or cooldown_seconds <= 0:
         return True, None
@@ -417,6 +427,17 @@ def evaluate_interaction_availability(
     Evaluate whether an interaction is currently available.
 
     Args:
+        definition: Interaction definition to evaluate
+        context: Interaction context with NPC/session state
+        world_tier_order: Ordered list of relationship tier IDs
+        current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
+                     Falls back to real-time if not provided (for backward compatibility).
+
+    Note:
+        For gameplay consistency, always pass world_time as current_time.
+        This ensures cooldowns use game time, not real-world time.
+
+    Args (original docstring continues):
         definition: Interaction definition
         context: Current interaction context
         world_tier_order: Ordered list of relationship tier IDs

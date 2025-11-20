@@ -245,7 +245,8 @@ async def apply_npc_effects(
     db: AsyncSession,
     session: GameSession,
     npc_id: int,
-    effects: NpcEffects
+    effects: NpcEffects,
+    world_time: Optional[float] = None
 ) -> None:
     """
     Apply NPC effects (memory, emotion, world event).
@@ -255,7 +256,12 @@ async def apply_npc_effects(
         session: Game session
         npc_id: Target NPC ID
         effects: NPC effects to apply
+        world_time: Optional world time (game seconds). If provided, used for timestamps.
+                    If not provided, falls back to real-time (for backward compatibility).
     """
+    # Determine timestamp to use
+    timestamp = int(world_time) if world_time is not None else int(time.time())
+
     # Memory creation
     if effects.create_memory:
         # TODO: Integrate with NpcMemory model when available
@@ -272,7 +278,7 @@ async def apply_npc_effects(
             "importance": effects.create_memory.importance or "normal",
             "memoryType": effects.create_memory.memory_type or "short_term",
             "tags": effects.create_memory.tags or [],
-            "createdAt": int(time.time())
+            "createdAt": timestamp
         })
         npcs[npc_key]["memories"] = memories
         session.flags["npcs"] = npcs
@@ -289,7 +295,7 @@ async def apply_npc_effects(
         emotions = npcs[npc_key].get("emotions", {})
         emotions[effects.trigger_emotion.emotion] = {
             "intensity": effects.trigger_emotion.intensity,
-            "triggeredAt": int(time.time()),
+            "triggeredAt": timestamp,
             "durationSeconds": effects.trigger_emotion.duration_seconds
         }
         npcs[npc_key]["emotions"] = emotions
@@ -305,7 +311,7 @@ async def apply_npc_effects(
             "description": effects.register_world_event.description,
             "relevanceScore": effects.register_world_event.relevance_score or 0.5,
             "npcId": npc_id,
-            "timestamp": int(time.time())
+            "timestamp": timestamp
         })
         session.flags["worldEvents"] = world_events
 
@@ -313,7 +319,8 @@ async def apply_npc_effects(
 async def track_interaction_cooldown(
     session: GameSession,
     npc_id: int,
-    interaction_id: str
+    interaction_id: str,
+    world_time: Optional[float] = None
 ) -> None:
     """
     Track interaction usage timestamp for cooldown.
@@ -322,7 +329,12 @@ async def track_interaction_cooldown(
         session: Game session
         npc_id: Target NPC ID
         interaction_id: Interaction ID
+        world_time: Optional world time (game seconds). If provided, used for cooldown tracking.
+                    If not provided, falls back to real-time (for backward compatibility).
     """
+    # Determine timestamp to use
+    timestamp = int(world_time) if world_time is not None else int(time.time())
+
     npc_key = f"npc:{npc_id}"
     npcs = session.flags.get("npcs", {})
     if npc_key not in npcs:
@@ -330,7 +342,7 @@ async def track_interaction_cooldown(
 
     interactions = npcs[npc_key].get("interactions", {})
     last_used = interactions.get("lastUsedAt", {})
-    last_used[interaction_id] = int(time.time())
+    last_used[interaction_id] = timestamp
     interactions["lastUsedAt"] = last_used
     npcs[npc_key]["interactions"] = interactions
     session.flags["npcs"] = npcs
@@ -339,7 +351,8 @@ async def track_interaction_cooldown(
 async def advance_interaction_chain(
     session: GameSession,
     chain_id: str,
-    step_id: str
+    step_id: str,
+    world_time: Optional[float] = None
 ) -> None:
     """
     Advance an interaction chain to the next step.
@@ -348,7 +361,12 @@ async def advance_interaction_chain(
         session: Game session
         chain_id: Chain ID
         step_id: Completed step ID
+        world_time: Optional world time (game seconds). If provided, used for chain progression timing.
+                    If not provided, falls back to real-time (for backward compatibility).
     """
+    # Determine timestamp to use
+    timestamp = int(world_time) if world_time is not None else int(time.time())
+
     # Ensure chains structure exists
     chains = session.flags.get("chains", {})
     if chain_id not in chains:
@@ -356,7 +374,7 @@ async def advance_interaction_chain(
             "chainId": chain_id,
             "currentStep": 0,
             "completed": False,
-            "startedAt": int(time.time()),
+            "startedAt": timestamp,
             "completedSteps": [],
             "skippedSteps": [],
         }
@@ -368,7 +386,7 @@ async def advance_interaction_chain(
         chain_state["completedSteps"].append(step_id)
 
     # Update last step time
-    chain_state["lastStepAt"] = int(time.time())
+    chain_state["lastStepAt"] = timestamp
 
     # Note: Auto-advance logic is handled client-side based on chain definition
     # Backend just tracks completion of steps
@@ -443,7 +461,7 @@ async def execute_interaction(
 
     # 4. NPC effects
     if outcome.npc_effects:
-        await apply_npc_effects(db, session, npc_id, outcome.npc_effects)
+        await apply_npc_effects(db, session, npc_id, outcome.npc_effects, world_time=world_time)
 
     # 5. Scene launch
     if outcome.scene_launch:
@@ -485,14 +503,14 @@ async def execute_interaction(
 
     # 7. Track cooldown
     if definition.gating and definition.gating.cooldown_seconds:
-        await track_interaction_cooldown(session, npc_id, definition.id)
+        await track_interaction_cooldown(session, npc_id, definition.id, world_time=world_time)
 
     # 8. Chain progression (if this interaction is part of a chain)
     chain_id = None
     if context and "chainId" in context and "stepId" in context:
         chain_id = context["chainId"]
         step_id = context["stepId"]
-        await advance_interaction_chain(session, chain_id, step_id)
+        await advance_interaction_chain(session, chain_id, step_id, world_time=world_time)
 
     # Determine success message
     message = outcome.success_message or f"{definition.label} completed"
