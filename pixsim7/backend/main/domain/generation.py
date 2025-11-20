@@ -130,8 +130,7 @@ class Generation(SQLModel, table=True):
     asset_id: Optional[int] = Field(
         default=None,
         foreign_key="assets.id",
-        index=True,
-        sa_column_kwargs={"deferrable": True, "initially": "DEFERRED"}
+        index=True
     )
 
     # Metadata
