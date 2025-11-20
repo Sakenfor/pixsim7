@@ -33,6 +33,12 @@ from pixsim7.backend.main.api.v1.prompts import (
     families_router,
 )
 
+# Lightweight routes for chrome extension support
+from pixsim7.backend.main.api.v1.auth import router as auth_router
+from pixsim7.backend.main.api.v1.users import router as users_router
+from pixsim7.backend.main.api.v1.accounts import router as accounts_router
+from pixsim7.backend.main.api.v1.providers import router as providers_router
+
 # Import for architecture introspection
 from pixsim7.backend.main.api.v1.dev_architecture import (
     discover_routes,
@@ -51,11 +57,14 @@ app = FastAPI(
     - **Prompts**: Prompt versioning, variants, and families
     - **Providers**: AI provider configuration
     - **Analytics**: Generation metrics and statistics
+    - **Chrome Extension**: Auth, accounts, and provider management
 
     ## Architecture
 
-    This is a microservice split from the main PixSim7 backend to allow
-    independent scaling and deployment of AI generation capabilities.
+    This is a lightweight API for development, containing generation capabilities
+    and chrome extension support, while excluding heavy game engine features.
+
+    Perfect for development when you only need generation + chrome extension.
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -107,6 +116,8 @@ async def service_info():
             "prompts",         # Prompt management
             "providers",       # AI provider config
             "analytics",       # Generation analytics
+            "auth",            # Authentication (for chrome extension)
+            "accounts",        # Account management (for chrome extension)
         ],
 
         # Dependencies
@@ -286,6 +297,31 @@ app.include_router(
     tags=["prompts", "families"]
 )
 
+# Chrome Extension Support (lightweight routes)
+app.include_router(
+    auth_router,
+    prefix="/api/v1",
+    tags=["auth"]
+)
+
+app.include_router(
+    users_router,
+    prefix="/api/v1",
+    tags=["users"]
+)
+
+app.include_router(
+    accounts_router,
+    prefix="/api/v1",
+    tags=["accounts"]
+)
+
+app.include_router(
+    providers_router,
+    prefix="/api/v1",
+    tags=["providers"]
+)
+
 
 # ===== STARTUP/SHUTDOWN EVENTS =====
 
@@ -299,10 +335,15 @@ async def startup():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
 
+        # Register providers (needed for chrome extension)
+        from pixsim7.backend.main.services.provider import register_default_providers
+        register_default_providers()
+
         print("=" * 70)
         print("Generation API started successfully")
         print(f"Port: {os.getenv('GENERATION_API_PORT', 8001)}")
         print(f"Docs: http://localhost:{os.getenv('GENERATION_API_PORT', 8001)}/docs")
+        print(f"Chrome Extension: Supported (auth, accounts, providers)")
         print("=" * 70)
     except Exception as e:
         print(f"Startup error: {e}")
