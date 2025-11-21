@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { useControlCenterStore } from './stores/controlCenterStore';
 import { useToast } from '@pixsim7/shared.ui';
 import { registerModules, moduleRegistry } from './modules';
 import { Login } from './routes/Login';
@@ -25,8 +24,7 @@ import { AppMapDev } from './routes/AppMapDev';
 import { TemplateAnalyticsDev } from './routes/TemplateAnalyticsDev';
 import { InteractionStudio } from './pages/InteractionStudio';
 import { InteractionComponentsDemo } from './pages/InteractionComponentsDemo';
-import { CubeFormationControlCenter } from './components/control/CubeFormationControlCenter';
-import { ControlCenterDock } from './components/control/ControlCenterDock';
+import { ControlCenterManager } from './components/control/ControlCenterManager';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';
@@ -36,7 +34,6 @@ import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const controlCenterMode = useControlCenterStore((s) => s.mode);
   const toast = useToast();
 
   // Initialize theme (applies saved theme or system preference)
@@ -89,14 +86,10 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-      {/* Control Center - Dock or Cubes mode (only when authenticated) */}
+      {/* Control Center - plugin-based (only when authenticated) */}
       {isAuthenticated && (
         <ErrorBoundary>
-          {controlCenterMode === 'dock' ? (
-            <ControlCenterDock />
-          ) : (
-            <CubeFormationControlCenter />
-          )}
+          <ControlCenterManager />
         </ErrorBoundary>
       )}
       {/* Floating panels (only when authenticated) */}

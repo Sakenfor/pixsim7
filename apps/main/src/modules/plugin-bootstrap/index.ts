@@ -1,6 +1,7 @@
 import type { Module } from '../types';
 import { pluginManager, bootstrapExamplePlugins } from '../../lib/plugins';
 import { loadAllPlugins } from '../../lib/pluginLoader';
+import { bootstrapControlCenters } from '../../lib/plugins/bootstrapControlCenters';
 
 /**
  * Plugin Bootstrap Module
@@ -23,7 +24,10 @@ export const pluginBootstrapModule: Module = {
     // Bootstrap plugins (re-enables previously enabled plugins)
     await bootstrapExamplePlugins();
 
-    // Load all plugins (node types, helpers, and interactions) from plugins directory
+    // Bootstrap control center implementations (dock, cubes v1, cubes v2)
+    await bootstrapControlCenters();
+
+    // Load all sandboxed plugins (node types, helpers, interactions) from plugins directory
     // Note: This automatically discovers and registers:
     // - Node type plugins from lib/plugins/**/*Node.{ts,tsx} (e.g., seductionNode, questTriggerNode)
     // - Helper plugins from plugins/helpers/**/*.{ts,tsx}

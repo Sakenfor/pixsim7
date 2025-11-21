@@ -1,8 +1,9 @@
 /**
  * Cube System V2 Plugin
  *
- * A revolutionary 3D cube-based control center that replaces the traditional dock.
- * Features purpose-driven cubes with spatial intelligence and natural interactions.
+ * 3D cube-based control center implementation.
+ * Exposed both as a standard plugin (for settings) and as a
+ * control center implementation via ControlCenterManager.
  */
 
 import type { Plugin, PluginAPI } from '../../../lib/plugins/types';
@@ -16,7 +17,7 @@ export const manifest: ControlCenterPluginManifest = {
   version: '1.0.0',
   author: 'PixSim7 Team',
   description: 'Reimagined 3D cube-based control center with spatial intelligence and purpose-driven design',
-  icon: '✨',
+  icon: '🎲',
 
   type: 'ui-overlay',
 
@@ -31,7 +32,7 @@ export const manifest: ControlCenterPluginManifest = {
   controlCenter: {
     id: 'cubes-v2',
     displayName: 'Cube System V2 (3D)',
-    description: 'Revolutionary 3D cube interface with purpose-driven design and smart workspaces',
+    description: '3D cube interface with smart workspaces for creation, editing, and review',
     features: [
       '3D Graphics',
       'Smart Workspaces',
@@ -46,37 +47,9 @@ export const plugin: Plugin = {
   async onEnable(api: PluginAPI) {
     console.log('[CubeSystemV2] Plugin enabled');
 
-    // Add the cube system as a full-screen overlay
-    api.ui.addOverlay({
-      id: 'cube-system-v2-overlay',
-      position: 'center',
-      render: () => CubeSystemV2({}),
-      zIndex: 45, // Just above floating panels (40) but below modals (50)
-    });
-
-    // Add menu item to toggle cube system
-    api.ui.addMenuItem({
-      id: 'toggle-cube-system',
-      label: '🎲 Cube Control Center',
-      icon: '🎲',
-      onClick: () => {
-        // Toggle visibility
-        const visible = api.storage.get('cube-system-visible', true);
-        api.storage.set('cube-system-visible', !visible);
-
-        if (!visible) {
-          api.ui.showNotification({
-            message: 'Cube System activated',
-            type: 'info',
-            duration: 2000,
-          });
-        }
-      },
-    });
-
-    // Show welcome notification
+    // Inform user that Cube System V2 is available via the Control Center selector
     api.ui.showNotification({
-      message: '🎲 Cube Control Center V2 activated! Hover over bottom edge to reveal.',
+      message: '🎲 Cube Control Center V2 enabled. Use the Control Center selector (Ctrl+Shift+X) to switch to it.',
       type: 'success',
       duration: 5000,
     });
@@ -149,7 +122,7 @@ export const plugin: Plugin = {
 
         <div className="pt-4 border-t">
           <p className="text-xs text-neutral-500 mb-2">
-            💡 Tip: Use Ctrl+Shift+C to quickly toggle the cube system
+            Tip: Use Ctrl+Shift+X to open the Control Center selector and switch between modes.
           </p>
         </div>
       </div>

@@ -210,7 +210,7 @@ export function CubeSystemV2() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
+    <div className="fixed inset-0 z-30 bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
       {/* 3D Canvas */}
       <Canvas camera={{ position: [0, 0, 10], fov: 60 }}>
         <ambientLight intensity={0.5} />
