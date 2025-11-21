@@ -24,7 +24,7 @@ The PixSim7 prompt system has **strong backend foundations** (prompt versioning,
 ### ✅ What's Working Well
 
 #### 1. Prompt Versioning System (Backend)
-**Location**: `pixsim7_backend/services/prompts/`
+**Location**: `pixsim7/backend/main/services/prompts/`
 
 **Status**: Phase 3 Complete (Nov 2025)
 
@@ -44,7 +44,7 @@ The PixSim7 prompt system has **strong backend foundations** (prompt versioning,
 ---
 
 #### 2. Action Block Engine (Backend)
-**Location**: `pixsim7_backend/domain/narrative/action_blocks/`
+**Location**: `pixsim7/backend/main/domain/narrative/action_blocks/`
 
 **Status**: Fully Implemented
 
@@ -64,7 +64,7 @@ The PixSim7 prompt system has **strong backend foundations** (prompt versioning,
 ---
 
 #### 3. Narrative Prompt Engine (Backend)
-**Location**: `pixsim7_backend/domain/narrative/`
+**Location**: `pixsim7/backend/main/domain/narrative/`
 
 **Status**: Fully Implemented
 
@@ -231,7 +231,7 @@ block.prompt = "From this existing shot of {{lead}}..."
 
 #### 1.1 Provider Capability Validation ⚠️ BREAKING CHANGE
 
-**File**: `pixsim7_backend/services/prompts/prompt_version_service.py`
+**File**: `pixsim7/backend/main/services/prompts/prompt_version_service.py`
 
 **Change**: Make provider validation **mandatory** for all prompt operations
 
@@ -402,7 +402,7 @@ interface NodeTypeDefinition<TData> {
 
 #### 3.1 Strategy-Aware Prompts ⚠️ SCHEMA CHANGE
 
-**File**: `pixsim7_backend/domain/prompt_versioning.py`
+**File**: `pixsim7/backend/main/domain/prompt_versioning.py`
 
 **Database Migration Required**
 
@@ -443,7 +443,7 @@ version = PromptVersion(
 
 #### 3.2 Action Block Versioning Bridge ⚠️ BREAKING CHANGE
 
-**File**: `pixsim7_backend/domain/narrative/action_blocks/engine.py`
+**File**: `pixsim7/backend/main/domain/narrative/action_blocks/engine.py`
 
 **BREAKING**: Action blocks will ALWAYS create prompt versions
 
@@ -498,7 +498,7 @@ class ActionEngine:
 
 #### 3.3 NPC-Aware Prompt Templates
 
-**File**: `pixsim7_backend/services/prompts/template_utils.py`
+**File**: `pixsim7/backend/main/services/prompts/template_utils.py`
 
 **Add**:
 ```python

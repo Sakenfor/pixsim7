@@ -2,7 +2,7 @@
  * Game World and Simulation Types
  *
  * Type definitions for game worlds, NPCs, sessions, and simulation scheduler.
- * Corresponds to Pydantic schemas in pixsim7_backend/domain/game/schemas.py
+ * Corresponds to Pydantic schemas in pixsim7/backend/main/domain/game/schemas.py
  */
 
 // ===================

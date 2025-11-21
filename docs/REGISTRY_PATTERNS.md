@@ -21,7 +21,7 @@ PixSim7 currently has **10+ different registry implementations** with inconsiste
 
 ### 1. 🎯 **BehaviorExtensionRegistry** (Target Pattern)
 
-**Location:** `pixsim7_backend/infrastructure/plugins/behavior_registry.py:113`
+**Location:** `pixsim7/backend/main/infrastructure/plugins/behavior_registry.py:113`
 
 **Type:** Class-based singleton (`behavior_registry`)
 
@@ -46,7 +46,7 @@ behavior_registry.register_component_schema(component_name, schema_cls, metadata
 
 ### 2. ⚠️ **EFFECT_HANDLERS** (Duplicate)
 
-**Location:** `pixsim7_backend/domain/behavior/effects.py:25`
+**Location:** `pixsim7/backend/main/domain/behavior/effects.py:25`
 
 **Type:** Dict-based module-level registry
 
@@ -68,7 +68,7 @@ def register_effect_handler(effect_type: str, handler: EffectHandler):
 
 ### 3. ⚠️ **BUILTIN_CONDITIONS** (Transitional)
 
-**Location:** `pixsim7_backend/domain/behavior/conditions.py:38`
+**Location:** `pixsim7/backend/main/domain/behavior/conditions.py:38`
 
 **Type:** Dict-based module-level registry
 
@@ -88,7 +88,7 @@ BUILTIN_CONDITIONS: Dict[str, Callable] = {}
 
 ### 4. 🤔 **SCORING_FACTORS** (Needs Migration)
 
-**Location:** `pixsim7_backend/domain/behavior/scoring.py:36`
+**Location:** `pixsim7/backend/main/domain/behavior/scoring.py:36`
 
 **Type:** Dict-based module-level registry
 
@@ -111,7 +111,7 @@ def register_scoring_factor(factor_id: str, evaluator: ScoringFactorFunc, defaul
 
 ### 5. 🔴 **COMPONENT_SCHEMAS** (Deprecated)
 
-**Location:** `pixsim7_backend/domain/game/ecs.py:62`
+**Location:** `pixsim7/backend/main/domain/game/ecs.py:62`
 
 **Type:** Dict-based module-level registry
 
@@ -134,7 +134,7 @@ COMPONENT_SCHEMAS = {
 
 ### 6. 🔴 **CONDITION_EVALUATORS** (Deprecated)
 
-**Location:** `pixsim7_backend/domain/behavior/conditions.py:29`
+**Location:** `pixsim7/backend/main/domain/behavior/conditions.py:29`
 
 **Type:** Dict-based module-level registry
 
@@ -144,7 +144,7 @@ COMPONENT_SCHEMAS = {
 
 ### 7. ✅ **ProviderRegistry** (Keep - Different Domain)
 
-**Location:** `pixsim7_backend/services/provider/registry.py:15`
+**Location:** `pixsim7/backend/main/services/provider/registry.py:15`
 
 **Type:** Class-based with auto-discovery
 
@@ -158,7 +158,7 @@ COMPONENT_SCHEMAS = {
 
 ### 8. ✅ **DomainModelRegistry** (Keep - Different Domain)
 
-**Location:** `pixsim7_backend/infrastructure/domain_registry.py:40`
+**Location:** `pixsim7/backend/main/infrastructure/domain_registry.py:40`
 
 **Type:** Class-based with dependency resolution
 
@@ -170,7 +170,7 @@ COMPONENT_SCHEMAS = {
 
 ### 9. ✅ **MetricRegistry** (Keep - Different Domain)
 
-**Location:** `pixsim7_backend/domain/metrics/registry.py:9`
+**Location:** `pixsim7/backend/main/domain/metrics/registry.py:9`
 
 **Type:** Class-based
 
@@ -184,7 +184,7 @@ COMPONENT_SCHEMAS = {
 
 ### 10. ✅ **MAPPER_REGISTRY** (Keep - Different Domain)
 
-**Location:** `pixsim7_backend/services/submission/parameter_mappers.py:55`
+**Location:** `pixsim7/backend/main/services/submission/parameter_mappers.py:55`
 
 **Type:** Dict-based for parameter mappers
 
@@ -274,7 +274,7 @@ def apply_effects(effects, context):
 **Target State:**
 ```python
 # effects.py
-from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
 def register_effect_handler(effect_type: str, handler: EffectHandler):
     """
@@ -384,7 +384,7 @@ class BehaviorExtensionRegistry:
 
 2. **Update scoring.py**:
 ```python
-from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
 def register_scoring_factor(factor_id: str, evaluator: ScoringFactorFunc, default_weight: float = 1.0):
     """

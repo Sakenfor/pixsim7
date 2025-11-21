@@ -194,7 +194,7 @@ To complete the integration, you need to:
 
 ### 1. Add `npc_response` to backend operation types
 
-**File: `pixsim7_backend/domain/enums.py`**
+**File: `pixsim7/backend/main/domain/enums.py`**
 ```python
 class OperationType(str, Enum):
     TEXT_TO_VIDEO = "text_to_video"
@@ -207,7 +207,7 @@ class OperationType(str, Enum):
 
 ### 2. Create NPC Response Provider (Optional)
 
-**File: `pixsim7_backend/services/provider/npc_provider.py`**
+**File: `pixsim7/backend/main/services/provider/npc_provider.py`**
 
 See `docs/NPC_RESPONSE_VIDEO_INTEGRATION.md` for full example code.
 

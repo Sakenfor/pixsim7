@@ -29,7 +29,7 @@ export LOG_DATABASE_URL=postgresql://pixsim:pixsim123@localhost:5436/pixsim7_log
 PYTHONPATH=. alembic upgrade head
 
 # 4. Start API
-PYTHONPATH=. python -m uvicorn pixsim7_backend.main:app --port 8001
+PYTHONPATH=. python -m uvicorn pixsim7.backend.main.main:app --port 8001
 ```
 
 **That's it!** Logs now go to TimescaleDB automatically.
@@ -49,7 +49,7 @@ export DATABASE_URL=postgresql://pixsim:pixsim123@localhost:5435/pixsim7
 PYTHONPATH=. alembic upgrade head
 
 # Start API
-PYTHONPATH=. python -m uvicorn pixsim7_backend.main:app --port 8001
+PYTHONPATH=. python -m uvicorn pixsim7.backend.main.main:app --port 8001
 ```
 
 **Works for dev/small deployments!**

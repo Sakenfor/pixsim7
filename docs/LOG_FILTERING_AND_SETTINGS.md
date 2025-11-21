@@ -113,7 +113,7 @@ PIXSIM_LOG_SAMPLE_PATHS=/health:100  # Log 1 in 100 health checks
 
 After implementing:
 
-1. Restart backend: `python -m uvicorn pixsim7_backend.main:app --reload`
+1. Restart backend: `python -m uvicorn pixsim7.backend.main.main:app --reload`
 2. Check that health checks are filtered:
    ```bash
    # This should NOT create database logs
@@ -125,9 +125,9 @@ After implementing:
 ## Current Status
 
 **Services using pixsim_logging:**
-- ✅ Backend API (`pixsim7_backend/main.py`)
+- ✅ Backend API (`pixsim7/backend/main/main.py`)
 - ✅ Game Service (`pixsim7_game_service/main.py`)
-- ✅ Workers (`pixsim7_backend/workers/`)
+- ✅ Workers (`pixsim7/backend/main/workers/`)
 - ✅ Launcher (`scripts/launcher_gui/logger.py`)
 
 **Log patterns identified:**

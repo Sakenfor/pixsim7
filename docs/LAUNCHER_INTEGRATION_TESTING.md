@@ -133,7 +133,7 @@ Test error scenarios:
 
 #### ✅ Port Conflicts
 1. Start backend (port 8000)
-2. Manually run `python -m uvicorn pixsim7_backend.main:app --port 8000`
+2. Manually run `python -m uvicorn pixsim7.backend.main.main:app --port 8000`
 3. In launcher, try to start backend
 4. Verify appropriate error handling
 

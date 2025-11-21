@@ -107,7 +107,7 @@ ALTER TABLE generation_artifacts ADD COLUMN
 ## Implementation Files
 
 ### Domain Models
-**File**: `pixsim7_backend/domain/prompt_versioning.py`
+**File**: `pixsim7/backend/main/domain/prompt_versioning.py`
 
 ```python
 class PromptFamily(SQLModel, table=True):
@@ -120,12 +120,12 @@ class PromptVariantFeedback(SQLModel, table=True):
     """Feedback on prompt+asset combinations"""
 ```
 
-**Plugin Registration**: `pixsim7_backend/domain_models/prompt_models/manifest.py`
+**Plugin Registration**: `pixsim7/backend/main/domain_models/prompt_models/manifest.py`
 - Auto-registers models with SQLModel during app startup
 - Declares dependency on `core_models`
 
 ### Service Layer
-**File**: `pixsim7_backend/services/prompts/prompt_version_service.py`
+**File**: `pixsim7/backend/main/services/prompts/prompt_version_service.py`
 
 **Core Methods**:
 ```python
@@ -153,9 +153,9 @@ class PromptVersionService:
 ```
 
 ### API Endpoints
-**File**: `pixsim7_backend/api/v1/prompts.py`
+**File**: `pixsim7/backend/main/api/v1/prompts.py`
 
-**Plugin Registration**: `pixsim7_backend/routes/prompts/manifest.py`
+**Plugin Registration**: `pixsim7/backend/main/routes/prompts/manifest.py`
 - Auto-registers routes at `/api/v1/prompts/*` during app startup
 - Declares dependencies on `auth` and `assets` routes
 
@@ -173,7 +173,7 @@ GET    /api/v1/prompts/assets/{asset_id}/prompt-version
 ```
 
 ### Pipeline Integration
-**File**: `pixsim7_backend/services/submission/pipeline.py`
+**File**: `pixsim7/backend/main/services/submission/pipeline.py`
 
 **Changes**:
 ```python
@@ -388,8 +388,8 @@ alembic downgrade -1
 ```bash
 # Test imports
 PYTHONPATH=G:/code/pixsim7 python -c "
-from pixsim7_backend.domain import PromptFamily, PromptVersion
-from pixsim7_backend.services.prompts import PromptVersionService
+from pixsim7.backend.main.domain import PromptFamily, PromptVersion
+from pixsim7.backend.main.services.prompts import PromptVersionService
 print('All imports successful!')
 "
 
@@ -397,7 +397,7 @@ print('All imports successful!')
 alembic current
 
 # Start server
-python pixsim7_backend/main.py
+python pixsim7/backend/main/main.py
 ```
 
 **API Testing**:
@@ -604,7 +604,7 @@ POST /api/v1/prompts/templates/render
 
 ### Import Errors
 
-**Error**: `ModuleNotFoundError: No module named 'pixsim7_backend'`
+**Error**: `ModuleNotFoundError: No module named 'pixsim7.backend.main'`
 **Fix**: Set `PYTHONPATH=G:/code/pixsim7` before running
 
 ### Version Number Conflicts

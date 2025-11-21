@@ -44,7 +44,7 @@ The dynamic action generation system is now complete with a modular, extensible 
 
 3. **Load the Package**
    ```python
-   from pixsim7_backend.domain.narrative.action_blocks.package_loader import PackageLoader
+   from pixsim7.backend.main.domain.narrative.action_blocks.package_loader import PackageLoader
 
    loader = PackageLoader()
    loader.load_package("your_custom_pack.json")
@@ -64,7 +64,7 @@ The dynamic action generation system is now complete with a modular, extensible 
 ## 📁 File Structure
 
 ```
-pixsim7_backend/domain/narrative/action_blocks/
+pixsim7/backend/main/domain/narrative/action_blocks/
 ├── generator.py              # Core generation engine
 ├── concepts.py              # Creature & interaction library
 ├── generation_templates.py   # Template system (existing)
@@ -171,7 +171,7 @@ pixsim7_backend/domain/narrative/action_blocks/
 
 ### Test Current Implementation
 ```bash
-cd pixsim7_backend/domain/narrative/action_blocks
+cd pixsim7/backend/main/domain/narrative/action_blocks
 python test_generation.py
 ```
 

@@ -77,7 +77,7 @@ def execute(config: PickpocketConfig, context: InteractionContext):
 Instead of individual endpoints, one dispatcher:
 
 ```python
-# pixsim7_backend/api/v1/game_interactions.py
+# pixsim7/backend/main/api/v1/game_interactions.py
 
 @router.post("/interactions/execute")
 def execute_interaction(
@@ -127,7 +127,7 @@ def execute_interaction(
 Mirror the frontend plugin system on the backend:
 
 ```python
-# pixsim7_backend/domain/game/interactions/base.py
+# pixsim7/backend/main/domain/game/interactions/base.py
 
 class InteractionPlugin(Protocol):
     """Backend plugin interface (mirrors frontend)"""
@@ -153,7 +153,7 @@ class InteractionPlugin(Protocol):
         ...
 
 
-# pixsim7_backend/domain/game/interactions/pickpocket.py
+# pixsim7/backend/main/domain/game/interactions/pickpocket.py
 
 class PickpocketPlugin:
     id = "pickpocket"
@@ -175,7 +175,7 @@ class PickpocketPlugin:
         )
 
 
-# pixsim7_backend/domain/game/interactions/registry.py
+# pixsim7/backend/main/domain/game/interactions/registry.py
 
 interaction_registry = InteractionRegistry()
 interaction_registry.register(PickpocketPlugin())
@@ -192,7 +192,7 @@ interaction_registry.register(GiveItemPlugin())
 
 **File structure:**
 ```
-pixsim7_backend/domain/game/interactions/
+pixsim7/backend/main/domain/game/interactions/
   ├── base.py            # InteractionPlugin protocol
   ├── registry.py        # Plugin registry
   ├── pickpocket.py      # Pickpocket plugin

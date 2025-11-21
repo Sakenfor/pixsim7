@@ -53,7 +53,7 @@ Benefits:
 
 **Simple Dialogue:**
 ```python
-from pixsim7_backend.domain.narrative import create_simple_dialogue_program
+from pixsim7.backend.main.domain.narrative import create_simple_dialogue_program
 
 program = create_simple_dialogue_program(
     program_id="greeting_sequence",
@@ -68,7 +68,7 @@ program = create_simple_dialogue_program(
 
 **Dialogue with Choices:**
 ```python
-from pixsim7_backend.domain.narrative import create_simple_choice_program
+from pixsim7.backend.main.domain.narrative import create_simple_choice_program
 
 program = create_simple_choice_program(
     program_id="gift_choice",
@@ -91,7 +91,7 @@ program = create_simple_choice_program(
 
 **Custom Programs:**
 ```python
-from pixsim7_backend.domain.narrative import (
+from pixsim7.backend.main.domain.narrative import (
     NarrativeProgram,
     DialogueNode,
     ChoiceNode,
@@ -229,7 +229,7 @@ dialogue_result = await call_dialogue(npc_id, program_id)
 
 **After:**
 ```python
-from pixsim7_backend.domain.narrative import create_behavior_dialogue_program
+from pixsim7.backend.main.domain.narrative import create_behavior_dialogue_program
 
 # Create program for behavior
 program = create_behavior_dialogue_program(
@@ -246,7 +246,7 @@ result = await runtime.start(session, world, npc_id, program.id)
 ## Checking Migration Status
 
 ```python
-from pixsim7_backend.domain.narrative.legacy_shims import get_migration_status
+from pixsim7.backend.main.domain.narrative.legacy_shims import get_migration_status
 
 status = get_migration_status(world)
 print(f"Migration progress: {status['migrationPercentage']}%")

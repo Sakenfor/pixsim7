@@ -39,21 +39,21 @@ We introduced a **backend plugin auto-discovery system** that:
 Key elements:
 
 1. **Domain model plugins**
-   - Folder: `pixsim7_backend/domain_models/<feature>_models/`
+   - Folder: `pixsim7/backend/main/domain_models/<feature>_models/`
    - Manifest: `manifest.py` exporting a `DomainModelManifest` with:
      - `id`, `name`, `description`
      - `models`: list of model names as strings
      - `dependencies`: e.g. `["core_models"]`
      - `enabled: bool`
-   - Discovery: `init_domain_registry("pixsim7_backend/domain_models")` scans and registers models with SQLModel.
+   - Discovery: `init_domain_registry("pixsim7/backend/main/domain_models")` scans and registers models with SQLModel.
 
 2. **Route plugins**
-   - Folder: `pixsim7_backend/routes/<feature>/`
+   - Folder: `pixsim7/backend/main/routes/<feature>/`
    - Manifest: `manifest.py` exporting a `PluginManifest` with:
      - `id`, `name`, `version`, `description`
      - `kind="route"`, `prefix` (e.g. `/api/v1`)
      - `tags`, `dependencies`, `requires_db`, `requires_redis`, `enabled`
-   - Discovery: a plugin manager scans `pixsim7_backend/routes` and `include_router()` calls are driven by manifests.
+   - Discovery: a plugin manager scans `pixsim7/backend/main/routes` and `include_router()` calls are driven by manifests.
 
 3. **Main application startup**
    - `main.py` no longer imports individual domain models or routers.
@@ -109,12 +109,12 @@ Mitigations:
 ## Related Code / Docs
 
 - Code:
-  - `pixsim7_backend/infrastructure/domain_registry.py`
-  - `pixsim7_backend/infrastructure/plugins/types.py`
-  - `pixsim7_backend/infrastructure/plugins/manager.py`
-  - `pixsim7_backend/domain_models/*/manifest.py`
-  - `pixsim7_backend/routes/*/manifest.py`
-  - `pixsim7_backend/main.py`
+  - `pixsim7/backend/main/infrastructure/domain_registry.py`
+  - `pixsim7/backend/main/infrastructure/plugins/types.py`
+  - `pixsim7/backend/main/infrastructure/plugins/manager.py`
+  - `pixsim7/backend/main/domain_models/*/manifest.py`
+  - `pixsim7/backend/main/routes/*/manifest.py`
+  - `pixsim7/backend/main/main.py`
 - Docs:
   - `ARCHITECTURE.md`
   - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`

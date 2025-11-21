@@ -12,7 +12,7 @@ This document clarifies all port configuration to avoid confusion.
 
 | Service | Port | Environment Variable | Where Used |
 |---------|------|---------------------|------------|
-| **Backend API** | **8001** | `PORT=8001` | `pixsim7_backend/shared/config.py` |
+| **Backend API** | **8001** | `PORT=8001` | `pixsim7/backend/main/shared/config.py` |
 | **Admin Panel** | **8002** | `ADMIN_PORT=8002` | Admin SvelteKit dev server |
 | PostgreSQL | 5434 | `POSTGRES_PORT=5434` | Docker compose |
 | Redis | 6380 | `REDIS_PORT=6380` | Docker compose |
@@ -41,7 +41,7 @@ BACKEND_PORT=8001
 
 ### Code Reference
 
-In `pixsim7_backend/shared/config.py`:
+In `pixsim7/backend/main/shared/config.py`:
 
 ```python
 class Settings(BaseSettings):
@@ -205,7 +205,7 @@ When writing code or configuration:
 1. **Backend API port is 8001**, not 8000
 2. Use `PORT=8001` in `.env`, not `BACKEND_PORT`
 3. Use `ADMIN_API_BASE` from `lib/config.ts` instead of hardcoding
-4. Backend config is in `pixsim7_backend/shared/config.py`
+4. Backend config is in `pixsim7/backend/main/shared/config.py`
 5. Admin panel config is in `admin/src/lib/config.ts`
 
 **Never hardcode `http://localhost:8000` anywhere in the codebase!**

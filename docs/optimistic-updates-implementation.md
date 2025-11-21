@@ -9,13 +9,13 @@ This document describes the implementation of client-side optimistic updates wit
 ### Backend Changes
 
 #### 1. Database Schema
-- **File**: `pixsim7_backend/domain/game/models.py`
+- **File**: `pixsim7/backend/main/domain/game/models.py`
 - **Migration**: `20251118_0000_add_session_versioning.py`
 - Added `version: int` field to `GameSession` model (default=1)
 - Version is incremented automatically on each update
 
 #### 2. API Endpoints
-- **File**: `pixsim7_backend/api/v1/game_sessions.py`
+- **File**: `pixsim7/backend/main/api/v1/game_sessions.py`
 
 **Request Changes**:
 ```python
@@ -45,7 +45,7 @@ class GameSessionResponse(BaseModel):
 ```
 
 #### 3. Service Layer
-- **File**: `pixsim7_backend/services/game/game_session_service.py`
+- **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 
 **Version Checking**:
 ```python

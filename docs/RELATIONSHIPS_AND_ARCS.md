@@ -8,8 +8,8 @@
 > - Backend `GameSession.relationships` and the relationship preview APIs are **authoritative** for tier/intimacy values; TypeScript helpers are fallback for tools only.
 > - Prefer extending `flags` and `relationships` JSON (with namespaced keys) over adding new DB tables/columns for arcs/quests/items.
 > - When changing relationship logic, inspect and keep in sync:  
->   - `pixsim7_backend/domain/narrative/relationships.py`  
->   - `pixsim7_backend/services/game/game_session_service.py` (`_normalize_session_relationships`)  
+>   - `pixsim7/backend/main/domain/narrative/relationships.py`  
+>   - `pixsim7/backend/main/services/game/game_session_service.py` (`_normalize_session_relationships`)  
 >   - `packages/game-core/src/relationships/*` and `packages/game-core/src/session/state.ts`.
 > - Related tasks (roadmap/status, not specs):  
 >   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
@@ -229,7 +229,7 @@ The `relationships` field remains as a **projection** of core relationship metri
 
 **Reading Components** (backend):
 ```python
-from pixsim7_backend.domain.game.ecs import get_npc_component
+from pixsim7.backend.main.domain.game.ecs import get_npc_component
 
 # Get core relationship component
 core = get_npc_component(session, npc_id, "core")
@@ -241,7 +241,7 @@ romance_data = get_npc_component(session, npc_id, "plugin:game-romance", default
 
 **Writing Components** (backend):
 ```python
-from pixsim7_backend.domain.game.ecs import set_npc_component, update_npc_component
+from pixsim7.backend.main.domain.game.ecs import set_npc_component, update_npc_component
 
 # Set entire component
 set_npc_component(session, npc_id, "core", {
@@ -260,7 +260,7 @@ update_npc_component(session, npc_id, "romance", {
 
 **Reading via Metric Registry** (backend):
 ```python
-from pixsim7_backend.domain.game.ecs import get_npc_metric
+from pixsim7.backend.main.domain.game.ecs import get_npc_metric
 
 # Get metric by ID (registry resolves component + path)
 affinity = get_npc_metric(session, npc_id, "npcRelationship.affinity")

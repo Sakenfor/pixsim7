@@ -24,14 +24,14 @@
 ### Option 1: From the database directory (recommended)
 
 ```bash
-cd pixsim7_backend/infrastructure/database
+cd pixsim7/backend/main/infrastructure/database
 PYTHONPATH=/g/code/pixsim7 alembic upgrade head
 ```
 
 ### Option 2: Using environment variable (Windows PowerShell)
 
 ```powershell
-cd pixsim7_backend/infrastructure/database
+cd pixsim7/backend/main/infrastructure/database
 $env:PYTHONPATH = "G:/code/pixsim7"
 alembic upgrade head
 ```
@@ -40,7 +40,7 @@ alembic upgrade head
 
 ```bash
 cd /g/code/pixsim7
-python -m alembic -c pixsim7_backend/infrastructure/database/alembic.ini upgrade head
+python -m alembic -c pixsim7/backend/main/infrastructure/database/alembic.ini upgrade head
 ```
 
 ## Verification
@@ -73,7 +73,7 @@ SELECT COUNT(*) FROM provider_submissions WHERE account_id IS NULL;
 To rollback this migration:
 
 ```bash
-cd pixsim7_backend/infrastructure/database
+cd pixsim7/backend/main/infrastructure/database
 PYTHONPATH=/g/code/pixsim7 alembic downgrade -1
 ```
 

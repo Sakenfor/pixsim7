@@ -332,7 +332,7 @@ asset = await asset_service.get_asset_for_user(job.asset_id, user)
 
 ```python
 from fastapi import APIRouter, Depends
-from pixsim7_backend.api.dependencies import (
+from pixsim7.backend.main.api.dependencies import (
     CurrentUser,  # Type alias for Depends(get_current_user)
     JobSvc,       # Type alias for Depends(get_job_service)
     AssetSvc,

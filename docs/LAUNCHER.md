@@ -360,11 +360,11 @@ docker-compose up -d postgres redis
 
 # Terminal 2
 set PYTHONPATH=...
-python pixsim7_backend\main.py
+python pixsim7\backend\main\main.py
 
 # Terminal 3
 set PYTHONPATH=...
-arq pixsim7_backend.workers...
+arq pixsim7.backend.main.workers...
 
 # Lost track? Zombie processes!
 ```

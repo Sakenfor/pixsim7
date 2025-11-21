@@ -36,8 +36,8 @@ async def track_quota_usage(user_id: int, operation_type: OperationType) -> None
 
 **Usage Example:**
 ```python
-from pixsim7_backend.services.user.user_service import UserService
-from pixsim7_backend.api.dependencies import get_database
+from pixsim7.backend.main.services.user.user_service import UserService
+from pixsim7.backend.main.api.dependencies import get_database
 
 @router.get("/users/me")
 async def get_current_user(
@@ -210,7 +210,7 @@ async def list_providers() -> list[dict]
 
 **Usage Example:**
 ```python
-from pixsim7_backend.services.provider.provider_service import ProviderService
+from pixsim7.backend.main.services.provider.provider_service import ProviderService
 
 service = ProviderService()
 
@@ -338,7 +338,7 @@ async def submit_job(job: Job) -> ProviderSubmission
 
 **Usage Example:**
 ```python
-from pixsim7_backend.services.submission.pipeline import SubmissionPipeline
+from pixsim7.backend.main.services.submission.pipeline import SubmissionPipeline
 
 pipeline = SubmissionPipeline(db, account_service, provider_service, asset_service)
 
@@ -402,7 +402,7 @@ Device automation for mobile app control.
 **Usage Example:**
 ```python
 # Start automation loop
-from pixsim7_backend.services.automation import ExecutionLoopService
+from pixsim7.backend.main.services.automation import ExecutionLoopService
 
 service = ExecutionLoopService(db)
 await service.start_loop(device_id=1)
@@ -476,7 +476,7 @@ async def transfer_credits(from_account: int, to_account: int, amount: int):
 
 ```python
 import pytest
-from pixsim7_backend.services.user.user_service import UserService
+from pixsim7.backend.main.services.user.user_service import UserService
 
 @pytest.mark.asyncio
 async def test_create_user(db_session):
@@ -549,7 +549,7 @@ async def submit_job(job: Job):
 ### **3. Handle Errors Gracefully**
 
 ```python
-from pixsim7_backend.shared.errors import ResourceNotFoundError
+from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 
 async def get_user(user_id: int) -> User:
     user = await db.get(User, user_id)

@@ -4,7 +4,7 @@ REM Prevents zombie processes by tracking PIDs
 
 setlocal enabledelayedexpansion
 
-set BACKEND_PID_FILE=%TEMP%\pixsim7_backend.pid
+set BACKEND_PID_FILE=%TEMP%\pixsim7_backend_main.pid
 set WORKER_PID_FILE=%TEMP%\pixsim7_worker.pid
 
 if "%1"=="start" goto :start

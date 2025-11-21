@@ -110,8 +110,8 @@ This document provides a **single source of truth** for what's been completed an
 - Integration with Mood Debug and dialogue plugins
 
 **Key Files:**
-- `pixsim7_backend/domain/metrics/mood_evaluators.py`
-- `pixsim7_backend/domain/metrics/reputation_evaluators.py`
+- `pixsim7/backend/main/domain/metrics/mood_evaluators.py`
+- `pixsim7/backend/main/domain/metrics/reputation_evaluators.py`
 - `packages/game-core/src/metrics/preview.ts`
 
 ---
@@ -141,8 +141,8 @@ This document provides a **single source of truth** for what's been completed an
 - Redis caching (60s TTL) for normalized data
 
 **Key Files:**
-- `pixsim7_backend/domain/game/schemas.py`
-- `pixsim7_backend/services/game/session_service.py`
+- `pixsim7/backend/main/domain/game/schemas.py`
+- `pixsim7/backend/main/services/game/session_service.py`
 - Migration: `20251119_0000_add_world_id_to_game_session.py`
 
 ---
@@ -172,7 +172,7 @@ This document provides a **single source of truth** for what's been completed an
 - Integration with NPC brain and Mood Debug tools
 
 **Key Files:**
-- `pixsim7_backend/domain/metrics/mood_types.py`
+- `pixsim7/backend/main/domain/metrics/mood_types.py`
 - `packages/game-core/src/npcs/brain.ts`
 
 ---
@@ -187,7 +187,7 @@ This document provides a **single source of truth** for what's been completed an
 - **Note:** world_time fix applied to `interaction_execution.py` (2025-11-19)
 
 **Key Files:**
-- `pixsim7_backend/domain/game/interaction_execution.py`
+- `pixsim7/backend/main/domain/game/interaction_execution.py`
 - `docs/INTERACTION_AUTHORING_GUIDE.md`
 
 **Follow-up Applied:**
@@ -221,7 +221,7 @@ This document provides a **single source of truth** for what's been completed an
 - Narrative program versioning and composition
 
 **Key Files:**
-- `pixsim7_backend/domain/narrative/*`
+- `pixsim7/backend/main/domain/narrative/*`
 - `docs/INTERACTION_AUTHORING_GUIDE.md`
 
 ---
@@ -261,8 +261,8 @@ This document provides a **single source of truth** for what's been completed an
 - Renamed JobStatus → GenerationStatus across 7 backend files
 
 **Key Files:**
-- `pixsim7_backend/domain/generation.py`
-- `pixsim7_backend/api/v1/generations.py`
+- `pixsim7/backend/main/domain/generation.py`
+- `pixsim7/backend/main/api/v1/generations.py`
 - `frontend/src/lib/api/generations.ts`
 - `claude-tasks/15-unified-generation-request-path-and-job-deprecation.md`
 
@@ -285,8 +285,8 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 5: Frontend CharacterGraphBrowser component with 4 view modes
 
 **Key Files:**
-- `pixsim7_backend/domain/character_graph.py`
-- `pixsim7_backend/api/v1/character_graph.py`
+- `pixsim7/backend/main/domain/character_graph.py`
+- `pixsim7/backend/main/api/v1/character_graph.py`
 - `packages/types/src/characterGraph.ts`
 - `frontend/src/components/character-graph/CharacterGraphBrowser.tsx`
 - `docs/CHARACTER_LINKAGE_CONVENTIONS.md`
@@ -313,9 +313,9 @@ This document provides a **single source of truth** for what's been completed an
 - Uniform code paths for core and plugins
 
 **Key Files:**
-- `pixsim7_backend/domain/behavior/conditions.py`
-- `pixsim7_backend/domain/game/ecs.py`
-- `pixsim7_backend/main.py`
+- `pixsim7/backend/main/domain/behavior/conditions.py`
+- `pixsim7/backend/main/domain/game/ecs.py`
+- `pixsim7/backend/main/main.py`
 - `packages/game-core/src/world/gameProfile.ts`
 - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md`
 
@@ -343,7 +343,7 @@ This document provides a **single source of truth** for what's been completed an
 - Custom game styles: Non-core styles fall back to 'hybrid' defaults
 
 **Key Files:**
-- `pixsim7_backend/domain/behavior/scoring.py`
+- `pixsim7/backend/main/domain/behavior/scoring.py`
 - `packages/game-core/src/world/gameProfile.ts`
 - `packages/types/src/game.ts`
 - `claude-tasks/28-extensible-scoring-and-simulation-config.md`
@@ -414,7 +414,7 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 6: TS fallback logic deprecated but still present for backward compatibility
 
 **Key Files:**
-- `pixsim7_backend/api/v1/game_relationship_preview.py`
+- `pixsim7/backend/main/api/v1/game_relationship_preview.py`
 - `packages/game-core/src/relationships/preview.ts`
 - `docs/SOCIAL_METRICS.md`
 
@@ -438,7 +438,7 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 10: Developer tools & App Map integration
 
 **Key Files:**
-- `pixsim7_backend/services/generation/generation_service.py`
+- `pixsim7/backend/main/services/generation/generation_service.py`
 - `packages/game-core/src/generation/requestBuilder.ts`
 
 ---
@@ -461,8 +461,8 @@ This document provides a **single source of truth** for what's been completed an
 - Ensures gameplay consistency using world_time instead of real-time
 
 **Key Files:**
-- `pixsim7_backend/domain/game/interaction_execution.py`
-- `pixsim7_backend/domain/game/interaction_availability.py`
+- `pixsim7/backend/main/domain/game/interaction_execution.py`
+- `pixsim7/backend/main/domain/game/interaction_availability.py`
 
 ---
 
@@ -759,7 +759,7 @@ COMPONENT_SCHEMAS = {
 **Better Approach:**
 ```python
 # In ecs.py - just access the behavior_registry
-from pixsim7_backend.infrastructure.plugins.behavior_registry import behavior_registry
+from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 
 def get_component_schema(component_name: str):
     """Get component schema from unified registry"""
@@ -993,12 +993,12 @@ export function getSimulationTierLimits(
 1. **Unify Component Registration**
    - Move core components to use `behavior_registry` during startup
    - Eliminate `COMPONENT_SCHEMAS` hardcoded dict
-   - File: `pixsim7_backend/domain/game/ecs.py`
+   - File: `pixsim7/backend/main/domain/game/ecs.py`
 
 2. **Registry-ify Built-in Conditions**
    - Convert if/elif chain to registry lookup
    - Treat built-ins as "always registered" conditions
-   - File: `pixsim7_backend/domain/behavior/conditions.py`
+   - File: `pixsim7/backend/main/domain/behavior/conditions.py`
 
 3. **Make Behavior Profiles Data-Driven**
    - Move hardcoded switch to preset lookup
@@ -1010,7 +1010,7 @@ export function getSimulationTierLimits(
 4. **Extensible Scoring Factors**
    - Refactor scoring to use factor registry
    - Allow plugins to register scoring dimensions
-   - File: `pixsim7_backend/domain/behavior/scoring.py`
+   - File: `pixsim7/backend/main/domain/behavior/scoring.py`
 
 5. **Per-World Simulation Overrides**
    - Check world metadata before style defaults

@@ -7,7 +7,7 @@ The Narrative Runtime is a unified system for creating interactive narrative con
 ### 1. Create a Simple Dialogue
 
 ```python
-from pixsim7_backend.domain.narrative import create_simple_dialogue_program
+from pixsim7.backend.main.domain.narrative import create_simple_dialogue_program
 
 program = create_simple_dialogue_program(
     program_id="greeting",
@@ -240,7 +240,7 @@ program = create_simple_choice_program(
 ### Pattern 3: Custom Complex Program
 
 ```python
-from pixsim7_backend.domain.narrative import (
+from pixsim7.backend.main.domain.narrative import (
     NarrativeProgram,
     DialogueNode,
     ChoiceNode,
@@ -367,7 +367,7 @@ const program = intimacySceneToNarrativeProgram(scene);
 ### Starting a Program
 
 ```python
-from pixsim7_backend.services.narrative import NarrativeRuntimeEngine
+from pixsim7.backend.main.services.narrative import NarrativeRuntimeEngine
 
 runtime = NarrativeRuntimeEngine(db)
 
@@ -498,7 +498,7 @@ session.flags.npcs["npc:<id>"].components.narrative = {... NarrativeRuntimeState
 ### Check Active Program
 
 ```python
-from pixsim7_backend.domain.narrative import get_narrative_state
+from pixsim7.backend.main.domain.narrative import get_narrative_state
 
 state = get_narrative_state(session, npc_id)
 print(f"Active: {state.active_program_id} / {state.active_node_id}")
@@ -529,7 +529,7 @@ See: `examples/narrative_programs/` for complete examples
 
 ## API Reference
 
-- **Runtime Engine**: `pixsim7_backend/services/narrative/runtime.py`
+- **Runtime Engine**: `pixsim7/backend/main/services/narrative/runtime.py`
 - **Schema**: `packages/types/src/narrative.ts`
-- **Helpers**: `pixsim7_backend/domain/narrative/integration_helpers.py`
-- **ECS**: `pixsim7_backend/domain/narrative/ecs_helpers.py`
+- **Helpers**: `pixsim7/backend/main/domain/narrative/integration_helpers.py`
+- **ECS**: `pixsim7/backend/main/domain/narrative/ecs_helpers.py`

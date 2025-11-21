@@ -164,7 +164,7 @@
 **Usage:**
 ```bash
 # Start worker
-arq pixsim7_backend.workers.arq_worker.WorkerSettings
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 ---
@@ -328,15 +328,15 @@ Nothing! Backend + Admin Panel are complete.
    - Detailed asset system implementation reference
    - Keep for technical details
 
-3. **`pixsim7_backend/README.md`** 📌
+3. **`pixsim7/backend/main/README.md`** 📌
    - Project overview
    - Directory structure
 
-4. **`pixsim7_backend/GETTING_STARTED.md`** 📌
+4. **`pixsim7/backend/main/GETTING_STARTED.md`** 📌
    - Setup instructions
    - Environment configuration
 
-5. **`pixsim7_backend/HANDOFF_NOTES.md`** 📌
+5. **`pixsim7/backend/main/HANDOFF_NOTES.md`** 📌
    - Critical patterns and practices
    - DI examples
 
@@ -346,27 +346,27 @@ Nothing! Backend + Admin Panel are complete.
    - Information moved to MASTER_STATUS.md
    - Account management specs preserved
 
-2. **`pixsim7_backend/CURRENT_STATUS_AND_NEXT_STEPS.md`** ❌
+2. **`pixsim7/backend/main/CURRENT_STATUS_AND_NEXT_STEPS.md`** ❌
    - Redundant with MASTER_STATUS.md
    - Service layer info preserved
 
-3. **`pixsim7_backend/SERVICE_LAYER_STATUS.md`** ❌
+3. **`pixsim7/backend/main/SERVICE_LAYER_STATUS.md`** ❌
    - Redundant with SERVICE_LAYER_COMPLETE.md
    - Status now in MASTER_STATUS.md
 
-4. **`pixsim7_backend/SERVICE_LAYER_COMPLETE.md`** 🤔 MAYBE KEEP
+4. **`pixsim7/backend/main/SERVICE_LAYER_COMPLETE.md`** 🤔 MAYBE KEEP
    - Has good service usage examples
    - Consider merging into HANDOFF_NOTES.md
 
-5. **`pixsim7_backend/MULTI_USER_AND_SERVICE_DESIGN.md`** 🤔 MAYBE KEEP
+5. **`pixsim7/backend/main/MULTI_USER_AND_SERVICE_DESIGN.md`** 🤔 MAYBE KEEP
    - Has architectural patterns
    - Consider merging into README.md
 
-6. **`pixsim7_backend/PIXVERSE_INTEGRATION.md`** ✅ KEEP
+6. **`pixsim7/backend/main/PIXVERSE_INTEGRATION.md`** ✅ KEEP
    - Provider-specific documentation
    - Useful for adding more providers
 
-7. **`pixsim7_backend/REDIS_AND_WORKERS_SETUP.md`** ✅ KEEP
+7. **`pixsim7/backend/main/REDIS_AND_WORKERS_SETUP.md`** ✅ KEEP
    - Operational guide
    - Needed for deployment
 
@@ -395,10 +395,10 @@ docker-compose up -d
 
 # Terminal 2: Start backend
 cd G:/code/pixsim7
-PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8000
+PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8000
 
 # Terminal 3: Start ARQ worker
-PYTHONPATH=G:/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=G:/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 **Step 2:** Test via Swagger UI
@@ -485,18 +485,18 @@ PYTHONPATH=G:/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
 
 **Read These First:**
 1. `MASTER_STATUS.md` (this file) - Overall status
-2. `pixsim7_backend/HANDOFF_NOTES.md` - Critical patterns
-3. `pixsim7_backend/README.md` - Project overview
+2. `pixsim7/backend/main/HANDOFF_NOTES.md` - Critical patterns
+3. `pixsim7/backend/main/README.md` - Project overview
 4. `SESSION_SUMMARY_ASSET_SYSTEM.md` - Asset system details
 
 **For Implementation:**
-5. `pixsim7_backend/GETTING_STARTED.md` - Setup guide
-6. `pixsim7_backend/REDIS_AND_WORKERS_SETUP.md` - Worker setup
-7. `pixsim7_backend/PIXVERSE_INTEGRATION.md` - Provider integration
+5. `pixsim7/backend/main/GETTING_STARTED.md` - Setup guide
+6. `pixsim7/backend/main/REDIS_AND_WORKERS_SETUP.md` - Worker setup
+7. `pixsim7/backend/main/PIXVERSE_INTEGRATION.md` - Provider integration
 
 **For Reference:**
-8. `pixsim7_backend/SERVICE_LAYER_COMPLETE.md` - Service examples
-9. `pixsim7_backend/MULTI_USER_AND_SERVICE_DESIGN.md` - Architecture patterns
+8. `pixsim7/backend/main/SERVICE_LAYER_COMPLETE.md` - Service examples
+9. `pixsim7/backend/main/MULTI_USER_AND_SERVICE_DESIGN.md` - Architecture patterns
 
 ---
 

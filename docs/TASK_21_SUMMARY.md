@@ -113,7 +113,7 @@ A comprehensive **World Simulation Scheduler** that unifies time management, NPC
 
 ### Backend (Python)
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── services/simulation/          [NEW MODULE]
 │   ├── __init__.py               ✨ Module exports
 │   ├── context.py                ✨ WorldSimulationContext

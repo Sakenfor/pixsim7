@@ -128,11 +128,11 @@ docker-compose up -d postgres redis
 
 # Terminal 2: API
 cd /g/code/pixsim7
-PYTHONPATH=/g/code/pixsim7 python pixsim7_backend/main.py
+PYTHONPATH=/g/code/pixsim7 python pixsim7/backend/main/main.py
 
 # Terminal 3: Worker
 cd /g/code/pixsim7
-PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 ---
@@ -484,7 +484,7 @@ npm run dev
 ## Zombie Process Prevention
 
 ### The Problem
-Running `python pixsim7_backend/main.py &` repeatedly creates zombie processes.
+Running `python pixsim7/backend/main/main.py &` repeatedly creates zombie processes.
 
 ### The Solution
 **Always use one of these methods:**
@@ -508,7 +508,7 @@ Running `python pixsim7_backend/main.py &` repeatedly creates zombie processes.
    ./scripts/manage.sh cleanup
 
    # Or manually
-   pkill -f pixsim7_backend
+   pkill -f pixsim7.backend.main
    ```
 
 ---
@@ -834,7 +834,7 @@ Both options use the **same data structure**:
 │   │   └── pixsim7.log
 │   └── cache/                 # Temp cache
 │
-├── pixsim7_backend/           # Code (not in data)
+├── pixsim7/backend/main/           # Code (not in data)
 ├── admin/                     # Code (not in data)
 └── docker-compose*.yml        # Docker configs
 ```
@@ -1083,7 +1083,7 @@ cd /g/code/pixsim7
 │   ├── storage/               # User uploads & generated videos
 │   ├── logs/                  # Application logs (JSON format)
 │   └── cache/                 # Temporary cache files
-├── pixsim7_backend/           # Application code
+├── pixsim7/backend/main/           # Application code
 ├── admin/                     # Admin panel UI
 └── docker-compose*.yml        # Docker configurations
 ```

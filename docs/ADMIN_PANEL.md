@@ -189,7 +189,7 @@ docker-compose restart backend worker  # Clean restart
 ps aux | grep pixsim7
 
 # Kill by name
-pkill -f pixsim7_backend
+pkill -f pixsim7.backend.main
 
 # Kill by PID
 kill <PID>

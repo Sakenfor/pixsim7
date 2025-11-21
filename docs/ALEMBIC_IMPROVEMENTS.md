@@ -48,7 +48,7 @@ Comprehensive safety improvements to Alembic database migration tooling across l
 - Reduced timeout to 60s for consistency
 - Better troubleshooting guidance in errors
 
-**Files:** `pixsim7_backend/api/admin/migrations.py`
+**Files:** `pixsim7/backend/main/api/admin/migrations.py`
 
 ---
 
@@ -76,7 +76,7 @@ Comprehensive safety improvements to Alembic database migration tooling across l
 - Data loss warnings in downgrade() docstring
 - Better documentation in generated migrations
 
-**Files:** `pixsim7_backend/infrastructure/database/migrations/script.py.mako`
+**Files:** `pixsim7/backend/main/infrastructure/database/migrations/script.py.mako`
 
 ---
 
@@ -91,7 +91,7 @@ Comprehensive safety improvements to Alembic database migration tooling across l
 
 **Files:**
 - `scripts/launcher_gui/migration_tools.py`
-- `pixsim7_backend/api/admin/migrations.py`
+- `pixsim7/backend/main/api/admin/migrations.py`
 
 ---
 
@@ -203,4 +203,4 @@ If you encounter issues with migrations:
 3. **Check conflicts:** Run `alembic heads` to verify single head
 4. **Backup first:** Always backup before destructive operations
 
-For additional help, see `pixsim7_backend/GETTING_STARTED.md`
+For additional help, see `pixsim7/backend/main/GETTING_STARTED.md`

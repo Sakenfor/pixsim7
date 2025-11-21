@@ -295,7 +295,7 @@ def upgrade():
 **Step 2.1: Create new Generation model**
 
 ```python
-# pixsim7_backend/domain/generation.py
+# pixsim7/backend/main/domain/generation.py
 from sqlalchemy import Column, String, JSON, DateTime, Integer, UUID, Text
 from sqlalchemy.orm import relationship
 
@@ -336,13 +336,13 @@ class Generation(Base):
 **Step 2.2: Update related models**
 
 ```python
-# pixsim7_backend/domain/provider_submission.py
+# pixsim7/backend/main/domain/provider_submission.py
 class ProviderSubmission(Base):
     # Change job_id to generation_id
     generation_id = Column(UUID, ForeignKey("generations.id"))
     generation = relationship("Generation", back_populates="submissions")
 
-# pixsim7_backend/domain/asset.py
+# pixsim7/backend/main/domain/asset.py
 class Asset(Base):
     # Change source_job_id to source_generation_id
     source_generation_id = Column(UUID, ForeignKey("generations.id"))
@@ -354,7 +354,7 @@ class Asset(Base):
 **Step 3.1: Create GenerationService**
 
 ```python
-# pixsim7_backend/services/generation/generation_service.py
+# pixsim7/backend/main/services/generation/generation_service.py
 class GenerationService:
     """
     Unified service for generation lifecycle management.
@@ -423,7 +423,7 @@ class GenerationService:
 **Step 3.2: Update Pipeline**
 
 ```python
-# pixsim7_backend/services/submission/pipeline.py
+# pixsim7/backend/main/services/submission/pipeline.py
 class GenerationSubmissionPipeline:  # Renamed from JobSubmissionPipeline
     """Pipeline for processing generation requests through providers."""
 
@@ -492,7 +492,7 @@ class GenerationSubmissionPipeline:  # Renamed from JobSubmissionPipeline
 **Step 4.1: Update API endpoints**
 
 ```python
-# pixsim7_backend/api/v1/generations.py  # Renamed from jobs.py
+# pixsim7/backend/main/api/v1/generations.py  # Renamed from jobs.py
 @router.post("/generations", response_model=GenerationResponse)
 async def create_generation(
     request: CreateGenerationRequest,
@@ -533,7 +533,7 @@ async def get_generation(
 **Step 5.1: Update automation worker**
 
 ```python
-# pixsim7_backend/workers/automation.py
+# pixsim7/backend/main/workers/automation.py
 async def process_generations():
     """Main worker loop for processing generations."""
     while True:
@@ -641,9 +641,9 @@ def upgrade():
 ```
 
 **Step 7.2: Remove old files**
-- Delete: `pixsim7_backend/domain/job.py`
-- Delete: `pixsim7_backend/domain/generation_artifact.py`
-- Delete: `pixsim7_backend/services/job/`
+- Delete: `pixsim7/backend/main/domain/job.py`
+- Delete: `pixsim7/backend/main/domain/generation_artifact.py`
+- Delete: `pixsim7/backend/main/services/job/`
 - Delete: old migrations
 
 ---

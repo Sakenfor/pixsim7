@@ -243,13 +243,13 @@ Same seed + same graph + same state → same results.
 
 The Python models can be generated in the backend:
 ```
-pixsim7_backend/domain/game/graph/models.py
+pixsim7/backend/main/domain/game/graph/models.py
 ```
 
 Example Python usage:
 
 ```python
-from pixsim7_backend.domain.game.graph.models import Graph
+from pixsim7.backend.main.domain.game.graph.models import Graph
 
 # Load and validate
 with open('graph.json') as f:
@@ -261,7 +261,7 @@ print(f"Graph: {graph.name}")
 print(f"Entry: {graph.entry}")
 ```
 
-**Note:** The game service was consolidated into `pixsim7_backend` as part of Phase 1 architecture simplification (2025-11-16).
+**Note:** The game service was consolidated into `pixsim7.backend.main` as part of Phase 1 architecture simplification (2025-11-16).
 
 ## Schema Versioning
 

@@ -4,7 +4,7 @@
  * Provides helper functions for managing narrative runtime state in the ECS component system.
  * Narrative state is stored at: session.flags.npcs["npc:<id>"].components.narrative
  *
- * TypeScript equivalent of: pixsim7_backend/domain/narrative/ecs_helpers.py
+ * TypeScript equivalent of: pixsim7/backend/main/domain/narrative/ecs_helpers.py
  */
 
 import type {

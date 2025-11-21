@@ -267,11 +267,11 @@ This system was built from the start. Ongoing work:
   - `__init__.py` - `get_logger()` implementation
   - `handlers.py` - JSON and file handlers
   - `filters.py` - Sensitive data redaction
-- **`pixsim7_backend/main.py`** - Logger initialization
-- **`pixsim7_backend/workers/arq_worker.py`** - Worker logging
-- **`pixsim7_backend/services/submission/pipeline.py`** - Pipeline stage logging
-- **`pixsim7_backend/services/provider/adapters/pixverse.py`** - Provider logging
-- **`pixsim7_backend/api/v1/logs.py`** - Log ingestion endpoint
+- **`pixsim7/backend/main/main.py`** - Logger initialization
+- **`pixsim7/backend/main/workers/arq_worker.py`** - Worker logging
+- **`pixsim7/backend/main/services/submission/pipeline.py`** - Pipeline stage logging
+- **`pixsim7/backend/main/services/provider/adapters/pixverse.py`** - Provider logging
+- **`pixsim7/backend/main/api/v1/logs.py`** - Log ingestion endpoint
 - **`admin/src/routes/logs/`** - Admin log viewer
 
 ### Docs
@@ -286,4 +286,4 @@ This system was built from the start. Ongoing work:
 
 For complete field catalog and usage examples, see inline documentation in:
 - `pixsim_logging/__init__.py` - Field definitions
-- `pixsim7_backend/services/submission/pipeline.py` - Stage taxonomy examples
+- `pixsim7/backend/main/services/submission/pipeline.py` - Stage taxonomy examples

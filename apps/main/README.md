@@ -219,7 +219,7 @@ export const sceneBuilderModule: SceneBuilderModule = {
 
 **Scenes** (for scene-builder):
 - Backend has Scene, SceneAsset, SceneConnection models ready
-- Endpoints need implementation in `pixsim7_backend/api/v1/scenes.py`
+- Endpoints need implementation in `pixsim7/backend/main/api/v1/scenes.py`
 
 JWT token is stored in `localStorage` and automatically attached to all requests.
 
@@ -359,4 +359,4 @@ npm run preview
 
 - Backend API docs: `http://localhost:8001/docs`
 - Module types: `src/modules/types.ts`
-- Backend README: `../pixsim7_backend/README.md`
+- Backend README: `../pixsim7/backend/main/README.md`

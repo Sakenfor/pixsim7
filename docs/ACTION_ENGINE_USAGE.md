@@ -492,7 +492,7 @@ const compatiblePoses = poses.filter(p => p.intimacy_min <= currentIntimacy);
 
 ### 1. Create JSON File
 
-Add to `pixsim7_backend/domain/narrative/action_blocks/library/`:
+Add to `pixsim7/backend/main/domain/narrative/action_blocks/library/`:
 
 ```json
 [

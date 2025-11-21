@@ -11,21 +11,21 @@ The World Simulation Scheduler is a unified system for managing game world time,
 
 ### Core Components
 
-1. **WorldSimulationContext** (`pixsim7_backend/services/simulation/context.py`)
+1. **WorldSimulationContext** (`pixsim7/backend/main/services/simulation/context.py`)
    - Runtime context for each world
    - Tracks world_time, config, performance metrics
    - Methods: `advance_time()`, `get_stats()`, `can_simulate_more_npcs()`
 
-2. **WorldScheduler** (`pixsim7_backend/services/simulation/scheduler.py`)
+2. **WorldScheduler** (`pixsim7/backend/main/services/simulation/scheduler.py`)
    - Central orchestrator for simulation ticks
    - Methods: `register_world()`, `tick_world()`, `unregister_world()`
    - Per-world isolation (errors don't cascade)
 
-3. **SchedulerLoopRunner** (`pixsim7_backend/services/simulation/scheduler.py`)
+3. **SchedulerLoopRunner** (`pixsim7/backend/main/services/simulation/scheduler.py`)
    - Runs the scheduler loop for all registered worlds
    - Methods: `run_once()`, `start()`
 
-4. **Admin APIs** (`pixsim7_backend/api/v1/game_worlds.py`)
+4. **Admin APIs** (`pixsim7/backend/main/api/v1/game_worlds.py`)
    - `GET /worlds/{id}/scheduler/config`
    - `PUT /worlds/{id}/scheduler/config`
    - `POST /worlds/{id}/scheduler/pause`
@@ -57,17 +57,17 @@ Scheduler config is stored in `GameWorld.meta.simulation`:
 
 ### Option 1: ARQ Cron Job (Recommended)
 
-Add to `pixsim7_backend/workers/arq_worker.py`:
+Add to `pixsim7/backend/main/workers/arq_worker.py`:
 
 ```python
-from pixsim7_backend.services.simulation import WorldScheduler
+from pixsim7.backend.main.services.simulation import WorldScheduler
 
 async def tick_all_worlds(ctx: dict) -> dict:
     """
     Tick all registered worlds.
     Runs every 1 second as ARQ cron job.
     """
-    from pixsim7_backend.database import AsyncSessionLocal
+    from pixsim7.backend.main.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
         scheduler = WorldScheduler(db)
@@ -82,7 +82,7 @@ async def tick_all_worlds(ctx: dict) -> dict:
                 logger.error(f"Failed to register world {world_id}: {e}")
 
         # Run one tick iteration
-        from pixsim7_backend.services.simulation import SchedulerLoopRunner
+        from pixsim7.backend.main.services.simulation import SchedulerLoopRunner
         runner = SchedulerLoopRunner(scheduler)
         await runner.run_once()
 
@@ -107,13 +107,13 @@ class WorkerSettings:
 
 ### Option 2: Dedicated Worker Process
 
-Create `pixsim7_backend/workers/scheduler_worker.py`:
+Create `pixsim7/backend/main/workers/scheduler_worker.py`:
 
 ```python
 import asyncio
 import logging
-from pixsim7_backend.database import AsyncSessionLocal
-from pixsim7_backend.services.simulation import WorldScheduler, SchedulerLoopRunner
+from pixsim7.backend.main.database import AsyncSessionLocal
+from pixsim7.backend.main.services.simulation import WorldScheduler, SchedulerLoopRunner
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ Run with systemd or Docker:
 sudo systemctl start pixsim7-scheduler
 
 # Docker
-docker run pixsim7 python -m pixsim7_backend.workers.scheduler_worker
+docker run pixsim7 python -m pixsim7.backend.main.workers.scheduler_worker
 ```
 
 ### Option 3: Background Task in Main App (Dev Only)
@@ -152,7 +152,7 @@ docker run pixsim7 python -m pixsim7_backend.workers.scheduler_worker
 Add to FastAPI app startup:
 
 ```python
-from pixsim7_backend.services.simulation import WorldScheduler, SchedulerLoopRunner
+from pixsim7.backend.main.services.simulation import WorldScheduler, SchedulerLoopRunner
 
 @app.on_event("startup")
 async def start_scheduler():
@@ -198,7 +198,7 @@ curl -X POST http://localhost:8000/api/v1/worlds/1/scheduler/resume
 ### Programmatic Access
 
 ```python
-from pixsim7_backend.services.simulation import WorldScheduler
+from pixsim7.backend.main.services.simulation import WorldScheduler
 
 async def example(db: AsyncSession):
     scheduler = WorldScheduler(db)
@@ -393,7 +393,7 @@ For games with existing sessions:
 3. **NPC behavior state**:
    ```python
    # Initialize behavior component for NPCs
-   from pixsim7_backend.domain.game.ecs import set_npc_component
+   from pixsim7.backend.main.domain.game.ecs import set_npc_component
 
    for npc_id in npc_ids:
        set_npc_component(session, npc_id, "behavior", {
@@ -406,7 +406,7 @@ For games with existing sessions:
 4. **Scheduler config**:
    ```python
    # Add to GameWorld.meta
-   from pixsim7_backend.domain.game.schemas import get_default_world_scheduler_config
+   from pixsim7.backend.main.domain.game.schemas import get_default_world_scheduler_config
 
    world.meta = world.meta or {}
    world.meta["simulation"] = get_default_world_scheduler_config()
@@ -440,9 +440,9 @@ Full activity selection and effects:
 ## References
 
 - Task Document: `claude-tasks/21-world-time-and-simulation-scheduler-unification.md`
-- Implementation: `pixsim7_backend/services/simulation/`
-- Admin APIs: `pixsim7_backend/api/v1/game_worlds.py`
-- Schemas: `pixsim7_backend/domain/game/schemas.py` (WorldSchedulerConfigSchema)
+- Implementation: `pixsim7/backend/main/services/simulation/`
+- Admin APIs: `pixsim7/backend/main/api/v1/game_worlds.py`
+- Schemas: `pixsim7/backend/main/domain/game/schemas.py` (WorldSchedulerConfigSchema)
 - Frontend Types: `frontend/src/types/game.ts`
 
 ## Support

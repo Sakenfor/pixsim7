@@ -31,7 +31,7 @@ export interface GenerateContentResponse {
 - Player context snapshots for personalization
 - Health status tracking (latency, cost estimates)
 
-### 2. **Backend Jobs API** (`pixsim7_backend/api/v1/jobs.py`)
+### 2. **Backend Jobs API** (`pixsim7/backend/main/api/v1/jobs.py`)
 
 ```python
 POST /api/v1/jobs
@@ -55,7 +55,7 @@ WS /api/v1/ws/jobs  # Real-time updates
 - WebSocket for real-time status updates
 - ARQ worker integration
 
-### 3. **GenerationService** (`pixsim7_backend/services/generation/generation_service.py`)
+### 3. **GenerationService** (`pixsim7/backend/main/services/generation/generation_service.py`)
 
 ```python
 class GenerationService:
@@ -336,11 +336,11 @@ export class VideoGenerationManager {
 
 Create a provider that handles NPC response video generation:
 
-**File: `pixsim7_backend/services/provider/npc_provider.py`**
+**File: `pixsim7/backend/main/services/provider/npc_provider.py`**
 
 ```python
-from pixsim7_backend.services.provider.base import BaseProvider
-from pixsim7_backend.domain.enums import OperationType
+from pixsim7.backend.main.services.provider.base import BaseProvider
+from pixsim7.backend.main.domain.enums import OperationType
 from typing import Dict, Any
 
 class NpcResponseProvider(BaseProvider):
@@ -371,7 +371,7 @@ class NpcResponseProvider(BaseProvider):
         prompt = self._build_npc_prompt(params)
 
         # Delegate to ComfyUI or other provider
-        from pixsim7_backend.services.provider.registry import registry
+        from pixsim7.backend.main.services.provider.registry import registry
         comfyui = registry.get('comfyui')
 
         # Use image_to_video if base image provided, else text_to_video
@@ -434,7 +434,7 @@ class NpcResponseProvider(BaseProvider):
 **Register the provider:**
 
 ```python
-# In pixsim7_backend/services/provider/registry.py or __init__.py
+# In pixsim7/backend/main/services/provider/registry.py or __init__.py
 from .npc_provider import NpcResponseProvider
 
 registry.register(NpcResponseProvider())
@@ -565,7 +565,7 @@ generationUIPluginRegistry.register(npcResponsePlugin);
 
 ### Step 1: Add NPC Response Operation Type ✅
 - Update `packages/types/src/generation.ts`
-- Update `pixsim7_backend/domain/enums.py`
+- Update `pixsim7/backend/main/domain/enums.py`
 - Add NPC response params interface
 
 ### Step 2: Create NPC Response Provider ✅

@@ -21,9 +21,9 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
   - `SnapshotCaptureResult`, `SnapshotRestoreResult` types
 
 **Python (Backend)**
-- `pixsim7_backend/domain/scenarios/models.py`
+- `pixsim7/backend/main/domain/scenarios/models.py`
   - Pydantic models for `WorldSnapshot`, `SessionSnapshot`
-- `pixsim7_backend/services/scenarios/snapshot_service.py`
+- `pixsim7/backend/main/services/scenarios/snapshot_service.py`
   - `SnapshotService` with capture/restore functionality
   - File I/O for JSON snapshots
 
@@ -36,14 +36,14 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
   - `ScenarioScriptMetadata` helper
 
 **Python**
-- `pixsim7_backend/domain/scenarios/models.py`
+- `pixsim7/backend/main/domain/scenarios/models.py`
   - `TickStep`, `InteractionStep`, `NarrativeStep`, `AssertStep`
   - `ScenarioScript`, `ScenarioScriptMetadata`
 
 ### Phase 25.3: Headless Runner & Execution Engine
 
 **Python**
-- `pixsim7_backend/services/scenarios/runner.py`
+- `pixsim7/backend/main/services/scenarios/runner.py`
   - `ScenarioRunner` class
   - `ScenarioResult`, `ScenarioStepResult` classes
   - Step execution handlers:
@@ -68,7 +68,7 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
   - `evaluateAssertions()` executor
 
 **Python**
-- `pixsim7_backend/services/scenarios/assertions.py`
+- `pixsim7/backend/main/services/scenarios/assertions.py`
   - `ScenarioAssertion` class
   - `AssertionResult` model
   - Matching assertion builders
@@ -83,14 +83,14 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
   - Tests relationship validation and consent safety
 
 **CLI Runner**
-- `pixsim7_backend/scenarios/run_all.py`
+- `pixsim7/backend/main/scenarios/run_all.py`
   - Full-featured CLI with options:
     - `--dir` - custom scenario directory
     - `--pattern` - file pattern matching
     - `--verbose` - detailed output
     - `--fail-fast` - stop on first failure
   - Summary reporting
-- `pixsim7_backend/scenarios/__main__.py`
+- `pixsim7/backend/main/scenarios/__main__.py`
   - Module entry point
 - `scripts/run_scenarios.sh` / `scripts/run_scenarios.bat`
   - Cross-platform convenience scripts
@@ -147,7 +147,7 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
 
 Verified CLI functionality:
 ```bash
-$ python -m pixsim7_backend.scenarios --verbose
+$ python -m pixsim7.backend.main.scenarios --verbose
 Found 2 scenario(s) to run
 ✓ 01_basic_tick_test.json - PASSED
 ✓ 02_relationship_metrics_test.json - PASSED
@@ -160,7 +160,7 @@ Failed: 0
 
 ### Capture a Snapshot
 ```python
-from pixsim7_backend.services.scenarios import SnapshotService
+from pixsim7.backend.main.services.scenarios import SnapshotService
 
 snapshot = await snapshot_service.capture_world_snapshot(world_id=1)
 await snapshot_service.save_snapshot_to_file(
@@ -172,18 +172,18 @@ await snapshot_service.save_snapshot_to_file(
 ### Run Scenarios
 ```bash
 # Run all scenarios
-python -m pixsim7_backend.scenarios
+python -m pixsim7.backend.main.scenarios
 
 # Verbose output
-python -m pixsim7_backend.scenarios --verbose
+python -m pixsim7.backend.main.scenarios --verbose
 
 # Stop on first failure (for CI)
-python -m pixsim7_backend.scenarios --fail-fast
+python -m pixsim7.backend.main.scenarios --fail-fast
 ```
 
 ### Create Assertions
 ```python
-from pixsim7_backend.services.scenarios import (
+from pixsim7.backend.main.services.scenarios import (
     assert_world_time,
     assert_metric_between,
 )
@@ -232,17 +232,17 @@ packages/game-core/src/scenarios/
 ├── script.ts
 └── snapshot.ts
 
-pixsim7_backend/domain/scenarios/
+pixsim7/backend/main/domain/scenarios/
 ├── __init__.py
 └── models.py
 
-pixsim7_backend/services/scenarios/
+pixsim7/backend/main/services/scenarios/
 ├── __init__.py
 ├── assertions.py
 ├── runner.py
 └── snapshot_service.py
 
-pixsim7_backend/scenarios/
+pixsim7/backend/main/scenarios/
 ├── __init__.py
 ├── __main__.py
 └── run_all.py
@@ -300,7 +300,7 @@ Add to CI pipeline:
 - name: Run scenario tests
   run: |
     export PYTHONPATH=.
-    python -m pixsim7_backend.scenarios --fail-fast
+    python -m pixsim7.backend.main.scenarios --fail-fast
 ```
 
 ## Conclusion

@@ -34,7 +34,7 @@ interface SessionFlags {
 
 ### Session Service
 
-`GameSessionService` (pixsim7_backend/services/game/game_session_service.py) respects session flags:
+`GameSessionService` (pixsim7/backend/main/services/game/game_session_service.py) respects session flags:
 
 - `update_session()` accepts `flags` parameter and stores it in JSON
 - Backend is passive - time only advances when frontend explicitly calls APIs
@@ -224,9 +224,9 @@ interface WorldSessionFlags {
 | **Type Definitions** | `packages/types/src/game.ts` | SessionFlags, WorldMode types |
 | **Session Helpers** | `frontend/src/lib/game/session.ts` | Flag creation utilities |
 | **Game UI** | `frontend/src/routes/Game2D.tsx` | Turn-based controls |
-| **Session Service** | `pixsim7_backend/services/game/game_session_service.py` | Session management |
-| **World Service** | `pixsim7_backend/services/game/game_world_service.py` | Time advancement |
-| **NPC Schedules** | `pixsim7_backend/domain/game/models.py` | NPCSchedule model |
+| **Session Service** | `pixsim7/backend/main/services/game/game_session_service.py` | Session management |
+| **World Service** | `pixsim7/backend/main/services/game/game_world_service.py` | Time advancement |
+| **NPC Schedules** | `pixsim7/backend/main/domain/game/models.py` | NPCSchedule model |
 | **This Doc** | `docs/TURN_BASED_WORLD_MODE.md` | Usage guide |
 
 ## Summary

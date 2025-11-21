@@ -19,9 +19,9 @@ Successfully implemented a unified action blocks system that consolidates and en
 ### ✅ Component 1: Database Storage Layer
 
 **Files Created:**
-- `pixsim7_backend/domain/action_block.py` - Database model (400+ lines)
-- `pixsim7_backend/infrastructure/database/migrations/versions/20251118_1100_add_action_blocks_table.py` - Migration
-- `pixsim7_backend/services/action_blocks/migration_service.py` - JSON ↔ Database conversion
+- `pixsim7/backend/main/domain/action_block.py` - Database model (400+ lines)
+- `pixsim7/backend/main/infrastructure/database/migrations/versions/20251118_1100_add_action_blocks_table.py` - Migration
+- `pixsim7/backend/main/services/action_blocks/migration_service.py` - JSON ↔ Database conversion
 
 **Features:**
 - PostgreSQL storage for action blocks (replaces JSON as primary)
@@ -87,7 +87,7 @@ GET /api/v1/action-blocks/migrate/status
 ### ✅ Component 3: AI Extractor Service
 
 **File Created:**
-- `pixsim7_backend/services/action_blocks/ai_extractor.py` (400+ lines)
+- `pixsim7/backend/main/services/action_blocks/ai_extractor.py` (400+ lines)
 
 **Features:**
 - Uses Claude API (Sonnet 4) to intelligently parse complex prompts
@@ -124,7 +124,7 @@ POST /api/v1/action-blocks/extract
 ### ✅ Component 4: Block Composition Engine
 
 **File Created:**
-- `pixsim7_backend/services/action_blocks/composition_engine.py` (400+ lines)
+- `pixsim7/backend/main/services/action_blocks/composition_engine.py` (400+ lines)
 
 **Features:**
 - Mix and match blocks to create new prompts
@@ -214,7 +214,7 @@ POST   /api/v1/action-blocks/{id}/rate             Rate block
 ## File Structure
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── domain/
 │   └── action_block.py                    ← Database model
 │
@@ -390,7 +390,7 @@ anthropic>=0.18.0
 
 1. **Run Migration**
    ```bash
-   cd pixsim7_backend
+   cd pixsim7/backend/main
    alembic upgrade head
    ```
 
@@ -530,7 +530,7 @@ GET /statistics/overview
 
 ```bash
 # 1. Run migration
-cd pixsim7_backend
+cd pixsim7/backend/main
 alembic upgrade head
 
 # 2. Start server (if not running)

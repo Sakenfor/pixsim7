@@ -27,7 +27,7 @@ Get-ChildItem -Recurse -File | % { $_.FullName } | % { "$(Get-Content $_ -ReadCo
 pnpm -C frontend ls --depth 2; pnpm -C game-frontend ls --depth 2
 
 # Python import graph (quick & dirty)
-Get-ChildItem pixsim7_backend -Recurse -Include *.py | % { $_.FullName }
+Get-ChildItem pixsim7/backend/main -Recurse -Include *.py | % { $_.FullName }
 ```
 
 ---
@@ -35,7 +35,7 @@ Get-ChildItem pixsim7_backend -Recurse -Include *.py | % { $_.FullName }
 ## Repo map (context)
 
 Key areas of interest (sample; verify by scanning the tree):
-- Backend: `pixsim7_backend/`
+- Backend: `pixsim7/backend/main/`
   - `services/provider/adapters/pixverse.py` (very large ≈800+ lines)
   - `services/asset/asset_service.py` (appears large; internal references noted)
   - `api/v1/` routes (`assets.py` includes upload route)
@@ -271,7 +271,7 @@ If you need file sizes, give me commands to run in Windows PowerShell.
 ### P2: Backend architecture assessment
 
 """
-Analyze backend services and APIs in pixsim7_backend. Produce service contracts (inputs/outputs, error modes) for UploadService, AssetService, AccountService, ProviderService, JobService. Propose target boundaries and list overlaps/leakage found. End with a prioritized refactor outline.
+Analyze backend services and APIs in pixsim7.backend.main. Produce service contracts (inputs/outputs, error modes) for UploadService, AssetService, AccountService, ProviderService, JobService. Propose target boundaries and list overlaps/leakage found. End with a prioritized refactor outline.
 Quote code to support. Keep it actionable.
 """
 

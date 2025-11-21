@@ -11,7 +11,7 @@
  * These schemas are shared between frontend (composer/editor) and backend (runtime execution).
  *
  * @see docs/NARRATIVE_RUNTIME.md (to be created in Phase 20.8)
- * @see pixsim7_backend/domain/narrative/schema.py - Python/Pydantic equivalent
+ * @see pixsim7/backend/main/domain/narrative/schema.py - Python/Pydantic equivalent
  */
 
 // ============================================================================
