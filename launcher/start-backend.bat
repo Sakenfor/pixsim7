@@ -19,4 +19,4 @@ echo.
 echo Press Ctrl+C to stop
 echo.
 
-python pixsim7_backend\main.py
+python -m pixsim7.backend.main.main

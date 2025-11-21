@@ -12,7 +12,7 @@ OpenAI uses custom claim namespaces like `https://api.openai.com/profile`:
 
 ```python
 # sora.py
-from pixsim7_backend.shared.jwt_helpers import JWTExtractor
+from pixsim7.backend.main.shared.jwt_helpers import JWTExtractor
 
 class SoraProvider(Provider):
     JWT_EXTRACTOR = JWTExtractor(
@@ -187,7 +187,7 @@ The rest is automatic! Extension injects bearer token capture script and sends t
 If extraction fails, check what's in your JWT:
 
 ```python
-from pixsim7_backend.shared.jwt_helpers import parse_jwt_payload
+from pixsim7.backend.main.shared.jwt_helpers import parse_jwt_payload
 
 payload = parse_jwt_payload(bearer_token)
 print(json.dumps(payload, indent=2))

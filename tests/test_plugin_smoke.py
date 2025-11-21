@@ -44,13 +44,13 @@ class TestCriticalPluginEndpoints:
         # Should NOT be 404 (would indicate plugin didn't load)
         assert response.status_code != 404, (
             "Logs endpoint returned 404 - plugin may not be loaded. "
-            "Check pixsim7_backend/routes/logs/manifest.py"
+            "Check pixsim7/backend/main/routes/logs/manifest.py"
         )
 
         # Should NOT be 500 (would indicate import/syntax error)
         assert response.status_code != 500, (
             "Logs endpoint returned 500 - plugin may have import errors. "
-            "Check pixsim7_backend/api/v1/logs.py"
+            "Check pixsim7/backend/main/api/v1/logs.py"
         )
 
         # Expected: 401 (no auth) or 400 (bad payload) or 422 (validation)
@@ -72,13 +72,13 @@ class TestCriticalPluginEndpoints:
         # Should NOT be 404 (would indicate plugin didn't load)
         assert response.status_code != 404, (
             "WebSocket endpoint returned 404 - plugin may not be loaded. "
-            "Check pixsim7_backend/routes/websocket/manifest.py"
+            "Check pixsim7/backend/main/routes/websocket/manifest.py"
         )
 
         # Should NOT be 500 (would indicate import/syntax error)
         assert response.status_code != 500, (
             "WebSocket endpoint returned 500 - plugin may have import errors. "
-            "Check pixsim7_backend/api/v1/websocket.py"
+            "Check pixsim7/backend/main/api/v1/websocket.py"
         )
 
         # Expected: 400, 403, 426, etc. (anything but 404 or 500)
@@ -101,13 +101,13 @@ class TestCriticalPluginEndpoints:
         # Should NOT be 404 (would indicate plugin didn't load)
         assert response.status_code != 404, (
             "Auth login endpoint returned 404 - plugin may not be loaded. "
-            "Check pixsim7_backend/routes/auth/manifest.py"
+            "Check pixsim7/backend/main/routes/auth/manifest.py"
         )
 
         # Should NOT be 500 (would indicate import/syntax error)
         assert response.status_code != 500, (
             "Auth login endpoint returned 500 - plugin may have import errors. "
-            "Check pixsim7_backend/api/v1/auth.py"
+            "Check pixsim7/backend/main/api/v1/auth.py"
         )
 
         # Expected: 400, 401, 422 (invalid credentials or bad payload)

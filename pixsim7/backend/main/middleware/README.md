@@ -43,7 +43,7 @@ Middleware execution order is determined by priority (lower = earlier in chain):
 ### 1. Create the directory
 
 ```bash
-mkdir pixsim7_backend/middleware/my_middleware
+mkdir pixsim7/backend/main/middleware/my_middleware
 ```
 
 ### 2. Create `manifest.py`
@@ -57,7 +57,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from pixsim7_backend.infrastructure.middleware.types import MiddlewareManifest
+from pixsim7.backend.main.infrastructure.middleware.types import MiddlewareManifest
 
 # Manifest
 manifest = MiddlewareManifest(

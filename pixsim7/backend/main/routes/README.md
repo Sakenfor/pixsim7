@@ -39,13 +39,13 @@ routes/
 
 ## Route vs Plugin
 
-**Routes** (`pixsim7_backend/routes/`)
+**Routes** (`pixsim7/backend/main/routes/`)
 - Core API functionality
 - Essential for application operation
 - Represents stable, production-ready endpoints
 - Examples: auth, users, jobs, assets
 
-**Plugins** (`pixsim7_backend/plugins/`)
+**Plugins** (`pixsim7/backend/main/plugins/`)
 - Optional feature extensions
 - Game mechanics and experimental features
 - Can be enabled/disabled independently
@@ -58,7 +58,7 @@ Both use the **same plugin infrastructure** (`infrastructure/plugins/manager.py`
 ### 1. Create Directory
 
 ```bash
-mkdir pixsim7_backend/routes/my_feature
+mkdir pixsim7/backend/main/routes/my_feature
 ```
 
 ### 2. Create Manifest
@@ -70,8 +70,8 @@ Create `manifest.py`:
 My Feature API Routes Plugin
 """
 
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
-from pixsim7_backend.api.v1.my_feature import router
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.api.v1.my_feature import router
 
 manifest = PluginManifest(
     id="my_feature",
@@ -101,7 +101,7 @@ Create `api/v1/my_feature.py` with your actual endpoints:
 
 ```python
 from fastapi import APIRouter
-from pixsim7_backend.api.dependencies import CurrentUser
+from pixsim7.backend.main.api.dependencies import CurrentUser
 
 router = APIRouter()
 

@@ -1,6 +1,6 @@
 import asyncio
-from pixsim7_backend.infrastructure.database.session import init_database, get_async_session
-from pixsim7_backend.domain.user import User
+from pixsim7.backend.main.infrastructure.database.session import init_database, get_async_session
+from pixsim7.backend.main.domain.user import User
 from sqlmodel import select
 
 async def check_users():

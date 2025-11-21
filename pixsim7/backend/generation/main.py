@@ -172,7 +172,7 @@ async def service_info():
         # Architecture metadata
         "architecture": {
             "pattern": "microservice",
-            "original_location": "pixsim7_backend (split out)",
+            "original_location": "pixsim7.backend.main (split out)",
             "layers": ["routes", "services", "domain", "orm"],
             "features": [
                 "generation-pipeline",

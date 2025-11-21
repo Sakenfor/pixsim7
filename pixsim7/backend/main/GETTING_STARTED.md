@@ -14,7 +14,7 @@
 
 ```bash
 # Navigate to backend
-cd pixsim7_backend
+cd pixsim7/backend/main
 
 # Create virtual environment
 python -m venv venv
@@ -131,7 +131,7 @@ alembic downgrade -1
 pytest
 
 # Run with coverage
-pytest --cov=pixsim7_backend
+pytest --cov=pixsim7.backend.main
 
 # Run specific test file
 pytest tests/test_models.py
@@ -155,7 +155,7 @@ ruff check . --fix
 ## Project Structure
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── domain/                 # Core entities (models)
 ├── services/              # Business logic
 ├── api/                   # FastAPI routes
