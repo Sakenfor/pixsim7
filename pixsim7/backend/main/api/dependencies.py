@@ -39,6 +39,10 @@ async def get_database() -> AsyncSession:
         yield session
 
 
+# get_db is already imported from infrastructure.database.session above
+# and is re-exported here for backward compatibility when importing from dependencies
+
+
 # ===== SERVICE DEPENDENCIES =====
 
 def get_user_service(db: AsyncSession = Depends(get_database)) -> UserService:
