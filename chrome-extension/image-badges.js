@@ -82,7 +82,13 @@
       const provider = providerId || settings.defaultUploadProvider || 'pixverse';
       const res = await chrome.runtime.sendMessage({ action: 'uploadMediaFromUrl', mediaUrl, providerId: provider });
       if (res && res.success) {
-        showToast(`${isVideo ? 'Video' : 'Image'} uploaded to ${provider}`, true);
+        const providerSucceeded = res.providerSucceeded;
+        const kindLabel = isVideo ? 'Video' : 'Image';
+        if (providerSucceeded === false) {
+          showToast(`${kindLabel} saved to PixSim7; provider upload failed. See gallery for details.`, false);
+        } else {
+          showToast(`${kindLabel} saved to PixSim7 (${provider})`, true);
+        }
       } else {
         showToast(res?.error || 'Upload failed', false);
       }

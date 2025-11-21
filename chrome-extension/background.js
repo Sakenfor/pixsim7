@@ -312,7 +312,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           throw new Error(`Upload failed: ${resp.status} ${txt}`);
         }
         const data = await resp.json();
-        sendResponse({ success: true, data });
+
+        // Derive a simple provider success flag from backend note
+        const note = typeof data.note === 'string' ? data.note : '';
+        const providerSucceeded = !note.startsWith('Asset saved locally; provider upload failed');
+
+        sendResponse({ success: true, data, providerSucceeded });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }
