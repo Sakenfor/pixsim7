@@ -382,6 +382,7 @@ The following designer-focused features are planned (see `claude-tasks/` for det
 2. Register feature using `registerCompleteFeature()`
 3. Add routes, actions, and state as needed
 4. Register module in `frontend/src/modules/index.ts`
+5. Use `createModuleInitializer()` for hot-reload safety (see Module Lifecycle below)
 
 **Creating a plugin:**
 1. Choose plugin kind (see Plugin Kinds table above)
@@ -399,6 +400,61 @@ The following designer-focused features are planned (see `claude-tasks/` for det
 2. Use `printPluginHealth()` in console
 3. Browse capability registry with dev tools
 4. Check plugin catalog with `listAllPlugins()`
+
+---
+
+### Module Lifecycle & Hot-Reload Safety
+
+**Location:** `frontend/src/modules/lifecycle.ts`
+
+All modules should use the lifecycle helpers to ensure initialization is idempotent under hot-reload:
+
+**Pattern: Hot-Reload Safe Initialization**
+```typescript
+import { createModuleInitializer } from '../lifecycle';
+
+export const myModule: Module = {
+  id: 'my-module',
+  name: 'My Module',
+
+  // ✅ Correct: Use lifecycle helper
+  initialize: createModuleInitializer('my-module', async () => {
+    registerHandlers();
+    setupEventListeners();
+  }),
+};
+```
+
+**Anti-Pattern: Manual Guards**
+```typescript
+// ❌ Avoid: Manual flag tracking (verbose, error-prone)
+let initialized = false;
+
+export const myModule: Module = {
+  id: 'my-module',
+  name: 'My Module',
+
+  async initialize() {
+    if (initialized) return;  // Manual guard
+    registerHandlers();
+    initialized = true;
+  },
+};
+```
+
+**Lifecycle Helpers:**
+- `createModuleInitializer(id, fn)` - Wrap initialization for hot-reload safety
+- `createModuleCleanup(id, fn)` - Wrap cleanup for idempotency
+- `isModuleInitialized(id)` - Check if module has initialized
+- `warnUnguardedInit(id, action)` - Dev warning for legacy modules without guards
+
+**Why This Matters:**
+- **Hot-reload** can trigger module initialization multiple times in dev
+- Without guards: duplicate registrations, noisy warnings, memory leaks
+- With lifecycle helpers: guaranteed single initialization per page load
+
+**Example Migration:**
+See `frontend/src/modules/game-session/index.ts` for a complete example of migrating from manual guards to lifecycle helpers.
 
 ---
 

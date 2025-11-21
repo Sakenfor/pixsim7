@@ -6,6 +6,7 @@ Provides WebSocket connections for generation status updates and other real-time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pixsim7_backend.api.dependencies import CurrentUser, get_current_user_ws
 from pixsim7_backend.infrastructure.websocket import connection_manager
+from pixsim7_backend.infrastructure.websocket.types import ConnectedMessage, is_keep_alive
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,13 +45,14 @@ async def websocket_generations(
     try:
         await connection_manager.connect(websocket, user_id)
 
-        # Send welcome message
+        # Send welcome message using typed envelope
+        welcome = ConnectedMessage(
+            type="connected",
+            message="Connected to generation updates",
+            user_id=user_id,
+        )
         await connection_manager.send_personal_message(
-            {
-                "type": "connected",
-                "message": "Connected to generation updates",
-                "user_id": user_id,
-            },
+            welcome.model_dump(),
             websocket,
         )
 
@@ -59,9 +61,14 @@ async def websocket_generations(
             # Wait for messages from client (ping/pong, etc.)
             data = await websocket.receive_text()
 
-            # Handle ping/pong for keep-alive
-            if data == "ping":
-                await websocket.send_text("pong")
+            # Handle ping/pong for keep-alive (plain text, not JSON)
+            if is_keep_alive(data):
+                if data == "ping":
+                    await websocket.send_text("pong")
+                continue
+
+            # All other messages should be JSON with envelope structure
+            # (Add custom message handling here if needed)
 
     except WebSocketDisconnect:
         connection_manager.disconnect(websocket, user_id)
@@ -92,19 +99,28 @@ async def websocket_events(
     try:
         await connection_manager.connect(websocket, user_id)
 
+        # Send welcome message using typed envelope
+        welcome = ConnectedMessage(
+            type="connected",
+            message="Connected to event stream",
+            user_id=user_id,
+        )
         await connection_manager.send_personal_message(
-            {
-                "type": "connected",
-                "message": "Connected to event stream",
-                "user_id": user_id,
-            },
+            welcome.model_dump(),
             websocket,
         )
 
         while True:
             data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
+
+            # Handle ping/pong for keep-alive (plain text, not JSON)
+            if is_keep_alive(data):
+                if data == "ping":
+                    await websocket.send_text("pong")
+                continue
+
+            # All other messages should be JSON with envelope structure
+            # (Add custom message handling here if needed)
 
     except WebSocketDisconnect:
         connection_manager.disconnect(websocket, user_id)

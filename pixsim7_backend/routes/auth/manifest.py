@@ -22,6 +22,7 @@ manifest = PluginManifest(
     requires_db=True,
     requires_redis=False,
     enabled=True,
+    required=True,  # Critical for security
 )
 
 # Export the router from api/v1/auth.py

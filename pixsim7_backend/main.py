@@ -96,11 +96,19 @@ async def lifespan(app: FastAPI):
     logger.info(f"Registered {core_components_count} core ECS components")
 
     # Initialize plugin system (feature plugins)
-    plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
+    plugin_manager = init_plugin_manager(
+        app,
+        "pixsim7_backend/plugins",
+        fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
+    )
     logger.info(f"Loaded {len(plugin_manager.list_plugins())} feature plugins")
 
     # Initialize route plugin system (core API routes)
-    routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
+    routes_manager = init_plugin_manager(
+        app,
+        "pixsim7_backend/routes",
+        fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
+    )
     logger.info(f"Loaded {len(routes_manager.list_plugins())} core routes")
 
     # Register plugin managers for dependency injection (Phase 16.3)
