@@ -451,7 +451,7 @@ logger.info(
 
 ### **Adding a Frontend Module**
 
-1. Create: `frontend/src/modules/your-module/`
+1. Create: `apps/main/src/modules/your-module/`
 2. Implement `Module` interface
 3. Register in `modules/index.ts`
 4. Module appears in registry automatically
