@@ -44,6 +44,11 @@ export function useGenerationWebSocket() {
 
         ws.onmessage = (event) => {
           try {
+            // Handle ping/pong keep-alive (plain text)
+            if (event.data === 'pong') {
+              return;
+            }
+
             const message = JSON.parse(event.data);
 
             // Handle different message types
@@ -56,8 +61,6 @@ export function useGenerationWebSocket() {
                 console.log('[WebSocket] Generation update:', message.type, generationData.id);
                 addOrUpdateGeneration(generationData);
               }
-            } else if (event.data === 'pong') {
-              // Ping/pong keep-alive
             } else {
               console.log('[WebSocket] Message:', message);
             }
