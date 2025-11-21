@@ -663,6 +663,8 @@ conda activate pixsim7
 
 ## 🤝 Contributing
 
+### Code Contributions
+
 1. **Create a feature branch:** `git checkout -b feat/my-feature`
 2. **Make changes** following code style
 3. **Write tests** for new functionality
@@ -670,6 +672,107 @@ conda activate pixsim7
 5. **Commit changes** using conventional commits
 6. **Push and create PR**
 
+### Documentation Contributions
+
+Documentation is a first-class concern in PixSim7. Follow these guidelines:
+
+#### **Understanding the Documentation Lifecycle**
+
+See `DOCUMENTATION_CHANGELOG.md` for complete lifecycle and taxonomy details. Quick reference:
+
+- **Living Docs** - Update continuously as system evolves
+  - `ARCHITECTURE.md`, `AI_README.md`, `DEVELOPMENT_GUIDE.md`
+
+- **Reference Docs** - Update when features change
+  - `docs/backend/SERVICES.md`, `docs/frontend/COMPONENTS.md`
+
+- **ADRs** - Create for major architectural decisions (immutable after acceptance)
+  - `docs/decisions/*.md` - See `docs/decisions/README.md` for guidance
+
+- **Task Docs** - Archive when work is complete
+  - `claude-tasks/*.md`
+
+#### **When to Update Documentation**
+
+| Change Type | Documentation Action |
+|-------------|---------------------|
+| New service/component | Add to reference docs (`docs/backend/SERVICES.md` or `docs/frontend/COMPONENTS.md`) |
+| API endpoint change | Update API docs + `ARCHITECTURE.md` if significant |
+| Major architectural decision | Create ADR in `docs/decisions/` + update `ARCHITECTURE.md` |
+| New development workflow | Update this file (`DEVELOPMENT_GUIDE.md`) |
+| Setup/installation change | Update this file |
+| Code pattern change | Update code style section |
+| Task completion | Archive task doc, add entry to `DOCUMENTATION_CHANGELOG.md` |
+
+#### **Creating Architecture Decision Records (ADRs)**
+
+For major architectural changes, create an ADR:
+
+1. **Check if you need an ADR:**
+   - Introducing/changing extension surfaces (plugins, registries)
+   - Changing core game/session conventions
+   - Major architectural choices (provider systems, runtime semantics)
+   - Deprecating major APIs
+
+2. **Create the ADR:**
+   ```bash
+   # Use date format: YYYYMMDD-short-title.md
+   touch docs/decisions/20251121-my-decision.md
+   ```
+
+3. **Follow the template:**
+   - Copy structure from `docs/decisions/TEMPLATE.md`
+   - Fill in: Context, Decision, Consequences, Related Code/Docs
+   - Status: Start as "Proposed", mark "Accepted" when implemented
+
+4. **ADRs are immutable:**
+   - Once accepted, never modify
+   - If decision changes, create new ADR that supersedes the old one
+
+5. **Link ADRs in related docs:**
+   - Reference in `ARCHITECTURE.md` if it affects overall architecture
+   - Link from relevant implementation files in code comments
+
+#### **Documentation Style Guide**
+
+1. **Formatting:**
+   - Use Markdown (GitHub-flavored)
+   - Use headings hierarchically (# for title, ## for sections, etc.)
+   - Use code blocks with language tags: \`\`\`python, \`\`\`typescript
+   - Use tables for structured data
+   - Use emoji sparingly and consistently (e.g., ✅ for complete, ⚠️ for warnings)
+
+2. **Content:**
+   - Start with overview/purpose at top
+   - Include "Last Updated" date
+   - Add status badges for implementation state
+   - Use concrete examples over abstract descriptions
+   - Link to related docs and code
+   - Keep line length reasonable (80-120 chars preferred)
+
+3. **Code Examples:**
+   - Show complete, working examples
+   - Include imports and setup
+   - Use comments to explain non-obvious parts
+   - Reference actual file paths: `pixsim7_backend/services/asset/asset_service.py:123`
+
+4. **Linking:**
+   - Use relative paths for internal docs: `docs/decisions/README.md`
+   - Include line numbers for code references: `asset_service.py:123`
+   - Link to external docs with full URLs
+
+#### **Pull Request Checklist for Documentation Changes**
+
+- [ ] Updated relevant reference docs (if API/service changed)
+- [ ] Created ADR (if major architectural decision)
+- [ ] Updated `DOCUMENTATION_CHANGELOG.md` (if significant change)
+- [ ] Updated `ARCHITECTURE.md` (if system architecture changed)
+- [ ] Updated this guide (if workflow changed)
+- [ ] Checked all internal links work
+- [ ] Ran spell check
+- [ ] Verified code examples are accurate
+- [ ] Added "Last Updated" date to modified docs
+
 ---
 
-**Last Updated:** 2025-11-16
+**Last Updated:** 2025-11-21
