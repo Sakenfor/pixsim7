@@ -44,7 +44,7 @@ The end state should be:
 
 ## Phase Checklist
 
-- [ ] **Phase 34.1 – Inventory & Diff Backend Trees**
+- [X] **Phase 34.1 – Inventory & Diff Backend Trees** ✅ Complete (2025-11-21)
 - [ ] **Phase 34.2 – Fix Canonical Package & Update Imports**
 - [ ] **Phase 34.3 – Align Dev Scripts, Launcher & Docker**
 - [ ] **Phase 34.4 – Remove Code Duplication (Single Source of Truth)**
@@ -78,7 +78,64 @@ Get a clear picture of how `pixsim7_backend` and `pixsim7/backend/main` differ a
 4. Append a short summary table to this file:
    - Module category, differences, who currently uses which tree.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` Complete
+
+---
+
+## Phase 34.1 Summary: Backend Tree Inventory
+
+**Date Completed:** 2025-11-21
+
+### Directory Structure Comparison
+
+Both trees have **identical directory structures**:
+- `pixsim7_backend/` - 435 Python files
+- `pixsim7/backend/main/` - 434 Python files (1 file less)
+
+**File Differences:**
+1. `infrastructure/database/migrations/versions/20251121_0000_add_api_keys_column.py` - exists only in `pixsim7_backend`
+2. `infrastructure/websocket/types.py` - exists only in `pixsim7_backend`
+3. `services/game/social_context_service.py` - exists only in `pixsim7/backend/main`
+
+### Code Differences
+
+**Main Entry Point (`main.py` vs `main/main.py`):**
+- Import paths: `pixsim7_backend.*` vs `pixsim7.backend.main.*`
+- File system paths: `pixsim7_backend/...` vs `pixsim7/backend/main/...`
+- **Code divergence (lines 99-103):** `pixsim7_backend/main.py` includes `fail_fast=settings.debug` parameter in plugin initialization, which is missing in `pixsim7/backend/main/main.py`
+
+**Other Modules (e.g., `api/v1/assets.py`):**
+- Import path differences (same pattern as main.py)
+- **Code divergence:** `pixsim7_backend/api/v1/assets.py` includes provider_status computation logic (lines 78-150) that is missing in `pixsim7/backend/main/api/v1/assets.py`
+
+### Reference Inventory
+
+| Category | Uses `pixsim7_backend` | Uses `pixsim7.backend.main` |
+|----------|------------------------|----------------------------|
+| **Docker** | - | `docker-compose.yml` (line 72) |
+| **Launcher** | - | `launcher/services.json` (lines 25, 41, 116) |
+| **Scripts** | `scripts/manage.sh`, `scripts/manage.bat`, `scripts/start-dev.sh`, `scripts/start-dev.bat`, `scripts/run_scenarios.*` | - |
+| **Tests** | 9 test files including `test_upload_service.py`, `test_submission_pipeline.py`, etc. | 3 test files: `test_admin_database_endpoints.py`, `test_websocket_contract.py`, `test_plugin_smoke.py` |
+| **Documentation** | `README.md`, `DEVELOPMENT_GUIDE.md`, 50+ doc files | `docs/EXAMPLE_GENERATION_API_SPLIT.md` |
+| **Backend Code** | All files in `pixsim7_backend/` use `pixsim7_backend.*` imports | All files in `pixsim7/backend/main/` use `pixsim7.backend.main.*` imports |
+
+### Key Findings
+
+1. **Docker and Launcher already use canonical path** (`pixsim7.backend.main.main:app`)
+2. **Scripts and most tests use legacy path** (`pixsim7_backend.main:app`)
+3. **Documentation is split** - most references use legacy, but example docs show canonical
+4. **Code has diverged** - bug fixes and features exist in one tree but not the other:
+   - Provider status flags logic in `pixsim7_backend/api/v1/assets.py` (Task 32)
+   - `fail_fast` plugin parameter in `pixsim7_backend/main.py` (Task 31)
+   - Recent migration file in `pixsim7_backend`
+5. **Active development happens in `pixsim7_backend/`** - it has newer features and migration files
+
+### Recommendations for Next Phases
+
+1. **Phase 34.2:** Choose `pixsim7/backend/main` as canonical target (matches Docker/launcher)
+2. **Phase 34.2:** Copy missing features FROM `pixsim7_backend` TO `pixsim7/backend/main` before switching
+3. **Phase 34.3:** Update all scripts/tests to use `pixsim7.backend.main.main:app`
+4. **Phase 34.4:** Keep `pixsim7_backend` as temporary shim pointing to canonical code
 
 ---
 
