@@ -34,7 +34,7 @@ These are all “edge of the system” problems that are easy to miss in local t
 
 ## Phase Checklist
 
-- [ ] **Phase 31.1 – Backend Plugin & Route Health Checks**
+- [X] **Phase 31.1 – Backend Plugin & Route Health Checks** ✅ Complete (Already Implemented)
 - [ ] **Phase 31.2 – WebSocket Contract & Keep-Alive Tests**
 - [ ] **Phase 31.3 – Auth Redirect & 401 Handling Guardrails**
 - [ ] **Phase 31.4 – Module Lifecycle & Hot-Reload Helpers**
@@ -67,12 +67,19 @@ Ensure critical plugins (logs, WebSocket, game APIs) are loaded correctly and th
    - Add a small script under `scripts/` (or a pytest) that:
      - Scans `pixsim7/backend/main/api/v1/*.py` for `router` instances.
      - Verifies there is a corresponding `pixsim7/backend/main/routes/<feature>/manifest.py` for each "public" router, or explicitly whitelists internal-only routers.
-4. **Minimal plugin smoke tests**  
+4. **Minimal plugin smoke tests**
    - Add a small test module that:
      - Starts the app (or imports the application factory).
      - Verifies that `POST /api/v1/logs/ingest` and `GET /api/v1/ws/generations` respond correctly (no 404, no import errors).
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete (Already Implemented)
+
+**Implementation Details:**
+- ✅ `print_health_table()` in plugin manager (pixsim7/backend/main/infrastructure/plugins/manager.py:343-408)
+- ✅ `check_required_plugins()` with fail-fast support (manager.py:410-442)
+- ✅ Called from `init_plugin_manager()` with `fail_fast=settings.debug` (main.py:99-112)
+- ✅ Orphan router detection script (scripts/check_orphan_routers.py) - working, found 9 orphans
+- ✅ Plugin smoke tests (tests/test_plugin_smoke.py) - comprehensive endpoint + manager tests
 
 ---
 
