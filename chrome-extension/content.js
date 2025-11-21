@@ -316,14 +316,16 @@ setInterval(checkAndImport, 5000);
 // Listen for manual import requests from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'manualImport') {
-    const auth = checkAuth();
-    if (auth) {
-      importCookies(auth.providerId, auth.config)
-        .then(() => sendResponse({ success: true }))
-        .catch(error => sendResponse({ success: false, error: error.message }));
-    } else {
-      sendResponse({ success: false, error: 'Not logged into provider' });
-    }
+    (async () => {
+      const auth = await checkAuth();
+      if (auth) {
+        importCookies(auth.providerId, auth.config)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      } else {
+        sendResponse({ success: false, error: 'Not logged into provider' });
+      }
+    })();
     return true; // Async response
   }
 });

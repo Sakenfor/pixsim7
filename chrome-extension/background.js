@@ -349,30 +349,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         const uploadData = await uploadResp.json();
 
-        // Then create the job
-        const jobUrl = `${settings.backendUrl}/api/v1/jobs`;
-        const jobResp = await fetch(jobUrl, {
+        // Then create the generation
+        const genUrl = `${settings.backendUrl}/api/v1/generations`;
+        const genResp = await fetch(genUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${settings.pixsim7Token}`,
           },
           body: JSON.stringify({
-            operation_type: 'image_to_video',
             provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
-            params: {
-              prompt: prompt,
-              image_url: uploadData.external_url || imageUrl,
-              quality: '720p'
-            }
+            config: {
+              generation_type: 'npc_response',
+              purpose: 'adaptive',
+              style: {
+                pacing: 'medium'
+              },
+              duration: {
+                target: 5.0
+              },
+              constraints: {
+                rating: 'PG-13'
+              },
+              strategy: 'once',
+              fallback: {
+                mode: 'placeholder',
+                timeout_ms: 30000
+              },
+              enabled: true,
+              version: 1
+            },
+            name: prompt ? `Quick generate: ${prompt.substring(0, 50)}` : 'Quick generate',
+            priority: 7
           }),
         });
-        if (!jobResp.ok) {
-          const txt = await jobResp.text();
-          throw new Error(`Job creation failed: ${jobResp.status} ${txt}`);
+        if (!genResp.ok) {
+          const txt = await genResp.text();
+          throw new Error(`Generation creation failed: ${genResp.status} ${txt}`);
         }
-        const jobData = await jobResp.json();
-        sendResponse({ success: true, data: jobData });
+        const genData = await genResp.json();
+        sendResponse({ success: true, data: genData });
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }
