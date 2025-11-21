@@ -13,6 +13,7 @@ from pixsim7.backend.main.domain import (
     ProviderSubmission,
     User,
     MediaType,
+    SyncStatus,
 )
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
