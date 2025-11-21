@@ -5,7 +5,7 @@
 This document describes the social metrics system for PixSim7, which provides a unified framework for computing, previewing, and displaying derived social values like relationship tiers, NPC moods, and reputation bands.
 
 > **For Agents**
-> - Backend evaluators in `pixsim7_backend/domain/metrics/*` and the preview APIs are **authoritative** for metric values; TS helpers mirror them for tools and UI.
+> - Backend evaluators in `pixsim7/backend/main/domain/metrics/*` and the preview APIs are **authoritative** for metric values; TS helpers mirror them for tools and UI.
 > - When adding or changing a metric, update **both**: Python evaluators + TypeScript types (`packages/types/src/game.ts`) and game-core helpers.
 > - Do not compute relationship tiers/intimacy in arbitrary frontend code; use preview APIs or backend‑normalized session data.
 > - Related tasks (roadmap/status):  
@@ -51,7 +51,7 @@ The system is designed to be:
 
 **Schema Location**: `GameWorld.meta.relationship_schemas[schema_key]`
 
-**Backend Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_tier`
+**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/relationship_evaluators.py::evaluate_relationship_tier`
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-tier`
 
@@ -73,7 +73,7 @@ The system is designed to be:
 
 **Schema Location**: `GameWorld.meta.intimacy_schema`
 
-**Backend Evaluator**: `pixsim7_backend/domain/metrics/relationship_evaluators.py::evaluate_relationship_intimacy`
+**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/relationship_evaluators.py::evaluate_relationship_intimacy`
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-intimacy`
 
@@ -112,7 +112,7 @@ arousal = chemistry * 0.5 + tension * 0.5
 
 **Schema Location**: `GameWorld.meta.npc_mood_schema`
 
-**Backend Evaluator**: `pixsim7_backend/domain/metrics/mood_evaluators.py::evaluate_npc_mood`
+**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/mood_evaluators.py::evaluate_npc_mood`
 
 **Preview Endpoint**: `POST /api/v1/game/npc/preview-mood`
 
@@ -244,7 +244,7 @@ else:
 }
 ```
 
-**Backend Evaluator**: `pixsim7_backend/domain/metrics/mood_evaluators.py::evaluate_unified_npc_mood`
+**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/mood_evaluators.py::evaluate_unified_npc_mood`
 
 **Preview Endpoint**: `POST /api/v1/game/npc/preview-unified-mood`
 
@@ -289,7 +289,7 @@ else:
 
 **Target-Type-Specific Schemas**: Can define different bands for "npc", "faction", "group"
 
-**Backend Evaluator**: `pixsim7_backend/domain/metrics/reputation_evaluators.py::evaluate_reputation_band`
+**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/reputation_evaluators.py::evaluate_reputation_band`
 
 **Preview Endpoint**: `POST /api/v1/game/reputation/preview-reputation`
 
@@ -301,7 +301,7 @@ else:
 
 ### Backend Layer
 
-**Location**: `pixsim7_backend/domain/metrics/`
+**Location**: `pixsim7/backend/main/domain/metrics/`
 
 **Components**:
 - `types.py`: MetricType enum and MetricEvaluator protocol
@@ -333,7 +333,7 @@ async def evaluate_metric(
 
 ### API Layer
 
-**Locations**: `pixsim7_backend/api/v1/game_*.py`
+**Locations**: `pixsim7/backend/main/api/v1/game_*.py`
 
 **Endpoints**:
 - `POST /api/v1/game/relationships/preview-tier`
@@ -341,7 +341,7 @@ async def evaluate_metric(
 - `POST /api/v1/game/npc/preview-mood`
 - `POST /api/v1/game/reputation/preview-reputation`
 
-**Route Plugins**: `pixsim7_backend/routes/game_*_preview/manifest.py`
+**Route Plugins**: `pixsim7/backend/main/routes/game_*_preview/manifest.py`
 
 All endpoints:
 - Are **stateless** (no session mutations)
@@ -761,15 +761,15 @@ Future validation features:
 ### Emotional State System
 
 **Files**:
-- `pixsim7_backend/domain/npc_memory.py`
-- `pixsim7_backend/services/npc/emotional_state_service.py`
+- `pixsim7/backend/main/domain/npc_memory.py`
+- `pixsim7/backend/main/services/npc/emotional_state_service.py`
 
 **Integration**: Mood evaluator reads from NPCEmotionalState table, returns dominant emotion
 
 ### Action Block System
 
 **Files**:
-- `pixsim7_backend/domain/narrative/action_blocks/types.py`
+- `pixsim7/backend/main/domain/narrative/action_blocks/types.py`
 - `docs/ACTION_BLOCKS_UNIFIED_SYSTEM.md`
 
 **Integration**: Action blocks have separate mood tags (playful, tender, passionate) describing the action, not the NPC state
@@ -786,11 +786,11 @@ Future validation features:
 
 ### Adding New Metrics
 
-1. **Add metric type to enum**: `MetricType` in `pixsim7_backend/domain/metrics/types.py`
-2. **Create evaluator**: New file in `pixsim7_backend/domain/metrics/`
+1. **Add metric type to enum**: `MetricType` in `pixsim7/backend/main/domain/metrics/types.py`
+2. **Create evaluator**: New file in `pixsim7/backend/main/domain/metrics/`
 3. **Register evaluator**: Add to `__init__.py` exports
-4. **Create API endpoint**: New file in `pixsim7_backend/api/v1/`
-5. **Create route plugin**: New manifest in `pixsim7_backend/routes/`
+4. **Create API endpoint**: New file in `pixsim7/backend/main/api/v1/`
+5. **Create route plugin**: New manifest in `pixsim7/backend/main/routes/`
 6. **Add TypeScript types**: Extend `packages/types/src/game.ts`
 7. **Add game-core helper**: Extend `packages/game-core/src/metrics/preview.ts`
 8. **Export from game-core**: Add to `packages/game-core/src/index.ts`
@@ -855,7 +855,7 @@ export async function previewSkillLevel(
 
 ### Backend Tests
 
-Location: `pixsim7_backend/tests/domain/metrics/`
+Location: `pixsim7/backend/main/tests/domain/metrics/`
 
 Test cases:
 - Schema loading and fallback behavior

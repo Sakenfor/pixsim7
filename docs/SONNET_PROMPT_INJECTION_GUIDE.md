@@ -22,7 +22,7 @@ The easiest way is to create JSON packages that can be dropped into the system w
 
 ### Step 1: Create a Package File
 
-Create a new JSON file in: `pixsim7_backend/domain/narrative/action_blocks/packages/`
+Create a new JSON file in: `pixsim7/backend/main/domain/narrative/action_blocks/packages/`
 
 Example: `werewolf_advanced_pack.json`
 
@@ -80,7 +80,7 @@ Example: `werewolf_advanced_pack.json`
 Tell the user to run this Python snippet to load your package:
 
 ```python
-from pixsim7_backend.domain.narrative.action_blocks.package_loader import PackageLoader
+from pixsim7.backend.main.domain.narrative.action_blocks.package_loader import PackageLoader
 
 loader = PackageLoader()
 loader.load_package("werewolf_advanced_pack.json")
@@ -122,7 +122,7 @@ Camera {{camera_behavior}}.
 
 ```python
 # Test snippet for the user to verify
-from pixsim7_backend.domain.narrative.action_blocks.generation_templates import template_library
+from pixsim7.backend.main.domain.narrative.action_blocks.generation_templates import template_library
 
 # Your filled parameters
 params = {
@@ -219,7 +219,7 @@ Use the JSON `consistency` flags to control this on a per-block basis (some with
   "durationSec": 8.0
 }
 ```
-3. Save to: `pixsim7_backend/domain/narrative/action_blocks/library/user_generated.json`
+3. Save to: `pixsim7/backend/main/domain/narrative/action_blocks/library/user_generated.json`
 
 ### Workflow B: User Wants Variations
 
@@ -276,7 +276,7 @@ POST /api/v1/game/dialogue/actions/test
 
 ```python
 # Save as test_injection.py
-from pixsim7_backend.domain.narrative.action_blocks.generator import DynamicBlockGenerator
+from pixsim7.backend.main.domain.narrative.action_blocks.generator import DynamicBlockGenerator
 
 generator = DynamicBlockGenerator()
 
@@ -308,7 +308,7 @@ if result.action_block:
 Key files you might need to know about:
 
 ```
-pixsim7_backend/domain/narrative/action_blocks/
+pixsim7/backend/main/domain/narrative/action_blocks/
 ├── generator.py           # Main generation engine
 ├── concepts.py           # Creature and interaction definitions
 ├── generation_templates.py  # Template system

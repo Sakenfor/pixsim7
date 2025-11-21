@@ -298,7 +298,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             return None
 
         # Delegate to domain logic
-        from pixsim7_backend.domain.game.interaction_execution import (
+        from pixsim7.backend.main.domain.game.interaction_execution import (
             execute_interaction as execute_interaction_logic
         )
 
@@ -445,7 +445,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 ### Directory Structure
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── api/
 │   └── v1/
 │       ├── npc_interactions.py         # Modern: uses PluginContext
@@ -546,7 +546,7 @@ async def execute_interaction(self, session_id, npc_id, ...):
 
 ```python
 # routes/my_feature/manifest.py
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 manifest = PluginManifest(
     id="my_feature",
@@ -642,7 +642,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             return None
 
         # Delegate to domain logic
-        from pixsim7_backend.domain.game.my_logic import perform_mutation
+        from pixsim7.backend.main.domain.game.my_logic import perform_mutation
 
         orm_session = await self.db.get(GameSession, session_id)
         if not orm_session:

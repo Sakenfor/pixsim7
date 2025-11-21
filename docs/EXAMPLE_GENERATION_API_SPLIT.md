@@ -215,8 +215,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 
 # Import settings from main backend (shared config)
-from pixsim7_backend.shared.config import settings
-from pixsim7_backend.shared.database import engine, Base
+from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.database import engine, Base
 
 # Import routes
 from .routes import generations, prompts, providers
@@ -354,14 +354,14 @@ async def shutdown():
 
 ```python
 """
-Generations routes - moved from pixsim7_backend
+Generations routes - moved from pixsim7.backend.main
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
-from pixsim7_backend.shared.database import get_db
-from pixsim7_backend.models import Generation
+from pixsim7.backend.main.shared.database import get_db
+from pixsim7.backend.main.models import Generation
 from ..services.generation_service import GenerationService
 
 router = APIRouter()
@@ -432,7 +432,7 @@ async def list_generations(
       "depends_on": ["db"],
       "enabled": true,
       "type": "python",
-      "module": "pixsim7_backend.main:app",
+      "module": "pixsim7.backend.main.main:app",
       "tags": ["core", "api"],
       "provides": ["game", "users", "assets", "dialogue", "actions"]
     },
@@ -487,7 +487,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/pixsim7
 ### Option A: Direct HTTP Calls
 
 ```python
-# pixsim7_backend/services/generation_client.py
+# pixsim7/backend/main/services/generation_client.py
 
 import httpx
 import os
@@ -515,7 +515,7 @@ async def get_generation(generation_id: int):
 ### Option B: Fallback Pattern
 
 ```python
-# pixsim7_backend/services/generation_client.py
+# pixsim7/backend/main/services/generation_client.py
 
 import httpx
 import os
@@ -542,8 +542,8 @@ async def create_generation(prompt: str, model: str = "stable-diffusion"):
         pass
 
     # Fallback to local generation service
-    from pixsim7_backend.services.generation_service import GenerationService
-    from pixsim7_backend.shared.database import get_db
+    from pixsim7.backend.main.services.generation_service import GenerationService
+    from pixsim7.backend.main.shared.database import get_db
 
     db = next(get_db())
     service = GenerationService(db)
@@ -663,7 +663,7 @@ async def create_generation(prompt: str, model: str = "stable-diffusion"):
 # Terminal 1 - Main API
 cd /path/to/pixsim7
 export BACKEND_PORT=8000
-uvicorn pixsim7_backend.main:app --port 8000 --reload
+uvicorn pixsim7.backend.main.main:app --port 8000 --reload
 
 # Terminal 2 - Generation API
 cd /path/to/pixsim7

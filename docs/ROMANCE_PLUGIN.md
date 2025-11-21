@@ -56,7 +56,7 @@ frontend/src/
 ### Backend Files
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 └── plugins/
     └── game_romance/
         ├── __init__.py

@@ -192,7 +192,7 @@ email = jwt_data.get("email")  # Simple!
 
 ## Files Changed
 
-- ✅ Created: `pixsim7_backend/shared/jwt_helpers.py` (generic utilities)
+- ✅ Created: `pixsim7/backend/main/shared/jwt_helpers.py` (generic utilities)
 - ✅ Updated: `sora.py` (now uses `JWTExtractor`)
 - ✅ Created: `ADDING_JWT_PROVIDERS.md` (documentation)
 - ✅ Ready: Add Runway/Pika/others with 5 lines each!

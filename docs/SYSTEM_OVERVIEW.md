@@ -242,7 +242,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – Character binding model, roles vs identity
 
 **Key files:**
-- Backend: `pixsim7_backend/api/v1/game_npcs.py` – NPC and schedule APIs
+- Backend: `pixsim7/backend/main/api/v1/game_npcs.py` – NPC and schedule APIs
 - Frontend: `frontend/src/lib/game/session.ts` – Session helpers
 
 **Key constraints:**

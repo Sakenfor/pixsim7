@@ -228,7 +228,7 @@ Export Prometheus-style metrics + attach to node health.
 ## 17. Handoff Notes
 - Types ready for consumption (`@pixsim7/types` once build updated).
 - Add util module later: `packages/ui/src/generation/cacheKey.ts` for key logic.
-- Backend stub can live in `pixsim7_backend/api/generation.py` (FastAPI) or equivalent.
+- Backend stub can live in `pixsim7/backend/main/api/generation.py` (FastAPI) or equivalent.
 - Keep Phase 1 strictly synchronous; no job queue yet.
 
 ---

@@ -1,7 +1,7 @@
 # Character Linkage Conventions
 
 > **Status:** Implemented in Phase 26.4
-> **Module:** `pixsim7_backend.domain.character_linkage`
+> **Module:** `pixsim7.backend.main.domain.character_linkage`
 
 This document describes standardized conventions for linking characters to scenes, assets, and generations using existing JSON metadata fields. **No schema changes required.**
 
@@ -38,7 +38,7 @@ instance:<uuid>     # Character instance
 ### Helper Functions
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     format_character_ref,
     format_instance_ref,
     parse_character_ref,
@@ -93,7 +93,7 @@ Custom roles are allowed but should follow `snake_case` naming.
 ### Helper Functions
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     set_scene_role_binding,
     get_scene_role_binding,
     get_all_scene_roles,
@@ -137,7 +137,7 @@ For individual scene nodes (GameSceneNode), character references are stored as a
 
 **Helper Functions:**
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     add_scene_node_character_ref,
     get_scene_node_character_refs,
     remove_scene_node_character_ref,
@@ -181,7 +181,7 @@ Assets store character linkage in `media_metadata.character_linkage`.
 ### Helper Functions
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     set_asset_character_linkage,
     get_asset_character_linkage,
     add_asset_character_tag,
@@ -229,7 +229,7 @@ Generations store character references and scene IDs in `canonical_params`.
 ### Helper Functions
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     set_generation_character_refs,
     add_generation_character_ref,
     get_generation_character_refs,
@@ -283,7 +283,7 @@ generation:<generation_id> # e.g., "generation:789"
 ### Helper Functions
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     track_character_usage_in_scene,
     track_character_usage_in_asset,
     track_character_usage_in_generation,
@@ -367,7 +367,7 @@ await track_character_usage_in_generation(db, char_id, generation.id)
 Use standard role names when possible:
 
 ```python
-from pixsim7_backend.domain.character_linkage import (
+from pixsim7.backend.main.domain.character_linkage import (
     is_valid_role_name,
     suggest_role_name,
     STANDARD_SCENE_ROLES,
@@ -442,7 +442,7 @@ generation = add_generation_character_ref(
 The character graph query functions automatically use these conventions:
 
 ```python
-from pixsim7_backend.domain.character_graph import get_character_graph
+from pixsim7.backend.main.domain.character_graph import get_character_graph
 
 # Graph traversal reads:
 # - Scene role bindings (GameScene.meta.character_roles)
@@ -468,4 +468,4 @@ graph = await get_character_graph(db, character_id)
 | **Generation** | `canonical_params.scene_id` | `123` | Scene ID |
 | **CharacterUsage** | `usage_type`, `template_reference` | `"scene"`, `"scene:123"` | Usage tracking |
 
-All helper functions are in `pixsim7_backend.domain.character_linkage`.
+All helper functions are in `pixsim7.backend.main.domain.character_linkage`.

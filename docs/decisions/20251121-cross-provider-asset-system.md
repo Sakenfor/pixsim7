@@ -218,15 +218,15 @@ This system was built from the start, so no migration needed. Future enhancement
 ## Related Code / Docs
 
 ### Code
-- **`pixsim7_backend/services/asset/asset_service.py`** (lines 338-503)
+- **`pixsim7/backend/main/services/asset/asset_service.py`** (lines 338-503)
   - `get_asset_for_provider()` implementation
-- **`pixsim7_backend/domain/asset.py`**
+- **`pixsim7/backend/main/domain/asset.py`**
   - Asset model with `provider_urls`, `local_path`, `last_accessed_at`
-- **`pixsim7_backend/domain/asset_lineage.py`**
+- **`pixsim7/backend/main/domain/asset_lineage.py`**
   - AssetLineage, AssetBranch models
-- **`pixsim7_backend/services/provider/base.py`**
+- **`pixsim7/backend/main/services/provider/base.py`**
   - BaseProvider interface with `upload_asset()`, `download_asset()`
-- **`pixsim7_backend/services/provider/adapters/pixverse.py`** (lines 600-700)
+- **`pixsim7/backend/main/services/provider/adapters/pixverse.py`** (lines 600-700)
   - Pixverse upload/download implementation
 
 ### Docs

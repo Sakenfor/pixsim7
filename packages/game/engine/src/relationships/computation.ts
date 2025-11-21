@@ -1,6 +1,6 @@
 /**
  * Client-side relationship computation helpers
- * Based on the backend logic from pixsim7_backend/domain/narrative/relationships.py
+ * Based on the backend logic from pixsim7/backend/main/domain/narrative/relationships.py
  *
  * IMPORTANT: These functions mirror backend logic and are primarily for preview/offline tools.
  * At runtime, the backend's computed values in GameSession.relationships are authoritative.

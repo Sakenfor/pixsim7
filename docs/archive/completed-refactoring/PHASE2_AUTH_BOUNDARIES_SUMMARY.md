@@ -11,7 +11,7 @@ Completed Phase 2 of the architecture simplification plan. Established clean aut
 ## Changes Made
 
 ### 1. Shared Auth Claims Type
-**File:** `pixsim7_backend/shared/auth_claims.py`
+**File:** `pixsim7/backend/main/shared/auth_claims.py`
 
 Created lightweight authentication types for cross-domain use:
 
@@ -69,7 +69,7 @@ async def create_session(
 ```
 
 ### 3. Domain Boundaries Documentation
-**File:** `pixsim7_backend/domain/game/README.md`
+**File:** `pixsim7/backend/main/domain/game/README.md`
 
 Created comprehensive documentation for game module boundaries:
 
@@ -104,11 +104,11 @@ api/v1/game_*.py  → Only imports dependencies, game models, AssetService
 - Provider or job domain models
 
 ### 5. Shared Module Updates
-**File:** `pixsim7_backend/shared/__init__.py`
+**File:** `pixsim7/backend/main/shared/__init__.py`
 
 Exported new auth types:
 ```python
-from pixsim7_backend.shared.auth_claims import AuthClaims, UserContext
+from pixsim7.backend.main.shared.auth_claims import AuthClaims, UserContext
 
 __all__ = [
     "AuthClaims",
@@ -205,14 +205,14 @@ According to `ARCHITECTURE_SIMPLIFICATION_PLAN.md`:
 ## Files Changed
 
 **Created:**
-- `pixsim7_backend/shared/auth_claims.py` - AuthClaims and UserContext types
-- `pixsim7_backend/domain/game/README.md` - Domain boundary documentation
+- `pixsim7/backend/main/shared/auth_claims.py` - AuthClaims and UserContext types
+- `pixsim7/backend/main/domain/game/README.md` - Domain boundary documentation
 
 **Modified:**
-- `pixsim7_backend/shared/__init__.py` - Export auth types
+- `pixsim7/backend/main/shared/__init__.py` - Export auth types
 
 **Verified (no changes needed):**
-- `pixsim7_backend/services/game/game_session_service.py` - Already uses user_id ✓
+- `pixsim7/backend/main/services/game/game_session_service.py` - Already uses user_id ✓
 - All game imports - Clean boundaries ✓
 
 ## Notes

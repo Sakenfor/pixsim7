@@ -6,12 +6,12 @@
 
 ## Overview
 
-Successfully consolidated the standalone `pixsim7_game_service` into the main `pixsim7_backend` as a modular game module. This eliminates the need for a separate game service, removes HTTP calls between services, and simplifies the architecture into a modular monolith.
+Successfully consolidated the standalone `pixsim7_game_service` into the main `pixsim7.backend.main` as a modular game module. This eliminates the need for a separate game service, removes HTTP calls between services, and simplifies the architecture into a modular monolith.
 
 ## Changes Made
 
 ### 1. Domain Models Moved
-**Location:** `pixsim7_backend/domain/game/`
+**Location:** `pixsim7/backend/main/domain/game/`
 
 Moved all game domain models from `pixsim7_game_service/domain/models.py`:
 - `GameScene` - Scene graph structure
@@ -25,7 +25,7 @@ Moved all game domain models from `pixsim7_game_service/domain/models.py`:
 - `NPCState` - Runtime NPC state
 
 ### 2. Services Migrated
-**Location:** `pixsim7_backend/services/game/`
+**Location:** `pixsim7/backend/main/services/game/`
 
 - `GameSessionService` - Converted from sync to async to match backend pattern
   - Uses `AsyncSession` instead of `Session`
@@ -33,7 +33,7 @@ Moved all game domain models from `pixsim7_game_service/domain/models.py`:
   - Integrated with backend database session management
 
 ### 3. API Routes Consolidated
-**Location:** `pixsim7_backend/api/v1/`
+**Location:** `pixsim7/backend/main/api/v1/`
 
 Created new game API routes:
 - `game_scenes.py` - Scene retrieval with asset hydration
@@ -70,7 +70,7 @@ asset = await asset_service.get_asset_for_user(asset_id, user)
 - Better transaction support
 
 ### 5. Database Migration
-**File:** `pixsim7_backend/infrastructure/database/migrations/versions/20251116_1000_add_game_tables.py`
+**File:** `pixsim7/backend/main/infrastructure/database/migrations/versions/20251116_1000_add_game_tables.py`
 
 Created Alembic migration to add all game tables to the main backend database:
 - All game scene tables
@@ -78,7 +78,7 @@ Created Alembic migration to add all game tables to the main backend database:
 - World/NPC tables
 
 ### 6. Dependency Injection
-**File:** `pixsim7_backend/api/dependencies.py`
+**File:** `pixsim7/backend/main/api/dependencies.py`
 
 Added game service dependency:
 ```python
@@ -90,7 +90,7 @@ GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)
 ```
 
 ### 7. Main App Integration
-**File:** `pixsim7_backend/main.py`
+**File:** `pixsim7/backend/main/main.py`
 
 - Imported game domain models in startup (for SQLModel registration)
 - Added game routers:
@@ -168,17 +168,17 @@ According to `ARCHITECTURE_SIMPLIFICATION_PLAN.md`:
 ## Files Changed
 
 **Created:**
-- `pixsim7_backend/domain/game/__init__.py`
-- `pixsim7_backend/domain/game/models.py`
-- `pixsim7_backend/services/game/__init__.py`
-- `pixsim7_backend/services/game/game_session_service.py`
-- `pixsim7_backend/api/v1/game_scenes.py`
-- `pixsim7_backend/api/v1/game_sessions.py`
-- `pixsim7_backend/infrastructure/database/migrations/versions/20251116_1000_add_game_tables.py`
+- `pixsim7/backend/main/domain/game/__init__.py`
+- `pixsim7/backend/main/domain/game/models.py`
+- `pixsim7/backend/main/services/game/__init__.py`
+- `pixsim7/backend/main/services/game/game_session_service.py`
+- `pixsim7/backend/main/api/v1/game_scenes.py`
+- `pixsim7/backend/main/api/v1/game_sessions.py`
+- `pixsim7/backend/main/infrastructure/database/migrations/versions/20251116_1000_add_game_tables.py`
 
 **Modified:**
-- `pixsim7_backend/api/dependencies.py` - Added GameSessionService dependency
-- `pixsim7_backend/main.py` - Added game model imports and routers
+- `pixsim7/backend/main/api/dependencies.py` - Added GameSessionService dependency
+- `pixsim7/backend/main/main.py` - Added game model imports and routers
 
 **Not Yet Modified (Future Work):**
 - `pixsim7_game_service/*` - Kept for reference, can be archived later (Phase 1.4)
@@ -187,7 +187,7 @@ According to `ARCHITECTURE_SIMPLIFICATION_PLAN.md`:
 ## Testing Notes
 
 To test the consolidated routes:
-1. Run the main backend: `uvicorn pixsim7_backend.main:app`
+1. Run the main backend: `uvicorn pixsim7.backend.main.main:app`
 2. Create a game scene with nodes and edges in the database
 3. Test endpoints:
    - `GET /api/v1/game/scenes/{id}` - Should return scene with hydrated assets

@@ -4,7 +4,7 @@ A separate React + Vite app for the game UI (sessions, scene player, etc.).
 
 ## Dev
 
-- Prereq: run the main Backend API on port 8001 (e.g., `python pixsim7_backend/main.py` or `launch.bat`).
+- Prereq: run the main Backend API on port 8001 (e.g., `python pixsim7/backend/main/main.py` or `launch.bat`).
 - Start the app:
   - With pnpm (recommended): run at repo root `pnpm -r --parallel dev`
   - Or directly in this folder: `npm install` then `npm run dev`

@@ -43,13 +43,13 @@ The Prompt Versioning system now has comprehensive **Git-like features** built d
 ## Files Created
 
 ```
-pixsim7_backend/services/prompts/
+pixsim7/backend/main/services/prompts/
 ├── git_branch_service.py          (600 lines) ✅
 ├── git_merge_service.py           (500 lines) ✅
 ├── git_operations_service.py      (450 lines) ✅
 └── __init__.py                    (Updated)   ✅
 
-pixsim7_backend/api/v1/
+pixsim7/backend/main/api/v1/
 └── prompts_git.py                 (450 lines) ✅
 
 docs/

@@ -47,7 +47,7 @@ python main.py
 **Step 1: Auth endpoints** (`api/v1/auth.py`)
 ```python
 from fastapi import APIRouter, HTTPException
-from pixsim7_backend.api.dependencies import AuthSvc, UserSvc
+from pixsim7.backend.main.api.dependencies import AuthSvc, UserSvc
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -79,7 +79,7 @@ async def login(
 
 **Step 2: Wire up in main.py**
 ```python
-from pixsim7_backend.api.v1 import auth
+from pixsim7.backend.main.api.v1 import auth
 
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 ```
@@ -98,7 +98,7 @@ app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 
 **❌ WRONG:**
 ```python
-from pixsim7_backend.services.user.auth_service import AuthService
+from pixsim7.backend.main.services.user.auth_service import AuthService
 
 async def login(request):
     db = get_db()  # Manual setup
@@ -109,7 +109,7 @@ async def login(request):
 
 **✅ RIGHT:**
 ```python
-from pixsim7_backend.api.dependencies import AuthSvc, CurrentUser
+from pixsim7.backend.main.api.dependencies import AuthSvc, CurrentUser
 
 async def login(
     request: LoginRequest,
@@ -130,7 +130,7 @@ async def login(
 
 **Example:**
 ```python
-from pixsim7_backend.api.dependencies import CurrentUser, JobSvc
+from pixsim7.backend.main.api.dependencies import CurrentUser, JobSvc
 
 @router.get("/jobs")
 async def list_jobs(
@@ -168,7 +168,7 @@ async def get_job(id: int, user: CurrentUser, job_service: JobSvc):
 
 ### Issue 1: Import Errors
 
-**Problem:** `ModuleNotFoundError: No module named 'pixsim7_backend'`
+**Problem:** `ModuleNotFoundError: No module named 'pixsim7.backend.main'`
 
 **Solution:** Run from project root:
 ```bash
@@ -251,7 +251,7 @@ await event_bus.publish(JOB_CREATED, {
 
 ```python
 # Services raise specific errors
-from pixsim7_backend.shared.errors import ResourceNotFoundError
+from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 
 if not user:
     raise ResourceNotFoundError("User", user_id)
@@ -287,7 +287,7 @@ class UserResponse(BaseModel):
 ### Tip 2: Return Models Directly from Routes
 
 ```python
-from pixsim7_backend.domain import Job
+from pixsim7.backend.main.domain import Job
 
 @router.get("/jobs/{id}", response_model=Job)
 async def get_job(id: int, user: CurrentUser, job_service: JobSvc):

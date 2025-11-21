@@ -17,7 +17,7 @@
 
 ### 1. Core Plugin Infrastructure
 
-**Location:** `pixsim7_backend/infrastructure/plugins/`
+**Location:** `pixsim7/backend/main/infrastructure/plugins/`
 
 **Files:**
 - `types.py` (150 lines) - PluginManifest, BackendPlugin protocol, event system
@@ -47,7 +47,7 @@ class PluginManager:
 
 ### 2. Example Plugin Conversion
 
-**Location:** `pixsim7_backend/plugins/game_stealth/`
+**Location:** `pixsim7/backend/main/plugins/game_stealth/`
 
 **Files:**
 - `manifest.py` - Converted from `api/v1/game_stealth.py` to plugin format
@@ -73,7 +73,7 @@ class PluginManager:
 ## File Structure
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
   ├── infrastructure/
   │   └── plugins/          ← NEW
   │       ├── __init__.py
@@ -102,12 +102,12 @@ docs/
 
 ### Task 1: Integrate into main.py
 
-**File:** `pixsim7_backend/main.py`
+**File:** `pixsim7/backend/main/main.py`
 
 **Current state:**
 ```python
 # OLD - Hardcoded imports
-from pixsim7_backend.api.v1 import (
+from pixsim7.backend.main.api.v1 import (
     auth, users, jobs, assets, admin, services, accounts,
     providers, lineage, logs, automation, device_agents,
     game_scenes, game_sessions, game_locations, game_npcs,
@@ -122,13 +122,13 @@ app.include_router(game_stealth.router, prefix="/api/v1", tags=["game-stealth"])
 ```python
 # In lifespan() function, after existing startup code:
 
-from pixsim7_backend.infrastructure.plugins import init_plugin_manager
+from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
 
 async def lifespan(app: FastAPI):
     # ... existing startup code (database, redis, providers, etc.) ...
 
     # Initialize plugin system
-    plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
+    plugin_manager = init_plugin_manager(app, "pixsim7/backend/main/plugins")
     logger.info(f"Loaded {len(plugin_manager.list_plugins())} plugins")
 
     # Enable all plugins
@@ -159,7 +159,7 @@ async def lifespan(app: FastAPI):
 
 ### Task 2: Create plugins/ Directory (Already Done)
 
-**Location:** `pixsim7_backend/plugins/game_stealth/`
+**Location:** `pixsim7/backend/main/plugins/game_stealth/`
 
 **Structure:**
 ```
@@ -188,7 +188,7 @@ Already created as example. To add more plugins, follow this pattern.
 # plugins/my_feature/manifest.py
 
 from fastapi import APIRouter
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 manifest = PluginManifest(
     id="my-feature",
@@ -237,7 +237,7 @@ __all__ = ['manifest', 'router']
 ### 1. Plugin Discovery
 
 **Auto-discovery pattern:**
-- Scan `pixsim7_backend/plugins/` directory
+- Scan `pixsim7/backend/main/plugins/` directory
 - Look for `*/manifest.py` files
 - Import and validate
 - Register with FastAPI
@@ -298,7 +298,7 @@ permissions: list[str] = []  # e.g., ["db:read", "db:write"]
 
 ### Backend Plugin System
 
-**Location:** `pixsim7_backend/plugins/`
+**Location:** `pixsim7/backend/main/plugins/`
 
 **Purpose:** API router modules
 - Full access (for now)

@@ -13,21 +13,21 @@ Successfully merged the middleware plugin architecture branch which converts the
 ### 1. Domain Model Auto-Registration
 **Before**: Manual imports in `main.py`
 ```python
-from pixsim7_backend.domain import (
+from pixsim7.backend.main.domain import (
     User, Asset, Job, ...
 )
 ```
 
 **After**: Auto-discovery via manifests
 ```python
-from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
-domain_registry = init_domain_registry("pixsim7_backend/domain_models")
+from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
+domain_registry = init_domain_registry("pixsim7/backend/main/domain_models")
 ```
 
 ### 2. API Route Auto-Registration
 **Before**: Manual router includes
 ```python
-from pixsim7_backend.api.v1 import auth, users, ...
+from pixsim7.backend.main.api.v1 import auth, users, ...
 app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
 ...
@@ -35,13 +35,13 @@ app.include_router(users.router, prefix="/api/v1", tags=["users"])
 
 **After**: Auto-discovery via plugin system
 ```python
-routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
+routes_manager = init_plugin_manager(app, "pixsim7/backend/main/routes")
 await routes_manager.enable_all()
 ```
 
 ## Conflicts Resolved
 
-### Main Conflict: `pixsim7_backend/main.py`
+### Main Conflict: `pixsim7/backend/main/main.py`
 
 **Issue**: Our prompt versioning implementation added manual imports/routes:
 - Manual import of `PromptFamily`, `PromptVersion`
@@ -53,11 +53,11 @@ await routes_manager.enable_all()
 
 ### 1. Created Domain Models Plugin
 
-**File**: `pixsim7_backend/domain_models/prompt_models/manifest.py`
+**File**: `pixsim7/backend/main/domain_models/prompt_models/manifest.py`
 
 ```python
-from pixsim7_backend.infrastructure.domain_registry import DomainModelManifest
-from pixsim7_backend.domain.prompt_versioning import (
+from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
+from pixsim7.backend.main.domain.prompt_versioning import (
     PromptFamily,
     PromptVersion,
     PromptVariantFeedback,
@@ -84,11 +84,11 @@ manifest = DomainModelManifest(
 
 ### 2. Created Routes Plugin
 
-**File**: `pixsim7_backend/routes/prompts/manifest.py`
+**File**: `pixsim7/backend/main/routes/prompts/manifest.py`
 
 ```python
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
-from pixsim7_backend.api.v1.prompts import router
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.api.v1.prompts import router
 
 manifest = PluginManifest(
     id="prompts",
@@ -113,7 +113,7 @@ manifest = PluginManifest(
 ## File Structure After Merge
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── domain_models/              # NEW: Auto-discovered domain models
 │   ├── core_models/
 │   │   ├── __init__.py
@@ -157,8 +157,8 @@ pixsim7_backend/
 **Verify domain models registered**:
 ```bash
 PYTHONPATH=G:/code/pixsim7 python -c "
-from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
-registry = init_domain_registry('pixsim7_backend/domain_models')
+from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
+registry = init_domain_registry('pixsim7/backend/main/domain_models')
 print(f'Registered {len(registry.registered_models)} models')
 print('Prompt models:', [m for m in registry.registered_models if 'Prompt' in m])
 "
@@ -167,7 +167,7 @@ print('Prompt models:', [m for m in registry.registered_models if 'Prompt' in m]
 **Verify routes registered**:
 ```bash
 # Start server
-PYTHONPATH=G:/code/pixsim7 python pixsim7_backend/main.py
+PYTHONPATH=G:/code/pixsim7 python pixsim7/backend/main/main.py
 
 # Check logs for:
 # "Registered X domain models"
@@ -228,8 +228,8 @@ When adding new features, follow the plugin pattern:
 **Domain Model Plugin**:
 ```python
 # domain_models/my_feature_models/manifest.py
-from pixsim7_backend.infrastructure.domain_registry import DomainModelManifest
-from pixsim7_backend.domain.my_feature import MyModel
+from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
+from pixsim7.backend.main.domain.my_feature import MyModel
 
 manifest = DomainModelManifest(
     id="my_feature_models",
@@ -243,8 +243,8 @@ manifest = DomainModelManifest(
 **Route Plugin**:
 ```python
 # routes/my_feature/manifest.py
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
-from pixsim7_backend.api.v1.my_feature import router
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.api.v1.my_feature import router
 
 manifest = PluginManifest(
     id="my_feature",
@@ -275,8 +275,8 @@ cb1f592 - Implement domain model registry system (from middleware branch)
 **Solution**: Created route plugin manifest to register WebSocket routes
 
 **Files Created**:
-- `pixsim7_backend/routes/websocket/__init__.py`
-- `pixsim7_backend/routes/websocket/manifest.py`
+- `pixsim7/backend/main/routes/websocket/__init__.py`
+- `pixsim7/backend/main/routes/websocket/manifest.py`
 
 **Endpoints Registered**:
 - `ws://localhost:8000/api/v1/ws/generations` - Real-time generation updates
@@ -304,7 +304,7 @@ manifest = PluginManifest(
 
 **Solution**: Fixed dependency syntax in all log endpoints
 
-**Changes**: `pixsim7_backend/api/v1/logs.py`
+**Changes**: `pixsim7/backend/main/api/v1/logs.py`
 ```python
 # Before (caused errors):
 admin: CurrentAdminUser = Depends()

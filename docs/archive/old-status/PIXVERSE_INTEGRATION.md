@@ -111,8 +111,8 @@ class PixverseProvider(Provider):
 ### Example 1: Text-to-Video
 
 ```python
-from pixsim7_backend.services.provider import registry
-from pixsim7_backend.domain import OperationType, ProviderAccount
+from pixsim7.backend.main.services.provider import registry
+from pixsim7.backend.main.domain import OperationType, ProviderAccount
 
 # Get provider
 provider = registry.get("pixverse")

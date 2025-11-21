@@ -22,7 +22,7 @@ Added optional password storage per account for automatic JWT refresh.
 ### 2. API Changes
 
 #### `CookieImportRequest` - Added Password Field
-**File**: `pixsim7_backend/api/v1/accounts.py:537-542`
+**File**: `pixsim7/backend/main/api/v1/accounts.py:537-542`
 
 ```python
 class CookieImportRequest(BaseModel):
@@ -51,7 +51,7 @@ account = await account_service.create_account(
 ```
 
 #### `AccountService.create_account` - Accepts Password
-**File**: `pixsim7_backend/services/account/account_service.py:422`
+**File**: `pixsim7/backend/main/services/account/account_service.py:422`
 
 ```python
 async def create_account(
@@ -150,7 +150,7 @@ async function importCookiesToBackend(providerId, url, rawData, password) {
 When `sync_all_credits` fails with JWT error:
 
 ```python
-# In pixsim7_backend/api/v1/accounts.py:sync_all_account_credits
+# In pixsim7/backend/main/api/v1/accounts.py:sync_all_account_credits
 
 for account in accounts:
     try:
@@ -177,7 +177,7 @@ for account in accounts:
 Add to each provider adapter:
 
 ```python
-# In pixsim7_backend/services/provider/adapters/pixverse.py
+# In pixsim7/backend/main/services/provider/adapters/pixverse.py
 
 async def login(self, email: str, password: str) -> str:
     """
@@ -205,8 +205,8 @@ async def login(self, email: str, password: str) -> str:
 1. **Add password to existing account**:
 ```bash
 # In Python console
-from pixsim7_backend.infrastructure.database.session import get_async_session
-from pixsim7_backend.domain import ProviderAccount
+from pixsim7.backend.main.infrastructure.database.session import get_async_session
+from pixsim7.backend.main.domain import ProviderAccount
 from sqlalchemy import select
 
 async with get_async_session() as db:
@@ -318,8 +318,8 @@ async def add_passwords_bulk():
 
 **Last Updated**: 2025-11-17
 **Related Files**:
-- `pixsim7_backend/api/v1/accounts.py` (import-cookies endpoint)
-- `pixsim7_backend/services/account/account_service.py` (create_account)
-- `pixsim7_backend/domain/account.py` (ProviderAccount model)
+- `pixsim7/backend/main/api/v1/accounts.py` (import-cookies endpoint)
+- `pixsim7/backend/main/services/account/account_service.py` (create_account)
+- `pixsim7/backend/main/domain/account.py` (ProviderAccount model)
 - `chrome-extension/background.js` (import flow)
 - `chrome-extension/popup.js` (UI for import)

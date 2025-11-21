@@ -41,7 +41,7 @@ The generation node is registered with:
 ### Backend API
 
 #### Jobs Endpoint Integration
-The Generation node integrates with the existing jobs system at `pixsim7_backend/api/v1/jobs.py`
+The Generation node integrates with the existing jobs system at `pixsim7/backend/main/api/v1/jobs.py`
 
 **Endpoint**: `POST /api/v1/jobs`
 
@@ -279,10 +279,10 @@ The generation node integrates with the existing jobs/generation system:
 - `packages/game-core/src/generation/cacheKey.ts`
 
 **Backend** (existing jobs system):
-- `pixsim7_backend/api/v1/jobs.py`
-- `pixsim7_backend/services/generation/generation_service.py`
-- `pixsim7_backend/domain/generation.py`
-- `pixsim7_backend/shared/schemas/job_schemas.py`
+- `pixsim7/backend/main/api/v1/jobs.py`
+- `pixsim7/backend/main/services/generation/generation_service.py`
+- `pixsim7/backend/main/domain/generation.py`
+- `pixsim7/backend/main/shared/schemas/job_schemas.py`
 
 ## Related Documentation
 

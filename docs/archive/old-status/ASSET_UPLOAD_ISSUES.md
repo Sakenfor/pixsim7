@@ -7,7 +7,7 @@
 **Root Cause**:
 The backend creates local storage paths using `os.path.join()` which generates Windows-style paths with backslashes (`data\storage\user\1\assets\temp_xxx.jpg`) when running on Windows. However, PostgreSQL is running in Docker/Linux and cannot access Windows paths.
 
-**Location**: `pixsim7_backend/api/v1/assets.py:414-483`
+**Location**: `pixsim7/backend/main/api/v1/assets.py:414-483`
 
 **Problematic Code**:
 ```python

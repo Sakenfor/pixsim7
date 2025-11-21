@@ -159,8 +159,8 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Purpose:** Unified framework for computing, previewing, and displaying derived social values (relationship tiers, NPC moods, reputation bands).
 
 **Code Locations:**
-- `pixsim7_backend/domain/metrics/` - Backend evaluators and types
-- `pixsim7_backend/api/v1/game_*_preview.py` - Preview API endpoints
+- `pixsim7/backend/main/domain/metrics/` - Backend evaluators and types
+- `pixsim7/backend/main/api/v1/game_*_preview.py` - Preview API endpoints
 - `packages/types/src/game.ts` - Shared TypeScript types
 - `packages/game-core/src/metrics/` - API client and helpers
 - `packages/game-core/src/npcs/brain.ts` - Client-side mood computation
@@ -341,11 +341,11 @@ The following designer-focused features are planned (see `claude-tasks/` for det
    - Structured permission denied behaviors (warn, log, raise)
 
 **Code Locations:**
-- `pixsim7_backend/infrastructure/plugins/context.py` - PluginContext orchestrator
-- `pixsim7_backend/infrastructure/plugins/capabilities/` - Capability API implementations
-- `pixsim7_backend/services/` - Service layer (modern composition patterns)
-- `pixsim7_backend/domain/` - Domain logic and business rules
-- `pixsim7_backend/api/v1/` - Route layer (thin, PluginContext-based)
+- `pixsim7/backend/main/infrastructure/plugins/context.py` - PluginContext orchestrator
+- `pixsim7/backend/main/infrastructure/plugins/capabilities/` - Capability API implementations
+- `pixsim7/backend/main/services/` - Service layer (modern composition patterns)
+- `pixsim7/backend/main/domain/` - Domain logic and business rules
+- `pixsim7/backend/main/api/v1/` - Route layer (thin, PluginContext-based)
 
 **Documentation:**
 - [BACKEND_MODERNIZATION.md](./BACKEND_MODERNIZATION.md) - Refactoring journey and modern patterns

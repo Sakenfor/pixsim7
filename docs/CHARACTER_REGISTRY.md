@@ -395,7 +395,7 @@ Migration file: `20251118_1200_add_character_registry.py`
 prompt = "{{character:gorilla_01}} approaches {{character:sarah}}"
 
 # Expand before generation
-from pixsim7_backend.services.characters import CharacterTemplateEngine
+from pixsim7.backend.main.services.characters import CharacterTemplateEngine
 engine = CharacterTemplateEngine(db)
 result = await engine.expand_prompt(prompt, track_usage=True)
 # result["expanded_text"] = "Koba the gorilla—tribal, muscular—approaches Sarah the dancer..."

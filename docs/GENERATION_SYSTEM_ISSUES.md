@@ -27,7 +27,7 @@ The generation system now uses consistent "Generation" terminology aligned with 
 
 ### 1. ⚠️ **CRITICAL: Worker Function Name Mismatch**
 
-**Location**: `pixsim7_backend/services/generation/generation_service.py:184`
+**Location**: `pixsim7/backend/main/services/generation/generation_service.py:184`
 
 **Problem**:
 The `GenerationService.create_generation()` method tries to enqueue a job named `"process_generation"`:
@@ -42,12 +42,12 @@ await arq_pool.enqueue_job(
 
 However, the actual worker function is named `process_job`:
 
-**File**: `pixsim7_backend/workers/job_processor.py:41`
+**File**: `pixsim7/backend/main/workers/job_processor.py:41`
 ```python
 async def process_job(job_id: int) -> dict:
 ```
 
-**File**: `pixsim7_backend/workers/arq_worker.py:81`
+**File**: `pixsim7/backend/main/workers/arq_worker.py:81`
 ```python
 functions = [
     process_job,  # Not process_generation!
@@ -74,7 +74,7 @@ Either:
 
 ### 2. ⚠️ **CRITICAL: Parameter Name Mismatch**
 
-**Location**: `pixsim7_backend/services/generation/generation_service.py:185`
+**Location**: `pixsim7/backend/main/services/generation/generation_service.py:185`
 
 **Problem**:
 The service enqueues jobs with parameter name `generation_id`:
@@ -89,7 +89,7 @@ await arq_pool.enqueue_job(
 
 But the worker function expects `job_id`:
 
-**File**: `pixsim7_backend/workers/job_processor.py:41`
+**File**: `pixsim7/backend/main/workers/job_processor.py:41`
 ```python
 async def process_job(job_id: int) -> dict:  # ← expects job_id
 ```
@@ -107,7 +107,7 @@ Change the enqueue call to use `job_id=generation.id` for backward compatibility
 
 ### 3. ⚡ Comment/Documentation Out of Sync
 
-**Location**: `pixsim7_backend/services/generation/generation_service.py:184`
+**Location**: `pixsim7/backend/main/services/generation/generation_service.py:184`
 
 **Problem**:
 Comment says "New worker function name" but the function name hasn't actually been changed:
@@ -126,7 +126,7 @@ await arq_pool.enqueue_job(
 
 ### 4. 📝 Backward Compatibility Aliases
 
-**Location**: `pixsim7_backend/domain/__init__.py:36-37`
+**Location**: `pixsim7/backend/main/domain/__init__.py:36-37`
 
 **Current State**:
 ```python
@@ -135,7 +135,7 @@ GenerationArtifact = Generation  # Backward compatibility alias
 ```
 
 **Observation**:
-- These aliases work for imports: `from pixsim7_backend.domain import Job`
+- These aliases work for imports: `from pixsim7.backend.main.domain import Job`
 - However, the refactor is incomplete - worker still uses `job_id` parameter naming
 - Mixed terminology throughout codebase (generation_id vs job_id)
 
@@ -202,9 +202,9 @@ Key fields:
 ### ✅ Fix #1: Complete the Generation refactoring (APPLIED)
 
 **Files Updated**:
-- `pixsim7_backend/workers/job_processor.py`
-- `pixsim7_backend/workers/arq_worker.py`
-- `pixsim7_backend/services/generation/generation_service.py`
+- `pixsim7/backend/main/workers/job_processor.py`
+- `pixsim7/backend/main/workers/arq_worker.py`
+- `pixsim7/backend/main/services/generation/generation_service.py`
 
 **Changes Made**:
 
@@ -229,7 +229,7 @@ Key fields:
 
 ### ✅ Fix #2: Update comment for clarity (APPLIED)
 
-**File**: `pixsim7_backend/services/generation/generation_service.py:184`
+**File**: `pixsim7/backend/main/services/generation/generation_service.py:184`
 
 ```python
 "process_generation",  # ARQ worker function (see workers/job_processor.py)
@@ -242,7 +242,7 @@ Add a test that verifies ARQ enqueue matches worker function signature:
 ```python
 def test_generation_enqueue_matches_worker():
     """Ensure generation service enqueues with correct function name and params"""
-    from pixsim7_backend.workers.job_processor import process_generation
+    from pixsim7.backend.main.workers.job_processor import process_generation
     import inspect
 
     # Get worker function signature
@@ -267,7 +267,7 @@ After fixes are applied, test:
 **Test command**:
 ```bash
 # Start worker
-arq pixsim7_backend.workers.arq_worker.WorkerSettings
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Create test generation
 curl -X POST http://localhost:8000/api/v1/jobs \
@@ -287,19 +287,19 @@ tail -f logs/worker.log
 ## Related Files
 
 **Generation Service**:
-- `pixsim7_backend/services/generation/generation_service.py`
+- `pixsim7/backend/main/services/generation/generation_service.py`
 
 **Worker**:
-- `pixsim7_backend/workers/job_processor.py`
-- `pixsim7_backend/workers/arq_worker.py`
-- `pixsim7_backend/workers/status_poller.py`
+- `pixsim7/backend/main/workers/job_processor.py`
+- `pixsim7/backend/main/workers/arq_worker.py`
+- `pixsim7/backend/main/workers/status_poller.py`
 
 **Domain**:
-- `pixsim7_backend/domain/generation.py`
-- `pixsim7_backend/domain/__init__.py`
+- `pixsim7/backend/main/domain/generation.py`
+- `pixsim7/backend/main/domain/__init__.py`
 
 **API**:
-- `pixsim7_backend/api/v1/jobs.py`
+- `pixsim7/backend/main/api/v1/jobs.py`
 
 ---
 

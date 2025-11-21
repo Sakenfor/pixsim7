@@ -39,9 +39,9 @@ Key existing references:
   - `frontend/src/routes/GameWorld.tsx`
   - `frontend/src/routes/Game2D.tsx`
 - Backend world/time/NPC endpoints:
-  - `/api/v1/game/worlds` (`pixsim7_backend/api/v1/game_worlds.py`)
-  - `/api/v1/game/sessions` (`pixsim7_backend/api/v1/game_sessions.py`)
-  - `/api/v1/game/npcs/presence` (`pixsim7_backend/api/v1/game_npcs.py`)
+  - `/api/v1/game/worlds` (`pixsim7/backend/main/api/v1/game_worlds.py`)
+  - `/api/v1/game/sessions` (`pixsim7/backend/main/api/v1/game_sessions.py`)
+  - `/api/v1/game/npcs/presence` (`pixsim7/backend/main/api/v1/game_npcs.py`)
 
 ---
 

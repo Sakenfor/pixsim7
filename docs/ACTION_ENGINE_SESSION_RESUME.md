@@ -5,12 +5,12 @@
 ### What We've Built
 
 1. **Narrative Prompt Engine** (COMPLETED)
-   - Location: `pixsim7_backend/domain/narrative/`
+   - Location: `pixsim7/backend/main/domain/narrative/`
    - Generates dialogue prompts based on NPC relationships, world state
    - API: `/api/v1/game/dialogue/next-line`
 
 2. **Action Prompt Engine** (COMPLETED)
-   - Location: `pixsim7_backend/domain/narrative/action_blocks/`
+   - Location: `pixsim7/backend/main/domain/narrative/action_blocks/`
    - Generates 5-8 second video clip prompts
    - Supports both v1 (basic) and v2 (enhanced) blocks
    - API: `/api/v1/game/dialogue/actions/select`
@@ -25,7 +25,7 @@
 ### Files Created/Modified
 
 ```
-pixsim7_backend/domain/narrative/
+pixsim7/backend/main/domain/narrative/
 ├── engine.py                          # Narrative engine
 ├── context.py                         # Context models
 ├── programs.py                        # Prompt programs
@@ -43,7 +43,7 @@ pixsim7_backend/domain/narrative/
 │       ├── bar_lounge_actions.json   # Example blocks
 │       └── enhanced_intimate_actions.json # V2 examples
 
-pixsim7_backend/api/v1/
+pixsim7/backend/main/api/v1/
 ├── game_dialogue.py                  # All dialogue/action APIs
 
 docs/
@@ -74,7 +74,7 @@ docs/
 ## Next Session Tasks
 
 ### 1. Implement Dynamic Block Generator
-Create `pixsim7_backend/domain/narrative/action_blocks/generator.py`:
+Create `pixsim7/backend/main/domain/narrative/action_blocks/generator.py`:
 - Template-based generation
 - Claude Sonnet integration
 - Concept combination system
@@ -85,7 +85,7 @@ Extend `game_dialogue.py`:
 - `POST /api/v1/game/dialogue/actions/test` - Test generation quality
 
 ### 3. Create Concept Library
-New file `pixsim7_backend/domain/narrative/action_blocks/concepts.py`:
+New file `pixsim7/backend/main/domain/narrative/action_blocks/concepts.py`:
 - Creature types and their properties
 - Interaction patterns
 - Body area mappings

@@ -21,7 +21,7 @@ The backend now supports **dynamic plugin loading** for API routers. This makes 
 
 ```python
 # main.py - OLD
-from pixsim7_backend.api.v1 import (
+from pixsim7.backend.main.api.v1 import (
     auth, users, jobs, assets, admin, services, accounts,
     providers, lineage, logs, automation, device_agents,
     game_scenes, game_sessions, game_locations, game_npcs,
@@ -38,14 +38,14 @@ app.include_router(game_stealth.router, prefix="/api/v1", tags=["game-stealth"])
 
 ```python
 # main.py - NEW
-from pixsim7_backend.infrastructure.plugins import init_plugin_manager
+from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
 
 # In lifespan startup
 async def lifespan(app: FastAPI):
     # ... existing startup code ...
 
     # Initialize plugin system
-    plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
+    plugin_manager = init_plugin_manager(app, "pixsim7/backend/main/plugins")
     logger.info(f"Loaded {len(plugin_manager.list_plugins())} plugins")
 
     # Enable all plugins
@@ -101,7 +101,7 @@ def attempt_pickpocket(req):
 
 ```python
 from fastapi import APIRouter
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 # Define manifest
 manifest = PluginManifest(
@@ -150,7 +150,7 @@ __all__ = ['manifest', 'router', 'on_load', 'on_enable', 'on_disable']
 ### Template
 
 ```bash
-mkdir -p pixsim7_backend/plugins/my_feature
+mkdir -p pixsim7/backend/main/plugins/my_feature
 ```
 
 **plugins/my_feature/manifest.py:**
@@ -158,8 +158,8 @@ mkdir -p pixsim7_backend/plugins/my_feature
 ```python
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from pixsim7_backend.db import get_db
-from pixsim7_backend.infrastructure.plugins.types import PluginManifest
+from pixsim7.backend.main.db import get_db
+from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 # Manifest
 manifest = PluginManifest(
@@ -277,7 +277,7 @@ async def on_disable():
 Plugins can subscribe to events:
 
 ```python
-from pixsim7_backend.infrastructure.plugins import plugin_hooks, PluginEvents
+from pixsim7.backend.main.infrastructure.plugins import plugin_hooks, PluginEvents
 
 # In on_enable()
 async def on_session_created(session_id: int):
@@ -319,7 +319,7 @@ class PluginEvents:
 ## Migration Checklist
 
 - [ ] Add plugin system to main.py lifespan
-- [ ] Create `pixsim7_backend/plugins/` directory
+- [ ] Create `pixsim7/backend/main/plugins/` directory
 - [ ] Convert `game_stealth` to plugin (example provided)
 - [ ] Convert other API modules one by one
 - [ ] Test plugin loading and dependencies
@@ -376,7 +376,7 @@ def get_data(db: Session = Depends(get_db_readonly)):  # Read-only
 
 ## Example: Full Plugin
 
-See `pixsim7_backend/plugins/game_stealth/` for complete example.
+See `pixsim7/backend/main/plugins/game_stealth/` for complete example.
 
 **Key files:**
 - `manifest.py` - Plugin definition, router, hooks

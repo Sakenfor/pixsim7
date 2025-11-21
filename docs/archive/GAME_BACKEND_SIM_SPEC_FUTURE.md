@@ -2,7 +2,7 @@
 
 > **Status:** ARCHIVED
 > **Date:** 2025-11-16
-> **Reason:** This spec describes a tick-based simulation engine for a separate `pixsim7_game_service` microservice. Game logic was **consolidated into the main backend** (`pixsim7_backend/domain/game/`) instead.
+> **Reason:** This spec describes a tick-based simulation engine for a separate `pixsim7_game_service` microservice. Game logic was **consolidated into the main backend** (`pixsim7/backend/main/domain/game/`) instead.
 
 ---
 
@@ -11,7 +11,7 @@
 **Current architecture (implemented):**
 - `docs/SYSTEM_OVERVIEW.md` – High-level overview of current game systems
 - `docs/RELATIONSHIPS_AND_ARCS.md` – How relationships/arcs work in current implementation
-- `pixsim7_backend/domain/game/README.md` – Current game domain architecture
+- `pixsim7/backend/main/domain/game/README.md` – Current game domain architecture
 - Current entities: `GameWorld`, `GameSession`, `GameNPC`, `GameLocation`, `GameHotspot`, `GameScene`
 
 **Current design:**
@@ -32,7 +32,7 @@ A **future tick-based simulation architecture** that could be implemented if nee
 | `WorldState` entity | `GameWorldState` + `GameSession.flags` |
 | Tick-based engine | Request-based with `world_time` field |
 | Utility AI / GOAP | Frontend-driven scene graphs |
-| Separate `pixsim7_game_service` | Consolidated in `pixsim7_backend/domain/game/` |
+| Separate `pixsim7_game_service` | Consolidated in `pixsim7/backend/main/domain/game/` |
 | Dedicated events/quests tables | `GameSession.flags` conventions |
 
 **If you need to implement tick-based simulation in the future, this spec can serve as a starting point.**

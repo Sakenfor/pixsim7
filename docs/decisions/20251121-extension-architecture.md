@@ -17,7 +17,7 @@ PixSim7 needed a way to add new functionality without modifying core systems or 
 
 ### Constraints
 
-- Must work within monorepo structure (`pixsim7_backend/`, `frontend/`, `game-frontend/`)
+- Must work within monorepo structure (`pixsim7/backend/main/`, `frontend/`, `game-frontend/`)
 - Must not require modifying core `main.py` or root app files
 - Must support hot-reload in development
 - Must allow third-party extensions (not just first-party features)
@@ -51,13 +51,13 @@ PixSim7 implements a **unified extension architecture** with multiple extension 
 ### Extension Types
 
 1. **Backend Route Plugins**
-   - Location: `pixsim7_backend/routes/<feature>/manifest.py`
+   - Location: `pixsim7/backend/main/routes/<feature>/manifest.py`
    - Purpose: Add HTTP/WebSocket endpoints
    - Auto-discovered and registered at startup
    - Example: Admin panel routes, log ingestion
 
 2. **Backend Domain Plugins**
-   - Location: `pixsim7_backend/domain_models/<feature>_models/manifest.py`
+   - Location: `pixsim7/backend/main/domain_models/<feature>_models/manifest.py`
    - Purpose: Add new SQLModel domain types
    - Migrated via Alembic
    - Example: Extended game entities
@@ -69,7 +69,7 @@ PixSim7 implements a **unified extension architecture** with multiple extension 
    - Example: Custom NPC behaviors, game mechanics
 
 4. **Backend Middleware Plugins**
-   - Location: `pixsim7_backend/infrastructure/middleware/`
+   - Location: `pixsim7/backend/main/infrastructure/middleware/`
    - Purpose: Request/response cross-cutting concerns
    - Applied to FastAPI app
    - Example: Logging, auth, rate limiting
@@ -183,9 +183,9 @@ This is a new system, so no migration needed. Future extensions should:
 ## Related Code / Docs
 
 ### Code
-- Backend route discovery: `pixsim7_backend/routes/*/manifest.py`
-- Domain plugin structure: `pixsim7_backend/domain_models/*/manifest.py`
-- Behavior registries: Throughout `pixsim7_backend/services/`
+- Backend route discovery: `pixsim7/backend/main/routes/*/manifest.py`
+- Domain plugin structure: `pixsim7/backend/main/domain_models/*/manifest.py`
+- Behavior registries: Throughout `pixsim7/backend/main/services/`
 - Frontend plugin system: `apps/main/src/lib/plugins/`
 - Graph renderer registry: `apps/main/src/lib/graph/nodeRendererRegistry.ts`
 

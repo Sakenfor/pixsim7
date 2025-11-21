@@ -297,19 +297,19 @@ All data stored in **existing JSON fields** (no new DB tables):
 
 ### Key Modules
 
-**Backend Domain (`pixsim7_backend/domain/behavior/`):**
+**Backend Domain (`pixsim7/backend/main/domain/behavior/`):**
 - `conditions.py` - Condition DSL evaluator
 - `effects.py` - Effect handler system
 - `scoring.py` - Activity scoring & selection
 - `simulation.py` - Simulation prioritization
 - `routine_resolver.py` - Routine graph traversal
 
-**Backend API (`pixsim7_backend/api/v1/game_behavior.py`):**
+**Backend API (`pixsim7/backend/main/api/v1/game_behavior.py`):**
 - 10 REST endpoints for behavior config CRUD
 - Comprehensive validation
 - Preview/simulation endpoints
 
-**Schemas (`pixsim7_backend/domain/game/schemas.py`):**
+**Schemas (`pixsim7/backend/main/domain/game/schemas.py`):**
 - 20+ Pydantic schemas
 - Cross-reference validation
 - Migration system
@@ -424,7 +424,7 @@ Update NPC's `meta.behavior`:
 Call routine resolver in your world tick handler:
 
 ```python
-from pixsim7_backend.domain.behavior import choose_npc_activity, apply_activity_to_npc
+from pixsim7.backend.main.domain.behavior import choose_npc_activity, apply_activity_to_npc
 
 # Choose activity for NPC
 activity = choose_npc_activity(npc, world, session, world_time)
@@ -581,7 +581,7 @@ See example configurations for different game types:
 Register custom evaluators in Python:
 
 ```python
-from pixsim7_backend.domain.behavior import register_condition_evaluator
+from pixsim7.backend.main.domain.behavior import register_condition_evaluator
 
 def evaluate_is_raining(params, context):
     world = context.get("world")
@@ -605,7 +605,7 @@ Use in configs:
 Register custom effect handlers:
 
 ```python
-from pixsim7_backend.domain.behavior import register_effect_handler
+from pixsim7.backend.main.domain.behavior import register_effect_handler
 
 def handle_give_item(params, context):
     item_id = params["itemId"]

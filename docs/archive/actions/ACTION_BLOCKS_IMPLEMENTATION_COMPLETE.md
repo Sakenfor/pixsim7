@@ -52,7 +52,7 @@
 ## Key Files Created
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── domain/action_block.py                           (400 lines)
 ├── infrastructure/database/migrations/versions/
 │   └── 20251118_1100_add_action_blocks_table.py    (170 lines)
@@ -116,7 +116,7 @@ werewolf_character + shy_pose + static_camera + gentle_touch + continuity
 
 ### 1. Run Database Migration
 ```bash
-cd pixsim7_backend
+cd pixsim7/backend/main
 alembic upgrade head
 ```
 
@@ -266,13 +266,13 @@ pip install anthropic
 1. **`docs/ACTION_BLOCKS_UNIFIED_SYSTEM.md`**
    Complete technical documentation (800+ lines)
 
-2. **`pixsim7_backend/domain/action_block.py`**
+2. **`pixsim7/backend/main/domain/action_block.py`**
    Database model definition
 
-3. **`pixsim7_backend/api/v1/action_blocks.py`**
+3. **`pixsim7/backend/main/api/v1/action_blocks.py`**
    REST API endpoints
 
-4. **`pixsim7_backend/services/action_blocks/ai_extractor.py`**
+4. **`pixsim7/backend/main/services/action_blocks/ai_extractor.py`**
    AI extraction logic
 
 ---

@@ -50,9 +50,9 @@
    }
    ```
 
-4. **pixsim7_backend/api/v1/game_items.py** (new file, 100+ lines)
+4. **pixsim7/backend/main/api/v1/game_items.py** (new file, 100+ lines)
 
-5. **pixsim7_backend/main.py** (register router)
+5. **pixsim7/backend/main/main.py** (register router)
 
 **Total: ~250 lines across 5 files, lots of copy-paste, easy to miss spots**
 

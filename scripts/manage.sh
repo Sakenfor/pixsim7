@@ -1,7 +1,7 @@
 #!/bin/bash
 # PixSim7 Process Manager - Prevents zombie processes
 
-BACKEND_PID_FILE="/tmp/pixsim7_backend.pid"
+BACKEND_PID_FILE="/tmp/pixsim7_backend_main.pid"
 WORKER_PID_FILE="/tmp/pixsim7_worker.pid"
 
 start_backend() {

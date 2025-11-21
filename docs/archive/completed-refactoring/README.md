@@ -18,7 +18,7 @@ Series of refactorings that consolidated the codebase from separate services int
 - **PHASE1_CONSOLIDATION_SUMMARY.md** - Consolidated game service into main backend
   - Status: ✅ Complete
   - Impact: Eliminated HTTP calls between services, simplified architecture
-  - Moved game domain models, services, and API routes into `pixsim7_backend`
+  - Moved game domain models, services, and API routes into `pixsim7.backend.main`
 
 - **PHASE2_AUTH_BOUNDARIES_SUMMARY.md** - Normalized auth patterns and domain boundaries
   - Status: ✅ Complete
@@ -79,7 +79,7 @@ Series of refactorings that consolidated the codebase from separate services int
 
 All refactorings in this directory are **complete and integrated**. The codebase now:
 
-- ✅ Uses modular monolith architecture (pixsim7_backend)
+- ✅ Uses modular monolith architecture (pixsim7.backend.main)
 - ✅ Has dynamic plugin system for API routes
 - ✅ Uses shared icon system (no raw emoji)
 - ✅ Has clean domain boundaries with minimal coupling

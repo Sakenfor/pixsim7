@@ -267,7 +267,7 @@ session flags, without real stealth simulation.
 
 ### Suggested Endpoint (Backend)
 
-Add `pixsim7_backend/api/v1/game_stealth.py` (name flexible) with:
+Add `pixsim7/backend/main/api/v1/game_stealth.py` (name flexible) with:
 
 - `POST /api/v1/game/stealth/pickpocket`
   - Body:

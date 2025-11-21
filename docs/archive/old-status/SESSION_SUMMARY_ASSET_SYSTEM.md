@@ -421,7 +421,7 @@ for i, kf in enumerate(job.params["keyframes"]):
 
 ```bash
 # Generate migration
-cd pixsim7_backend/infrastructure/database
+cd pixsim7/backend/main/infrastructure/database
 PYTHONPATH=G:/code/pixsim7 alembic revision --autogenerate -m "Description"
 
 # Run migration

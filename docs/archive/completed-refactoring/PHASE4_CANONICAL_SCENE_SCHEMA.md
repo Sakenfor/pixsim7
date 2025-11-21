@@ -80,7 +80,7 @@ The backend has **two scene storage models** with different purposes:
 
 ### 1. Content Scenes (Editor/Organization)
 
-**Location:** `pixsim7_backend/domain/scene.py`
+**Location:** `pixsim7/backend/main/domain/scene.py`
 
 ```python
 class Scene(SQLModel, table=True):
@@ -121,7 +121,7 @@ class SceneConnection(SQLModel, table=True):
 
 ### 2. Game Scenes (Runtime Playback)
 
-**Location:** `pixsim7_backend/domain/game/models.py`
+**Location:** `pixsim7/backend/main/domain/game/models.py`
 
 ```python
 class GameScene(SQLModel, table=True):
@@ -183,7 +183,7 @@ node = GameSceneNode(
 
 ### Runtime Hydration
 
-**Location:** `pixsim7_backend/api/v1/game_scenes.py:get_scene`
+**Location:** `pixsim7/backend/main/api/v1/game_scenes.py:get_scene`
 
 The API route converts storage format → canonical Scene:
 
@@ -481,4 +481,4 @@ Game frontend properly consumes Scene:
 - `PHASE1_CONSOLIDATION_SUMMARY.md` - Backend consolidation that implemented hydration
 - `PHASE3_FRONTEND_SIMPLIFICATION_SUMMARY.md` - Frontend Scene consumption
 - `packages/types/src/index.ts` - Canonical Scene type definitions
-- `pixsim7_backend/api/v1/game_scenes.py` - Hydration implementation
+- `pixsim7/backend/main/api/v1/game_scenes.py` - Hydration implementation

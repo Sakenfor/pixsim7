@@ -28,11 +28,11 @@ For a high‑level system view, always read `ARCHITECTURE.md` first. For app lay
 
 | Type                     | Scope          | Code / Manifests                                               | Typical Use                                     |
 |--------------------------|---------------|-----------------------------------------------------------------|-------------------------------------------------|
-| Backend route plugin     | Backend       | `pixsim7_backend/routes/<feature>/manifest.py`                 | New REST/WebSocket endpoints                    |
-| Backend domain plugin    | Backend       | `pixsim7_backend/domain_models/<feature>_models/manifest.py`   | New SQLModel domain types                       |
+| Backend route plugin     | Backend       | `pixsim7/backend/main/routes/<feature>/manifest.py`                 | New REST/WebSocket endpoints                    |
+| Backend domain plugin    | Backend       | `pixsim7/backend/main/domain_models/<feature>_models/manifest.py`   | New SQLModel domain types                       |
 | Backend behavior plugin  | Backend/game  | Behavior registries (`behavior_registry`, scoring registries)  | NPC conditions, effects, metrics, scoring       |
-| Backend middleware plugin| Backend       | `pixsim7_backend/infrastructure/middleware/*`                  | Request/response cross‑cutting concerns         |
-| Backend event plugin     | Backend       | `pixsim7_backend/infrastructure/events/handlers.py`            | Reacting to domain/game events                  |
+| Backend middleware plugin| Backend       | `pixsim7/backend/main/infrastructure/middleware/*`                  | Request/response cross‑cutting concerns         |
+| Backend event plugin     | Backend       | `pixsim7/backend/main/infrastructure/events/handlers.py`            | Reacting to domain/game events                  |
 | Frontend UI plugin       | Frontend      | `apps/main/src/lib/plugins/*`, `plugins/`                      | User‑installable UI overlays/tools              |
 | Graph node renderer      | Editor        | `apps/main/src/lib/graph/nodeRendererRegistry.ts` + components | Custom scene/quest node visuals                 |
 | Game/world JSON extension| Game systems  | `GameSession.flags`, `GameSession.relationships`, world `meta` | Game rules, quest state, relationships, config  |
@@ -47,7 +47,7 @@ Later sections go into detail for each.
 
 **Purpose:** Add API endpoints (REST and WebSocket) without modifying `main.py`.
 
-- **Manifests:** `pixsim7_backend/routes/<feature>/manifest.py`
+- **Manifests:** `pixsim7/backend/main/routes/<feature>/manifest.py`
 - **Manifest type:** `PluginManifest(kind="route", ...)`
 - **Discovery:** Auto‑loaded by the plugin manager during startup (see `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`).
 
@@ -63,7 +63,7 @@ You need a new HTTP or WebSocket surface, not just an internal behavior change.
 
 **Purpose:** Register domain models with the central domain registry without direct changes to `main.py`.
 
-- **Manifests:** `pixsim7_backend/domain_models/<feature>_models/manifest.py`
+- **Manifests:** `pixsim7/backend/main/domain_models/<feature>_models/manifest.py`
 - **Manifest type:** `DomainModelManifest`
 - **Discovery:** Auto‑loaded via `init_domain_registry(...)`.
 
@@ -81,10 +81,10 @@ You’re introducing a new top‑level platform concept (e.g. prompt versioning 
 
 Key registries and helpers (see Tasks 13, 16, 27, 28):
 
-- `pixsim7_backend/infrastructure/plugins/behavior_registry.py`
-- `pixsim7_backend/domain/behavior/conditions.py` – condition registry
-- `pixsim7_backend/domain/behavior/scoring.py` – pluggable scoring factors
-- `pixsim7_backend/domain/game/ecs.py` – ECS component schemas
+- `pixsim7/backend/main/infrastructure/plugins/behavior_registry.py`
+- `pixsim7/backend/main/domain/behavior/conditions.py` – condition registry
+- `pixsim7/backend/main/domain/behavior/scoring.py` – pluggable scoring factors
+- `pixsim7/backend/main/domain/game/ecs.py` – ECS component schemas
 
 **Use this when:**
 
@@ -96,8 +96,8 @@ Key registries and helpers (see Tasks 13, 16, 27, 28):
 
 **Purpose:** Cross‑cutting behavior around HTTP requests or domain events.
 
-- **Middleware:** `pixsim7_backend/infrastructure/middleware/*`
-- **Events & handlers:** `pixsim7_backend/infrastructure/events/handlers.py`
+- **Middleware:** `pixsim7/backend/main/infrastructure/middleware/*`
+- **Events & handlers:** `pixsim7/backend/main/infrastructure/events/handlers.py`
 
 Examples:
 
@@ -218,7 +218,7 @@ You want to add new gameplay concepts (quests, metrics, progression flags, plugi
 Use this decision guide before adding new architecture:
 
 1. **Need new API endpoints?**
-   - Use a **backend route plugin** (`pixsim7_backend/routes/<feature>/manifest.py`).
+   - Use a **backend route plugin** (`pixsim7/backend/main/routes/<feature>/manifest.py`).
 2. **Need to expose a new platform‑level domain model?**
    - Use a **domain model plugin** (`domain_models/<feature>_models/manifest.py`).
 3. **Need to change NPC behavior / scoring / metrics?**

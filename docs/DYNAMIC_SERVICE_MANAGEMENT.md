@@ -123,7 +123,7 @@ Just add one entry to `launcher/services.json`:
       "id": "main-api",
       "name": "Main Backend API",
       "default_port": 8000,
-      "module": "pixsim7_backend.main:app",
+      "module": "pixsim7.backend.main.main:app",
       "enabled": true,
       "provides": ["game", "users", "assets", "dialogue", "actions"]
     },
@@ -289,7 +289,7 @@ class Generation(Base):
     __tablename__ = "generations"
     # Generation API owns this table
 
-# pixsim7_backend/models.py
+# pixsim7/backend/main/models.py
 class GameSession(Base):
     __tablename__ = "game_sessions"
     generation_id = Column(Integer)  # References generation service

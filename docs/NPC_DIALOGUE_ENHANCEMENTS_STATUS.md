@@ -14,10 +14,10 @@
 - Refactored existing AI code to use unified service
 
 **Files Created**:
-- `pixsim7_backend/services/llm/llm_service.py`
-- `pixsim7_backend/services/llm/llm_cache.py`
-- `pixsim7_backend/services/llm/providers.py`
-- `pixsim7_backend/services/llm/models.py`
+- `pixsim7/backend/main/services/llm/llm_service.py`
+- `pixsim7/backend/main/services/llm/llm_cache.py`
+- `pixsim7/backend/main/services/llm/providers.py`
+- `pixsim7/backend/main/services/llm/models.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/llm/cache/stats` - Cache statistics
@@ -35,8 +35,8 @@
 - Tag-based recall
 
 **Files Created**:
-- `pixsim7_backend/domain/npc_memory.py` (ConversationMemory model)
-- `pixsim7_backend/services/npc/memory_service.py`
+- `pixsim7/backend/main/domain/npc_memory.py` (ConversationMemory model)
+- `pixsim7/backend/main/services/npc/memory_service.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/npcs/{npc_id}/memories` - Get memories
@@ -53,8 +53,8 @@
 - Dialogue tone modifiers
 
 **Files Created**:
-- `pixsim7_backend/domain/npc_memory.py` (NPCEmotionalState model)
-- `pixsim7_backend/services/npc/emotional_state_service.py`
+- `pixsim7/backend/main/domain/npc_memory.py` (NPCEmotionalState model)
+- `pixsim7/backend/main/services/npc/emotional_state_service.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/npcs/{npc_id}/emotions` - Get emotions
@@ -88,7 +88,7 @@
 - Milestone history tracking
 
 **Files Created**:
-- `pixsim7_backend/services/npc/milestone_service.py`
+- `pixsim7/backend/main/services/npc/milestone_service.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/npcs/{npc_id}/milestones` - Get all milestones
@@ -110,7 +110,7 @@
 - Integration into dialogue prompts
 
 **Files Created**:
-- `pixsim7_backend/services/npc/world_awareness_service.py`
+- `pixsim7/backend/main/services/npc/world_awareness_service.py`
 
 **API Endpoints**:
 - `POST /api/v1/game/dialogue/npcs/{npc_id}/world-events` - Register world event
@@ -131,7 +131,7 @@
 - Historical tracking and trajectory analysis
 
 **Files Created**:
-- `pixsim7_backend/services/npc/personality_evolution_service.py`
+- `pixsim7/backend/main/services/npc/personality_evolution_service.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/npcs/{npc_id}/personality/history` - Evolution history
@@ -153,7 +153,7 @@
 - Prompt program effectiveness analysis
 
 **Files Created**:
-- `pixsim7_backend/services/npc/dialogue_analytics_service.py`
+- `pixsim7/backend/main/services/npc/dialogue_analytics_service.py`
 
 **API Endpoints**:
 - `GET /api/v1/game/dialogue/analytics/cost-summary` - Cost analysis

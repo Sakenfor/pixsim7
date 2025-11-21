@@ -35,7 +35,7 @@ Phase 6 implements a centralized log ingestion and querying system that collects
 
 ### Domain Model
 
-**File:** `pixsim7_backend/domain/log_entry.py`
+**File:** `pixsim7/backend/main/domain/log_entry.py`
 
 ```python
 class LogEntry(SQLModel, table=True):
@@ -74,7 +74,7 @@ class LogEntry(SQLModel, table=True):
 
 ### Service Layer
 
-**File:** `pixsim7_backend/services/log_service.py`
+**File:** `pixsim7/backend/main/services/log_service.py`
 
 - `ingest_log()` - Ingest single log entry
 - `ingest_batch()` - Ingest multiple logs efficiently
@@ -85,7 +85,7 @@ class LogEntry(SQLModel, table=True):
 
 ### API Endpoints
 
-**File:** `pixsim7_backend/api/v1/logs.py`
+**File:** `pixsim7/backend/main/api/v1/logs.py`
 
 All endpoints documented with OpenAPI/Swagger schemas for easy integration.
 
@@ -101,7 +101,7 @@ All endpoints documented with OpenAPI/Swagger schemas for easy integration.
 
 ### Database Migration
 
-**File:** `pixsim7_backend/infrastructure/database/migrations/versions/20251113_0019_6f23b5e5a7ba_add_log_entries_table.py`
+**File:** `pixsim7/backend/main/infrastructure/database/migrations/versions/20251113_0019_6f23b5e5a7ba_add_log_entries_table.py`
 
 Creates `log_entries` table with comprehensive indexes:
 - Composite indexes for common query patterns (job+stage, service+level+timestamp, etc.)
@@ -122,7 +122,7 @@ PYTHONPATH=G:/code/pixsim7 alembic upgrade head
 The log ingestion endpoints are automatically available when the API starts:
 
 ```bash
-PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001
+PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001
 ```
 
 ### 3. Enable Automatic Log Forwarding (Optional)
@@ -137,7 +137,7 @@ export PIXSIM_LOG_INGESTION_BATCH_SIZE=10
 export PIXSIM_LOG_INGESTION_FLUSH_INTERVAL=5.0
 
 # Then start your service
-PYTHONPATH=G:/code/pixsim7 python pixsim7_backend/workers/job_processor.py
+PYTHONPATH=G:/code/pixsim7 python pixsim7/backend/main/workers/job_processor.py
 ```
 
 ### 4. Manual Log Ingestion
@@ -309,7 +309,7 @@ retention policies configured via migrations, you normally do **not** need
 an additional scheduled cleanup job – Timescale handles it for you.
 
 ```python
-from pixsim7_backend.services.log_service import LogService
+from pixsim7.backend.main.services.log_service import LogService
 
 # Delete logs older than 30 days (manual / non-Timescale cleanup)
 deleted = await log_service.cleanup_old_logs(days=30)
@@ -400,11 +400,11 @@ The system is designed to support:
 
 ## 📝 Files Created
 
-1. `pixsim7_backend/domain/log_entry.py` - Domain model
-2. `pixsim7_backend/services/log_service.py` - Service layer
-3. `pixsim7_backend/api/v1/logs.py` - API endpoints
+1. `pixsim7/backend/main/domain/log_entry.py` - Domain model
+2. `pixsim7/backend/main/services/log_service.py` - Service layer
+3. `pixsim7/backend/main/api/v1/logs.py` - API endpoints
 4. `pixsim_logging/http_handler.py` - HTTP log forwarder
-5. `pixsim7_backend/infrastructure/database/migrations/versions/20251113_0019_6f23b5e5a7ba_add_log_entries_table.py` - Migration
+5. `pixsim7/backend/main/infrastructure/database/migrations/versions/20251113_0019_6f23b5e5a7ba_add_log_entries_table.py` - Migration
 6. `tests/test_log_ingestion.py` - Test suite
 7. `docs/PHASE_6_LOG_INGESTION.md` - This document
 

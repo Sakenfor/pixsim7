@@ -104,10 +104,10 @@ Mitigations:
 ## Related Code / Docs
 
 - Code:
-  - `pixsim7_backend/domain/narrative/relationships.py`
-  - `pixsim7_backend/services/game/quest_service.py`
-  - `pixsim7_backend/services/game/inventory_service.py`
-  - `pixsim7_backend/domain/game/ecs.py`
+  - `pixsim7/backend/main/domain/narrative/relationships.py`
+  - `pixsim7/backend/main/services/game/quest_service.py`
+  - `pixsim7/backend/main/services/game/inventory_service.py`
+  - `pixsim7/backend/main/domain/game/ecs.py`
   - Any helpers that read/write `GameSession.flags`/`relationships` and `GameWorld.meta`
 - Docs:
   - `GAMEPLAY_SYSTEMS.md`
