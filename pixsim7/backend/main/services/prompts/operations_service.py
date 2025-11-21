@@ -20,7 +20,6 @@ from pixsim7.backend.main.domain.prompt_versioning import (
 from pixsim7.backend.main.domain.generation import Generation
 from pixsim7.backend.main.domain.asset import Asset
 from .similarity_utils import calculate_similarity
-from .template_utils import PromptTemplate
 
 
 class PromptOperationsService:
