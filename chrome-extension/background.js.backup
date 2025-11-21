@@ -602,7 +602,7 @@ chrome.contextMenus && chrome.contextMenus.onClicked && chrome.contextMenus.onCl
 });
 
 // Dialog function to inject
-async function showQuickGenerateDialog(imageUrl, providerId) {
+function showQuickGenerateDialog(imageUrl, providerId) {
   const dialogId = 'pixsim7-quick-generate-dialog';
   if (document.getElementById(dialogId)) return;
 
@@ -626,15 +626,6 @@ async function showQuickGenerateDialog(imageUrl, providerId) {
     <h3 style="margin: 0 0 16px; color: #f3f4f6; font-size: 18px; font-weight: 600;">⚡ Quick Generate Video</h3>
     <div style="margin-bottom: 16px;">
       <img src="${imageUrl}" style="max-width: 100%; max-height: 200px; border-radius: 6px; display: block; margin: 0 auto;" />
-    </div>
-    <div style="margin-bottom: 12px;">
-      <label style="display: block; color: #d1d5db; font-size: 12px; margin-bottom: 6px; font-weight: 500;">
-        Preset Template
-        <button id="pixsim7-refresh-presets" style="margin-left: 8px; padding: 2px 6px; border: 1px solid #4b5563; border-radius: 4px; background: #374151; color: #d1d5db; cursor: pointer; font-size: 11px;">↻</button>
-      </label>
-      <select id="pixsim7-preset-select" style="width: 100%; padding: 8px; border: 1px solid #4b5563; border-radius: 6px; background: #111827; color: #f3f4f6; font-size: 13px;">
-        <option value="">Custom Prompt</option>
-      </select>
     </div>
     <div style="margin-bottom: 16px;">
       <label style="display: block; color: #d1d5db; font-size: 12px; margin-bottom: 6px; font-weight: 500;">Prompt (max 2048 chars)</label>
@@ -711,41 +702,6 @@ async function showQuickGenerateDialog(imageUrl, providerId) {
       error.textContent = e.message || 'Generation failed';
       dialog.appendChild(error);
       setTimeout(() => error.remove(), 3000);
-    }
-  });
-
-  // === PRESET LOADING ===
-  const presetSelect = dialog.querySelector('#pixsim7-preset-select');
-  const refreshBtn = dialog.querySelector('#pixsim7-refresh-presets');
-  
-  async function loadPresets() {
-    const opts = await chrome.storage.local.get(['backendUrl', 'pixsim7Token']);
-    if (!opts.backendUrl || !opts.pixsim7Token) return;
-    
-    try {
-      const url = `${opts.backendUrl}/api/v1/automation/presets?provider_id=${providerId || 'pixverse'}`;
-      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${opts.pixsim7Token}` } });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      
-      presetSelect.innerHTML = '<option value="">Custom Prompt</option>';
-      (data.presets || []).forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name || `Preset ${p.id}`;
-        opt.dataset.prompt = p.prompt || '';
-        presetSelect.appendChild(opt);
-      });
-    } catch (e) { console.error('Preset load failed:', e); }
-  }
-  
-  loadPresets();
-  refreshBtn.addEventListener('click', () => loadPresets());
-  presetSelect.addEventListener('change', () => {
-    const opt = presetSelect.options[presetSelect.selectedIndex];
-    if (opt.dataset.prompt) {
-      input.value = opt.dataset.prompt;
-      charCount.textContent = input.value.length;
     }
   });
 

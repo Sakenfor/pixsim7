@@ -105,13 +105,15 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
+  // NOTE: Only depends on items.length and loading to avoid double-loading
+  // Filter changes are handled by the reset effect above
   useEffect(() => {
     if (items.length === 0 && !loading) {
       // initial or after reset
       loadMore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, loading, filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit]);
+  }, [items.length, loading]);
 
   return { items, loadMore, loading, error, hasMore, reset };
 }
