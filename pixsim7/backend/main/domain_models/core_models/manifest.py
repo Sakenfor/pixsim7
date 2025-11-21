@@ -2,7 +2,7 @@
 Core Domain Models Package
 
 Registers core business domain models with SQLModel.
-Includes users, assets, jobs, workspaces, etc.
+Includes users, assets, generations, workspaces, etc.
 """
 
 from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
@@ -15,7 +15,7 @@ from pixsim7.backend.main.domain import (
     Workspace,
     Asset,
     AssetVariant,
-    Job,
+    Generation,
     ProviderSubmission,
     ProviderAccount,
     ProviderCredit,
@@ -29,7 +29,7 @@ from pixsim7.backend.main.domain import (
 manifest = DomainModelManifest(
     id="core_models",
     name="Core Domain Models",
-    description="Core business models (users, assets, jobs, providers)",
+    description="Core business models (users, assets, generations, providers)",
     models=[
         "User",
         "UserSession",
@@ -37,7 +37,7 @@ manifest = DomainModelManifest(
         "Workspace",
         "Asset",
         "AssetVariant",
-        "Job",
+        "Generation",
         "ProviderSubmission",
         "ProviderAccount",
         "ProviderCredit",

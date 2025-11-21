@@ -192,7 +192,7 @@ async def init_database():
         @app.on_event("startup")
         async def startup():
             # Import all models first
-            from domain import Asset, Job, ...
+            from domain import Asset, Generation, ...
             # Then initialize
             await init_database()
     """
