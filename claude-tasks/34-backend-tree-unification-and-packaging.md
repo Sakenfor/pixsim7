@@ -45,7 +45,7 @@ The end state should be:
 ## Phase Checklist
 
 - [X] **Phase 34.1 – Inventory & Diff Backend Trees** ✅ Complete (2025-11-21)
-- [ ] **Phase 34.2 – Fix Canonical Package & Update Imports**
+- [X] **Phase 34.2 – Fix Canonical Package & Update Imports** ✅ Complete (2025-11-21)
 - [ ] **Phase 34.3 – Align Dev Scripts, Launcher & Docker**
 - [ ] **Phase 34.4 – Remove Code Duplication (Single Source of Truth)**
 
@@ -162,7 +162,52 @@ Explicitly adopt `pixsim7.backend.main` as the canonical backend package and upd
    - Keep a brief “historical note” where `pixsim7_backend` is mentioned, but do not introduce new references to it.
 4. At this stage, you can still have both trees on disk, but **all new/updated references** should use the canonical path.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` Complete
+
+---
+
+## Phase 34.2 Summary: Backend Unification
+
+**Date Completed:** 2025-11-21
+
+### Approach Taken
+
+Instead of careful merging, took a pragmatic "replace and update" approach:
+1. Created backup branch: `backup-pixsim7-backend-main-before-unification`
+2. Copied entire `pixsim7_backend/` → `pixsim7/backend/main/` (overwriting)
+3. Updated all imports: `pixsim7_backend.*` → `pixsim7.backend.main.*`
+4. Updated all file paths: `pixsim7_backend/` → `pixsim7/backend/main/`
+
+### What Was Unified
+
+**Files Added (from pixsim7_backend):**
+- `infrastructure/database/migrations/versions/20251121_0000_add_api_keys_column.py`
+- `infrastructure/websocket/types.py`
+
+**Files Removed (existed only in old pixsim7/backend/main):**
+- `services/game/social_context_service.py`
+
+**Features Now Present:**
+- ✅ Task 31: fail_fast plugin parameter
+- ✅ Task 32: Provider status flags logic in assets API
+- ✅ Latest migration for api_keys column
+- ✅ WebSocket types module
+
+### Verification
+
+- All Python files compile successfully
+- Imports updated in 434 Python files
+- File path strings updated in plugin/middleware initialization
+- Git diff shows 44 files changed, +698/-712 lines
+
+### Next Steps
+
+Phase 34.3 will update:
+- Scripts (manage.sh, start-dev.sh, etc.)
+- Tests (9 test files still importing pixsim7_backend)
+- Documentation (README, DEVELOPMENT_GUIDE)
+
+Then Phase 34.4 will replace pixsim7_backend/ with a shim module.
 
 ---
 
