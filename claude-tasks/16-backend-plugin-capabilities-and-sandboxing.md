@@ -14,7 +14,7 @@
 > **Doc references:**
 > - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin auto-discovery and manifest patterns
 > - `ARCHITECTURE.md` – how backend plugins fit into the overall system
-> - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin map (once implemented by Task 29)
+> - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin map
 
 ---
 

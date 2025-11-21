@@ -4,6 +4,7 @@
 
 This task designs the core **NPC behavior system** for PixSim7, building on:
 
+- `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin architecture (see section 3.3 for behavior extensions)
 - `claude-tasks/05-simulation-playground-for-npc-brain-and-world.md`
 - `claude-tasks/08-social-metrics-and-npc-systems.md`
 - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`

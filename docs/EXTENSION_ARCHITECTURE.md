@@ -247,6 +247,7 @@ If a proposed change doesn’t fit cleanly into one of the categories above, it 
 - `GRAPH_RENDERER_PLUGINS.md` – graph node renderer plugin architecture.
 - `GAMEPLAY_SYSTEMS.md` – gameplay systems and JSON conventions for session/world state.
 - `docs/APP_MAP.md` – app map, routes, and subsystem entrypoints.
+- `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` – NPC behavior system, activity selection, and routine graphs.
 - `claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md` – backend plugin capabilities roadmap.
 - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md` – registry dogfooding and ECS behaviors.
 - `claude-tasks/28-extensible-scoring-and-simulation-config.md` – pluggable scoring and simulation config.

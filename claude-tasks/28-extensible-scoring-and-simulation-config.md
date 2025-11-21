@@ -4,6 +4,7 @@
 > - This task enables plugins and worlds to extend core game systems (scoring factors, simulation tiers).
 > - Allows true modding: plugins can add "weather preference", "social fatigue", etc. to NPC behavior.
 > - Read these first:
+>   - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin architecture overview
 >   - `pixsim7_backend/domain/behavior/scoring.py` – 8 hardcoded scoring factors
 >   - `packages/game-core/src/world/gameProfile.ts` – hardcoded tier limits per style
 >   - `pixsim7_backend/infrastructure/plugins/behavior_registry.py` – registry infrastructure

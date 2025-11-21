@@ -4,6 +4,7 @@
 > - This task unifies registration patterns so core features use the same plugin infrastructure they offer to plugins.
 > - Philosophy: "If a plugin could do X, core should use the same pathway when doing X built-in."
 > - Read these first:
+>   - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin architecture overview
 >   - `pixsim7_backend/infrastructure/plugins/behavior_registry.py` – central registry
 >   - `pixsim7_backend/domain/behavior/conditions.py` – hardcoded if/elif chain
 >   - `pixsim7_backend/domain/game/ecs.py` – hardcoded COMPONENT_SCHEMAS
