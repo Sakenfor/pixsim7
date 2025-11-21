@@ -233,6 +233,37 @@ async def get_current_user_ws(
         return None
 
 
+async def get_current_user_optional(
+    authorization: Annotated[str | None, Header()] = None,
+    auth_service: AuthService = Depends(get_auth_service)
+) -> Optional[User]:
+    """
+    Get current authenticated user from JWT token (optional)
+
+    Similar to get_current_user but returns None instead of raising
+    exceptions. Useful for endpoints that provide different behavior
+    for authenticated vs unauthenticated users.
+
+    Returns:
+        User if token is valid, None if token is missing/invalid
+    """
+    if not authorization:
+        return None
+
+    # Extract token from "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+
+    try:
+        user = await auth_service.verify_token(token)
+        return user
+    except Exception:
+        return None
+
+
 async def get_current_active_user(
     user: User = Depends(get_current_user)
 ) -> User:
