@@ -20,7 +20,7 @@ def client():
     plugins load successfully.
     """
     # Import here to ensure clean environment
-    from pixsim7_backend.main import app
+    from pixsim7.backend.main.main import app
 
     return TestClient(app)
 
@@ -126,7 +126,7 @@ class TestPluginManager:
         This test accesses the plugin manager to verify that no required
         plugins failed to load.
         """
-        from pixsim7_backend.main import app
+        from pixsim7.backend.main.main import app
 
         # Get the routes manager from app state (if stored)
         # For now, we'll just verify the app started successfully

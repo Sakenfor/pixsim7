@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from pixsim7_backend.services.upload.upload_service import UploadService
-from pixsim7_backend.domain import ProviderAccount, AccountStatus, MediaType
-from pixsim7_backend.shared.errors import InvalidOperationError
-from pixsim7_backend.services.provider import registry as provider_registry
+from pixsim7.backend.main.services.upload.upload_service import UploadService
+from pixsim7.backend.main.domain import ProviderAccount, AccountStatus, MediaType
+from pixsim7.backend.main.shared.errors import InvalidOperationError
+from pixsim7.backend.main.services.provider import registry as provider_registry
 
 
 class DummyDb:

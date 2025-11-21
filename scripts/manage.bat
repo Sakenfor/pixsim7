@@ -83,7 +83,7 @@ exit /b 1
 
     cd /d %~dp0\..
     echo Starting backend...
-    start "PixSim7 Backend" /min cmd /c "set PYTHONPATH=G:\code\pixsim7 && python pixsim7_backend\main.py"
+    start "PixSim7 Backend" /min cmd /c "set PYTHONPATH=G:\code\pixsim7 && python -m pixsim7.backend.main.main"
 
     REM Wait a moment for process to start
     timeout /t 2 /nobreak >nul
@@ -118,7 +118,7 @@ exit /b 1
 
     cd /d %~dp0\..
     echo Starting worker...
-    start "PixSim7 Worker" /min cmd /c "set PYTHONPATH=G:\code\pixsim7 && arq pixsim7_backend.workers.arq_worker.WorkerSettings"
+    start "PixSim7 Worker" /min cmd /c "set PYTHONPATH=G:\code\pixsim7 && arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"
 
     REM Wait a moment for process to start
     timeout /t 2 /nobreak >nul

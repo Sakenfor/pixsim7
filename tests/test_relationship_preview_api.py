@@ -10,9 +10,9 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
-from pixsim7_backend.api.v1.game_relationship_preview import router
-from pixsim7_backend.domain.game.models import GameWorld
-from pixsim7_backend.infrastructure.database.session import get_db
+from pixsim7.backend.main.api.v1.game_relationship_preview import router
+from pixsim7.backend.main.domain.game.models import GameWorld
+from pixsim7.backend.main.infrastructure.database.session import get_db
 
 
 @pytest.fixture

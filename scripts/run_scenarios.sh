@@ -12,4 +12,4 @@ set -e
 export PYTHONPATH="${PYTHONPATH:-.}"
 
 # Run scenarios
-python -m pixsim7_backend.scenarios "$@"
+python -m pixsim7.backend.main.scenarios "$@"

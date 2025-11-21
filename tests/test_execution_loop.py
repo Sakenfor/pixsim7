@@ -1,5 +1,5 @@
 import pytest
-from pixsim7_backend.domain.automation.execution_loop import ExecutionLoop, PresetExecutionMode
+from pixsim7.backend.main.domain.automation.execution_loop import ExecutionLoop, PresetExecutionMode
 
 
 def test_get_next_preset_single_mode():

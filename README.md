@@ -84,8 +84,8 @@ cd /g/code/pixsim7
 
 **🏗️ Backend:**
 - `/docs/backend/SERVICES.md` - Service layer reference (10 services)
-- `/pixsim7_backend/GETTING_STARTED.md` - Backend setup
-- `/pixsim7_backend/HANDOFF_NOTES.md` - Critical patterns
+- `/pixsim7/backend/main/GETTING_STARTED.md` - Backend setup
+- `/pixsim7/backend/main/README.md` - Backend overview
 - `/docs/PROVIDER_ACCOUNT_STRATEGY.md` - Multi-account pooling
 
 **💻 Frontend:**
@@ -111,7 +111,7 @@ cd /g/code/pixsim7
 
 **📦 Additional Resources:**
 - `/CROSS_PROVIDER_ASSETS.md` - Asset system architecture
-- `/pixsim7_backend/REDIS_AND_WORKERS_SETUP.md` - Redis and ARQ workers
+- `/pixsim7/backend/main/REDIS_AND_WORKERS_SETUP.md` - Redis and ARQ workers
 - `/docs/ADMIN_PANEL.md` - Admin panel user guide
 - `/docs/TIMESCALEDB_SETUP.md` - TimescaleDB for logs
 - `/docs/LOG_VIEWER_FIELD_METADATA_API.md` - Log viewer API
@@ -128,13 +128,15 @@ cd /g/code/pixsim7
 
 ```
 /g/code/pixsim7/
-├── pixsim7_backend/     # Backend application
-│   ├── api/             # REST API endpoints
-│   ├── services/        # Business logic layer
-│   ├── domain/          # Database models
-│   ├── workers/         # Background jobs (ARQ)
-│   ├── infrastructure/  # Database, Redis, logging
-│   └── shared/          # Config, schemas, errors
+├── pixsim7/
+│   └── backend/
+│       └── main/        # Backend application
+│           ├── api/     # REST API endpoints
+│           ├── services/   # Business logic layer
+│           ├── domain/     # Database models
+│           ├── workers/    # Background jobs (ARQ)
+│           ├── infrastructure/ # Database, Redis, logging
+│           └── shared/     # Config, schemas, errors
 ├── admin/               # Svelte admin panel
 │   ├── src/
 │   │   ├── routes/      # Pages (dashboard, logs)
@@ -219,7 +221,7 @@ pip install -e G:/code/pixverse-py
 pip install -e G:/code/sora-py  # if available
 
 # Run backend
-uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001
+uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001
 ```
 
 If you see errors like `Could not find a version that satisfies the requirement pixverse-py`, it means the SDK isn't published. Remove it from `environment.yml` (already commented) and install from local path with `pip install -e`.

@@ -59,8 +59,8 @@ echo Databases ready!
 echo ========================================
 echo.
 echo Next steps:
-echo   1. Start backend:  set PYTHONPATH=G:\code\pixsim7 ^&^& python pixsim7_backend\main.py
-echo   2. Start worker:   set PYTHONPATH=G:\code\pixsim7 ^&^& arq pixsim7_backend.workers.arq_worker.WorkerSettings
+echo   1. Start backend:  set PYTHONPATH=G:\code\pixsim7 ^&^& python -m pixsim7.backend.main.main
+echo   2. Start worker:   set PYTHONPATH=G:\code\pixsim7 ^&^& arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 echo   3. Start admin:    cd admin ^&^& npm run dev
 echo.
 echo Or open separate terminals for each

@@ -13,11 +13,11 @@ from sqlmodel import SQLModel, create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from pixsim7_backend.domain import Job, JobStatus, OperationType, ProviderAccount, AccountStatus
-from pixsim7_backend.services.submission.pipeline import JobSubmissionPipeline
-from pixsim7_backend.services.provider.base import Provider, GenerationResult
-from pixsim7_backend.services.provider.registry import registry
-from pixsim7_backend.domain import GenerationArtifact
+from pixsim7.backend.main.domain import Job, JobStatus, OperationType, ProviderAccount, AccountStatus
+from pixsim7.backend.main.services.submission.pipeline import JobSubmissionPipeline
+from pixsim7.backend.main.services.provider.base import Provider, GenerationResult
+from pixsim7.backend.main.services.provider.registry import registry
+from pixsim7.backend.main.domain import GenerationArtifact
 
 # ===== Stub Provider =====
 class StubProvider(Provider):

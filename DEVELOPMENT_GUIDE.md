@@ -39,10 +39,10 @@ docker-compose up -d
 docker-compose -f docker-compose.db-only.yml up -d
 
 # Terminal 2: Start backend
-PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001 --reload
+PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001 --reload
 
 # Terminal 3: Start worker
-PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Terminal 4: Start admin panel
 cd admin && npm run dev
@@ -134,7 +134,7 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 
 # Install dependencies
-cd pixsim7_backend
+cd pixsim7/backend/main
 pip install -r requirements.txt
 ```
 
@@ -149,7 +149,7 @@ docker-compose -f docker-compose.db-only.yml logs -f postgres
 # Look for: "database system is ready to accept connections"
 
 # Run migrations
-cd pixsim7_backend
+cd pixsim7/backend/main
 PYTHONPATH=/g/code/pixsim7 alembic upgrade head
 
 # Verify database
@@ -191,14 +191,14 @@ docker-compose -f docker-compose.db-only.yml up -d
 
 **Start backend** (hot-reload enabled):
 ```bash
-PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7_backend.main:app \
+PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7.backend.main.main:app \
   --host 0.0.0.0 --port 8001 --reload
 ```
 
 **Start worker** (auto-reload on code changes):
 ```bash
-PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings \
-  --watch pixsim7_backend
+PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings \
+  --watch pixsim7/backend/main
 ```
 
 **Start admin panel**:
@@ -241,7 +241,7 @@ rm -rf data/
 ### **Backend Tests**
 
 ```bash
-cd pixsim7_backend
+cd pixsim7/backend/main
 
 # Run all tests
 pytest
@@ -250,7 +250,7 @@ pytest
 pytest tests/test_structured_logging.py
 
 # Run with coverage
-pytest --cov=pixsim7_backend --cov-report=html
+pytest --cov=pixsim7.backend.main --cov-report=html
 
 # Watch mode (re-run on file changes)
 pytest-watch
@@ -279,7 +279,7 @@ npm run test:watch
 
 **Create a new migration:**
 ```bash
-cd pixsim7_backend
+cd pixsim7/backend/main
 PYTHONPATH=/g/code/pixsim7 alembic revision --autogenerate -m "Add new field to User"
 ```
 
@@ -344,7 +344,7 @@ WHERE is_active = true;
 
 ```python
 # services/my_feature/my_service.py
-from pixsim7_backend.infrastructure.database import DatabaseSession
+from pixsim7.backend.main.infrastructure.database import DatabaseSession
 
 class MyService:
     def __init__(self, db: DatabaseSession):
@@ -355,7 +355,7 @@ class MyService:
         pass
 
 # api/v1/my_endpoint.py
-from pixsim7_backend.api.dependencies import get_database
+from pixsim7.backend.main.api.dependencies import get_database
 
 @router.get("/my-endpoint")
 async def my_endpoint(
