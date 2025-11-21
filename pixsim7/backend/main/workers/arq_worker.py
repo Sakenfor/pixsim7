@@ -5,10 +5,10 @@ Combines job processor and status poller into a single worker.
 
 Usage:
     # Start worker
-    arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
+    arq pixsim7_backend.workers.arq_worker.WorkerSettings
 
     # Or with custom Redis URL
-    ARQ_REDIS_URL=redis://localhost:6379/0 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
+    ARQ_REDIS_URL=redis://localhost:6379/0 arq pixsim7_backend.workers.arq_worker.WorkerSettings
 """
 import os
 
@@ -136,4 +136,4 @@ if __name__ == "__main__":
     print(f"Max tries: {WorkerSettings.max_tries}")
     print("=" * 60)
     print("\nTo start worker, run:")
-    print("  arq pixsim7.backend.main.workers.arq_worker.WorkerSettings")
+    print("  arq pixsim7_backend.workers.arq_worker.WorkerSettings")

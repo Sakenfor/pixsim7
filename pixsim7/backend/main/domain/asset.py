@@ -60,6 +60,18 @@ class Asset(SQLModel, table=True):
         index=True
     )
 
+    # Provider moderation/flagging status
+    provider_flagged: bool = Field(
+        default=False,
+        index=True,
+        description="Whether the provider flagged/rejected this asset"
+    )
+    provider_flag_reason: Optional[str] = Field(
+        default=None,
+        max_length=512,
+        description="Reason for provider flag (if available)"
+    )
+
     # ===== CROSS-PROVIDER UPLOAD CACHE =====
     # Maps provider_id → provider-specific asset ID for cross-provider usage
     # Example: {"pixverse": "video_abc123", "sora": "media_xyz789"}

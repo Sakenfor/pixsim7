@@ -33,8 +33,9 @@ class PluginManifest(BaseModel):
 
     # Lifecycle
     enabled: bool = True             # Is plugin enabled?
+    required: bool = False           # Is plugin required? (fail-fast if load fails in dev/CI)
 
-    # Permissions - see pixsim7_backend/infrastructure/plugins/permissions.py
+    # Permissions - see pixsim7/backend/main/infrastructure/plugins/permissions.py
     # for canonical permission definitions
     permissions: list[str] = []
     """

@@ -10,16 +10,15 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.domain import (
     Asset,
+    Job,
     ProviderSubmission,
     User,
     MediaType,
-    SyncStatus,
 )
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
 )
-from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 

@@ -32,10 +32,6 @@ def calculate_text_similarity(text1: str, text2: str, method: str = "combined") 
         return (seq_sim * 0.3 + tok_sim * 0.4 + ngram_sim * 0.3)
 
 
-# Alias for backward compatibility
-calculate_similarity = calculate_text_similarity
-
-
 def _sequence_similarity(text1: str, text2: str) -> float:
     """Calculate similarity using SequenceMatcher (like diff)"""
     return difflib.SequenceMatcher(None, text1.lower(), text2.lower()).ratio()

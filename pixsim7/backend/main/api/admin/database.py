@@ -37,7 +37,7 @@ async def get_database_status(
         current_version = result.scalar_one_or_none()
 
         # Get latest version from migration scripts
-        config = Config("alembic.ini")
+        config = Config("pixsim7/backend/main/infrastructure/database/alembic.ini")
         script = ScriptDirectory.from_config(config)
         latest_version = script.get_current_head()
 

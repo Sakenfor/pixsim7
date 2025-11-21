@@ -1,5 +1,7 @@
 """
 WebSocket API Routes Plugin
+
+Real-time WebSocket endpoints for generation updates and events.
 """
 
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
@@ -14,8 +16,9 @@ manifest = PluginManifest(
     kind="route",
     prefix="/api/v1",
     tags=["websocket", "realtime"],
-    dependencies=["auth"],
+    dependencies=[],  # WebSocket doesn't strictly depend on auth (handles token separately)
     requires_db=False,
     requires_redis=False,
     enabled=True,
+    required=True,  # Critical for real-time features
 )

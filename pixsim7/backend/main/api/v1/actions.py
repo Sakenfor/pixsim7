@@ -31,8 +31,8 @@ from pixsim7.backend.main.domain.narrative.action_blocks import (
 from pixsim7.backend.main.domain.narrative.action_blocks.generator import (
     DynamicBlockGenerator,
     GenerationRequest,
+    GenerateActionBlockRequest
 )
-from pixsim7.backend.main.api.v1.generation import GenerateActionBlockRequest
 
 
 router = APIRouter()

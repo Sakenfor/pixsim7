@@ -53,7 +53,6 @@ async def add_asset(
     """
 
     # Track which dedup strategy matched for conflict detection
-    existing = None
     dedup_strategy = None
     existing_by_provider = None
     existing_by_sha256 = None
