@@ -559,7 +559,7 @@ export function registerNpcResponseNode() {
     },
 
     editorComponent: 'NpcResponseNodeEditor',
-    rendererComponent: 'NpcResponseNodeRenderer',
+    rendererComponent: 'DefaultNodeRenderer',  // TODO: Create NpcResponseNodeRenderer
     preloadPriority: 8,
 
     ports: {

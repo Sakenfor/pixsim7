@@ -267,13 +267,70 @@ cb1f592 - Implement domain model registry system (from middleware branch)
 22d75e7 - Convert core API routers to plugin architecture (from middleware branch)
 ```
 
+## Recent Route Plugin Additions
+
+### WebSocket Route Plugin (2025-01-21)
+
+**Problem**: WebSocket endpoints existed but weren't accessible (404 errors)
+**Solution**: Created route plugin manifest to register WebSocket routes
+
+**Files Created**:
+- `pixsim7_backend/routes/websocket/__init__.py`
+- `pixsim7_backend/routes/websocket/manifest.py`
+
+**Endpoints Registered**:
+- `ws://localhost:8000/api/v1/ws/generations` - Real-time generation updates
+- `ws://localhost:8000/api/v1/ws/events` - General event stream
+
+**Manifest**:
+```python
+manifest = PluginManifest(
+    id="websocket",
+    name="WebSocket API",
+    version="1.0.0",
+    description="WebSocket endpoints for real-time updates (generations, events)",
+    kind="route",
+    prefix="/api/v1",
+    tags=["websocket", "realtime"],
+    dependencies=["auth"],
+    enabled=True,
+)
+```
+
+### Logs Route Plugin Fixes (2025-01-21)
+
+**Problem**: Logs API endpoints returned 404 due to syntax errors preventing plugin load
+**Root Cause**: FastAPI dependency annotation conflicts (`CurrentAdminUser = Depends()` vs `Annotated[User, Depends(...)]`)
+
+**Solution**: Fixed dependency syntax in all log endpoints
+
+**Changes**: `pixsim7_backend/api/v1/logs.py`
+```python
+# Before (caused errors):
+admin: CurrentAdminUser = Depends()
+
+# After (works):
+admin: User = Depends(get_current_admin_user)
+```
+
+**Endpoints Now Working**:
+- `POST /api/v1/logs/ingest` - Single log ingestion
+- `POST /api/v1/logs/ingest/batch` - Batch log ingestion
+- `GET /api/v1/logs/query` - Query logs with filters
+- `GET /api/v1/logs/trace/job/{job_id}` - Job trace logs
+- Additional analytics and field discovery endpoints
+
+---
+
 ## Related Documentation
 
 - [PROMPT_VERSIONING_SYSTEM.md](./PROMPT_VERSIONING_SYSTEM.md) - Prompt versioning implementation
 - [PLUGIN_SYSTEM_ARCHITECTURE.md](./PLUGIN_SYSTEM_ARCHITECTURE.md) - Plugin system design
+- [RECENT_CHANGES_2025_01.md](./RECENT_CHANGES_2025_01.md) - Latest system changes and fixes
 
 ---
 
 **Merge Completed**: 2025-11-17
+**Latest Updates**: 2025-01-21 (WebSocket & Logs plugins)
 **No Manual Intervention Required**: The plugin structure is backward compatible
 **All Tests Passing**: Domain models and routes auto-registered successfully
