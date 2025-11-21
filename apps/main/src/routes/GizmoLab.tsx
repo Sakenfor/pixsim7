@@ -85,7 +85,9 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
         { id: 'zone2', position: { x: 100, y: 0, z: 0 }, radius: 50, label: 'Zone 2' },
         { id: 'zone3', position: { x: 0, y: 100, z: 0 }, radius: 50, label: 'Zone 3' },
       ],
-      style: selectedGizmo.id as any,
+      // Prefer defaultConfig.style if set, otherwise fall back to gizmo id
+      // This allows gizmos to specify a different renderer style than their id
+      style: (baseConfig.style ?? selectedGizmo.id) as any,
       visual: baseConfig.visual,
       physics: baseConfig.physics,
       audio: baseConfig.audio,

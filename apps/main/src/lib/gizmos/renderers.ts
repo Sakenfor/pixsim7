@@ -29,6 +29,17 @@ const gizmoRenderers: Record<string, ComponentType<GizmoComponentProps>> = {
       default: m.RingsGizmo,
     }))
   ),
+  'body-map': lazy(() =>
+    import('../../components/gizmos/BodyMapGizmo').then(m => ({
+      default: m.BodyMapGizmo,
+    }))
+  ),
+  // Note: 'custom' style is used by BodyMapGizmo - map it to the same component
+  custom: lazy(() =>
+    import('../../components/gizmos/BodyMapGizmo').then(m => ({
+      default: m.BodyMapGizmo,
+    }))
+  ),
   // Add more gizmo renderers here as they're created
   // helix: lazy(() => import('...').then(m => ({ default: m.HelixGizmo }))),
 };

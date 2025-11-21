@@ -31,17 +31,21 @@ const tools = getAllTools();    // Returns all registered tools
 
 Packs are organized in dependency layers:
 
-1. **Base Pack** (`frontend/src/lib/gizmos/registry.ts`)
+1. **Base Pack** (`apps/main/src/lib/gizmos/registry.ts`)
    - Core gizmos: orb, constellation
    - Basic tools: touch, temperature, energy
 
-2. **Enhanced Pack** (`frontend/src/lib/gizmos/registry-enhanced.ts`)
+2. **Enhanced Pack** (`apps/main/src/lib/gizmos/registry-enhanced.ts`)
    - Extends base pack
    - Adds: feather tool
 
-3. **Water & Banana Pack** (`frontend/src/lib/gizmos/registry-water-banana.ts`)
+3. **Water & Banana Pack** (`apps/main/src/lib/gizmos/registry-water-banana.ts`)
    - Extends enhanced pack
    - Adds: water tool (liquid type), banana tool (object type)
+
+4. **Romance Pack** (`apps/main/src/lib/gizmos/registry-romance.ts`)
+   - Extends enhanced pack
+   - Adds: body-map gizmo, caress/feather/silk/pleasure tools
 
 Each pack:
 - Imports `registerGizmo`/`registerTool` from `@pixsim7/scene-gizmos`
@@ -503,7 +507,7 @@ The Gizmo Lab demonstrates best practices:
 - Rendering gizmos via `SceneGizmoMiniGame` component
 - Rendering tools via generic `InteractiveTool` component
 
-Check the source at `frontend/src/routes/GizmoLab.tsx` for implementation details.
+Check the source at `apps/main/src/routes/GizmoLab.tsx` for implementation details.
 
 ## Next Steps
 

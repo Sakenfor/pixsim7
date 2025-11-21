@@ -34,7 +34,19 @@ export const BodyMapGizmo: React.FC<GizmoComponentProps> = ({
   // TODO [OPUS]: Replace with actual body model rendering
   // For now, we'll use simple zones
   const bodyZones = useMemo(() => {
-    return config.zones.map((zone, index) => ({
+    const zones = Array.isArray(config.zones) && config.zones.length > 0
+      ? config.zones
+      : [
+          {
+            id: 'center',
+            position: { x: 0, y: 0, z: 0 },
+            radius: 40,
+            label: 'Center',
+            color: '#FF69B4',
+          } as GizmoZone,
+        ];
+
+    return zones.map((zone, index) => ({
       ...zone,
       // These positions are placeholders - should map to actual body parts
       renderPosition: {

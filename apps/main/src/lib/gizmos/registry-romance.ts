@@ -322,16 +322,30 @@ export const handTool3D: InteractiveTool = {
 /**
  * Body Map Gizmo - Interactive body zones for sensual touch
  *
- * TODO [OPUS]: Enhance visual representation (see BodyMapGizmo.tsx for details)
+ * ⚠️ VISUAL STUB - NOT PRODUCTION READY ⚠️
+ * This gizmo is fully registered and functional but uses placeholder visuals.
+ * The component (BodyMapGizmo.tsx) implements core logic (zones, intensity tracking,
+ * pleasure meter) but all visuals are basic placeholders with extensive [OPUS] TODOs
+ * for:
+ * - Elegant body silhouette design
+ * - Animated zone highlights and particle effects
+ * - Smooth transitions and visual feedback
+ * - Enhanced pleasure meter UI
+ * - Ambient effects and screen-space distortions
+ *
+ * The gizmo is renderable in GizmoLab and scene player, but not suitable for
+ * production use until visual enhancements are complete.
+ *
+ * See BodyMapGizmo.tsx for detailed visual implementation tasks.
  */
 export const bodyMapGizmo: GizmoDefinition = {
   id: 'body-map',
   name: 'Body Map',
   category: 'interactive',
   component: BodyMapGizmo,
-  description: 'Interactive body map for sensual touch gameplay. Explore zones with various tools.',
+  description: 'Interactive body map for sensual touch gameplay. Explore zones with various tools. (Visual stub - needs enhancement)',
   preview: '/previews/body-map-gizmo.mp4', // TODO: Create preview video
-  tags: ['romance', 'sensual', 'interactive', 'zones'],
+  tags: ['romance', 'sensual', 'interactive', 'zones', 'stub'],
 
   defaultConfig: {
     style: 'custom',
