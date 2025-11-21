@@ -101,7 +101,7 @@ class ConversationMemory(SQLModel, table=True):
     tags: List[str] = Field(default_factory=list, sa_column=Column(JSON))
 
     # Additional metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -197,7 +197,7 @@ class ConversationTopic(SQLModel, table=True):
     relationship_tier_when_first_discussed: Optional[str] = Field(None)
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Indexes
     __table_args__ = (
@@ -259,7 +259,7 @@ class RelationshipMilestone(SQLModel, table=True):
     emotional_impact: Optional[EmotionType] = Field(None, description="Emotion triggered by milestone")
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timestamp
     achieved_at: datetime = Field(default_factory=datetime.utcnow)
@@ -318,7 +318,7 @@ class NPCWorldContext(SQLModel, table=True):
     expires_at: Optional[datetime] = Field(None, description="When this context becomes irrelevant")
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timestamps
     occurred_at: datetime = Field(default_factory=datetime.utcnow)
@@ -371,7 +371,7 @@ class PersonalityEvolutionEvent(SQLModel, table=True):
     world_time: Optional[float] = Field(None)
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timestamp
     changed_at: datetime = Field(default_factory=datetime.utcnow)
@@ -432,7 +432,7 @@ class DialogueAnalytics(SQLModel, table=True):
     variant_id: Optional[str] = Field(None, description="For A/B testing different approaches")
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    model_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
     # Timestamp
     generated_at: datetime = Field(default_factory=datetime.utcnow)
