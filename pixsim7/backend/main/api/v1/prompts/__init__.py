@@ -23,4 +23,16 @@ router.include_router(variants.router)
 router.include_router(analytics.router)
 router.include_router(operations.router)
 
-__all__ = ["router"]
+# Export individual routers for selective imports (e.g., generation API microservice)
+families_router = families.router
+variants_router = variants.router
+analytics_router = analytics.router
+operations_router = operations.router
+
+__all__ = [
+    "router",
+    "families_router",
+    "variants_router",
+    "analytics_router",
+    "operations_router",
+]
