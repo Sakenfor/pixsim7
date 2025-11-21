@@ -40,9 +40,9 @@ We want the **Assets/Gallery** view to show a truthful, at-a-glance view of prov
 - [X] **Phase 32.2 – Add Provider Status Badges in Gallery** ✅ Complete
 - [ ] **Phase 32.3 – Optional: Flagged/Moderation Status Surfacing** (Optional - backend ready)
 - [X] **Phase 32.4 – Filters & Quick-View for Provider Status** ✅ Complete
-- [ ] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics**
+- [X] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics** ✅ Complete
 
-**Overall Status:** ~80% Complete (3 of 4 required phases done, 1 optional phase backend-ready)
+**Overall Status:** ✅ 100% Complete (All required phases done, 1 optional phase backend-ready)
 
 ---
 
@@ -216,6 +216,19 @@ Ensure upload controls in the gallery (e.g. `MediaCard` upload button, gallery t
 3. Adjust `MediaCard` tooltip text and internal state so that:
    - “success” corresponds to provider-accepted or explicit “saved and provider OK” semantics.
    - When only a local save is possible, the tooltip and icon reflect that (e.g. “Saved locally; provider upload failed”). This should match the gallery badges from Phase 32.2.
-4. Keep the user experience consistent with the Chrome extension messaging so users see the same interpretation of “success” in both places.
+4. Keep the user experience consistent with the Chrome extension messaging so users see the same interpretation of "success" in both places.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete (Already Implemented)
+
+**Implementation Details:**
+- ✅ MediaCard upload button properly distinguishes local-only vs provider-accepted (MediaCard.tsx:134-138)
+  - Detects "saved locally", "provider upload failed", "Local only" in note text
+  - Sets appropriate state based on semantics
+- ✅ Tooltip text matches extension messaging (MediaCard.tsx:176-182)
+  - Provider success: "Uploaded to provider successfully"
+  - Local only: "Saved locally; provider upload failed"
+  - Error: "Upload failed / rejected"
+- ✅ Provider status badges in hover overlay (MediaCard.tsx:210-218)
+  - Green "Provider OK" badge for successful provider uploads
+  - Yellow "Local only" badge for local-only saves
+- ✅ Consistent UX with Chrome extension - same note field, same semantics
