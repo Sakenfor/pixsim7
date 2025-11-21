@@ -179,7 +179,7 @@ export function buildGenerationSocialContext(
       ];
       if (bandHierarchy.indexOf(band) > bandHierarchy.indexOf(highestIntimacyBand)) {
         highestIntimacyBand = band;
-        highestIntimacy = intimacyLevelId;
+        highestIntimacy = intimacyLevelId ?? null;
         highestTier = tierId;
       }
     }
@@ -207,14 +207,11 @@ export function buildGenerationSocialContext(
   finalRating = clampContentRating(finalRating, config?.maxContentRating);
 
   // Also check world meta for max rating (future extensibility)
-  const worldMaxRating = world?.meta?.generation?.maxContentRating as
-    | 'sfw'
-    | 'romantic'
-    | 'mature_implied'
-    | 'restricted'
+  const generationMeta = (world?.meta as Record<string, unknown> | undefined)?.generation as
+    | { maxContentRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted' }
     | undefined;
-  if (worldMaxRating) {
-    finalRating = clampContentRating(finalRating, worldMaxRating);
+  if (generationMeta?.maxContentRating) {
+    finalRating = clampContentRating(finalRating, generationMeta.maxContentRating);
   }
 
   return {

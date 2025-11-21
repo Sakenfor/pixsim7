@@ -274,6 +274,7 @@ export function buildInteractionMenu(options: {
     scene: [],
     notification: [],
     menu: [],
+    ambient: [],
   };
 
   for (const item of filtered) {

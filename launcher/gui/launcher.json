@@ -1,7 +1,7 @@
 {
-  "window_x": 126,
-  "window_y": 84,
-  "window_width": 1347,
+  "window_x": 542,
+  "window_y": 268,
+  "window_width": 1352,
   "window_height": 687,
   "selected_service": "frontend",
   "stop_services_on_exit": false,

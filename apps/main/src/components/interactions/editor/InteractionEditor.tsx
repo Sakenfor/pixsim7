@@ -7,8 +7,7 @@
 
 import React, { useState } from 'react';
 import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
-import { validateInteraction, formatValidationResult } from '@pixsim7/game-core/interactions';
-import { getTemplate, getTemplatesByCategory } from '@pixsim7/game-core/interactions';
+import { validateInteraction, formatValidationResult, getTemplate, getTemplatesByCategory } from '@pixsim7/game.engine';
 import './InteractionEditor.css';
 
 export interface InteractionEditorProps {

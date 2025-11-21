@@ -17,7 +17,7 @@
 
 // ===== Session Helper Registry =====
 // Manages session state helpers (built-in and custom)
-// Source: @pixsim7/game-core
+// Source:@pixsim7/game.engine
 export {
   sessionHelperRegistry,
   SessionHelperRegistry,

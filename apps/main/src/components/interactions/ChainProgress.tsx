@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import type { InteractionChain, ChainState } from '@pixsim7/game-core/interactions/chains';
-import { getChainProgress } from '@pixsim7/game-core/interactions/chains';
+import type { InteractionChain, ChainState } from '@pixsim7/game.engine';
+import { getChainProgress } from '@pixsim7/game.engine';
 import './ChainProgress.css';
 
 export interface ChainProgressProps {

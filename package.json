@@ -3,9 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "workspaces": [
-    "frontend",
-    "game-frontend",
-    "packages/*"
+    "apps/*",
+    "packages/*/*"
   ],
   "scripts": {
     "dev": "pnpm -r --parallel dev",

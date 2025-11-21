@@ -312,10 +312,11 @@ export function validateGenerationNode(
   // Validate constraints
   if (config.constraints) {
     // Check for conflicts between rating and social context
+    // Note: Different rating systems (MPAA vs content ratings) - compare as strings
     if (
       config.constraints.rating &&
       config.socialContext?.contentRating &&
-      config.constraints.rating !== config.socialContext.contentRating
+      (config.constraints.rating as string) !== (config.socialContext.contentRating as string)
     ) {
       warnings.push(
         `Constraint rating '${config.constraints.rating}' differs from social context rating '${config.socialContext.contentRating}'`

@@ -445,7 +445,7 @@ export class VideoGenerationManager {
       emotion: params.emotion,
       animation: params.animation,
       intensity: params.intensity,
-      art_style: params.style?.artStyle,
+      art_style: params.style?.artStyle as 'anime' | 'realistic' | 'semi-realistic' | undefined,
       loras: params.loras,
       prompt: params.prompt,
       negative_prompt: params.negativePrompt,

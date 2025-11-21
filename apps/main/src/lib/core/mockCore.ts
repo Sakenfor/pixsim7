@@ -1,6 +1,6 @@
 /**
  * Mock implementation of PixSim7Core for testing
- * This will be replaced with the real headless @pixsim7/game-core package
+ * This will be replaced with the real headless@pixsim7/game.engine package
  */
 
 import {

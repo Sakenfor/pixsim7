@@ -5,12 +5,12 @@
  */
 
 import React from 'react';
-import type { InteractionSuggestion } from '@pixsim7/game-core/interactions/suggestions';
+import type { InteractionSuggestion } from '@pixsim7/game.engine';
 import {
   getSuggestionIcon,
   getSuggestionColor,
   formatSuggestionScore,
-} from '@pixsim7/game-core/interactions/suggestions';
+} from '@pixsim7/game.engine';
 import type { NpcInteractionInstance } from '@pixsim7/shared.types';
 import './InteractionSuggestions.css';
 

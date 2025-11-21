@@ -31,7 +31,7 @@ export interface FormField {
 
 /**
  * Session helpers interface - provides clean API for session manipulation
- * Plugins can use this instead of importing from @pixsim7/game-core
+ * Plugins can use this instead of importing from@pixsim7/game.engine
  *
  * Methods that modify state use optimistic updates:
  * 1. Apply change immediately (instant UI feedback)

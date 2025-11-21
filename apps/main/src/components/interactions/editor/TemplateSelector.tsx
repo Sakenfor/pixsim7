@@ -11,7 +11,7 @@ import {
   createFromTemplate,
   type InteractionTemplate,
   type TemplateOptions,
-} from '@pixsim7/game-core/interactions';
+} from '@pixsim7/game.engine';
 import './TemplateSelector.css';
 
 export interface TemplateSelectorProps {

@@ -5,8 +5,8 @@
  */
 
 import React from 'react';
-import { getMoodIcon, getMoodColor } from '@pixsim7/game-core/interactions/moodIntegration';
-import type { GeneralMood, IntimacyMood, MoodState } from '@pixsim7/game-core/interactions/moodIntegration';
+import { getMoodIcon, getMoodColor } from '@pixsim7/game.engine';
+import type { GeneralMood, IntimacyMood, MoodState } from '@pixsim7/game.engine';
 import './MoodIndicator.css';
 
 export interface MoodIndicatorProps {

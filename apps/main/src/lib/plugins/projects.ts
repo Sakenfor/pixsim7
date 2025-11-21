@@ -257,6 +257,26 @@ export async function installUiPluginProject(project: UIPluginProject): Promise<
   updateProject(project);
 }
 
+export async function disableUiPluginProject(project: UIPluginProject): Promise<void> {
+  if (project.linkedPluginId) {
+    await pluginManager.disablePlugin(project.linkedPluginId);
+  }
+}
+
+export async function enableUiPluginProject(project: UIPluginProject): Promise<void> {
+  if (project.linkedPluginId) {
+    await pluginManager.enablePlugin(project.linkedPluginId);
+  }
+}
+
+export async function uninstallUiPluginProject(project: UIPluginProject): Promise<void> {
+  if (project.linkedPluginId) {
+    await pluginManager.uninstallPlugin(project.linkedPluginId);
+    project.linkedPluginId = undefined;
+    updateProject(project);
+  }
+}
+
 // ============================================================================
 // Interaction Plugin Functions (Phase 3)
 // ============================================================================

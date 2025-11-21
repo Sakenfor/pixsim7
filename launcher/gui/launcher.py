@@ -111,6 +111,23 @@ try:
 except Exception:
     import theme
 
+# Console formatting utilities
+try:
+    from .console_utils import (
+        CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
+        CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
+        URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
+        detect_console_level, decorate_console_message,
+        format_console_log_html_classic, format_console_log_html_enhanced,
+    )
+except Exception:
+    from console_utils import (
+        CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
+        CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
+        URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
+        detect_console_level, decorate_console_message,
+        format_console_log_html_classic, format_console_log_html_enhanced,
+    )
 
 # Ports and Env editor dialogs moved to dialogs/* modules
 
@@ -130,31 +147,6 @@ def _startup_trace(message: str) -> None:
             f.write(f"{datetime.now().isoformat()} {message}\n")
     except Exception:
         pass
-
-
-CONSOLE_LEVEL_PATTERNS = {
-    "ERROR": re.compile(r"(?:\[(?:ERR|ERROR)\])|\b(?:ERR|ERROR)\b", re.IGNORECASE),
-    "WARNING": re.compile(r"(?:\[(?:WARN|WARNING)\])|\b(?:WARN|WARNING)\b", re.IGNORECASE),
-    "DEBUG": re.compile(r"(?:\[(?:DEBUG)\])|\bDEBUG\b", re.IGNORECASE),
-    "INFO": re.compile(r"(?:\[(?:INFO)\])|\bINFO\b", re.IGNORECASE),
-    "CRITICAL": re.compile(r"(?:\[(?:CRITICAL)\])|\bCRITICAL\b", re.IGNORECASE),
-}
-
-CONSOLE_LEVEL_STYLES = {
-    "DEBUG": {"accent": "#64B5F6", "bg": "rgba(100,181,246,0.08)"},
-    "INFO": {"accent": "#81C784", "bg": "rgba(129,199,132,0.08)"},
-    "WARNING": {"accent": "#FFB74D", "bg": "rgba(255,183,77,0.12)"},
-    "ERROR": {"accent": "#EF5350", "bg": "rgba(239,83,80,0.12)"},
-    "CRITICAL": {"accent": "#FF1744", "bg": "rgba(255,23,68,0.18)"},
-}
-
-CONSOLE_TIMESTAMP_REGEX = re.compile(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)')
-ISO_TIMESTAMP_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(.*)')
-LEVEL_PREFIX_REGEX = re.compile(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', re.IGNORECASE)
-URL_LINK_REGEX = re.compile(r'(https?://[^\s]+)')
-READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening)\b')
-ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
-WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
 
 class LauncherWindow(QWidget):
@@ -745,7 +737,9 @@ class LauncherWindow(QWidget):
         if key in self.cards:
             self.cards[key].set_selected(True)
             _startup_trace("_select_service card selected")
-            self._refresh_console_logs()
+            # Reset scroll to top and force refresh when switching services
+            self.log_view.verticalScrollBar().setValue(0)
+            self._refresh_console_logs(force=True)
             _startup_trace("_select_service console refreshed")
 
         # Keep database log viewer in sync with selected service for quick pivots
@@ -1168,128 +1162,6 @@ class LauncherWindow(QWidget):
         # No-op; file log filter removed
         pass
 
-    def _format_console_log_html(self, log_lines):
-        """Format console logs with syntax highlighting and clickable URLs."""
-        if getattr(self, "console_style_enhanced", True):
-            return self._format_console_log_html_enhanced(log_lines)
-        return self._format_console_log_html_classic(log_lines)
-
-    def _format_console_log_html_classic(self, log_lines):
-        html_lines = ['<div style="margin:0; padding:0; line-height:1.4; font-family: \'Consolas\', \'Courier New\', monospace; font-size:9pt;">']
-        for raw_line in log_lines:
-            line = str(raw_line)
-            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
-            if timestamp_match:
-                time, tag, content = timestamp_match.groups()
-                tag_color = '#f44336' if tag == 'ERR' else '#4CAF50'
-                content_html = self._decorate_console_message(content)
-                formatted = (
-                    f'<span style="color:#666;">[{time}]</span> '
-                    f'<span style="color:{tag_color}; font-weight:bold;">[{tag}]</span> '
-                    f'{content_html}'
-                )
-                html_lines.append(f'<div style="margin-bottom:2px;">{formatted}</div>')
-            else:
-                html_lines.append(f'<div style="margin-bottom:2px;">{self._decorate_console_message(line)}</div>')
-        html_lines.append('</div>')
-        return '\n'.join(html_lines)
-
-    def _format_console_log_html_enhanced(self, log_lines):
-        html_lines = ['<div style="margin: 0; padding: 0; line-height: 1.45; font-family: \'Consolas\', \'Courier New\', monospace; font-size: 9pt;">']
-
-        for raw_line in log_lines:
-            line = str(raw_line)
-            line_level = self._detect_console_level(line)
-            style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
-            border_color = style_def.get("accent", "#555")
-            bg_color = style_def.get("bg", "")
-            wrapper_style = (
-                f"border-left: 3px solid {border_color}; padding: 4px 8px;"
-                "margin: 0 0 4px; border-radius: 4px;"
-            )
-            if bg_color:
-                wrapper_style += f" background-color: {bg_color};"
-
-            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
-            if timestamp_match:
-                time, tag, content = timestamp_match.groups()
-            else:
-                iso_match = ISO_TIMESTAMP_REGEX.match(line)
-                if iso_match:
-                    time = iso_match.group(2)
-                    tag = None
-                    remainder = iso_match.group(3).strip()
-                    content = remainder or line[iso_match.start(3):].strip() or line
-                else:
-                    prefix_match = LEVEL_PREFIX_REGEX.match(line)
-                    if prefix_match:
-                        possible_level = prefix_match.group(1).upper()
-                        if not line_level:
-                            line_level = "WARNING" if possible_level == "WARN" else possible_level
-                        time = None
-                        tag = None
-                        content = prefix_match.group(2) or line
-                    else:
-                        time, tag, content = None, None, line
-
-            tag_color = '#f44336' if (tag or '').upper() == 'ERR' else '#4CAF50'
-            time_display = time or '--:--:--'
-            tag_display = tag or 'LOG'
-
-            content_html = self._decorate_console_message(content or "")
-
-            level_badge = ""
-            if line_level:
-                badge_color = style_def.get("accent", "#888")
-                level_badge = (
-                    f'<span style="color: {badge_color}; border: 1px solid {badge_color};'
-                    'border-radius: 4px; padding: 0 6px; font-size: 8pt; font-weight: bold;'
-                    'min-width: 58px; text-align: center;">'
-                    f'{line_level}'
-                    '</span>'
-                )
-            level_html = level_badge or '<span style="display:inline-block; width: 60px;"></span>'
-
-            time_html = (
-                f'<span style="color: #888; display: inline-block; width: 80px;">[{time_display}]</span>'
-            )
-            tag_html = (
-                f'<span style="color: {tag_color}; font-weight: bold; display: inline-block; width: 60px; text-align: center;">'
-                f'[{tag_display}]'
-                '</span>'
-            )
-            text_html = (
-                f'<span style="color: #dcdcdc; white-space: pre-wrap;">{content_html}</span>'
-            )
-
-            html_lines.append(
-                f'<div style="{wrapper_style}">{time_html}&nbsp;'
-                f'{tag_html}&nbsp;'
-                f'{level_html}&nbsp;'
-                f'{text_html}</div>'
-            )
-
-        html_lines.append('</div>')
-        return '\n'.join(html_lines)
-
-    def _decorate_console_message(self, content: str) -> str:
-        """Escape and highlight console content."""
-        text = escape(content)
-        text = URL_LINK_REGEX.sub(
-            r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
-            text
-        )
-        text = READY_REGEX.sub(
-            r'<span style="color: #81C784; font-weight: bold;">\1</span>', text
-        )
-        text = ERROR_REGEX.sub(
-            r'<span style="color: #EF5350; font-weight: bold;">\1</span>', text
-        )
-        text = WARN_REGEX.sub(
-            r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text
-        )
-        return text
-
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         _startup_trace("_refresh_console_logs start")
@@ -1350,7 +1222,11 @@ class LauncherWindow(QWidget):
                 _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
                 # Format as HTML with syntax highlighting
-                log_html = self._format_console_log_html(filtered_buffer)
+                enhanced = getattr(self, "console_style_enhanced", True)
+                if enhanced:
+                    log_html = format_console_log_html_enhanced(filtered_buffer)
+                else:
+                    log_html = format_console_log_html_classic(filtered_buffer)
                 _startup_trace("_refresh_console_logs formatted html")
                 self.log_view.setHtml(log_html)
                 _startup_trace("_refresh_console_logs html applied")
@@ -1412,7 +1288,7 @@ class LauncherWindow(QWidget):
             line_str = str(line)
 
             if level_filter:
-                detected_level = self._detect_console_level(line_str)
+                detected_level = detect_console_level(line_str)
                 if not detected_level or detected_level != level_filter:
                     continue
 
@@ -1437,19 +1313,6 @@ class LauncherWindow(QWidget):
         """Swap between classic and enhanced console layouts."""
         self.console_style_enhanced = bool(checked)
         self._refresh_console_logs(force=True)
-
-    def _detect_console_level(self, line: str) -> str | None:
-        """Best-effort detection of log level tokens inside console lines."""
-        upper_line = line.upper()
-        for level, pattern in CONSOLE_LEVEL_PATTERNS.items():
-            if pattern.search(upper_line):
-                # Treat WARN/WARNING synonyms as WARNING internally
-                if level == "WARNING":
-                    return "WARNING"
-                if level == "ERROR":
-                    return "ERROR"
-                return level
-        return None
 
     def _clear_console_display(self):
         """Clear the console log display and persisted logs."""
@@ -1656,3 +1519,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

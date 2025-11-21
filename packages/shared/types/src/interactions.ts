@@ -14,6 +14,8 @@
  * - Store definitions in GameWorld.meta (no new DB tables)
  */
 
+import type { RelationshipDelta } from './game';
+
 // ===================
 // Core Enums
 // ===================
@@ -27,7 +29,8 @@ export type NpcInteractionSurface =
   | 'dialogue'      // Dialogue box / chat window (opens conversation)
   | 'scene'         // Full scene transition (launches scene graph)
   | 'notification'  // Off-screen ping, message queue
-  | 'menu';         // Context menu / action list
+  | 'menu'          // Context menu / action list
+  | 'ambient';      // Background/passive interaction
 
 /**
  * Branch intent - narrative direction control
@@ -69,6 +72,11 @@ export interface TimeOfDayConstraint {
 
   /** Specific hour ranges (24-hour format) */
   hourRanges?: Array<{ start: number; end: number }>;
+
+  /** @deprecated Use hourRanges */
+  minHour?: number;
+  /** @deprecated Use hourRanges */
+  maxHour?: number;
 }
 
 /**
@@ -78,9 +86,13 @@ export interface TimeOfDayConstraint {
 export interface RelationshipGating {
   /** Minimum relationship tier (from world's tier schema) */
   minTierId?: string;
+  /** @deprecated Use minTierId */
+  minTier?: string;
 
   /** Maximum relationship tier (interaction disabled if exceeded) */
   maxTierId?: string;
+  /** @deprecated Use maxTierId */
+  maxTier?: string;
 
   /** Minimum affinity value (0-100) */
   minAffinity?: number;
@@ -166,15 +178,7 @@ export interface InteractionGating {
 // Outcome Schema
 // ===================
 
-/**
- * Relationship changes as a result of interaction
- */
-export interface RelationshipDelta {
-  affinity?: number;
-  trust?: number;
-  chemistry?: number;
-  tension?: number;
-}
+// RelationshipDelta is exported from game.ts to avoid duplicate
 
 /**
  * Flag changes to apply to session
@@ -189,8 +193,8 @@ export interface FlagChanges {
   /** Flags to increment (numerical flags) */
   increment?: Record<string, number>;
 
-  /** Arc stage updates */
-  arcStages?: Record<string, number>;
+  /** Arc stage updates (stage ID can be string or numeric index) */
+  arcStages?: Record<string, string | number>;
 
   /** Quest status updates */
   questUpdates?: Record<string, 'pending' | 'active' | 'completed' | 'failed'>;
@@ -340,6 +344,8 @@ export interface NpcInteractionDefinition {
 
   /** Target NPC IDs or role patterns */
   targetRolesOrIds?: string[];
+  /** @deprecated Use targetRolesOrIds */
+  targetNpcIds?: number[];
 
   /** Which surface this interaction uses */
   surface: NpcInteractionSurface;
@@ -412,6 +418,12 @@ export interface NpcInteractionInstance {
 
   /** Priority/sort order */
   priority?: number;
+
+  /** Gating rules (copied from definition for convenience) */
+  gating?: InteractionGating;
+
+  /** Outcome effects (copied from definition for convenience) */
+  outcome?: InteractionOutcome;
 }
 
 /**
@@ -616,3 +628,10 @@ export interface NpcInteractionIntent {
  * Stored in GameSession.flags.interactionInbox
  */
 export type InteractionInbox = NpcInteractionIntent[];
+
+// ===================
+// Backwards Compatibility Aliases
+// ===================
+
+/** @deprecated Use NpcInteractionSurface */
+export type InteractionSurface = NpcInteractionSurface;

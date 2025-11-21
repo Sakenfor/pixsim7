@@ -9,7 +9,7 @@ import type {
   ResponseGraphNode,
   ResponseGraphConnection,
   NpcResponseMetadata,
-} from '@pixsim7/shared.types/npcResponseNode';
+} from '@pixsim7/shared.types';
 
 // ============================================================================
 // Evaluation Context
@@ -38,6 +38,10 @@ export interface VideoGenerationOutput {
     artStyle: string;
     quality: string;
   };
+  // NPC context for generation
+  npcId?: string;
+  npcName?: string;
+  npcBaseImage?: string;
 }
 
 interface EvaluationState {
@@ -274,7 +278,7 @@ export class NpcResponseEvaluator {
         }
 
         // Get current state data
-        const currentStateData = states.find(s => s.id === nodeState.currentState) || states[0];
+        const currentStateData = states.find((s: { id: string }) => s.id === nodeState.currentState) || states[0];
         if (currentStateData) {
           outputs.set('state', currentStateData.id);
           outputs.set('expression', currentStateData.expression || 'neutral');

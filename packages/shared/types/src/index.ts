@@ -148,7 +148,7 @@ export interface SceneRuntimeState {
 }
 
 // ===================
-// Dynamic Generation Types (exported below)
+// Dynamic Generation Types
 // ===================
 
 export * from './generation'

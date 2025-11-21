@@ -288,7 +288,7 @@ class HealthWorker(QThread):
                     if health_url:
                         try:
                             req = urllib.request.Request(health_url, method='GET')
-                            with urllib.request.urlopen(req, timeout=0.8) as response:  # Reduced from 2s to 0.8s
+                            with urllib.request.urlopen(req, timeout=1.5) as response:  # Increased for reliability
                                 if response.status == 200:
                                     # Service is responding, mark as running
                                     sp.running = True

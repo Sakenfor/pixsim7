@@ -68,7 +68,7 @@
       "description": "React main application",
       "port_env": "FRONTEND_PORT",
       "default_port": 5173,
-      "directory": "apps/game",
+      "directory": "apps/main",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {
@@ -85,7 +85,7 @@
       "description": "React game interface",
       "port_env": "GAME_FRONTEND_PORT",
       "default_port": 5175,
-      "directory": "apps/main",
+      "directory": "apps/game",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {

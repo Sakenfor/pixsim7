@@ -3,6 +3,9 @@
  * Helpers for tracking zones across video segments and persisting tracking data
  */
 
+// Node.js require declaration for isomorphic code
+declare const require: ((id: string) => any) | undefined;
+
 import type {
   NpcZoneTrackingData,
   ZoneReferenceFrame,

@@ -188,7 +188,7 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
             "PYTHONIOENCODING": "utf-8",
         },
         url=f"http://localhost:{port}/docs",
-        health_url=service_config.get('health_endpoint', f"http://localhost:{port}/health") if 'health_endpoint' in service_config else f"http://localhost:{port}/health",
+        health_url=f"http://localhost:{port}{service_config.get('health_endpoint', '/health')}",
         health_grace_attempts=6,
         depends_on=service_config.get('depends_on', []),
     )

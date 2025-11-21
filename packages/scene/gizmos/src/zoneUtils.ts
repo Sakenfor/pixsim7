@@ -195,15 +195,17 @@ export function buildZoneContext(
 /**
  * Get CSS for zone shape
  */
+type CSSProperties = Record<string, string | number | undefined>;
+
 export function getZoneShapeCSS(
   zone: NpcBodyZone,
   isHovered: boolean,
   opacity: number = 0.2
-): React.CSSProperties {
+): CSSProperties {
   const baseOpacity = isHovered ? opacity * 2 : opacity;
   const color = zone.highlightColor || '#4dabf7';
 
-  const commonStyles: React.CSSProperties = {
+  const commonStyles: CSSProperties = {
     position: 'absolute',
     backgroundColor: color,
     opacity: baseOpacity,

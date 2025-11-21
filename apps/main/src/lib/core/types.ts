@@ -1,5 +1,5 @@
 /**
- * Core type definitions for the headless @pixsim7/game-core
+ * Core type definitions for the headless@pixsim7/game.engine
  * These types define the contract between the core and any frontend (React/CLI/Discord/etc)
  */
 

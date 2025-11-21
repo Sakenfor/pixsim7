@@ -10,7 +10,7 @@ import {
   getRemainingCooldown,
   formatCooldownSmart,
   getCooldownProgress,
-} from '@pixsim7/game-core/interactions/cooldownUtils';
+} from '@pixsim7/game.engine';
 import './InteractionMenu.css';
 
 export interface InteractionMenuProps {

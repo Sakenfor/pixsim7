@@ -18,7 +18,7 @@ import {
   getValidationStatus,
   getValidationSummary,
   type ValidationStatus,
-} from '@pixsim7/game-core/generation/validator';
+} from '@pixsim7/game.engine';
 import { createGeneration, type GenerationResponse } from '../../lib/api/generations';
 
 interface GenerationNodeEditorProps {

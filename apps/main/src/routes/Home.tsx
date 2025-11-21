@@ -110,7 +110,7 @@ export function Home() {
 
           <Panel className="space-y-2">
             <h3 className="font-medium flex items-center gap-2">
-              <Icon name="book" size={18} className="text-indigo-500" />
+              <Icon name="fileText" size={18} className="text-indigo-500" />
               Arc Graph Editor
             </h3>
             <p className="text-xs text-neutral-500">Manage story arcs, quests, and narrative flow</p>

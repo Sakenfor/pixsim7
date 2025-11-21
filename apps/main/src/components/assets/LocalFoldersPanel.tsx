@@ -70,7 +70,7 @@ export function LocalFoldersPanel() {
       const form = new FormData();
       form.append('file', file, asset.name);
       form.append('provider_id', providerId);
-      const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8001';
+      const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
       // Get auth token from localStorage
       const token = localStorage.getItem('access_token');

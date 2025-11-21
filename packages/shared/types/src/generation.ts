@@ -59,7 +59,7 @@ export interface PlayerContextSnapshot {
   playthroughId?: string
   playerId?: string
   choices?: Record<string, string | number | boolean>
-  flags?: Record<string, boolean>
+  flags?: Record<string, unknown>
   stats?: Record<string, number>
 }
 

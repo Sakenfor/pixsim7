@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { ExecuteInteractionResponse } from '@pixsim7/shared.types';
-import { formatCooldownSmart } from '@pixsim7/game-core/interactions/cooldownUtils';
+import { formatCooldownSmart } from '@pixsim7/game.engine';
 import './InteractionHistory.css';
 
 export interface InteractionHistoryEntry {

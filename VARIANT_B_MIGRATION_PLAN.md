@@ -18,7 +18,7 @@ pixsim7/
 │   │   └── config/                 → @pixsim7/shared.config
 │   │
 │   ├── game/
-│   │   ├── engine/                 → @pixsim7/game.engine
+│   │   ├── engine/                 →@pixsim7/game.engine
 │   │   └── components/             → @pixsim7/game.components
 │   │
 │   └── scene/
@@ -131,7 +131,7 @@ All imports will need to be updated throughout the codebase:
 Backend:  pixsim7.backend.main, pixsim7.backend.generation
 Frontend: @pixsim7/frontend.admin, @pixsim7/frontend.game
 Shared:   @pixsim7/shared.types, @pixsim7/shared.ui
-Game:     @pixsim7/game.engine, @pixsim7/game.components
+Game:    @pixsim7/game.engine, @pixsim7/game.components
 Scene:    @pixsim7/scene.gizmos, @pixsim7/scene.shapes
 ```
 

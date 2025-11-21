@@ -116,6 +116,8 @@ export {
   deriveScenePlaybackPhase,
 } from './interactions/hotspot';
 
+// Interaction exports now handled by blanket re-exports at bottom
+
 export type {
   HotspotActionType,
   HotspotAction,
@@ -221,17 +223,8 @@ export {
   getWorldUiConfig,
   setWorldUiConfig,
   updateWorldUiConfig,
-  getWorldTheme,
-  setWorldTheme,
-  getWorldViewMode,
-  setWorldViewMode,
-  getThemePreset,
-  getThemePresetIds,
-  createDefaultWorldUiConfig,
-  hasCustomTheme,
-  resetWorldUiConfig,
-  THEME_PRESETS,
 } from './world/worldUiConfig';
+// Rest of worldUiConfig exports handled by blanket re-exports at bottom
 
 export {
   getWorldGenerationConfig,
@@ -452,3 +445,17 @@ export {
   createGameContext,
   updateGameContext,
 } from './gameState';
+
+// ===== Blanket re-exports for anything missed above =====
+export * from './interactions/validation';
+export * from './interactions/templates';
+export * from './interactions/suggestions';
+export * from './interactions/moodIntegration';
+export * from './interactions/chains';
+export * from './interactions/chainHelpers';
+export * from './world/worldUiConfig';
+export * from './world/generationConfig';
+export * from './world/manifest';
+export * from './world/gameProfile';
+export * from './narrative/ecsHelpers';
+export * from './interactions/cooldownUtils';

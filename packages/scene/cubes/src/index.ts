@@ -4,6 +4,7 @@
  * This is a minimal stub to allow the frontend to build without the full pixcubes package.
  */
 
+import React from 'react';
 import { create } from 'zustand';
 
 // Type definitions
@@ -78,7 +79,73 @@ export interface ExtendedCubeStore extends CubeStore {
 
 export type LinkingGesture = 'middleClick' | 'ctrlClick' | 'shiftClick';
 
-// Stub store creator
+// Cube constants
+export const BASE_CUBE_SIZE = 200;
+export const DOCK_SNAP_DISTANCE = 50;
+export const CUBE_SPACING = 20;
+export const FORMATION_RADIUS = 300;
+export const CUBE_TRANSITION_DURATION = 300;
+export const CUBE_HOVER_TILT = 5;
+export const MAX_CUBE_Z_INDEX = 1000;
+
+// Stub DraggableCube component
+export interface DraggableCubeProps {
+  id: string;
+  children?: React.ReactNode;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  style?: React.CSSProperties;
+  className?: string;
+}
+
+export function DraggableCube({ children, style, className }: DraggableCubeProps) {
+  return React.createElement('div', { style, className }, children);
+}
+
+// Stub ControlCube component
+export interface ControlCubeProps {
+  id: string;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  className?: string;
+}
+
+export function ControlCube({ children, style, className }: ControlCubeProps) {
+  return React.createElement('div', { style, className }, children);
+}
+
+// Stub CubeErrorBoundary component
+export interface CubeErrorBoundaryProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
+}
+
+export class CubeErrorBoundary extends React.Component<
+  CubeErrorBoundaryProps,
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: CubeErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    this.props.onError?.(error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? React.createElement('div', null, 'Something went wrong');
+    }
+    return this.props.children;
+  }
+}
+
 export function createExtendedCubeStore() {
   return create<ExtendedCubeStore>((set) => ({
     cubes: [],

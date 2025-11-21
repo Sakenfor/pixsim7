@@ -4,12 +4,13 @@ import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 // Build backend base URL similar to admin app: prefer VITE_BACKEND_URL, else infer from location, fallback to 8001
 function computeBackendUrl(): string {
   const envUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
+  console.log('[DEBUG] VITE_BACKEND_URL:', envUrl);
   if (envUrl) return envUrl.replace(/\/$/, '');
   if (typeof window !== 'undefined' && window.location) {
     const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:8001`;
+    return `${protocol}//${hostname}:8000`;
   }
-  return 'http://localhost:8001';
+  return 'http://localhost:8000';
 }
 
 export const BACKEND_BASE = computeBackendUrl();
@@ -17,6 +18,7 @@ export const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 
 class ApiClient {
   private client: AxiosInstance;
+  private static isRedirecting = false;
 
   constructor() {
     this.client = axios.create({
@@ -43,10 +45,13 @@ class ApiClient {
       (response) => response,
       (error: AxiosError) => {
         if (error.response?.status === 401) {
-          // Token expired or invalid - clear auth state
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('user');
-          window.location.href = '/login';
+          // Token expired or invalid - redirect once (prevent flash loops from parallel requests)
+          if (!window.location.pathname.startsWith('/login') && !ApiClient.isRedirecting) {
+            ApiClient.isRedirecting = true;
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }

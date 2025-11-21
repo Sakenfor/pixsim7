@@ -146,4 +146,3 @@ registerTool(bananaTool);
 // ============================================================================
 
 export const waterBananaTools = [waterTool, bananaTool];
-export const allTools = [...enhancedTools, waterTool, bananaTool];

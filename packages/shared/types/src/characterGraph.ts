@@ -162,8 +162,9 @@ export interface AssetNode extends CharacterGraphNode {
 
 /**
  * Generation node - content creation job
+ * Named CharGenNode to avoid conflict with generation.ts GenerationNode
  */
-export interface GenerationNode extends CharacterGraphNode {
+export interface CharGenNode extends CharacterGraphNode {
   type: "generation";
   /** Integer ID from generations.id */
   generationId: number;
@@ -201,8 +202,9 @@ export interface PromptVersionNode extends CharacterGraphNode {
 
 /**
  * Action block node
+ * Named CharActionBlockNode to avoid conflict with narrative.ts ActionBlockNode
  */
-export interface ActionBlockNode extends CharacterGraphNode {
+export interface CharActionBlockNode extends CharacterGraphNode {
   type: "action_block";
   /** UUID from action_blocks.id */
   blockId: string;
@@ -222,9 +224,9 @@ export type CharacterGraphNodeUnion =
   | SceneNode
   | SceneRoleNode
   | AssetNode
-  | GenerationNode
+  | CharGenNode
   | PromptVersionNode
-  | ActionBlockNode;
+  | CharActionBlockNode;
 
 // ============================================================================
 // Edge Types
