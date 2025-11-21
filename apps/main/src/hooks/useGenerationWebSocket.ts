@@ -6,6 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
 import type { GenerationResponse } from '../lib/api/generations';
+import { parseWebSocketMessage } from '../types/websocket';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/v1/ws/generations';
 
@@ -44,16 +45,17 @@ export function useGenerationWebSocket() {
 
         ws.onmessage = (event) => {
           try {
-            // Handle ping/pong keep-alive (plain text)
-            if (event.data === 'pong') {
+            // Parse message with validation (returns null for ping/pong)
+            const message = parseWebSocketMessage(event.data);
+
+            // Skip keep-alive messages
+            if (message === null) {
               return;
             }
 
-            const message = JSON.parse(event.data);
-
             // Handle different message types
             if (message.type === 'connected') {
-              console.log('[WebSocket] Welcome:', message.message);
+              console.log('[WebSocket] Welcome:', (message as any).message);
             } else if (message.type?.startsWith('job:')) {
               // Generation status update
               const generationData = message.data as GenerationResponse;

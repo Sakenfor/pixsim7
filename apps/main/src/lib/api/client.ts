@@ -16,8 +16,27 @@ function computeBackendUrl(): string {
 export const BACKEND_BASE = computeBackendUrl();
 export const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 
+/**
+ * API Client with centralized 401 handling.
+ *
+ * **Invariant**: At most one redirect to /login is allowed at a time.
+ * This prevents "redirect storms" and login flash effects when multiple
+ * parallel API requests fail with 401.
+ *
+ * The redirect guard ensures:
+ * - Only one redirect happens even if multiple 401s occur simultaneously
+ * - No redirect if already on /login page
+ * - Redirect flag is never reset (single redirect per page load)
+ */
 class ApiClient {
   private client: AxiosInstance;
+
+  /**
+   * Static flag to prevent multiple redirects to /login.
+   *
+   * Once set to true, remains true for the lifetime of the page.
+   * This ensures parallel 401 responses only trigger one redirect.
+   */
   private static isRedirecting = false;
 
   constructor() {
@@ -40,7 +59,17 @@ class ApiClient {
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor for error handling
+    /**
+     * Response interceptor for centralized error handling.
+     *
+     * **401 Unauthorized Handling**:
+     * When a 401 response is received, redirect to /login page.
+     * The redirect guard ensures:
+     * 1. No redirect if already on /login (prevents infinite loops)
+     * 2. Only one redirect per page load (prevents "login flash" from parallel 401s)
+     *
+     * **Invariant**: window.location.href = '/login' is called at most once per page load
+     */
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {

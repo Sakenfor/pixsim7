@@ -18,4 +18,5 @@ manifest = PluginManifest(
     requires_db=True,
     requires_redis=False,
     enabled=True,
+    required=True,  # Critical for observability
 )

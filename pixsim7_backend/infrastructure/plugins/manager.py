@@ -38,6 +38,7 @@ class PluginManager:
         self.app = app
         self.plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {manifest, router, module}
         self.load_order: list[str] = []
+        self.failed_plugins: dict[str, str] = {}  # plugin_id -> error_message
 
     def discover_plugins(self, plugin_dir: str | Path) -> list[str]:
         """
@@ -189,7 +190,12 @@ class PluginManager:
             return True
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Failed to load plugin {plugin_name}: {e}", exc_info=True)
+
+            # Store failure info
+            self.failed_plugins[plugin_name] = error_msg
+
             return False
 
     def resolve_dependencies(self) -> list[str]:
@@ -334,22 +340,134 @@ class PluginManager:
             for plugin_id, plugin in self.plugins.items()
         ]
 
+    def print_health_table(self) -> None:
+        """
+        Print a health table of all plugins (loaded and failed).
 
-def init_plugin_manager(app: FastAPI, plugin_dir: str | Path) -> PluginManager:
+        Shows: ID, Kind, Required, Enabled, Status
+        """
+        rows = []
+
+        # Add loaded plugins
+        for plugin_id, plugin in self.plugins.items():
+            manifest = plugin['manifest']
+            rows.append({
+                'id': plugin_id,
+                'kind': manifest.kind,
+                'required': "Yes" if manifest.required else "No",
+                'enabled': "Yes" if plugin['enabled'] else "No",
+                'status': "✓ Loaded"
+            })
+
+        # Add failed plugins
+        for plugin_id, error in self.failed_plugins.items():
+            # Try to determine if it was required (we may not have manifest)
+            # For now, mark as unknown
+            rows.append({
+                'id': plugin_id,
+                'kind': "unknown",
+                'required': "?",
+                'enabled': "?",
+                'status': f"✗ Failed: {error[:40]}..."
+            })
+
+        # Sort by status (loaded first), then by ID
+        rows.sort(key=lambda r: (0 if r['status'].startswith("✓") else 1, r['id']))
+
+        # Format table manually
+        headers = ["Plugin ID", "Kind", "Required", "Enabled", "Status"]
+        col_widths = [
+            max(len(headers[0]), max([len(r['id']) for r in rows] or [0])),
+            max(len(headers[1]), max([len(r['kind']) for r in rows] or [0])),
+            max(len(headers[2]), max([len(r['required']) for r in rows] or [0])),
+            max(len(headers[3]), max([len(r['enabled']) for r in rows] or [0])),
+            max(len(headers[4]), max([len(r['status']) for r in rows] or [0])),
+        ]
+
+        # Build table
+        header_row = " | ".join([
+            headers[0].ljust(col_widths[0]),
+            headers[1].ljust(col_widths[1]),
+            headers[2].ljust(col_widths[2]),
+            headers[3].ljust(col_widths[3]),
+            headers[4].ljust(col_widths[4]),
+        ])
+        separator = "-+-".join(["-" * w for w in col_widths])
+
+        table_lines = [header_row, separator]
+        for row in rows:
+            table_lines.append(" | ".join([
+                row['id'].ljust(col_widths[0]),
+                row['kind'].ljust(col_widths[1]),
+                row['required'].ljust(col_widths[2]),
+                row['enabled'].ljust(col_widths[3]),
+                row['status'].ljust(col_widths[4]),
+            ]))
+
+        table = "\n".join(table_lines)
+        logger.info(f"Plugin Health Table:\n{table}")
+
+    def check_required_plugins(self, fail_fast: bool = False) -> tuple[bool, list[str]]:
+        """
+        Check if all required plugins loaded successfully.
+
+        Args:
+            fail_fast: If True, raise exception on required plugin failure
+
+        Returns:
+            (all_required_ok, list of failed required plugin IDs)
+        """
+        failed_required = []
+
+        for plugin_id, plugin in self.plugins.items():
+            manifest = plugin['manifest']
+            if manifest.required and not plugin.get('loaded', False):
+                failed_required.append(plugin_id)
+
+        # Also check if any failed plugins were marked as required
+        # (though we may not have their manifest)
+        for plugin_id in self.failed_plugins.keys():
+            # We don't have manifest for failed plugins, so we can't know if required
+            # unless we try to parse it again. For now, assume critical ones are required.
+            if plugin_id in ['logs', 'websocket', 'auth']:
+                failed_required.append(plugin_id)
+
+        all_ok = len(failed_required) == 0
+
+        if not all_ok and fail_fast:
+            raise RuntimeError(
+                f"Required plugins failed to load: {', '.join(failed_required)}"
+            )
+
+        return all_ok, failed_required
+
+
+def init_plugin_manager(
+    app: FastAPI,
+    plugin_dir: str | Path,
+    fail_fast: bool = False,
+    print_health: bool = True
+) -> PluginManager:
     """
     Initialize a plugin manager instance.
+
+    Args:
+        app: FastAPI application instance
+        plugin_dir: Directory containing plugin manifests
+        fail_fast: If True, raise exception if required plugins fail to load (useful for dev/CI)
+        print_health: If True, print health table after loading
 
     Usage in main.py:
         from pixsim7_backend.infrastructure.plugins import init_plugin_manager
 
         plugin_manager = init_plugin_manager(app, "pixsim7_backend/plugins")
-        routes_manager = init_plugin_manager(app, "pixsim7_backend/routes")
+        routes_manager = init_plugin_manager(app, "pixsim7_backend/routes", fail_fast=settings.debug)
     """
     manager = PluginManager(app)
 
     # Auto-discover plugins
     discovered = manager.discover_plugins(plugin_dir)
-    logger.info(f"Discovered {len(discovered)} plugins", plugins=discovered)
+    logger.info(f"Discovered {len(discovered)} plugins in {plugin_dir}", plugins=discovered)
 
     # Load all
     for plugin_name in discovered:
@@ -357,5 +475,16 @@ def init_plugin_manager(app: FastAPI, plugin_dir: str | Path) -> PluginManager:
 
     # Register with FastAPI
     manager.register_all()
+
+    # Print health table if requested
+    if print_health:
+        manager.print_health_table()
+
+    # Check required plugins and fail-fast if enabled
+    all_ok, failed_required = manager.check_required_plugins(fail_fast=fail_fast)
+    if not all_ok and not fail_fast:
+        logger.warning(
+            f"Some required plugins failed to load: {', '.join(failed_required)}"
+        )
 
     return manager
