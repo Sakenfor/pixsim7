@@ -130,9 +130,9 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
       {/* Bottom Row: Generated Count */}
       <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 flex justify-between items-center text-[10px] text-neutral-500 dark:text-neutral-400">
         <span>{account.total_videos_generated} generated</span>
-        {account.last_used_at && (
-          <span title={new Date(account.last_used_at).toLocaleString()}>
-            Last used: {new Date(account.last_used_at).toLocaleDateString()}
+        {account.last_used && (
+          <span title={new Date(account.last_used).toLocaleString()}>
+            Last: {new Date(account.last_used).toLocaleDateString()}
           </span>
         )}
       </div>

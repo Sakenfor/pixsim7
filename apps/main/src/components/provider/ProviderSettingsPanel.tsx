@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Modal, FormField, Input, Button } from '@pixsim7/shared.ui';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../../lib/api/accounts';
+import { CompactAccountCard } from './CompactAccountCard';
 
 interface EditAccountModalProps {
   account: ProviderAccount;
@@ -344,6 +345,8 @@ export function ProviderSettingsPanel() {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
+  const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
+  const [sortDesc, setSortDesc] = useState(true);
 
   const handleSaveAccount = async (accountId: number, data: {
     email?: string;
@@ -402,6 +405,51 @@ export function ProviderSettingsPanel() {
   // Auto-select first provider if none selected
   const activeProvider = selectedProvider || (capacity.length > 0 ? capacity[0].provider_id : null);
   const providerData = capacity.find(c => c.provider_id === activeProvider);
+
+  // Sorted accounts
+  const sortedAccounts = useMemo(() => {
+    if (!providerData) return [];
+    const accounts = [...providerData.accounts];
+    
+    accounts.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'name':
+          comparison = (a.nickname || a.email).localeCompare(b.nickname || b.email);
+          break;
+        case 'status':
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case 'credits':
+          const aCredits = Object.values(a.credits).reduce((sum, v) => sum + v, 0);
+          const bCredits = Object.values(b.credits).reduce((sum, v) => sum + v, 0);
+          comparison = aCredits - bCredits;
+          break;
+        case 'lastUsed':
+          const aTime = a.last_used ? new Date(a.last_used).getTime() : 0;
+          const bTime = b.last_used ? new Date(b.last_used).getTime() : 0;
+          comparison = aTime - bTime;
+          break;
+        case 'success':
+          comparison = a.success_rate - b.success_rate;
+          break;
+      }
+      
+      return sortDesc ? -comparison : comparison;
+    });
+    
+    return accounts;
+  }, [providerData, sortBy, sortDesc]);
+
+  const toggleSort = (field: typeof sortBy) => {
+    if (sortBy === field) {
+      setSortDesc(!sortDesc);
+    } else {
+      setSortBy(field);
+      setSortDesc(true);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
@@ -527,47 +575,52 @@ export function ProviderSettingsPanel() {
               </div>
             </div>
 
-            {/* Accounts table */}
-            <div className="border rounded-lg dark:border-neutral-700 overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-neutral-100 dark:bg-neutral-800">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Account
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Credits
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Jobs
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Info
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Stats
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {providerData.accounts.map((account) => (
-                    <AccountRow
-                      key={account.id}
-                      account={account}
-                      onEditNickname={setEditingAccount}
-                      onToggleStatus={handleToggleStatus}
-                      onDelete={setDeletingAccount}
-                    />
-                  ))}
-                </tbody>
-              </table>
+            {/* Sort Controls */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
+              {[
+                { key: 'lastUsed', label: 'Last Used' },
+                { key: 'name', label: 'Name' },
+                { key: 'credits', label: 'Credits' },
+                { key: 'status', label: 'Status' },
+                { key: 'success', label: 'Success Rate' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => toggleSort(key as typeof sortBy)}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                    sortBy === key
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                  }`}
+                >
+                  {label} {sortBy === key && (sortDesc ? '↓' : '↑')}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''}
+              </span>
             </div>
+
+            {/* Accounts Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {sortedAccounts.map((account) => (
+                <CompactAccountCard
+                  key={account.id}
+                  account={account}
+                  onEdit={() => setEditingAccount(account)}
+                  onToggle={() => handleToggleStatus(account)}
+                  onDelete={() => setDeletingAccount(account)}
+                />
+              ))}
+            </div>
+
+            {sortedAccounts.length === 0 && (
+              <div className="text-center py-12 text-sm text-neutral-500">
+                No accounts found for this provider
+              </div>
+            )}
           </div>
         ) : null}
       </div>
