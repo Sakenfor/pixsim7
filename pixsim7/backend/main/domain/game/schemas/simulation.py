@@ -8,7 +8,7 @@ Game state, world scheduler, turn configuration, and profile schemas.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 class GameStateSchema(BaseModel):
     """
