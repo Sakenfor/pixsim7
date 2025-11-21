@@ -10,12 +10,12 @@ from httpx import AsyncClient
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7_backend.api.v1.game_sessions import router as sessions_router
-from pixsim7_backend.api.v1.game_worlds import router as worlds_router
-from pixsim7_backend.api.v1.game_scenes import router as scenes_router
-from pixsim7_backend.api.v1.game_relationship_preview import router as preview_router
-from pixsim7_backend.domain.game.models import GameWorld, GameScene, GameSceneNode
-from pixsim7_backend.infrastructure.database.session import get_db
+from pixsim7.backend.main.api.v1.game_sessions import router as sessions_router
+from pixsim7.backend.main.api.v1.game_worlds import router as worlds_router
+from pixsim7.backend.main.api.v1.game_scenes import router as scenes_router
+from pixsim7.backend.main.api.v1.game_relationship_preview import router as preview_router
+from pixsim7.backend.main.domain.game.models import GameWorld, GameScene, GameSceneNode
+from pixsim7.backend.main.infrastructure.database.session import get_db
 
 
 @pytest.fixture

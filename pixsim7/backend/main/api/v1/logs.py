@@ -10,8 +10,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser, get_current_admin_user
-from pixsim7.backend.main.domain import User
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser
 from pixsim7.backend.main.infrastructure.database.session import get_log_db
 from pixsim7.backend.main.services.log_service import LogService
 from pixsim7.backend.main.domain import LogEntry
@@ -206,7 +205,7 @@ async def query_logs(
     limit: int = Query(100, ge=1, le=1000, description="Maximum results"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: AsyncSession = Depends(get_log_db),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ) -> LogQueryResponse:
     """
     Query structured logs with filters.
@@ -251,7 +250,7 @@ async def query_logs(
 async def get_job_trace(
     job_id: int,
     db: AsyncSession = Depends(get_log_db),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ) -> List[LogEntryResponse]:
     """
     Get complete log trace for a job.
@@ -279,7 +278,7 @@ async def get_job_trace(
 async def get_request_trace(
     request_id: str,
     db: AsyncSession = Depends(get_log_db),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ) -> List[LogEntryResponse]:
     """
     Get complete log trace for an API request.
@@ -308,7 +307,7 @@ async def get_fields(
     service: Optional[str] = Query(None, description="Service name to scope field discovery"),
     sample_limit: int = Query(300, ge=1, le=2000, description="Number of recent rows to inspect"),
     db: AsyncSession = Depends(get_log_db),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ):
     """Discover available log fields.
 
@@ -345,7 +344,7 @@ async def get_fields(
 
 @router.get("/files")
 async def list_log_files(
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ):
     """List available log files."""
     import os
@@ -380,7 +379,7 @@ async def list_log_files(
 async def tail_log_file(
     path: str = Query(..., description="Log file path (e.g., data/logs/console/backend.log)"),
     lines: int = Query(100, ge=1, le=10000, description="Number of lines to return"),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ):
     """Get last N lines from a log file (like tail -n)."""
     import os
@@ -427,7 +426,7 @@ async def get_distinct(
     user_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_log_db),
-    admin: User = Depends(get_current_admin_user)
+    admin: CurrentAdminUser = Depends()
 ):
     """Return distinct values for a field.
 

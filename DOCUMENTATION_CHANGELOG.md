@@ -124,6 +124,89 @@ Documents are organized by purpose and audience:
 
 ---
 
+## 2025-11-21 - Backend Tree Unification (Task 34)
+
+### 🎯 **Motivation**
+
+Eliminated duplicate backend code trees (`pixsim7_backend/` and `pixsim7/backend/main/`) to establish a single source of truth, reduce maintenance burden, and prevent code divergence.
+
+### ✅ **What Changed**
+
+#### **Backend Package Structure**
+- **Canonical Package:** `pixsim7.backend.main` is now the single source of truth
+- **Module Path:** Use `pixsim7.backend.main.main:app` for all backend references
+- **Legacy Compatibility:** `pixsim7_backend/` now contains only a deprecation shim that forwards imports
+
+#### **Updated References**
+- **Scripts:** All `.sh` and `.bat` scripts updated to use canonical module path
+- **Tests:** All test imports updated from `pixsim7_backend.*` to `pixsim7.backend.main.*`
+- **Documentation:** README, DEVELOPMENT_GUIDE, and other docs updated with new paths
+- **Docker & Launcher:** Already used canonical path (no changes needed)
+
+#### **Commands Changed**
+**Before:**
+```bash
+python pixsim7_backend/main.py
+uvicorn pixsim7_backend.main:app
+arq pixsim7_backend.workers.arq_worker.WorkerSettings
+```
+
+**After:**
+```bash
+python -m pixsim7.backend.main.main
+uvicorn pixsim7.backend.main.main:app
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
+```
+
+### 📊 **Impact**
+
+- **Eliminated Duplication:** Removed 435 duplicate Python files
+- **Single Source of Truth:** All backend code now lives in `pixsim7/backend/main/`
+- **Consistent Imports:** All code, scripts, and docs use same module path
+- **Backward Compatible:** Legacy imports still work via deprecation shim
+- **Future Cleanup:** Shim can be removed once all external dependencies updated
+
+### 📁 **File Structure**
+
+**Before:**
+```
+/pixsim7_backend/          # Legacy tree (435 files)
+/pixsim7/backend/main/     # Canonical tree (434 files)
+```
+
+**After:**
+```
+/pixsim7/backend/main/     # Single source of truth (435 files)
+/pixsim7_backend/          # Deprecation shim only
+  ├── __init__.py          # Import forwarding
+  ├── main.py              # uvicorn compatibility
+  └── *.md                 # Documentation files
+```
+
+### 🔄 **Migration Guide**
+
+For any remaining code using legacy imports:
+
+1. **Update imports:**
+   ```python
+   # Old
+   from pixsim7_backend.services import SomeService
+   # New
+   from pixsim7.backend.main.services import SomeService
+   ```
+
+2. **Update scripts:**
+   ```bash
+   # Old
+   python pixsim7_backend/main.py
+   # New
+   python -m pixsim7.backend.main.main
+   ```
+
+3. **Deprecation warnings:** Will see warnings until updated
+
+---
+
 ## 2025-11-21 - Documentation Lifecycle & ADR Discipline
 
 ### 🎯 **Motivation**

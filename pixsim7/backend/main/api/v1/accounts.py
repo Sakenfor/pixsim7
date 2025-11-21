@@ -209,12 +209,12 @@ async def sync_all_account_credits(
                         updated_credits["openapi"] = openapi_int
                 else:
                     for credit_type, amount in credits_data.items():
-                        # Skip computed fields like total_credits / total
-                        if credit_type in ('total_credits', 'total'):
-                            continue
-
                         # Strip credit_ prefix if present (credit_daily -> daily)
                         clean_type = credit_type.replace('credit_', '') if credit_type.startswith('credit_') else credit_type
+
+                        # Skip computed fields like total_credits / total (check AFTER prefix strip)
+                        if clean_type in ('total_credits', 'total'):
+                            continue
 
                         try:
                             await account_service.set_credit(account.id, clean_type, amount)
@@ -332,13 +332,12 @@ async def sync_account_credits(
                     updated_credits["openapi"] = openapi_int
             else:
                 for credit_type, amount in credits_data.items():
-                    # Skip computed fields like total_credits/total which are
-                    # derived aggregates, not separate buckets.
-                    if credit_type in ("total_credits", "total"):
-                        continue
-
                     # Normalize credit type names (credit_daily -> daily)
                     clean_type = credit_type.replace("credit_", "") if credit_type.startswith("credit_") else credit_type
+
+                    # Skip computed fields like total_credits/total (check AFTER prefix strip)
+                    if clean_type in ("total_credits", "total"):
+                        continue
 
                     try:
                         await account_service.set_credit(account.id, clean_type, amount)

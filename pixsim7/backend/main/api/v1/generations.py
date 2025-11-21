@@ -17,14 +17,9 @@ from pixsim7.backend.main.shared.schemas.generation_schemas import (
     GenerationResponse,
     GenerationListResponse,
 )
-# NOTE: social_context_builder has been moved to game service layer
-# This import is kept for backward compatibility but should be removed
-# from lightweight generation API in the future.
-# The /generations/social-context/build endpoint requires game models
-# and should only be available in the main backend, not generation API.
-# from pixsim7.backend.main.services.generation.social_context_builder import (
-#     build_generation_social_context,
-# )
+from pixsim7.backend.main.services.generation.social_context_builder import (
+    build_generation_social_context,
+)
 from pixsim7.backend.main.domain.enums import GenerationStatus, OperationType
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
@@ -372,59 +367,46 @@ async def validate_generation_config(
 
 
 # ===== BUILD SOCIAL CONTEXT =====
-# NOTE: This endpoint is GAME-SPECIFIC and requires game models.
-# It should NOT be available in the lightweight generation API.
-# Only include this in the main backend that has game features.
-#
-# To re-enable: uncomment the import above and this route.
-# In the main backend, this route should import from:
-#   from pixsim7.backend.main.services.game.social_context_service import (
-#       build_social_context_from_game_state
-#   )
 
-# @router.post("/generations/social-context/build")
-# async def build_social_context(
-#     world_id: int = Query(..., description="World ID for schema lookup"),
-#     session_id: Optional[int] = Query(None, description="Game session ID for relationship state"),
-#     npc_id: Optional[str] = Query(None, description="NPC ID for relationship lookup"),
-#     user_max_rating: Optional[str] = Query(None, description="User's maximum content rating"),
-#     db: DatabaseSession = None,
-#     user: CurrentUser = None,
-# ):
-#     """
-#     Build GenerationSocialContext from relationship state
-#
-#     This helper endpoint builds social context from:
-#     - Relationship metrics (affinity, trust, chemistry, tension)
-#     - World schemas (relationship tiers, intimacy levels)
-#     - World and user content rating preferences
-#
-#     Useful for frontend/game-core to get social context before creating a generation.
-#
-#     Returns GenerationSocialContext dict with:
-#     - intimacyLevelId: Computed intimacy level ID
-#     - relationshipTierId: Computed relationship tier ID
-#     - intimacyBand: Simplified intimacy band
-#     - contentRating: Content rating (clamped by world/user)
-#     - worldMaxRating: World's max rating
-#     - userMaxRating: User's max rating (if provided)
-#     - relationshipValues: Raw relationship values used
-#     """
-#     try:
-#         # Use new location
-#         from pixsim7.backend.main.services.game.social_context_service import (
-#             build_social_context_from_game_state
-#         )
-#         context = await build_social_context_from_game_state(
-#             db=db,
-#             world_id=world_id,
-#             session_id=session_id,
-#             npc_id=npc_id,
-#             user_max_rating=user_max_rating,
-#         )
-#         return context
-#     except ValueError as e:
-#         raise HTTPException(status_code=404, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Failed to build social context: {e}", exc_info=True)
-#         raise HTTPException(status_code=500, detail=f"Failed to build social context: {str(e)}")
+@router.post("/generations/social-context/build")
+async def build_social_context(
+    world_id: int = Query(..., description="World ID for schema lookup"),
+    session_id: Optional[int] = Query(None, description="Game session ID for relationship state"),
+    npc_id: Optional[str] = Query(None, description="NPC ID for relationship lookup"),
+    user_max_rating: Optional[str] = Query(None, description="User's maximum content rating"),
+    db: DatabaseSession = None,
+    user: CurrentUser = None,
+):
+    """
+    Build GenerationSocialContext from relationship state
+
+    This helper endpoint builds social context from:
+    - Relationship metrics (affinity, trust, chemistry, tension)
+    - World schemas (relationship tiers, intimacy levels)
+    - World and user content rating preferences
+
+    Useful for frontend/game-core to get social context before creating a generation.
+
+    Returns GenerationSocialContext dict with:
+    - intimacyLevelId: Computed intimacy level ID
+    - relationshipTierId: Computed relationship tier ID
+    - intimacyBand: Simplified intimacy band
+    - contentRating: Content rating (clamped by world/user)
+    - worldMaxRating: World's max rating
+    - userMaxRating: User's max rating (if provided)
+    - relationshipValues: Raw relationship values used
+    """
+    try:
+        context = await build_generation_social_context(
+            db=db,
+            world_id=world_id,
+            session_id=session_id,
+            npc_id=npc_id,
+            user_max_rating=user_max_rating,
+        )
+        return context
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to build social context: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to build social context: {str(e)}")

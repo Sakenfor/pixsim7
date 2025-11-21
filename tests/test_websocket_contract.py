@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture(scope="module")
 def client():
     """Create a test client with the FastAPI app"""
-    from pixsim7_backend.main import app
+    from pixsim7.backend.main.main import app
     return TestClient(app)
 
 
@@ -92,7 +92,7 @@ class TestWebSocketMessageTypes:
 
     def test_is_keep_alive_function(self):
         """Test the is_keep_alive helper function"""
-        from pixsim7_backend.infrastructure.websocket.types import is_keep_alive
+        from pixsim7.backend.main.infrastructure.websocket.types import is_keep_alive
 
         assert is_keep_alive("ping") is True
         assert is_keep_alive("pong") is True
@@ -102,7 +102,7 @@ class TestWebSocketMessageTypes:
 
     def test_message_validation(self):
         """Test WebSocket message validation"""
-        from pixsim7_backend.infrastructure.websocket.types import (
+        from pixsim7.backend.main.infrastructure.websocket.types import (
             validate_message,
             WebSocketMessage,
         )
@@ -119,7 +119,7 @@ class TestWebSocketMessageTypes:
 
     def test_connected_message_type(self):
         """Test ConnectedMessage envelope"""
-        from pixsim7_backend.infrastructure.websocket.types import ConnectedMessage
+        from pixsim7.backend.main.infrastructure.websocket.types import ConnectedMessage
 
         msg = ConnectedMessage(
             type="connected",

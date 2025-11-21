@@ -75,8 +75,32 @@ async def list_assets(
                 if (a.description and q_lower in a.description.lower()) or any(q_lower in t.lower() for t in (a.tags or []))
             ]
 
+        # Compute provider_status for each asset
+        asset_responses: list[AssetResponse] = []
+        for a in assets:
+            # Heuristic:
+            # - provider_flagged == True -> flagged (highest priority)
+            # - provider_asset_id present and doesn't start with "local_" -> provider OK
+            # - provider_asset_id missing or starts with "local_" -> local-only
+            provider_asset_id = getattr(a, "provider_asset_id", None)
+            provider_flagged = getattr(a, "provider_flagged", False)
+
+            status: str
+            if provider_flagged:
+                status = "flagged"
+            elif provider_asset_id and not provider_asset_id.startswith("local_"):
+                status = "ok"
+            elif provider_asset_id and provider_asset_id.startswith("local_"):
+                status = "local_only"
+            else:
+                status = "unknown"
+
+            ar = AssetResponse.model_validate(a)
+            ar.provider_status = status
+            asset_responses.append(ar)
+
         return AssetListResponse(
-            assets=[AssetResponse.model_validate(a) for a in assets],
+            assets=asset_responses,
             total=total,
             limit=limit,
             offset=offset,
@@ -107,7 +131,23 @@ async def get_asset(
     """
     try:
         asset = await asset_service.get_asset_for_user(asset_id, user)
-        return AssetResponse.model_validate(asset)
+
+        # Compute provider_status
+        provider_asset_id = getattr(asset, "provider_asset_id", None)
+        provider_flagged = getattr(asset, "provider_flagged", False)
+
+        if provider_flagged:
+            status = "flagged"
+        elif provider_asset_id and not provider_asset_id.startswith("local_"):
+            status = "ok"
+        elif provider_asset_id and provider_asset_id.startswith("local_"):
+            status = "local_only"
+        else:
+            status = "unknown"
+
+        ar = AssetResponse.model_validate(asset)
+        ar.provider_status = status
+        return ar
 
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Asset not found")

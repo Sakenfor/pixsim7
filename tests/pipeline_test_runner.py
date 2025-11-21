@@ -15,10 +15,10 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.append('g:/code/pixsim7')
 
-from pixsim7_backend.domain import Job, JobStatus, OperationType, ProviderAccount, AccountStatus, GenerationArtifact
-from pixsim7_backend.services.submission.pipeline import JobSubmissionPipeline
-from pixsim7_backend.services.provider.base import Provider, GenerationResult
-from pixsim7_backend.services.provider.registry import registry
+from pixsim7.backend.main.domain import Job, JobStatus, OperationType, ProviderAccount, AccountStatus, GenerationArtifact
+from pixsim7.backend.main.services.submission.pipeline import JobSubmissionPipeline
+from pixsim7.backend.main.services.provider.base import Provider, GenerationResult
+from pixsim7.backend.main.services.provider.registry import registry
 
 
 class StubProvider(Provider):

@@ -14,7 +14,7 @@ start_backend() {
     fi
 
     cd /g/code/pixsim7
-    PYTHONPATH=/g/code/pixsim7 python pixsim7_backend/main.py &
+    PYTHONPATH=/g/code/pixsim7 python -m pixsim7.backend.main.main &
     echo $! > "$BACKEND_PID_FILE"
     echo "Backend started (PID: $(cat $BACKEND_PID_FILE))"
 }
@@ -29,7 +29,7 @@ start_worker() {
     fi
 
     cd /g/code/pixsim7
-    PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings &
+    PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings &
     echo $! > "$WORKER_PID_FILE"
     echo "Worker started (PID: $(cat $WORKER_PID_FILE))"
 }
@@ -88,8 +88,8 @@ status() {
 
 cleanup() {
     # Kill any zombie pixsim7 processes
-    pkill -f "pixsim7_backend/main.py" 2>/dev/null
-    pkill -f "pixsim7_backend.workers.arq_worker" 2>/dev/null
+    pkill -f "pixsim7.backend.main.main" 2>/dev/null
+    pkill -f "pixsim7.backend.main.workers.arq_worker" 2>/dev/null
     rm -f "$BACKEND_PID_FILE" "$WORKER_PID_FILE"
     echo "Cleaned up all processes and PID files"
 }

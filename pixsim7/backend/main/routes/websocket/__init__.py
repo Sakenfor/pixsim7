@@ -1,6 +1,3 @@
 """
-WebSocket API Routes Plugin
+WebSocket Routes Plugin
 """
-from .manifest import manifest
-
-__all__ = ["manifest"]

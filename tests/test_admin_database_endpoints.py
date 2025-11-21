@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
-from pixsim7_backend.main import app as real_app
-from pixsim7_backend.api.admin.database import router as db_router
+from pixsim7.backend.main.main import app as real_app
+from pixsim7.backend.main.api.admin.database import router as db_router
 
 # NOTE: These tests assume an initialized test database and an admin auth dependency.
 # For now we override admin dependency to bypass auth and use a mock DB session for safety tests.
@@ -27,7 +27,7 @@ async def client(app: FastAPI):
 
 # Mock dependencies -------------------------------------------------
 from fastapi import Depends
-from pixsim7_backend.api.dependencies import get_db, require_admin
+from pixsim7.backend.main.api.dependencies import get_db, require_admin
 
 async def mock_get_db():
     # Reuse real dependency for now (would use test transaction scope in extended setup)

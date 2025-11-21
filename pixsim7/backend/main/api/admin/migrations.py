@@ -30,7 +30,7 @@ class MigrationOperation(BaseModel):
 
 def get_alembic_config_path() -> Path:
     """Get path to alembic.ini (repo root)"""
-    # Assuming we're in pixsim7_backend/api/admin/migrations.py
+    # Assuming we're in pixsim7/backend/main/api/admin/migrations.py
     # Go up to repo root: ../../../alembic.ini
     current_file = Path(__file__)
     repo_root = current_file.parent.parent.parent.parent

@@ -136,7 +136,7 @@ async def start_backend(root: str) -> ServiceControlResponse:
         )
 
     if is_windows():
-        cmd = f'start "PixSim7 Backend" /min cmd /c "set PYTHONPATH={root} && python {root}\\pixsim7\\backend\\main\\main.py"'
+        cmd = f'start "PixSim7 Backend" /min cmd /c "set PYTHONPATH={root} && python {root}\\pixsim7_backend\\main.py"'
         subprocess.Popen(cmd, shell=True)
     else:
         cmd = f'PYTHONPATH={root} nohup python {root}/pixsim7/backend/main/main.py > /dev/null 2>&1 &'
@@ -182,7 +182,7 @@ async def stop_backend() -> ServiceControlResponse:
 
 async def start_worker(root: str) -> ServiceControlResponse:
     """Start ARQ worker"""
-    procs = find_process_by_command("arq pixsim7.backend.main.workers")
+    procs = find_process_by_command("arq pixsim7_backend.workers")
     if procs:
         return ServiceControlResponse(
             service="worker",
@@ -193,10 +193,10 @@ async def start_worker(root: str) -> ServiceControlResponse:
         )
 
     if is_windows():
-        cmd = f'start "PixSim7 Worker" /min cmd /c "set PYTHONPATH={root} && arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"'
+        cmd = f'start "PixSim7 Worker" /min cmd /c "set PYTHONPATH={root} && arq pixsim7_backend.workers.arq_worker.WorkerSettings"'
         subprocess.Popen(cmd, shell=True)
     else:
-        cmd = f'PYTHONPATH={root} nohup arq pixsim7.backend.main.workers.arq_worker.WorkerSettings > /dev/null 2>&1 &'
+        cmd = f'PYTHONPATH={root} nohup arq pixsim7_backend.workers.arq_worker.WorkerSettings > /dev/null 2>&1 &'
         subprocess.Popen(cmd, shell=True, executable='/bin/bash')
 
     return ServiceControlResponse(
@@ -209,7 +209,7 @@ async def start_worker(root: str) -> ServiceControlResponse:
 
 async def stop_worker() -> ServiceControlResponse:
     """Stop ARQ worker"""
-    procs = find_process_by_command("arq pixsim7.backend.main.workers")
+    procs = find_process_by_command("arq pixsim7_backend.workers")
 
     if not procs:
         return ServiceControlResponse(
@@ -349,7 +349,7 @@ async def list_processes(admin: CurrentAdminUser) -> List[ProcessInfo]:
     all_processes = []
 
     patterns = [
-        "pixsim7/backend/main",
+        "pixsim7_backend",
         "arq pixsim7",
         "vite",  # admin panel
     ]

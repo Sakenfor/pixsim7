@@ -192,7 +192,7 @@ async def init_database():
         @app.on_event("startup")
         async def startup():
             # Import all models first
-            from domain import Asset, Generation, ...
+            from domain import Asset, Job, ...
             # Then initialize
             await init_database()
     """
@@ -227,7 +227,7 @@ async def _check_migration_status():
             current_revision = context
         
         # Get latest revision from migration scripts
-        alembic_cfg = Config("alembic.ini")
+        alembic_cfg = Config("pixsim7/backend/main/infrastructure/database/alembic.ini")
         script = ScriptDirectory.from_config(alembic_cfg)
         head_revision = script.get_current_head()
         

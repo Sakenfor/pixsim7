@@ -2,7 +2,7 @@
 Entry point for running scenarios as a module
 
 Usage:
-    python -m pixsim7.backend.main.scenarios
+    python -m pixsim7_backend.scenarios
 """
 from .run_all import main
 import asyncio

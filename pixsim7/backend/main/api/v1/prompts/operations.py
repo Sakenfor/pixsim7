@@ -22,7 +22,7 @@ router = APIRouter()
 @router.post("/families/{family_id}/versions/batch", response_model=List[PromptVersionResponse])
 async def batch_create_versions(
     family_id: UUID,
-    versions: List[CreatePromptVersionRequest],
+    versions: List[BatchVersionRequest],
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user),
 ):

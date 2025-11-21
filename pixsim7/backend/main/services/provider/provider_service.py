@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import (
-    Generation,
+    Job,
     ProviderSubmission,
     ProviderAccount,
     VideoStatus,
@@ -41,7 +41,7 @@ class ProviderService:
 
     async def execute_job(
         self,
-        job: Generation,
+        job: Job,
         account: ProviderAccount,
         params: Dict[str, Any]
     ) -> ProviderSubmission:
@@ -49,7 +49,7 @@ class ProviderService:
         Execute job via provider
 
         Args:
-            job: Generation to execute
+            job: Job to execute
             account: Provider account to use
             params: Generation parameters
 
@@ -199,13 +199,13 @@ class ProviderService:
             
             await event_bus.publish(PROVIDER_COMPLETED, {
                 "submission_id": submission.id,
-                "job_id": submission.generation_id,
+                "job_id": submission.job_id,
                 "video_url": status_result.video_url,
             })
         elif status_result.status == VideoStatus.FAILED:
             await event_bus.publish(PROVIDER_FAILED, {
                 "submission_id": submission.id,
-                "job_id": submission.generation_id,
+                "job_id": submission.job_id,
                 "error": status_result.error_message or "Unknown error",
             })
 
@@ -254,12 +254,12 @@ class ProviderService:
             raise ResourceNotFoundError("ProviderSubmission", submission_id)
         return submission
 
-    async def get_job_submissions(self, generation_id: int) -> list[ProviderSubmission]:
+    async def get_job_submissions(self, job_id: int) -> list[ProviderSubmission]:
         """
         Get all submissions for a job (including retries)
 
         Args:
-            generation_id: Generation ID
+            job_id: Job ID
 
         Returns:
             List of submissions ordered by attempt
@@ -268,17 +268,17 @@ class ProviderService:
 
         result = await self.db.execute(
             select(ProviderSubmission)
-            .where(ProviderSubmission.generation_id == generation_id)
+            .where(ProviderSubmission.job_id == job_id)
             .order_by(ProviderSubmission.retry_attempt.asc())
         )
         return list(result.scalars().all())
 
-    async def get_latest_submission(self, generation_id: int) -> ProviderSubmission | None:
+    async def get_latest_submission(self, job_id: int) -> ProviderSubmission | None:
         """
         Get latest submission for a job
 
         Args:
-            generation_id: Generation ID
+            job_id: Job ID
 
         Returns:
             Latest submission or None
@@ -287,7 +287,7 @@ class ProviderService:
 
         result = await self.db.execute(
             select(ProviderSubmission)
-            .where(ProviderSubmission.generation_id == generation_id)
+            .where(ProviderSubmission.job_id == job_id)
             .order_by(ProviderSubmission.retry_attempt.desc())
             .limit(1)
         )
