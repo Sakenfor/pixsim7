@@ -20,8 +20,8 @@
 PixSim7 now has multiple, mature extension mechanisms:
 
 - **Backend plugins**
-  - Route plugins: `pixsim7_backend/routes/*` + `PluginManifest(kind="route", ...)`
-  - Domain model plugins: `pixsim7_backend/domain_models/*` + `DomainModelManifest`
+  - Route plugins: `pixsim7/backend/main/routes/*` + `PluginManifest(kind="route", ...)`
+  - Domain model plugins: `pixsim7/backend/main/domain_models/*` + `DomainModelManifest`
   - Behavior / ECS / metric extensions via behavior registries (see Tasks 13, 16, 27, 28)
 - **Frontend plugins**
   - UI plugins: `apps/main/src/lib/plugins/*` + `PluginManager`, `PluginAPI`, overlays
@@ -60,15 +60,15 @@ Gather a complete list of extension mechanisms (code + docs) and their intended 
 **Scope**
 
 - Backend:
-  - `pixsim7_backend/infrastructure/plugins/*`
-  - `pixsim7_backend/domain_models/*`
-  - `pixsim7_backend/routes/*`
+  - `pixsim7/backend/main/infrastructure/plugins/*`
+  - `pixsim7/backend/main/domain_models/*`
+  - `pixsim7/backend/main/routes/*`
   - Behavior/metric registries and plugin hooks from Tasks 13, 16, 27, 28
 - Frontend:
   - `apps/main/src/lib/plugins/*` and related UI components
   - `apps/main/src/lib/graph/*` node renderer registry and built-in renderers
 - Game/world:
-  - `pixsim7_backend/domain/narrative/*`, `pixsim7_backend/domain/game/*` (session/world)
+  - `pixsim7/backend/main/domain/narrative/*`, `pixsim7/backend/main/domain/game/*` (session/world)
   - `GAMEPLAY_SYSTEMS.md`, `docs/RELATIONSHIPS_AND_ARCS.md`
 
 **Key Steps**

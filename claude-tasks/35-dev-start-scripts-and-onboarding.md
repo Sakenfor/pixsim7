@@ -18,7 +18,7 @@
 After backend unification (Task 34), the canonical backend is:
 
 - `pixsim7.backend.main.main:app` (code under `pixsim7/backend/main/`).
-- `pixsim7_backend.main` is a legacy shim only.
+- `pixsim7_backend.main` is a legacy shim only (deprecated, for backward compatibility).
 
 Frontend/apps live under:
 
@@ -59,8 +59,8 @@ Map out all current “start backend/frontend” commands and identify which one
 **Key Steps**
 
 1. List all backend start commands:
-   - `uvicorn pixsim7_backend.main:app`, `python pixsim7_backend/main.py`, etc.
-   - `uvicorn pixsim7.backend.main.main:app` and any Docker/launcher equivalents.
+   - Legacy (deprecated): `uvicorn pixsim7_backend.main:app`, `python pixsim7_backend/main.py`
+   - Canonical: `uvicorn pixsim7.backend.main.main:app` and any Docker/launcher equivalents.
 2. List all frontend start commands:
    - `pnpm dev` / `pnpm dev:main` / `pnpm dev:game` (or similar).
 3. Mark which commands:
@@ -123,8 +123,8 @@ Make the new scripts the primary way to start the app, and clean up older, redun
    - Frontend section:
      - Show the canonical pnpm commands for main/game apps.
 2. Update `README.md`:
-   - Replace any outdated examples that use `pixsim7_backend` with the new scripts or canonical commands.
-   - Keep a short note that `pixsim7_backend.main` is deprecated and exists only as a shim for old setups.
+   - Replace any remaining outdated examples that use `pixsim7_backend` with the new scripts or canonical commands.
+   - Keep a short note that `pixsim7_backend.main` is deprecated and exists only as a backward-compatibility shim.
 3. Optionally:
    - Add a small note in `ARCHITECTURE.md` or `APP_MAP.md` referring to `dev-up` scripts as the easiest way to see things in action.
 
