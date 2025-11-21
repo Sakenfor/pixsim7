@@ -47,7 +47,43 @@ The end state should be:
 - [X] **Phase 34.1 – Inventory & Diff Backend Trees** ✅ Complete (2025-11-21)
 - [X] **Phase 34.2 – Fix Canonical Package & Update Imports** ✅ Complete (2025-11-21)
 - [X] **Phase 34.3 – Align Dev Scripts, Launcher & Docker** ✅ Complete (2025-11-21)
-- [ ] **Phase 34.4 – Remove Code Duplication (Single Source of Truth)**
+- [X] **Phase 34.4 – Remove Code Duplication (Single Source of Truth)** ✅ Complete (2025-11-21)
+
+---
+
+## ✅ Task 34 Complete - All Phases Finished
+
+**Date Completed:** 2025-11-21
+
+### Final State
+
+**Single Source of Truth:** `pixsim7/backend/main/` (435 Python files)
+- All backend code in one canonical location
+- No code duplication
+- Consistent imports across all code, scripts, tests, and documentation
+
+**Deprecation Shim:** `pixsim7_backend/` (backward compatibility)
+- Deprecation warnings on import
+- Automatic forwarding to canonical location
+- Can be removed once external dependencies updated
+
+### Impact Summary
+
+- **Eliminated:** 83,722 lines of duplicated code
+- **Deleted:** 435 duplicate Python files from `pixsim7_backend/`
+- **Updated:** 17 script files (shell/batch)
+- **Updated:** 9 test files
+- **Updated:** 2 documentation files (README, DEVELOPMENT_GUIDE)
+- **Added:** Comprehensive DOCUMENTATION_CHANGELOG entry
+
+### Verification
+
+✅ All scripts use canonical path
+✅ All tests use canonical imports
+✅ All docs reference canonical path
+✅ Docker/Launcher already used canonical path
+✅ Legacy imports work via shim (with deprecation warning)
+✅ Single source of truth established
 
 ---
 
@@ -313,5 +349,46 @@ Eliminate `pixsim7_backend` as a code tree so there is only one physical copy of
    - Note in `DOCUMENTATION_CHANGELOG.md` that the backend has been unified under `pixsim7.backend.main`.
    - Update `EXAMPLE_GENERATION_API_SPLIT.md` to match the final layout (and drop “temporary duplication” caveats).
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` Complete
+
+---
+
+## Phase 34.4 Summary: Code Duplication Eliminated
+
+**Date Completed:** 2025-11-21
+
+### Actions Taken
+
+**Removed Duplicate Code:**
+- Deleted all 435 Python files from `pixsim7_backend/` directory
+- Eliminated 83,722 lines of duplicated code
+- Kept only documentation files: README.md, GETTING_STARTED.md, REDIS_AND_WORKERS_SETUP.md
+
+**Created Deprecation Shim:**
+- `pixsim7_backend/__init__.py` - Package-level shim with `__getattr__` forwarding
+- `pixsim7_backend/main.py` - Module-level shim for uvicorn compatibility
+- Both show clear deprecation warnings on import
+- Automatic forwarding to canonical location
+
+**Updated Documentation:**
+- Added comprehensive entry to `DOCUMENTATION_CHANGELOG.md`
+- Documented motivation, changes, impact, migration guide
+- Included before/after file structure comparison
+
+### Verification
+
+✅ Single source of truth: `pixsim7/backend/main/` (435 Python files)
+✅ Deprecation shim: `pixsim7_backend/` (2 Python files + 3 markdown docs)
+✅ Legacy imports work with deprecation warning
+✅ Uvicorn can still use old path (forwards to new)
+✅ No code duplication remains
+
+### Git Commit
+
+- 454 files changed
+- 150 insertions (+)
+- 83,722 deletions (-)
+- Committed and pushed to branch
+
+---
 
