@@ -357,17 +357,21 @@ async function openAccountInTab(accountId, settings) {
     btn.textContent = 'Opening...';
     btn.disabled = true;
 
-    // TODO: Implement account opening
-    // 1. Get account details from backend
-    // 2. Extract provider URL from account
-    // 3. Inject cookies
-    // 4. Open tab
+    // Use the same loginWithAccount flow as the popup
+    const response = await chrome.runtime.sendMessage({
+      action: 'loginWithAccount',
+      accountId: accountId
+    });
 
-    btn.textContent = '✓ Coming soon!';
-    setTimeout(() => {
-      btn.textContent = originalText;
-      btn.disabled = false;
-    }, 2000);
+    if (response && response.success) {
+      btn.textContent = '✓ Opened';
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }, 2000);
+    } else {
+      throw new Error(response?.error || 'Failed to open account');
+    }
 
   } catch (error) {
     console.error('[PixSim7 Widget] Error opening account:', error);
