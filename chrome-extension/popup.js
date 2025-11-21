@@ -13,6 +13,8 @@ console.log('[Popup] Loaded');
 let currentProvider = null;
 let currentUser = null;
 let automationOptions = { presets: [], loops: [] };
+let accountsSortBy = 'lastUsed'; // 'name', 'status', 'credits', 'lastUsed', 'success'
+let accountsSortDesc = true;
 
 // ===== INIT =====
 

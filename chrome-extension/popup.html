@@ -190,6 +190,40 @@
 
     /* Accounts */
     .accounts-list { display: flex; flex-direction: column; gap: 6px; }
+    
+    /* Sort Controls */
+    .sort-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+      padding: 6px;
+      background: rgba(255,255,255,0.5);
+      border-radius: 6px;
+      flex-wrap: wrap;
+    }
+    .sort-btn {
+      padding: 4px 8px;
+      font-size: 9px;
+      font-weight: 600;
+      background: #f3f4f6;
+      color: #6b7280;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .sort-btn:hover {
+      background: #e5e7eb;
+      border-color: #d1d5db;
+    }
+    .sort-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+      box-shadow: 0 1px 3px rgba(102,126,234,0.3);
+    }
 
     .account-card {
       background: #f9fafb;
