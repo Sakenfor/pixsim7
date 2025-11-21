@@ -46,7 +46,7 @@ The end state should be:
 
 - [X] **Phase 34.1 – Inventory & Diff Backend Trees** ✅ Complete (2025-11-21)
 - [X] **Phase 34.2 – Fix Canonical Package & Update Imports** ✅ Complete (2025-11-21)
-- [ ] **Phase 34.3 – Align Dev Scripts, Launcher & Docker**
+- [X] **Phase 34.3 – Align Dev Scripts, Launcher & Docker** ✅ Complete (2025-11-21)
 - [ ] **Phase 34.4 – Remove Code Duplication (Single Source of Truth)**
 
 ---
@@ -236,7 +236,55 @@ Ensure local dev scripts, launcher, and Docker all start the same backend code (
      - `GET /health` (or equivalent) works identically.
      - Plugin discovery, services, and routes match expectations.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` Complete
+
+---
+
+## Phase 34.3 Summary: Scripts, Tests, and Docs Aligned
+
+**Date Completed:** 2025-11-21
+
+### What Was Updated
+
+**Scripts (8 files):**
+- `scripts/manage.sh` - Updated backend/worker start commands and cleanup patterns
+- `scripts/manage.bat` - Updated backend/worker start commands (Windows)
+- `scripts/start-dev.sh` - Updated example commands in output
+- `scripts/start-dev.bat` - Updated example commands in output
+- `scripts/run_scenarios.sh` - Updated module path
+- `scripts/run_scenarios.bat` - Updated module path
+
+**Tests (9 files):**
+- All imports updated from `pixsim7_backend.*` to `pixsim7.backend.main.*`
+- Files: `test_plugin_smoke.py`, `test_websocket_contract.py`, `test_admin_database_endpoints.py`, etc.
+
+**Documentation:**
+- `README.md` - Updated uvicorn commands, file paths, and directory structure diagram
+- `DEVELOPMENT_GUIDE.md` - Updated all command examples, import examples, and file paths
+
+**Verified (no changes needed):**
+- ✅ Launcher already using `pixsim7.backend.main.main:app`
+- ✅ Docker already using `pixsim7/backend/main` context
+
+### Commands Changed
+
+**Before:**
+```bash
+python pixsim7_backend/main.py
+uvicorn pixsim7_backend.main:app
+arq pixsim7_backend.workers.arq_worker.WorkerSettings
+```
+
+**After:**
+```bash
+python -m pixsim7.backend.main.main
+uvicorn pixsim7.backend.main.main:app
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
+```
+
+### Next Step
+
+Phase 34.4 will create a shim module at `pixsim7_backend/` that forwards to the canonical backend, allowing for graceful deprecation.
 
 ---
 
