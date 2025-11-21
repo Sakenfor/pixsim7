@@ -421,15 +421,155 @@ cd admin && npm run dev
 
 ---
 
-## 📞 Need Help?
+## 📚 Documentation Taxonomy for AI Assistants
 
-- **Documentation:** See `/docs/` folder and individual component READMEs
-- **API Docs:** http://localhost:8001/docs (auto-generated Swagger)
-- **Architecture:** See `MASTER_STATUS.md` for complete project status
-- **Logging:** See `LOGGING_STRUCTURE.md` for field catalog and stages
-- **Assets:** See `CROSS_PROVIDER_ASSETS.md` for asset system details
+Understanding the documentation structure helps you find information quickly and update the right docs.
+
+### Document Types & When to Use Each
+
+#### **1. Living Docs - Read First, Update Frequently**
+These docs evolve with the system. Always check these before making changes:
+
+- **`ARCHITECTURE.md`** - Complete system architecture
+  - When to read: Before any significant architectural work
+  - When to update: Major system changes, new layers/services
+
+- **`AI_README.md`** (this file) - AI assistant guidance
+  - When to read: Start of every session
+  - When to update: New patterns, common mistakes, implementation status changes
+
+- **`DEVELOPMENT_GUIDE.md`** - Setup and workflows
+  - When to read: Setup issues, workflow questions
+  - When to update: New workflows, setup steps, or troubleshooting
+
+#### **2. Reference Docs - Check Before Recreating**
+Look here before building new components:
+
+- **`docs/backend/SERVICES.md`** - All backend services
+- **`docs/frontend/COMPONENTS.md`** - All frontend components
+- **`docs/APP_MAP.md`** - Application structure and routes
+- **`GAMEPLAY_SYSTEMS.md`** - Game mechanics and session structure
+- **API-specific docs** - Feature-specific implementation details
+
+**Action:** Before creating any new service/component, check these first!
+
+#### **3. Architecture Decision Records (ADRs) - Context for "Why"**
+Located in `docs/decisions/`, these explain architectural choices:
+
+- **When to read:**
+  - Understanding why something was designed a certain way
+  - Planning changes to extension surfaces
+  - Before modifying plugin/registry systems
+
+- **When to create:**
+  - Major architectural decisions affecting extensibility
+  - Changes to core game/session conventions
+  - New provider/plugin architectures
+  - Deprecating major APIs
+
+- **Format:** Immutable after acceptance (create new ADR to supersede)
+- **See:** `docs/decisions/README.md` for complete guidance
+
+#### **4. Task Docs - Active Work Tracking**
+Located in `claude-tasks/`:
+
+- **Status:** Active work in progress
+- **Lifecycle:** Archive when complete
+- **Don't recreate:** Check existing tasks before starting new work
+
+#### **5. Archived Docs - Historical Context**
+Located in `docs/archive/`:
+
+- **Purpose:** Historical reference, not active development
+- **Don't update:** These are frozen for context only
+- **Check before assuming:** Features may have evolved beyond archived docs
+
+### Quick Decision Tree: Which Doc to Update?
+
+```
+Is this a major architectural decision affecting extensibility?
+├─ YES → Create ADR in docs/decisions/
+└─ NO ↓
+
+Is this a new service, component, or API?
+├─ YES → Update reference docs (SERVICES.md, COMPONENTS.md, etc.)
+└─ NO ↓
+
+Is this a workflow or setup change?
+├─ YES → Update DEVELOPMENT_GUIDE.md
+└─ NO ↓
+
+Is this a system architecture change?
+├─ YES → Update ARCHITECTURE.md
+└─ NO ↓
+
+Is this a pattern AI assistants should know?
+├─ YES → Update AI_README.md
+└─ NO → Probably doesn't need doc update (code comments sufficient)
+```
+
+### Documentation Maintenance Rules for AI Assistants
+
+1. **Single Source of Truth**
+   - Each concept has ONE canonical location
+   - Link to it, never duplicate content
+   - If you find duplicates, consolidate and update links
+
+2. **Update Triggers You Should Watch For**
+   ```
+   Major architectural change → Update ARCHITECTURE.md + create ADR
+   New service/component      → Update reference docs
+   API endpoint change        → Update API docs + ARCHITECTURE.md if significant
+   Workflow change            → Update DEVELOPMENT_GUIDE.md
+   New pattern/gotcha         → Update AI_README.md
+   Task completion            → Archive task doc, update DOCUMENTATION_CHANGELOG.md
+   ```
+
+3. **Archive, Don't Delete**
+   - Move outdated docs to `docs/archive/` with explanation
+   - Update archive README.md with why it was archived
+   - Preserve context for future reference
+
+4. **Document Your Changes**
+   - Significant doc changes get entry in `DOCUMENTATION_CHANGELOG.md`
+   - Include: motivation, what changed, impact
+   - Update "Last Updated" date in modified docs
+
+### Common Documentation Mistakes to Avoid
+
+❌ **Don't recreate documentation** - Check existing docs first
+❌ **Don't duplicate content** - Link to canonical source
+❌ **Don't modify accepted ADRs** - Create new ADR to supersede
+❌ **Don't ignore "Last Updated"** - Update the date when you modify docs
+❌ **Don't skip DOCUMENTATION_CHANGELOG.md** - Log significant changes
+✅ **Do check AI_README.md first** - Saves recreation of existing features
+✅ **Do create ADRs for major decisions** - Captures "why" for future
+✅ **Do update reference docs** - Keep SERVICES.md and COMPONENTS.md current
+✅ **Do archive completed tasks** - Move to archive, don't delete
 
 ---
 
-**Last Updated:** 2025-11-13
-**Version:** 1.0.0
+## 📞 Need Help?
+
+### Primary Documentation
+- **Start Here:** `README.md` (project overview and quick start)
+- **Architecture:** `ARCHITECTURE.md` (complete system overview)
+- **Setup:** `DEVELOPMENT_GUIDE.md` (setup, workflows, conventions)
+- **Decisions:** `docs/decisions/*.md` (why things are the way they are)
+
+### Reference Documentation
+- **Backend Services:** `docs/backend/SERVICES.md`
+- **Frontend Components:** `docs/frontend/COMPONENTS.md`
+- **App Structure:** `docs/APP_MAP.md`
+- **Game Systems:** `GAMEPLAY_SYSTEMS.md`
+- **API Docs:** http://localhost:8001/docs (auto-generated Swagger)
+
+### Documentation About Documentation
+- **Lifecycle & Taxonomy:** `DOCUMENTATION_CHANGELOG.md` (top section)
+- **ADR Process:** `docs/decisions/README.md`
+- **Contribution Guide:** `DEVELOPMENT_GUIDE.md` → Contributing section
+
+---
+
+**Last Updated:** 2025-11-21
+**Version:** 1.1.0

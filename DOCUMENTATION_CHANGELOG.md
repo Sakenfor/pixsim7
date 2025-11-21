@@ -1,5 +1,282 @@
 # Documentation Changelog
 
+---
+
+## Documentation Lifecycle & Taxonomy
+
+### Document Lifecycle States
+
+All PixSim7 documentation follows a clear lifecycle to ensure maintainability and clarity:
+
+#### **Active Documents**
+- **Living Docs** - Continuously updated as the system evolves
+  - `ARCHITECTURE.md`, `AI_README.md`, `DEVELOPMENT_GUIDE.md`
+  - `docs/APP_MAP.md`, `GAMEPLAY_SYSTEMS.md`
+  - `README.md` (project root)
+
+- **Reference Docs** - Updated when features change
+  - `docs/backend/SERVICES.md`
+  - `docs/frontend/COMPONENTS.md`
+  - API-specific guides (e.g., `ACTION_ENGINE_USAGE.md`)
+
+- **Task Docs** - Active work tracking
+  - `claude-tasks/*.md` - Track ongoing development tasks
+  - Status: Active until task completion, then archived
+
+#### **Stable Documents**
+- **Architecture Decision Records (ADRs)** - Immutable after acceptance
+  - `docs/decisions/*.md`
+  - Once accepted, ADRs are never modified (only superseded with new ADRs)
+  - Capture "why" and "what trade-offs" for major architectural choices
+
+- **Guides & Tutorials** - Stable patterns and workflows
+  - `INTERACTION_AUTHORING_GUIDE.md`
+  - `PLUGIN_DEVELOPER_GUIDE.md`
+  - Updated only when underlying patterns change significantly
+
+#### **Archived Documents**
+- **Historical Reference** - Completed work
+  - `docs/archive/completed-refactoring/` - Finished refactoring docs
+  - `docs/archive/old-status/` - Superseded status reports
+  - Kept for historical context, never modified
+
+### Document Taxonomy
+
+Documents are organized by purpose and audience:
+
+#### **By Purpose**
+1. **Overview & Orientation**
+   - `README.md` - Quick start and navigation
+   - `ARCHITECTURE.md` - System architecture overview
+   - `docs/APP_MAP.md` - Application structure and navigation
+
+2. **Development Guides**
+   - `DEVELOPMENT_GUIDE.md` - Setup, workflows, conventions
+   - `AI_README.md` - AI assistant guidance
+   - Feature-specific guides (e.g., `PLUGIN_DEVELOPER_GUIDE.md`)
+
+3. **Reference Documentation**
+   - Service references (`docs/backend/SERVICES.md`)
+   - Component libraries (`docs/frontend/COMPONENTS.md`)
+   - API specifications (`ACTION_PROMPT_ENGINE_SPEC.md`)
+
+4. **Decisions & Rationale**
+   - `docs/decisions/*.md` - Architecture Decision Records (ADRs)
+   - Capture context, decision, and consequences for major choices
+
+5. **Task Tracking**
+   - `claude-tasks/*.md` - Active development tasks
+   - Moved to archive upon completion
+
+6. **Historical Archive**
+   - `docs/archive/` - Completed refactorings, superseded docs
+   - Preserved for reference but not actively maintained
+
+#### **By Audience**
+- **New Developers** → `README.md` → `DEVELOPMENT_GUIDE.md` → `ARCHITECTURE.md`
+- **AI Assistants** → `AI_README.md` → `ARCHITECTURE.md` → feature-specific docs
+- **Contributors** → `DEVELOPMENT_GUIDE.md` → `docs/decisions/README.md` → relevant ADRs
+- **System Architects** → `ARCHITECTURE.md` → `docs/decisions/*.md` → `GAMEPLAY_SYSTEMS.md`
+
+### Documentation Maintenance Rules
+
+1. **Single Source of Truth**
+   - Each concept has ONE canonical location
+   - Other docs link to it, never duplicate
+
+2. **Update Triggers**
+   - **Major architectural change** → Update `ARCHITECTURE.md` + create ADR
+   - **API/service change** → Update reference docs
+   - **Workflow change** → Update `DEVELOPMENT_GUIDE.md`
+   - **Task completion** → Archive task doc, update changelog
+
+3. **Archive, Don't Delete**
+   - Move outdated docs to `docs/archive/` with README explaining why
+   - Preserve historical context for future reference
+
+4. **Document Changes Here**
+   - All significant documentation changes get an entry in this changelog
+   - Include motivation, what changed, and impact
+
+### When to Create Documentation
+
+- **ADR** (Architecture Decision Record)
+  - Major architectural choices affecting extension surfaces
+  - Changes to core conventions (e.g., game session structure)
+  - Provider/plugin architecture changes
+  - Deprecation of major APIs
+  - See `docs/decisions/README.md` for full guidance
+
+- **Reference Doc**
+  - New service or major component
+  - Public API with multiple consumers
+  - Reusable patterns or utilities
+
+- **Guide**
+  - New development workflow
+  - Integration instructions for external systems
+  - Best practices for common tasks
+
+- **Task Doc**
+  - Multi-phase implementation work
+  - Cross-team coordination needed
+  - Complex features requiring planning
+
+---
+
+## 2025-11-21 - Documentation Lifecycle & ADR Discipline
+
+### 🎯 **Motivation**
+
+Established clear documentation lifecycle, taxonomy, and Architecture Decision Record (ADR) discipline to ensure maintainability and provide guidance for contributors and AI assistants.
+
+### ✅ **What Changed**
+
+#### **Added Documentation Lifecycle & Taxonomy**
+
+1. **DOCUMENTATION_CHANGELOG.md** (this file)
+   - Added comprehensive lifecycle section at top
+   - Defined document states: Active (Living/Reference/Task), Stable (ADRs/Guides), Archived
+   - Created taxonomy by purpose and audience
+   - Established maintenance rules and update triggers
+   - Provided guidance on when to create different doc types
+
+2. **DEVELOPMENT_GUIDE.md**
+   - Added "Documentation Contributions" section
+   - Created decision tree for when to update docs
+   - Added ADR creation workflow
+   - Provided documentation style guide
+   - Added PR checklist for documentation changes
+   - Updated "Last Updated" to 2025-11-21
+
+3. **AI_README.md**
+   - Added "Documentation Taxonomy for AI Assistants" section
+   - Created document type reference with when to use each
+   - Added quick decision tree for which doc to update
+   - Listed common documentation mistakes to avoid
+   - Reorganized "Need Help?" section with doc categories
+   - Updated "Last Updated" to 2025-11-21, version to 1.1.0
+
+#### **Enhanced ADR System**
+
+4. **docs/decisions/README.md**
+   - Expanded from 50 lines to 350+ lines
+   - Added detailed "When to Create an ADR" with examples
+   - Documented complete ADR lifecycle and process
+   - Added ADR index with Active/Superseded sections
+   - Provided naming conventions and structure guidelines
+   - Explained how ADRs relate to other documentation
+   - Listed examples of good ADR topics by category
+   - Added tips for writing effective ADRs
+   - Included reviewer checklist and feedback examples
+   - Added AI assistant guidance
+   - Updated "Last Updated" to 2025-11-21
+
+#### **Created First ADRs**
+
+5. **docs/decisions/20251121-extension-architecture.md**
+   - Documents unified extension system design
+   - Covers backend plugins, frontend plugins, game JSON extensions
+   - Explains context, decision, consequences, and related code
+   - Status: Accepted
+
+6. **docs/decisions/20251121-cross-provider-asset-system.md**
+   - Documents automatic upload/download/cache system
+   - Covers `get_asset_for_provider()` mechanism
+   - Explains lineage tracking and branching
+   - Status: Accepted
+
+7. **docs/decisions/20251121-structured-logging-system.md**
+   - Documents JSON structured logging design
+   - Covers field catalog, stage taxonomy, redaction
+   - Explains database ingestion and admin panel integration
+   - Status: Accepted
+
+### 📊 **Impact**
+
+**Before:**
+- No formal documentation lifecycle or taxonomy
+- Unclear when to create/update different doc types
+- No ADR discipline for architectural decisions
+- Minimal ADR guidance (50 lines)
+- No example ADRs
+
+**After:**
+- ✅ Clear lifecycle for all documentation types
+- ✅ Taxonomy by purpose and audience
+- ✅ Decision trees for choosing correct doc type
+- ✅ Comprehensive ADR process (350+ lines)
+- ✅ Three foundational ADRs documenting key decisions
+- ✅ Guidance for contributors and AI assistants
+- ✅ Maintenance rules and update triggers
+- ✅ PR checklist for documentation changes
+
+**Benefits:**
+1. **For New Contributors:**
+   - Clear guidance on where to document changes
+   - Understanding of doc lifecycle prevents confusion
+   - PR checklist ensures complete documentation updates
+
+2. **For AI Assistants:**
+   - Quick decision trees for doc updates
+   - Common mistakes explicitly called out
+   - Clear taxonomy reduces recreating existing docs
+
+3. **For System Architects:**
+   - ADRs capture "why" behind decisions
+   - Historical context preserved (immutable ADRs)
+   - Clear process for superseding decisions
+
+4. **For Maintainers:**
+   - Single source of truth for each concept
+   - Archive strategy preserves context
+   - Update triggers prevent doc drift
+
+### 🔄 **Documentation Structure Now**
+
+```
+PixSim7/
+├── DOCUMENTATION_CHANGELOG.md    # ⭐ Lifecycle & taxonomy at top
+├── DEVELOPMENT_GUIDE.md          # Includes doc contribution guide
+├── AI_README.md                  # Includes doc taxonomy for AIs
+├── ARCHITECTURE.md               # References ADRs for "why"
+│
+├── docs/
+│   ├── decisions/                # ADR system
+│   │   ├── README.md             # ⭐ Comprehensive ADR guide
+│   │   ├── TEMPLATE.md           # ADR template
+│   │   ├── 20251121-extension-architecture.md
+│   │   ├── 20251121-cross-provider-asset-system.md
+│   │   └── 20251121-structured-logging-system.md
+│   │
+│   ├── backend/                  # Reference docs
+│   ├── frontend/                 # Reference docs
+│   └── archive/                  # Historical docs
+│
+└── claude-tasks/                 # Active task tracking
+```
+
+### 📝 **Usage Guidelines**
+
+**When making changes, contributors should:**
+
+1. Check documentation lifecycle and taxonomy in this file
+2. Use decision trees in DEVELOPMENT_GUIDE.md to identify docs to update
+3. Create ADRs for major architectural decisions
+4. Update reference docs for API/service changes
+5. Follow PR checklist before submitting
+6. Log significant doc changes in this changelog
+
+**AI assistants should:**
+
+1. Read AI_README.md documentation taxonomy section
+2. Check existing ADRs before architectural changes
+3. Create ADRs for major decisions (see checklist)
+4. Update appropriate docs using decision tree
+5. Never modify accepted ADRs (create new ones)
+
+---
+
 ## 2025-11-17 - Refactoring Documentation Cleanup
 
 ### 🎯 **Motivation**
