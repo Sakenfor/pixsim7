@@ -12,6 +12,8 @@
 
 ---
 
+> **Note:** In the current layout, behavior profile and scoring helpers live under `packages/game/engine/src/world/gameProfile.ts` (imported as `@pixsim7/game.engine/...`). Older references to `packages/game-core` refer to the pre‑Variant‑B structure.
+
 ## Context
 
 **Problem:** Core systems bypass the excellent plugin infrastructure:

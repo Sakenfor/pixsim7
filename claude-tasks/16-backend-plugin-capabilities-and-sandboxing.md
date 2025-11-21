@@ -10,6 +10,11 @@
 >   - `pixsim7_backend/README.md` – section on plugin system (and what was left behind from PixSim6).
 >   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` + `13-safeguards-and-extensibility.md` – how plugins are expected to interact with NPC behavior (custom conditions/effects, simulation tiers).
 > - Treat the **plugin manifest + capabilities** defined here as the canonical way for plugins to touch world/session/behavior state. Avoid grabbing raw DB sessions or internal services directly from plugins.
+>
+> **Doc references:**
+> - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin auto-discovery and manifest patterns
+> - `ARCHITECTURE.md` – how backend plugins fit into the overall system
+> - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin map (once implemented by Task 29)
 
 ---
 
@@ -611,4 +616,3 @@ By the end of Task 16:
   - Worlds can enable only a subset of plugins for their behavior/schedule logic via JSON meta.
 - **Future sandboxing is feasible:**
   - The capability and permission model is clean enough that moving some plugins out‑of‑process becomes an implementation detail, not a full redesign.
-

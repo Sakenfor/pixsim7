@@ -15,6 +15,8 @@
 
 ---
 
+> **Note:** This task was originally written against a `frontend/` + `packages/game-ui` layout. The unified frontend now lives under `apps/main/`, shared UI under `packages/shared/ui`, and game UI under `packages/game/components`. For current structure and route mappings, see `docs/APP_MAP.md` and `docs/frontend/COMPONENTS.md`.
+
 ## Context
 
 The UI has grown to cover:
@@ -794,4 +796,3 @@ When this task is run periodically (e.g. every few feature branches), you should
 - No major surprises like:
   - New toast/list/button implementations in random folders.
   - Feature‑specific UIs leaking into `@pixsim7/ui`.
-
