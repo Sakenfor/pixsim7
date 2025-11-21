@@ -18,6 +18,7 @@ from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
 )
+from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 
