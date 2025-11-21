@@ -29,6 +29,7 @@ from .schema import (
     StartProgramRequest,
     StepProgramRequest,
     NarrativeExecutionResponse,
+    StateEffects,
 )
 
 # ECS Helpers
@@ -92,6 +93,7 @@ __all__ = [
     "StartProgramRequest",
     "StepProgramRequest",
     "NarrativeExecutionResponse",
+    "StateEffects",
 
     # Unified Narrative Runtime - ECS Helpers
     "get_narrative_state",
