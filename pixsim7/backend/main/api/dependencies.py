@@ -205,6 +205,34 @@ async def get_current_user(
         )
 
 
+async def get_current_user_ws(
+    token: Optional[str] = None,
+    auth_service: AuthService = Depends(get_auth_service)
+) -> Optional[User]:
+    """
+    Get current authenticated user from WebSocket token (query parameter)
+
+    For WebSocket connections, token is typically passed as query parameter:
+        ws://host/ws/endpoint?token=JWT_TOKEN
+
+    Returns:
+        User if token is valid, None if token is missing/invalid
+
+    Note: Returns None instead of raising exception to allow graceful
+          WebSocket connection handling by the endpoint
+    """
+    if not token:
+        return None
+
+    try:
+        user = await auth_service.verify_token(token)
+        return user
+    except Exception:
+        # Return None for invalid tokens instead of raising
+        # WebSocket endpoints should handle None gracefully
+        return None
+
+
 async def get_current_active_user(
     user: User = Depends(get_current_user)
 ) -> User:
