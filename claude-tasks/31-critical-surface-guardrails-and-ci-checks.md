@@ -35,9 +35,9 @@ These are all “edge of the system” problems that are easy to miss in local t
 ## Phase Checklist
 
 - [X] **Phase 31.1 – Backend Plugin & Route Health Checks** ✅ Complete (Already Implemented)
-- [ ] **Phase 31.2 – WebSocket Contract & Keep-Alive Tests**
-- [ ] **Phase 31.3 – Auth Redirect & 401 Handling Guardrails**
-- [ ] **Phase 31.4 – Module Lifecycle & Hot-Reload Helpers**
+- [X] **Phase 31.2 – WebSocket Contract & Keep-Alive Tests** ✅ Complete (Already Implemented)
+- [X] **Phase 31.3 – Auth Redirect & 401 Handling Guardrails** ✅ Complete (Already Implemented)
+- [X] **Phase 31.4 – Module Lifecycle & Hot-Reload Helpers** ✅ Complete (Already Implemented)
 
 ---
 
@@ -104,7 +104,7 @@ Make WebSocket message handling robust to keep-alive frames (`ping`/`pong`) and 
 2. **Update WebSocket handlers to branch early**  
    - Ensure hooks check for `event.data === 'pong'` (and similar keep-alive payloads) **before** `JSON.parse`.
    - Optionally, assert that JSON messages always have a `type` field; log and ignore otherwise.
-3. **Contract tests**  
+3. **Contract tests**
    - Add a test (backend or integration) that:
      - Connects to `/api/v1/ws/generations`.
      - Sends a ping and asserts a `pong` is handled without errors.
@@ -112,7 +112,16 @@ Make WebSocket message handling robust to keep-alive frames (`ping`/`pong`) and 
      - Mocks `ws.onmessage` with a sequence of `pong` and JSON messages.
      - Asserts no exceptions are thrown and JSON messages are handled as expected.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete (Already Implemented)
+
+**Implementation Details:**
+- ✅ Backend message envelope types (infrastructure/websocket/types.py)
+- ✅ `is_keep_alive()` helper for ping/pong detection
+- ✅ WebSocket handlers branch before JSON parsing (api/v1/websocket.py:64-68)
+- ✅ Frontend message types (apps/main/src/types/websocket.ts)
+- ✅ `parseWebSocketMessage()` returns null for ping/pong (websocket.ts:80-102)
+- ✅ Hook properly skips keep-alive messages (hooks/useGenerationWebSocket.ts:48-54)
+- ✅ Comprehensive contract tests (tests/test_websocket_contract.py)
 
 ---
 
@@ -135,12 +144,23 @@ Prevent “redirect storms” and white-screen flashes by centralizing 401 handl
    - Avoid per-feature 401 handlers that also call `window.location.href = '/login'`.
 2. **Invariant: at most one redirect in flight**  
    - Document the invariant in the client module (e.g. small JSDoc comment): only one redirect is allowed at a time, and never while already on `/login`.
-3. **Regression test for login flash**  
+3. **Regression test for login flash**
    - Add a frontend test that:
      - Mocks multiple parallel 401 responses.
      - Asserts that `window.location.href` is updated to `/login` only once and no further redirects are triggered when `pathname` already starts with `/login`.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete (Already Implemented)
+
+**Implementation Details:**
+- ✅ Centralized 401 redirect in API client interceptor (apps/main/src/lib/api/client.ts:73-87)
+- ✅ `isRedirecting` static guard prevents multiple redirects (client.ts:40)
+- ✅ Check for already being on `/login` page (client.ts:78)
+- ✅ Comprehensive JSDoc documenting invariants (client.ts:19-30, 62-72)
+- ✅ Full test coverage for parallel 401s (apps/main/src/lib/api/__tests__/client.test.ts)
+  - Single 401 redirect test
+  - Multiple parallel 401s (only one redirect)
+  - No redirect when already on /login
+  - Sequential 401s with persistent flag
 
 ---
 
@@ -166,10 +186,22 @@ Standardize how frontend “modules” (e.g. game session module) handle initial
    - In development builds, optionally:
      - Warn if a module calls `initialize()` without going through the helper.
      - Warn if a module tries to register duplicate handlers without a guard.
-4. **Doc update**  
-   - Add a short “Module lifecycle” subsection to:
+4. **Doc update**
+   - Add a short "Module lifecycle" subsection to:
      - `docs/APP_MAP.md` (or a relevant frontend doc), briefly describing the pattern.
      - Mention that all modules should be idempotent under hot reload via the helper.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete (Already Implemented)
+
+**Implementation Details:**
+- ✅ Module lifecycle helpers (apps/main/src/modules/lifecycle.ts)
+- ✅ `createModuleInitializer()` - idempotent initialization wrapper
+- ✅ `isModuleInitialized()` - check initialization state
+- ✅ `warnUnguardedInit()` - dev-only warnings for bad patterns
+- ✅ `createModuleCleanup()` - idempotent cleanup wrapper
+- ✅ Game session module migrated (modules/game-session/index.ts:24-28)
+- ✅ Documentation in APP_MAP.md (docs/APP_MAP.md:385, 410-446)
+  - Module best practices section
+  - Hot-reload safety guidelines
+  - Code examples
 
