@@ -49,12 +49,12 @@ Below are 10 phases for building and extending the Simulation Playground.
   - `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – world/life‑sim phases  
   - `docs/SYSTEM_OVERVIEW.md` – worlds, sessions, NPC tools
 - Frontend:  
-  - `frontend/src/routes/SimulationPlayground.tsx`  
-  - `frontend/src/components/game/WorldToolsPanel.tsx`  
-  - `frontend/src/components/game/RelationshipDashboard.tsx`  
-  - `frontend/src/routes/NpcBrainLab.tsx`
+  - `apps/main/src/routes/SimulationPlayground.tsx`  
+  - `apps/main/src/components/game/WorldToolsPanel.tsx`  
+  - `apps/main/src/components/game/RelationshipDashboard.tsx`  
+  - `apps/main/src/routes/NpcBrainLab.tsx`
 - Backend / Game-core:  
-  - `pixsim7_backend/api/v1/game_worlds.py` / `game_sessions.py`  
-  - `pixsim7_backend/services/game/*`  
-  - `packages/game-core/src/session/state.ts` and `packages/game-core/src/npcs/brain.ts`
+  - `pixsim7/backend/main/api/v1/game_worlds.py` / `game_sessions.py`  
+  - `pixsim7/backend/main/services/game/*`  
+  - `packages/game/engine/src/session/state.ts` and `packages/game/engine/src/npcs/brain.ts`
 

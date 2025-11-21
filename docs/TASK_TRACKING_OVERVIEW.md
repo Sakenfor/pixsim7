@@ -69,8 +69,8 @@ This document provides a **single source of truth** for what's been completed an
 - Cross-world preset libraries and outcome-aware suggestions
 
 **Key Files:**
-- `frontend/src/components/game/InteractionPresetEditor.tsx`
-- `packages/game-core/src/interactions/*`
+- `apps/main/src/components/game/InteractionPresetEditor.tsx`
+- `packages/game/engine/src/interactions/*`
 
 ---
 
@@ -83,8 +83,8 @@ This document provides a **single source of truth** for what's been completed an
 - Dynamic themes driven by world state
 
 **Key Files:**
-- `packages/game-core/src/world/worldUiConfig.ts`
-- `packages/game-core/src/world/dynamicThemeRules.ts`
+- `packages/game/engine/src/world/worldUiConfig.ts`
+- `packages/game/engine/src/world/dynamicThemeRules.ts`
 
 ---
 
@@ -97,7 +97,7 @@ This document provides a **single source of truth** for what's been completed an
 - Scenario save/load and automation harness
 
 **Key Files:**
-- `frontend/src/routes/SimulationPlayground.tsx`
+- `apps/main/src/routes/SimulationPlayground.tsx`
 
 ---
 
@@ -112,7 +112,7 @@ This document provides a **single source of truth** for what's been completed an
 **Key Files:**
 - `pixsim7/backend/main/domain/metrics/mood_evaluators.py`
 - `pixsim7/backend/main/domain/metrics/reputation_evaluators.py`
-- `packages/game-core/src/metrics/preview.ts`
+- `packages/game/engine/src/metrics/preview.ts`
 
 ---
 
@@ -126,7 +126,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `packages/types/src/generation.ts`
-- `packages/game-core/src/relationships/socialContext.ts`
+- `packages/game/engine/src/relationships/socialContext.ts`
 - `docs/INTIMACY_AND_GENERATION.md`
 
 ---
@@ -157,8 +157,8 @@ This document provides a **single source of truth** for what's been completed an
 - Live preview with what-if analysis
 
 **Key Files:**
-- `frontend/src/components/intimacy/IntimacySceneComposer.tsx`
-- `frontend/src/lib/intimacy/validation.ts`
+- `apps/main/src/components/intimacy/IntimacySceneComposer.tsx`
+- `apps/main/src/lib/intimacy/validation.ts`
 - `docs/INTIMACY_SCENE_COMPOSER.md`
 
 ---
@@ -173,7 +173,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `pixsim7/backend/main/domain/metrics/mood_types.py`
-- `packages/game-core/src/npcs/brain.ts`
+- `packages/game/engine/src/npcs/brain.ts`
 
 ---
 
@@ -263,7 +263,7 @@ This document provides a **single source of truth** for what's been completed an
 **Key Files:**
 - `pixsim7/backend/main/domain/generation.py`
 - `pixsim7/backend/main/api/v1/generations.py`
-- `frontend/src/lib/api/generations.ts`
+- `apps/main/src/lib/api/generations.ts`
 - `claude-tasks/15-unified-generation-request-path-and-job-deprecation.md`
 
 ---
@@ -288,7 +288,7 @@ This document provides a **single source of truth** for what's been completed an
 - `pixsim7/backend/main/domain/character_graph.py`
 - `pixsim7/backend/main/api/v1/character_graph.py`
 - `packages/types/src/characterGraph.ts`
-- `frontend/src/components/character-graph/CharacterGraphBrowser.tsx`
+- `apps/main/src/components/character-graph/CharacterGraphBrowser.tsx`
 - `docs/CHARACTER_LINKAGE_CONVENTIONS.md`
 
 ---
@@ -316,7 +316,7 @@ This document provides a **single source of truth** for what's been completed an
 - `pixsim7/backend/main/domain/behavior/conditions.py`
 - `pixsim7/backend/main/domain/game/ecs.py`
 - `pixsim7/backend/main/main.py`
-- `packages/game-core/src/world/gameProfile.ts`
+- `packages/game/engine/src/world/gameProfile.ts`
 - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md`
 
 ---
@@ -344,7 +344,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `pixsim7/backend/main/domain/behavior/scoring.py`
-- `packages/game-core/src/world/gameProfile.ts`
+- `packages/game/engine/src/world/gameProfile.ts`
 - `packages/types/src/game.ts`
 - `claude-tasks/28-extensible-scoring-and-simulation-config.md`
 
@@ -364,8 +364,8 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 10: Responsive/device-aware layouts
 
 **Key Files:**
-- `frontend/src/components/game/RegionalHudLayout.tsx`
-- `frontend/src/components/game/HudLayoutEditor.tsx`
+- `apps/main/src/components/game/RegionalHudLayout.tsx`
+- `apps/main/src/components/game/HudLayoutEditor.tsx`
 
 ---
 
@@ -379,8 +379,8 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 10: Template usage analytics & refactoring hints (not started)
 
 **Key Files:**
-- `frontend/src/lib/graph/templates.ts`
-- `frontend/src/components/graph/GraphTemplatePalette.tsx`
+- `apps/main/src/lib/graph/templates.ts`
+- `apps/main/src/components/graph/GraphTemplatePalette.tsx`
 
 ---
 
@@ -400,7 +400,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `docs/APP_MAP.md`
-- `frontend/src/components/dev/DependencyGraphPanel.tsx`
+- `apps/main/src/components/dev/DependencyGraphPanel.tsx`
 
 ---
 
@@ -415,7 +415,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `pixsim7/backend/main/api/v1/game_relationship_preview.py`
-- `packages/game-core/src/relationships/preview.ts`
+- `packages/game/engine/src/relationships/preview.ts`
 - `docs/SOCIAL_METRICS.md`
 
 ---
@@ -439,7 +439,7 @@ This document provides a **single source of truth** for what's been completed an
 
 **Key Files:**
 - `pixsim7/backend/main/services/generation/generation_service.py`
-- `packages/game-core/src/generation/requestBuilder.ts`
+- `packages/game/engine/src/generation/requestBuilder.ts`
 
 ---
 
@@ -1003,7 +1003,7 @@ export function getSimulationTierLimits(
 3. **Make Behavior Profiles Data-Driven**
    - Move hardcoded switch to preset lookup
    - Allow world.meta to define custom profiles
-   - File: `packages/game-core/src/world/gameProfile.ts`
+   - File: `packages/game/engine/src/world/gameProfile.ts`
 
 #### Medium Priority (More Invasive)
 
@@ -1015,7 +1015,7 @@ export function getSimulationTierLimits(
 5. **Per-World Simulation Overrides**
    - Check world metadata before style defaults
    - Allow fine-tuning per world
-   - File: `packages/game-core/src/world/gameProfile.ts`
+   - File: `packages/game/engine/src/world/gameProfile.ts`
 
 #### Low Priority (Design Discussion Needed)
 

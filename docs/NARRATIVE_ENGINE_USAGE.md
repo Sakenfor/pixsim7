@@ -83,7 +83,7 @@ Same as `/next-line` but includes full context and stage-by-stage debug informat
 ### Basic Dialogue Generation
 
 ```typescript
-// frontend/src/lib/api/narrative.ts
+// apps/main/src/lib/api/narrative.ts
 
 export async function generateDialogue(
   npcId: number,

@@ -26,7 +26,7 @@ The NPC interaction system has been fully migrated from a hybrid state (with spe
   - `consumesItems` - Consumes items from inventory
   - `canBeDetected` - Can be detected (stealth)
 
-**Location:** `frontend/src/lib/game/interactions/types.ts:185-218`
+**Location:** `apps/main/src/lib/game/interactions/types.ts:185-218`
 
 ### 2. Updated All Builtin Plugins
 
@@ -111,7 +111,7 @@ Now **any plugin** with `uiMode: 'dialogue'` gets special UI handling, not just 
 - Added comprehensive JSDoc explaining migration path
 - Legacy support maintained for backward compatibility
 
-**Location:** `frontend/src/lib/game/interactions/executor.ts:17-90`
+**Location:** `apps/main/src/lib/game/interactions/executor.ts:17-90`
 
 **Legacy format (deprecated):**
 ```typescript
@@ -246,18 +246,18 @@ All changes tested:
 ## Files Changed
 
 ### Core System
-- `frontend/src/lib/game/interactions/types.ts` - Added UI metadata types
-- `frontend/src/lib/game/interactions/executor.ts` - Removed special-casing, deprecated legacy normalizer
-- `frontend/src/lib/game/interactions/index.ts` - Export new types
+- `apps/main/src/lib/game/interactions/types.ts` - Added UI metadata types
+- `apps/main/src/lib/game/interactions/executor.ts` - Removed special-casing, deprecated legacy normalizer
+- `apps/main/src/lib/game/interactions/index.ts` - Export new types
 
 ### Plugins
-- `frontend/src/lib/game/interactions/talk.ts` - Added metadata
-- `frontend/src/lib/game/interactions/pickpocket.ts` - Added metadata
-- `frontend/src/lib/game/interactions/giveItem.ts` - Added metadata
-- `frontend/src/lib/game/interactions/persuade.ts` - Added metadata
+- `apps/main/src/lib/game/interactions/talk.ts` - Added metadata
+- `apps/main/src/lib/game/interactions/pickpocket.ts` - Added metadata
+- `apps/main/src/lib/game/interactions/giveItem.ts` - Added metadata
+- `apps/main/src/lib/game/interactions/persuade.ts` - Added metadata
 
 ### UI
-- `frontend/src/components/NpcSlotEditor.tsx` - Cleaned up legacy migration code
+- `apps/main/src/components/NpcSlotEditor.tsx` - Cleaned up legacy migration code
 
 ### Documentation
 - `docs/INTERACTION_PLUGIN_MANIFEST.md` - Complete plugin specification (NEW)

@@ -68,7 +68,7 @@ Define a minimal set of modes and a shared `GameContext` type that frontend and 
 
 **Scope**
 
-- TypeScript only: `packages/types` and `packages/game-core`.
+- TypeScript only: `packages/types` and `packages/game/engine`.
 
 **Key Steps**
 
@@ -98,7 +98,7 @@ export interface GameContext {
 ```
 
 3. Export these types from `packages/types/src/index.ts` for frontend and game-core.
-4. Optionally add helper types in `packages/game-core/src/gameState.ts`:
+4. Optionally add helper types in `packages/game/engine/src/gameState.ts`:
    - `isConversationMode(context)`, `isSceneMode(context)`, etc.
 
 **Status:** ☐ Not started
@@ -112,7 +112,7 @@ Create a central `gameStateStore` (e.g., Zustand or equivalent) that holds `Game
 
 **Scope**
 
-- Frontend only: `frontend/src/stores` and `frontend/src/routes`.
+- Frontend only: `apps/main/src/stores` and `apps/main/src/routes`.
 
 **Key Steps**
 
@@ -152,7 +152,7 @@ Mirror a **coarse** version of `GameContext` into `GameSession.flags.gameState` 
 
 **Key Steps**
 
-1. Define a Pydantic `GameStateSchema` in `pixsim7_backend/domain/game/schemas.py`:
+1. Define a Pydantic `GameStateSchema` in `pixsim7/backend/main/domain/game/schemas.py`:
 
 ```python
 class GameStateSchema(BaseModel):

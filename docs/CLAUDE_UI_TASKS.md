@@ -9,8 +9,8 @@ This brief assigns UI polish tasks to Claude focusing on the ScenePlayer and the
 - Prepare basic editor sandbox panels (assets picker, node config) for testing scenes before adding to the game
 
 ## Current Components
-- `game-frontend/src/components/ScenePlayer.tsx`
-- `game-frontend/src/components/minigames/ReflexMiniGame.tsx`
+- `game-apps/main/src/components/ScenePlayer.tsx`
+- `game-apps/main/src/components/minigames/ReflexMiniGame.tsx`
 - Types: `packages/types/src/index.ts` (Scene, SceneNode, MediaSegment, PlaybackMode, SelectionStrategy)
 
 ## Tasks

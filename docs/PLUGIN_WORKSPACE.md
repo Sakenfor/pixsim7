@@ -258,7 +258,7 @@ deleteProject(project.id);
 ## File Structure
 
 ```
-frontend/src/
+apps/main/src/
 ├── lib/
 │   └── plugins/
 │       ├── catalog.ts              # Unified plugin catalog (Phase 1)

@@ -4,7 +4,7 @@
 
 > **For Agents**
 > - Use this together with `RELATIONSHIPS_AND_ARCS.md` and `DYNAMIC_GENERATION_FOUNDATION.md` when working on intimacy‑aware generation.
-> - `GenerationSocialContext` (in `packages/types/src/generation.ts`) and `buildGenerationSocialContext` (in `packages/game-core/src/relationships/socialContext.ts`) define how relationship state flows into generation.
+> - `GenerationSocialContext` (in `packages/types/src/generation.ts`) and `buildGenerationSocialContext` (in `packages/game/engine/src/relationships/socialContext.ts`) define how relationship state flows into generation.
 > - Backend generation services should treat `social_context` as input for prompts and safety; do not hard‑code rating/relationship logic in random places.
 > - Related tasks (roadmap/status):  
 >   - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`  
@@ -105,7 +105,7 @@ interface UserContentPreferences {
 
 ### Intimacy Bands
 
-Defined in `packages/game-core/src/relationships/socialContext.ts`:
+Defined in `packages/game/engine/src/relationships/socialContext.ts`:
 
 | Intimacy Level ID | Band      | Content Rating   | Description                       |
 |-------------------|-----------|------------------|-----------------------------------|
@@ -117,7 +117,7 @@ Defined in `packages/game-core/src/relationships/socialContext.ts`:
 
 ### Relationship Tiers
 
-Default mapping (from `packages/game-core/src/relationships/computation.ts`):
+Default mapping (from `packages/game/engine/src/relationships/computation.ts`):
 
 | Tier ID       | Affinity Range |
 |---------------|----------------|
@@ -168,7 +168,7 @@ Final contentRating → romantic (clamped by world)
 ### Building Social Context
 
 ```typescript
-import { buildGenerationSocialContext } from '@pixsim7/game-core';
+import { buildGenerationSocialContext } from '@pixsim7/game.engine';
 
 // Get social context for NPC interaction
 const socialContext = buildGenerationSocialContext(
@@ -194,7 +194,7 @@ console.log(socialContext);
 ### Building Generation Request
 
 ```typescript
-import { buildGenerateContentRequest } from '@pixsim7/game-core';
+import { buildGenerateContentRequest } from '@pixsim7/game.engine';
 
 const request = buildGenerateContentRequest(generationNodeConfig, {
   session: currentSession,
@@ -211,7 +211,7 @@ console.log(request.social_context);
 ### Validating Generation Node
 
 ```typescript
-import { validateGenerationNode } from '@pixsim7/game-core';
+import { validateGenerationNode } from '@pixsim7/game.engine';
 
 const result = validateGenerationNode(nodeConfig, {
   world: currentWorld,
@@ -233,7 +233,7 @@ if (result.warnings.length > 0) {
 import {
   getWorldGenerationConfig,
   setWorldMaxContentRating
-} from '@pixsim7/game-core';
+} from '@pixsim7/game.engine';
 
 // Get current config
 const config = getWorldGenerationConfig(world);
@@ -249,7 +249,7 @@ import {
   loadUserContentPreferences,
   setUserMaxContentRating,
   setReduceRomanticIntensity
-} from '@pixsim7/game-core';
+} from '@pixsim7/game.engine';
 
 // Load preferences
 const prefs = loadUserContentPreferences();
@@ -265,7 +265,7 @@ setReduceRomanticIntensity(true);
 
 ### Generation Node Side Panel
 
-See `frontend/src/components/generation/SocialContextPanel.tsx`:
+See `apps/main/src/components/generation/SocialContextPanel.tsx`:
 
 ```tsx
 import { SocialContextPanel } from '@/components/generation/SocialContextPanel';
@@ -330,7 +330,7 @@ def build_prompt(request: GenerateContentRequest) -> str:
 
 ## Testing
 
-See `packages/game-core/src/__tests__/generation-social-context.test.ts` for:
+See `packages/game/engine/src/__tests__/generation-social-context.test.ts` for:
 
 - Social context mapping tests
 - Validation tests
@@ -338,7 +338,7 @@ See `packages/game-core/src/__tests__/generation-social-context.test.ts` for:
 
 Run tests:
 ```bash
-npm test packages/game-core
+npm test packages/game/engine
 ```
 
 ---
@@ -351,14 +351,14 @@ npm test packages/game-core
 - `packages/types/src/userPreferences.ts` - UserContentPreferences
 
 ### Game Core
-- `packages/game-core/src/relationships/socialContext.ts` - buildGenerationSocialContext()
-- `packages/game-core/src/generation/requestBuilder.ts` - buildGenerateContentRequest()
-- `packages/game-core/src/generation/validator.ts` - validateGenerationNode()
-- `packages/game-core/src/world/generationConfig.ts` - World config helpers
-- `packages/game-core/src/user/contentPreferences.ts` - User preference helpers
+- `packages/game/engine/src/relationships/socialContext.ts` - buildGenerationSocialContext()
+- `packages/game/engine/src/generation/requestBuilder.ts` - buildGenerateContentRequest()
+- `packages/game/engine/src/generation/validator.ts` - validateGenerationNode()
+- `packages/game/engine/src/world/generationConfig.ts` - World config helpers
+- `packages/game/engine/src/user/contentPreferences.ts` - User preference helpers
 
 ### Frontend
-- `frontend/src/components/generation/SocialContextPanel.tsx` - UI components
+- `apps/main/src/components/generation/SocialContextPanel.tsx` - UI components
 
 ### Docs
 - `docs/DYNAMIC_GENERATION_FOUNDATION.md` - Generation system foundation

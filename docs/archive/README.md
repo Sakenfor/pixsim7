@@ -1,119 +1,46 @@
-# Archived Documentation
+# Archive Directory
 
-This directory contains historical documentation that has been superseded by the new consolidated docs.
+**⚠️ Historical Documents**
 
----
+This directory contains historical documentation from various phases of PixSim7 development. These documents are preserved for reference but may contain **outdated paths and package names**.
 
-## 📁 Directory Structure
+## Path/Package Name Changes
 
-### `/completed-refactoring/` - Completed Refactoring Documentation
+Since these documents were written, several architectural changes have occurred:
 
-Documentation for **fully completed** refactoring projects including architecture simplification phases, feature migrations, and handoff notes. **Archived: 2025-11-17**
+### Backend (Task 34 - 2025-11-21)
+- **Old:** `pixsim7_backend/`
+- **New:** `pixsim7/backend/main/`
 
-**Contents:**
-- PHASE 1-4 architecture simplification summaries
-- Emoji migration to icon system
-- Backend plugin system migration
-- JWT refactoring documentation
-- Database migration instructions
+### Frontend (VARIANT_B Migration)
+- **Old:** `frontend/src/`
+- **New:** `apps/main/src/`
 
-See [completed-refactoring/README.md](./completed-refactoring/README.md) for full details.
+### Game Packages (VARIANT_B)
+- **Old:** `packages/game-core`, `@pixsim7/game-core`
+- **New:** `packages/game/engine`, `@pixsim7/game.engine`
+- **Old:** `packages/game-ui`
+- **New:** `packages/game/components`
 
-### `/old-status/` - Outdated Status Documents
+## What's in Here
 
-These documents contain outdated status information and TODO lists that claimed features were incomplete when they were already done. **Archived: 2025-11-16**
+- `old-status/` - Status documents from various development phases
+- `completed-refactoring/` - Documentation of completed refactoring efforts
+- `launcher/` - Launcher architecture evolution docs
+- `plugins/` - Plugin system development history
 
-**Files:**
-- `MASTER_STATUS.md` - Old master status (said "95% complete" when actually 100%)
-- `SERVICE_LAYER_COMPLETE.md` - Backend service completion notes
-- `PIXVERSE_INTEGRATION.md` - Had many stale TODOs
-- `MULTI_USER_AND_SERVICE_DESIGN.md` - Architecture patterns (now in ARCHITECTURE.md)
-- `SESSION_SUMMARY_ASSET_SYSTEM.md` - Session notes for asset system
-- `UI_ARCHITECTURE_ANALYSIS.md` - Frontend analysis (info moved to frontend docs)
-- `PANEL_ARCHITECTURE.md` - Panel system analysis
-- `CUBE_SYSTEM_ISSUES.md` - Cube system bug analysis
-- `CUBE_GALLERY_ARCHITECTURE.md` - Cube gallery design
-- `CUBE_ROTATION_FACE_SELECTION_ANALYSIS.md` - Cube rotation analysis
-- `QUICK_REFERENCE.md` - Quick reference with stale TODOs
-- `CODEBASE_EXPLORATION_SUMMARY.md` - Exploration notes
-- `ASSET_UPLOAD_ISSUES.md` - Known issues (may still be relevant)
+## Using These Documents
 
-### `/analysis/` - Analysis Documents
+When referencing code paths in these documents:
+1. Replace `pixsim7_backend/` with `pixsim7/backend/main/`
+2. Replace `frontend/src/` with `apps/main/src/`
+3. Replace `packages/game-core` with `packages/game/engine`
+4. Be aware that some features may have been superseded or reimplemented
 
-Reserved for future analysis documents.
+## Current Documentation
 
-### `/sessions/` - Session Notes
-
-Reserved for session-specific notes and progress tracking.
-
----
-
-## ⚠️ Why These Were Archived
-
-### **Problem: Conflicting Status**
-Multiple documents claimed different completion percentages:
-- MASTER_STATUS.md: "95% complete"
-- AI_README.md: "100% complete"
-- PIXVERSE_INTEGRATION.md: Many features marked "TODO" that were actually done
-
-### **Problem: Outdated TODOs**
-Many TODOs claimed services weren't implemented, but code inspection revealed:
-- All 10 services fully implemented
-- All API endpoints working
-- All workers complete
-- All infrastructure in place
-
-### **Problem: Duplicate Information**
-Same information scattered across 6+ status documents with conflicting details.
-
----
-
-## ✅ What Replaced These
-
-### **New Documentation (2025-11-16)**
-
-**Main Docs:**
-- `/ARCHITECTURE.md` - Complete system architecture (replaced 6 status docs)
-- `/DEVELOPMENT_GUIDE.md` - Setup and development workflows
-- `/README.md` - Quick start and overview
-
-**Detailed Docs:**
-- `/docs/backend/SERVICES.md` - Service layer guide
-- `/docs/frontend/COMPONENTS.md` - Component library reference
-
-**Benefits:**
-- ✅ Single source of truth
-- ✅ Accurate status based on code inspection
-- ✅ No duplicate information
-- ✅ Clear organization
-- ✅ Maintainable structure
-
----
-
-## 🔍 When to Reference Archived Docs
-
-These docs may still contain useful information for:
-
-1. **Historical Context:** Understanding past design decisions
-2. **Issue Tracking:** ASSET_UPLOAD_ISSUES.md may still be relevant
-3. **Bug Analysis:** CUBE_SYSTEM_ISSUES.md has detailed bug reports
-4. **Migration Notes:** SESSION_SUMMARY files have implementation details
-
-**Rule:** Always check current docs first. Only reference archived docs for historical context.
-
----
-
-## 🗑️ When to Delete
-
-These files can be permanently deleted when:
-1. All issues documented have been resolved
-2. No historical context is needed
-3. All useful info has been migrated to new docs
-
-**Recommendation:** Keep for 6-12 months, then delete if no longer needed.
-
----
-
-**Archived:** 2025-11-16
-**Reason:** Outdated status, conflicting TODOs, duplicate information
-**Replaced By:** `/ARCHITECTURE.md`, `/DEVELOPMENT_GUIDE.md`, `/docs/backend/SERVICES.md`, `/docs/frontend/COMPONENTS.md`
+For up-to-date architecture and development guides, see:
+- `/ARCHITECTURE.md` - Current system architecture
+- `/docs/APP_MAP.md` - Application structure map
+- `/DEVELOPMENT_GUIDE.md` - Development setup and workflows
+- `/docs/EXTENSION_ARCHITECTURE.md` - Plugin/extension system

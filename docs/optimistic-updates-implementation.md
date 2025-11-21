@@ -88,7 +88,7 @@ export interface GameSessionDTO {
 ```
 
 #### 2. API Client
-- **File**: `frontend/src/lib/api/game.ts`
+- **File**: `apps/main/src/lib/api/game.ts`
 
 **New Response Type**:
 ```typescript
@@ -129,7 +129,7 @@ export async function updateGameSession(
 ```
 
 #### 3. Session Adapter
-- **File**: `frontend/src/lib/game/interactions/sessionAdapter.ts`
+- **File**: `apps/main/src/lib/game/interactions/sessionAdapter.ts`
 
 **Optimistic Update Pattern**:
 ```typescript
@@ -195,7 +195,7 @@ const applyOptimisticUpdate = async (
 - Retries update with new version
 
 #### 4. Integration with Game2D
-- **File**: `frontend/src/routes/Game2D.tsx`
+- **File**: `apps/main/src/routes/Game2D.tsx`
 
 **SessionAPI Wiring**:
 ```typescript

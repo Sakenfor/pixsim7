@@ -197,7 +197,7 @@ Agree on the JSON layout for ECS-style NPC state (entities + components) and for
 1. Define TS interfaces in `packages/types/src/game.ts` (or a new `ecs.ts`):
    - `NpcEntityState` with `components: Record<string, unknown>`, `tags`, `metadata`.
    - Component type aliases (e.g. `RelationshipCoreComponent`, `RomanceComponent`, `StealthComponent`).
-2. Define Pydantic models in `pixsim7_backend/domain/game/schemas.py`:
+2. Define Pydantic models in `pixsim7/backend/main/domain/game/schemas.py`:
    - `NpcEntityStateSchema`, `EcsComponentBase`, and core component schemas.
 3. Decide on **component naming conventions**:
    - Core: `"core"`, `"romance"`, `"stealth"`, `"behavior"`, `"interactions"`.
@@ -217,7 +217,7 @@ Provide backend helpers to read/write NPC components instead of manual JSON fidd
 
 **Scope**
 
-- New helper module, e.g. `pixsim7_backend/domain/game/ecs.py`.
+- New helper module, e.g. `pixsim7/backend/main/domain/game/ecs.py`.
 
 **Key Steps**
 
@@ -244,7 +244,7 @@ Introduce a **metric registry** that maps metric IDs to components and paths, an
 
 **Scope**
 
-- Extends `docs/SOCIAL_METRICS.md` and `pixsim7_backend/domain/metrics/*`.
+- Extends `docs/SOCIAL_METRICS.md` and `pixsim7/backend/main/domain/metrics/*`.
 
 **Key Steps**
 

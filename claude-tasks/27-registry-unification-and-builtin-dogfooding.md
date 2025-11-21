@@ -5,15 +5,15 @@
 > - Philosophy: "If a plugin could do X, core should use the same pathway when doing X built-in."
 > - Read these first:
 >   - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin architecture overview
->   - `pixsim7_backend/infrastructure/plugins/behavior_registry.py` – central registry
->   - `pixsim7_backend/domain/behavior/conditions.py` – hardcoded if/elif chain
->   - `pixsim7_backend/domain/game/ecs.py` – hardcoded COMPONENT_SCHEMAS
->   - `packages/game-core/src/world/gameProfile.ts` – hardcoded behavior profiles
+>   - `pixsim7/backend/main/infrastructure/plugins/behavior_registry.py` – central registry
+>   - `pixsim7/backend/main/domain/behavior/conditions.py` – hardcoded if/elif chain
+>   - `pixsim7/backend/main/domain/game/ecs.py` – hardcoded COMPONENT_SCHEMAS
+>   - `packages/game/engine/src/world/gameProfile.ts` – hardcoded behavior profiles
 >   - `docs/TASK_TRACKING_OVERVIEW.md` (Architectural Analysis section) – detailed rationale
 
 ---
 
-> **Note:** In the current layout, behavior profile and scoring helpers live under `packages/game/engine/src/world/gameProfile.ts` (imported as `@pixsim7/game.engine/...`). Older references to `packages/game-core` refer to the pre‑Variant‑B structure.
+> **Note:** In the current layout, behavior profile and scoring helpers live under `packages/game/engine/src/world/gameProfile.ts` (imported as `@pixsim7/game.engine/...`). Older references to `packages/game/engine` refer to the pre‑Variant‑B structure.
 
 ## Context
 
@@ -46,7 +46,7 @@ Replace if/elif chain with registry lookup in `conditions.py`.
 2. Refactor `evaluate_condition()` to check built-in registry first, then plugin registry
 3. Remove 40+ line if/elif chain
 
-**File:** `pixsim7_backend/domain/behavior/conditions.py`
+**File:** `pixsim7/backend/main/domain/behavior/conditions.py`
 
 **Status:** ✅ Completed
 
@@ -70,8 +70,8 @@ Register core ECS components through `behavior_registry` like plugins do.
 3. Update `ecs.py` helpers to query `behavior_registry.get_component_schema()`
 
 **Files:**
-- `pixsim7_backend/domain/game/ecs.py`
-- `pixsim7_backend/main.py` (or startup module)
+- `pixsim7/backend/main/domain/game/ecs.py`
+- `pixsim7/backend/main/main.py` (or startup module)
 
 **Status:** ✅ Completed
 
@@ -95,7 +95,7 @@ Allow worlds to define custom behavior profiles in metadata.
 2. Refactor `getDefaultScoringWeights()` to lookup from world metadata first, then built-ins
 3. Update world schema to support `meta.behavior.behaviorProfiles`
 
-**File:** `packages/game-core/src/world/gameProfile.ts`
+**File:** `packages/game/engine/src/world/gameProfile.ts`
 
 **Status:** ✅ Completed
 

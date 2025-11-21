@@ -6,7 +6,7 @@ The node inspector UI is now dynamically resolved from the registry and plugin f
 
 ## Architecture
 
-### 1. NodeEditorRegistry (`frontend/src/lib/nodeEditorRegistry.ts`)
+### 1. NodeEditorRegistry (`apps/main/src/lib/nodeEditorRegistry.ts`)
 
 A central registry that manages node editor components with support for:
 
@@ -19,7 +19,7 @@ A central registry that manages node editor components with support for:
 - File names map to editor IDs (e.g., `SeductionNodeEditor.tsx` → `"SeductionNodeEditor"`)
 - Each editor must export a default component
 
-### 2. InspectorPanel (`frontend/src/components/inspector/InspectorPanel.tsx`)
+### 2. InspectorPanel (`apps/main/src/components/inspector/InspectorPanel.tsx`)
 
 The main inspector panel now uses the registry to load editors dynamically:
 
@@ -61,7 +61,7 @@ nodeTypeRegistry.register({
 
 ### Example: Seduction Node
 
-1. **Node Type Registration** (`frontend/src/lib/plugins/seductionNode.ts`):
+1. **Node Type Registration** (`apps/main/src/lib/plugins/seductionNode.ts`):
    ```typescript
    nodeTypeRegistry.register({
      id: 'seduction',
@@ -69,7 +69,7 @@ nodeTypeRegistry.register({
    });
    ```
 
-2. **Editor Component** (`frontend/src/components/inspector/SeductionNodeEditor.tsx`):
+2. **Editor Component** (`apps/main/src/components/inspector/SeductionNodeEditor.tsx`):
    ```typescript
    export function SeductionNodeEditor({ node, onUpdate }) {
      // Editor UI implementation
@@ -92,7 +92,7 @@ nodeTypeRegistry.register({
 
 ### Step 1: Create Editor Component
 
-Create a new file in `frontend/src/components/inspector/`:
+Create a new file in `apps/main/src/components/inspector/`:
 
 ```typescript
 // MyCustomNodeEditor.tsx
@@ -215,7 +215,7 @@ All criteria met:
    - Loaded via `nodeEditorRegistry.getEditor('SeductionNodeEditor')`
 
 2. ✅ **Adding a new editor file makes it available automatically**
-   - Create `NewEditor.tsx` in `frontend/src/components/inspector/`
+   - Create `NewEditor.tsx` in `apps/main/src/components/inspector/`
    - Add `export default NewEditor`
    - Set `nodeTypeDef.editorComponent = 'NewEditor'`
    - Reload page → editor available

@@ -44,7 +44,7 @@ Introduce a per‑world HUD config that controls which tools are visible, withou
 
 **Key Steps**
 1. Define HUD config types (now in `WorldUiConfig` in `@pixsim7/types`).
-2. Add helpers in `@pixsim7/game-core/world/worldUiConfig.ts` to read/write `WorldUiConfig` from `GameWorldDetail.meta`.
+2. Add helpers in `@pixsim7/game.engine/world/worldUiConfig.ts` to read/write `WorldUiConfig` from `GameWorldDetail.meta`.
 3. In Game2D, after building `WorldToolContext`, compute `enabledToolIds` from config and filter `worldToolRegistry.getVisible(context)` before passing tools to the HUD layout.
 4. Preserve default behavior when no HUD config is present (all tools enabled).
 
@@ -64,11 +64,11 @@ Introduce a per‑world HUD config that controls which tools are visible, withou
   - `docs/GAME_WORLD_DISPLAY_MODES.md` – 2D/3D display modes  
   - `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – how HUD/tools integrate with life‑sim phases
 - Frontend:  
-  - `frontend/src/routes/Game2D.tsx` – Game2D HUD integration  
-  - `frontend/src/components/game/WorldToolsPanel.tsx`  
-  - `frontend/src/components/game/RegionalHudLayout.tsx`  
-  - `frontend/src/components/game/HudLayoutEditor.tsx`
+  - `apps/main/src/routes/Game2D.tsx` – Game2D HUD integration  
+  - `apps/main/src/components/game/WorldToolsPanel.tsx`  
+  - `apps/main/src/components/game/RegionalHudLayout.tsx`  
+  - `apps/main/src/components/game/HudLayoutEditor.tsx`
 - Game-core:  
-  - `packages/game-core/src/world/worldUiConfig.ts`  
-  - `packages/game-core/src/world/themePacks.ts`  
-  - `packages/game-core/src/world/dynamicThemeRules.ts`
+  - `packages/game/engine/src/world/worldUiConfig.ts`  
+  - `packages/game/engine/src/world/themePacks.ts`  
+  - `packages/game/engine/src/world/dynamicThemeRules.ts`

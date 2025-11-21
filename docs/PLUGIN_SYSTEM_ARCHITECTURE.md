@@ -52,7 +52,7 @@ PixSim7's plugin system enables **safe, user-installable UI extensions** without
 ## File Structure
 
 ```
-frontend/src/
+apps/main/src/
   ├── lib/
   │   ├── plugins/
   │   │   ├── types.ts                    # Core types & interfaces

@@ -443,7 +443,7 @@ Full activity selection and effects:
 - Implementation: `pixsim7/backend/main/services/simulation/`
 - Admin APIs: `pixsim7/backend/main/api/v1/game_worlds.py`
 - Schemas: `pixsim7/backend/main/domain/game/schemas.py` (WorldSchedulerConfigSchema)
-- Frontend Types: `frontend/src/types/game.ts`
+- Frontend Types: `apps/main/src/types/game.ts`
 
 ## Support
 

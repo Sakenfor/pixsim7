@@ -27,17 +27,17 @@ while keeping the scene graph (`Scene`, `SceneNode`, `SceneEdge`) backend‑agno
 
 Key existing references:
 - Scene editor & graph:
-  - `frontend/src/components/GraphPanel.tsx`
-  - `frontend/src/components/SceneBuilderPanel.tsx`
-  - `frontend/src/components/nodes/SceneNode.tsx`
-  - `frontend/src/modules/scene-builder/index.ts`
+  - `apps/main/src/components/GraphPanel.tsx`
+  - `apps/main/src/components/SceneBuilderPanel.tsx`
+  - `apps/main/src/components/nodes/SceneNode.tsx`
+  - `apps/main/src/modules/scene-builder/index.ts`
 - Game APIs & 2D playtest:
-  - `frontend/src/lib/api/game.ts`
-  - `@pixsim7/game-core` (hotspot actions and playback helpers)
-  - `frontend/src/lib/game/interactionSchema.ts` (re-export shim)
-  - `frontend/src/lib/game/session.ts`
-  - `frontend/src/routes/GameWorld.tsx`
-  - `frontend/src/routes/Game2D.tsx`
+  - `apps/main/src/lib/api/game.ts`
+  - `@pixsim7/game.engine` (hotspot actions and playback helpers)
+  - `apps/main/src/lib/game/interactionSchema.ts` (re-export shim)
+  - `apps/main/src/lib/game/session.ts`
+  - `apps/main/src/routes/GameWorld.tsx`
+  - `apps/main/src/routes/Game2D.tsx`
 - Backend world/time/NPC endpoints:
   - `/api/v1/game/worlds` (`pixsim7/backend/main/api/v1/game_worlds.py`)
   - `/api/v1/game/sessions` (`pixsim7/backend/main/api/v1/game_sessions.py`)
@@ -119,7 +119,7 @@ hard‑wiring world IDs into scene schemas.
 
 **Tasks:**
 - Add a **World selector** to the scene editor workspace:
-  - Reuse world APIs from `frontend/src/lib/api/game.ts` (`listGameWorlds`, `createGameWorld`, `getGameWorld`).
+  - Reuse world APIs from `apps/main/src/lib/api/game.ts` (`listGameWorlds`, `createGameWorld`, `getGameWorld`).
   - Mirror the UX already added in `Game2D` (simple dropdown + “New World”).
   - Persist the selected `worldId` in a small UI store (e.g. React context or a scene‑builder module), not in backend yet.
 - Add a **Location selector** scoped to the selected world:
@@ -142,7 +142,7 @@ hard‑wiring world IDs into scene schemas.
 to hand‑edit `meta.action` JSON or remember action types.
 
 **Tasks:**
-- Extend `GameWorld` editor (`frontend/src/routes/GameWorld.tsx`):
+- Extend `GameWorld` editor (`apps/main/src/routes/GameWorld.tsx`):
   - Replace the current raw `meta` JSON input with a **structured view** for `meta.action` based on `HotspotAction`:
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`
@@ -255,7 +255,7 @@ glance.
 - Keep all new semantics as **frontend conventions**:
   - Use `meta.*`, `flags`, and `relationships` to encode behaviors.
   - Do **not** add new backend columns or enums for arcs/quests/relationships yet.
-- Prefer small helper modules in `frontend/src/lib/game/` for:
+- Prefer small helper modules in `apps/main/src/lib/game/` for:
   - Namespacing relationship keys (`npc:${id}`, `arc:${id}`, etc.).
   - Mapping editor concepts → `Scene.meta` / `SceneEdge.effects` shapes that the runtime can interpret later.
 - Reuse existing docs:

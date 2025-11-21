@@ -10,7 +10,7 @@
 > - When changing relationship logic, inspect and keep in sync:  
 >   - `pixsim7/backend/main/domain/narrative/relationships.py`  
 >   - `pixsim7/backend/main/services/game/game_session_service.py` (`_normalize_session_relationships`)  
->   - `packages/game-core/src/relationships/*` and `packages/game-core/src/session/state.ts`.
+>   - `packages/game/engine/src/relationships/*` and `packages/game/engine/src/session/state.ts`.
 > - Related tasks (roadmap/status, not specs):  
 >   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
 >   - `claude-tasks/08-social-metrics-and-npc-systems.md`  

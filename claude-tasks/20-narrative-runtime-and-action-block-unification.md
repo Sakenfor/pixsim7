@@ -9,9 +9,9 @@
 >   - `docs/behavior_system/README.md` – NPC behavior overview  
 >   - `docs/INTERACTION_AUTHORING_GUIDE.md` – authoring interactions & chains  
 >   - `docs/INTIMACY_SCENE_COMPOSER.md` – intimacy scene composer  
->   - `pixsim7_backend/domain/narrative/*` – current narrative engine / action blocks  
->   - `pixsim7_backend/api/v1/game_dialogue.py` (if present) – dialogue APIs  
->   - `pixsim7_backend/api/v1/action_blocks.py` – action block APIs.
+>   - `pixsim7/backend/main/domain/narrative/*` – current narrative engine / action blocks  
+>   - `pixsim7/backend/main/api/v1/game_dialogue.py` (if present) – dialogue APIs  
+>   - `pixsim7/backend/main/api/v1/action_blocks.py` – action block APIs.
 > - **Key constraint:** as with other tasks, do **not** add new DB tables/columns lightly. Prefer:
 >   - Existing tables (`action_blocks`, `prompt_versions`, `generations`, `GameScene`, `GameWorld` meta).  
 >   - JSON-backed schemas in `GameWorld.meta`, `GameScene.meta`, and ECS components.
@@ -23,19 +23,19 @@
 Current narrative stack is powerful but fragmented:
 
 - **Action Blocks**:
-  - `pixsim7_backend/domain/narrative/action_blocks/*`, `action_blocks` table, `/api/v1/action_blocks`.
+  - `pixsim7/backend/main/domain/narrative/action_blocks/*`, `action_blocks` table, `/api/v1/action_blocks`.
   - Provide reusable prompt fragments and transition logic.
 - **Dialogue Programs / Narrative Engine**:
-  - `pixsim7_backend/domain/narrative/engine.py`, `context.py`, `programs.py`.
+  - `pixsim7/backend/main/domain/narrative/engine.py`, `context.py`, `programs.py`.
   - Build dialogue requests from narrative context, including relationship and world state.
 - **Generation Pipeline**:
   - `/api/v1/generations` + `GenerationNodeConfig`.
   - Intimacy-aware prompts, social context, mood integration.
 - **Interactions & Chains**:
-  - `packages/game-core/src/interactions/*` for interaction definitions, chains, suggestions.
+  - `packages/game/engine/src/interactions/*` for interaction definitions, chains, suggestions.
   - `interaction_execution.prepare_generation_launch` builds dialogue/action-block requests and stores pending dialogue/action-block jobs in `session.flags`.
 - **Intimacy Scene Composer**:
-  - `frontend/src/components/intimacy/*`, `frontend/src/lib/intimacy/*`.
+  - `apps/main/src/components/intimacy/*`, `apps/main/src/lib/intimacy/*`.
   - Builds scene graphs, progression arcs, and generation previews for intimate scenes.
 
 Pain points:
@@ -136,11 +136,11 @@ Get a precise map of how narrative content is currently requested, built, and ex
 
 **Scope**
 
-- `pixsim7_backend/domain/narrative/*` (engine, programs, context, action blocks).
-- `pixsim7_backend/api/v1/game_dialogue.py` (if present) and related routes/plugins.
-- `pixsim7_backend/api/v1/action_blocks.py` and action block services.
+- `pixsim7/backend/main/domain/narrative/*` (engine, programs, context, action blocks).
+- `pixsim7/backend/main/api/v1/game_dialogue.py` (if present) and related routes/plugins.
+- `pixsim7/backend/main/api/v1/action_blocks.py` and action block services.
 - `interaction_execution.prepare_generation_launch` and its use of `NarrativeEngine` / action blocks.
-- Intimacy scene composer flows (`frontend/src/lib/intimacy/*`, `docs/INTIMACY_SCENE_COMPOSER.md`).
+- Intimacy scene composer flows (`apps/main/src/lib/intimacy/*`, `docs/INTIMACY_SCENE_COMPOSER.md`).
 
 **Key Steps**
 
@@ -167,7 +167,7 @@ Define the canonical `NarrativeProgram` and node/edge types, shared between fron
 **Scope**
 
 - New TS module, e.g. `packages/types/src/narrative.ts`.  
-\- New Pydantic models, e.g. `pixsim7_backend/domain/narrative/schema.py`.
+\- New Pydantic models, e.g. `pixsim7/backend/main/domain/narrative/schema.py`.
 
 **Key Steps**
 
@@ -192,7 +192,7 @@ Define the canonical `NarrativeProgram` and node/edge types, shared between fron
 
 **Deliverables:**
 - ✅ TypeScript schema: `packages/types/src/narrative.ts`
-- ✅ Pydantic schema: `pixsim7_backend/domain/narrative/schema.py`
+- ✅ Pydantic schema: `pixsim7/backend/main/domain/narrative/schema.py`
 - ✅ 9 node types defined: Dialogue, Choice, Action, ActionBlock, Scene, Branch, Wait, ExternalCall, Comment
 - ✅ Validation methods in NarrativeProgram (structure validation)
 - ✅ Condition expression evaluation (reusing existing logic)
@@ -240,8 +240,8 @@ export interface NarrativeStateComponent {
 **Status:** ✅ Complete (2025-11-19)
 
 **Deliverables:**
-- ✅ Python ECS helpers: `pixsim7_backend/domain/narrative/ecs_helpers.py`
-- ✅ TypeScript ECS helpers: `packages/game-core/src/narrative/ecsHelpers.ts`
+- ✅ Python ECS helpers: `pixsim7/backend/main/domain/narrative/ecs_helpers.py`
+- ✅ TypeScript ECS helpers: `packages/game/engine/src/narrative/ecsHelpers.ts`
 - ✅ 15+ helper functions implemented:
   * Core: `get_narrative_state`, `set_narrative_state`, `clear_narrative_state`
   * Lifecycle: `start_program`, `finish_program`, `advance_to_node`
@@ -290,7 +290,7 @@ Make `ActionBlockNode` a first-class citizen in the narrative program model and 
 **Status:** ✅ Complete (2025-11-19)
 
 **Deliverables:**
-- ✅ Action block resolver: `pixsim7_backend/domain/narrative/action_block_resolver.py`
+- ✅ Action block resolver: `pixsim7/backend/main/domain/narrative/action_block_resolver.py`
 - ✅ `ActionBlockSequence` dataclass for resolved blocks
 - ✅ Two resolution modes:
   * **Direct mode**: Fetch blocks by ID from ActionEngine or generated store
@@ -317,7 +317,7 @@ Implement a simple narrative runtime that can advance one step at a time and be 
 
 **Scope**
 
-- Backend service module, e.g. `pixsim7_backend/services/narrative/runtime.py`.
+- Backend service module, e.g. `pixsim7/backend/main/services/narrative/runtime.py`.
 
 **Key Steps**
 
@@ -346,8 +346,8 @@ Implement a simple narrative runtime that can advance one step at a time and be 
 **Status:** ✅ Complete (2025-11-19)
 
 **Deliverables:**
-- ✅ Runtime engine: `pixsim7_backend/services/narrative/runtime.py` (650 lines)
-- ✅ API endpoints: `pixsim7_backend/api/v1/narrative_runtime.py` (280 lines)
+- ✅ Runtime engine: `pixsim7/backend/main/services/narrative/runtime.py` (650 lines)
+- ✅ API endpoints: `pixsim7/backend/main/api/v1/narrative_runtime.py` (280 lines)
 - ✅ `NarrativeRuntimeEngine` - Core execution orchestrator
 - ✅ Execution for all 9 node types:
   * **DialogueNode**: Static text, templates, or LLM program execution
@@ -422,7 +422,7 @@ Replace scattered narrative calls with narrative program launches and steps.
 **Status:** ✅ Complete (2025-11-19)
 
 **Deliverables:**
-- ✅ Integration helpers: `pixsim7_backend/domain/narrative/integration_helpers.py` (530 lines)
+- ✅ Integration helpers: `pixsim7/backend/main/domain/narrative/integration_helpers.py` (530 lines)
 - ✅ Added `narrativeProgramId` to `InteractionOutcome` (Python + TypeScript)
 - ✅ Updated `interaction_execution.py` to launch narrative programs
 - ✅ Intimacy scene converter: `intimacy_scene_to_narrative_program()`
@@ -729,7 +729,7 @@ Based on this inventory, the unification should:
    - `stack` for nested programs
    - `history` for visited nodes
 
-3. **Build Narrative Runtime Service** (`pixsim7_backend/services/narrative/runtime.py`):
+3. **Build Narrative Runtime Service** (`pixsim7/backend/main/services/narrative/runtime.py`):
    - `start_program()`, `step_program()` API
    - Executes nodes and advances state
    - Calls into existing NarrativeEngine, ActionEngine as needed

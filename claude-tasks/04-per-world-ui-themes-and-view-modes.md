@@ -48,13 +48,13 @@ Below are 10 phases for per‑world themes and view modes.
   - `docs/GAME_WORLD_DISPLAY_MODES.md` – display modes and view modes  
   - `docs/SYSTEM_OVERVIEW.md` – worlds + HUD / tools overview
 - Frontend:  
-  - `frontend/src/lib/theming.ts` (or equivalent theme hooks)  
-  - `frontend/src/lib/worldTools/hudLayout*.ts`  
-  - `frontend/src/components/game/WorldToolsPanel.tsx`  
-  - `frontend/src/components/game/WorldThemeEditor.tsx`
+  - `apps/main/src/lib/theming.ts` (or equivalent theme hooks)  
+  - `apps/main/src/lib/worldTools/hudLayout*.ts`  
+  - `apps/main/src/components/game/WorldToolsPanel.tsx`  
+  - `apps/main/src/components/game/WorldThemeEditor.tsx`
 - Game-core / Types:  
   - `packages/types/src/game.ts` (`WorldUiConfig`, `WorldUiTheme`, `ViewMode`, `WorldGenerationConfig`)  
-  - `packages/game-core/src/world/worldUiConfig.ts`  
-  - `packages/game-core/src/world/worldUiThemePresets.ts`  
-  - `packages/game-core/src/world/dynamicThemeRules.ts`
+  - `packages/game/engine/src/world/worldUiConfig.ts`  
+  - `packages/game/engine/src/world/worldUiThemePresets.ts`  
+  - `packages/game/engine/src/world/dynamicThemeRules.ts`
 

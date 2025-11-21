@@ -3,10 +3,10 @@
 This guide lists canonical, reusable UI primitives and conventions so contributors and AIs reuse the same building blocks instead of reinventing them.
 
 ## Prompting
-- Canonical component: `frontend/src/components/primitives/PromptInput.tsx`
-- Barrel export: `frontend/src/components/primitives/index.ts`
-- Default limit: `frontend/src/config/prompt.ts` (DEFAULT_PROMPT_MAX_CHARS)
-- Provider-specific limit resolver: `frontend/src/utils/prompt/limits.ts` (Pixverse=2048; TODO: fetch from operation_specs)
+- Canonical component: `apps/main/src/components/primitives/PromptInput.tsx`
+- Barrel export: `apps/main/src/components/primitives/index.ts`
+- Default limit: `apps/main/src/config/prompt.ts` (DEFAULT_PROMPT_MAX_CHARS)
+- Provider-specific limit resolver: `apps/main/src/utils/prompt/limits.ts` (Pixverse=2048; TODO: fetch from operation_specs)
 
 Usage notes:
 - Always use `<PromptInput />` for collecting text prompts.
@@ -14,13 +14,13 @@ Usage notes:
 - Do not hardcode character limits in routes/components; import from config or use `resolvePromptLimit(providerId)`.
 
 ## Layout and Docking
-- Workspace layout store: `frontend/src/stores/layoutStore.ts`
-- Resizable split & dock rendering: `frontend/src/components/layout/*`
-- Workspace route: `frontend/src/routes/Workspace.tsx`
+- Workspace layout store: `apps/main/src/stores/layoutStore.ts`
+- Resizable split & dock rendering: `apps/main/src/components/layout/*`
+- Workspace route: `apps/main/src/routes/Workspace.tsx`
 
 ## Control Center Dock
-- Store: `frontend/src/stores/controlCenterStore.ts`
-- Component: `frontend/src/components/control/ControlCenterDock.tsx`
+- Store: `apps/main/src/stores/controlCenterStore.ts`
+- Component: `apps/main/src/components/control/ControlCenterDock.tsx`
 - Tasks for enhancement: `docs/CONTROL_CENTER_TASKS.md`
 
 ## General Conventions

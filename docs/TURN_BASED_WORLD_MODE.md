@@ -74,7 +74,7 @@ Content-Type: application/json
 
 ### Game2D Component
 
-The main world UI (`frontend/src/routes/Game2D.tsx`) includes:
+The main world UI (`apps/main/src/routes/Game2D.tsx`) includes:
 
 **Helper Functions:**
 ```typescript
@@ -222,8 +222,8 @@ interface WorldSessionFlags {
 | Component | File | Purpose |
 |-----------|------|---------|
 | **Type Definitions** | `packages/types/src/game.ts` | SessionFlags, WorldMode types |
-| **Session Helpers** | `frontend/src/lib/game/session.ts` | Flag creation utilities |
-| **Game UI** | `frontend/src/routes/Game2D.tsx` | Turn-based controls |
+| **Session Helpers** | `apps/main/src/lib/game/session.ts` | Flag creation utilities |
+| **Game UI** | `apps/main/src/routes/Game2D.tsx` | Turn-based controls |
 | **Session Service** | `pixsim7/backend/main/services/game/game_session_service.py` | Session management |
 | **World Service** | `pixsim7/backend/main/services/game/game_world_service.py` | Time advancement |
 | **NPC Schedules** | `pixsim7/backend/main/domain/game/models.py` | NPCSchedule model |

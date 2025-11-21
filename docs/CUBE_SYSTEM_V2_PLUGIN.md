@@ -34,7 +34,7 @@ Optional Plugin:
 
 ### Plugin Structure
 ```
-frontend/src/plugins/ui/cube-system-v2/
+apps/main/src/plugins/ui/cube-system-v2/
 ├── plugin.ts              # Manifest & lifecycle
 ├── CubeSystemV2.tsx       # Main 3D component
 └── README.md              # Documentation

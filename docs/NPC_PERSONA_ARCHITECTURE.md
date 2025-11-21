@@ -119,7 +119,7 @@ When building NPC brain state, data is merged in this priority order:
 ### Fetching Persona
 
 ```typescript
-import { createPixSim7Core } from '@pixsim7/game-core';
+import { createPixSim7Core } from '@pixsim7/game.engine';
 
 // 1. Configure persona provider
 const core = createPixSim7Core({
@@ -166,7 +166,7 @@ core.on('persona:invalidated', ({ npcId }) => {
 
 ### buildNpcBrainState Function
 
-The `buildNpcBrainState` function (in `packages/game-core/src/npcs/brain.ts`) handles merging:
+The `buildNpcBrainState` function (in `packages/game/engine/src/npcs/brain.ts`) handles merging:
 
 ```typescript
 export function buildNpcBrainState(params: {

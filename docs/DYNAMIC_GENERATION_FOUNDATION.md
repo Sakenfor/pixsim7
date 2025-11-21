@@ -4,7 +4,7 @@
 
 > **For Agents**
 > - Treat this doc + `docs/INTIMACY_AND_GENERATION.md` + `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` as the **spec** for generation; backend `Generation`/`GenerationArtifact` models and `generation_service` are the authority.
-> - When editing generation types or request shapes, keep `packages/types/src/generation.ts`, `packages/game-core/src/generation/*`, and backend generation APIs in sync.
+> - When editing generation types or request shapes, keep `packages/types/src/generation.ts`, `packages/game/engine/src/generation/*`, and backend generation APIs in sync.
 > - Use `GenerationSocialContext` for relationship/intimacy‑aware behavior; don’t hand‑code prompt logic directly in the frontend.
 > - Related tasks (roadmap/status):  
 >   - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`  

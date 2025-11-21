@@ -1,6 +1,6 @@
 # Plugin Loader System
 
-The plugin loader system provides automatic discovery and registration of helper and interaction plugins. Plugins are loaded from the `frontend/src/plugins/` directory and automatically registered with their respective registries during app initialization.
+The plugin loader system provides automatic discovery and registration of helper and interaction plugins. Plugins are loaded from the `apps/main/src/plugins/` directory and automatically registered with their respective registries during app initialization.
 
 ## Table of Contents
 
@@ -49,10 +49,10 @@ node scripts/create-plugin/index.js
 
 Or manually create a file in the appropriate directory:
 
-**Helper Plugin**: `frontend/src/plugins/helpers/my-helper/my-helper.ts`
+**Helper Plugin**: `apps/main/src/plugins/helpers/my-helper/my-helper.ts`
 
 ```typescript
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 import type { GameSessionDTO } from '@pixsim7/types';
 
 export function registerMyHelper() {
@@ -67,7 +67,7 @@ export function registerMyHelper() {
 }
 ```
 
-**Interaction Plugin**: `frontend/src/plugins/interactions/my-interaction/my-interaction.ts`
+**Interaction Plugin**: `apps/main/src/plugins/interactions/my-interaction/my-interaction.ts`
 
 ```typescript
 import type { InteractionPlugin } from '../../../lib/game/interactions/types';
@@ -124,7 +124,7 @@ Check the browser console to see plugin loading logs:
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │                  Plugin Loader                           │
-│  (frontend/src/lib/pluginLoader.ts)                     │
+│  (apps/main/src/lib/pluginLoader.ts)                     │
 │  • Uses import.meta.glob for discovery                  │
 │  • Loads plugins asynchronously                         │
 │  • Handles errors gracefully                            │
@@ -156,7 +156,7 @@ Check the browser console to see plugin loading logs:
 ## Directory Structure
 
 ```
-frontend/src/plugins/
+apps/main/src/plugins/
 ├── README.md                    # Plugin system documentation
 ├── helpers/                     # Session helper plugins
 │   ├── .gitkeep                 # Ensures directory is tracked
@@ -194,7 +194,7 @@ Helper plugins extend the session state management system. They can:
 **Example**:
 
 ```typescript
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 
 export function registerReputationHelper() {
   sessionHelperRegistry.register({
@@ -366,7 +366,7 @@ Create a helper for tracking achievements:
 **File**: `plugins/helpers/achievements/achievements.ts`
 
 ```typescript
-import { sessionHelperRegistry, generateHelper } from '@pixsim7/game-core';
+import { sessionHelperRegistry, generateHelper } from '@pixsim7/game.engine';
 
 export function registerAchievementsHelper() {
   generateHelper({
@@ -543,7 +543,7 @@ useEffect(() => {
 
 **Solutions**:
 1. Import types from correct packages:
-   - Helpers: `import { sessionHelperRegistry } from '@pixsim7/game-core'`
+   - Helpers: `import { sessionHelperRegistry } from '@pixsim7/game.engine'`
    - Interactions: `import type { InteractionPlugin } from '../../../lib/game/interactions/types'`
 2. Ensure config interface extends `BaseInteractionConfig` (for interactions)
 3. Run `npm run build` to check for type errors
@@ -650,7 +650,7 @@ export default defineConfig({
 ## Related Documentation
 
 - [PLUGIN_SYSTEM.md](../PLUGIN_SYSTEM.md) - Complete plugin system guide
-- [frontend/src/plugins/README.md](../frontend/src/plugins/README.md) - Plugin directory guide
+- [apps/main/src/plugins/README.md](../apps/main/src/plugins/README.md) - Plugin directory guide
 - [Session Helper Reference](./SESSION_HELPER_REFERENCE.md) - Helper API docs
 - [Interaction System](./BACKEND_INTERACTION_DISPATCHER.md) - Interaction architecture
 

@@ -126,7 +126,7 @@ pixsim7/backend/main/
 
 ### Frontend (TypeScript)
 ```
-frontend/src/types/
+apps/main/src/types/
 ├── game.ts                       ✨ WorldSchedulerConfig types
 └── index.ts                      📝 Export game types
 ```

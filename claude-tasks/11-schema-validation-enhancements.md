@@ -35,10 +35,10 @@ world.meta = {
 Add comprehensive field validators, cross-entry validators, and extend validation to all world schema types (mood, reputation, etc.).
 
 **Related Files**:
-- `pixsim7_backend/domain/game/schemas.py` – Schema validation models
-- `pixsim7_backend/api/v1/game_worlds.py` – World API with validation
-- `pixsim7_backend/domain/metrics/mood_evaluators.py` – Mood schema usage
-- `pixsim7_backend/domain/metrics/reputation_evaluators.py` – Reputation schema usage
+- `pixsim7/backend/main/domain/game/schemas.py` – Schema validation models
+- `pixsim7/backend/main/api/v1/game_worlds.py` – World API with validation
+- `pixsim7/backend/main/domain/metrics/mood_evaluators.py` – Mood schema usage
+- `pixsim7/backend/main/domain/metrics/reputation_evaluators.py` – Reputation schema usage
 - `docs/SOCIAL_METRICS.md` – Schema documentation
 - `claude-tasks/11-world-aware-session-normalization-and-schema-validation.md` – Part 1
 
@@ -561,7 +561,7 @@ Add comprehensive field validators, cross-entry validators, and extend validatio
 **Key Steps**:
 1. Create batch validation endpoint:
    ```python
-   # In pixsim7_backend/api/v1/game_worlds.py
+   # In pixsim7/backend/main/api/v1/game_worlds.py
 
    class WorldValidationResult(BaseModel):
        world_id: int

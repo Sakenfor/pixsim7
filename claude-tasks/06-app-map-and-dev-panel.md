@@ -2,7 +2,7 @@
 
 **Context**
 - The project has multiple architectural docs (`SYSTEM_OVERVIEW`, `PLUGIN_SYSTEM`, `APP_CAPABILITY_REGISTRY`, etc.).
-- There is a capability registry (`frontend/src/lib/capabilities`) and a plugin catalog (`frontend/src/lib/plugins/catalog.ts`).
+- There is a capability registry (`apps/main/src/lib/capabilities`) and a plugin catalog (`apps/main/src/lib/plugins/catalog.ts`).
 - There are many plugin families and core systems (Game2D, Brain Lab, World Tools, Gallery Tools, Modules).
 - It’s hard to get a single, up‑to‑date “mental map” of what exists and how it’s wired.
 
@@ -90,8 +90,8 @@ Visualize relationships between features, routes, and plugins as a graph.
 - Includes pan/zoom controls and minimap for navigation
 
 **Files Modified:**
-- `frontend/src/components/dev/DependencyGraphPanel.tsx` (new)
-- `frontend/src/components/dev/AppMapPanel.tsx` (integrated)
+- `apps/main/src/components/dev/DependencyGraphPanel.tsx` (new)
+- `apps/main/src/components/dev/AppMapPanel.tsx` (integrated)
 
 ---
 
@@ -132,8 +132,8 @@ Provide a dev‑only panel to exercise capabilities: trigger actions, navigate t
 - Integrated as "Capability Testing" tab in App Map Panel
 
 **Files Modified:**
-- `frontend/src/components/dev/CapabilityTestingPanel.tsx` (new)
-- `frontend/src/components/dev/AppMapPanel.tsx` (integrated)
+- `apps/main/src/components/dev/CapabilityTestingPanel.tsx` (new)
+- `apps/main/src/components/dev/AppMapPanel.tsx` (integrated)
 
 ---
 
@@ -156,7 +156,7 @@ Allow exporting the current feature/plugin map to JSON for analysis or inline do
 - Import functionality deferred (can be added later if needed)
 
 **Files Modified:**
-- `frontend/src/components/dev/AppMapPanel.tsx` (export handler added)
+- `apps/main/src/components/dev/AppMapPanel.tsx` (export handler added)
 
 ---
 

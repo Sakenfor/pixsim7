@@ -19,7 +19,7 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
 
 ## 1. Current Editor State (Relevant Parts)
 
-- `frontend/src/routes/GameWorld.tsx`
+- `apps/main/src/routes/GameWorld.tsx`
   - Lists locations via `/game/locations`.
   - For a selected location, edits its **hotspots**:
     - `object_name`, `hotspot_id`, `linked_scene_id`, `meta`.
@@ -27,19 +27,19 @@ state, and action blocks. This doc only covers **editor UX and JSON shapes**.
     - `type: 'play_scene' | 'change_location' | 'npc_talk'`
     - `scene_id`, `target_location_id`, `npc_id`.
 
-- `frontend/src/components/GraphPanel.tsx`
+- `apps/main/src/components/GraphPanel.tsx`
   - Scene graph editor (React Flow) for scene nodes/edges.
   - Uses `WorldContextSelector` to know `(worldId, locationId)` context but
     scene data is world‑agnostic.
 
-- `frontend/src/components/SceneBuilderPanel.tsx`
+- `apps/main/src/components/SceneBuilderPanel.tsx`
   - Node inspector for the selected scene node.
   - Already writes some life‑sim metadata into `SceneNode.metadata`:
     - `lifeSim.advanceMinutes`,
     - `npc_id` (hard binding),
     - `speakerRole`, `npc_state` (for expressions).
 
-- `frontend/src/routes/Game2D.tsx`
+- `apps/main/src/routes/Game2D.tsx`
   - 2D game preview:
     - Shows background image/video for `GameLocation`.
     - Renders hotspots on top via `meta.rect2d` and `linked_scene_id` / `meta.action`.
@@ -225,7 +225,7 @@ actual logic to the 2D client and back‑end endpoints.
 
 ### Client‑Side Integration (`Game2D`)
 
-In `frontend/src/routes/Game2D.tsx`:
+In `apps/main/src/routes/Game2D.tsx`:
 
 - After loading `locationDetail` and `npcSlots2d` from `locationDetail.meta`,
   and fetching `getNpcPresence` for the current `worldTime` + `location_id`, call

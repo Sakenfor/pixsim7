@@ -9,9 +9,9 @@
 >   - `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – life-sim / world integration  
 >   - `docs/SYSTEM_OVERVIEW.md` – backend architecture overview  
 >   - `docs/behavior_system/README.md` – behavior system structure  
->   - `pixsim7_backend/infrastructure/events/*` – event bus & handlers  
->   - `pixsim7_backend/workers/job_processor.py` (or equivalent) – background job processing  
->   - `pixsim7_backend/domain/game/session.py` – session & world time fields.
+>   - `pixsim7/backend/main/infrastructure/events/*` – event bus & handlers  
+>   - `pixsim7/backend/main/workers/job_processor.py` (or equivalent) – background job processing  
+>   - `pixsim7/backend/main/domain/game/session.py` – session & world time fields.
 > - Constraint: **no heavy DB schema changes** unless clearly justified; prefer:
 >   - `GameWorld.meta` / `GameSession.flags` / `GameSession.world_time` for configuration.  
 >   - Existing `generations`, `prompt_versions`, `device_agents`, etc., for jobs.
@@ -179,19 +179,19 @@ Define a world-level configuration and in-memory structure for simulation contro
 
 **Implementation Notes:**
 
-1. **Pydantic Schemas** (`pixsim7_backend/domain/game/schemas.py`)
+1. **Pydantic Schemas** (`pixsim7/backend/main/domain/game/schemas.py`)
    - Added `WorldSchedulerTierConfigSchema` - per-tier NPC limits
    - Added `WorldSchedulerConfigSchema` - complete scheduler configuration
    - Added `get_default_world_scheduler_config()` helper function
    - Config stored in `GameWorld.meta.simulation`
 
-2. **TypeScript Types** (`frontend/src/types/game.ts`)
+2. **TypeScript Types** (`apps/main/src/types/game.ts`)
    - Added `WorldSchedulerTierConfig` interface
    - Added `WorldSchedulerConfig` interface
    - Added `getDefaultWorldSchedulerConfig()` helper function
    - Added `GameWorld`, `GameWorldState`, `GameSession`, `GameNPC` types
 
-3. **Runtime Context** (`pixsim7_backend/services/simulation/context.py`)
+3. **Runtime Context** (`pixsim7/backend/main/services/simulation/context.py`)
    - Implemented `WorldSimulationContext` dataclass
    - Tracks world time, config, and transient state
    - Includes per-tick counters and performance metrics
@@ -215,7 +215,7 @@ Design the central scheduler abstraction that coordinates simulation ticks, gene
 
 **Scope**
 
-- A backend service module (e.g. `pixsim7_backend/services/simulation/scheduler.py`).
+- A backend service module (e.g. `pixsim7/backend/main/services/simulation/scheduler.py`).
 
 **Key Steps**
 
@@ -239,7 +239,7 @@ class WorldScheduler:
 
 **Implementation Notes:**
 
-1. **WorldScheduler** (`pixsim7_backend/services/simulation/scheduler.py`)
+1. **WorldScheduler** (`pixsim7/backend/main/services/simulation/scheduler.py`)
    - Implemented core scheduler class with `register_world()`, `unregister_world()`, `tick_world()` methods
    - `tick_world()` orchestrates the complete tick cycle:
      - Advances world time using timeScale
@@ -252,7 +252,7 @@ class WorldScheduler:
    - Maintains `_contexts` dict mapping world_id to WorldSimulationContext
    - Includes helper methods: `get_context()`, `get_all_contexts()`, `get_stats()`
 
-2. **SchedulerLoopRunner** (`pixsim7_backend/services/simulation/scheduler.py`)
+2. **SchedulerLoopRunner** (`pixsim7/backend/main/services/simulation/scheduler.py`)
    - Runs the scheduler loop for all registered worlds
    - `run_once()` method ticks worlds that are due based on `tickIntervalSeconds`
    - `start()` method for continuous loop (dev/testing)
@@ -566,27 +566,27 @@ Below is a comprehensive inventory of all time-based and scheduling mechanisms c
 | System | Time Source | Scheduling Mechanism | Location | Notes |
 |--------|-------------|---------------------|----------|-------|
 | **WORLD-TIME-DRIVEN** | | | | |
-| GameSession world_time | `GameSession.world_time` field | Per-session game time tracker | `pixsim7_backend/domain/game/models.py:66` | Primary per-session world time (float seconds) |
-| GameWorld world_time | `GameWorldState.world_time` field | Global world time tracker | `pixsim7_backend/domain/game/models.py:94` | Global world-level time, advanced via `advance_world_time()` |
-| Behavior simulation ticking | `world_time` parameter | NPC state `next_tick_at` compared to world_time | `pixsim7_backend/domain/behavior/simulation.py:114-138` | Determines when NPCs should be simulated based on tier tickFrequencySeconds |
-| NPC simulation tiers | Tier config | `tickFrequencySeconds` per tier (1s, 60s, 3600s) | `pixsim7_backend/domain/behavior/simulation.py:23-62` | high_priority=1s, medium_priority=60s, background=3600s |
-| Interaction time-of-day | `world_time` parsed to hour | Time constraint evaluation (periods, hour_ranges) | `pixsim7_backend/domain/game/interaction_availability.py:42-119` | Parses world_time to week cycle, day, hour for gating |
-| NPC schedules | `world_time` | day_of_week + start_time/end_time (seconds into day) | `pixsim7_backend/domain/game/models.py:124-132` | Activity windows based on world time cycles |
-| Scene edge cooldowns | `cooldown_sec` field | Cooldown tracking per edge traversal | `pixsim7_backend/domain/game/models.py:48` | Time-based cooldown (currently unclear if world_time or real-time) |
+| GameSession world_time | `GameSession.world_time` field | Per-session game time tracker | `pixsim7/backend/main/domain/game/models.py:66` | Primary per-session world time (float seconds) |
+| GameWorld world_time | `GameWorldState.world_time` field | Global world time tracker | `pixsim7/backend/main/domain/game/models.py:94` | Global world-level time, advanced via `advance_world_time()` |
+| Behavior simulation ticking | `world_time` parameter | NPC state `next_tick_at` compared to world_time | `pixsim7/backend/main/domain/behavior/simulation.py:114-138` | Determines when NPCs should be simulated based on tier tickFrequencySeconds |
+| NPC simulation tiers | Tier config | `tickFrequencySeconds` per tier (1s, 60s, 3600s) | `pixsim7/backend/main/domain/behavior/simulation.py:23-62` | high_priority=1s, medium_priority=60s, background=3600s |
+| Interaction time-of-day | `world_time` parsed to hour | Time constraint evaluation (periods, hour_ranges) | `pixsim7/backend/main/domain/game/interaction_availability.py:42-119` | Parses world_time to week cycle, day, hour for gating |
+| NPC schedules | `world_time` | day_of_week + start_time/end_time (seconds into day) | `pixsim7/backend/main/domain/game/models.py:124-132` | Activity windows based on world time cycles |
+| Scene edge cooldowns | `cooldown_sec` field | Cooldown tracking per edge traversal | `pixsim7/backend/main/domain/game/models.py:48` | Time-based cooldown (currently unclear if world_time or real-time) |
 | Activity cooldowns | Behavior activities | `cooldownSeconds` and `minDurationSeconds` | Behavior system (doc reference) | Prevents rapid activity switching |
 | **REAL-TIME-DRIVEN** | | | | |
-| Generation status polling | `datetime.utcnow()` | ARQ cron job every 10 seconds | `pixsim7_backend/workers/status_poller.py:25-220` | Polls provider APIs for generation status updates |
-| Automation loops | `datetime.utcnow()` | ARQ cron job every 30 seconds | `pixsim7_backend/workers/arq_worker.py:95-100` | Runs automation loop executions |
-| Worker heartbeat | `datetime.utcnow()` | ARQ cron job every 30 seconds | `pixsim7_backend/workers/arq_worker.py:101-106` | Health tracking for workers |
-| Generation timeout | `datetime.utcnow()` | 2-hour timeout check in poller | `pixsim7_backend/workers/status_poller.py:60-85` | Fails generations stuck in PROCESSING > 2hrs |
-| Generation scheduled_at | `Generation.scheduled_at` vs `datetime.utcnow()` | Check in job processor | `pixsim7_backend/workers/job_processor.py:109-113` | Defers generation processing until scheduled time |
+| Generation status polling | `datetime.utcnow()` | ARQ cron job every 10 seconds | `pixsim7/backend/main/workers/status_poller.py:25-220` | Polls provider APIs for generation status updates |
+| Automation loops | `datetime.utcnow()` | ARQ cron job every 30 seconds | `pixsim7/backend/main/workers/arq_worker.py:95-100` | Runs automation loop executions |
+| Worker heartbeat | `datetime.utcnow()` | ARQ cron job every 30 seconds | `pixsim7/backend/main/workers/arq_worker.py:101-106` | Health tracking for workers |
+| Generation timeout | `datetime.utcnow()` | 2-hour timeout check in poller | `pixsim7/backend/main/workers/status_poller.py:60-85` | Fails generations stuck in PROCESSING > 2hrs |
+| Generation scheduled_at | `Generation.scheduled_at` vs `datetime.utcnow()` | Check in job processor | `pixsim7/backend/main/workers/job_processor.py:109-113` | Defers generation processing until scheduled time |
 | Provider account cooldown | `ProviderAccount.cooldown_until` vs `datetime.utcnow()` | Check in account selection | Account service | Rate limiting for provider accounts |
-| Execution loop delays | `ExecutionLoop.last_execution_at` vs `datetime.utcnow()` | `delay_between_executions` check | `pixsim7_backend/services/automation/execution_loop_service.py:49-54` | Minimum time between automation executions |
+| Execution loop delays | `ExecutionLoop.last_execution_at` vs `datetime.utcnow()` | `delay_between_executions` check | `pixsim7/backend/main/services/automation/execution_loop_service.py:49-54` | Minimum time between automation executions |
 | Daily execution limits | Daily counter reset | `executions_today` with daily limit | Automation execution loops | Resets at day boundary (real-time) |
-| ARQ job processing | ARQ queue | Worker pulls jobs from Redis queue | `pixsim7_backend/workers/job_processor.py:41-92` | On-demand job processing via Redis |
+| ARQ job processing | ARQ queue | Worker pulls jobs from Redis queue | `pixsim7/backend/main/workers/job_processor.py:41-92` | On-demand job processing via Redis |
 | **MIXED/AMBIGUOUS** | | | | |
-| Relationship lastInteractionAt | `datetime.utcnow().isoformat()` | Timestamp update on interaction | `pixsim7_backend/domain/game/interaction_execution.py:80` | **ISSUE:** Uses real-time, should use world_time |
-| Session updated_at | `datetime.utcnow()` via `func.now()` | Auto-update on session changes | `pixsim7_backend/domain/game/models.py:69` | Audit/tracking timestamp (appropriate for real-time) |
+| Relationship lastInteractionAt | `datetime.utcnow().isoformat()` | Timestamp update on interaction | `pixsim7/backend/main/domain/game/interaction_execution.py:80` | **ISSUE:** Uses real-time, should use world_time |
+| Session updated_at | `datetime.utcnow()` via `func.now()` | Auto-update on session changes | `pixsim7/backend/main/domain/game/models.py:69` | Audit/tracking timestamp (appropriate for real-time) |
 | Interaction chain waits | Not fully implemented | waitSeconds/Minutes/Hours/Days mentioned in task doc | Task 21 context | **TODO:** Need to implement with world_time semantics |
 | NPC memory timestamps | `datetime.utcnow()` | Memory creation/update tracking | NPC memory system | May need world_time for in-game memory formation |
 

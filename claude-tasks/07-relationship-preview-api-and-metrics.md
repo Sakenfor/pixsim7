@@ -11,8 +11,8 @@
 
 **Context**
 - Today, relationship tiers and intimacy levels are computed:
-  - **Backend (Python)** in `pixsim7_backend/domain/narrative/relationships.py` using world schemas.
-  - **Game-core (TS)** in `packages/game-core/src/relationships/computation.ts` as a mirrored fallback.
+  - **Backend (Python)** in `pixsim7/backend/main/domain/narrative/relationships.py` using world schemas.
+  - **Game-core (TS)** in `packages/game/engine/src/relationships/computation.ts` as a mirrored fallback.
 - Frontend now imports only from game-core, but there is still **duplicated logic** between backend and TS.
 - We want:
   - Backend to be the **only authority** for relationship calculations that affect persisted state.
@@ -61,12 +61,12 @@ Below are 10 phases for killing duplicated TS math for relationships and introdu
   - `docs/RELATIONSHIPS_AND_ARCS.md` – session/relationship conventions  
   - `docs/SOCIAL_METRICS.md` – metric system and preview APIs
 - Backend:  
-  - `pixsim7_backend/domain/narrative/relationships.py`  
-  - `pixsim7_backend/domain/metrics/relationship_evaluators.py`  
-  - `pixsim7_backend/domain/metrics/__init__.py` (metric registry wiring)  
-  - `pixsim7_backend/api/v1/game_relationship_preview.py`
+  - `pixsim7/backend/main/domain/narrative/relationships.py`  
+  - `pixsim7/backend/main/domain/metrics/relationship_evaluators.py`  
+  - `pixsim7/backend/main/domain/metrics/__init__.py` (metric registry wiring)  
+  - `pixsim7/backend/main/api/v1/game_relationship_preview.py`
 - Game-core / Types:  
-  - `packages/game-core/src/relationships/computation.ts`  
-  - `packages/game-core/src/relationships/preview.ts`  
+  - `packages/game/engine/src/relationships/computation.ts`  
+  - `packages/game/engine/src/relationships/preview.ts`  
   - `packages/types/src/game.ts` (preview request/response types)
 

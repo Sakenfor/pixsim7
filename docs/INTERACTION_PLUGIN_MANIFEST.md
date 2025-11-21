@@ -321,7 +321,7 @@ When backend symmetry is added (see [BACKEND_INTERACTION_DISPATCHER.md](./BACKEN
 
 ### 1. Create Plugin File
 
-Create `frontend/src/lib/game/interactions/myPlugin.ts`:
+Create `apps/main/src/lib/game/interactions/myPlugin.ts`:
 
 ```typescript
 import type {
@@ -383,7 +383,7 @@ export const myPlugin: InteractionPlugin<MyPluginConfig> = {
 
 ### 2. Register Plugin
 
-Add to `frontend/src/lib/game/interactions/index.ts`:
+Add to `apps/main/src/lib/game/interactions/index.ts`:
 
 ```typescript
 import { myPlugin } from './myPlugin';
@@ -500,5 +500,5 @@ configFields: [
 ## See Also
 
 - [BACKEND_INTERACTION_DISPATCHER.md](./BACKEND_INTERACTION_DISPATCHER.md) - Future backend symmetry
-- [frontend/src/lib/game/interactions/README.md](../frontend/src/lib/game/interactions/README.md) - Implementation details
-- [frontend/src/lib/game/interactions/types.ts](../frontend/src/lib/game/interactions/types.ts) - TypeScript interfaces
+- [apps/main/src/lib/game/interactions/README.md](../apps/main/src/lib/game/interactions/README.md) - Implementation details
+- [apps/main/src/lib/game/interactions/types.ts](../apps/main/src/lib/game/interactions/types.ts) - TypeScript interfaces

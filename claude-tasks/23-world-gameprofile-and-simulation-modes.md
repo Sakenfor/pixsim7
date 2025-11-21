@@ -15,7 +15,7 @@
 >   - `docs/INTIMACY_SCENE_COMPOSER.md` – intimacy vs VN flows  
 >   - `claude-tasks/13-safeguards-and-extensibility.md` – scoring & simulation config  
 >   - `claude-tasks/21-world-time-and-simulation-scheduler-unification.md` – world simulation config  
->   - `frontend/src/routes/Game2D.tsx` – current turn-based 2D playtest logic.
+>   - `apps/main/src/routes/Game2D.tsx` – current turn-based 2D playtest logic.
 
 ---
 
@@ -93,7 +93,7 @@ export interface GameProfile {
 }
 ```
 
-2. Mirror in Pydantic (`pixsim7_backend/domain/game/schemas.py`) as `GameProfileSchema`.  
+2. Mirror in Pydantic (`pixsim7/backend/main/domain/game/schemas.py`) as `GameProfileSchema`.  
 3. Extend `GameWorld.meta` validation to include:
 
 ```json

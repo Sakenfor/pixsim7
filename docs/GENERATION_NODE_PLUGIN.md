@@ -18,7 +18,7 @@ The Generation node is a plugin node type that enables AI-powered content genera
 ### Frontend Components
 
 #### GenerationNodeEditor
-Located at: `frontend/src/components/inspector/GenerationNodeEditor.tsx`
+Located at: `apps/main/src/components/inspector/GenerationNodeEditor.tsx`
 
 The editor provides a comprehensive UI for configuring generation nodes:
 
@@ -98,7 +98,7 @@ The generation configuration is stored in the job's `params` field and processed
 ### Cache Key Utilities
 
 #### computeGenerationCacheKey
-Located at: `packages/game-core/src/generation/cacheKey.ts`
+Located at: `packages/game/engine/src/generation/cacheKey.ts`
 
 Computes stable cache keys for generation nodes based on:
 1. Node ID
@@ -110,7 +110,7 @@ Computes stable cache keys for generation nodes based on:
 
 **Usage**:
 ```typescript
-import { computeGenerationCacheKey } from '@pixsim7/game-core';
+import { computeGenerationCacheKey } from '@pixsim7/game.engine';
 
 const cacheKey = computeGenerationCacheKey(generationNode, {
   playthroughId: 'pt-123',
@@ -219,7 +219,7 @@ The editor enforces these validation rules:
 Cache key utilities include comprehensive tests:
 
 ```typescript
-import { computeGenerationCacheKey, isCacheKeyValid } from '@pixsim7/game-core';
+import { computeGenerationCacheKey, isCacheKeyValid } from '@pixsim7/game.engine';
 
 // Test cache key computation
 const node: GenerationNode = { ... };
@@ -268,15 +268,15 @@ The generation node integrates with the existing jobs/generation system:
 ## File Locations
 
 **Frontend**:
-- `frontend/src/components/inspector/GenerationNodeEditor.tsx`
-- `frontend/src/components/inspector/InspectorPanel.tsx`
+- `apps/main/src/components/inspector/GenerationNodeEditor.tsx`
+- `apps/main/src/components/inspector/InspectorPanel.tsx`
 
 **Types**:
 - `packages/types/src/generation.ts`
 - `packages/types/src/builtinNodeTypes.ts`
 
 **Core Utilities**:
-- `packages/game-core/src/generation/cacheKey.ts`
+- `packages/game/engine/src/generation/cacheKey.ts`
 
 **Backend** (existing jobs system):
 - `pixsim7/backend/main/api/v1/jobs.py`

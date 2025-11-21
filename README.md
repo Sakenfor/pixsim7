@@ -91,7 +91,7 @@ cd /g/code/pixsim7
 **💻 Frontend:**
 - `/docs/frontend/COMPONENTS.md` - Component library reference
 - `/frontend/README.md` - Frontend architecture
-- `/frontend/src/lib/ICONS_README.md` - Icon system guide
+- `/apps/main/src/lib/ICONS_README.md` - Icon system guide
 - `/frontend/EMOJI_MIGRATION.md` - Emoji migration status (100% complete)
 
 **🎮 Game & Integration:**

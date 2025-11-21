@@ -236,11 +236,11 @@ const useSemanticCubeStore = create((set, get) => {
 
 ## Connecting to Headless Core
 
-When the real `@pixsim7/game-core` is ready:
+When the real `@pixsim7/game.engine` is ready:
 
 ```typescript
 // Replace mock with real core
-import { PixSim7Core } from '@pixsim7/game-core';
+import { PixSim7Core } from '@pixsim7/game.engine';
 
 const core = new PixSim7Core({
   api: apiClient,
@@ -330,7 +330,7 @@ import { BrainShapeExample } from './components/examples/BrainShapeExample';
 
 ## Resources
 
-- Core Types: `@pixsim7/game-core`
+- Core Types: `@pixsim7/game.engine`
 - Shape Registry: `@pixsim7/semantic-shapes`
 - Sci-Fi Theme: `/lib/theme/scifi-tokens.ts`
 - Brain Shape Component: `/components/shapes/BrainShape.tsx`

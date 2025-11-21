@@ -8,19 +8,19 @@ Node type plugins (like `seductionNode` and `questTriggerNode`) are now automati
 
 ### Changes Made
 
-1. **Extended `pluginLoader.ts`** (frontend/src/lib/pluginLoader.ts)
+1. **Extended `pluginLoader.ts`** (apps/main/src/lib/pluginLoader.ts)
    - Added `loadNodeTypePlugins()` function
    - Updated `PluginLoadResult` interface to include `nodes` field
    - Integrated node plugin loading into `loadAllPlugins()`
    - Node plugins are loaded **first** (before helpers/interactions) to ensure availability when scenes load
 
-2. **Updated `App.tsx`** (frontend/src/App.tsx)
+2. **Updated `App.tsx`** (apps/main/src/App.tsx)
    - Removed manual imports: `registerSeductionNode` and `registerQuestTriggerNode`
    - Removed manual registration calls
    - Updated comments to reflect automatic plugin discovery
 
 3. **Plugin Convention**
-   - **Location**: `frontend/src/lib/plugins/**/*Node.{ts,tsx}`
+   - **Location**: `apps/main/src/lib/plugins/**/*Node.{ts,tsx}`
    - **Export Convention**: Functions matching pattern `register*Node`
    - **Examples**:
      - `registerSeductionNode()` in `seductionNode.ts`
@@ -64,10 +64,10 @@ When the app starts, you'll see:
 
 ### Step 1: Create the Plugin File
 
-Create a file in `frontend/src/lib/plugins/` with a name ending in `Node.ts`:
+Create a file in `apps/main/src/lib/plugins/` with a name ending in `Node.ts`:
 
 ```typescript
-// frontend/src/lib/plugins/myCustomNode.ts
+// apps/main/src/lib/plugins/myCustomNode.ts
 import { nodeTypeRegistry } from '@pixsim7/types';
 
 export interface MyCustomNodeData {
@@ -178,7 +178,7 @@ Only the manual registration in `App.tsx` needed to be removed.
 
 ### Plugin not loading?
 
-1. **Check file location**: Must be in `frontend/src/lib/plugins/` or subdirectories
+1. **Check file location**: Must be in `apps/main/src/lib/plugins/` or subdirectories
 2. **Check filename**: Must end with `Node.ts` or `Node.tsx`
 3. **Check export**: Must export a function named `register*Node`
 4. **Check console**: Look for error messages in browser console
@@ -211,8 +211,8 @@ App.tsx (useEffect)
 
 ## Related Files
 
-- `frontend/src/lib/pluginLoader.ts` - Plugin loading logic
-- `frontend/src/App.tsx` - Calls `loadAllPlugins()` on startup
-- `frontend/src/lib/plugins/seductionNode.ts` - Example node plugin
-- `frontend/src/lib/plugins/questTriggerNode.ts` - Example node plugin
-- `frontend/src/components/nodes/NodePalette.tsx` - Uses `nodeTypeRegistry.getUserCreatable()`
+- `apps/main/src/lib/pluginLoader.ts` - Plugin loading logic
+- `apps/main/src/App.tsx` - Calls `loadAllPlugins()` on startup
+- `apps/main/src/lib/plugins/seductionNode.ts` - Example node plugin
+- `apps/main/src/lib/plugins/questTriggerNode.ts` - Example node plugin
+- `apps/main/src/components/nodes/NodePalette.tsx` - Uses `nodeTypeRegistry.getUserCreatable()`

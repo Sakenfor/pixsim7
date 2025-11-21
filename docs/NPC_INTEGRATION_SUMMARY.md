@@ -219,7 +219,7 @@ Add NPC-specific parameter validation in `create_generation()`.
 
 ### 4. Create UI Plugin (Frontend)
 
-**File: `frontend/src/lib/providers/plugins/npcResponsePlugin.tsx`**
+**File: `apps/main/src/lib/providers/plugins/npcResponsePlugin.tsx`**
 
 See `docs/NPC_RESPONSE_VIDEO_INTEGRATION.md` for full example code.
 

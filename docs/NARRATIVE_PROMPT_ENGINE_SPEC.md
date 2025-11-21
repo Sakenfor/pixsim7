@@ -14,9 +14,9 @@
 
 &nbsp; - Frontend: React/TS, with:
 
-&nbsp;     - 2D game route: frontend/src/routes/Game2D.tsx.
+&nbsp;     - 2D game route: apps/main/src/routes/Game2D.tsx.
 
-&nbsp;     - Scene editor graph: frontend/src/components/GraphPanel.tsx, SceneBuilderPanel.tsx.
+&nbsp;     - Scene editor graph: apps/main/src/components/GraphPanel.tsx, SceneBuilderPanel.tsx.
 
 &nbsp; - Shared: Scene runtime types + UI:
 

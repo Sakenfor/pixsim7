@@ -47,26 +47,26 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Visual tier progression indicators
   - Intimacy level badges
   - Metric requirement progress bars
-  - `frontend/src/components/intimacy/RelationshipGateVisualizer.tsx`
+  - `apps/main/src/components/intimacy/RelationshipGateVisualizer.tsx`
 
 - [x] **Phase 3 – Intimacy Scene Composer** ✓
   - Tabbed editor (Basic, Gates, Generation, Validation)
   - Scene type/intensity/rating configuration
   - Multi-gate management with visual feedback
-  - `frontend/src/components/intimacy/IntimacySceneComposer.tsx`
+  - `apps/main/src/components/intimacy/IntimacySceneComposer.tsx`
 
 - [x] **Phase 4 – Progression Arc Editor** ✓
   - Timeline view with stage cards
   - Horizontal/vertical/list layouts
   - Stage detail side panel
   - Progress tracking support
-  - `frontend/src/components/intimacy/ProgressionArcEditor.tsx`
+  - `apps/main/src/components/intimacy/ProgressionArcEditor.tsx`
 
 - [x] **Phase 5 – Content Rating Validation & Safety Rails** ✓
   - Multi-layer rating validation (world + user)
   - Gate validation with conflict detection
   - Real-time validation feedback
-  - `frontend/src/lib/intimacy/validation.ts`
+  - `apps/main/src/lib/intimacy/validation.ts`
 
 - [x] **Phase 6 – Documentation** ✓
   - Comprehensive usage guide in `docs/INTIMACY_SCENE_COMPOSER.md`
@@ -80,9 +80,9 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Gate satisfaction preview with pass/fail indicators
   - Quick presets for common relationship states
   - Implemented in:
-    - `frontend/src/components/intimacy/RelationshipStateEditor.tsx`
-    - `frontend/src/components/intimacy/GatePreviewPanel.tsx`
-    - `frontend/src/lib/intimacy/gateChecking.ts`
+    - `apps/main/src/components/intimacy/RelationshipStateEditor.tsx`
+    - `apps/main/src/components/intimacy/GatePreviewPanel.tsx`
+    - `apps/main/src/lib/intimacy/gateChecking.ts`
   - Integrated into IntimacySceneComposer (Generation tab)
   - Preview mode added to ProgressionArcEditor
 
@@ -91,18 +91,18 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Social context auto-derivation
   - Preview generated content in editor
   - Implemented in:
-    - `frontend/src/lib/intimacy/socialContextDerivation.ts`
-    - `frontend/src/lib/intimacy/generationPreview.ts`
-    - `frontend/src/components/intimacy/GenerationPreviewPanel.tsx`
+    - `apps/main/src/lib/intimacy/socialContextDerivation.ts`
+    - `apps/main/src/lib/intimacy/generationPreview.ts`
+    - `apps/main/src/components/intimacy/GenerationPreviewPanel.tsx`
   - Integrated into IntimacySceneComposer (Generation tab)
   - Documentation updated in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 3 section)
 
 - [x] **Phase 9 – Save/Load & State Persistence** ✓
-  - Save/load utilities for scenes and arcs (`frontend/src/lib/intimacy/saveLoad.ts`)
+  - Save/load utilities for scenes and arcs (`apps/main/src/lib/intimacy/saveLoad.ts`)
   - JSON export/import with metadata
   - Local storage persistence
   - Simulated state save/load
-  - SaveLoadControls components (`frontend/src/components/intimacy/SaveLoadControls.tsx`)
+  - SaveLoadControls components (`apps/main/src/components/intimacy/SaveLoadControls.tsx`)
   - Integration in IntimacySceneComposer (Save/Load tab)
   - Integration in ProgressionArcEditor (Save/Load modal)
   - Documentation in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 4 section)
@@ -139,11 +139,11 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - `packages/types/src/generation.ts` – Generation & social context types
 
 - **Frontend Components (Phase 1 - IMPLEMENTED):**
-  - `frontend/src/components/intimacy/IntimacySceneComposer.tsx` – Main editor panel
-  - `frontend/src/components/intimacy/RelationshipGateVisualizer.tsx` – Gate configuration
-  - `frontend/src/components/intimacy/ProgressionArcEditor.tsx` – Timeline editor
-  - `frontend/src/lib/intimacy/validation.ts` – Validation utilities
-  - `frontend/src/components/generation/SocialContextPanel.tsx` – Social context display
+  - `apps/main/src/components/intimacy/IntimacySceneComposer.tsx` – Main editor panel
+  - `apps/main/src/components/intimacy/RelationshipGateVisualizer.tsx` – Gate configuration
+  - `apps/main/src/components/intimacy/ProgressionArcEditor.tsx` – Timeline editor
+  - `apps/main/src/lib/intimacy/validation.ts` – Validation utilities
+  - `apps/main/src/components/generation/SocialContextPanel.tsx` – Social context display
 
 - **Backend/game-core (existing):**
   - Relationship preview APIs and social metrics (Tasks 07–08)
