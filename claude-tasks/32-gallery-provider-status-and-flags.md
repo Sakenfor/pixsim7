@@ -10,8 +10,8 @@
 >   - Work on upload flows (extension, gallery tools).
 > - Read these first for context:
 >   - `GAMEPLAY_SYSTEMS.md` – asset/quest/inventory conventions
->   - `pixsim7_backend/api/v1/assets.py` – asset list & upload endpoints
->   - `pixsim7_backend/services/upload/upload_service.py` – provider upload behavior and notes
+>   - `pixsim7/backend/main/api/v1/assets.py` – asset list & upload endpoints
+>   - `pixsim7/backend/main/services/upload/upload_service.py` – provider upload behavior and notes
 >   - `apps/main/src/routes/Assets.tsx` – main gallery route
 >   - `apps/main/src/components/media/MediaCard.tsx` – asset card UI
 
@@ -36,11 +36,13 @@ We want the **Assets/Gallery** view to show a truthful, at-a-glance view of prov
 
 ## Phase Checklist
 
-- [ ] **Phase 32.1 – Expose Provider Upload Status on Asset DTO**
-- [ ] **Phase 32.2 – Add Provider Status Badges in Gallery**
-- [ ] **Phase 32.3 – Optional: Flagged/Moderation Status Surfacing**
-- [ ] **Phase 32.4 – Filters & Quick-View for Provider Status**
+- [X] **Phase 32.1 – Expose Provider Upload Status on Asset DTO** ✅ Complete
+- [X] **Phase 32.2 – Add Provider Status Badges in Gallery** ✅ Complete
+- [ ] **Phase 32.3 – Optional: Flagged/Moderation Status Surfacing** (Optional - backend ready)
+- [X] **Phase 32.4 – Filters & Quick-View for Provider Status** ✅ Complete
 - [ ] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics**
+
+**Overall Status:** ~80% Complete (3 of 4 required phases done, 1 optional phase backend-ready)
 
 ---
 
@@ -52,9 +54,9 @@ Make backend asset list responses carry a simple, stable provider status that th
 **Scope**
 
 - Backend asset API:
-  - `pixsim7_backend/api/v1/assets.py`
+  - `pixsim7/backend/main/api/v1/assets.py`
 - Asset schema:
-  - `pixsim7_backend/shared/schemas/asset_schemas.py` (or equivalent)
+  - `pixsim7/backend/main/shared/schemas/asset_schemas.py` (or equivalent)
 
 **Key Steps**
 
@@ -66,7 +68,14 @@ Make backend asset list responses carry a simple, stable provider status that th
    - Otherwise → `"unknown"` (or omitted).
 3. Make sure `/api/v1/assets` responses include this field for each asset.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Implementation Details:**
+- Backend: `pixsim7/backend/main/api/v1/assets.py` lines 78-100, 135-150
+- Schema: `pixsim7/backend/main/shared/schemas/asset_schemas.py` line 58
+- provider_status field returns: "ok", "local_only", "unknown", "flagged"
+- Computed based on provider_asset_id and provider_flagged fields
+- Works in both list and get asset endpoints
 
 ---
 
@@ -94,7 +103,16 @@ Visually differentiate local-only assets vs provider-accepted assets in the gall
    - Use existing `Badge` / `StatusBadge` components where possible.
    - Prefer short labels and tooltips over long inline text.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Implementation Details:**
+- Component: `apps/main/src/components/media/MediaCard.tsx`
+- Badges shown on hover (lines 210-224):
+  - "Provider OK" (green) - when provider_status === 'ok'
+  - "Local only" (yellow) - when provider_status === 'local_only'
+  - "Flagged" (red) - when provider_status === 'flagged'
+- Clear tooltips explaining each status
+- Integrated with existing hover overlay design
 
 ---
 
@@ -120,7 +138,19 @@ If the provider later flags or rejects assets (moderation, policy), surface that
    - “Local only” = PixSim7 kept the file, provider never accepted it.
    - “Flagged” = provider accepted but later marked it as problematic.
 
-**Status:** `[ ]` Not started
+**Status:** `[ ]` Optional - Backend Ready
+
+**Implementation Details:**
+- Backend has `provider_flagged` field in Asset model and AssetResponse schema
+- Backend has `provider_flag_reason` field for detailed moderation messages
+- ✅ Field is exposed in API responses
+- ❌ No webhook/polling system to populate these fields from provider APIs yet
+- Frontend displays "Flagged" badge when field is true (ready to use)
+
+**Next Steps if Implementing:**
+1. Add provider moderation webhook endpoints
+2. Implement polling/webhook handling for Pixverse/OpenAPI moderation status
+3. Update provider_flagged and provider_flag_reason when moderation occurs
 
 ---
 
@@ -146,7 +176,23 @@ Make it easy to quickly see and filter assets by provider status (e.g. “show m
 4. Add a simple “Status overview” helper in the toolbar, e.g.:
    - `X Provider OK / Y Local-only / Z Flagged`, computed from the current page of assets.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Implementation Details:**
+- Route: `apps/main/src/routes/Assets.tsx`
+- Status overview (lines 254-270):
+  - Shows count of assets by status: "X OK / Y Local / Z Flagged"
+  - Computed from items.filter() in real-time
+- Filter dropdown (lines 299-309):
+  - "All Status", "Provider OK", "Local Only", "Flagged", "Unknown"
+  - Syncs to URL query params and sessionStorage
+  - Updates via setAndPersist() helper
+- ✅ Frontend filtering works
+- ⚠️ Backend doesn't filter by provider_status in SQL yet (filters client-side)
+
+**Next Steps if Optimizing:**
+1. Add provider_status filter support in backend asset service
+2. Push filtering into SQL query instead of post-query filtering
 
 ---
 

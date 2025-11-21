@@ -5,9 +5,9 @@
 > - Allows true modding: plugins can add "weather preference", "social fatigue", etc. to NPC behavior.
 > - Read these first:
 >   - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin architecture overview
->   - `pixsim7_backend/domain/behavior/scoring.py` – 8 hardcoded scoring factors
+>   - `pixsim7/backend/main/domain/behavior/scoring.py` – 8 hardcoded scoring factors
 >   - `packages/game-core/src/world/gameProfile.ts` – hardcoded tier limits per style
->   - `pixsim7_backend/infrastructure/plugins/behavior_registry.py` – registry infrastructure
+>   - `pixsim7/backend/main/infrastructure/plugins/behavior_registry.py` – registry infrastructure
 >   - `docs/TASK_TRACKING_OVERVIEW.md` (Architectural Analysis section) – detailed rationale
 
 ---
@@ -46,7 +46,7 @@ Refactor scoring to use factor registry so plugins can add dimensions.
 3. Add `register_scoring_factor()` function for plugins
 4. Register 8 existing factors as built-ins during module load
 
-**File:** `pixsim7_backend/domain/behavior/scoring.py`
+**File:** `pixsim7/backend/main/domain/behavior/scoring.py`
 
 **Benefits:** Plugins can add "weather preference", "social fatigue", "time pressure" factors
 
@@ -156,7 +156,7 @@ def weather_preference_factor(activity, npc_prefs, npc_state, context, weight):
         return 1 + (preference - 1) * weight
     return 1.0
 
-from pixsim7_backend.domain.behavior.scoring import register_scoring_factor
+from pixsim7.backend.main.domain.behavior.scoring import register_scoring_factor
 register_scoring_factor("plugin:weather:preference", weather_preference_factor, 0.6)
 ```
 

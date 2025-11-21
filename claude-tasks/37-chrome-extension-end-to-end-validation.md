@@ -11,8 +11,8 @@
 > - Read these first:
 >   - `chrome-extension/README.md` and `QUICK_START.md`
 >   - `LOGGING_STRUCTURE.md` (for log ingestion related to uploads)
->   - `pixsim7_backend/api/v1/assets.py` – upload-from-url and related routes
->   - `pixsim7_backend/api/v1/accounts.py` – cookies/login endpoints
+>   - `pixsim7/backend/main/api/v1/assets.py` – upload-from-url and related routes
+>   - `pixsim7/backend/main/api/v1/accounts.py` – cookies/login endpoints
 
 ---
 

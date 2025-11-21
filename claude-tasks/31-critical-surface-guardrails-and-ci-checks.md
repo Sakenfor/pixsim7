@@ -49,12 +49,12 @@ Ensure critical plugins (logs, WebSocket, game APIs) are loaded correctly and th
 **Scope**
 
 - Backend plugin manager and route manifests:
-  - `pixsim7_backend/routes/*/manifest.py`
-  - `pixsim7_backend/infrastructure/plugins/*`
+  - `pixsim7/backend/main/routes/*/manifest.py`
+  - `pixsim7/backend/main/infrastructure/plugins/*`
 - Critical endpoints:
   - `api/v1/logs/*`
   - `api/v1/ws/*`
-  - Other route plugins marked as “required”
+  - Other route plugins marked as "required"
 
 **Key Steps**
 
@@ -63,10 +63,10 @@ Ensure critical plugins (logs, WebSocket, game APIs) are loaded correctly and th
    - Distinguish between “optional” and “required” plugins.
 2. **Fail-fast behavior for required plugins (dev/CI mode)**  
    - In development/CI, if a required route plugin fails to load (import error, dependency failure, bad signature), fail startup with a clear error instead of silently skipping it.
-3. **Orphan router detection script**  
+3. **Orphan router detection script**
    - Add a small script under `scripts/` (or a pytest) that:
-     - Scans `pixsim7_backend/api/v1/*.py` for `router` instances.
-     - Verifies there is a corresponding `pixsim7_backend/routes/<feature>/manifest.py` for each “public” router, or explicitly whitelists internal-only routers.
+     - Scans `pixsim7/backend/main/api/v1/*.py` for `router` instances.
+     - Verifies there is a corresponding `pixsim7/backend/main/routes/<feature>/manifest.py` for each "public" router, or explicitly whitelists internal-only routers.
 4. **Minimal plugin smoke tests**  
    - Add a small test module that:
      - Starts the app (or imports the application factory).
@@ -84,7 +84,7 @@ Make WebSocket message handling robust to keep-alive frames (`ping`/`pong`) and 
 **Scope**
 
 - WebSocket server endpoints:
-  - `pixsim7_backend/api/v1/websocket.py` (or equivalent)
+  - `pixsim7/backend/main/api/v1/websocket.py` (or equivalent)
 - Frontend WebSocket hooks:
   - `apps/main/src/hooks/useGenerationWebSocket.ts`
   - Any other hooks that parse WebSocket messages

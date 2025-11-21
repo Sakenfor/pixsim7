@@ -71,9 +71,17 @@ Expose Control Center mode selection in a dedicated Settings section so users ca
    - Clicking a mode calls `controlCenterRegistry.setActive(id)` and updates the UI.
    - Show a brief confirmation (toast or inline message) like “Switched to Cube System V2 (3D)”.
 3. Display keyboard shortcut hint:
-   - E.g., “Tip: Press Ctrl+Shift+X to open the Control Center selector.”
+   - E.g., "Tip: Press Ctrl+Shift+X to open the Control Center selector."
 
 **Status:** `[ ]` Not started
+
+**Blocker:** No Settings route exists in the application yet
+
+**Next Steps if Implementing:**
+1. Create Settings route (`apps/main/src/routes/Settings.tsx`)
+2. Add Settings link to navigation/dock
+3. Implement "Control Center" settings section per task requirements
+4. Wire up to controlCenterRegistry.setActive()
 
 ---
 
@@ -101,7 +109,28 @@ Make the selector overlay and quick switcher feel polished and consistent, and e
 3. Ensure no mode disables the selector:
    - Verify that pressing Ctrl+Shift+X always opens or toggles the selector, regardless of the active control center.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Implementation Details:**
+- Component: `apps/main/src/components/control/ControlCenterManager.tsx`
+- ✅ Selector overlay (lines 89-174):
+  - Opens with Ctrl+Shift+X keyboard shortcut (lines 38-47)
+  - Shows all available control centers in grid layout
+  - Clear "ACTIVE" badge on current selection (lines 130-134)
+  - Feature tags displayed for each option (lines 150-161)
+  - Footer shows keyboard shortcut hint (line 170)
+- ✅ Quick switcher button (lines 177-185):
+  - Bottom-left corner of screen
+  - Shows current control center name
+  - Clickable to open selector
+  - Has z-index: 40 to stay above most content
+- ✅ UX polish:
+  - Smooth transitions and hover effects
+  - Backdrop blur on overlay
+  - Console notification on switch (line 59)
+  - Prevents selector from being disabled by any mode
+
+**Already Working:** All requirements from this phase are complete!
 
 ---
 
