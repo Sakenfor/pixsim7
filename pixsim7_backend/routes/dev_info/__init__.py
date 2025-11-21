@@ -1,3 +1,0 @@
-"""
-Dev Info Routes Plugin
-"""
