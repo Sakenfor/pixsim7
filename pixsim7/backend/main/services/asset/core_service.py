@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.domain import (
     Asset,
-    Job,
     ProviderSubmission,
     User,
     MediaType,
