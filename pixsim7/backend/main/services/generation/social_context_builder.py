@@ -49,6 +49,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 
+# Content rating ordering for clamping
+# Re-exported for backward compatibility
+RATING_ORDER = ['sfw', 'romantic', 'mature_implied', 'restricted']
+
+
 async def build_generation_social_context(
     db: AsyncSession,
     world_id: int,
