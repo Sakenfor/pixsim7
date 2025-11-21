@@ -51,7 +51,7 @@
       "description": "SvelteKit admin interface",
       "port_env": "ADMIN_PORT",
       "default_port": 5174,
-      "directory": "admin",
+      "directory": "apps/main",
       "command": "npm",
       "args": ["run", "dev"],
       "env_overrides": {
@@ -68,7 +68,7 @@
       "description": "React main application",
       "port_env": "FRONTEND_PORT",
       "default_port": 5173,
-      "directory": "frontend",
+      "directory": "apps/game",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {
@@ -85,7 +85,7 @@
       "description": "React game interface",
       "port_env": "GAME_FRONTEND_PORT",
       "default_port": 5175,
-      "directory": "game-frontend",
+      "directory": "apps/main",
       "command": "pnpm",
       "args": ["dev", "--port"],
       "env_overrides": {

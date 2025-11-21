@@ -122,7 +122,11 @@
       "Bash(done)",
       "Bash(npx vite build)",
       "Bash(cmd /c \"set PYTHONPATH=G:\\code\\pixsim7 && G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe revision --autogenerate -m \"\"add api_keys column to provider_accounts\"\"\")",
-      "Bash(cmd /c \"set PYTHONPATH=G:\\code\\pixsim7&& G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe upgrade head\")"
+      "Bash(cmd /c \"set PYTHONPATH=G:\\code\\pixsim7&& G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe upgrade head\")",
+      "Bash(git -C G:/code/pixsim7 show HEAD:frontend/package.json)",
+      "Bash(for d in G:/code/pixsim7/packages/*/)",
+      "Bash(git -C G:/code/pixsim7 status --short packages/ frontend/)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
