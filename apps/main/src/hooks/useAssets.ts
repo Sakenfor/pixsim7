@@ -16,6 +16,7 @@ export interface AssetSummary {
   tags: string[];
   description?: string;
   created_at: string;
+  provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
 }
 
 interface AssetsResponse {
@@ -32,6 +33,7 @@ export type AssetFilters = {
   provider_id?: string | null;
   sort?: 'new' | 'old' | 'alpha';
   media_type?: 'video' | 'image' | 'audio' | '3d_model';
+  provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
 };
 
 export function useAssets(options?: { limit?: number; filters?: AssetFilters }) {
@@ -50,7 +52,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     provider_id: filters.provider_id || undefined,
     sort: filters.sort || undefined,
     media_type: filters.media_type || undefined,
-  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type]);
+    provider_status: filters.provider_status || undefined,
+  }), [filters.q, filters.tag, filters.provider_id, filters.sort, filters.media_type, filters.provider_status]);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -68,7 +71,16 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       if (filterParams.media_type) params.set('media_type', filterParams.media_type);
 
       const res = await apiClient.get<AssetsResponse>(`/assets?${params.toString()}`);
-      const data = res.data;
+      let data = res.data;
+
+      // Client-side filter for provider_status (backend doesn't support this yet)
+      if (filterParams.provider_status) {
+        data = {
+          ...data,
+          assets: data.assets.filter(a => a.provider_status === filterParams.provider_status),
+        };
+      }
+
       setItems(prev => [...prev, ...data.assets]);
       setCursor(data.next_cursor || null);
       setHasMore(Boolean(data.next_cursor));
@@ -90,7 +102,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   useEffect(() => {
     reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, limit]);
+  }, [filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
   useEffect(() => {
@@ -99,7 +111,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
       loadMore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, loading, filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, limit]);
+  }, [items.length, loading, filterParams.q, filterParams.tag, filterParams.provider_id, filterParams.sort, filterParams.media_type, filterParams.provider_status, limit]);
 
   return { items, loadMore, loading, error, hasMore, reset };
 }

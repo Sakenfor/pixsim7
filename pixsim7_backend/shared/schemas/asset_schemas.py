@@ -2,7 +2,7 @@
 Asset management request/response schemas
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, model_validator
 from pixsim7_backend.domain.enums import MediaType, SyncStatus
 
@@ -53,6 +53,13 @@ class AssetResponse(BaseModel):
     # Semantics
     description: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
+
+    # Provider status (derived field)
+    provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
+
+    # Provider moderation/flagging
+    provider_flagged: bool = False
+    provider_flag_reason: Optional[str] = None
 
     # Timestamps
     created_at: datetime
