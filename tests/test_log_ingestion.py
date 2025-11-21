@@ -325,7 +325,7 @@ def main():
         print(f"❌ API server is not running at {API_BASE_URL}")
         print(f"   Error: {e}")
         print("\n   Please start the API server first:")
-        print("   PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001")
+        print("   PYTHONPATH=G:/code/pixsim7 python -m uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001")
         print()
         return 1
 

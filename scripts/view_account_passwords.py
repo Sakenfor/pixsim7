@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import select
 
-from pixsim7_backend.domain import ProviderAccount, User
+from pixsim7.backend.main.domain import ProviderAccount, User
 
 # Database URL
 DB_URL = "postgresql+asyncpg://pixsim7:pixsim7_secure_2024@localhost:5433/pixsim7"

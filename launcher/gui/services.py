@@ -50,7 +50,7 @@ def build_services() -> List[ServiceDef]:
             key="backend",
             title="Backend API",
             program=python_exe,
-            args=["-m", "uvicorn", "pixsim7_backend.main:app", "--host", "0.0.0.0", "--port", str(ports.backend), "--reload"],
+            args=["-m", "uvicorn", "pixsim7.backend.main.main:app", "--host", "0.0.0.0", "--port", str(ports.backend), "--reload"],
             cwd=ROOT,
             env_overrides={
                 "PYTHONPATH": ROOT,
@@ -67,7 +67,7 @@ def build_services() -> List[ServiceDef]:
             key="worker",
             title="Worker (ARQ)",
             program=python_exe,
-            args=["-m", "arq", "pixsim7_backend.workers.arq_worker.WorkerSettings"],
+            args=["-m", "arq", "pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
             cwd=ROOT,
             env_overrides={
                 "PYTHONPATH": ROOT,
@@ -172,8 +172,8 @@ def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
     service_id = service_config['id']
     port = _resolve_port(service_config)
 
-    # Parse module (e.g., "pixsim7_backend.main:app")
-    module = service_config.get('module', 'pixsim7_backend.main:app')
+    # Parse module (e.g., "pixsim7.backend.main.main:app")
+    module = service_config.get('module', 'pixsim7.backend.main.main:app')
 
     return ServiceDef(
         key=service_id,

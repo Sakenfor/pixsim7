@@ -2,7 +2,7 @@
 """
 Orphan Router Detection Script
 
-Scans pixsim7_backend/api/v1/*.py for APIRouter instances and verifies
+Scans pixsim7/backend/main/api/v1/*.py for APIRouter instances and verifies
 that each router has a corresponding route plugin manifest.
 
 This prevents situations where routes are defined but never registered
@@ -112,8 +112,8 @@ def check_orphan_routers() -> Tuple[bool, List[str]]:
     """
     # Determine paths
     repo_root = Path(__file__).parent.parent
-    api_dir = repo_root / "pixsim7_backend" / "api" / "v1"
-    routes_dir = repo_root / "pixsim7_backend" / "routes"
+    api_dir = repo_root / "pixsim7" / "backend" / "main" / "api" / "v1"
+    routes_dir = repo_root / "pixsim7" / "backend" / "main" / "routes"
 
     print("=" * 60)
     print("Orphan Router Detection")
@@ -140,7 +140,7 @@ def check_orphan_routers() -> Tuple[bool, List[str]]:
         print()
         for orphan in sorted(orphans):
             print(f"  - {orphan}")
-            print(f"    Expected: pixsim7_backend/routes/{orphan}/manifest.py")
+            print(f"    Expected: pixsim7/backend/main/routes/{orphan}/manifest.py")
         print()
         print("To fix:")
         print("  1. Create the missing manifest.py file(s)")

@@ -11,9 +11,9 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from pixsim7_backend.services.user.user_service import UserService
-from pixsim7_backend.infrastructure.database.session import get_db
-from pixsim7_backend.shared.auth import hash_password_sync
+from pixsim7.backend.main.services.user.user_service import UserService
+from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.shared.auth import hash_password_sync
 
 
 async def create_admin():

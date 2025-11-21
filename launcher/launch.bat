@@ -66,9 +66,9 @@ if not exist .venv (
 call .venv\Scripts\activate.bat
 echo Installing backend requirements (if needed)...
 python -m pip install --upgrade pip >nul
-python -m pip install -r pixsim7_backend\requirements.txt >nul
+python -m pip install -r pixsim7\backend\main\requirements.txt >nul
 echo Starting Backend API on port %BACKEND_PORT%...
-start "PixSim7 Backend" /min cmd /k "call %cd%\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && set PORT=%BACKEND_PORT% && python pixsim7_backend\main.py"
+start "PixSim7 Backend" /min cmd /k "call %cd%\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && set PORT=%BACKEND_PORT% && python -m pixsim7.backend.main.main"
 
 REM Wait for backend to start
 echo Waiting for backend to initialize...
@@ -235,9 +235,9 @@ if not exist .venv (
 )
 call .venv\Scripts\activate.bat
 python -m pip install --upgrade pip >nul
-python -m pip install -r pixsim7_backend\requirements.txt >nul
+python -m pip install -r pixsim7\backend\main\requirements.txt >nul
 echo Starting Backend API on port %BACKEND_PORT%...
-start "PixSim7 Backend" /min cmd /k "call %cd%\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && set PORT=%BACKEND_PORT% && python pixsim7_backend\main.py"
+start "PixSim7 Backend" /min cmd /k "call %cd%\.venv\Scripts\activate.bat && set PYTHONPATH=%cd% && set PORT=%BACKEND_PORT% && python -m pixsim7.backend.main.main"
 echo Health checking backend...
 set /a _healthRetries=0
 :ih_loop

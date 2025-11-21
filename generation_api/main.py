@@ -20,13 +20,13 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 # Import shared backend infrastructure
-from pixsim7_backend.shared.config import settings
-from pixsim7_backend.shared.database import engine, Base
-from pixsim7_backend.infrastructure.events.bus import get_event_bus
+from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.database import engine, Base
+from pixsim7.backend.main.infrastructure.events.bus import get_event_bus
 
 # Import routes from main backend (re-use existing code)
-from pixsim7_backend.api.v1.generations import router as generations_router
-from pixsim7_backend.api.v1.prompts import (
+from pixsim7.backend.main.api.v1.generations import router as generations_router
+from pixsim7.backend.main.api.v1.prompts import (
     operations_router,
     analytics_router,
     variants_router,
@@ -34,7 +34,7 @@ from pixsim7_backend.api.v1.prompts import (
 )
 
 # Import for architecture introspection
-from pixsim7_backend.api.v1.dev_architecture import (
+from pixsim7.backend.main.api.v1.dev_architecture import (
     discover_routes,
     discover_services,
     calculate_metrics,
@@ -128,7 +128,7 @@ async def service_info():
         # Architecture metadata
         "architecture": {
             "pattern": "microservice",
-            "original_location": "pixsim7_backend (split out)",
+            "original_location": "pixsim7.backend.main (split out)",
             "layers": ["routes", "services", "domain", "orm"],
             "features": [
                 "generation-pipeline",

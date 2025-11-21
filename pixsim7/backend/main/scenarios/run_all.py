@@ -4,7 +4,7 @@ Scenario Runner CLI
 Executes all scenario scripts found in tests/scenarios/scripts/
 
 Usage:
-    python -m pixsim7_backend.scenarios.run_all [options]
+    python -m pixsim7.backend.main.scenarios.run_all [options]
 
 Options:
     --dir PATH          Directory containing scenario scripts (default: tests/scenarios/scripts)

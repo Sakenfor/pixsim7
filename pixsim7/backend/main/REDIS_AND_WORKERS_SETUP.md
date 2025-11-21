@@ -62,7 +62,7 @@ You need **3 processes running**:
 #### Terminal 1: API Server
 ```bash
 cd /g/code/pixsim7
-PYTHONPATH=/g/code/pixsim7 python pixsim7_backend/main.py
+PYTHONPATH=/g/code/pixsim7 python pixsim7/backend/main/main.py
 ```
 
 **Expected output:**
@@ -78,7 +78,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 #### Terminal 2: ARQ Worker
 ```bash
 cd /g/code/pixsim7
-PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 **Expected output:**
@@ -183,7 +183,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/v1/jobs
 ### Start Worker
 ```bash
 cd /g/code/pixsim7
-PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 ### Run Specific Worker Task Manually
@@ -191,7 +191,7 @@ PYTHONPATH=/g/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
 # Test job processor
 cd /g/code/pixsim7
 PYTHONPATH=/g/code/pixsim7 python -c "
-from pixsim7_backend.workers.job_processor import process_job
+from pixsim7.backend.main.workers.job_processor import process_job
 import asyncio
 asyncio.run(process_job(job_id=1))
 "
@@ -199,7 +199,7 @@ asyncio.run(process_job(job_id=1))
 # Test status poller
 cd /g/code/pixsim7
 PYTHONPATH=/g/code/pixsim7 python -c "
-from pixsim7_backend.workers.status_poller import poll_job_statuses
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses
 import asyncio
 asyncio.run(poll_job_statuses())
 "
@@ -260,13 +260,13 @@ ARQ_JOB_TIMEOUT=7200     # 2 hour timeout
 Start multiple workers:
 ```bash
 # Terminal 2
-arq pixsim7_backend.workers.arq_worker.WorkerSettings
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Terminal 3
-arq pixsim7_backend.workers.arq_worker.WorkerSettings
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Terminal 4
-arq pixsim7_backend.workers.arq_worker.WorkerSettings
+arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 ```
 
 ### For Fast Polling

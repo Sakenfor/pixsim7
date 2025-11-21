@@ -37,10 +37,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7_backend.infrastructure.database.session import get_async_session
-from pixsim7_backend.domain.generation import Generation
-from pixsim7_backend.domain.prompt_versioning import PromptFamily, PromptVersion
-from pixsim7_backend.services.prompts import PromptVersionService
+from pixsim7.backend.main.infrastructure.database.session import get_async_session
+from pixsim7.backend.main.domain.generation import Generation
+from pixsim7.backend.main.domain.prompt_versioning import PromptFamily, PromptVersion
+from pixsim7.backend.main.services.prompts import PromptVersionService
 
 
 class InlinePromptConverter:

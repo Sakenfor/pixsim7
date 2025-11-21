@@ -9,7 +9,7 @@ Clean, domain-driven architecture for video generation and scene assembly.
 ## 📁 Directory Structure
 
 ```
-pixsim7_backend/
+pixsim7/backend/main/
 ├── domain/                      # ✅ COMPLETE - Core entities
 │   ├── enums.py                # Shared enums
 │   ├── asset.py                # Asset, AssetVariant
@@ -357,7 +357,7 @@ See: `docs/PIXSIM7_MIGRATION_PLAN.md`
 
 ```bash
 # Install dependencies
-cd pixsim7_backend
+cd pixsim7/backend/main
 pip install -r requirements.txt
 
 # Set up database

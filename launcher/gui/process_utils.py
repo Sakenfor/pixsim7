@@ -194,12 +194,15 @@ def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:
         cmd = (info.get('CommandLine') or '').lower()
         name = (info.get('Name') or '').lower()
 
-        # Heuristics: uvicorn in command line, or python running pixsim7_backend.main
+        # Heuristics: uvicorn in command line, or python running pixsim7.backend.main
         if (
             'uvicorn' in cmd
-            or 'pixsim7_backend.main' in cmd
-            or 'pixsim7_backend\\main.py' in cmd
-            or 'pixsim7_backend/main.py' in cmd
+            or 'pixsim7.backend.main' in cmd
+            or 'pixsim7_backend.main' in cmd  # Legacy compatibility
+            or 'pixsim7\\backend\\main\\main.py' in cmd
+            or 'pixsim7/backend/main/main.py' in cmd
+            or 'pixsim7_backend\\main.py' in cmd  # Legacy compatibility
+            or 'pixsim7_backend/main.py' in cmd  # Legacy compatibility
         ):
             uvicorn_root = info.get('ProcessId')
             # Keep walking to find the highest matching ancestor (if any)
@@ -216,7 +219,7 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
     """Find backend-related PIDs by CommandLine heuristics and optional port.
 
     Matches python/uvicorn processes whose command lines reference uvicorn or
-    pixsim7_backend.main. If port is provided, it prefers PIDs listening on that port.
+    pixsim7.backend.main. If port is provided, it prefers PIDs listening on that port.
     """
     if os.name != 'nt':
         return []
@@ -269,9 +272,12 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
                 cmdl = (item.get('CommandLine') or '').lower()
                 if (
                     'uvicorn' in cmdl
-                    or 'pixsim7_backend.main:app' in cmdl
-                    or 'pixsim7_backend\\main.py' in cmdl
-                    or 'pixsim7_backend/main.py' in cmdl
+                    or 'pixsim7.backend.main' in cmdl
+                    or 'pixsim7_backend.main:app' in cmdl  # Legacy compatibility
+                    or 'pixsim7\\backend\\main\\main.py' in cmdl
+                    or 'pixsim7/backend/main/main.py' in cmdl
+                    or 'pixsim7_backend\\main.py' in cmdl  # Legacy compatibility
+                    or 'pixsim7_backend/main.py' in cmdl  # Legacy compatibility
                 ):
                     # If port provided and pid matches, prioritize by placing first
                     if port and pid in pids_by_port:

@@ -31,7 +31,7 @@ GROUPS: List[CommitGroup] = [
             "docs/CONTROL_CENTER_REFACTOR_CLAUDE.md",
             "docs/PROVIDER_ACCOUNT_STRATEGY.md",
             "docs/GAME_BACKEND_SIM_SPEC.md",
-            "pixsim7_backend/PIXVERSE_INTEGRATION.md",
+            "pixsim7/backend/main/PIXVERSE_INTEGRATION.md",
             "LOGGING_STRUCTURE.md",
         ],
     ),
@@ -39,18 +39,18 @@ GROUPS: List[CommitGroup] = [
         key="pipeline",
         message="feat(pipeline): submission pipeline + artifact model integration",
         paths=[
-            "pixsim7_backend/domain/generation_artifact.py",
-            "pixsim7_backend/services/submission",
-            "pixsim7_backend/workers/job_processor.py",
+            "pixsim7/backend/main/domain/generation_artifact.py",
+            "pixsim7/backend/main/services/submission",
+            "pixsim7/backend/main/workers/job_processor.py",
         ],
     ),
     CommitGroup(
         key="upload",
         message="feat(upload): provider-preferring asset upload & image processing",
         paths=[
-            "pixsim7_backend/services/upload",
-            "pixsim7_backend/shared/image_utils.py",
-            "pixsim7_backend/api/v1/assets.py",
+            "pixsim7/backend/main/services/upload",
+            "pixsim7/backend/main/shared/image_utils.py",
+            "pixsim7/backend/main/api/v1/assets.py",
         ],
     ),
     CommitGroup(
@@ -58,8 +58,8 @@ GROUPS: List[CommitGroup] = [
         message="feat(logging): shared logging package & middleware wiring",
         paths=[
             "pixsim_logging",
-            "pixsim7_backend/api/middleware.py",
-            "pixsim7_backend/requirements.txt",
+            "pixsim7/backend/main/api/middleware.py",
+            "pixsim7/backend/main/requirements.txt",
         ],
     ),
     CommitGroup(

@@ -54,7 +54,7 @@ domain_models/
 ### 1. Create Directory
 
 ```bash
-mkdir pixsim7_backend/domain_models/my_models
+mkdir pixsim7/backend/main/domain_models/my_models
 ```
 
 ### 2. Create Manifest
@@ -66,10 +66,10 @@ Create `manifest.py`:
 My Domain Models Package
 """
 
-from pixsim7_backend.infrastructure.domain_registry import DomainModelManifest
+from pixsim7.backend.main.infrastructure.domain_registry import DomainModelManifest
 
 # Import models from your domain module
-from pixsim7_backend.domain.my_domain import (
+from pixsim7.backend.main.domain.my_domain import (
     MyModel1,
     MyModel2,
 )
@@ -155,7 +155,7 @@ Models MUST be registered before `init_database()` is called. The domain registr
 **Before:**
 ```python
 # main.py - 37 lines of imports!
-from pixsim7_backend.domain import (
+from pixsim7.backend.main.domain import (
     User,
     UserSession,
     UserQuotaUsage,
@@ -165,11 +165,11 @@ from pixsim7_backend.domain import (
     Job,
     # ... 15 more models
 )
-from pixsim7_backend.domain.automation import (
+from pixsim7.backend.main.domain.automation import (
     AndroidDevice,
     # ... 5 more models
 )
-from pixsim7_backend.domain.game import (
+from pixsim7.backend.main.domain.game import (
     GameScene,
     # ... 9 more models
 )
@@ -178,8 +178,8 @@ from pixsim7_backend.domain.game import (
 **After:**
 ```python
 # main.py - 3 lines!
-from pixsim7_backend.infrastructure.domain_registry import init_domain_registry
-domain_registry = init_domain_registry("pixsim7_backend/domain_models")
+from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
+domain_registry = init_domain_registry("pixsim7/backend/main/domain_models")
 logger.info(f"Registered {len(domain_registry.registered_models)} domain models")
 ```
 

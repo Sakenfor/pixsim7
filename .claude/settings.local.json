@@ -5,7 +5,7 @@
       "Bash(PYTHONPATH=/g/code/pixsim7/backend python:*)",
       "Bash(PYTHONPATH=/g/code/pixsim7 python:*)",
       "Bash(shared/errors.py)",
-      "Bash(/g/code/pixsim7/pixsim7_backend/requirements.txt)",
+      "Bash(/g/code/pixsim7/pixsim7/backend/main/requirements.txt)",
       "Bash(npm create svelte@latest:*)",
       "Bash(npx sv create:*)",
       "Bash(npm install)",
