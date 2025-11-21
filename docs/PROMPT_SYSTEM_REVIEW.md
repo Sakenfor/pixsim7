@@ -105,7 +105,7 @@ grep -r "PromptVersion|prompt_version" frontend/
 #### 2. Provider Capability Integration: **NOT CONNECTED**
 
 **Current State**:
-- Provider capability registry exists in frontend (`frontend/src/lib/providers/capabilityRegistry.ts`)
+- Provider capability registry exists in frontend (`apps/main/src/lib/providers/capabilityRegistry.ts`)
 - Capabilities include `prompt_limit`, `supported_operations`, `parameter_hints`
 - Prompt system has NO knowledge of provider capabilities
 
@@ -275,7 +275,7 @@ async def validate_prompt_for_provider(
 
 #### 1.2 Frontend Prompt Manager UI
 
-**Location**: `frontend/src/components/prompts/`
+**Location**: `apps/main/src/components/prompts/`
 
 **Create**:
 - `PromptFamilyList.tsx` - Browse families by category
@@ -334,7 +334,7 @@ interface GenerationNodeConfig {
 
 #### 2.1 Plugin Prompt Hooks ⚠️ BREAKING CHANGE
 
-**File**: `frontend/src/lib/plugins/PluginAPI.ts`
+**File**: `apps/main/src/lib/plugins/PluginAPI.ts`
 
 **BREAKING**: Plugins MUST declare their prompt requirements upfront
 
@@ -546,7 +546,7 @@ class NPCPromptContext:
 
 #### 4.1 Prompt Performance Dashboard
 
-**Frontend**: `frontend/src/components/prompts/PromptAnalytics.tsx`
+**Frontend**: `apps/main/src/components/prompts/PromptAnalytics.tsx`
 
 **Features**:
 - Top performing prompts by success rate

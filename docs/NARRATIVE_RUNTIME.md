@@ -462,7 +462,7 @@ import {
     advanceToNode,
     isProgramActive,
     getProgramVariable
-} from '@pixsim7/game-core/narrative';
+} from '@pixsim7/game.engine/narrative';
 
 const state = getNarrativeState(session, npcId);
 if (!state.activeProgramId) {

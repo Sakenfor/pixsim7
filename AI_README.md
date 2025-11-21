@@ -24,7 +24,7 @@ This guide helps AI assistants understand what's already implemented, where thin
 
 ```
 pixsim7/
-├── pixsim7_backend/          # FastAPI backend (PORT 8001 ⚠️ NOT 8000!)
+├── pixsim7/backend/main/          # FastAPI backend (PORT 8001 ⚠️ NOT 8000!)
 │   ├── api/v1/               # REST API endpoints
 │   ├── domain/               # SQLAlchemy models (Asset, Job, User, etc.)
 │   ├── services/             # Business logic layer
@@ -54,7 +54,7 @@ pixsim7/
 ├── admin/                    # SvelteKit admin panel (PORT 8002)
 │   └── src/                  # Log viewer, service management
 │
-├── game-frontend/            # Game player (separate React app)
+├── apps/game/                # Game player (React app)
 │   └── src/components/
 │       ├── ScenePlayer.tsx   # Video playback engine
 │       └── minigames/        # Mini-game components
@@ -80,29 +80,29 @@ pixsim7/
 
 #### Core Services
 - ✅ **AssetService** - Asset CRUD, cross-provider uploads, lineage tracking
-  - Location: `pixsim7_backend/services/asset/asset_service.py`
+  - Location: `pixsim7/backend/main/services/asset/asset_service.py`
   - Features: `get_asset_for_provider()` - automatic upload/cache for cross-provider operations
   - Database: Asset, Asset3DMetadata, AssetAudioMetadata, AssetTemporalSegment, AssetAdultMetadata
   - Branching: AssetLineage, AssetBranch, AssetBranchVariant, AssetClip
 
 - ✅ **ProviderService** - Provider adapter system
-  - Location: `pixsim7_backend/services/provider/`
+  - Location: `pixsim7/backend/main/services/provider/`
   - Adapters: Pixverse (845 lines - `adapters/pixverse.py`)
   - Interface: `base.py` defines upload_asset(), execute(), check_status()
 
 - ✅ **SubmissionPipeline** - Job submission with structured logging
-  - Location: `pixsim7_backend/services/submission/pipeline.py`
+  - Location: `pixsim7/backend/main/services/submission/pipeline.py`
   - Stages: pipeline:start → pipeline:artifact → provider:submit → provider:status → provider:complete
 
 - ✅ **UploadService** - User file uploads with provider acceptance checks
-  - Location: `pixsim7_backend/services/upload/upload_service.py`
+  - Location: `pixsim7/backend/main/services/upload/upload_service.py`
   - Features: Image validation, provider-specific preparation, metadata extraction
 
 - ✅ **UserService** - Auth, JWT, user management
-  - Location: `pixsim7_backend/services/user/`
+  - Location: `pixsim7/backend/main/services/user/`
 
 - ✅ **AccountService** - Provider account pooling, concurrency management
-  - Location: `pixsim7_backend/services/account/`
+  - Location: `pixsim7/backend/main/services/account/`
 
 #### Database Models (domain/)
 - ✅ User, UserProfile
@@ -140,11 +140,11 @@ pixsim7/
 
 #### Architecture
 - ✅ **Modular Service Layer** - Each feature is a self-contained module
-  - Location: `frontend/src/modules/`
+  - Location: `apps/main/src/modules/`
   - Pattern: Module interface → Registry → Service API
   - Modules: gallery (placeholder), scene-builder (active)
 
-#### Components (frontend/src/components/)
+#### Components (apps/main/src/components/)
 - ✅ **ControlCenterDock** - Bottom dock for generation controls
   - Location: `control/ControlCenterDock.tsx`
   - Features: Prompt input, provider/preset selection, dynamic parameter forms, job status
@@ -174,7 +174,7 @@ pixsim7/
   - InspectorPanel - Property inspector
   - Type-specific editors: VideoNodeEditor, ChoiceNodeEditor, ConditionNodeEditor, MiniGameNodeEditor, EndNodeEditor
 
-#### Routes (frontend/src/routes/)
+#### Routes (apps/main/src/routes/)
 - ✅ Home, Login, Register, ProtectedRoute
 - ✅ Assets - Gallery with filters, tabs, masonry grid, local folders panel
 - ✅ Workspace - Layout presets, dock management
@@ -188,7 +188,7 @@ pixsim7/
 
 ### Game Frontend (Separate App)
 
-#### Scene Player (game-frontend/src/components/ScenePlayer.tsx)
+#### Scene Player (game-apps/main/src/components/ScenePlayer.tsx)
 - ✅ Real `<video>` playback with loop segment support
 - ✅ Segment selection (ordered, random, pool with tag filtering)
 - ✅ Progression system (multi-step playback within a node)
@@ -198,7 +198,7 @@ pixsim7/
 - ✅ Segment indicator UI with tags and step highlighting
 - ✅ Play/Pause controls, loading states, error handling
 
-#### Mini-Games (game-frontend/src/components/minigames/)
+#### Mini-Games (game-apps/main/src/components/minigames/)
 - ✅ **ReflexMiniGame** - Reflex challenge with scoring
   - Centered layout, success/fail states, detailed scoring
   - onResult callback with success boolean and score
@@ -223,17 +223,17 @@ pixsim7/
    - ❌ GridSkeleton component (loading state)
    - ❌ EmptyState component (no results)
    - ❌ ErrorState component (error with retry)
-   - Location: Should be `frontend/src/components/states/`
+   - Location: Should be `apps/main/src/components/states/`
 
 2. **LineageGraph Component**
    - ❌ Presentational graph component (use React Flow)
-   - Location: Should be `frontend/src/components/graph/LineageGraph.tsx`
+   - Location: Should be `apps/main/src/components/graph/LineageGraph.tsx`
 
 3. **Scene Builder Form in Workspace**
    - ❌ Basic node editing form (Node ID, Label, Selection strategy, etc.)
    - ❌ Save-to-Draft button
    - ❌ Preview in Game button
-   - Location: Should enhance `frontend/src/routes/Workspace.tsx`
+   - Location: Should enhance `apps/main/src/routes/Workspace.tsx`
 
 ### Backend - Future Work
 
@@ -266,9 +266,9 @@ pixsim7/
 - ❌ Don't create a new asset upload system - use `UploadService.upload()` in `services/upload/upload_service.py`
 - ❌ Don't create a new cross-provider upload system - use `AssetService.get_asset_for_provider()`
 - ❌ Don't create a new logging system - use `pixsim_logging` package
-- ❌ Don't create a new module system - use existing pattern in `frontend/src/modules/`
-- ❌ Don't create a new layout system - use `DockLayout` from `frontend/src/components/layout/`
-- ❌ Don't create a new video player - use `ScenePlayer` from `game-frontend/src/components/ScenePlayer.tsx`
+- ❌ Don't create a new module system - use existing pattern in `apps/main/src/modules/`
+- ❌ Don't create a new layout system - use `DockLayout` from `apps/main/src/components/layout/`
+- ❌ Don't create a new video player - use `ScenePlayer` from `game-apps/main/src/components/ScenePlayer.tsx`
 
 ### Database
 - ❌ Don't add migrations without using Alembic
@@ -282,7 +282,7 @@ pixsim7/
 
 ### Frontend
 - ❌ Don't use global state for module-specific features - use module-internal state
-- ❌ Don't create duplicate components - check `frontend/src/components/` and `packages/ui/` first
+- ❌ Don't create duplicate components - check `apps/main/src/components/` and `packages/ui/` first
 - ✅ Use: Existing `MediaCard`, `Tabs`, `MasonryGrid`, etc.
 
 ---
@@ -297,18 +297,18 @@ pixsim7/
 5. **docs/PORT_CONFIGURATION.md** - Port reference (critical!)
 
 ### Critical Backend Files
-- `pixsim7_backend/services/asset/asset_service.py` - Asset management (lines 338-503: cross-provider logic)
-- `pixsim7_backend/services/submission/pipeline.py` - Job submission pipeline
-- `pixsim7_backend/services/provider/adapters/pixverse.py` - Pixverse adapter (845 lines)
-- `pixsim7_backend/domain/asset.py` - Asset model with all fields
-- `pixsim7_backend/shared/config.py` - Configuration
+- `pixsim7/backend/main/services/asset/asset_service.py` - Asset management (lines 338-503: cross-provider logic)
+- `pixsim7/backend/main/services/submission/pipeline.py` - Job submission pipeline
+- `pixsim7/backend/main/services/provider/adapters/pixverse.py` - Pixverse adapter (845 lines)
+- `pixsim7/backend/main/domain/asset.py` - Asset model with all fields
+- `pixsim7/backend/main/shared/config.py` - Configuration
 
 ### Critical Frontend Files
-- `frontend/src/components/control/ControlCenterDock.tsx` - Generation controls
-- `frontend/src/components/layout/DockLayout.tsx` - Panel layout system
-- `frontend/src/modules/scene-builder/index.ts` - Scene builder module
-- `frontend/src/stores/layoutStore.ts` - Layout state management
-- `game-frontend/src/components/ScenePlayer.tsx` - Video playback engine
+- `apps/main/src/components/control/ControlCenterDock.tsx` - Generation controls
+- `apps/main/src/components/layout/DockLayout.tsx` - Panel layout system
+- `apps/main/src/modules/scene-builder/index.ts` - Scene builder module
+- `apps/main/src/stores/layoutStore.ts` - Layout state management
+- `game-apps/main/src/components/ScenePlayer.tsx` - Video playback engine
 
 ---
 
@@ -316,7 +316,7 @@ pixsim7/
 
 ### Adding a New Feature
 
-1. **Check if it exists** - Search this file, check `frontend/src/components/` and `pixsim7_backend/services/`
+1. **Check if it exists** - Search this file, check `apps/main/src/components/` and `pixsim7/backend/main/services/`
 2. **Check the plan** - See `docs/NODE_EDITOR_DEVELOPMENT.md` or relevant task docs
 3. **Follow patterns** - Use existing service layer, module system, component structure
 4. **Test** - Add tests for new functionality
@@ -324,7 +324,7 @@ pixsim7/
 
 ### Adding a Provider Adapter
 
-1. **Location:** `pixsim7_backend/services/provider/adapters/your_provider.py`
+1. **Location:** `pixsim7/backend/main/services/provider/adapters/your_provider.py`
 2. **Interface:** Extend `BaseProvider` from `base.py`
 3. **Required Methods:**
    - `execute(operation_type, account, params)` - Submit job
@@ -334,7 +334,7 @@ pixsim7/
 
 ### Adding a Frontend Module
 
-1. **Location:** `frontend/src/modules/your-module/`
+1. **Location:** `apps/main/src/modules/your-module/`
 2. **Structure:**
    ```
    your-module/
@@ -342,7 +342,7 @@ pixsim7/
    ├── YourView.tsx          # Main UI component
    └── useYourModule.ts      # State hook (optional)
    ```
-3. **Register:** Add to `frontend/src/modules/index.ts`
+3. **Register:** Add to `apps/main/src/modules/index.ts`
 4. **Reference:** See `scene-builder` module
 
 ---
@@ -378,10 +378,10 @@ launch.bat
 ### Manual Start
 ```bash
 # Backend
-PYTHONPATH=G:/code/pixsim7 uvicorn pixsim7_backend.main:app --host 0.0.0.0 --port 8001
+PYTHONPATH=G:/code/pixsim7 uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001
 
 # Worker
-PYTHONPATH=G:/code/pixsim7 arq pixsim7_backend.workers.arq_worker.WorkerSettings
+PYTHONPATH=G:/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Frontend
 cd frontend && npm run dev

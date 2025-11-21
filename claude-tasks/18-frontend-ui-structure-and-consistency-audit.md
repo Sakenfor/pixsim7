@@ -5,17 +5,17 @@
 > - Use it when you:
 >   - Add new UI sections/routes.
 >   - Refactor or move components between folders.
->   - Suspect duplication or drift between `frontend/`, `packages/ui/`, and `packages/game-ui/`.
+>   - Suspect duplication or drift between `frontend/`, `packages/ui/`, and `packages/game/components/`.
 > - Read these first for context:
 >   - `UI_CONSOLIDATION_COMPLETED.md` – previous consolidation work and decisions  
->   - `frontend/src/components/README.md` – component organization and conventions  
+>   - `apps/main/src/components/README.md` – component organization and conventions  
 >   - `packages/ui/README.md` – shared UI components  
->   - `packages/game-ui/README.md` (if present) – game‑specific UI surfaces.
+>   - `packages/game/components/README.md` (if present) – game‑specific UI surfaces.
 > - This task is **not** about adding new features; it’s about verifying that UI pieces live in the right place, follow conventions, and don’t re‑invent existing patterns.
 
 ---
 
-> **Note:** This task was originally written against a `frontend/` + `packages/game-ui` layout. The unified frontend now lives under `apps/main/`, shared UI under `packages/shared/ui`, and game UI under `packages/game/components`. For current structure and route mappings, see `docs/APP_MAP.md` and `docs/frontend/COMPONENTS.md`.
+> **Note:** This task was originally written against a `frontend/` + `packages/game/components` layout. The unified frontend now lives under `apps/main/`, shared UI under `packages/shared/ui`, and game UI under `packages/game/components`. For current structure and route mappings, see `docs/APP_MAP.md` and `docs/frontend/COMPONENTS.md`.
 
 ## Context
 
@@ -70,25 +70,25 @@ Ensure there’s a **current, concise map** of major UI surfaces and where their
 
 **Scope**
 
-- `frontend/src/routes/*`
-- Top‑level directories under `frontend/src/components/*`
-- Shared libraries: `packages/ui`, `packages/game-ui`.
+- `apps/main/src/routes/*`
+- Top‑level directories under `apps/main/src/components/*`
+- Shared libraries: `packages/ui`, `packages/game/components`.
 
 **Agent Checklist**
 
 1. **List routes**:
-   - From `frontend/src/routes`, enumerate the key app pages (Home, Workspace, Assets, Graph, Game2D, NpcBrainLab, SimulationPlayground, PluginWorkspace, etc.).
+   - From `apps/main/src/routes`, enumerate the key app pages (Home, Workspace, Assets, Graph, Game2D, NpcBrainLab, SimulationPlayground, PluginWorkspace, etc.).
 2. **Map routes to component clusters**:
-   - For each major route, note which component directories are primarily used (e.g. `Game2D` → `components/game`, `components/hotspots`, `packages/game-ui`).
+   - For each major route, note which component directories are primarily used (e.g. `Game2D` → `components/game`, `components/hotspots`, `packages/game/components`).
 3. **Update/validate component README**:
-   - Ensure `frontend/src/components/README.md` has a short section that:
+   - Ensure `apps/main/src/components/README.md` has a short section that:
      - Lists the main component subfolders.
      - Mentions which routes use them.
 4. **Result**:
    - A short, up‑to‑date bullet list at the bottom of this file or in the components README, e.g.:
      - `Home` → `components/navigation`, `components/layout`.
      - `Graph` → `components/graph`, `components/inspector`.
-     - `Game2D` → `components/game`, `components/hotspots`, `packages/game-ui`.
+     - `Game2D` → `components/game`, `components/hotspots`, `packages/game/components`.
 
 **Status:** ✅ Completed 2025-11-19
 
@@ -140,7 +140,7 @@ Ensure there’s a **current, concise map** of major UI surfaces and where their
   - Uses: `components/automation` (DeviceList, PresetList, ExecutionList, LoopList)
   - Purpose: Automation device and preset management
 
-**Top-Level Component Panels** (in `frontend/src/components/`):
+**Top-Level Component Panels** (in `apps/main/src/components/`):
 - `GraphPanel.tsx`, `ArcGraphPanel.tsx` → Graph/scene editing
 - `SceneBuilderPanel.tsx` → Scene property inspector
 - `HotspotEditor.tsx`, `NpcSlotEditor.tsx`, `EdgeEffectsEditor.tsx` → Game element editors
@@ -178,8 +178,8 @@ Check that components live in **sensible, predictable folders** and follow namin
 
 **Scope**
 
-- `frontend/src/components/*` (top‑level and key subfolders).
-- `frontend/src/routes/*` (to ensure route names align with component clusters).
+- `apps/main/src/components/*` (top‑level and key subfolders).
+- `apps/main/src/routes/*` (to ensure route names align with component clusters).
 
 **Agent Checklist**
 
@@ -197,7 +197,7 @@ Check that components live in **sensible, predictable folders** and follow namin
    - Components that clearly belong in a different folder (e.g. a plugin-specific panel sitting in `common/`).
    - New components that don’t follow suffix patterns.
 4. **Document findings**:
-   - Add a brief “UI Folder Notes” section to `frontend/src/components/README.md` or this doc, with bullets like:
+   - Add a brief “UI Folder Notes” section to `apps/main/src/components/README.md` or this doc, with bullets like:
      - “`Game2DStatusBar.tsx` currently lives in `components/common`; move to `components/game` on next pass.”
 
 **Status:** ✅ Completed 2025-11-19
@@ -242,7 +242,7 @@ The codebase follows clear, predictable naming conventions:
 - ✅ `control/` - Control center and cube system components
 - ✅ `dev/` - Development tools panels
 
-**Top-Level Components (14 files in `frontend/src/components/`):**
+**Top-Level Components (14 files in `apps/main/src/components/`):**
 
 These components are directly in the components directory, not in subdirectories:
 
@@ -308,18 +308,18 @@ Ensure that **truly generic UI** lives in `@pixsim7/ui` / `@pixsim7/game-ui`, an
 **Scope**
 
 - `packages/ui/*`
-- `packages/game-ui/*`
-- Shared imports inside `frontend/src/components/*`.
+- `packages/game/components/*`
+- Shared imports inside `apps/main/src/components/*`.
 
 **Agent Checklist**
 
 1. **Scan `packages/ui` exports**:
    - Confirm they are generic (Buttons, Toasts, Tabs, StatusBadges, PromptInput, etc.).
    - Ensure no domain logic (no hardcoded “Graph” or “Game2D” concepts).
-2. **Scan `packages/game-ui`** (if present):
+2. **Scan `packages/game/components`** (if present):
    - Confirm it holds reusable game‑specific UI (scene player, HUD elements) but not world‑specific logic.
 3. **Check frontend for duplication**:
-   - Search for implementations of buttons/toasts/badges/etc. in `frontend/src/components/common` that should be using `@pixsim7/ui`.
+   - Search for implementations of buttons/toasts/badges/etc. in `apps/main/src/components/common` that should be using `@pixsim7/ui`.
    - If found, add to a small “Consolidation TODO” list at the bottom of this doc or in `UI_CONSOLIDATION_COMPLETED.md`.
 4. **Ensure new components pick the right home**:
    - When adding new generic components, prefer `packages/ui` and import from there in frontend.
@@ -353,7 +353,7 @@ The shared UI packages maintain clean architectural boundaries with no violation
   - No hardcoded world or character data
   - Accepts configuration via props
 - **Dependency Integrity**: ✅ No imports from `frontend/` or parent applications
-  - Only imports from: `@pixsim7/game-core`, `@pixsim7/types`, `@pixsim7/ui`, `react`
+  - Only imports from: `@pixsim7/game.engine`, `@pixsim7/types`, `@pixsim7/ui`, `react`
 - **Usage**: Used in frontend Game2D route and gizmo implementations
 
 **Frontend Component Usage - PROPER BOUNDARIES ✓**
@@ -375,7 +375,7 @@ The shared UI packages maintain clean architectural boundaries with no violation
 **No Duplication Found ✓**
 
 Checked for duplicate implementations:
-- ✅ No custom Button implementations in `frontend/src/components/`
+- ✅ No custom Button implementations in `apps/main/src/components/`
 - ✅ No custom Modal/Toast systems (previous consolidation held)
 - ✅ No badge/status implementations duplicating `@pixsim7/ui/StatusBadge`
 - ✅ No generic form components duplicating `@pixsim7/ui` (Input, Select, FormField)
@@ -485,7 +485,7 @@ From `UI_CONSOLIDATION_COMPLETED.md` (2025-11-19):
 
 **Minor Consolidation Opportunity ⚠️**
 
-1. **TemplateWizardDialog** (frontend/src/components/graph/TemplateWizardDialog.tsx):
+1. **TemplateWizardDialog** (apps/main/src/components/graph/TemplateWizardDialog.tsx):
    - Currently uses custom dialog markup
    - Could migrate to `@pixsim7/ui/Modal` for consistency
    - **Impact**: Low priority, minor consistency improvement
@@ -548,10 +548,10 @@ Codify **simple rules** agents should follow when adding/modifying UI to keep th
 
 **Agent Checklist (to document and then follow)**
 
-Add a short “Agent UI Checklist” section either here or in `frontend/src/components/README.md`:
+Add a short “Agent UI Checklist” section either here or in `apps/main/src/components/README.md`:
 
 - When adding a **new screen**:
-  - Put the route under `frontend/src/routes`.
+  - Put the route under `apps/main/src/routes`.
   - Create a dedicated folder under `components` *if* the route has 2+ significant components (e.g. `components/game`, `components/simulation`).
   - Don’t put heavy logic in the route file; delegate to components.
 - When adding a **new reusable UI element**:
@@ -570,7 +570,7 @@ Add a short “Agent UI Checklist” section either here or in `frontend/src/com
 
 **When adding a new screen/route:**
 
-1. **Create the route file** in `frontend/src/routes/`
+1. **Create the route file** in `apps/main/src/routes/`
    - Name it descriptively: `Game2D.tsx`, `PluginWorkspace.tsx`, `SimulationPlayground.tsx`
    - Keep route files focused on layout and composition
    - Delegate complex logic to components
@@ -597,12 +597,12 @@ Add a short “Agent UI Checklist” section either here or in `frontend/src/com
      - Game-specific but reusable across different games/worlds
      - Generic game concepts (ScenePlayer, MiniGameHost)
      - No hardcoded world/character data
-   - ✅ **`frontend/src/components/`** if:
+   - ✅ **`apps/main/src/components/`** if:
      - App-specific or tightly coupled to features
      - Contains business logic or domain knowledge
      - Most components belong here
 
-2. **Choose the right subdirectory** in `frontend/src/components/`:
+2. **Choose the right subdirectory** in `apps/main/src/components/`:
    - `automation/` - Device, preset, execution, loop management
    - `game/` - Game HUD, dialogue, interactions, NPCs, world tools
    - `graph/` - Graph node renderers, template wizards
@@ -712,13 +712,13 @@ Keep docs in sync so humans and agents can quickly see how the UI is organized.
 **Scope**
 
 - `UI_CONSOLIDATION_COMPLETED.md`
-- `frontend/src/components/README.md`
+- `apps/main/src/components/README.md`
 - `docs/APP_MAP.md` (if it covers UI flows).
 
 **Agent Checklist**
 
 1. After completing an audit pass (18.1–18.4):
-   - Update `frontend/src/components/README.md` with any new component categories or notable changes.
+   - Update `apps/main/src/components/README.md` with any new component categories or notable changes.
    - If you add/remove major UI surfaces, update `docs/APP_MAP.md` to reflect new routes/panels.
 2. If you do real consolidation work:
    - Append a short “Delta” section to `UI_CONSOLIDATION_COMPLETED.md` or create a `UI_CONSOLIDATION_2025-XX-YY.md` follow‑up to avoid losing historical context.
@@ -739,7 +739,7 @@ Keep docs in sync so humans and agents can quickly see how the UI is organized.
    - ✅ Documented pattern duplication analysis (Phase 18.4)
    - ✅ Created comprehensive agent UI development checklist (Phase 18.5)
 
-2. **`frontend/src/components/README.md`**
+2. **`apps/main/src/components/README.md`**
    - Already up-to-date with component organization
    - Documents GraphPanel, SceneBuilderPanel, and WorldContextSelector
    - References architecture docs (NODE_EDITOR_DEVELOPMENT.md, GRAPH_UI_LIFE_SIM_PHASES.md)
@@ -747,7 +747,7 @@ Keep docs in sync so humans and agents can quickly see how the UI is organized.
 **No Updates Needed:**
 
 - **`UI_CONSOLIDATION_COMPLETED.md`** - Recent (2025-11-19), already documents consolidation work
-- **`packages/game-ui/README.md`** - Up-to-date with current exports and architecture principles
+- **`packages/game/components/README.md`** - Up-to-date with current exports and architecture principles
 - **`docs/APP_MAP.md`** - Already covers major UI routes and systems at appropriate level (GraphPanel, Game2D, NpcBrainLab, etc.)
 
 **Key Findings to Remember:**

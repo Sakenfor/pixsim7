@@ -24,17 +24,17 @@ App.tsx (minimal)
 
 ### Core Architecture
 ```
-frontend/src/lib/plugins/
+apps/main/src/lib/plugins/
 ├── controlCenterPlugin.ts          ✅ Plugin system types & registry
 └── bootstrapControlCenters.ts      ✅ Plugin loader
 
-frontend/src/components/control/
+apps/main/src/components/control/
 └── ControlCenterManager.tsx        ✅ Renderer + Selector UI
 ```
 
 ### Plugins
 ```
-frontend/src/plugins/ui/
+apps/main/src/plugins/ui/
 ├── dock-control-center/
 │   └── plugin.ts                   ✅ Dock as plugin
 ├── cube-formation-v1/

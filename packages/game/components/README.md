@@ -53,7 +53,7 @@ import { ReflexMiniGame } from '@pixsim7/game-ui';
 
 ## Dependencies
 
-- `@pixsim7/game-core` - Core game logic and types
+- `@pixsim7/game.engine` - Core game logic and types
 - `@pixsim7/types` - Shared type definitions
 - `@pixsim7/ui` - Base UI components
 - `react` / `react-dom` - UI framework (peer dependencies)

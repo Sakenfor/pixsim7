@@ -7,7 +7,7 @@
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationship data conventions  
 >   - `docs/INTIMACY_AND_GENERATION.md` – intimacy and social context (for intimate moods).  
 >   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` – how unified mood feeds into NPC activities and routines.
-> - Backend metrics and schemas in `pixsim7_backend/domain/metrics/*` + `GameWorld.meta` are authoritative; game‑core/TS mirror them for tools and UI.
+> - Backend metrics and schemas in `pixsim7/backend/main/domain/metrics/*` + `GameWorld.meta` are authoritative; game‑core/TS mirror them for tools and UI.
 > - When implementing phases here, **extend** the existing metric/preview system instead of introducing ad‑hoc mood logic.
 
 ---
@@ -17,7 +17,7 @@
 Current mood/emotional state is spread across several systems:
 
 - **General Mood (valence/arousal)**  
-  - In `pixsim7_backend/domain/metrics/mood_evaluators.py` as a 4‑quadrant model (`excited`, `content`, `anxious`, `calm`).
+  - In `pixsim7/backend/main/domain/metrics/mood_evaluators.py` as a 4‑quadrant model (`excited`, `content`, `anxious`, `calm`).
   - Used by preview APIs and some UI tools.
 
 - **Discrete Emotions (event‑driven)**  
@@ -28,7 +28,7 @@ Current mood/emotional state is spread across several systems:
   - Action block / dialogue tags (e.g. playful, tender, passionate, conflicted) sprinkled across action block definitions and narrative logic.
 
 - **NPC Brain Projection**  
-  - `packages/game-core/src/npcs/brain.ts::buildNpcBrainState` computes “mood” for the brain shape, partly overlapping with the metric evaluator.
+  - `packages/game/engine/src/npcs/brain.ts::buildNpcBrainState` computes “mood” for the brain shape, partly overlapping with the metric evaluator.
 
 This fragmentation makes it hard to:
 - Ask “what is this NPC’s mood right now?” in a single call.
@@ -67,7 +67,7 @@ Introduce clear mood domains and IDs for general and intimate moods, mirrored be
 
 **Key Steps**
 1. Backend (Python):
-   - Create `pixsim7_backend/domain/metrics/mood_types.py` with:
+   - Create `pixsim7/backend/main/domain/metrics/mood_types.py` with:
      - `MoodDomain` enum: `GENERAL`, `INTIMATE`, `SOCIAL` (future‑proof).
      - `GeneralMoodId` enum: `EXCITED`, `CONTENT`, `ANXIOUS`, `CALM`.
      - `IntimacyMoodId` enum with intimate moods (e.g. `PLAYFUL`, `TENDER`, `PASSIONATE`, `CONFLICTED`, `SHY`, `EAGER`, `SATISFIED`).
@@ -123,7 +123,7 @@ Leverage the existing mood evaluator to compute a `UnifiedMoodResult` in one pla
 - Backend computation only; no new endpoints or persistence.
 
 **Key Steps**
-1. In `pixsim7_backend/domain/metrics/mood_evaluators.py`:
+1. In `pixsim7/backend/main/domain/metrics/mood_evaluators.py`:
    - Keep `_compute_valence_arousal` and `_compute_mood_from_schema` unchanged for general mood.
    - Add `_compute_intimacy_mood(...)` that derives `IntimacyMoodState` from:
      - Relationship axes (`affinity`, `trust`, `chemistry`, `tension`).
@@ -169,13 +169,13 @@ Provide a single game-core helper to fetch unified mood state for NPCs.
 - TypeScript helpers only; no UI changes yet.
 
 **Key Steps**
-1. In `packages/game-core/src/metrics/preview.ts`:
+1. In `packages/game/engine/src/metrics/preview.ts`:
    - Add `previewUnifiedMood(args)` that calls `/npc/preview-unified-mood` and returns `UnifiedMoodState`.
 2. Optionally add a `useUnifiedMood(npcId, session)` hook on the frontend:
    - Wraps the preview call.
    - Handles loading/error state.
    - Caches results briefly for UI efficiency.
-3. Ensure this helper is exported via `@pixsim7/game-core` index.
+3. Ensure this helper is exported via `@pixsim7/game.engine` index.
 
 ---
 
@@ -188,7 +188,7 @@ Drive the NPC brain’s mood component from the unified mood metric instead of b
 - Refactor of game-core brain projection; no behavior change intent beyond consistency.
 
 **Key Steps**
-1. In `packages/game-core/src/npcs/brain.ts::buildNpcBrainState`:
+1. In `packages/game/engine/src/npcs/brain.ts::buildNpcBrainState`:
    - Replace or wrap existing mood computation with `UnifiedMoodState` inputs when available.
    - Map `generalMood` and/or `intimacyMood` into the brain’s `mood` field.
 2. Keep a fallback path using the current local mood computation for offline / preview tools that don’t call the API.
@@ -205,7 +205,7 @@ Update Mood Debug and related UI to use unified mood, and show the right domain 
 - Frontend changes only.
 
 **Key Steps**
-1. Update `frontend/src/plugins/worldTools/moodDebug.tsx` (and any similar tools) to:
+1. Update `apps/main/src/plugins/worldTools/moodDebug.tsx` (and any similar tools) to:
    - Fetch/display `UnifiedMoodState` instead of only the legacy mood metric.
    - Show general mood and intimacy mood when relevant (e.g. in intimate scenes).
    - Optionally overlay active emotions.
@@ -226,7 +226,7 @@ Allow worlds to customize mood thresholds for both general and intimate moods.
 1. Extend `GameWorld.meta.npc_mood_schema` to support:
    - `general` quadrant thresholds (valence/arousal ranges for mood IDs).
    - `intimate` thresholds (chemistry/trust/tension ranges for intimate moods).
-2. Update schema validation in `pixsim7_backend/domain/game/schemas.py` (or a sibling module) to include mood schema shape.
+2. Update schema validation in `pixsim7/backend/main/domain/game/schemas.py` (or a sibling module) to include mood schema shape.
 3. Document how world authors configure mood schemas in `SOCIAL_METRICS.md` and/or a dedicated section.
 
 ---
@@ -274,11 +274,11 @@ Align documentation and task files with the new unified mood system.
   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationships/intimacy context  
   - `docs/INTIMACY_AND_GENERATION.md` – intimacy + generation integration
 - Backend:  
-  - `pixsim7_backend/domain/metrics/mood_evaluators.py`  
-  - `pixsim7_backend/domain/metrics/mood_types.py` (to be created)  
-  - `pixsim7_backend/domain/metrics/__init__.py` (metric registry)  
-  - `pixsim7_backend/api/v1/game_*_preview.py` (mood/unified mood previews)
+  - `pixsim7/backend/main/domain/metrics/mood_evaluators.py`  
+  - `pixsim7/backend/main/domain/metrics/mood_types.py` (to be created)  
+  - `pixsim7/backend/main/domain/metrics/__init__.py` (metric registry)  
+  - `pixsim7/backend/main/api/v1/game_*_preview.py` (mood/unified mood previews)
 - Game-core / Types:  
   - `packages/types/src/game.ts` (mood types, UnifiedMoodState)  
-  - `packages/game-core/src/metrics/preview.ts` (unified mood preview helper)  
-  - `packages/game-core/src/npcs/brain.ts` (brain mood integration)
+  - `packages/game/engine/src/metrics/preview.ts` (unified mood preview helper)  
+  - `packages/game/engine/src/npcs/brain.ts` (brain mood integration)

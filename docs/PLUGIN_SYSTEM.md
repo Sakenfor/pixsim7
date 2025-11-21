@@ -17,23 +17,23 @@ A comprehensive sandboxed plugin system for PixSim7 that allows users to safely 
 
 ### Components
 
-1. **PluginManager** (`frontend/src/lib/plugins/PluginManager.ts`)
+1. **PluginManager** (`apps/main/src/lib/plugins/PluginManager.ts`)
    - Singleton service managing plugin lifecycle
    - Handles installation, enabling, disabling, and uninstalling
    - Manages plugin registry and storage
    - Creates sandboxed plugin API for each plugin
 
-2. **SandboxedPlugin** (`frontend/src/lib/plugins/sandbox.ts`)
+2. **SandboxedPlugin** (`apps/main/src/lib/plugins/sandbox.ts`)
    - Iframe-based sandbox implementation
    - PostMessage RPC bridge for API calls
    - Isolates plugin code from parent window
 
-3. **PluginOverlays** (`frontend/src/components/PluginOverlays.tsx`)
+3. **PluginOverlays** (`apps/main/src/components/PluginOverlays.tsx`)
    - Renders plugin overlays, menu items, and notifications
    - Mounted at app root level
    - Subscribes to plugin manager for UI updates
 
-4. **PluginManagerUI** (`frontend/src/components/PluginManager.tsx`)
+4. **PluginManagerUI** (`apps/main/src/components/PluginManager.tsx`)
    - User interface for managing plugins
    - Upload, install, enable, disable, and uninstall plugins
    - View plugin details and permissions

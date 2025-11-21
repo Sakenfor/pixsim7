@@ -204,7 +204,7 @@ nodeTypeRegistry.register({
 The refactored system includes proper TypeScript types for node metadata:
 
 ```typescript
-// frontend/src/modules/scene-builder/nodeMetadataTypes.ts
+// apps/main/src/modules/scene-builder/nodeMetadataTypes.ts
 
 interface ChoiceNodeMetadata {
   choices?: Array<{

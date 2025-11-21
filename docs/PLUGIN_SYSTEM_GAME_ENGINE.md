@@ -57,8 +57,8 @@ node scripts/create-plugin/index.js \
 ```
 
 The CLI will create your plugin in the appropriate directory:
-- Helper plugins → `frontend/src/plugins/helpers/`
-- Interaction plugins → `frontend/src/plugins/interactions/`
+- Helper plugins → `apps/main/src/plugins/helpers/`
+- Interaction plugins → `apps/main/src/plugins/interactions/`
 
 ### 2. Implement Your Plugin
 
@@ -106,8 +106,8 @@ export const pickpocketPlugin: InteractionPlugin<PickpocketConfig> = {
 **That's it!** The plugin loader will automatically discover and register your plugin. No manual imports needed!
 
 The plugin loader runs during app initialization and scans:
-- `frontend/src/plugins/helpers/**/*.{ts,tsx,js,jsx}` for helper plugins
-- `frontend/src/plugins/interactions/**/*.{ts,tsx,js,jsx}` for interaction plugins
+- `apps/main/src/plugins/helpers/**/*.{ts,tsx,js,jsx}` for helper plugins
+- `apps/main/src/plugins/interactions/**/*.{ts,tsx,js,jsx}` for interaction plugins
 
 Just refresh your browser and check the console:
 
@@ -441,7 +441,7 @@ The **Session Helper Registry** provides a dynamic, extensible system for managi
 
 **Registering a Manual Helper:**
 ```typescript
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 import type { GameSessionDTO } from '@pixsim7/types';
 
 sessionHelperRegistry.register({
@@ -473,7 +473,7 @@ sessionHelperRegistry.register({
 
 **Auto-Generating Helpers:**
 ```typescript
-import { generateHelper } from '@pixsim7/game-core';
+import { generateHelper } from '@pixsim7/game.engine';
 
 // Generate a helper for getting/setting guild reputation
 generateHelper({
@@ -505,7 +505,7 @@ generateHelper({
 
 **Executing Helpers at Runtime:**
 ```typescript
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 
 // Execute by name
 const result = sessionHelperRegistry.execute('getCurrency', session, 'gold');
@@ -523,8 +523,8 @@ helpers.addCurrency('gold', 100);
 Helpers should be registered once during app initialization:
 
 ```typescript
-// frontend/src/App.tsx
-import { registerBuiltinHelpers } from '@pixsim7/game-core';
+// apps/main/src/App.tsx
+import { registerBuiltinHelpers } from '@pixsim7/game.engine';
 import { registerCustomHelpers } from './lib/game/customHelpers';
 
 useEffect(() => {
@@ -541,7 +541,7 @@ useEffect(() => {
 Generate a comprehensive markdown reference of all helpers:
 
 ```typescript
-import { generateHelperDocs } from '@pixsim7/game-core';
+import { generateHelperDocs } from '@pixsim7/game.engine';
 import fs from 'fs';
 
 const docs = generateHelperDocs();
@@ -602,7 +602,7 @@ Then register your helper:
 
 ```typescript
 import { ReputationHelper } from './plugins/reputation/reputation';
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 
 // Option 1: Register as a class (for static use)
 // Use ReputationHelper.adjustReputation(session, 'thieves', 10);
@@ -632,8 +632,8 @@ sessionHelperRegistry.register({
 #### Example: Complete Custom Helper System
 
 ```typescript
-// frontend/src/lib/game/customHelpers.ts
-import { sessionHelperRegistry, generateHelper } from '@pixsim7/game-core';
+// apps/main/src/lib/game/customHelpers.ts
+import { sessionHelperRegistry, generateHelper } from '@pixsim7/game.engine';
 
 export function registerCustomHelpers() {
   // Manual helper with complex logic
@@ -848,7 +848,7 @@ This scans your codebase and generates:
 Validate plugin configurations at runtime:
 
 ```typescript
-import { validateInteractionConfig, formatValidationErrors } from '@pixsim7/game-core';
+import { validateInteractionConfig, formatValidationErrors } from '@pixsim7/game.engine';
 
 const result = validateInteractionConfig(pickpocketPlugin, config);
 
@@ -863,7 +863,7 @@ if (!result.valid) {
 Validate against JSON schemas:
 
 ```typescript
-import { validateSchema, assertValid } from '@pixsim7/game-core';
+import { validateSchema, assertValid } from '@pixsim7/game.engine';
 
 const schema = {
   type: 'object',
@@ -1001,15 +1001,15 @@ class NodeTypeRegistry {
 ## Examples
 
 See generated plugin files for complete examples, or check:
-- `frontend/src/lib/game/interactions/` - Builtin interaction plugins
+- `apps/main/src/lib/game/interactions/` - Builtin interaction plugins
 - `packages/types/src/nodeTypeRegistry.ts` - Node type registry
-- `frontend/src/lib/graph/` - Renderer registry and builtin renderers
+- `apps/main/src/lib/graph/` - Renderer registry and builtin renderers
 
 ## Troubleshooting
 
 ### Plugin not found
 
-- Check registration in `frontend/src/lib/plugins/index.ts`
+- Check registration in `apps/main/src/lib/plugins/index.ts`
 - Verify plugin ID matches registration
 - Run type generation: `npm run codegen:types`
 
@@ -1040,7 +1040,7 @@ To add new plugin types or features:
 1. Update registry interfaces
 2. Create new templates in `scripts/create-plugin/templates/`
 3. Update CLI in `scripts/create-plugin/index.js`
-4. Add type generation support in `packages/game-core/src/codegen/`
+4. Add type generation support in `packages/game/engine/src/codegen/`
 5. Update this documentation
 
 ---

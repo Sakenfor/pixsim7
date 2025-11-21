@@ -164,7 +164,7 @@ Layout: `Gallery | Graph | Inspector | Game`
 ### Components
 
 ```
-frontend/src/components/inspector/
+apps/main/src/components/inspector/
   ├── InspectorPanel.tsx          # Main router component
   ├── VideoNodeEditor.tsx         # Video node editor
   ├── ChoiceNodeEditor.tsx        # Choice node editor

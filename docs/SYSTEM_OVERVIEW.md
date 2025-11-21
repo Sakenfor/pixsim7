@@ -146,18 +146,18 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ### 2D Preview: Game2D
 
-**`frontend/src/routes/Game2D.tsx`** – Playtest environment for 2D gameplay:
+**`apps/main/src/routes/Game2D.tsx`** – Playtest environment for 2D gameplay:
 - Renders a location's background and hotspots
 - Handles hotspot clicks via `handlePlayHotspot`:
-  - Parses `meta.action` using `parseHotspotAction` (from `@pixsim7/game-core`)
+  - Parses `meta.action` using `parseHotspotAction` (from `@pixsim7/game.engine`)
   - Supports: `play_scene`, `change_location`, `npc_talk`
 - Opens `ScenePlayer` full-screen for scenes
 - Displays NPC portraits based on scene playback phase and `NpcExpression` states
 - Syncs `world_time` from `GameWorldState` for life-sim sessions
 
 **Related files:**
-- `frontend/src/lib/game/interactionSchema.ts` – Action types and phase derivation
-- `frontend/src/lib/game/session.ts` – World time / session helpers
+- `apps/main/src/lib/game/interactionSchema.ts` – Action types and phase derivation
+- `apps/main/src/lib/game/session.ts` – World time / session helpers
 
 **See:** `HOTSPOT_ACTIONS_2D.md` for hotspot action schema and playback phase mapping.
 
@@ -165,25 +165,25 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ### Scene Editor & Graph: Node-Based Authoring
 
-**`frontend/src/components/GraphPanel.tsx`** – Visual graph editor:
+**`apps/main/src/components/GraphPanel.tsx`** – Visual graph editor:
 - Drag-and-drop nodes with connection mode
 - Port-aware edges (default, success, failure)
 - Set start node, rename, delete, duplicate
 
-**`frontend/src/components/SceneBuilderPanel.tsx`** – Property inspector:
+**`apps/main/src/components/SceneBuilderPanel.tsx`** – Property inspector:
 - Node-specific configuration forms
 - Selection strategy, progression steps, mini-game config
 - Cast/role management, NPC binding hints
 
-**`frontend/src/components/nodes/SceneNode.tsx`** – Node component:
+**`apps/main/src/components/nodes/SceneNode.tsx`** – Node component:
 - Multiple handles for different edge types
 - Visual indicators for node type and metadata
 
-**`frontend/src/modules/scene-builder/index.ts`** – Draft model:
+**`apps/main/src/modules/scene-builder/index.ts`** – Draft model:
 - `DraftScene`, `DraftNode`, `DraftEdge` with editor-only metadata
 - `toRuntimeScene()` – Converts draft to compact `@pixsim7/types.Scene`
 
-**`frontend/src/components/WorldContextSelector.tsx`** – World/location context bar:
+**`apps/main/src/components/WorldContextSelector.tsx`** – World/location context bar:
 - Selects the world and location for scene editing context
 - Used by scene editor to provide world-aware authoring
 
@@ -206,9 +206,9 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `RELATIONSHIPS_AND_ARCS.md` – Session flags, relationships, arcs, quests, items
 
 **Key files:**
-- `frontend/src/routes/Game2D.tsx` – 2D preview and hotspot handling
-- `frontend/src/lib/game/interactionSchema.ts` – Action parsing and phase derivation
-- `frontend/src/lib/game/session.ts` – Session helpers
+- `apps/main/src/routes/Game2D.tsx` – 2D preview and hotspot handling
+- `apps/main/src/lib/game/interactionSchema.ts` – Action parsing and phase derivation
+- `apps/main/src/lib/game/session.ts` – Session helpers
 
 **Key constraints:**
 - Don't change database schemas; use `meta`, `flags`, `relationships` instead
@@ -224,9 +224,9 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `GRAPH_UI_LIFE_SIM_PHASES.md` – World/life-sim integration, character binding model
 
 **Key files:**
-- `frontend/src/components/GraphPanel.tsx` – Graph canvas
-- `frontend/src/components/SceneBuilderPanel.tsx` – Property inspector
-- `frontend/src/modules/scene-builder/index.ts` – Draft model and conversion
+- `apps/main/src/components/GraphPanel.tsx` – Graph canvas
+- `apps/main/src/components/SceneBuilderPanel.tsx` – Property inspector
+- `apps/main/src/modules/scene-builder/index.ts` – Draft model and conversion
 
 **Key constraints:**
 - Scenes are world-agnostic; use roles, not hard NPC IDs (except for identity-specific nodes)
@@ -243,7 +243,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **Key files:**
 - Backend: `pixsim7/backend/main/api/v1/game_npcs.py` – NPC and schedule APIs
-- Frontend: `frontend/src/lib/game/session.ts` – Session helpers
+- Frontend: `apps/main/src/lib/game/session.ts` – Session helpers
 
 **Key constraints:**
 - NPCs have schedules (`NPCSchedule`) for presence queries
@@ -343,7 +343,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 ## Quick Start for Common Tasks
 
 **Adding a new hotspot action:**
-1. Define the action type in `frontend/src/lib/game/interactionSchema.ts`
+1. Define the action type in `apps/main/src/lib/game/interactionSchema.ts`
 2. Update `parseHotspotAction` to handle the new type
 3. Update `handlePlayHotspot` in `Game2D.tsx` to implement the behavior
 4. Document in `HOTSPOT_ACTIONS_2D.md`
@@ -357,7 +357,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 **Adding relationship/arc tracking:**
 1. Define the convention in `GameSession.flags` or `relationships`
-2. Add helper functions in `frontend/src/lib/game/session.ts`
+2. Add helper functions in `apps/main/src/lib/game/session.ts`
 3. Update scenes to set flags/relationships via edge effects
 4. Document the convention in `RELATIONSHIPS_AND_ARCS.md`
 

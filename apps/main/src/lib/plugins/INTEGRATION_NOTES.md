@@ -37,7 +37,7 @@
 The catalog is a **read-only metadata layer**. These systems continue to work as-is:
 
 1. **Session Helpers**
-   - Registry: `sessionHelperRegistry` (@pixsim7/game-core)
+   - Registry: `sessionHelperRegistry` (@pixsim7/game.engine)
    - Config: `pluginConfigStore`
    - UI: `PluginConfigPanel` (existing)
 

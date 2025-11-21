@@ -1,7 +1,7 @@
 **Task: Unified Generation Pipeline & Dev Tooling (Multi‑Phase)**
 
 **Context**
-- The project has a unified generation domain in `pixsim7_backend/domain/generation.py` with a modern `Generation`/`GenerationArtifact` model.
+- The project has a unified generation domain in `pixsim7/backend/main/domain/generation.py` with a modern `Generation`/`GenerationArtifact` model.
 - Dynamic generation has a clear design via:
   - `docs/DYNAMIC_GENERATION_FOUNDATION.md`
   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`
@@ -9,7 +9,7 @@
 - Frontend/editor integration is partially implemented via:
   - `packages/types/src/generation.ts` (`GenerationNodeConfig`, `GenerateContentRequest/Response`, `GenerationSocialContext`).
   - Generation node support in the graph editor.
-  - `packages/game-core/src/generation/requestBuilder.ts` and `generation/validator.ts`.
+  - `packages/game/engine/src/generation/requestBuilder.ts` and `generation/validator.ts`.
 - Tasks 07–09 introduce:
   - A metrics/preview system for relationships and social state.
   - Intimacy‑aware `GenerationSocialContext` for embedding relationship context into generation.
@@ -45,7 +45,7 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
 ### ✅ Implemented
 
 - **Generation Domain & Model**
-  - `pixsim7_backend/domain/generation.py` defines the unified model (Generation/GenerationArtifact) with:
+  - `pixsim7/backend/main/domain/generation.py` defines the unified model (Generation/GenerationArtifact) with:
     - `operation_type`, `provider_id`, `inputs`, `canonical_params`
     - `reproducible_hash` (SHA‑256) for deduplication.
     - Status fields and timestamps for orchestration.
@@ -59,7 +59,7 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
   - Integration with account management / provider selection.
 
 - **GenerationService**
-  - `pixsim7_backend/services/generation/generation_service.py`:
+  - `pixsim7/backend/main/services/generation/generation_service.py`:
     - Orchestrates provider calls.
     - Creates and updates `Generation`/`GenerationArtifact` records.
     - Handles basic error states and mapping from requests to providers.
@@ -67,10 +67,10 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
 - **Frontend Types & Helpers**
   - `packages/types/src/generation.ts`:
     - `GenerationNodeConfig`, `GenerateContentRequest`, `GenerationSocialContext`.
-  - `packages/game-core/src/generation/requestBuilder.ts`:
+  - `packages/game/engine/src/generation/requestBuilder.ts`:
     - `buildGenerateContentRequest` and `computeCacheKey`.
     - Social context integration via `buildGenerationSocialContext`.
-  - `packages/game-core/src/generation/validator.ts`:
+  - `packages/game/engine/src/generation/validator.ts`:
     - Validates generation node configs and social context against world/user constraints.
 
 ### ⏳ Pending / Needs Verification
@@ -123,7 +123,7 @@ Make sure Generation Nodes in the editor actually drive requests to the unified 
 **Key Steps**
 1. Confirm `GenerationNodeConfig` and `GenerateContentRequest` in `packages/types/src/generation.ts` are used by:
    - The React Flow node components for generation.
-   - Any generation API client in `frontend/src/lib/api` or similar.
+   - Any generation API client in `apps/main/src/lib/api` or similar.
 2. Update the frontend client to:
    - Call the unified generation endpoint (per `DYNAMIC_GENERATION_FOUNDATION.md` / refactor plan).
    - Ensure requests are mapped to `GenerationService` (unified path).
@@ -165,7 +165,7 @@ Attach relationship/intimacy context (from Task 09) to generation requests and t
 
 **Key Steps**
 1. From Task 09, ensure `GenerationSocialContext` is fully defined in `packages/types/src/generation.ts`.
-2. Confirm `buildGenerateContentRequest` in `packages/game-core/src/generation/requestBuilder.ts`:
+2. Confirm `buildGenerateContentRequest` in `packages/game/engine/src/generation/requestBuilder.ts`:
    - Calls `buildGenerationSocialContext` for relevant nodes.
    - Attaches `social_context` to `GenerateContentRequest`.
 3. In the backend generation API/service:

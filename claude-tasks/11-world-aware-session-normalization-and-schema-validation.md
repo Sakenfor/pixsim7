@@ -42,8 +42,8 @@ All phases of this task have been completed. Current state:
   - Falls back to hardcoded defaults when `world_id` is null
   - Uses Redis caching (60s TTL) for normalized relationship blobs
 - World meta schema validation is fully implemented:
-  - Pydantic models in `pixsim7_backend/domain/game/schemas.py`
-  - API validation in `pixsim7_backend/api/v1/game_worlds.py` (HTTP 400 on invalid schemas)
+  - Pydantic models in `pixsim7/backend/main/domain/game/schemas.py`
+  - API validation in `pixsim7/backend/main/api/v1/game_worlds.py` (HTTP 400 on invalid schemas)
   - Debug endpoint: `GET /api/v1/game/worlds/debug/validate-schemas`
 - Cache invalidation implemented:
   - `GameWorldService.update_world_meta` invalidates all session caches for that world
@@ -134,7 +134,7 @@ Validate `GameWorld.meta.relationship_schemas` and `intimacy_schema` at write ti
 - Backend world meta handling; no frontend changes.
 
 **Key Steps**
-1. Create Pydantic models in a new module (e.g. `pixsim7_backend/domain/game/schemas.py`) to validate schemas, e.g.:
+1. Create Pydantic models in a new module (e.g. `pixsim7/backend/main/domain/game/schemas.py`) to validate schemas, e.g.:
    - `RelationshipTierSchema` (id, min, max).
    - `IntimacyLevelSchema` (id, minAffinity, minTrust, minChemistry, maxTension).
    - `WorldMetaSchemas` aggregating those structures.
@@ -176,7 +176,7 @@ Expose whether a relationship has been normalized by backend vs simply having no
 - `NpcRelationshipState` and related helpers in game‑core.
 
 **Key Steps**
-1. Extend `NpcRelationshipState` in `packages/game-core/src/core/types.ts` with an `isNormalized: boolean` field, e.g.:
+1. Extend `NpcRelationshipState` in `packages/game/engine/src/core/types.ts` with an `isNormalized: boolean` field, e.g.:
    ```ts
    export interface NpcRelationshipState {
      affinity: number;
@@ -270,7 +270,7 @@ Start using the generic `MetricRegistry` for relationship preview, or at least p
 3. This step is optional and can be deferred if keeping relationship preview endpoints simple is preferred; the main goal is to ensure the registry is either used or consciously left for future metrics.
 
 > **Status (2025‑11‑19):**  
-> The metric registry is wired and relationship evaluators are registered in `pixsim7_backend/domain/metrics/__init__.py`. Preview endpoints already use `get_metric_registry().get_evaluator(...)`.
+> The metric registry is wired and relationship evaluators are registered in `pixsim7/backend/main/domain/metrics/__init__.py`. Preview endpoints already use `get_metric_registry().get_evaluator(...)`.
 
 ---
 

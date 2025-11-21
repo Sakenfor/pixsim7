@@ -23,7 +23,7 @@ The migration from Job + GenerationArtifact to the unified `Generation` model is
 ### Key Findings
 
 **✅ Unified Generation Model**
-- Location: `pixsim7_backend/domain/generation.py:26`
+- Location: `pixsim7/backend/main/domain/generation.py:26`
 - Includes all required fields: `prompt_version_id`, `prompt_config`, `prompt_source_type`
 - Hash computation for reproducibility: `Generation.compute_hash()`
 - Status tracking via `JobStatus` enum (can be renamed to `GenerationStatus` later)
@@ -38,12 +38,12 @@ The migration from Job + GenerationArtifact to the unified `Generation` model is
 - `20251118_1010_add_generation_prompt_config.py` - Adds `prompt_config` and `prompt_source_type` fields
 
 **✅ Service Layer**
-- `GenerationService` (`pixsim7_backend/services/generation/generation_service.py:32`) is active and used
+- `GenerationService` (`pixsim7/backend/main/services/generation/generation_service.py:32`) is active and used
 - API endpoints use `GenerationService` via backward-compatible `JobSvc` alias
 - No active usage of legacy `JobService`
 
 **⚠️ Legacy Code (Identified for Future Removal)**
-- `pixsim7_backend/services/job/job_service.py` - Not imported or used
+- `pixsim7/backend/main/services/job/job_service.py` - Not imported or used
 - Backward compatibility aliases in `domain/__init__.py:36`:
   ```python
   Job = Generation  # Alias
@@ -60,7 +60,7 @@ Created complete unified generation API with structured `GenerationNodeConfig` s
 ### Implementation
 
 **✅ New API Endpoint**
-- File: `pixsim7_backend/api/v1/generations.py`
+- File: `pixsim7/backend/main/api/v1/generations.py`
 - Routes:
   - `POST /api/v1/generations` - Create generation from GenerationNodeConfig
   - `GET /api/v1/generations/{id}` - Get generation details
@@ -69,7 +69,7 @@ Created complete unified generation API with structured `GenerationNodeConfig` s
   - `POST /api/v1/generations/validate` - Validate config without creating
 
 **✅ Request/Response Schemas**
-- File: `pixsim7_backend/shared/schemas/generation_schemas.py`
+- File: `pixsim7/backend/main/shared/schemas/generation_schemas.py`
 - Schemas:
   - `CreateGenerationRequest` - Full generation config with social context
   - `GenerationResponse` - Complete generation state
@@ -77,14 +77,14 @@ Created complete unified generation API with structured `GenerationNodeConfig` s
   - `SceneRefSchema`, `PlayerContextSnapshotSchema`, `DurationRuleSchema`, etc.
 
 **✅ Route Plugin**
-- Directory: `pixsim7_backend/routes/generations/`
+- Directory: `pixsim7/backend/main/routes/generations/`
 - Auto-discovered by plugin system during app startup
 - Registered at `/api/v1` prefix
 
 **✅ Frontend Types**
 - Location: `packages/types/src/generation.ts`
 - Types: `GenerationNodeConfig`, `GenerateContentRequest`, `GenerateContentResponse`
-- UI Component: `frontend/src/components/inspector/GenerationNodeEditor.tsx`
+- UI Component: `apps/main/src/components/inspector/GenerationNodeEditor.tsx`
 
 **✅ Features**
 - Structured generation config (strategy, style, constraints, duration, fallback)
@@ -102,7 +102,7 @@ Implemented comprehensive prompt resolution from structured `prompt_config`.
 ### Implementation
 
 **✅ New Method: `_resolve_prompt_config()`**
-- Location: `pixsim7_backend/services/generation/generation_service.py:314`
+- Location: `pixsim7/backend/main/services/generation/generation_service.py:314`
 - Supports:
   1. **Direct Version ID** - `{ "versionId": "uuid" }`
   2. **Family ID with Auto-Select** - `{ "familyId": "uuid", "autoSelectLatest": true }`
@@ -141,14 +141,14 @@ async def _resolve_prompt_config(
 ## 📋 Files Created/Modified
 
 ### New Files
-1. `pixsim7_backend/api/v1/generations.py` - Generations API
-2. `pixsim7_backend/shared/schemas/generation_schemas.py` - Request/Response schemas
-3. `pixsim7_backend/routes/generations/__init__.py` - Route plugin init
-4. `pixsim7_backend/routes/generations/manifest.py` - Route plugin manifest
+1. `pixsim7/backend/main/api/v1/generations.py` - Generations API
+2. `pixsim7/backend/main/shared/schemas/generation_schemas.py` - Request/Response schemas
+3. `pixsim7/backend/main/routes/generations/__init__.py` - Route plugin init
+4. `pixsim7/backend/main/routes/generations/manifest.py` - Route plugin manifest
 
 ### Modified Files
-1. `pixsim7_backend/api/v1/__init__.py` - Added generations import
-2. `pixsim7_backend/services/generation/generation_service.py` - Added prompt_config resolution
+1. `pixsim7/backend/main/api/v1/__init__.py` - Added generations import
+2. `pixsim7/backend/main/services/generation/generation_service.py` - Added prompt_config resolution
 
 ---
 
@@ -183,13 +183,13 @@ Content rating enforcement implemented in GenerationService (2025-11-20).
 ### Implementation
 
 **✅ Content Rating Validation**
-- Location: `pixsim7_backend/services/generation/generation_service.py:332`
+- Location: `pixsim7/backend/main/services/generation/generation_service.py:332`
 - Method: `_validate_content_rating(params, world_meta, user_preferences)`
 - Validates against world/user maxContentRating constraints
 - Returns (is_valid, violation_message, clamped_social_context)
 
 **✅ Enforcement in Generation Creation**
-- Location: `pixsim7_backend/services/generation/generation_service.py:133-171`
+- Location: `pixsim7/backend/main/services/generation/generation_service.py:133-171`
 - Phase 8 content rating enforcement integrated into `create_generation()`
 - Checks structured params with social_context
 - Validates against world and user constraints
@@ -266,7 +266,7 @@ Implemented comprehensive validation system with real-time feedback and develope
 ### Implementation
 
 **✅ Enhanced Validator**
-- File: `packages/game-core/src/generation/validator.ts`
+- File: `packages/game/engine/src/generation/validator.ts`
 - Added comprehensive validation rules:
   - **Required Fields**: Validates generationType, purpose, strategy
   - **Type/Purpose Combinations**: Warns about unusual combinations
@@ -283,7 +283,7 @@ Implemented comprehensive validation system with real-time feedback and develope
 - `isGenerationNodeValid(config)` → Boolean check
 
 **✅ GenerationNodeEditor UI Enhancement**
-- File: `frontend/src/components/inspector/GenerationNodeEditor.tsx`
+- File: `apps/main/src/components/inspector/GenerationNodeEditor.tsx`
 - Features:
   - **Real-time Validation**: Auto-validates on config changes
   - **Status Badge**: Color-coded badge (✅ Valid / ⚠️ Has Warnings / ❌ Has Errors)
@@ -292,7 +292,7 @@ Implemented comprehensive validation system with real-time feedback and develope
   - **Integrated with Apply/Test**: Blocks actions when validation fails
 
 **✅ Generation Health View Component**
-- File: `frontend/src/components/dev/GenerationHealthView.tsx`
+- File: `apps/main/src/components/dev/GenerationHealthView.tsx`
 - Features:
   - **Aggregate Health Dashboard**: View all generation nodes at once
   - **Filter by Status**: Filter nodes by error/warning/ok status
@@ -368,7 +368,7 @@ Integrated relationship and intimacy context from Task 09 into the generation pi
 - Updated `GenerateContentRequest` to include optional `social_context` field
 
 **✅ Backend Social Context Builder**
-- File: `pixsim7_backend/services/generation/social_context_builder.py`
+- File: `pixsim7/backend/main/services/generation/social_context_builder.py`
 - Function: `build_generation_social_context()`
   - Loads world and schemas
   - Computes relationship tier using `compute_relationship_tier()`

@@ -1,4 +1,4 @@
-# @pixsim7/game-core
+# @pixsim7/game.engine
 
 Core game session state management for Pixsim7. Provides immutable and mutable APIs for working with game sessions, relationships, inventory, quests, and events.
 
@@ -11,7 +11,7 @@ Core game session state management for Pixsim7. Provides immutable and mutable A
 The immutable API returns **new session objects** without modifying the input.
 
 ```typescript
-import { setNpcRelationshipState } from '@pixsim7/game-core';
+import { setNpcRelationshipState } from '@pixsim7/game.engine';
 
 // Returns NEW session object
 const updatedSession = setNpcRelationshipState(session, npcId, { affinity: 50 });
@@ -39,7 +39,7 @@ console.log(session === updatedSession); // false
 The mutable API **modifies session objects in place** and returns void.
 
 ```typescript
-import { updateArcStage } from '@pixsim7/game-core';
+import { updateArcStage } from '@pixsim7/game.engine';
 
 // Mutates session.flags in place
 updateArcStage(session, 'prologue', 3);
@@ -146,7 +146,7 @@ Version conflicts are automatically handled:
 ## File Organization
 
 ```
-packages/game-core/src/
+packages/game/engine/src/
 ├── relationships/
 │   ├── computation.ts    # @authority CLIENT_FALLBACK
 │   └── schemas.ts        # Type definitions

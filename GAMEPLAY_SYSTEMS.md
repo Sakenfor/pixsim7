@@ -13,7 +13,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 1. Relationship System
 
 **Backend:**
-- Location: `pixsim7_backend/domain/narrative/relationships.py`
+- Location: `pixsim7/backend/main/domain/narrative/relationships.py`
 - Data: `GameSession.relationships` (JSON field)
 
 **Data Structure:**
@@ -45,7 +45,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 - `very_intimate` (affinity 80+, chemistry 80+, trust 60+)
 
 **Frontend:**
-- Component: `frontend/src/components/game/RelationshipDashboard.tsx`
+- Component: `apps/main/src/components/game/RelationshipDashboard.tsx`
 - Features:
   - Visual progress bars for all 4 axes
   - Color-coded relationship tiers and intimacy levels
@@ -55,9 +55,9 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 2. Quest System
 
 **Backend:**
-- Service: `pixsim7_backend/services/game/quest_service.py`
-- API: `pixsim7_backend/api/v1/game_quests.py`
-- Routes: Registered via `pixsim7_backend/routes/game_quests/manifest.py`
+- Service: `pixsim7/backend/main/services/game/quest_service.py`
+- API: `pixsim7/backend/main/api/v1/game_quests.py`
+- Routes: Registered via `pixsim7/backend/main/routes/game_quests/manifest.py`
 - Data: `GameSession.flags.quests` (JSON field)
 
 **Data Structure:**
@@ -102,7 +102,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 - `hidden` - Not yet revealed to player
 
 **Frontend:**
-- Component: `frontend/src/components/game/QuestLog.tsx`
+- Component: `apps/main/src/components/game/QuestLog.tsx`
 - Features:
   - Quest list with filtering (active/completed/all)
   - Quest details panel
@@ -149,7 +149,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 - `GET /api/v1/game/inventory/sessions/{session_id}/stats` - Get statistics
 
 **Frontend:**
-- Component: `frontend/src/components/game/InventoryPanel.tsx`
+- Component: `apps/main/src/components/game/InventoryPanel.tsx`
 - Features:
   - Item list with quantities
   - Item details panel with metadata
@@ -161,7 +161,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 4. NPC Dialogue
 
 **Frontend:**
-- Component: `frontend/src/components/game/DialogueUI.tsx`
+- Component: `apps/main/src/components/game/DialogueUI.tsx`
 - Features:
   - Dialogue message display
   - Speaker identification with NPC badge
@@ -176,7 +176,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 ### 5. Game Notifications
 
 **Frontend:**
-- Component: `frontend/src/components/game/GameNotification.tsx`
+- Component: `apps/main/src/components/game/GameNotification.tsx`
 - Features:
   - Toast-style notifications (bottom-right)
   - 4 types: success, error, warning, info
@@ -223,7 +223,7 @@ All gameplay data is stored in `GameSession.flags` and `GameSession.relationship
 
 ## Game2D View Integration
 
-**Location:** `frontend/src/routes/Game2D.tsx`
+**Location:** `apps/main/src/routes/Game2D.tsx`
 
 **Features:**
 - Toggle buttons for Relationships, Quests, Inventory
@@ -291,12 +291,12 @@ Loop
 
 ## API Client
 
-All frontend API functions located in: `frontend/src/lib/api/game.ts`
+All frontend API functions located in: `apps/main/src/lib/api/game.ts`
 
 Functions include:
 - Quest management: `listSessionQuests`, `addQuest`, `updateQuestStatus`, etc.
 - Inventory management: `listInventoryItems`, `addInventoryItem`, `removeInventoryItem`, etc.
-- Relationship computation: `@pixsim7/game-core` (with a re-export shim at `frontend/src/lib/game/relationshipComputation.ts`)
+- Relationship computation: `@pixsim7/game.engine` (with a re-export shim at `apps/main/src/lib/game/relationshipComputation.ts`)
 
 ## Notes for Opus (UI Redesign)
 
@@ -342,15 +342,15 @@ Backend:
   - relationships.py
 
 Frontend:
-- frontend/src/components/game/
+- apps/main/src/components/game/
   - RelationshipDashboard.tsx
   - QuestLog.tsx
   - InventoryPanel.tsx
   - DialogueUI.tsx
   - GameNotification.tsx
-- frontend/src/lib/game/
-  - relationshipComputation.ts (re-exports relationship helpers from @pixsim7/game-core)
-- frontend/src/routes/
+- apps/main/src/lib/game/
+  - relationshipComputation.ts (re-exports relationship helpers from @pixsim7/game.engine)
+- apps/main/src/routes/
   - Game2D.tsx
 
 UI Package:

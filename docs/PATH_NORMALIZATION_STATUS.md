@@ -30,15 +30,19 @@ After the backend unification (Task 34) and VARIANT_B frontend migration, many d
 - claude-tasks/35-dev-start-scripts-and-onboarding.md
 - claude-tasks/37-chrome-extension-end-to-end-validation.md
 
-### ⚠️ Needs Update - Critical Docs
-Files with `packages/game-core` or `frontend/src` references (47+ files):
-- ARCHITECTURE.md (3 references to `frontend/src`)
-- GAMEPLAY_SYSTEMS.md (20+ references)
-- AI_README.md
-- README.md
-- docs/APP_MAP.md
-- Many files in claude-tasks/
-- Many files in docs/
+### ✅ Updated (2025-11-21 - Full normalization sweep)
+- ✅ ARCHITECTURE.md
+- ✅ GAMEPLAY_SYSTEMS.md (all 20+ references)
+- ✅ AI_README.md
+- ✅ README.md
+- ✅ claude-tasks/01-27*.md (31 files batch updated)
+- ✅ docs/*.md (root level docs)
+- ✅ packages/*/README.md
+- ✅ apps/*/README.md and component docs
+
+### ⚠️ Remaining (Lower Priority)
+- docs/archive/* - Historical files (need notes, not replacements)
+- Some subdocs in docs/decisions/, docs/generated/
 
 ### 📦 Historical/Archive Docs
 Files in `docs/archive/` - should keep historical references but add notes
@@ -71,11 +75,33 @@ Files in `docs/archive/` - should keep historical references but add notes
 
 ## Progress Tracking
 
-- [X] Phase 33.1: Backend Tree Duplication Audit (Complete - Task 34 cleaned this up)
-- [X] Phase 33.2: PixSim6 & Legacy Integration Artifacts (Complete - identified and documented)
-- [~] Phase 33.3: Path/Name Consistency (In Progress - critical docs remaining)
-- [ ] Phase 33.4: Dead Script & Sample Data Triage
-- [ ] Phase 33.5: Unused Frontend Component Sweep (Optional)
+- [X] Phase 33.1: Backend Tree Duplication Audit (Complete - Task 34)
+- [X] Phase 33.2: PixSim6 & Legacy Integration Artifacts (Complete)
+- [X] Phase 33.3: Path/Name Consistency (Complete - 2025-11-21 mass normalization)
+- [X] Phase 33.4: Dead Script & Sample Data Triage (Complete - all scripts active)
+- [ ] Phase 33.5: Unused Frontend Component Sweep (Optional - deferred)
+
+## 2025-11-21 Mass Normalization Summary
+
+**Files Updated:** 100+ files
+**Scope:**
+- All claude-tasks/01-27*.md files (31 files)
+- All root documentation (ARCHITECTURE.md, GAMEPLAY_SYSTEMS.md, AI_README.md, README.md)
+- All docs/*.md files (root level)
+- All package and app README files
+- Component documentation in apps/main/src/
+
+**Method:**
+- Batch sed replacements across directories
+- Manual verification of critical files
+- Historical context preserved in docs/archive/README.md
+
+**Verification:**
+```bash
+# Check for remaining old references (should be minimal)
+grep -r "pixsim7_backend/" --include="*.md" . | grep -v archive | grep -v PATH_NORMALIZATION
+grep -r "frontend/src/" --include="*.md" . | grep -v archive | grep -v PATH_NORMALIZATION
+```
 
 ## Notes
 

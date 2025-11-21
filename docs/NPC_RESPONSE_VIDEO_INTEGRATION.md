@@ -73,7 +73,7 @@ class GenerationService:
 - Event bus integration
 - Database persistence
 
-### 4. **UI Plugin System** (`frontend/src/lib/providers/generationPlugins.ts`)
+### 4. **UI Plugin System** (`apps/main/src/lib/providers/generationPlugins.ts`)
 
 ```typescript
 export class GenerationUIPluginRegistry {
@@ -442,7 +442,7 @@ registry.register(NpcResponseProvider())
 
 ### Phase 4: Create UI Plugin for NPC Response Generation
 
-**File: `frontend/src/lib/providers/plugins/npcResponsePlugin.tsx`**
+**File: `apps/main/src/lib/providers/plugins/npcResponsePlugin.tsx`**
 
 ```typescript
 import { defineGenerationUIPlugin } from '../generationPlugins';

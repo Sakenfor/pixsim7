@@ -6,7 +6,7 @@
 >   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation system design  
 >   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` – backend migration plan  
 >   - `docs/INTIMACY_AND_GENERATION.md` – social context and ratings.
-> - Treat `packages/types/src/generation.ts`, `packages/game-core/src/generation/*`, and backend `GenerationService` + `/api/v1/generations` as the **canonical** path for new work.
+> - Treat `packages/types/src/generation.ts`, `packages/game/engine/src/generation/*`, and backend `GenerationService` + `/api/v1/generations` as the **canonical** path for new work.
 > - Use this task to remove/confine legacy “job” paths and ad‑hoc request building.
 
 ---
@@ -16,14 +16,14 @@
 The unified generation model and pipeline are largely in place:
 
 - Backend:
-  - `pixsim7_backend/domain/generation.py` defines the unified `Generation`/`GenerationArtifact` model with canonical params and hashing.
-  - `pixsim7_backend/services/generation/generation_service.py` orchestrates provider calls.
-  - New endpoints in `pixsim7_backend/api/v1/generations.py` (and corresponding route plugin) expose `/api/v1/generations/*`.
+  - `pixsim7/backend/main/domain/generation.py` defines the unified `Generation`/`GenerationArtifact` model with canonical params and hashing.
+  - `pixsim7/backend/main/services/generation/generation_service.py` orchestrates provider calls.
+  - New endpoints in `pixsim7/backend/main/api/v1/generations.py` (and corresponding route plugin) expose `/api/v1/generations/*`.
   - Migrations have created `generations` tables and updated foreign keys.
 - Frontend / Types:
   - `packages/types/src/generation.ts` defines `GenerationNodeConfig`, `GenerateContentRequest/Response`, `GenerationSocialContext`.
-  - `packages/game-core/src/generation/requestBuilder.ts` builds requests from `GenerationNodeConfig`.
-  - `packages/game-core/src/generation/validator.ts` validates configs and social context.
+  - `packages/game/engine/src/generation/requestBuilder.ts` builds requests from `GenerationNodeConfig`.
+  - `packages/game/engine/src/generation/validator.ts` validates configs and social context.
 
 However, some **legacy “job” concepts and ad‑hoc request paths** still exist:
 
@@ -77,24 +77,24 @@ Get a clear list of everywhere `GenerateContentRequest`‑like payloads are cons
 | Component | Path/File | Type | Status | Notes |
 |-----------|-----------|------|--------|-------|
 | **CANONICAL PATH (NEW)** |
-| Backend API | `pixsim7_backend/api/v1/generations.py` | Canonical | ✅ Active | Unified generation endpoint |
-| Backend Service | `pixsim7_backend/services/generation/generation_service.py` | Canonical | ✅ Active | Core generation service |
-| Backend Model | `pixsim7_backend/domain/generation.py` | Canonical | ✅ Active | `Generation` model |
-| Backend Schema | `pixsim7_backend/shared/schemas/generation_schemas.py` | Canonical | ✅ Active | `CreateGenerationRequest` |
+| Backend API | `pixsim7/backend/main/api/v1/generations.py` | Canonical | ✅ Active | Unified generation endpoint |
+| Backend Service | `pixsim7/backend/main/services/generation/generation_service.py` | Canonical | ✅ Active | Core generation service |
+| Backend Model | `pixsim7/backend/main/domain/generation.py` | Canonical | ✅ Active | `Generation` model |
+| Backend Schema | `pixsim7/backend/main/shared/schemas/generation_schemas.py` | Canonical | ✅ Active | `CreateGenerationRequest` |
 | Types | `packages/types/src/generation.ts` | Canonical | ✅ Active | `GenerateContentRequest`, `GenerationNodeConfig` |
-| Request Builder | `packages/game-core/src/generation/requestBuilder.ts` | Canonical | ⚠️ Not Used | `buildGenerateContentRequest()` - reference implementation |
-| Validator | `packages/game-core/src/generation/validator.ts` | Canonical | ✅ Used | `validateGenerationNode()` |
+| Request Builder | `packages/game/engine/src/generation/requestBuilder.ts` | Canonical | ⚠️ Not Used | `buildGenerateContentRequest()` - reference implementation |
+| Validator | `packages/game/engine/src/generation/validator.ts` | Canonical | ✅ Used | `validateGenerationNode()` |
 | **LEGACY PATH (TO DEPRECATE)** |
-| Backend API | `pixsim7_backend/api/v1/jobs.py` | Legacy | 🔄 Active | Wraps GenerationService, compatibility layer |
-| Backend Service | `pixsim7_backend/services/job/job_service.py` | Legacy | ⚠️ Direct Use | Old job service, still referenced |
-| Domain Alias | `pixsim7_backend/domain/__init__.py:36` | Legacy | ⚠️ Active | `Job = Generation` alias |
-| Domain Alias | `pixsim7_backend/domain/__init__.py:37` | Legacy | ⚠️ Active | `GenerationArtifact = Generation` alias |
-| Frontend API | `frontend/src/lib/api/jobs.ts` | Legacy | 🔴 Active | Calls `/api/v1/jobs` endpoint |
-| Frontend Hook | `frontend/src/hooks/useJobsSocket.ts` | Legacy | 🔴 Active | WebSocket for job events |
-| Frontend Hook | `frontend/src/hooks/useJobStatus.ts` | Legacy | 🔴 Active | Job status polling |
-| Frontend UI | `frontend/src/components/control/JobStatusIndicator.tsx` | Legacy | 🔴 Active | Job status display |
+| Backend API | `pixsim7/backend/main/api/v1/jobs.py` | Legacy | 🔄 Active | Wraps GenerationService, compatibility layer |
+| Backend Service | `pixsim7/backend/main/services/job/job_service.py` | Legacy | ⚠️ Direct Use | Old job service, still referenced |
+| Domain Alias | `pixsim7/backend/main/domain/__init__.py:36` | Legacy | ⚠️ Active | `Job = Generation` alias |
+| Domain Alias | `pixsim7/backend/main/domain/__init__.py:37` | Legacy | ⚠️ Active | `GenerationArtifact = Generation` alias |
+| Frontend API | `apps/main/src/lib/api/jobs.ts` | Legacy | 🔴 Active | Calls `/api/v1/jobs` endpoint |
+| Frontend Hook | `apps/main/src/hooks/useJobsSocket.ts` | Legacy | 🔴 Active | WebSocket for job events |
+| Frontend Hook | `apps/main/src/hooks/useJobStatus.ts` | Legacy | 🔴 Active | Job status polling |
+| Frontend UI | `apps/main/src/components/control/JobStatusIndicator.tsx` | Legacy | 🔴 Active | Job status display |
 | **AD-HOC REQUEST BUILDERS** |
-| Generation Editor | `frontend/src/components/inspector/GenerationNodeEditor.tsx:256-282` | Ad-hoc | 🔴 Active | Manually builds job request, POSTs to `/api/v1/jobs` |
+| Generation Editor | `apps/main/src/components/inspector/GenerationNodeEditor.tsx:256-282` | Ad-hoc | 🔴 Active | Manually builds job request, POSTs to `/api/v1/jobs` |
 
 **Key Findings:**
 
@@ -139,7 +139,7 @@ Define the single canonical request shape and API path for generation.
 **Key Steps**
 1. Confirm the canonical contract:
    - `GenerateContentRequest` in `packages/types/src/generation.ts`.
-   - Backend request schemas in `pixsim7_backend/shared/schemas/generation_schemas.py`.
+   - Backend request schemas in `pixsim7/backend/main/shared/schemas/generation_schemas.py`.
 2. Confirm canonical entrypoint:
    - `POST /api/v1/generations` (and any related validation endpoints).
 3. Document in this file and/or `DYNAMIC_GENERATION_FOUNDATION.md` that **new work must use**:
@@ -156,14 +156,14 @@ Define the single canonical request shape and API path for generation.
 - `GenerationSocialContext` - Social/intimacy context
 - `SceneRef`, `PlayerContextSnapshot`, `DurationRule`, `ConstraintSet`, `StyleRules`, `FallbackConfig` - Supporting types
 
-**Backend Schemas** (`pixsim7_backend/shared/schemas/generation_schemas.py`):
+**Backend Schemas** (`pixsim7/backend/main/shared/schemas/generation_schemas.py`):
 - `CreateGenerationRequest` - Pydantic request schema (mirrors frontend types)
 - `GenerationResponse` - Pydantic response schema
 - `GenerationNodeConfigSchema` - Config validation
 - `GenerationSocialContextSchema` - Social context validation
 - All supporting schemas with validation rules
 
-**Canonical Endpoints** (`pixsim7_backend/api/v1/generations.py`):
+**Canonical Endpoints** (`pixsim7/backend/main/api/v1/generations.py`):
 - `POST /api/v1/generations` - Create generation
 - `GET /api/v1/generations/{id}` - Get generation details
 - `GET /api/v1/generations` - List generations (with filters)
@@ -215,22 +215,22 @@ Ensure all new generation features use `buildGenerateContentRequest()` as their 
 - Frontend/game-core only; policy for future code.
 
 **Key Steps**
-1. In `packages/game-core/src/generation/requestBuilder.ts`:
+1. In `packages/game/engine/src/generation/requestBuilder.ts`:
    - Confirm it can cover all needed use cases (e.g. NPC response, transitions, variations).
 2. In docs and comments:
    - Make it explicit that this builder is the **only supported way** to construct `GenerateContentRequest` from editor/graph nodes.
-3. Ensure exports from `@pixsim7/game-core` surface `buildGenerateContentRequest` clearly for frontend consumption.
+3. Ensure exports from `@pixsim7/game.engine` surface `buildGenerateContentRequest` clearly for frontend consumption.
 
 **Status**: ✅ COMPLETED
 
 **Changes Made:**
 
-1. **Updated Request Builder Status** (`packages/game-core/src/generation/requestBuilder.ts`):
+1. **Updated Request Builder Status** (`packages/game/engine/src/generation/requestBuilder.ts`):
    - Changed `@status REFERENCE_IMPLEMENTATION` → `@status CANONICAL`
    - Updated doc header to emphasize this is the ONLY supported way
    - Added deprecation notice for direct manual construction
 
-2. **Confirmed Exports** (`packages/game-core/src/index.ts`):
+2. **Confirmed Exports** (`packages/game/engine/src/index.ts`):
    - ✅ `buildGenerateContentRequest` - exported (line 81)
    - ✅ `buildSocialContext` - exported (line 82)
    - ✅ `computeCacheKey` - exported (line 83)
@@ -251,9 +251,9 @@ Ensure all new generation features use `buildGenerateContentRequest()` as their 
 
 Starting immediately, ALL new generation request construction MUST:
 
-1. ✅ Import from `@pixsim7/game-core`:
+1. ✅ Import from `@pixsim7/game.engine`:
    ```typescript
-   import { buildGenerateContentRequest } from '@pixsim7/game-core';
+   import { buildGenerateContentRequest } from '@pixsim7/game.engine';
    ```
 
 2. ✅ Use the builder with proper options:
@@ -300,7 +300,7 @@ Gradually migrate any existing ad‑hoc request construction code to the canonic
 **Analysis:**
 
 The main ad-hoc request builder identified in Phase 1 is:
-- `frontend/src/components/inspector/GenerationNodeEditor.tsx:231-318` - `handleTestGeneration()`
+- `apps/main/src/components/inspector/GenerationNodeEditor.tsx:231-318` - `handleTestGeneration()`
 
 **Current Implementation Issues:**
 1. ❌ Manually constructs job request object
@@ -394,7 +394,7 @@ Limit “job” concepts to compatibility shims and prevent new usages.
 
 **Changes Made:**
 
-1. **Created Compatibility Module** (`pixsim7_backend/domain/compat.py`):
+1. **Created Compatibility Module** (`pixsim7/backend/main/domain/compat.py`):
    - Isolated `Job` and `GenerationArtifact` aliases
    - Added deprecation warnings when compat module is imported
    - Clear migration guidance in module docstring
@@ -421,9 +421,9 @@ Limit “job” concepts to compatibility shims and prevent new usages.
 7. ⏳ **Future Removal**: After grace period (Phase 10)
 
 **Files Modified:**
-- `pixsim7_backend/domain/compat.py` (created)
-- `pixsim7_backend/domain/__init__.py`
-- `pixsim7_backend/api/v1/jobs.py`
+- `pixsim7/backend/main/domain/compat.py` (created)
+- `pixsim7/backend/main/domain/__init__.py`
+- `pixsim7/backend/main/api/v1/jobs.py`
 
 **Impact:**
 
@@ -443,7 +443,7 @@ Ensure the frontend only targets the unified generation endpoint(s), not legacy 
 - Frontend networking / API client modules.
 
 **Key Steps**
-1. Identify any custom API clients in `frontend/src/lib/api` or modules that:
+1. Identify any custom API clients in `apps/main/src/lib/api` or modules that:
    - POST to old job endpoints.
    - Expect legacy job responses.
 2. Replace those with:
@@ -456,7 +456,7 @@ Ensure the frontend only targets the unified generation endpoint(s), not legacy 
 **Implementation:**
 
 1. **Frontend API Client Already Migrated**:
-   - ✅ `frontend/src/lib/api/generations.ts` exists with complete canonical API client
+   - ✅ `apps/main/src/lib/api/generations.ts` exists with complete canonical API client
    - ✅ Exports `createGeneration()`, `getGeneration()`, `listGenerations()`, `cancelGeneration()`, `retryGeneration()`, `validateGenerationConfig()`, `buildSocialContext()`
    - ✅ Uses proper types from `@pixsim7/types`
    - ✅ All calls target `/api/v1/generations` endpoint
@@ -468,8 +468,8 @@ Ensure the frontend only targets the unified generation endpoint(s), not legacy 
 
 3. **Documentation Updated**:
    - ✅ Updated `frontend/README.md` to reference `/api/v1/generations` endpoint
-   - ✅ Updated `frontend/src/lib/api/PAYLOAD_EXAMPLES.md` with deprecation notice
-   - ✅ Updated `frontend/src/lib/api/__simulate_extend.ts` with @deprecated tag
+   - ✅ Updated `apps/main/src/lib/api/PAYLOAD_EXAMPLES.md` with deprecation notice
+   - ✅ Updated `apps/main/src/lib/api/__simulate_extend.ts` with @deprecated tag
 
 **Findings:**
 
@@ -479,8 +479,8 @@ The frontend migration was already complete. No active code paths use the legacy
 
 **Files Modified:**
 - `frontend/README.md` - Updated endpoint documentation
-- `frontend/src/lib/api/PAYLOAD_EXAMPLES.md` - Added deprecation notice
-- `frontend/src/lib/api/__simulate_extend.ts` - Added @deprecated tag
+- `apps/main/src/lib/api/PAYLOAD_EXAMPLES.md` - Added deprecation notice
+- `apps/main/src/lib/api/__simulate_extend.ts` - Added @deprecated tag
 
 ---
 
@@ -511,18 +511,18 @@ No backward compatibility required. Legacy job code never existed in production:
 1. **Code Cleanup**:
    - Renamed `JobStatus` → `GenerationStatus` in `domain/enums.py`
    - Updated all 34 references across 7 files:
-     - `pixsim7_backend/domain/__init__.py`
-     - `pixsim7_backend/domain/generation.py`
-     - `pixsim7_backend/api/v1/generations.py`
-     - `pixsim7_backend/services/generation/generation_service.py`
-     - `pixsim7_backend/shared/schemas/generation_schemas.py`
-     - `pixsim7_backend/workers/status_poller.py`
+     - `pixsim7/backend/main/domain/__init__.py`
+     - `pixsim7/backend/main/domain/generation.py`
+     - `pixsim7/backend/main/api/v1/generations.py`
+     - `pixsim7/backend/main/services/generation/generation_service.py`
+     - `pixsim7/backend/main/shared/schemas/generation_schemas.py`
+     - `pixsim7/backend/main/workers/status_poller.py`
    - No backward compatibility aliases created (not needed)
 
 2. **Documentation Updated**:
    - `frontend/README.md` - References `/api/v1/generations`
-   - `frontend/src/lib/api/PAYLOAD_EXAMPLES.md` - References `/api/v1/generations`
-   - `frontend/src/lib/api/__simulate_extend.ts` - Marked as @deprecated
+   - `apps/main/src/lib/api/PAYLOAD_EXAMPLES.md` - References `/api/v1/generations`
+   - `apps/main/src/lib/api/__simulate_extend.ts` - Marked as @deprecated
 
 **Verification**:
 - ✅ Zero `JobStatus` references in active code (excluding migrations/backups)
@@ -568,14 +568,14 @@ No dead code to remove. Legacy job infrastructure never existed in the codebase:
   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` – migration details  
   - `docs/INTIMACY_AND_GENERATION.md` – social context and ratings
 - Backend:  
-  - `pixsim7_backend/domain/generation.py`  
-  - `pixsim7_backend/services/generation/generation_service.py`  
-  - `pixsim7_backend/api/v1/generations.py`  
-  - `pixsim7_backend/shared/schemas/generation_schemas.py`  
+  - `pixsim7/backend/main/domain/generation.py`  
+  - `pixsim7/backend/main/services/generation/generation_service.py`  
+  - `pixsim7/backend/main/api/v1/generations.py`  
+  - `pixsim7/backend/main/shared/schemas/generation_schemas.py`  
   - Legacy job service modules / aliases (to be confined)
 - Game-core / Types:  
   - `packages/types/src/generation.ts`  
-  - `packages/game-core/src/generation/requestBuilder.ts`  
-  - `packages/game-core/src/generation/validator.ts`  
-  - `frontend/src/components/inspector/GenerationNodeEditor.tsx` and any generation orchestration code
+  - `packages/game/engine/src/generation/requestBuilder.ts`  
+  - `packages/game/engine/src/generation/validator.ts`  
+  - `apps/main/src/components/inspector/GenerationNodeEditor.tsx` and any generation orchestration code
 

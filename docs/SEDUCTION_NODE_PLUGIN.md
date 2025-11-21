@@ -18,7 +18,7 @@ The Seduction Node allows scene designers to create multi-stage NPC seduction in
 ## File Structure
 
 ```
-frontend/src/
+apps/main/src/
 ├── lib/plugins/
 │   └── seductionNode.ts          # Node type definition and registration
 └── components/inspector/

@@ -3,11 +3,11 @@
 > **For Agents (How to use this file)**
 > - This is a **roadmap/status document** for the backend plugin system; it is not the primary spec for behavior or NPC logic.
 > - Read these first for authoritative behavior and plugin infrastructure:  
->   - `pixsim7_backend/infrastructure/plugins/types.py` – plugin manifest, hooks, events  
->   - `pixsim7_backend/infrastructure/plugins/manager.py` – plugin loading/registration  
->   - `pixsim7_backend/infrastructure/events/handlers.py` – event handler plugins  
->   - `pixsim7_backend/infrastructure/middleware/*` – middleware plugin patterns  
->   - `pixsim7_backend/README.md` – section on plugin system (and what was left behind from PixSim6).
+>   - `pixsim7/backend/main/infrastructure/plugins/types.py` – plugin manifest, hooks, events  
+>   - `pixsim7/backend/main/infrastructure/plugins/manager.py` – plugin loading/registration  
+>   - `pixsim7/backend/main/infrastructure/events/handlers.py` – event handler plugins  
+>   - `pixsim7/backend/main/infrastructure/middleware/*` – middleware plugin patterns  
+>   - `pixsim7/backend/main/README.md` – section on plugin system (and what was left behind from PixSim6).
 >   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` + `13-safeguards-and-extensibility.md` – how plugins are expected to interact with NPC behavior (custom conditions/effects, simulation tiers).
 > - Treat the **plugin manifest + capabilities** defined here as the canonical way for plugins to touch world/session/behavior state. Avoid grabbing raw DB sessions or internal services directly from plugins.
 >
@@ -73,10 +73,10 @@ Get a clear picture of all plugin‑like mechanisms, where they live, and what t
 
 **Scope**
 
-- `pixsim7_backend/infrastructure/plugins/*` – main plugin manager & manifest.
-- `pixsim7_backend/routes/*` – route “plugins”.
-- `pixsim7_backend/event_handlers/*` – event handler plugins.
-- `pixsim7_backend/infrastructure/middleware/*` – middleware plugins.
+- `pixsim7/backend/main/infrastructure/plugins/*` – main plugin manager & manifest.
+- `pixsim7/backend/main/routes/*` – route “plugins”.
+- `pixsim7/backend/main/event_handlers/*` – event handler plugins.
+- `pixsim7/backend/main/infrastructure/middleware/*` – middleware plugins.
 - Behavior extensions planned in Task 13 (custom condition/effect/scoring registries).
 
 **Key Steps**
@@ -99,10 +99,10 @@ Get a clear picture of all plugin‑like mechanisms, where they live, and what t
 
 | Plugin Type | Entrypoint Module | Manifest Type | Current Capabilities | Intended Use | Notes |
 |-------------|-------------------|---------------|---------------------|--------------|-------|
-| **Route Plugins** | `pixsim7_backend/routes/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access via `Depends(get_redis_client)`<br>- Direct import of services, models, utilities<br>- FastAPI router registration<br>- Access to all internal modules | Add core API endpoints for game/business logic | Used for primary API routes (auth, generations, game_worlds, game_behavior, etc.). Currently ~25+ route plugins. |
-| **Feature Plugins** | `pixsim7_backend/plugins/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access<br>- Direct import of domain models (`GameSession`, etc.)<br>- FastAPI router registration<br>- Can mutate session flags, relationships directly<br>- Access to all internal services | Add optional gameplay mechanics (stealth, romance, dialogue, NPCs) | Examples: `game_stealth`, `game_romance`, `game_dialogue`, `game_npcs`. Can directly query/mutate DB and session state. Currently ~4 feature plugins. |
-| **Event Handler Plugins** | `pixsim7_backend/event_handlers/{plugin}/manifest.py` | Custom `EventHandlerManifest` | - Subscribe to event patterns (`"*"` or specific types)<br>- Receive `Event` objects from event bus<br>- Can make arbitrary HTTP calls (webhooks)<br>- Can track metrics in-memory<br>- No enforced sandboxing | React to domain events (metrics, webhooks, analytics, notifications) | Examples: `metrics` (tracks event counts), `webhooks` (HTTP dispatching), `auto_retry` (retry logic). Subscribe via `event_bus.subscribe()`. Currently ~3 event handlers. |
-| **Middleware Plugins** | `pixsim7_backend/middleware/{plugin}/manifest.py` | `MiddlewareManifest` | - Full HTTP request/response access<br>- Can wrap all requests via `BaseHTTPMiddleware`<br>- Priority-based ordering<br>- Environment filtering<br>- Access to app instance | Wrap HTTP requests/responses for logging, auth, rate limiting, CORS | Uses Starlette middleware pattern. Registered in reverse priority order (LIFO). Can inject headers, modify responses, etc. |
+| **Route Plugins** | `pixsim7/backend/main/routes/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access via `Depends(get_redis_client)`<br>- Direct import of services, models, utilities<br>- FastAPI router registration<br>- Access to all internal modules | Add core API endpoints for game/business logic | Used for primary API routes (auth, generations, game_worlds, game_behavior, etc.). Currently ~25+ route plugins. |
+| **Feature Plugins** | `pixsim7/backend/main/plugins/{plugin}/manifest.py` | `PluginManifest` | - Full DB access via `Depends(get_db)`<br>- Full Redis access<br>- Direct import of domain models (`GameSession`, etc.)<br>- FastAPI router registration<br>- Can mutate session flags, relationships directly<br>- Access to all internal services | Add optional gameplay mechanics (stealth, romance, dialogue, NPCs) | Examples: `game_stealth`, `game_romance`, `game_dialogue`, `game_npcs`. Can directly query/mutate DB and session state. Currently ~4 feature plugins. |
+| **Event Handler Plugins** | `pixsim7/backend/main/event_handlers/{plugin}/manifest.py` | Custom `EventHandlerManifest` | - Subscribe to event patterns (`"*"` or specific types)<br>- Receive `Event` objects from event bus<br>- Can make arbitrary HTTP calls (webhooks)<br>- Can track metrics in-memory<br>- No enforced sandboxing | React to domain events (metrics, webhooks, analytics, notifications) | Examples: `metrics` (tracks event counts), `webhooks` (HTTP dispatching), `auto_retry` (retry logic). Subscribe via `event_bus.subscribe()`. Currently ~3 event handlers. |
+| **Middleware Plugins** | `pixsim7/backend/main/middleware/{plugin}/manifest.py` | `MiddlewareManifest` | - Full HTTP request/response access<br>- Can wrap all requests via `BaseHTTPMiddleware`<br>- Priority-based ordering<br>- Environment filtering<br>- Access to app instance | Wrap HTTP requests/responses for logging, auth, rate limiting, CORS | Uses Starlette middleware pattern. Registered in reverse priority order (LIFO). Can inject headers, modify responses, etc. |
 | **Behavior Extensions** (Planned) | TBD - registries in behavior system | TBD | - Custom condition evaluators (for activity selection)<br>- Custom effect handlers (for activity outcomes)<br>- Simulation tier configuration<br>- Scoring logic overrides | Extend NPC behavior system with custom conditions/effects | **Not yet implemented.** Planned for Task 13 (NPC behavior system). Would allow plugins to register custom evaluators/effects for activity graphs. |
 
 #### What Plugins Can Currently Access
@@ -202,7 +202,7 @@ Turn `PluginManifest.permissions` into a concrete, enforceable model and define 
 ### Implementation Summary
 
 **Files Created:**
-- `pixsim7_backend/infrastructure/plugins/permissions.py` - Complete permission system
+- `pixsim7/backend/main/infrastructure/plugins/permissions.py` - Complete permission system
 
 **Permissions Defined:**
 
@@ -237,8 +237,8 @@ Turn `PluginManifest.permissions` into a concrete, enforceable model and define 
 - Dangerous permissions (db:write, admin:routes) trigger warnings
 
 **Updated Files:**
-- `pixsim7_backend/infrastructure/plugins/types.py` - Added detailed permission documentation to `PluginManifest.permissions`
-- `pixsim7_backend/infrastructure/plugins/manager.py` - Added permission validation during plugin load
+- `pixsim7/backend/main/infrastructure/plugins/types.py` - Added detailed permission documentation to `PluginManifest.permissions`
+- `pixsim7/backend/main/infrastructure/plugins/manager.py` - Added permission validation during plugin load
 
 ---
 
@@ -249,7 +249,7 @@ Provide plugins with a restricted, permission‑aware context object instead of 
 
 **Scope**
 
-- `PluginContext` type and helpers in `pixsim7_backend/infrastructure/plugins`.
+- `PluginContext` type and helpers in `pixsim7/backend/main/infrastructure/plugins`.
 - Wiring context into:
   - Route plugins (via FastAPI dependency injection).
   - Event handler plugins (via `plugin_hooks`).
@@ -314,9 +314,9 @@ async def do_something(ctx: PluginContext = Depends(get_plugin_context("my_plugi
 ### Implementation Summary
 
 **Files Created:**
-- `pixsim7_backend/infrastructure/plugins/context.py` (~650 lines) - PluginContext and capability APIs
-- `pixsim7_backend/infrastructure/plugins/dependencies.py` (~120 lines) - FastAPI dependency injection
-- `pixsim7_backend/plugins/example_plugin_context/manifest.py` - Example plugin demonstrating new pattern
+- `pixsim7/backend/main/infrastructure/plugins/context.py` (~650 lines) - PluginContext and capability APIs
+- `pixsim7/backend/main/infrastructure/plugins/dependencies.py` (~120 lines) - FastAPI dependency injection
+- `pixsim7/backend/main/plugins/example_plugin_context/manifest.py` - Example plugin demonstrating new pattern
 
 **Capability APIs Implemented:**
 
@@ -379,8 +379,8 @@ async def endpoint(ctx: PluginContext = Depends(get_plugin_context("my_plugin"))
 ```
 
 **Updated Files:**
-- `pixsim7_backend/infrastructure/plugins/__init__.py` - Export new classes
-- `pixsim7_backend/main.py` - Register plugin manager for DI
+- `pixsim7/backend/main/infrastructure/plugins/__init__.py` - Export new classes
+- `pixsim7/backend/main/main.py` - Register plugin manager for DI
 
 ---
 
@@ -419,8 +419,8 @@ Ensure that plugins extending the NPC behavior system (Task 13) can only do so v
 ### Implementation Summary
 
 **Files Created:**
-- `pixsim7_backend/infrastructure/plugins/behavior_registry.py` (~550 lines) - Global behavior extension registry
-- `pixsim7_backend/plugins/example_behavior_extension/manifest.py` - Example plugin with behavior extensions
+- `pixsim7/backend/main/infrastructure/plugins/behavior_registry.py` (~550 lines) - Global behavior extension registry
+- `pixsim7/backend/main/plugins/example_behavior_extension/manifest.py` - Example plugin with behavior extensions
 
 **Behavior Extension Registry:**
 

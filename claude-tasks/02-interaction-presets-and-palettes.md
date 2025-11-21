@@ -46,10 +46,10 @@ Below are 10 phases for evolving the interaction preset system.
   - `docs/HOTSPOT_ACTIONS_2D.md` – action schema and 2D playback  
   - `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – how interactions integrate with scene/world state
 - Frontend:  
-  - `frontend/src/components/game/InteractionPresetEditor.tsx`  
-  - `frontend/src/components/game/NpcSlotEditor.tsx` (or equivalent slot editor)  
-  - `frontend/src/lib/game/interactions/*`
+  - `apps/main/src/components/game/InteractionPresetEditor.tsx`  
+  - `apps/main/src/components/game/NpcSlotEditor.tsx` (or equivalent slot editor)  
+  - `apps/main/src/lib/game/interactions/*`
 - Game-core / Types:  
   - `packages/types/src/game.ts` (hotspot/interaction types)  
-  - `packages/game-core/src/interactions/*`
+  - `packages/game/engine/src/interactions/*`
 

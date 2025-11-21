@@ -137,7 +137,7 @@ Implement a headless runner that executes `ScenarioScript` against the backend.
 
 **Scope**
 
-- Backend only: a test harness module, e.g. `pixsim7_backend/scenarios/runner.py`.
+- Backend only: a test harness module, e.g. `pixsim7/backend/main/scenarios/runner.py`.
 
 **Key Steps**
 

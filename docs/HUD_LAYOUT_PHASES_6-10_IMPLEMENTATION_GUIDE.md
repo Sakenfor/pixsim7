@@ -44,7 +44,7 @@ This document provides implementation guidance for completing Phases 6-10 of the
 ## 🚧 Remaining Work (Part 2)
 
 ### Phase 6 - Enhanced Controls UI
-**Location:** `frontend/src/components/game/HudLayoutEditor.tsx`
+**Location:** `apps/main/src/components/game/HudLayoutEditor.tsx`
 
 Add table columns for enhanced properties:
 
@@ -111,7 +111,7 @@ const handleZIndexChange = (toolId: string, zIndex: number) => {
 ```
 
 ### Phase 6 - RegionalHudLayout Updates
-**Location:** `frontend/src/components/game/RegionalHudLayout.tsx`
+**Location:** `apps/main/src/components/game/RegionalHudLayout.tsx`
 
 Apply size and collapsed states:
 
@@ -125,7 +125,7 @@ style={{ zIndex: placement.zIndex }}
 ```
 
 ### Phase 7 - Drag & Drop Editor
-**New Component:** `frontend/src/components/game/DragDropHudEditor.tsx`
+**New Component:** `apps/main/src/components/game/DragDropHudEditor.tsx`
 
 Use `@dnd-kit/core` or similar library:
 
@@ -393,7 +393,7 @@ const filteredPresets = selectedTag
 ## Integration with Game2D
 
 ### Add HUD Customization Button
-**Location:** `frontend/src/routes/Game2D.tsx`
+**Location:** `apps/main/src/routes/Game2D.tsx`
 
 ```tsx
 import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
@@ -411,7 +411,7 @@ import { HudCustomizationButton } from '../components/game/HudCustomizationPanel
 ```
 
 ### Apply Player Preferences
-**Location:** `frontend/src/routes/Game2D.tsx`
+**Location:** `apps/main/src/routes/Game2D.tsx`
 
 ```tsx
 import { applyPlayerPreferences, getEffectiveViewMode } from '../lib/worldTools/playerHudPreferences';

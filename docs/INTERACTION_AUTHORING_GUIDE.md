@@ -32,7 +32,7 @@ NPC interactions are the primary way players engage with characters in Pixsim7. 
 The fastest way to create interactions is using templates:
 
 ```typescript
-import { createFromTemplate } from '@pixsim7/game-core/interactions';
+import { createFromTemplate } from '@pixsim7/game.engine/interactions';
 
 // Create a greeting interaction
 const greeting = createFromTemplate('greeting', {
@@ -59,7 +59,7 @@ const giftFlowers = createFromTemplate('giftGiving', {
 Create a full interaction suite for an NPC:
 
 ```typescript
-import { createFullInteractionSuite } from '@pixsim7/game-core/interactions';
+import { createFullInteractionSuite } from '@pixsim7/game.engine/interactions';
 
 const sophiaInteractions = createFullInteractionSuite(1, 'Sophia', {
   includeSocial: true,
@@ -497,7 +497,7 @@ Dedicated menu/panel (detailed).
 ### Validation
 
 ```typescript
-import { validateInteraction, formatValidationResult } from '@pixsim7/game-core/interactions';
+import { validateInteraction, formatValidationResult } from '@pixsim7/game.engine/interactions';
 
 const result = validateInteraction(myInteraction);
 

@@ -369,7 +369,7 @@ Implementation details:
 
 - **Requirements**: activities can require mood tags (e.g. `"playful"`, `"exhausted"`).
 - **Effects**: activities push mood valence/arousal in directions defined by `ActivityEffects.moodImpact`.
-- Mood tags used in activities should be consistent with the world’s mood schema and evaluators (see `pixsim7_backend/domain/metrics/mood_evaluators.py`).
+- Mood tags used in activities should be consistent with the world’s mood schema and evaluators (see `pixsim7/backend/main/domain/metrics/mood_evaluators.py`).
 
 ### Scenes & Scene Graph
 
@@ -424,7 +424,7 @@ UI goals:
 Persistence:
 
 - Reads/writes `GameWorld.meta.behavior.activities`.
-- Uses Pydantic validators in `pixsim7_backend/domain/game/schemas.py` to enforce structure.
+- Uses Pydantic validators in `pixsim7/backend/main/domain/game/schemas.py` to enforce structure.
 
 ### 2. Routine Graph Editor
 
@@ -478,7 +478,7 @@ Persistence:
 
 - [x] Define TS types in `packages/types` for:
   - `Activity`, `ActivityRequirements`, `ActivityEffects`, `NpcPreferences`, `RoutineGraph`, `RoutineNode`, `RoutineEdge`, `Condition`.
-- [x] Add Pydantic schemas and validators in `pixsim7_backend/domain/game/schemas.py`:
+- [x] Add Pydantic schemas and validators in `pixsim7/backend/main/domain/game/schemas.py`:
   - Validate numeric ranges (0–100 energy, reasonable mood ranges, etc.).
   - Validate RoutineGraph structure (no missing node IDs, no invalid edges, basic cycle sanity checks for time-based nodes).
 - [x] Wire world/NPC meta validation:

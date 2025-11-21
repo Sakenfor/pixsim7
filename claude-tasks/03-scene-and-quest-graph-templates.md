@@ -40,8 +40,8 @@ This task introduces reusable graph templates and a basic workflow for authoring
 Allow designers to capture the currently selected nodes/edges as a named template, stored in memory (and later persisted).
 
 **Key Pieces**
-- `frontend/src/lib/graph/templates.ts`: defines `GraphTemplate` shape.
-- `frontend/src/lib/graph/templatesStore.ts`: in‑memory store for templates.
+- `apps/main/src/lib/graph/templates.ts`: defines `GraphTemplate` shape.
+- `apps/main/src/lib/graph/templatesStore.ts`: in‑memory store for templates.
 - `GraphPanel`: “Save selection as template” action that:
   - Reads current selection (nodes + edges).
   - Prompts for name/description.
@@ -55,7 +55,7 @@ Allow designers to capture the currently selected nodes/edges as a named templat
 Provide a small UI palette to list templates and insert them into the current scene.
 
 **Key Pieces**
-- `frontend/src/components/graph/GraphTemplatePalette.tsx`:
+- `apps/main/src/components/graph/GraphTemplatePalette.tsx`:
   - Lists templates from `templatesStore`.
   - Shows name, description, and an “Insert” button per template.
 - `applyTemplate(template, scene)` helper:

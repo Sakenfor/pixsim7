@@ -467,8 +467,8 @@ Extended generation node with social context.
 Gates integrate with the existing relationship system:
 
 ```typescript
-// From packages/game-core/src/relationships/
-import { computeRelationshipTier } from '@pixsim7/game-core';
+// From packages/game/engine/src/relationships/
+import { computeRelationshipTier } from '@pixsim7/game.engine';
 
 // Check if gate is satisfied
 function checkGate(
@@ -489,7 +489,7 @@ function checkGate(
 Social context flows into generation requests:
 
 ```typescript
-import { buildGenerationSocialContext } from '@pixsim7/game-core';
+import { buildGenerationSocialContext } from '@pixsim7/game.engine';
 
 // Build context from scene config and current relationship
 const socialContext = buildGenerationSocialContext(
@@ -1473,15 +1473,15 @@ if (exported.version !== CURRENT_VERSION) {
 - [x] RelationshipGateVisualizer component
 - [x] IntimacySceneComposer component
 - [x] ProgressionArcEditor component
-- [x] Validation utilities (`frontend/src/lib/intimacy/validation.ts`)
+- [x] Validation utilities (`apps/main/src/lib/intimacy/validation.ts`)
 - [x] Documentation
 
 ### ✓ Phase 2 - Complete
 
 - [x] Live preview with social context (what-if analysis)
-- [x] RelationshipStateEditor component (`frontend/src/components/intimacy/RelationshipStateEditor.tsx`)
-- [x] GatePreviewPanel component (`frontend/src/components/intimacy/GatePreviewPanel.tsx`)
-- [x] Gate checking utilities (`frontend/src/lib/intimacy/gateChecking.ts`)
+- [x] RelationshipStateEditor component (`apps/main/src/components/intimacy/RelationshipStateEditor.tsx`)
+- [x] GatePreviewPanel component (`apps/main/src/components/intimacy/GatePreviewPanel.tsx`)
+- [x] Gate checking utilities (`apps/main/src/lib/intimacy/gateChecking.ts`)
 - [x] Integration in IntimacySceneComposer (Generation tab)
 - [x] Preview mode in ProgressionArcEditor
 - [x] Quick presets for common relationship states
@@ -1489,21 +1489,21 @@ if (exported.version !== CURRENT_VERSION) {
 
 ### ✓ Phase 3 - Complete
 
-- [x] Social context auto-derivation (`frontend/src/lib/intimacy/socialContextDerivation.ts`)
-- [x] Generation preview service (`frontend/src/lib/intimacy/generationPreview.ts`)
-- [x] GenerationPreviewPanel component (`frontend/src/components/intimacy/GenerationPreviewPanel.tsx`)
+- [x] Social context auto-derivation (`apps/main/src/lib/intimacy/socialContextDerivation.ts`)
+- [x] Generation preview service (`apps/main/src/lib/intimacy/generationPreview.ts`)
+- [x] GenerationPreviewPanel component (`apps/main/src/components/intimacy/GenerationPreviewPanel.tsx`)
 - [x] Integration in IntimacySceneComposer (Generation tab)
 - [x] Utility functions (getEffectiveContentRating, supportsContentRating)
 - [x] Documentation with usage examples
 
 ### ✓ Phase 4 - Complete
 
-- [x] Save/load utilities (`frontend/src/lib/intimacy/saveLoad.ts`)
+- [x] Save/load utilities (`apps/main/src/lib/intimacy/saveLoad.ts`)
 - [x] Scene export/import to JSON files
 - [x] Progression arc export/import to JSON files
 - [x] Local storage persistence for scenes and arcs
 - [x] Simulated state save/load
-- [x] SaveLoadControls components (`frontend/src/components/intimacy/SaveLoadControls.tsx`)
+- [x] SaveLoadControls components (`apps/main/src/components/intimacy/SaveLoadControls.tsx`)
 - [x] Integration in IntimacySceneComposer (Save/Load tab)
 - [x] Integration in ProgressionArcEditor (Save/Load modal)
 - [x] Documentation with usage examples
@@ -1646,27 +1646,27 @@ await saveScene(scene);
 - `packages/types/src/index.ts` - Main exports
 
 ### Components (Phase 1)
-- `frontend/src/components/intimacy/IntimacySceneComposer.tsx` - Main editor
-- `frontend/src/components/intimacy/RelationshipGateVisualizer.tsx` - Gate visualization
-- `frontend/src/components/intimacy/ProgressionArcEditor.tsx` - Arc timeline editor
-- `frontend/src/components/generation/SocialContextPanel.tsx` - Social context display
+- `apps/main/src/components/intimacy/IntimacySceneComposer.tsx` - Main editor
+- `apps/main/src/components/intimacy/RelationshipGateVisualizer.tsx` - Gate visualization
+- `apps/main/src/components/intimacy/ProgressionArcEditor.tsx` - Arc timeline editor
+- `apps/main/src/components/generation/SocialContextPanel.tsx` - Social context display
 
 ### Components (Phase 2)
-- `frontend/src/components/intimacy/RelationshipStateEditor.tsx` - State simulation editor
-- `frontend/src/components/intimacy/GatePreviewPanel.tsx` - Live gate preview panel
+- `apps/main/src/components/intimacy/RelationshipStateEditor.tsx` - State simulation editor
+- `apps/main/src/components/intimacy/GatePreviewPanel.tsx` - Live gate preview panel
 
 ### Components (Phase 3)
-- `frontend/src/components/intimacy/GenerationPreviewPanel.tsx` - Generation preview panel
+- `apps/main/src/components/intimacy/GenerationPreviewPanel.tsx` - Generation preview panel
 
 ### Components (Phase 4 - NEW)
-- `frontend/src/components/intimacy/SaveLoadControls.tsx` - Save/load controls (Scene, Arc, State)
+- `apps/main/src/components/intimacy/SaveLoadControls.tsx` - Save/load controls (Scene, Arc, State)
 
 ### Utilities
-- `frontend/src/lib/intimacy/validation.ts` - Validation functions
-- `frontend/src/lib/intimacy/gateChecking.ts` - Gate checking utilities (Phase 2)
-- `frontend/src/lib/intimacy/socialContextDerivation.ts` - Social context derivation (Phase 3)
-- `frontend/src/lib/intimacy/generationPreview.ts` - Generation preview service (Phase 3)
-- `frontend/src/lib/intimacy/saveLoad.ts` - Save/load utilities (Phase 4)
+- `apps/main/src/lib/intimacy/validation.ts` - Validation functions
+- `apps/main/src/lib/intimacy/gateChecking.ts` - Gate checking utilities (Phase 2)
+- `apps/main/src/lib/intimacy/socialContextDerivation.ts` - Social context derivation (Phase 3)
+- `apps/main/src/lib/intimacy/generationPreview.ts` - Generation preview service (Phase 3)
+- `apps/main/src/lib/intimacy/saveLoad.ts` - Save/load utilities (Phase 4)
 
 ### Documentation
 - `docs/INTIMACY_AND_GENERATION.md` - Generation system integration

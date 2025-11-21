@@ -11,7 +11,7 @@ The Provider Capability Registry is a frontend system that pulls provider capabi
 ## Motivation
 
 **Before**:
-- `frontend/src/utils/prompt/limits.ts` had hardcoded provider limits
+- `apps/main/src/utils/prompt/limits.ts` had hardcoded provider limits
 - Provider-specific UI logic scattered across components
 - No centralized access to provider capabilities
 - Adding new providers required changes in multiple places
@@ -27,7 +27,7 @@ The Provider Capability Registry is a frontend system that pulls provider capabi
 ### Core Components
 
 ```
-frontend/src/lib/providers/
+apps/main/src/lib/providers/
 ├── types.ts                      # Type definitions
 ├── capabilityRegistry.ts         # Core registry class
 ├── hooks.ts                      # React hooks for capability access
@@ -469,7 +469,7 @@ export function resolvePromptLimit(providerId?: string): number {
 
 ### For Plugin Authors
 
-1. Create a new plugin file in `frontend/src/lib/providers/plugins/`
+1. Create a new plugin file in `apps/main/src/lib/providers/plugins/`
 2. Define your component with `GenerationUIPluginProps`
 3. Use `defineGenerationUIPlugin()` to create the plugin
 4. Register in `plugins/index.ts`
@@ -539,4 +539,4 @@ describe('ProviderCapabilityRegistry', () => {
 
 **Implemented**: 2025-11-18
 **Status**: ✅ Complete
-**Replaces**: Hardcoded provider limits in `frontend/src/utils/prompt/limits.ts`
+**Replaces**: Hardcoded provider limits in `apps/main/src/utils/prompt/limits.ts`

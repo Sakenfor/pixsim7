@@ -16,7 +16,7 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
 ### Phase 25.1: Snapshot Format & Capture/Restore APIs
 
 **TypeScript (Frontend)**
-- `packages/game-core/src/scenarios/snapshot.ts`
+- `packages/game/engine/src/scenarios/snapshot.ts`
   - `WorldSnapshot`, `SessionSnapshot` types
   - `SnapshotCaptureResult`, `SnapshotRestoreResult` types
 
@@ -30,7 +30,7 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
 ### Phase 25.2: Scenario Script Model
 
 **TypeScript**
-- `packages/game-core/src/scenarios/script.ts`
+- `packages/game/engine/src/scenarios/script.ts`
   - `ScenarioStep` union type (tick, interaction, narrativeStep, assert)
   - `ScenarioScript` interface
   - `ScenarioScriptMetadata` helper
@@ -55,7 +55,7 @@ Implemented a complete headless QA testing harness for PixSim7, enabling:
 ### Phase 25.4: Assertion & Reporting Framework
 
 **TypeScript**
-- `packages/game-core/src/scenarios/assertions.ts`
+- `packages/game/engine/src/scenarios/assertions.ts`
   - `ScenarioAssertion` interface
   - `AssertionResult` interface
   - Helper functions:
@@ -226,7 +226,7 @@ All success criteria from the task definition have been achieved:
 
 ### Created
 ```
-packages/game-core/src/scenarios/
+packages/game/engine/src/scenarios/
 ├── assertions.ts
 ├── index.ts
 ├── script.ts
@@ -263,7 +263,7 @@ docs/
 
 ### Modified
 ```
-packages/game-core/src/index.ts
+packages/game/engine/src/index.ts
   - Export scenarios module types
 
 claude-tasks/25-snapshot-and-scenario-runner.md

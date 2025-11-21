@@ -265,7 +265,7 @@ const npcMetadata: NpcResponseMetadata = {
 
 ### 1. Interactive Zone Overlay Component
 
-**File: `frontend/src/components/npc/InteractiveZoneOverlay.tsx`**
+**File: `apps/main/src/components/npc/InteractiveZoneOverlay.tsx`**
 
 ```typescript
 import { useState, useRef } from 'react';

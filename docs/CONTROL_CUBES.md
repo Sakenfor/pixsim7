@@ -86,7 +86,7 @@ Control Cubes (3D Cube Widgets) are a spatial interface system that provides an 
 ### Components
 
 ```
-frontend/src/
+apps/main/src/
 ├── components/control/
 │   ├── ControlCube.tsx                  # Base 3D cube component
 │   ├── DraggableCube.tsx                # Draggable wrapper

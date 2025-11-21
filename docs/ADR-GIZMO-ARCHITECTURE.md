@@ -49,7 +49,7 @@ frontend (app-specific implementations)
    - Frontend already owns these implementations
 
 3. **Less refactoring required**
-   - Gizmo components already exist in `frontend/src/components/gizmos/`
+   - Gizmo components already exist in `apps/main/src/components/gizmos/`
    - Only needed to move renderer registry and SceneGizmoMiniGame
    - Minimal disruption to existing code
 
@@ -63,11 +63,11 @@ frontend (app-specific implementations)
 ### Changes Made
 
 1. **Created gizmo renderer in frontend**
-   - `frontend/src/lib/gizmos/renderers.ts` - Centralized gizmo renderer mapping
+   - `apps/main/src/lib/gizmos/renderers.ts` - Centralized gizmo renderer mapping
    - Uses relative imports to gizmo components in frontend
 
 2. **Moved SceneGizmoMiniGame to frontend**
-   - `frontend/src/components/minigames/SceneGizmoMiniGame.tsx`
+   - `apps/main/src/components/minigames/SceneGizmoMiniGame.tsx`
    - Updated imports to use frontend's gizmo renderer
 
 3. **Removed broken files from game-ui**
@@ -88,16 +88,16 @@ frontend (app-specific implementations)
 ### Files Created/Modified
 
 **Created:**
-- `frontend/src/lib/gizmos/renderers.ts`
-- `frontend/src/components/minigames/SceneGizmoMiniGame.tsx`
+- `apps/main/src/lib/gizmos/renderers.ts`
+- `apps/main/src/components/minigames/SceneGizmoMiniGame.tsx`
 - `packages/game-ui/README.md`
 - `packages/scene-gizmos/README.md`
 - `docs/ADR-GIZMO-ARCHITECTURE.md`
 
 **Modified:**
-- `frontend/src/routes/GizmoLab.tsx` (re-enabled, updated imports)
-- `frontend/src/App.tsx` (uncommented GizmoLab imports)
-- `frontend/src/components/layout/FloatingPanelsManager.tsx` (uncommented GizmoLab)
+- `apps/main/src/routes/GizmoLab.tsx` (re-enabled, updated imports)
+- `apps/main/src/App.tsx` (uncommented GizmoLab imports)
+- `apps/main/src/components/layout/FloatingPanelsManager.tsx` (uncommented GizmoLab)
 - `packages/game-ui/src/index.ts` (removed sceneCallStack export, added docs)
 - `packages/game-ui/tsconfig.json` (removed gizmo excludes)
 

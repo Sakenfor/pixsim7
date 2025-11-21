@@ -37,7 +37,7 @@ This directory contains TypeScript modules for game logic, schemas, and helpers 
 
 **Session State Manipulation:**
 
-Game2D and interaction plugins now use `@pixsim7/game-core` session helpers for all relationship and flag manipulation. **Plugins access these via `context.session`** rather than importing directly:
+Game2D and interaction plugins now use `@pixsim7/game.engine` session helpers for all relationship and flag manipulation. **Plugins access these via `context.session`** rather than importing directly:
 
 ```typescript
 // In an interaction plugin:
@@ -69,7 +69,7 @@ This ensures consistent session logic across all frontends (React/3D/CLI) and ke
 **See:**
 - `docs/RELATIONSHIPS_AND_ARCS.md` – Complete guide to relationships, arcs, quests, and session state conventions
 - `docs/SYSTEM_OVERVIEW.md` – Sessions overview
-- `packages/game-core/src/session/` – Session types, helpers, and builder
+- `packages/game/engine/src/session/` – Session types, helpers, and builder
 - `frontend/src/lib/game/interactions/sessionAdapter.ts` – Context.session implementation
 - `frontend/src/lib/game/interactions/executor.ts` – Interaction execution logic
 
@@ -79,5 +79,5 @@ This ensures consistent session logic across all frontends (React/3D/CLI) and ke
 
 - These modules define **frontend-only schemas** on top of generic backend JSON fields
 - Backend models remain generic; TypeScript types and helpers enforce conventions
-- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game-core` (re-exported via `interactionSchema.ts`) and document in `HOTSPOT_ACTIONS_2D.md`
+- When adding new action types or playback rules, update the hotspot helpers in `@pixsim7/game.engine` (re-exported via `interactionSchema.ts`) and document in `HOTSPOT_ACTIONS_2D.md`
 - When adding new session state patterns, update `session.ts` helpers and document in `RELATIONSHIPS_AND_ARCS.md`

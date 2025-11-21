@@ -32,8 +32,8 @@ What’s **missing** is the connective tissue between:
 
 Right now:
 
-- `frontend/src/lib/game/interactionSchema.ts` defines a generic hotspot/action schema, but it doesn’t fully express **NPC‑specific interactions** (persona, relationship gating, dynamic availability).
-- 2D playtest (`frontend/src/routes/Game2D.tsx`) and hotspot actions handle simple interactions, but not a cohesive **NPC interaction layer**.
+- `apps/main/src/lib/game/interactionSchema.ts` defines a generic hotspot/action schema, but it doesn’t fully express **NPC‑specific interactions** (persona, relationship gating, dynamic availability).
+- 2D playtest (`apps/main/src/routes/Game2D.tsx`) and hotspot actions handle simple interactions, but not a cohesive **NPC interaction layer**.
 - NPC behavior/schedules (Task 13) decide what NPCs are doing, but not how the player interacts with them in a consistent, typed way.
 
 **Goal:** Define a **canonical NPC interaction layer** and **conversation surfaces** that:
@@ -68,12 +68,12 @@ Map all existing systems that implement “interactions with NPCs” so the new 
 **Scope**
 
 - 2D hotspots and interaction schema:
-  - `frontend/src/lib/game/interactionSchema.ts`
-  - `frontend/src/routes/Game2D.tsx`
-  - `frontend/src/lib/game/session.ts`
+  - `apps/main/src/lib/game/interactionSchema.ts`
+  - `apps/main/src/routes/Game2D.tsx`
+  - `apps/main/src/lib/game/session.ts`
 - Dialogue / narrative plugins:
-  - `pixsim7_backend/api/v1/game_dialogue.py` (if present) and related routes/plugins  
-  - Action blocks (`pixsim7_backend/domain/narrative/action_blocks/*`) and composition engine.
+  - `pixsim7/backend/main/api/v1/game_dialogue.py` (if present) and related routes/plugins  
+  - Action blocks (`pixsim7/backend/main/domain/narrative/action_blocks/*`) and composition engine.
 - Relationship / arcs:
   - Preview APIs, metrics, and helpers (Tasks 07–09).
 - UI surfaces:
@@ -99,7 +99,7 @@ Map all existing systems that implement “interactions with NPCs” so the new 
 
 ### 1. Current Interaction Types
 
-#### A. Hotspot-Based Interactions (`packages/game-core/src/interactions/hotspot.ts`)
+#### A. Hotspot-Based Interactions (`packages/game/engine/src/interactions/hotspot.ts`)
 
 **Types:**
 - `play_scene`: Triggers a scene via `GameHotspot.linked_scene_id` or explicit `scene_id`
@@ -114,7 +114,7 @@ Map all existing systems that implement “interactions with NPCs” so the new 
 - No structured outcome tracking
 - Client-side only schema validation
 
-#### B. Plugin-Based Slot Interactions (`frontend/src/lib/game/interactions/`)
+#### B. Plugin-Based Slot Interactions (`apps/main/src/lib/game/interactions/`)
 
 **Architecture:**
 - Registry-based plugin system with LRU caching
@@ -164,7 +164,7 @@ interface InteractionResult {
 - Global presets: `localStorage:pixsim7:global-interaction-presets`
 - Usage stats: `localStorage:pixsim7:preset-usage-stats`
 
-#### C. Dialogue & Generation (`pixsim7_backend/api/v1/game_dialogue.py`)
+#### C. Dialogue & Generation (`pixsim7/backend/main/api/v1/game_dialogue.py`)
 
 **Endpoints:**
 - `POST /next-line`: Builds LLM prompt from narrative context
@@ -198,7 +198,7 @@ context = engine.build_context(
 - Updates `NpcEmotionalState` (intensity, duration, triggers)
 - Tracks `DialogueAnalytics` (costs, quality metrics, engagement)
 
-#### D. Action Blocks & Visual Generation (`pixsim7_backend/domain/narrative/action_blocks/`)
+#### D. Action Blocks & Visual Generation (`pixsim7/backend/main/domain/narrative/action_blocks/`)
 
 **Purpose:** Structured prompts for video/image generation in intimate/narrative scenes.
 
@@ -402,7 +402,7 @@ Define a shared, typed model for **NPC interactions** that sits on top of hotspo
 **Scope**
 
 - New TS types in `packages/types` (likely `src/game.ts` or `src/interactions.ts`).
-- Pydantic schemas in `pixsim7_backend/domain/game/schemas.py` (or interaction‑specific module).
+- Pydantic schemas in `pixsim7/backend/main/domain/game/schemas.py` (or interaction‑specific module).
 
 **Key Concepts**
 
@@ -503,7 +503,7 @@ export interface NpcInteractionInstance {
 
 **Implementation:**
 - TypeScript types: `packages/types/src/interactions.ts`
-- Pydantic schemas: `pixsim7_backend/domain/game/npc_interactions.py`
+- Pydantic schemas: `pixsim7/backend/main/domain/game/npc_interactions.py`
 
 **Key Design Decisions:**
 1. Built on top of existing plugin system (extends `BaseInteractionConfig`)
@@ -552,10 +552,10 @@ Define and implement how the system decides **which interactions are available**
 **Status:** ✅ Complete
 
 **Implementation:**
-- Backend gating logic: `pixsim7_backend/domain/game/interaction_availability.py`
-- API endpoint: `pixsim7_backend/api/v1/npc_interactions.py`
-- Route plugin: `pixsim7_backend/routes/npc_interactions/`
-- Client API: `frontend/src/lib/api/interactions.ts`
+- Backend gating logic: `pixsim7/backend/main/domain/game/interaction_availability.py`
+- API endpoint: `pixsim7/backend/main/api/v1/npc_interactions.py`
+- Route plugin: `pixsim7/backend/main/routes/npc_interactions/`
+- Client API: `apps/main/src/lib/api/interactions.ts`
 
 **Key Features:**
 1. **Comprehensive gating checks:**
@@ -596,8 +596,8 @@ Provide frontend/game‑core helpers to **build and render interaction menus** a
 
 **Scope**
 
-- Game‑core helpers (`packages/game-core`).
-- 2D playtest UI (`frontend/src/routes/Game2D.tsx`) and any future NPC panels.
+- Game‑core helpers (`packages/game/engine`).
+- 2D playtest UI (`apps/main/src/routes/Game2D.tsx`) and any future NPC panels.
 
 **Key Steps**
 
@@ -621,10 +621,10 @@ Provide frontend/game‑core helpers to **build and render interaction menus** a
 **Status:** ✅ Complete
 
 **Implementation:**
-- React hook: `frontend/src/lib/hooks/useNpcInteractions.ts`
-- UI components: `frontend/src/components/interactions/InteractionMenu.tsx` + `.css`
-- Menu builder: `packages/game-core/src/interactions/menuBuilder.ts`
-- Component exports: `frontend/src/components/interactions/index.ts`
+- React hook: `apps/main/src/lib/hooks/useNpcInteractions.ts`
+- UI components: `apps/main/src/components/interactions/InteractionMenu.tsx` + `.css`
+- Menu builder: `packages/game/engine/src/interactions/menuBuilder.ts`
+- Component exports: `apps/main/src/components/interactions/index.ts`
 
 **Key Features:**
 1. **useNpcInteractions hook:**
@@ -700,9 +700,9 @@ Define a **single execution pipeline** for NPC interactions that:
 **Status:** ✅ Complete
 
 **Implementation:**
-- Backend execution: `pixsim7_backend/domain/game/interaction_execution.py`
-- API endpoint: `pixsim7_backend/api/v1/npc_interactions.py` (POST /execute)
-- Client API: `frontend/src/lib/api/interactions.ts` (executeInteraction)
+- Backend execution: `pixsim7/backend/main/domain/game/interaction_execution.py`
+- API endpoint: `pixsim7/backend/main/api/v1/npc_interactions.py` (POST /execute)
+- Client API: `apps/main/src/lib/api/interactions.ts` (executeInteraction)
 
 **Key Features:**
 1. **Unified execution pipeline:**

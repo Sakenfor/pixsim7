@@ -173,7 +173,7 @@ Add to `frontend/package.json`:
 
 ### Test Runner Script
 
-Create `frontend/src/lib/simulation/__tests__/runTests.ts`:
+Create `apps/main/src/lib/simulation/__tests__/runTests.ts`:
 
 ```typescript
 #!/usr/bin/env tsx
@@ -368,7 +368,7 @@ function jsonReporter(results: RegressionTestSuiteResult): string {
 
 ## Example Complete Test File
 
-See `frontend/src/lib/simulation/__tests__/exampleRegressionTests.ts` for complete working examples.
+See `apps/main/src/lib/simulation/__tests__/exampleRegressionTests.ts` for complete working examples.
 
 ## Support
 

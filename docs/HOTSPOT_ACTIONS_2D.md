@@ -21,10 +21,10 @@ remain generic; only the **JSON stored in `meta`** and the TypeScript helpers
 define this behavior.
 
 Relevant code:
-- `@pixsim7/game-core` (hotspot actions and playback helpers)
-- `frontend/src/lib/game/interactionSchema.ts` (re-exports game-core helpers)
-- `frontend/src/routes/Game2D.tsx`
-- `frontend/src/routes/GameWorld.tsx`
+- `@pixsim7/game.engine` (hotspot actions and playback helpers)
+- `apps/main/src/lib/game/interactionSchema.ts` (re-exports game-core helpers)
+- `apps/main/src/routes/Game2D.tsx`
+- `apps/main/src/routes/GameWorld.tsx`
 
 ---
 
@@ -35,7 +35,7 @@ Hotspot actions live in:
 - `GameHotspot.meta.action` (arbitrary JSON in the backend),
 - parsed and enforced in the frontend by `parseHotspotAction`.
 
-TypeScript schema (canonical in `@pixsim7/game-core`):
+TypeScript schema (canonical in `@pixsim7/game.engine`):
 
 - `HotspotActionType = 'play_scene' | 'change_location' | 'npc_talk'`
 
@@ -136,7 +136,7 @@ type ScenePlaybackPhase = 'playing' | 'awaiting_input' | 'completed';
 
 ### 3.2 Deriving Phase
 
-Helper (canonical in `@pixsim7/game-core`, re-exported via `interactionSchema.ts`):
+Helper (canonical in `@pixsim7/game.engine`, re-exported via `interactionSchema.ts`):
 
 ```ts
 deriveScenePlaybackPhase({ scene, runtime }): ScenePlaybackPhase

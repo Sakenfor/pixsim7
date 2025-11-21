@@ -4,7 +4,7 @@
 
 ### Adding "Give Item" interaction currently requires editing:
 
-1. **frontend/src/lib/api/game.ts** (30 lines)
+1. **apps/main/src/lib/api/game.ts** (30 lines)
    ```typescript
    export interface GiveItemConfig {
      itemId: string;
@@ -22,7 +22,7 @@
    }
    ```
 
-2. **frontend/src/components/NpcSlotEditor.tsx** (80+ lines)
+2. **apps/main/src/components/NpcSlotEditor.tsx** (80+ lines)
    ```tsx
    {/* Copy-paste the entire pickpocket form section */}
    <div className="space-y-2">
@@ -38,7 +38,7 @@
    </div>
    ```
 
-3. **frontend/src/routes/Game2D.tsx** (30+ lines)
+3. **apps/main/src/routes/Game2D.tsx** (30+ lines)
    ```typescript
    const handleNpcSlotClick = async (assignment) => {
      // ... existing if/else chain ...
@@ -62,7 +62,7 @@
 
 ### Adding "Give Item" with the new system:
 
-1. **Create ONE file**: `frontend/src/lib/game/interactions/giveItem.ts` (80 lines)
+1. **Create ONE file**: `apps/main/src/lib/game/interactions/giveItem.ts` (80 lines)
    - Contains ALL the logic: types, UI config, handler, validation
 
 2. **Register it**: Add ONE line to `interactions/index.ts`
@@ -256,7 +256,7 @@ Keyed by plugin ID, each plugin owns its config shape.
 ### With plugin system: **80 lines, 1 file**
 
 ```typescript
-// frontend/src/lib/game/interactions/flirt.ts
+// apps/main/src/lib/game/interactions/flirt.ts
 
 export const flirtInteraction: InteractionPlugin<FlirtConfig> = {
   id: 'flirt',

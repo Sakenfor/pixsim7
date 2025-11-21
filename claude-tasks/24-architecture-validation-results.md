@@ -23,23 +23,23 @@ Checked for proper use of ECS/Plugin APIs vs. direct access patterns.
 ### ⚠️ Issues Found
 
 **1. Legacy API Route (api/v1/game_stealth.py)**
-- **File**: `pixsim7_backend/api/v1/game_stealth.py:100-115`
+- **File**: `pixsim7/backend/main/api/v1/game_stealth.py:100-115`
 - **Issue**: Directly manipulates `session.relationships[npc_key]` and `session.flags`
 - **Impact**: This is OLD code that wasn't migrated to use PluginContext/ECS
 - **Recommendation**: This file should be **deprecated** in favor of the plugin version at `plugins/game_stealth/manifest.py`, or refactored to use proper helpers
 
 **2. Direct Relationship Mutations in Core Code**
-- **File**: `pixsim7_backend/domain/game/interaction_execution.py:83`
+- **File**: `pixsim7/backend/main/domain/game/interaction_execution.py:83`
   - Directly writes: `session.relationships[npc_key] = rel`
   - **Context**: This is in `apply_relationship_deltas()` function
   - **Recommendation**: Consider wrapping in a helper function for consistency
 
-- **File**: `pixsim7_backend/services/game/game_session_service.py:129-130`
+- **File**: `pixsim7/backend/main/services/game/game_session_service.py:129-130`
   - Directly writes: `session.relationships[npc_key]["tierId"]` and `intimacyLevelId`
   - **Context**: Computing derived relationship values
   - **Recommendation**: Consider using a relationship update helper
 
-- **File**: `pixsim7_backend/services/generation/social_context_builder.py:176`
+- **File**: `pixsim7/backend/main/services/generation/social_context_builder.py:176`
   - Reads: `session.relationships[npc_key]` (READ-ONLY)
   - **Status**: OK - read-only access is acceptable for context building
 

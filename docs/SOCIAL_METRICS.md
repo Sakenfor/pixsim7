@@ -118,7 +118,7 @@ arousal = chemistry * 0.5 + tension * 0.5
 
 **Game-Core Helper**: `previewNpcMood(args)`
 
-**Client-Side Computation**: `buildNpcBrainState()` from `@pixsim7/game-core`
+**Client-Side Computation**: `buildNpcBrainState()` from `@pixsim7/game.engine`
 
 ---
 
@@ -248,11 +248,11 @@ else:
 
 **Preview Endpoint**: `POST /api/v1/game/npc/preview-unified-mood`
 
-**Game-Core Helper**: `previewUnifiedMood(args)` from `@pixsim7/game-core`
+**Game-Core Helper**: `previewUnifiedMood(args)` from `@pixsim7/game.engine`
 
 **NPC Brain Integration**: `buildNpcBrainState({ unifiedMood })` accepts optional unified mood parameter
 
-**Mood Debug Tool**: `frontend/src/plugins/worldTools/moodDebug.tsx` displays unified mood when available
+**Mood Debug Tool**: `apps/main/src/plugins/worldTools/moodDebug.tsx` displays unified mood when available
 
 **Related Documentation**:
 - `docs/INTIMACY_AND_GENERATION.md` - How intimacy mood flows into generation
@@ -363,7 +363,7 @@ All endpoints:
 
 ### Game-Core Layer
 
-**Location**: `packages/game-core/src/`
+**Location**: `packages/game/engine/src/`
 
 **Modules**:
 - `metrics/preview.ts`: API client for metric preview
@@ -606,7 +606,7 @@ Metrics read from `GameSession` for runtime data.
 ### Example: Relationship Schema Editor
 
 ```typescript
-import { previewRelationshipTier } from '@pixsim7/game-core';
+import { previewRelationshipTier } from '@pixsim7/game.engine';
 
 // User adjusts affinity slider
 const handleAffinityChange = async (newAffinity: number) => {
@@ -624,7 +624,7 @@ const handleAffinityChange = async (newAffinity: number) => {
 ### Example: NPC Mood Preview in Dialogue Editor
 
 ```typescript
-import { previewNpcMood } from '@pixsim7/game-core';
+import { previewNpcMood } from '@pixsim7/game.engine';
 
 // Show mood after dialogue choice applies relationship changes
 const previewChoiceOutcome = async (choice: DialogueChoice) => {
@@ -651,7 +651,7 @@ const previewChoiceOutcome = async (choice: DialogueChoice) => {
 ### Example: Live Mood Display
 
 ```typescript
-import { buildNpcBrainState, getNpcRelationshipState } from '@pixsim7/game-core';
+import { buildNpcBrainState, getNpcRelationshipState } from '@pixsim7/game.engine';
 
 // Runtime mood display (no API call)
 const DisplayNpcMood = ({ npcId, session }) => {
@@ -746,14 +746,14 @@ Future validation features:
 
 **Files**:
 - `docs/RELATIONSHIPS_AND_ARCS.md`
-- `packages/game-core/src/relationships/`
+- `packages/game/engine/src/relationships/`
 
 **Integration**: Metrics read from `GameSession.relationships`, compute derived values
 
 ### NPC Brain System
 
 **Files**:
-- `packages/game-core/src/npcs/brain.ts`
+- `packages/game/engine/src/npcs/brain.ts`
 - `docs/NPC_PERSONA_ARCHITECTURE.md`
 
 **Integration**: `buildNpcBrainState()` includes mood computation, can optionally call preview API
@@ -776,7 +776,7 @@ Future validation features:
 
 ### Mood Debug Tool
 
-**File**: `frontend/src/plugins/worldTools/moodDebug.tsx`
+**File**: `apps/main/src/plugins/worldTools/moodDebug.tsx`
 
 **Integration**: Uses `buildNpcBrainState()` for live mood display
 
@@ -792,8 +792,8 @@ Future validation features:
 4. **Create API endpoint**: New file in `pixsim7/backend/main/api/v1/`
 5. **Create route plugin**: New manifest in `pixsim7/backend/main/routes/`
 6. **Add TypeScript types**: Extend `packages/types/src/game.ts`
-7. **Add game-core helper**: Extend `packages/game-core/src/metrics/preview.ts`
-8. **Export from game-core**: Add to `packages/game-core/src/index.ts`
+7. **Add game-core helper**: Extend `packages/game/engine/src/metrics/preview.ts`
+8. **Export from game-core**: Add to `packages/game/engine/src/index.ts`
 9. **Document schema location**: Update this doc and Phase 7 summary
 10. **Update APP_MAP.md**: Add to social metrics section
 
@@ -866,7 +866,7 @@ Test cases:
 
 ### Frontend Tests
 
-Location: `packages/game-core/src/metrics/__tests__/`
+Location: `packages/game/engine/src/metrics/__tests__/`
 
 Test cases:
 - API client calls with correct payloads

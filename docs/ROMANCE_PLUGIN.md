@@ -39,7 +39,7 @@ Types:
 ### Frontend Files
 
 ```
-frontend/src/
+apps/main/src/
 ├── lib/
 │   ├── game/interactions/
 │   │   └── sensualize.ts                 # Interaction plugin definition
@@ -247,7 +247,7 @@ The interactive UI for sensual touch gameplay:
 - [ ] Implement zone-specific animations
 - [ ] Add audio feedback system
 
-See `frontend/src/components/gizmos/BodyMapGizmo.tsx` for detailed TODO comments.
+See `apps/main/src/components/gizmos/BodyMapGizmo.tsx` for detailed TODO comments.
 
 ## API Reference
 

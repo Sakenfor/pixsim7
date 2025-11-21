@@ -9,9 +9,9 @@
 >     - “Which assets belong to this scene/arc?”  
 >     - “Which generation jobs produced content for this character/scene?”
 > - Read these first:
->   - `pixsim7_backend/domain/character.py` and `character_integrations.py`  
->   - `pixsim7_backend/infrastructure/database/migrations/20251118_1200_add_character_registry.py`  
->   - `pixsim7_backend/infrastructure/database/migrations/20251118_1300_add_character_integrations.py`  
+>   - `pixsim7/backend/main/domain/character.py` and `character_integrations.py`  
+>   - `pixsim7/backend/main/infrastructure/database/migrations/20251118_1200_add_character_registry.py`  
+>   - `pixsim7/backend/main/infrastructure/database/migrations/20251118_1300_add_character_integrations.py`  
 >   - `docs/INTIMACY_SCENE_COMPOSER.md` and scene graph docs  
 >   - Generation model docs (`docs/DYNAMIC_GENERATION_FOUNDATION.md`).
 
@@ -134,7 +134,7 @@ Provide backend functions and APIs to query the identity graph.
 
 **Scope**
 
-- Domain module, e.g. `pixsim7_backend/domain/character_graph.py`.  
+- Domain module, e.g. `pixsim7/backend/main/domain/character_graph.py`.  
 - Optional route plugin (admin-only) to query/inspect graph.
 
 **Key Steps**
@@ -158,14 +158,14 @@ for tooling use.
 **Status:** ✅ Completed
 
 **Implementation:**
-- Created `pixsim7_backend/domain/character_graph.py` with core query functions:
+- Created `pixsim7/backend/main/domain/character_graph.py` with core query functions:
   - `get_character_graph()` - full graph traversal from character
   - `find_characters_for_npc()` - reverse lookup from NPC to characters
   - `find_scenes_for_character()` - scenes where character appears
   - `find_assets_for_character()` - assets featuring character
   - `get_character_usage_stats()` - comprehensive analytics
-- Created `pixsim7_backend/api/v1/character_graph.py` with admin API routes
-- Registered as route plugin in `pixsim7_backend/routes/character_graph/`
+- Created `pixsim7/backend/main/api/v1/character_graph.py` with admin API routes
+- Registered as route plugin in `pixsim7/backend/main/routes/character_graph/`
 - Supports filtering by world, depth control, and inactive node inclusion
 - Graph builder functions for all node types (9 node types, 13 edge types)
 
@@ -200,7 +200,7 @@ Ensure scenes and assets/generations link to characters via clear, consistent me
 **Status:** ✅ Completed
 
 **Implementation:**
-- Created `pixsim7_backend/domain/character_linkage.py` with helper functions for:
+- Created `pixsim7/backend/main/domain/character_linkage.py` with helper functions for:
   - Scene role bindings (`GameScene.meta.character_roles`)
   - Scene node character refs (`GameSceneNode.meta.character_refs`)
   - Asset character linkage (`Asset.media_metadata.character_linkage`)
@@ -241,14 +241,14 @@ Expose the identity graph in tools so designers and engineers can see character 
 **Status:** ✅ Completed
 
 **Implementation:**
-- Created `frontend/src/components/character-graph/CharacterGraphBrowser.tsx`:
+- Created `apps/main/src/components/character-graph/CharacterGraphBrowser.tsx`:
   - Interactive browser with 4 view modes: Graph, Statistics, Scenes, Assets
   - Graph view shows all nodes grouped by type with expand/collapse
   - Node selection shows detailed information and connections (incoming/outgoing edges)
   - Statistics view shows usage metrics (instances, NPCs, scenes, assets, etc.)
   - Scenes view lists all scenes where character appears with role information
   - Assets view displays all assets featuring the character
-- Created `frontend/src/components/character-graph/SceneCharacterViewer.tsx`:
+- Created `apps/main/src/components/character-graph/SceneCharacterViewer.tsx`:
   - Shows all characters in a scene with their roles and requirements
   - Displays character role metadata
 - Created comprehensive CSS styling in `CharacterGraphBrowser.css`

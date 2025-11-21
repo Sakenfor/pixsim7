@@ -14,16 +14,16 @@ The Gallery Tools Plugin system provides an extension point for adding new tools
 
 The plugin system follows the same patterns as other plugin types in the codebase:
 
-- **Type Definitions**: `frontend/src/lib/gallery/types.ts`
+- **Type Definitions**: `apps/main/src/lib/gallery/types.ts`
 - **Registry**: `GalleryToolRegistry` (singleton)
-- **Auto-Discovery**: Plugin loader discovers tools in `frontend/src/plugins/galleryTools/**`
+- **Auto-Discovery**: Plugin loader discovers tools in `apps/main/src/plugins/galleryTools/**`
 - **Integration**: `GalleryToolsPanel` component renders tools in the Assets route
 
 ## Creating a Gallery Tool Plugin
 
 ### 1. Basic Structure
 
-Create a new file in `frontend/src/plugins/galleryTools/` (e.g., `myTool.tsx`):
+Create a new file in `apps/main/src/plugins/galleryTools/` (e.g., `myTool.tsx`):
 
 ```typescript
 import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
@@ -174,23 +174,23 @@ export function registerAssetInfoTool() {
 
 ### Example 2: Bulk Tag Tool
 
-See `frontend/src/plugins/galleryTools/bulkOperations.tsx` for a complete example.
+See `apps/main/src/plugins/galleryTools/bulkOperations.tsx` for a complete example.
 
 ### Example 3: Lineage Visualization
 
-See `frontend/src/plugins/galleryTools/lineageVisualization.tsx` for a complete example.
+See `apps/main/src/plugins/galleryTools/lineageVisualization.tsx` for a complete example.
 
 ## Auto-Discovery
 
-The plugin loader (`frontend/src/lib/pluginLoader.ts`) automatically discovers and loads gallery tool plugins:
+The plugin loader (`apps/main/src/lib/pluginLoader.ts`) automatically discovers and loads gallery tool plugins:
 
-- Scans `frontend/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}`
+- Scans `apps/main/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}`
 - Looks for functions named `register*Tool`
 - Calls each registration function on startup
 
 ## Integration with Assets Route
 
-The `AssetsRoute` component (`frontend/src/routes/Assets.tsx`) integrates gallery tools:
+The `AssetsRoute` component (`apps/main/src/routes/Assets.tsx`) integrates gallery tools:
 
 1. **Selection State**: Tracks selected assets via Ctrl+Click
 2. **Tools Panel Toggle**: Shows/hides tools panel with a button
@@ -309,7 +309,7 @@ galleryToolRegistry.clear(): void
 
 To test your plugin:
 
-1. Create your plugin file in `frontend/src/plugins/galleryTools/`
+1. Create your plugin file in `apps/main/src/plugins/galleryTools/`
 2. Ensure it exports a `register*Tool` function
 3. Restart the frontend dev server
 4. Navigate to the Assets route
@@ -337,4 +337,4 @@ Potential improvements:
 For questions or issues:
 - File an issue on GitHub
 - Check existing plugins for examples
-- Review the plugin loader code in `frontend/src/lib/pluginLoader.ts`
+- Review the plugin loader code in `apps/main/src/lib/pluginLoader.ts`

@@ -6,7 +6,7 @@
 >   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` (generation system)  
 >   - `docs/INTIMACY_AND_GENERATION.md` (intimacy/social context)  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship data conventions).
-> - When editing social‑context logic, keep `packages/types/src/generation.ts`, `packages/game-core/src/relationships/socialContext.ts`, `packages/game-core/src/generation/*`, and backend generation APIs in sync.
+> - When editing social‑context logic, keep `packages/types/src/generation.ts`, `packages/game/engine/src/relationships/socialContext.ts`, `packages/game/engine/src/generation/*`, and backend generation APIs in sync.
 > - Use the phase checklist below to coordinate work and record what’s done (with notes and file paths).
 
 **Context**
@@ -50,28 +50,28 @@ All 10 phases have a reference implementation in place. This section summarizes 
 - **Types**: `GenerationSocialContext` interface in `packages/types/src/generation.ts`.
 
 ### Phases 3–4: Core Logic
-- **Social Context Builder**: `buildGenerationSocialContext()` in `packages/game-core/src/relationships/socialContext.ts`.
-- **World Config**: `WorldGenerationConfig` type and helpers in `packages/game-core/src/world/generationConfig.ts`.
+- **Social Context Builder**: `buildGenerationSocialContext()` in `packages/game/engine/src/relationships/socialContext.ts`.
+- **World Config**: `WorldGenerationConfig` type and helpers in `packages/game/engine/src/world/generationConfig.ts`.
 
 ### Phases 5–6: Request Building & UI
-- **Request Builder**: `buildGenerateContentRequest()` in `packages/game-core/src/generation/requestBuilder.ts`.
-- **UI Components**: `SocialContextPanel` in `frontend/src/components/generation/SocialContextPanel.tsx`.
+- **Request Builder**: `buildGenerateContentRequest()` in `packages/game/engine/src/generation/requestBuilder.ts`.
+- **UI Components**: `SocialContextPanel` in `apps/main/src/components/generation/SocialContextPanel.tsx`.
 
 ### Phases 7–8: User Control & Safety
-- **User Preferences**: `UserContentPreferences` type and helpers in `packages/game-core/src/user/contentPreferences.ts`.
-- **Validation**: `validateGenerationNode()` and related helpers in `packages/game-core/src/generation/validator.ts`.
+- **User Preferences**: `UserContentPreferences` type and helpers in `packages/game/engine/src/user/contentPreferences.ts`.
+- **Validation**: `validateGenerationNode()` and related helpers in `packages/game/engine/src/generation/validator.ts`.
 
 ### Phases 9–10: Testing & Documentation
-- **Tests**: Comprehensive test suite in `packages/game-core/src/__tests__/generation-social-context.test.ts`.
+- **Tests**: Comprehensive test suite in `packages/game/engine/src/__tests__/generation-social-context.test.ts`.
 - **Documentation**: Detailed guide in `docs/INTIMACY_AND_GENERATION.md`.
 
 ### Key Files
 - `packages/types/src/generation.ts` – `GenerationSocialContext`, `GenerateContentRequest`, `GenerationNodeConfig`.
-- `packages/game-core/src/relationships/socialContext.ts` – social context mapping logic.
-- `packages/game-core/src/generation/requestBuilder.ts` – request construction + social context.
-- `packages/game-core/src/generation/validator.ts` – validation and guardrails.
-- `packages/game-core/src/user/contentPreferences.ts` – user rating preferences.
-- `frontend/src/components/generation/SocialContextPanel.tsx` – editor UI for social context.
+- `packages/game/engine/src/relationships/socialContext.ts` – social context mapping logic.
+- `packages/game/engine/src/generation/requestBuilder.ts` – request construction + social context.
+- `packages/game/engine/src/generation/validator.ts` – validation and guardrails.
+- `packages/game/engine/src/user/contentPreferences.ts` – user rating preferences.
+- `apps/main/src/components/generation/SocialContextPanel.tsx` – editor UI for social context.
 
 ---
 
@@ -82,11 +82,11 @@ All 10 phases have a reference implementation in place. This section summarizes 
   - `docs/INTIMACY_AND_GENERATION.md` – intimacy/social context integration  
   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationship/session conventions
 - Backend:  
-  - `pixsim7_backend/domain/generation.py`  
-  - `pixsim7_backend/services/generation/generation_service.py`
+  - `pixsim7/backend/main/domain/generation.py`  
+  - `pixsim7/backend/main/services/generation/generation_service.py`
 - Game-core / Types:  
   - `packages/types/src/generation.ts`  
-  - `packages/game-core/src/relationships/socialContext.ts`  
-  - `packages/game-core/src/generation/requestBuilder.ts`  
-  - `packages/game-core/src/generation/validator.ts`
+  - `packages/game/engine/src/relationships/socialContext.ts`  
+  - `packages/game/engine/src/generation/requestBuilder.ts`  
+  - `packages/game/engine/src/generation/validator.ts`
 

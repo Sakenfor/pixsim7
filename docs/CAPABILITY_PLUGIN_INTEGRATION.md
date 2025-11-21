@@ -24,7 +24,7 @@ They are kept **distinct and separate** to maintain clean boundaries. Plugins **
 
 ## Separation of Concerns
 
-### Capability Registry (`frontend/src/lib/capabilities/`)
+### Capability Registry (`apps/main/src/lib/capabilities/`)
 
 The capability registry is the **single source of truth** for:
 
@@ -39,7 +39,7 @@ The capability registry is the **single source of truth** for:
 - Track feature relationships and dependencies
 - Enable command palette, shortcuts, and dynamic UI
 
-### Plugin Catalog (`frontend/src/lib/plugins/catalog.ts`)
+### Plugin Catalog (`apps/main/src/lib/plugins/catalog.ts`)
 
 The plugin catalog is a **unified metadata layer** over all plugin systems:
 

@@ -298,7 +298,7 @@ unsubscribe();
 
 ```typescript
 // plugins/helpers/myHelper.ts
-import { sessionHelperRegistry } from '@pixsim7/game-core';
+import { sessionHelperRegistry } from '@pixsim7/game.engine';
 
 sessionHelperRegistry.register({
   id: 'my-helper',
@@ -420,7 +420,7 @@ initializeActivationStates();
 ```typescript
 // plugins/helpers/skills/skills.ts
 import { registerHelper } from '../../../lib/plugins/registryBridge';
-import type { HelperDefinition } from '@pixsim7/game-core';
+import type { HelperDefinition } from '@pixsim7/game.engine';
 
 export function registerSkillsHelper() {
   registerHelper({
@@ -593,7 +593,7 @@ pluginCatalog.printSummary();
 ---
 
 For more information, see:
-- [Plugin Loader](../frontend/src/lib/pluginLoader.ts)
-- [Plugin System](../frontend/src/lib/plugins/pluginSystem.ts)
-- [Registry Bridge](../frontend/src/lib/plugins/registryBridge.ts)
-- [Activation Integration](../frontend/src/lib/plugins/activationIntegration.ts)
+- [Plugin Loader](../apps/main/src/lib/pluginLoader.ts)
+- [Plugin System](../apps/main/src/lib/plugins/pluginSystem.ts)
+- [Registry Bridge](../apps/main/src/lib/plugins/registryBridge.ts)
+- [Activation Integration](../apps/main/src/lib/plugins/activationIntegration.ts)

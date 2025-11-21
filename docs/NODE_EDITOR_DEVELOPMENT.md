@@ -17,7 +17,7 @@
 
 The scene editor has a clear separation of concerns:
 
-### SceneBuilderPanel (`frontend/src/components/SceneBuilderPanel.tsx`)
+### SceneBuilderPanel (`apps/main/src/components/SceneBuilderPanel.tsx`)
 **Purpose:** Scene-level context and actions
 - **Displays:** World/location context, current scene info
 - **Actions:** Preview in Game, Play from Here in 2D
@@ -25,7 +25,7 @@ The scene editor has a clear separation of concerns:
 
 **DO NOT** add node-specific configuration here. Use InspectorPanel instead.
 
-### InspectorPanel (`frontend/src/components/inspector/InspectorPanel.tsx`)
+### InspectorPanel (`apps/main/src/components/inspector/InspectorPanel.tsx`)
 **Purpose:** Node-specific configuration (PRIMARY EXTENSION POINT)
 - Dynamic, registry-based editor loading
 - Type-specific editors for each node type
@@ -36,9 +36,9 @@ The scene editor has a clear separation of concerns:
 - Node type definitions with `editorComponent` and `rendererComponent` properties
 - Canonical registry for all node types in the system
 
-### Node Editor Registry (`frontend/src/lib/nodeEditorRegistry.ts`)
+### Node Editor Registry (`apps/main/src/lib/nodeEditorRegistry.ts`)
 **Purpose:** Lazy-load editor components
-- Auto-discovers editors in `frontend/src/components/inspector/`
+- Auto-discovers editors in `apps/main/src/components/inspector/`
 - Provides dynamic import for editor components
 
 ---
@@ -64,7 +64,7 @@ nodeTypeRegistry.register({
 
 ### Step 2: Create Node Editor Component
 
-Create `frontend/src/components/inspector/MyNodeEditor.tsx`:
+Create `apps/main/src/components/inspector/MyNodeEditor.tsx`:
 
 ```typescript
 import type { DraftSceneNode } from '../../modules/scene-builder';
@@ -92,7 +92,7 @@ export default MyNodeEditor;
 The editor will be automatically discovered by `nodeEditorRegistry` and loaded when needed.
 
 **Key Points:**
-- ✅ File must be in `frontend/src/components/inspector/`
+- ✅ File must be in `apps/main/src/components/inspector/`
 - ✅ File must have default export
 - ✅ Component receives `node` and `onUpdate` props
 - ✅ Use `onUpdate()` to apply changes to the node
@@ -123,19 +123,19 @@ Visual authoring of branching, modular video scenes with:
 
 **Reference Files:**
 - Frontend:
-  - `frontend/src/components/GraphPanel.tsx` (React Flow wiring)
-  - `frontend/src/components/SceneBuilderPanel.tsx` (scene-level actions, embeds InspectorPanel)
-  - `frontend/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
-  - `frontend/src/lib/nodeEditorRegistry.ts` (editor auto-discovery)
-  - `frontend/src/components/inspector/VideoNodeEditor.tsx` (example editor)
-  - `frontend/src/components/nodes/SceneNode.tsx` (node component with handles)
-  - `frontend/src/modules/scene-builder/index.ts` (draft model + toRuntimeScene)
+  - `apps/main/src/components/GraphPanel.tsx` (React Flow wiring)
+  - `apps/main/src/components/SceneBuilderPanel.tsx` (scene-level actions, embeds InspectorPanel)
+  - `apps/main/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
+  - `apps/main/src/lib/nodeEditorRegistry.ts` (editor auto-discovery)
+  - `apps/main/src/components/inspector/VideoNodeEditor.tsx` (example editor)
+  - `apps/main/src/components/nodes/SceneNode.tsx` (node component with handles)
+  - `apps/main/src/modules/scene-builder/index.ts` (draft model + toRuntimeScene)
 - Types:
   - `packages/types/src/index.ts` (Scene, SceneNode, SceneEdge, SelectionStrategy, PlaybackMode)
   - `packages/types/src/nodeTypeRegistry.ts` (node type definitions)
 - Game Frontend:
-  - `game-frontend/src/components/ScenePlayer.tsx`
-  - `game-frontend/src/components/minigames/ReflexMiniGame.tsx`
+  - `game-apps/main/src/components/ScenePlayer.tsx`
+  - `game-apps/main/src/components/minigames/ReflexMiniGame.tsx`
 
 ---
 
@@ -206,7 +206,7 @@ Visual authoring of branching, modular video scenes with:
 **Extension Point:**
 To add a new node type configuration UI:
 1. Register node type in `@pixsim7/types` with `editorComponent` property
-2. Create editor component in `frontend/src/components/inspector/`
+2. Create editor component in `apps/main/src/components/inspector/`
 3. Export component as default export
 4. Done! Auto-discovery handles the rest.
 
@@ -504,14 +504,14 @@ To add a new node type configuration UI:
 
 ## Resources
 
-- **InspectorPanel:** `frontend/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
-- **Node Editor Registry:** `frontend/src/lib/nodeEditorRegistry.ts`
-- **Example Editors:** `frontend/src/components/inspector/` (10+ examples)
+- **InspectorPanel:** `apps/main/src/components/inspector/InspectorPanel.tsx` (PRIMARY EXTENSION POINT)
+- **Node Editor Registry:** `apps/main/src/lib/nodeEditorRegistry.ts`
+- **Example Editors:** `apps/main/src/components/inspector/` (10+ examples)
 - **Node Type Registry:** `packages/types/src/nodeTypeRegistry.ts`
 - React Flow Docs: https://reactflow.dev/
 - Types Package: `packages/types/src/index.ts`
 - UI Primitives: `packages/ui/`
-- Scene Player: `game-frontend/src/components/ScenePlayer.tsx`
+- Scene Player: `game-apps/main/src/components/ScenePlayer.tsx`
 - Backend API: `http://localhost:8001/docs`
 
 ---
@@ -527,7 +527,7 @@ To add a new node type configuration UI:
    });
    ```
 
-2. **Create editor** (`frontend/src/components/inspector/MyNodeEditor.tsx`):
+2. **Create editor** (`apps/main/src/components/inspector/MyNodeEditor.tsx`):
    ```typescript
    export function MyNodeEditor({ node, onUpdate }) {
      return <div>...</div>;

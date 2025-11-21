@@ -50,26 +50,26 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Purpose:** Extensible plugin architecture for adding custom behaviors, tools, and UI elements without modifying core code.
 
 **Code Locations:**
-- `frontend/src/lib/pluginLoader.ts` - Plugin loading and initialization
-- `frontend/src/lib/plugins/` - Plugin infrastructure and catalog
-- `frontend/src/lib/plugins/catalog.ts` - Plugin discovery and metadata API
-- `frontend/src/lib/registries.ts` - Plugin registry implementations
-- `frontend/src/lib/gallery/` - Gallery tool plugins
-- `frontend/src/lib/worldTools/` - World tool plugins
-- `frontend/src/lib/providers/` - Generation UI provider plugins
+- `apps/main/src/lib/pluginLoader.ts` - Plugin loading and initialization
+- `apps/main/src/lib/plugins/` - Plugin infrastructure and catalog
+- `apps/main/src/lib/plugins/catalog.ts` - Plugin discovery and metadata API
+- `apps/main/src/lib/registries.ts` - Plugin registry implementations
+- `apps/main/src/lib/gallery/` - Gallery tool plugins
+- `apps/main/src/lib/worldTools/` - World tool plugins
+- `apps/main/src/lib/providers/` - Generation UI provider plugins
 - `plugins/` - User-installed plugins directory
 
 **Plugin Kinds:**
 
 | Kind | Registry | Typical Location | Purpose |
 |------|----------|------------------|---------|
-| `session-helper` | `sessionHelperRegistry` | `packages/game-core/src/session/` | Game session state helpers and utilities |
-| `interaction` | `interactionRegistry` | `frontend/src/lib/plugins/interactions/` | NPC interactions (dialogue, combat, trade, etc.) |
-| `node-type` | `nodeTypeRegistry` | `frontend/src/components/graph/nodes/` | Custom scene graph node types |
-| `gallery-tool` | `galleryToolRegistry` | `frontend/src/lib/gallery/tools/` | Asset gallery toolbar actions |
-| `world-tool` | `worldToolRegistry` | `frontend/src/lib/worldTools/` | World/HUD panels (inventory, relationships, quest log) |
+| `session-helper` | `sessionHelperRegistry` | `packages/game/engine/src/session/` | Game session state helpers and utilities |
+| `interaction` | `interactionRegistry` | `apps/main/src/lib/plugins/interactions/` | NPC interactions (dialogue, combat, trade, etc.) |
+| `node-type` | `nodeTypeRegistry` | `apps/main/src/components/graph/nodes/` | Custom scene graph node types |
+| `gallery-tool` | `galleryToolRegistry` | `apps/main/src/lib/gallery/tools/` | Asset gallery toolbar actions |
+| `world-tool` | `worldToolRegistry` | `apps/main/src/lib/worldTools/` | World/HUD panels (inventory, relationships, quest log) |
 | `ui-plugin` | `pluginManager` | `plugins/` | User-installed UI extensions |
-| `generation-ui` | `generationUIPluginRegistry` | `frontend/src/lib/providers/` | Generation workflow UI providers |
+| `generation-ui` | `generationUIPluginRegistry` | `apps/main/src/lib/providers/` | Generation workflow UI providers |
 
 **Plugin Catalog API:**
 - `listAllPlugins()` - Get all registered plugins with metadata
@@ -100,10 +100,10 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Purpose:** Visual graph editor for creating scenes, quests, and interactive narrative flows using nodes and connections.
 
 **Code Locations:**
-- `frontend/src/components/GraphPanel.tsx` - Main graph canvas and rendering
-- `frontend/src/components/inspector/InspectorPanel.tsx` - Node property inspector
-- `frontend/src/modules/scene-builder/` - Scene builder module
-- `frontend/src/components/graph/nodes/` - Node type implementations
+- `apps/main/src/components/GraphPanel.tsx` - Main graph canvas and rendering
+- `apps/main/src/components/inspector/InspectorPanel.tsx` - Node property inspector
+- `apps/main/src/modules/scene-builder/` - Scene builder module
+- `apps/main/src/components/graph/nodes/` - Node type implementations
 - `packages/types/` - Scene, Node, and graph-related types
 
 **Node Types:**
@@ -133,11 +133,11 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Purpose:** Runtime game environments for testing and playing interactive content.
 
 **Code Locations:**
-- `frontend/src/routes/Game2D.tsx` - 2D world exploration game
-- `frontend/src/routes/NpcBrainLab.tsx` - NPC behavior testing environment
-- `frontend/src/lib/worldTools/` - World tool panels (HUD components)
-- `packages/game-core/` - Core game logic and session management
-- Future: `frontend/src/routes/SimulationPlayground.tsx` - System testing playground
+- `apps/main/src/routes/Game2D.tsx` - 2D world exploration game
+- `apps/main/src/routes/NpcBrainLab.tsx` - NPC behavior testing environment
+- `apps/main/src/lib/worldTools/` - World tool panels (HUD components)
+- `packages/game/engine/` - Core game logic and session management
+- Future: `apps/main/src/routes/SimulationPlayground.tsx` - System testing playground
 
 **Game Components:**
 - **Game2D**: Play scenes with character movement, NPC interactions, hotspot actions
@@ -162,8 +162,8 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 - `pixsim7/backend/main/domain/metrics/` - Backend evaluators and types
 - `pixsim7/backend/main/api/v1/game_*_preview.py` - Preview API endpoints
 - `packages/types/src/game.ts` - Shared TypeScript types
-- `packages/game-core/src/metrics/` - API client and helpers
-- `packages/game-core/src/npcs/brain.ts` - Client-side mood computation
+- `packages/game/engine/src/metrics/` - API client and helpers
+- `packages/game/engine/src/npcs/brain.ts` - Client-side mood computation
 
 **Supported Metrics:**
 
@@ -216,9 +216,9 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Purpose:** AI-powered content generation with pluggable UI providers, prompt engineering, and concept discovery.
 
 **Code Locations:**
-- `frontend/src/routes/Generate.tsx` - Generation UI orchestrator
-- `frontend/src/lib/providers/` - Generation UI provider plugins
-- `frontend/src/modules/generation/` - Generation module and capabilities
+- `apps/main/src/routes/Generate.tsx` - Generation UI orchestrator
+- `apps/main/src/lib/providers/` - Generation UI provider plugins
+- `apps/main/src/modules/generation/` - Generation module and capabilities
 - Backend generation endpoints and prompt systems
 
 **Generation Types:**
@@ -241,13 +241,13 @@ These interactive tools provide real-time visibility into the app's structure an
 
 ### Capability Browser
 - **Purpose:** Browse and search all registered features, routes, actions, and state
-- **Location:** `frontend/src/components/capabilities/CapabilityBrowser.tsx`
+- **Location:** `apps/main/src/components/capabilities/CapabilityBrowser.tsx`
 - **Usage:** Import and render in dev routes or config panels
 
 ### App Map Panel
 - **Purpose:** Visualize app architecture, plugin ecosystem, and feature dependencies
 - **Route:** `/app-map` (dev route)
-- **Location:** `frontend/src/components/dev/AppMapPanel.tsx`
+- **Location:** `apps/main/src/components/dev/AppMapPanel.tsx`
 - **Features:**
   - **Features & Routes Tab:** Browse all features with their routes and actions
   - **Plugin Ecosystem Tab:** Search and filter plugins by kind, origin, and tags
@@ -378,10 +378,10 @@ The following designer-focused features are planned (see `claude-tasks/` for det
 ### Starting Points for Common Tasks
 
 **Adding a new feature:**
-1. Create a module in `frontend/src/modules/your-feature/`
+1. Create a module in `apps/main/src/modules/your-feature/`
 2. Register feature using `registerCompleteFeature()`
 3. Add routes, actions, and state as needed
-4. Register module in `frontend/src/modules/index.ts`
+4. Register module in `apps/main/src/modules/index.ts`
 5. Use `createModuleInitializer()` for hot-reload safety (see Module Lifecycle below)
 
 **Creating a plugin:**
@@ -392,7 +392,7 @@ The following designer-focused features are planned (see `claude-tasks/` for det
 
 **Adding a route:**
 1. Register route via capability system
-2. Add route component in `frontend/src/routes/`
+2. Add route component in `apps/main/src/routes/`
 3. Wire into `App.tsx` `<Routes>`
 
 **Exploring the system:**
@@ -405,7 +405,7 @@ The following designer-focused features are planned (see `claude-tasks/` for det
 
 ### Module Lifecycle & Hot-Reload Safety
 
-**Location:** `frontend/src/modules/lifecycle.ts`
+**Location:** `apps/main/src/modules/lifecycle.ts`
 
 All modules should use the lifecycle helpers to ensure initialization is idempotent under hot-reload:
 
@@ -454,7 +454,7 @@ export const myModule: Module = {
 - With lifecycle helpers: guaranteed single initialization per page load
 
 **Example Migration:**
-See `frontend/src/modules/game-session/index.ts` for a complete example of migrating from manual guards to lifecycle helpers.
+See `apps/main/src/modules/game-session/index.ts` for a complete example of migrating from manual guards to lifecycle helpers.
 
 ---
 
