@@ -1,8 +1,8 @@
 {
-  "window_x": 542,
-  "window_y": 268,
-  "window_width": 1352,
-  "window_height": 687,
+  "window_x": 223,
+  "window_y": 190,
+  "window_width": 1718,
+  "window_height": 682,
   "selected_service": "frontend",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,

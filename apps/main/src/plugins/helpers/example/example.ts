@@ -22,6 +22,11 @@ import type { GameSessionDTO } from '@pixsim7/shared.types';
  * Convention: Function name should start with 'register'
  */
 export function registerExampleHelper() {
+  // Avoid duplicate registration under hot-reload or repeated plugin loads
+  if (sessionHelperRegistry.get('exampleHelper')) {
+    console.debug('[PixSim7] Example helper plugin already registered, skipping');
+    return;
+  }
   // Example 1: Manual helper registration with metadata
   sessionHelperRegistry.register({
     id: 'example-helper',
