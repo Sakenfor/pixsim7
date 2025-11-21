@@ -120,7 +120,9 @@
       "Bash(then)",
       "Bash(else)",
       "Bash(done)",
-      "Bash(npx vite build)"
+      "Bash(npx vite build)",
+      "Bash(cmd /c \"set PYTHONPATH=G:\\code\\pixsim7 && G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe revision --autogenerate -m \"\"add api_keys column to provider_accounts\"\"\")",
+      "Bash(cmd /c \"set PYTHONPATH=G:\\code\\pixsim7&& G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe upgrade head\")"
     ],
     "deny": [],
     "ask": []

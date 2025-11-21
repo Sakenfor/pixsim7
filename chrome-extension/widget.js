@@ -158,10 +158,36 @@ async function loadAccounts() {
   const accountsDiv = document.getElementById('widget-accounts');
   const providerTabsDiv = document.getElementById('widget-provider-tabs');
 
+  // Try to show cached data immediately (non-blocking)
+  const cached = await chrome.storage.local.get(['cachedAccounts', 'cachedAccountsTime']);
+  const cacheAge = cached.cachedAccountsTime ? Date.now() - cached.cachedAccountsTime : Infinity;
+  const CACHE_MAX_AGE = 60000; // 1 minute
+
+  if (cached.cachedAccounts && cacheAge < CACHE_MAX_AGE) {
+    // Show cached data immediately
+    const settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
+    if (settings.pixsim7Token) {
+      displayAccounts(cached.cachedAccounts, settings, statusDiv, accountsDiv, providerTabsDiv);
+      statusDiv.textContent = `${cached.cachedAccounts.length} accounts (cached)`;
+      statusDiv.className = 'widget-status success';
+      // Refresh in background after 5 seconds
+      setTimeout(() => fetchAndCacheAccounts(false), 5000);
+      return;
+    }
+  }
+
   statusDiv.textContent = 'Loading...';
   statusDiv.className = 'widget-status loading';
   accountsDiv.innerHTML = '';
   providerTabsDiv.innerHTML = '';
+
+  await fetchAndCacheAccounts(true);
+}
+
+async function fetchAndCacheAccounts(updateUI = true) {
+  const statusDiv = document.getElementById('widget-status');
+  const accountsDiv = document.getElementById('widget-accounts');
+  const providerTabsDiv = document.getElementById('widget-provider-tabs');
 
   try {
     // Get settings from extension storage
@@ -195,55 +221,71 @@ async function loadAccounts() {
 
     const accounts = response.data;
 
-    // Group accounts by provider
-    const accountsByProvider = {};
-    accounts.forEach(account => {
-      if (!accountsByProvider[account.provider_id]) {
-        accountsByProvider[account.provider_id] = [];
-      }
-      accountsByProvider[account.provider_id].push(account);
+    // Cache the accounts
+    await chrome.storage.local.set({
+      cachedAccounts: accounts,
+      cachedAccountsTime: Date.now()
     });
 
-    statusDiv.textContent = `${accounts.length} accounts loaded`;
-    statusDiv.className = 'widget-status success';
-
-    if (accounts.length === 0) {
-      accountsDiv.innerHTML = `
-        <div style="text-align: center; padding: 20px; opacity: 0.7;">
-          No accounts found
-        </div>
-      `;
-      return;
+    if (updateUI) {
+      displayAccounts(accounts, settings, statusDiv, accountsDiv, providerTabsDiv);
+      statusDiv.textContent = `${accounts.length} accounts loaded`;
+      statusDiv.className = 'widget-status success';
     }
-
-    // Create provider tabs
-    const providers = Object.keys(accountsByProvider);
-    if (providers.length > 1) {
-      providerTabsDiv.innerHTML = providers.map(providerId => `
-        <button class="provider-tab ${providerId === providers[0] ? 'active' : ''}"
-                data-provider="${providerId}">
-          ${providerId.charAt(0).toUpperCase() + providerId.slice(1)}
-        </button>
-      `).join('');
-
-      // Add tab click handlers
-      providerTabsDiv.querySelectorAll('.provider-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          providerTabsDiv.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          displayAccountsForProvider(accountsByProvider[tab.dataset.provider], settings);
-        });
-      });
-    }
-
-    // Display accounts for first provider
-    displayAccountsForProvider(accountsByProvider[providers[0]], settings);
 
   } catch (error) {
     console.error('[PixSim7 Widget] Error loading accounts:', error);
-    statusDiv.textContent = `❌ Error: ${error.message}`;
-    statusDiv.className = 'widget-status error';
+    if (updateUI) {
+      statusDiv.textContent = `❌ Error: ${error.message}`;
+      statusDiv.className = 'widget-status error';
+    }
   }
+}
+
+function displayAccounts(accounts, settings, statusDiv, accountsDiv, providerTabsDiv) {
+  accountsDiv.innerHTML = '';
+  providerTabsDiv.innerHTML = '';
+
+  if (accounts.length === 0) {
+    accountsDiv.innerHTML = `
+      <div style="text-align: center; padding: 20px; opacity: 0.7;">
+        No accounts found
+      </div>
+    `;
+    return;
+  }
+
+  // Group accounts by provider
+  const accountsByProvider = {};
+  accounts.forEach(account => {
+    if (!accountsByProvider[account.provider_id]) {
+      accountsByProvider[account.provider_id] = [];
+    }
+    accountsByProvider[account.provider_id].push(account);
+  });
+
+  // Create provider tabs
+  const providers = Object.keys(accountsByProvider);
+  if (providers.length > 1) {
+    providerTabsDiv.innerHTML = providers.map(providerId => `
+      <button class="provider-tab ${providerId === providers[0] ? 'active' : ''}"
+              data-provider="${providerId}">
+        ${providerId.charAt(0).toUpperCase() + providerId.slice(1)}
+      </button>
+    `).join('');
+
+    // Add tab click handlers
+    providerTabsDiv.querySelectorAll('.provider-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        providerTabsDiv.querySelectorAll('.provider-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        displayAccountsForProvider(accountsByProvider[tab.dataset.provider], settings);
+      });
+    });
+  }
+
+  // Display accounts for first provider
+  displayAccountsForProvider(accountsByProvider[providers[0]], settings);
 }
 
 function displayAccountsForProvider(accounts, settings) {

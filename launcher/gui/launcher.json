@@ -1,9 +1,9 @@
 {
-  "window_x": 302,
-  "window_y": 236,
+  "window_x": 126,
+  "window_y": 84,
   "window_width": 1347,
   "window_height": 687,
-  "selected_service": "game_frontend",
+  "selected_service": "generation-api",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,
   "health_check_interval": 5.0,
