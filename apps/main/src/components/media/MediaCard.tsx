@@ -20,6 +20,7 @@ export interface MediaCardProps {
   createdAt: string;
   onOpen?: (id: number) => void;
   status?: string;
+  providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   // Optional upload badge hook: when provided, shows a top-right clickable badge
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
   uploadState?: 'idle' | 'uploading' | 'success' | 'error';
@@ -42,6 +43,7 @@ export function MediaCard(props: MediaCardProps) {
     createdAt,
     onOpen,
     status,
+    providerStatus,
   } = props;
 
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
@@ -126,7 +128,17 @@ export function MediaCard(props: MediaCardProps) {
       const result = await props.onUploadClick(id);
       const ok = (result && 'ok' in result) ? !!result.ok : true;
       const note = (result && 'note' in result) ? (result as any).note : undefined;
+
+      // Determine state based on note semantics (aligned with extension)
+      // If note indicates "local only" or "provider upload failed", treat as partial success
+      const isLocalOnly = note && (
+        note.includes('saved locally') ||
+        note.includes('provider upload failed') ||
+        note.includes('Local only')
+      );
+
       if (!controlling) {
+        // If ok=true but note indicates local-only, still show as "success" but with the note
         setInternalUploadState(ok ? 'success' : 'error');
         setInternalUploadNote(note);
       }
@@ -161,7 +173,13 @@ export function MediaCard(props: MediaCardProps) {
                 effectiveState==='error' ? 'bg-red-600 text-white' :
                 effectiveState==='uploading' ? 'bg-neutral-400 text-white' : 'bg-neutral-700 text-white'
               }`}
-              title={effectiveState==='success' ? (effectiveNote || 'Uploaded (accepted)') : effectiveState==='error' ? 'Upload failed / rejected' : 'Upload to provider'}
+              title={
+                effectiveState==='success'
+                  ? (effectiveNote || (providerStatus === 'ok' ? 'Uploaded to provider successfully' : providerStatus === 'local_only' ? 'Saved locally; provider upload failed' : 'Upload completed'))
+                  : effectiveState==='error'
+                    ? (effectiveNote || 'Upload failed / rejected')
+                    : 'Upload to provider'
+              }
             >
               {effectiveState==='uploading' ? 'UP...' : effectiveState==='success' ? 'UP ✓' : effectiveState==='error' ? 'ERR' : 'UPLOAD'}
             </button>
@@ -189,6 +207,21 @@ export function MediaCard(props: MediaCardProps) {
             <div className="flex items-center gap-1.5 flex-wrap">
               <Badge color="blue">{providerId}</Badge>
               <Badge color="purple">{mediaType}</Badge>
+              {providerStatus === 'ok' && (
+                <Badge color="green" className="text-[10px]" title="Provider accepted this asset">
+                  Provider OK
+                </Badge>
+              )}
+              {providerStatus === 'local_only' && (
+                <Badge color="yellow" className="text-[10px]" title="Saved in PixSim7; provider upload failed">
+                  Local only
+                </Badge>
+              )}
+              {providerStatus === 'flagged' && (
+                <Badge color="red" className="text-[10px]" title="Flagged / rejected by provider">
+                  Flagged
+                </Badge>
+              )}
               {status && <StatusBadge status={status} />}
             </div>
             {description && (

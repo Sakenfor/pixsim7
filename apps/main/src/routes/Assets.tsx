@@ -38,6 +38,7 @@ export function AssetsRoute() {
     provider_id: params.get('provider_id') || persisted.provider_id || undefined,
     sort: (params.get('sort') as any) || persisted.sort || 'new',
     media_type: (params.get('media_type') as any) || persisted.media_type || undefined,
+    provider_status: (params.get('provider_status') as any) || persisted.provider_status || undefined,
   };
   const [filters, setFilters] = useState(initialFilters);
   const { providers } = useProviders();
@@ -70,6 +71,7 @@ export function AssetsRoute() {
     if (next.provider_id) p.set('provider_id', next.provider_id);
     if (next.sort) p.set('sort', next.sort);
     if (next.media_type) p.set('media_type', next.media_type);
+    if (next.provider_status) p.set('provider_status', next.provider_status);
     const newUrl = `${window.location.pathname}?${p.toString()}`;
     window.history.replaceState({}, '', newUrl);
     sessionStorage.setItem(sessionKey, JSON.stringify(next));
@@ -244,9 +246,28 @@ export function AssetsRoute() {
         <>
           <Tabs tabs={SCOPE_TABS} value={scope} onChange={handleScopeChange} />
           {currentTab && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm text-neutral-600">Viewing:</span>
               <Badge color="blue">{currentTab.label}</Badge>
+
+              {/* Provider Status Overview */}
+              {items.length > 0 && (
+                <>
+                  <span className="text-sm text-neutral-400">|</span>
+                  <span className="text-sm text-neutral-600">Status:</span>
+                  <Badge color="green" className="text-[10px]">
+                    {items.filter(a => a.provider_status === 'ok').length} OK
+                  </Badge>
+                  <Badge color="yellow" className="text-[10px]">
+                    {items.filter(a => a.provider_status === 'local_only').length} Local
+                  </Badge>
+                  {items.filter(a => a.provider_status === 'flagged').length > 0 && (
+                    <Badge color="red" className="text-[10px]">
+                      {items.filter(a => a.provider_status === 'flagged').length} Flagged
+                    </Badge>
+                  )}
+                </>
+              )}
             </div>
           )}
           {error && <div className="text-red-600 text-sm">{error}</div>}
@@ -274,6 +295,17 @@ export function AssetsRoute() {
                 <option value="new">Newest</option>
                 <option value="old">Oldest</option>
                 <option value="alpha">A–Z</option>
+              </select>
+              <select
+                className="px-2 py-1 text-sm border rounded"
+                value={filters.provider_status || ''}
+                onChange={(e) => setAndPersist({ provider_status: e.target.value || undefined as any })}
+              >
+                <option value="">All Status</option>
+                <option value="ok">Provider OK</option>
+                <option value="local_only">Local Only</option>
+                <option value="flagged">Flagged</option>
+                <option value="unknown">Unknown</option>
               </select>
             </div>
           </div>
@@ -308,6 +340,7 @@ export function AssetsRoute() {
                           description={a.description}
                           createdAt={a.created_at}
                           status={a.sync_status}
+                          providerStatus={a.provider_status}
                         />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -346,6 +379,7 @@ export function AssetsRoute() {
                         description={a.description}
                         createdAt={a.created_at}
                         status={a.sync_status}
+                        providerStatus={a.provider_status}
                       />
                       {/* Selection indicator */}
                       {isSelected && (
