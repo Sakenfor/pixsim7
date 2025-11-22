@@ -37,9 +37,30 @@ export type ArcValidationIssueType =
   | 'orphaned-node';
 
 /**
+ * Scene collection validation issue types
+ */
+export type SceneCollectionValidationIssueType =
+  | 'broken-scene-reference'
+  | 'invalid-requirements'
+  | 'no-nodes';
+
+/**
+ * Campaign validation issue types
+ */
+export type CampaignValidationIssueType =
+  | 'broken-arc-reference'
+  | 'cycle'
+  | 'invalid-requirements'
+  | 'no-nodes';
+
+/**
  * Union type for all validation issue types
  */
-export type ValidationIssueType = SceneValidationIssueType | ArcValidationIssueType;
+export type ValidationIssueType =
+  | SceneValidationIssueType
+  | ArcValidationIssueType
+  | SceneCollectionValidationIssueType
+  | CampaignValidationIssueType;
 
 /**
  * Validation issue structure

@@ -16,6 +16,9 @@
  */
 
 import type { ArcGraph } from '../../modules/arc-graph';
+import type { SceneCollection } from '../../modules/scene-collection';
+import type { Campaign } from '../../modules/campaign';
+import type { DraftScene } from '../../modules/scene-graph';
 
 /**
  * Arc-Scene dependency index
@@ -140,4 +143,267 @@ export function getDependencyCount(
   sceneId: string
 ): number {
   return index.sceneToArcNodes.get(sceneId)?.size ?? 0;
+}
+
+/**
+ * Complete dependency index across all graph layers
+ *
+ * Provides bidirectional lookup between all layers:
+ * - Scene → Arc nodes
+ * - Scene → Collections
+ * - Collection → Scenes
+ * - Arc → Collections
+ * - Collection → Arcs
+ * - Arc → Campaigns
+ * - Campaign → Arcs
+ * - Collection → Campaigns
+ * - Campaign → Collections
+ */
+export interface CompleteDependencyIndex {
+  // Existing arc → scene dependencies
+  sceneToArcNodes: Map<string, Set<string>>;
+  arcNodeToScene: Map<string, string>;
+
+  // New collection → scene dependencies
+  sceneToCollections: Map<string, Set<string>>;
+  collectionToScenes: Map<string, Set<string>>;
+
+  // New collection → arc dependencies
+  arcToCollections: Map<string, Set<string>>;
+  collectionToArcs: Map<string, Set<string>>;
+
+  // New campaign → arc dependencies
+  arcToCampaigns: Map<string, Set<string>>;
+  campaignToArcs: Map<string, Set<string>>;
+
+  // Collection → campaign dependencies
+  collectionToCampaigns: Map<string, Set<string>>;
+  campaignToCollections: Map<string, Set<string>>;
+}
+
+/**
+ * Build complete dependency index from all graph layers.
+ *
+ * This is a pure function that computes the complete dependency index from
+ * the current state of all graphs, collections, and campaigns.
+ *
+ * @param scenes - Record of all draft scenes
+ * @param arcGraphs - Record of all arc graphs
+ * @param collections - Record of all scene collections
+ * @param campaigns - Record of all campaigns
+ * @returns Complete bidirectional dependency index
+ */
+export function buildCompleteDependencyIndex(
+  scenes: Record<string, DraftScene>,
+  arcGraphs: Record<string, ArcGraph>,
+  collections: Record<string, SceneCollection>,
+  campaigns: Record<string, Campaign>
+): CompleteDependencyIndex {
+  const sceneToArcNodes = new Map<string, Set<string>>();
+  const arcNodeToScene = new Map<string, string>();
+  const sceneToCollections = new Map<string, Set<string>>();
+  const collectionToScenes = new Map<string, Set<string>>();
+  const arcToCollections = new Map<string, Set<string>>();
+  const collectionToArcs = new Map<string, Set<string>>();
+  const arcToCampaigns = new Map<string, Set<string>>();
+  const campaignToArcs = new Map<string, Set<string>>();
+  const collectionToCampaigns = new Map<string, Set<string>>();
+  const campaignToCollections = new Map<string, Set<string>>();
+
+  // Build arc → scene dependencies
+  for (const graph of Object.values(arcGraphs)) {
+    for (const node of graph.nodes) {
+      if (node.type !== 'arc_group' && node.sceneId) {
+        if (!sceneToArcNodes.has(node.sceneId)) {
+          sceneToArcNodes.set(node.sceneId, new Set());
+        }
+        sceneToArcNodes.get(node.sceneId)!.add(node.id);
+        arcNodeToScene.set(node.id, node.sceneId);
+      }
+    }
+  }
+
+  // Build collection → scene dependencies
+  for (const collection of Object.values(collections)) {
+    for (const scene of collection.scenes) {
+      // Scene → Collections
+      if (!sceneToCollections.has(scene.sceneId)) {
+        sceneToCollections.set(scene.sceneId, new Set());
+      }
+      sceneToCollections.get(scene.sceneId)!.add(collection.id);
+
+      // Collection → Scenes
+      if (!collectionToScenes.has(collection.id)) {
+        collectionToScenes.set(collection.id, new Set());
+      }
+      collectionToScenes.get(collection.id)!.add(scene.sceneId);
+    }
+
+    // Collection → Arc dependencies
+    if (collection.arcGraphId) {
+      if (!arcToCollections.has(collection.arcGraphId)) {
+        arcToCollections.set(collection.arcGraphId, new Set());
+      }
+      arcToCollections.get(collection.arcGraphId)!.add(collection.id);
+
+      if (!collectionToArcs.has(collection.id)) {
+        collectionToArcs.set(collection.id, new Set());
+      }
+      collectionToArcs.get(collection.id)!.add(collection.arcGraphId);
+    }
+
+    // Collection → Campaign dependencies
+    if (collection.campaignId) {
+      if (!collectionToCampaigns.has(collection.id)) {
+        collectionToCampaigns.set(collection.id, new Set());
+      }
+      collectionToCampaigns.get(collection.id)!.add(collection.campaignId);
+
+      if (!campaignToCollections.has(collection.campaignId)) {
+        campaignToCollections.set(collection.campaignId, new Set());
+      }
+      campaignToCollections.get(collection.campaignId)!.add(collection.id);
+    }
+  }
+
+  // Build campaign → arc dependencies
+  for (const campaign of Object.values(campaigns)) {
+    for (const arc of campaign.arcs) {
+      // Arc → Campaigns
+      if (!arcToCampaigns.has(arc.arcGraphId)) {
+        arcToCampaigns.set(arc.arcGraphId, new Set());
+      }
+      arcToCampaigns.get(arc.arcGraphId)!.add(campaign.id);
+
+      // Campaign → Arcs
+      if (!campaignToArcs.has(campaign.id)) {
+        campaignToArcs.set(campaign.id, new Set());
+      }
+      campaignToArcs.get(campaign.id)!.add(arc.arcGraphId);
+    }
+
+    // Campaign → Collections via collectionIds
+    if (campaign.collectionIds) {
+      for (const collectionId of campaign.collectionIds) {
+        if (!campaignToCollections.has(campaign.id)) {
+          campaignToCollections.set(campaign.id, new Set());
+        }
+        campaignToCollections.get(campaign.id)!.add(collectionId);
+
+        if (!collectionToCampaigns.has(collectionId)) {
+          collectionToCampaigns.set(collectionId, new Set());
+        }
+        collectionToCampaigns.get(collectionId)!.add(campaign.id);
+      }
+    }
+  }
+
+  return {
+    sceneToArcNodes,
+    arcNodeToScene,
+    sceneToCollections,
+    collectionToScenes,
+    arcToCollections,
+    collectionToArcs,
+    arcToCampaigns,
+    campaignToArcs,
+    collectionToCampaigns,
+    campaignToCollections,
+  };
+}
+
+/**
+ * Check if a scene has any dependencies across all layers.
+ *
+ * This checks:
+ * - Arc node references
+ * - Scene collection memberships
+ *
+ * @param index - Complete dependency index
+ * @param sceneId - Scene ID to check
+ * @returns Object with dependency information
+ */
+export function sceneHasAnyDependencies(
+  index: CompleteDependencyIndex,
+  sceneId: string
+): {
+  hasArcDeps: boolean;
+  hasCollectionDeps: boolean;
+  totalDeps: number;
+} {
+  const arcDeps = index.sceneToArcNodes.get(sceneId)?.size ?? 0;
+  const collectionDeps = index.sceneToCollections.get(sceneId)?.size ?? 0;
+
+  return {
+    hasArcDeps: arcDeps > 0,
+    hasCollectionDeps: collectionDeps > 0,
+    totalDeps: arcDeps + collectionDeps,
+  };
+}
+
+/**
+ * Check if an arc graph has campaign dependencies.
+ *
+ * @param index - Complete dependency index
+ * @param arcGraphId - Arc graph ID to check
+ * @returns True if any campaigns reference this arc graph
+ */
+export function arcHasCampaignDependencies(
+  index: CompleteDependencyIndex,
+  arcGraphId: string
+): boolean {
+  return (index.arcToCampaigns.get(arcGraphId)?.size ?? 0) > 0;
+}
+
+/**
+ * Check if a collection has any dependencies.
+ *
+ * @param index - Complete dependency index
+ * @param collectionId - Collection ID to check
+ * @returns Object with dependency information
+ */
+export function collectionHasDependencies(
+  index: CompleteDependencyIndex,
+  collectionId: string
+): {
+  hasArcDeps: boolean;
+  hasCampaignDeps: boolean;
+  totalDeps: number;
+} {
+  const arcDeps = index.collectionToArcs.get(collectionId)?.size ?? 0;
+  const campaignDeps = index.collectionToCampaigns.get(collectionId)?.size ?? 0;
+
+  return {
+    hasArcDeps: arcDeps > 0,
+    hasCampaignDeps: campaignDeps > 0,
+    totalDeps: arcDeps + campaignDeps,
+  };
+}
+
+/**
+ * Get all collections that reference a specific scene.
+ *
+ * @param index - Complete dependency index
+ * @param sceneId - Scene ID to look up
+ * @returns Array of collection IDs
+ */
+export function getCollectionsForScene(
+  index: CompleteDependencyIndex,
+  sceneId: string
+): string[] {
+  return Array.from(index.sceneToCollections.get(sceneId) || []);
+}
+
+/**
+ * Get all campaigns that reference a specific arc graph.
+ *
+ * @param index - Complete dependency index
+ * @param arcGraphId - Arc graph ID to look up
+ * @returns Array of campaign IDs
+ */
+export function getCampaignsForArc(
+  index: CompleteDependencyIndex,
+  arcGraphId: string
+): string[] {
+  return Array.from(index.arcToCampaigns.get(arcGraphId) || []);
 }
