@@ -11,6 +11,7 @@ import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
 import { logEvent } from '../../lib/logging';
 import { createBackendStorage } from '../../lib/backendStorage';
+import { createTemporalStore, graphStorePartialize } from '../_shared/temporal';
 
 /**
  * Graph Store - Multi-Scene Architecture (Modular)
@@ -28,22 +29,23 @@ import { createBackendStorage } from '../../lib/backendStorage';
 export const useGraphStore = create<GraphState>()(
   devtools(
     persist(
-      (set, get, api) => {
-        const slices = {
-          ...createSceneSlice(set, get, api),
-          ...createSignatureSlice(set, get, api),
-          ...createNodeSlice(set, get, api),
-          ...createNodeGroupSlice(set, get, api),
-          ...createNavigationSlice(set, get, api),
-          ...createCrossSceneSlice(set, get, api),
-          ...createImportExportSlice(set, get, api),
-        };
+      createTemporalStore(
+        (set, get, api) => {
+          const slices = {
+            ...createSceneSlice(set, get, api),
+            ...createSignatureSlice(set, get, api),
+            ...createNodeSlice(set, get, api),
+            ...createNodeGroupSlice(set, get, api),
+            ...createNavigationSlice(set, get, api),
+            ...createCrossSceneSlice(set, get, api),
+            ...createImportExportSlice(set, get, api),
+          };
 
-        return {
-          ...slices,
+          return {
+            ...slices,
 
-          // Runtime scene conversion
-          toRuntimeScene: (sceneId?: string): ReturnType<GraphState['toRuntimeScene']> => {
+            // Runtime scene conversion
+            toRuntimeScene: (sceneId?: string): ReturnType<GraphState['toRuntimeScene']> => {
             const state: GraphState = get() as GraphState;
             const targetSceneId = sceneId || state.currentSceneId;
             if (!targetSceneId) return null;
@@ -153,7 +155,12 @@ export const useGraphStore = create<GraphState>()(
             };
           },
         };
-      },
+        },
+        {
+          limit: 50,
+          partialize: graphStorePartialize,
+        }
+      ),
       {
         name: 'scene-graph-v2',
         storage: createBackendStorage('sceneGraph'),
@@ -186,6 +193,12 @@ export const useGraphStore = create<GraphState>()(
     { name: 'GraphStore' }
   )
 );
+
+// Export temporal actions for undo/redo
+export const useGraphStoreUndo = () => useGraphStore.temporal.undo;
+export const useGraphStoreRedo = () => useGraphStore.temporal.redo;
+export const useGraphStoreCanUndo = () => useGraphStore.temporal.getState().pastStates.length > 0;
+export const useGraphStoreCanRedo = () => useGraphStore.temporal.getState().futureStates.length > 0;
 
 // Re-export types for convenience
 export type { GraphState, NodeGroupManagementState, NavigationState } from './types';

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { Campaign, CampaignProgression, CampaignType } from '../../modules/campaign';
+import { createTemporalStore, campaignStorePartialize } from '../_shared/temporal';
 
 interface CampaignState {
   /** All campaigns by ID */
@@ -46,10 +47,11 @@ interface CampaignState {
 
 export const useCampaignStore = create<CampaignState>()(
   devtools(
-    (set, get) => ({
-      campaigns: {},
-      progression: {},
-      currentCampaignId: null,
+    createTemporalStore(
+      (set, get) => ({
+        campaigns: {},
+        progression: {},
+        currentCampaignId: null,
 
       createCampaign: (title, type, worldId) => {
         const id = crypto.randomUUID();
@@ -289,7 +291,18 @@ export const useCampaignStore = create<CampaignState>()(
           return null;
         }
       },
-    }),
+      }),
+      {
+        limit: 50,
+        partialize: campaignStorePartialize,
+      }
+    ),
     { name: 'CampaignStore' }
   )
 );
+
+// Export temporal actions for undo/redo
+export const useCampaignStoreUndo = () => useCampaignStore.temporal.undo;
+export const useCampaignStoreRedo = () => useCampaignStore.temporal.redo;
+export const useCampaignStoreCanUndo = () => useCampaignStore.temporal.getState().pastStates.length > 0;
+export const useCampaignStoreCanRedo = () => useCampaignStore.temporal.getState().futureStates.length > 0;

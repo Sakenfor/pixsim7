@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import type { SceneCollection, SceneCollectionType } from '../../modules/scene-collection';
+import { createTemporalStore, sceneCollectionStorePartialize } from '../_shared/temporal';
 
 interface SceneCollectionState {
   /** All scene collections by ID */
@@ -36,9 +37,10 @@ interface SceneCollectionState {
 
 export const useSceneCollectionStore = create<SceneCollectionState>()(
   devtools(
-    (set, get) => ({
-      collections: {},
-      currentCollectionId: null,
+    createTemporalStore(
+      (set, get) => ({
+        collections: {},
+        currentCollectionId: null,
 
       createCollection: (title, type) => {
         const id = crypto.randomUUID();
@@ -200,7 +202,18 @@ export const useSceneCollectionStore = create<SceneCollectionState>()(
           return null;
         }
       },
-    }),
+      }),
+      {
+        limit: 50,
+        partialize: sceneCollectionStorePartialize,
+      }
+    ),
     { name: 'SceneCollectionStore' }
   )
 );
+
+// Export temporal actions for undo/redo
+export const useSceneCollectionStoreUndo = () => useSceneCollectionStore.temporal.undo;
+export const useSceneCollectionStoreRedo = () => useSceneCollectionStore.temporal.redo;
+export const useSceneCollectionStoreCanUndo = () => useSceneCollectionStore.temporal.getState().pastStates.length > 0;
+export const useSceneCollectionStoreCanRedo = () => useSceneCollectionStore.temporal.getState().futureStates.length > 0;

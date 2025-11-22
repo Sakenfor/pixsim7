@@ -477,21 +477,199 @@ npm test -- --watch
 
 ---
 
+## Graph Editor Safety & History (Task 44)
+
+**Status:** ✅ **Complete** (2025-11-22)
+
+**Location:**
+- Middleware: `stores/_shared/temporal.ts`
+- Hooks: `hooks/useUndo.ts`, `hooks/useDependencies.ts`
+- Components: `components/dependency-badge/`, `components/delete-confirmation/`
+
+### Undo/Redo System
+
+PixSim7 now supports full undo/redo functionality across all graph stores using temporal middleware.
+
+**Implementation:**
+
+```typescript
+// Temporal middleware wraps all graph stores
+import { createTemporalStore } from '../_shared/temporal';
+
+export const useGraphStore = create<GraphState>()(
+  devtools(
+    persist(
+      createTemporalStore(
+        (set, get) => ({ /* store slices */ }),
+        {
+          limit: 50,
+          partialize: graphStorePartialize,
+        }
+      ),
+      { /* persist config */ }
+    )
+  )
+);
+```
+
+**Features:**
+- 50-state history depth (configurable)
+- Selective state tracking (excludes transient UI state)
+- Keyboard shortcuts (Ctrl+Z undo, Ctrl+Shift+Z redo)
+- All graph stores supported (scene, arc, collection, campaign)
+- Patch-based diffing for minimal memory usage
+
+**Usage:**
+
+```typescript
+import { useGraphUndo } from '../hooks/useUndo';
+
+function MyComponent() {
+  const { undo, redo, canUndo, canRedo } = useGraphUndo();
+
+  return (
+    <>
+      <button onClick={undo} disabled={!canUndo}>Undo</button>
+      <button onClick={redo} disabled={!canRedo}>Redo</button>
+    </>
+  );
+}
+```
+
+**Global Keyboard Shortcuts:**
+
+```typescript
+import { useGlobalUndoShortcuts } from '../hooks/useUndo';
+
+function App() {
+  // Set up global Ctrl+Z/Ctrl+Shift+Z shortcuts
+  useGlobalUndoShortcuts({ store: 'graph' });
+
+  return <YourApp />;
+}
+```
+
+### Visual Dependency Indicators
+
+**DependencyBadge Component:**
+
+Shows visual indicators on scenes/arcs to display usage counts.
+
+```typescript
+import { DependencyBadge } from '../components/dependency-badge/DependencyBadge';
+
+<SceneCard scene={scene}>
+  <DependencyBadge type="scene" id={scene.id} />
+</SceneCard>
+```
+
+**Features:**
+- Shows "🔗 N" badge when dependencies exist
+- Hover tooltip with breakdown (arc nodes, collections, campaigns)
+- Only renders when dependencies > 0
+- Color coding based on usage (blue < 3, purple < 10, orange >= 10)
+
+### Delete Confirmation with Dependency Warnings
+
+**DeleteConfirmationModal Component:**
+
+Shows warnings before deleting entities with dependencies, offering safe delete policies.
+
+```typescript
+import { DeleteConfirmationModal } from '../components/delete-confirmation/DeleteConfirmationModal';
+
+<DeleteConfirmationModal
+  type="scene"
+  id={sceneId}
+  name="My Scene"
+  onConfirm={(policy) => {
+    // Handle delete with chosen policy
+    deleteScene(sceneId, policy);
+  }}
+  onCancel={() => setShowModal(false)}
+/>
+```
+
+**Delete Policies:**
+
+1. **PREVENT** (Recommended for items with dependencies)
+   - Cancels delete operation
+   - Prompts user to fix dependencies first
+   - Safest option
+
+2. **SET_NULL** (Safe)
+   - Deletes entity and clears references
+   - Referenced items will have broken links (null sceneId)
+   - No cascade deletion
+
+3. **CASCADE** (Dangerous)
+   - Deletes entity AND all items that reference it
+   - Shows warning badge and count
+   - Requires explicit confirmation
+
+**Features:**
+- Dependency count and breakdown display
+- Visual warnings (amber background, icons)
+- Radio-style policy selection
+- Recommended/dangerous badges
+- Prevents accidental data loss
+
+### Dependency Hooks
+
+**useDependencies Hook:**
+
+React hook for accessing dependency information:
+
+```typescript
+import { useDependencies } from '../hooks/useDependencies';
+
+function SceneEditor({ sceneId }) {
+  const deps = useDependencies('scene', sceneId);
+
+  return (
+    <div>
+      {deps.total > 0 && (
+        <p>Used by {deps.arcNodes.length} arcs, {deps.collections.length} collections</p>
+      )}
+    </div>
+  );
+}
+```
+
+**Available Hooks:**
+- `useDependencies(type, id)` - Full dependency info
+- `useSceneHasDependencies(sceneId)` - Boolean check
+- `useArcHasDependencies(arcId)` - Boolean check
+- `useDependencyCount(type, id)` - Just the count
+- `useCompleteDependencyIndex()` - Full index for advanced usage
+
+### Technical Details
+
+**Temporal Middleware:**
+- Built on [zundo](https://github.com/charkour/zundo) library
+- Integrates seamlessly with Zustand stores
+- Works with existing persist middleware
+- Automatically tracks state changes
+
+**Partialize Functions:**
+```typescript
+// Exclude transient UI state from undo/redo history
+export function graphStorePartialize<T>(state: T) {
+  const { selectedNodeIds, hoveredNodeId, isDragging, viewportState, ...tracked } = state;
+  return tracked;
+}
+```
+
+**Benefits:**
+- Prevents mistakes from becoming permanent
+- Encourages experimentation
+- Professional editor experience
+- Minimal performance impact
+- Type-safe throughout
+
+---
+
 ## Future Enhancements
-
-### Task 44: Undo/Redo System
-- Temporal middleware for state management
-- History stack for all graph operations
-- Undo/redo UI controls
-
-### Task 45: Visual Dependency Indicators
-- Badge in scene toolbar: "Used by N arcs"
-- Broken reference badges in arc graph
-- Cascade delete UI with policy options:
-  - **PREVENT:** Don't allow delete (default)
-  - **SET_NULL:** Clear sceneId in arc nodes
-  - **CASCADE:** Delete referencing arc nodes (dangerous)
-- Dependency list modal before delete
 
 ### Task 46: World/Campaign Graph Layer
 - Layer above arc graphs
@@ -520,7 +698,19 @@ npm test -- --watch
 
 ## Changelog
 
-### 2025-11-22: Initial Implementation
+### 2025-11-22: Graph Editor Safety & History (Task 44)
+- Installed zundo temporal middleware library
+- Created temporal middleware wrapper (`stores/_shared/temporal.ts`)
+- Added undo/redo to all graph stores (scene, arc, collection, campaign)
+- Implemented 50-state history with selective state tracking
+- Created undo/redo hooks (`hooks/useUndo.ts`)
+- Added global keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z)
+- Implemented dependency hooks (`hooks/useDependencies.ts`)
+- Created DependencyBadge component for visual indicators
+- Created DeleteConfirmationModal with PREVENT/SET_NULL/CASCADE policies
+- Updated documentation (GRAPH_SYSTEM.md)
+
+### 2025-11-22: Initial Implementation (Task 43)
 - Added shared validation types (`modules/validation/types.ts`)
 - Implemented arc graph validation (`modules/arc-graph/validation.ts`)
 - Implemented dependency tracking (`lib/graph/dependencies.ts`)
