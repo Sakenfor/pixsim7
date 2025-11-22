@@ -38,7 +38,7 @@ class PluginManager:
         self.app = app
         self.plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {manifest, router, module}
         self.load_order: list[str] = []
-        self.failed_plugins: dict[str, str] = {}  # plugin_id -> error_message
+        self.failed_plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {error_message, manifest?, required?}
 
     def discover_plugins(self, plugin_dir: str | Path) -> list[str]:
         """
@@ -193,8 +193,33 @@ class PluginManager:
             error_msg = str(e)
             logger.error(f"Failed to load plugin {plugin_name}: {e}", exc_info=True)
 
-            # Store failure info
-            self.failed_plugins[plugin_name] = error_msg
+            # Try to extract manifest to check if plugin was required
+            manifest_required = False
+            manifest_obj = None
+            try:
+                # Try to import just the manifest to check required field
+                module_path = Path(plugin_dir) / plugin_name / 'manifest.py'
+                if module_path.exists():
+                    spec = importlib.util.spec_from_file_location(
+                        f"plugins.{plugin_name}.manifest_check",
+                        module_path
+                    )
+                    if spec and spec.loader:
+                        temp_module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(temp_module)
+                        if hasattr(temp_module, 'manifest'):
+                            manifest_obj = temp_module.manifest
+                            manifest_required = getattr(manifest_obj, 'required', False)
+            except Exception:
+                # If we can't parse manifest, assume not required
+                pass
+
+            # Store failure info with manifest metadata
+            self.failed_plugins[plugin_name] = {
+                'error': error_msg,
+                'required': manifest_required,
+                'manifest': manifest_obj
+            }
 
             return False
 
@@ -360,13 +385,19 @@ class PluginManager:
             })
 
         # Add failed plugins
-        for plugin_id, error in self.failed_plugins.items():
-            # Try to determine if it was required (we may not have manifest)
-            # For now, mark as unknown
+        for plugin_id, failure_info in self.failed_plugins.items():
+            error = failure_info.get('error', 'unknown error')
+            required = failure_info.get('required', False)
+            manifest = failure_info.get('manifest')
+
+            kind = "unknown"
+            if manifest:
+                kind = getattr(manifest, 'kind', 'unknown')
+
             rows.append({
                 'id': plugin_id,
-                'kind': "unknown",
-                'required': "?",
+                'kind': kind,
+                'required': "Yes" if required else "No",
                 'enabled': "?",
                 'status': f"✗ Failed: {error[:40]}..."
             })
@@ -411,30 +442,39 @@ class PluginManager:
         """
         Check if all required plugins loaded successfully.
 
+        Resolution logic:
+        - If fail_fast=True: Any plugin failure (required or not) aborts
+        - If fail_fast=False: Only required plugin failures are reported
+
         Args:
-            fail_fast: If True, raise exception on required plugin failure
+            fail_fast: If True, raise exception on ANY plugin failure (dev/CI mode)
 
         Returns:
-            (all_required_ok, list of failed required plugin IDs)
+            (all_required_ok, list of failed plugin IDs)
         """
         failed_required = []
 
-        for plugin_id, plugin in self.plugins.items():
-            manifest = plugin['manifest']
-            if manifest.required and not plugin.get('loaded', False):
+        # Check failed plugins for required=True
+        for plugin_id, failure_info in self.failed_plugins.items():
+            if failure_info.get('required', False):
                 failed_required.append(plugin_id)
-
-        # Also check if any failed plugins were marked as required
-        # (though we may not have their manifest)
-        for plugin_id in self.failed_plugins.keys():
-            # We don't have manifest for failed plugins, so we can't know if required
-            # unless we try to parse it again. For now, assume critical ones are required.
-            if plugin_id in ['logs', 'websocket', 'auth']:
-                failed_required.append(plugin_id)
+                logger.error(
+                    f"Required plugin failed to load: {plugin_id}",
+                    error=failure_info.get('error', 'unknown error')
+                )
 
         all_ok = len(failed_required) == 0
 
-        if not all_ok and fail_fast:
+        # In fail_fast mode, ANY plugin failure aborts (dev/CI strict mode)
+        if fail_fast and len(self.failed_plugins) > 0:
+            all_failed = list(self.failed_plugins.keys())
+            raise RuntimeError(
+                f"Plugin loading failed in strict mode (fail_fast=True). "
+                f"Failed plugins: {', '.join(all_failed)}"
+            )
+
+        # In production mode, only required plugin failures abort
+        if not all_ok:
             raise RuntimeError(
                 f"Required plugins failed to load: {', '.join(failed_required)}"
             )
@@ -480,11 +520,8 @@ def init_plugin_manager(
     if print_health:
         manager.print_health_table()
 
-    # Check required plugins and fail-fast if enabled
-    all_ok, failed_required = manager.check_required_plugins(fail_fast=fail_fast)
-    if not all_ok and not fail_fast:
-        logger.warning(
-            f"Some required plugins failed to load: {', '.join(failed_required)}"
-        )
+    # Check required plugins - raises if any required plugins failed
+    # or if fail_fast=True and ANY plugin failed
+    manager.check_required_plugins(fail_fast=fail_fast)
 
     return manager
