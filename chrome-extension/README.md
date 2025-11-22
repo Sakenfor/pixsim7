@@ -32,13 +32,21 @@ This extension is a **thin client** that leverages the PixSim7 backend for all p
 - 🔄 **Manual import** - Import button in popup for on-demand cookie sync
 - 🎨 **Floatable widget** on PixSim7 frontend (localhost:5173)
 - ⚙️ **Settings** for backend URL configuration
+- 📤 **Image/Video upload** - Right-click context menu to upload media from any webpage
+- ⚡ **Quick Generate** - Right-click images to generate videos with prompt dialog
+- 🔑 **Provider cookie login** - One-click login to provider sites using stored credentials
+
+### Flows Documentation
+
+For detailed information on how each feature works, see:
+- **[EXTENSION_FLOWS.md](../docs/EXTENSION_FLOWS.md)** - End-to-end flow documentation
+- **[extension-test.html](../examples/extension-test.html)** - Test harness for manual validation
 
 ### Planned (TODOs)
 
-- [ ] Cookie injection for account login (open account in new tab)
 - [ ] Account credit sync from provider sites
 - [ ] Job monitoring from extension
-- [ ] Quick video generation from context menu
+- [ ] Batch upload from multiple images
 
 ## Installation
 

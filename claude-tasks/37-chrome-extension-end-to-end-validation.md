@@ -43,9 +43,9 @@ But there’s no single doc or script that goes through these flows step by step
 
 ## Phase Checklist
 
-- [ ] **Phase 37.1 – Document Supported Extension Flows**
-- [ ] **Phase 37.2 – Manual Validation Checklist**
-- [ ] **Phase 37.3 – Optional: Lightweight Test Harness Page**
+- [x] **Phase 37.1 – Document Supported Extension Flows** ✅ 2025-11-22
+- [x] **Phase 37.2 – Manual Validation Checklist** ✅ 2025-11-22
+- [x] **Phase 37.3 – Optional: Lightweight Test Harness Page** ✅ 2025-11-22
 
 ---
 
@@ -72,9 +72,21 @@ Create a single doc describing what the extension does and how it interacts with
    - Which background handlers fire.
    - Which backend endpoints are involved.
    - Expected user-visible result (asset in gallery, job created, provider logged in).
-3. From `chrome-extension/README.md`, add a short “Flows” section linking to `EXTENSION_FLOWS.md`.
+3. From `chrome-extension/README.md`, add a short "Flows" section linking to `EXTENSION_FLOWS.md`.
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` ✅ Complete (2025-11-22)
+
+**Implementation:**
+- Created `docs/EXTENSION_FLOWS.md` with comprehensive flow documentation:
+  * Flow 1: Image/Video Upload - Context menu upload to PixSim7 gallery
+  * Flow 2: Quick Generate from Image - Right-click dialog injection for video generation
+  * Flow 3: Provider Cookie Login - Auto-login using stored credentials
+- Each flow documents:
+  * User actions and expected outcomes
+  * Technical implementation details (extension code + backend endpoints)
+  * Troubleshooting common issues
+- Added "Flows Documentation" section to `chrome-extension/README.md` linking to EXTENSION_FLOWS.md
+- Updated "Current Features" to reflect implemented flows (were incorrectly listed as TODOs)
 
 ---
 
@@ -109,7 +121,21 @@ Define a small, repeatable manual test checklist for extension flows that can be
    - Changing extension permissions or host permissions.
    - Modifying `background.js` or `image-badges.js`.
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` ✅ Complete (2025-11-22)
+
+**Implementation:**
+- Added "Manual Validation Checklist" section to `docs/EXTENSION_FLOWS.md`
+- Defined 3 golden path tests:
+  * Test 1: Image Upload → PixSim7 Gallery
+  * Test 2: Quick Generate from Image
+  * Test 3: Provider Cookie Login
+- Each test includes:
+  * Prerequisites (backend running, extension loaded, user logged in)
+  * Step-by-step instructions
+  * Expected outcomes with checkmarks
+  * Failure modes and troubleshooting
+- Added "When to Run This Checklist" section specifying required/recommended times
+- Documented future automation approaches (Selenium, Puppeteer, custom harness)
 
 ---
 
@@ -133,5 +159,21 @@ Provide a simple local page that makes exercising extension flows easier.
    - Which context menu items to try.
    - What to expect in PixSim7 (assets, jobs).
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` ✅ Complete (2025-11-22)
+
+**Implementation:**
+- Created `examples/extension-test.html` - Beautiful, self-contained test harness page
+- Features:
+  * Responsive grid layout with gradient background
+  * Test 1 section: 4 sample images from Unsplash for upload testing
+  * Test 2 section: 4 sample images from Unsplash for quick generate testing
+  * Test 3 section: Links to provider sites (Pixverse, Runway, Pika) for cookie login testing
+  * Color-coded badges: Blue for "Upload", Purple for "Quick Generate"
+  * Step-by-step instructions with visual hierarchy
+  * Visual feedback when right-clicking images (border color change)
+  * Yellow banner with prerequisites checklist
+  * Green instruction boxes with numbered steps
+  * All images use Unsplash (no CORS issues)
+- Linked from `docs/EXTENSION_FLOWS.md` with usage instructions
+- Linked from `chrome-extension/README.md` in "Flows Documentation" section
 

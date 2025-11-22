@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PixSim7 Extension Test Harness</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #1a202c;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #4a5568;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .banner {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            border-radius: 8px;
+        }
+
+        .banner h3 {
+            color: #92400e;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .banner ul {
+            color: #78350f;
+            font-size: 14px;
+            margin-left: 20px;
+        }
+
+        .banner li {
+            margin-bottom: 5px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .section h2 {
+            color: #1a202c;
+            font-size: 24px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .section p {
+            color: #4a5568;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .media-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .media-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .media-card img,
+        .media-card video {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .media-card-footer {
+            padding: 12px;
+            background: #f7fafc;
+        }
+
+        .media-card-title {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .media-card-label {
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-top: 6px;
+        }
+
+        .badge-upload {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+
+        .badge-generate {
+            background: #ddd6fe;
+            color: #5b21b6;
+        }
+
+        .instructions {
+            background: #f0fdf4;
+            border-left: 4px solid #10b981;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h4 {
+            color: #065f46;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .instructions ol {
+            color: #047857;
+            font-size: 13px;
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 5px;
+        }
+
+        code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            font-size: 14px;
+        }
+
+        .footer a {
+            color: #fbbf24;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🧪 PixSim7 Extension Test Harness</h1>
+            <p>Use this page to test Chrome extension flows: image upload, quick generate, and provider login.</p>
+        </div>
+
+        <!-- Instructions Banner -->
+        <div class="banner">
+            <h3>📋 Before You Start</h3>
+            <ul>
+                <li>✅ PixSim7 backend running (<code>http://localhost:8001</code> or configured URL)</li>
+                <li>✅ Chrome extension loaded in developer mode</li>
+                <li>✅ Logged into PixSim7 via extension popup</li>
+                <li>✅ Right-click context menu enabled in Chrome settings</li>
+            </ul>
+        </div>
+
+        <!-- Test 1: Image Upload -->
+        <div class="section">
+            <h2>Test 1: Image Upload to PixSim7</h2>
+
+            <div class="instructions">
+                <h4>How to Test:</h4>
+                <ol>
+                    <li>Right-click on any image below</li>
+                    <li>Select <code>📤 Upload to PixSim7</code> from context menu</li>
+                    <li>Wait for upload notification</li>
+                    <li>Open <a href="http://localhost:5173/assets" target="_blank">PixSim7 Assets</a> to verify upload</li>
+                    <li>Check asset has correct thumbnail and provider status</li>
+                </ol>
+            </div>
+
+            <div class="media-grid">
+                <!-- Sample Images -->
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400"
+                         alt="Mountain Landscape"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Mountain Landscape</div>
+                        <div class="media-card-label">Unsplash Sample</div>
+                        <span class="badge badge-upload">Test Upload</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1518791841217-8f162f1e1131?w=400"
+                         alt="Cat Portrait"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Cat Portrait</div>
+                        <div class="media-card-label">Unsplash Sample</div>
+                        <span class="badge badge-upload">Test Upload</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400"
+                         alt="Forest Path"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Forest Path</div>
+                        <div class="media-card-label">Unsplash Sample</div>
+                        <span class="badge badge-upload">Test Upload</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=400"
+                         alt="Beach Sunset"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Beach Sunset</div>
+                        <div class="media-card-label">Unsplash Sample</div>
+                        <span class="badge badge-upload">Test Upload</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test 2: Quick Generate -->
+        <div class="section">
+            <h2>Test 2: Quick Generate from Image</h2>
+
+            <div class="instructions">
+                <h4>How to Test:</h4>
+                <ol>
+                    <li>Right-click on any image below</li>
+                    <li>Select <code>⚡ Quick Generate Video</code> from context menu</li>
+                    <li>Wait for dialog to appear on page</li>
+                    <li>Enter prompt: <code>A cinematic video of this scene</code></li>
+                    <li>Select provider from dropdown</li>
+                    <li>Click <code>Generate</code> button</li>
+                    <li>Verify success message with job ID</li>
+                    <li>Open <a href="http://localhost:5173/jobs" target="_blank">PixSim7 Jobs</a> to see created job</li>
+                </ol>
+            </div>
+
+            <div class="media-grid">
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=400"
+                         alt="City at Night"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">City at Night</div>
+                        <div class="media-card-label">Great for video generation</div>
+                        <span class="badge badge-generate">Quick Generate</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1506748686214-e9df14d4d9d0?w=400"
+                         alt="Ocean Waves"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Ocean Waves</div>
+                        <div class="media-card-label">Dynamic motion potential</div>
+                        <span class="badge badge-generate">Quick Generate</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=400"
+                         alt="Mountain Lake"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Mountain Lake</div>
+                        <div class="media-card-label">Scenic landscape</div>
+                        <span class="badge badge-generate">Quick Generate</span>
+                    </div>
+                </div>
+
+                <div class="media-card">
+                    <img src="https://images.unsplash.com/photo-1511593358241-7eea1f3c84e5?w=400"
+                         alt="City Street"
+                         crossorigin="anonymous">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">City Street</div>
+                        <div class="media-card-label">Urban environment</div>
+                        <span class="badge badge-generate">Quick Generate</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test 3: Provider Login -->
+        <div class="section">
+            <h2>Test 3: Provider Cookie Login</h2>
+
+            <div class="instructions">
+                <h4>How to Test:</h4>
+                <ol>
+                    <li>Navigate to a provider site: <a href="https://app.pixverse.ai" target="_blank">Pixverse</a> | <a href="https://app.runwayml.com" target="_blank">Runway</a></li>
+                    <li>Log in manually to the provider</li>
+                    <li>Open extension popup → Settings tab</li>
+                    <li>Ensure <code>Auto-import cookies</code> is enabled</li>
+                    <li>Wait for import notification</li>
+                    <li>Open extension popup → Accounts tab</li>
+                    <li>Click on the imported account</li>
+                    <li>Verify new tab opens with auto-login</li>
+                </ol>
+            </div>
+
+            <p>
+                <strong>Note:</strong> This test requires manually navigating to provider sites as we cannot embed them in an iframe due to CSP restrictions.
+            </p>
+
+            <p style="margin-top: 15px;">
+                <strong>Supported Providers:</strong>
+            </p>
+            <div class="media-grid">
+                <div class="media-card">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Pixverse</div>
+                        <div class="media-card-label"><a href="https://app.pixverse.ai" target="_blank">app.pixverse.ai</a></div>
+                    </div>
+                </div>
+                <div class="media-card">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Runway</div>
+                        <div class="media-card-label"><a href="https://app.runwayml.com" target="_blank">app.runwayml.com</a></div>
+                    </div>
+                </div>
+                <div class="media-card">
+                    <div class="media-card-footer">
+                        <div class="media-card-title">Pika</div>
+                        <div class="media-card-label"><a href="https://pika.art" target="_blank">pika.art</a></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>📚 For more information, see <a href="../docs/EXTENSION_FLOWS.md">EXTENSION_FLOWS.md</a></p>
+            <p style="margin-top: 10px;">PixSim7 Chrome Extension Test Harness</p>
+        </div>
+    </div>
+
+    <script>
+        // Add visual feedback when right-clicking
+        document.querySelectorAll('.media-card img').forEach(img => {
+            img.addEventListener('contextmenu', (e) => {
+                const card = e.target.closest('.media-card');
+                card.style.borderColor = '#10b981';
+                setTimeout(() => {
+                    card.style.borderColor = '';
+                }, 1000);
+            });
+        });
+
+        // Log to console for debugging
+        console.log('PixSim7 Extension Test Harness loaded');
+        console.log('Backend URL should be configured in extension settings');
+        console.log('Default: http://localhost:8001');
+    </script>
+</body>
+</html>
