@@ -10,6 +10,7 @@ import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { GameThemingPanel } from '../game/GameThemingPanel';
+import { SceneManagementPanel } from '../scene/SceneManagementPanel';
 import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../stores/workspaceStore';
 
@@ -47,6 +48,7 @@ const PANEL_COMPONENTS: Record<PanelId, React.ComponentType> = {
   providers: ProviderSettingsPanel,
   settings: SettingsPanel,
   'game-theming': GameThemingPanel,
+  'scene-management': SceneManagementPanel,
 };
 
 const PANEL_TITLES: Record<PanelId, string> = {
@@ -59,6 +61,7 @@ const PANEL_TITLES: Record<PanelId, string> = {
   providers: 'Provider Settings',
   settings: 'Settings',
   'game-theming': 'Game Theming',
+  'scene-management': 'Scene Management',
 };
 
 // Wrapper for panels to provide data-panel-id

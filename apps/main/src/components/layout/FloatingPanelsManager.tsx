@@ -10,6 +10,7 @@ import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
 import { GameThemingPanel } from '../game/GameThemingPanel';
+import { SceneManagementPanel } from '../scene/SceneManagementPanel';
 import { useRef, useEffect } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
@@ -49,6 +50,7 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
   'npc-brain-lab': { title: 'NPC Brain Lab', Component: NpcBrainLab },
   'game-theming': { title: 'Game Theming', Component: GameThemingPanel },
+  'scene-management': { title: 'Scene Management', Component: SceneManagementPanel },
 };
 
 export function FloatingPanelsManager() {
