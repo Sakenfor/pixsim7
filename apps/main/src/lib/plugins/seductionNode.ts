@@ -103,7 +103,14 @@ export const DEFAULT_SEDUCTION_STAGES: SeductionStage[] = [
  * Register the seduction node type
  * Call this once during app initialization
  */
+let seductionNodeRegistered = false;
+
 export function registerSeductionNode() {
+  if (seductionNodeRegistered) {
+    return;
+  }
+  seductionNodeRegistered = true;
+
   nodeTypeRegistry.register<SeductionNodeData>({
     // Identity
     id: 'seduction',

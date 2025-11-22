@@ -28,6 +28,7 @@ from pixsim7.backend.main.shared.errors import (
 )
 from pixsim7.backend.main.shared.rate_limit import job_create_limiter, get_client_identifier
 import logging
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -141,6 +142,72 @@ async def create_generation(
     except Exception as e:
         logger.error(f"Failed to create generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create generation: {str(e)}")
+
+
+# ===== SIMPLE IMAGE-TO-VIDEO GENERATION (LEGACY-FRIENDLY) =====
+
+class SimpleImageToVideoRequest(BaseModel):
+  """Minimal request for quick image-to-video generations.
+
+  This is designed for thin clients (e.g., Chrome extension) that only have
+  an image URL and a freeform prompt, and don't need full GenerationNodeConfig.
+  """
+  provider_id: str = Field(..., min_length=1, max_length=50)
+  prompt: str = Field(..., min_length=1, max_length=4096)
+  image_url: str = Field(..., min_length=1, max_length=2048)
+  name: Optional[str] = Field(None, max_length=255)
+  priority: int = Field(7, ge=0, le=10)
+
+
+@router.post("/generations/simple-image-to-video", response_model=GenerationResponse, status_code=201)
+async def create_simple_image_to_video(
+    request: SimpleImageToVideoRequest,
+    req: Request,
+    user: CurrentUser,
+    generation_service: GenerationSvc,
+):
+  """Create a simple IMAGE_TO_VIDEO generation from raw prompt + image URL.
+
+  This endpoint intentionally uses the legacy flat parameter format so that:
+  - `prompt` and `image_url` are validated at the service layer
+  - Canonicalization keeps `prompt`/`image_url` as top-level fields
+  - Input extraction can derive a `seed_image` input from `image_url`
+
+  It is primarily intended for tooling like the Chrome extension's Quick Generate.
+  """
+  # Rate limit check (reuse same limiter)
+  identifier = await get_client_identifier(req)
+  await job_create_limiter.check(identifier)
+
+  try:
+    params = {
+      "prompt": request.prompt,
+      "image_url": request.image_url,
+    }
+
+    generation = await generation_service.create_generation(
+      user=user,
+      operation_type=OperationType.IMAGE_TO_VIDEO,
+      provider_id=request.provider_id,
+      params=params,
+      workspace_id=None,
+      name=request.name or f"Quick image-to-video",
+      description=None,
+      priority=request.priority,
+      scheduled_at=None,
+      parent_generation_id=None,
+      prompt_version_id=None,
+    )
+
+    return GenerationResponse.model_validate(generation)
+
+  except QuotaExceededError as e:
+    raise HTTPException(status_code=429, detail=str(e))
+  except DomainValidationError as e:
+    raise HTTPException(status_code=400, detail=str(e))
+  except Exception as e:
+    logger.error(f"Failed to create simple image-to-video generation: {e}", exc_info=True)
+    raise HTTPException(status_code=500, detail=f"Failed to create generation: {str(e)}")
 
 
 # ===== GET GENERATION =====

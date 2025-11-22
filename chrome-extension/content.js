@@ -5,8 +5,6 @@
  * Detects when user is logged in and auto-imports cookies
  */
 
-import { EMOJI } from './emojis.js';
-
 console.log('[PixSim7 Content] Loaded on:', window.location.href);
 
 // Provider detection is delegated to backend via background API

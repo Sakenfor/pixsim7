@@ -5,8 +5,6 @@
  * Provides quick access to accounts without opening popup
  */
 
-import { EMOJI, EMOJI_STATES, WIDGET_EMOJI, PROVIDER_STATUS_EMOJI } from './emojis.js';
-
 console.log('[PixSim7 Widget] Loaded on:', window.location.href);
 
 // Inject extension ID into page so web frontend can communicate with it

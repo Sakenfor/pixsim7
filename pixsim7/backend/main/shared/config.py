@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # ===== DATABASE =====
     database_url: str = Field(
-        default="postgresql://pixsim:pixsim123@localhost:5435/pixsim7",
+        default="postgresql://pixsim:pixsim123@localhost:5434/pixsim7",
         description="PostgreSQL connection URL for application data"
     )
 

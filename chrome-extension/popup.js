@@ -7,14 +7,13 @@
  * - Display and manage accounts
  */
 
-import { EMOJI_STATES, ACCOUNT_ACTIONS } from './emojis.js';
-
 console.log('[Popup] Loaded');
 
 // State
 let currentProvider = null;
 let currentUser = null;
 let automationOptions = { presets: [], loops: [] };
+let hideZeroCredits = false; // Filter for hiding accounts with 0 credits
 let accountsSortBy = 'lastUsed'; // 'name', 'status', 'credits', 'lastUsed', 'success'
 let accountsSortDesc = true;
 
@@ -384,26 +383,27 @@ function displayAccounts(accounts) {
     return;
   }
 
-  // Add sort controls
+  // Add sort and filter controls
   const sortControls = document.createElement('div');
   sortControls.className = 'sort-controls';
   sortControls.innerHTML = `
-    <span style="font-size: 9px; color: #6b7280; margin-right: 4px;">Sort:</span>
-    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed">
-      Last ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <span style="font-size: 9px; color: #9ca3af; margin-right: 4px;">Sort:</span>
+    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits">
+      Credits ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''}
     </button>
     <button class="sort-btn ${accountsSortBy === 'name' ? 'active' : ''}" data-sort="name">
       Name ${accountsSortBy === 'name' ? (accountsSortDesc ? '↓' : '↑') : ''}
     </button>
-    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits">
-      Credits ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed">
+      Last ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''}
     </button>
-    <button class="sort-btn ${accountsSortBy === 'success' ? 'active' : ''}" data-sort="success">
-      Success ${accountsSortBy === 'success' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <span style="font-size: 9px; color: #9ca3af; margin: 0 6px;">|</span>
+    <button class="sort-btn ${hideZeroCredits ? 'active' : ''}" data-filter="hideZero" style="background: ${hideZeroCredits ? '#ef4444' : '#1f2937'}; color: white; border-color: ${hideZeroCredits ? '#ef4444' : '#374151'};">
+      ${hideZeroCredits ? '✓' : ''} Hide 0 Credits
     </button>
   `;
 
-  sortControls.querySelectorAll('.sort-btn').forEach(btn => {
+  sortControls.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
     btn.addEventListener('click', () => {
       const sortKey = btn.getAttribute('data-sort');
       if (accountsSortBy === sortKey) {
@@ -416,10 +416,21 @@ function displayAccounts(accounts) {
     });
   });
 
+  sortControls.querySelector('[data-filter="hideZero"]').addEventListener('click', () => {
+    hideZeroCredits = !hideZeroCredits;
+    displayAccounts(accounts);
+  });
+
   accountsList.appendChild(sortControls);
 
+  // Filter accounts
+  let filtered = [...accounts];
+  if (hideZeroCredits) {
+    filtered = filtered.filter(a => (a.total_credits || 0) > 0);
+  }
+
   // Sort accounts
-  const sorted = [...accounts].sort((a, b) => {
+  const sorted = filtered.sort((a, b) => {
     let cmp = 0;
     switch (accountsSortBy) {
       case 'name':
@@ -433,12 +444,17 @@ function displayAccounts(accounts) {
         const bTime = b.last_used ? new Date(b.last_used).getTime() : 0;
         cmp = aTime - bTime;
         break;
-      case 'success':
-        cmp = (a.success_rate || 0) - (b.success_rate || 0);
-        break;
     }
     return accountsSortDesc ? -cmp : cmp;
   });
+
+  // Show filtered count if filter is active
+  if (hideZeroCredits && filtered.length < accounts.length) {
+    const filterInfo = document.createElement('div');
+    filterInfo.style.cssText = 'font-size: 10px; color: #9ca3af; padding: 4px 8px; text-align: center;';
+    filterInfo.textContent = `Showing ${filtered.length} of ${accounts.length} accounts`;
+    accountsList.appendChild(filterInfo);
+  }
 
   sorted.forEach(account => {
     const card = createAccountCard(account);
@@ -451,10 +467,8 @@ function createAccountCard(account) {
   card.className = 'account-card';
 
   const statusClass = `status-${account.status}`;
-  const creditsInfo = formatCredits(account.credits, account.total_credits);
+  const totalCredits = account.total_credits || 0;
   const displayName = account.nickname || account.email;
-  const successRate = account.success_rate ? `${Math.round(account.success_rate)}%` : 'N/A';
-  const videosGenerated = account.total_videos_generated || 0;
 
   card.innerHTML = `
     <div class="account-header">
@@ -462,29 +476,13 @@ function createAccountCard(account) {
         <div class="account-name">${displayName}</div>
         ${account.nickname ? `<div class="account-email-sub">${account.email}</div>` : ''}
       </div>
-      <span class="account-status ${statusClass}">${account.status}</span>
-    </div>
-    
-    <div class="account-stats">
-      <div class="stat-item">
-        <span class="stat-label">Success</span>
-        <span class="stat-value">${successRate}</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Videos</span>
-        <span class="stat-value">${videosGenerated}</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">Today</span>
-        <span class="stat-value">${account.videos_today || 0}</span>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 13px; font-weight: 700; color: #10b981;">${totalCredits}</span>
+        <span class="account-status ${statusClass}">${account.status}</span>
+        <span class="account-ad-pill" data-role="ad-pill"></span>
       </div>
     </div>
 
-    <div class="credits-section">
-      <div class="credits-label">Credits</div>
-      <div class="credits-breakdown">${creditsInfo}</div>
-    </div>
-    
     <div class="actions-row">
       ${(account.has_cookies || account.has_jwt) ? `
         <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}">${ACCOUNT_ACTIONS.LOGIN}</button>
@@ -508,6 +506,29 @@ function createAccountCard(account) {
       btn.addEventListener('click', () => executeLoopForAccount(account));
     }
   });
+
+  // For Pixverse accounts, enrich header line with live ad-task status
+  if (account.provider_id === 'pixverse') {
+    const adPillEl = card.querySelector('[data-role="ad-pill"]');
+    if (adPillEl) {
+      chrome.runtime.sendMessage(
+        { action: 'getPixverseStatus', accountId: account.id },
+        (res) => {
+          if (!res || !res.success || !res.data) return;
+          const { ad_watch_task } = res.data;
+          if (ad_watch_task && typeof ad_watch_task === 'object') {
+            const progress = ad_watch_task.progress ?? 0;
+            const total = ad_watch_task.total_counts ?? 0;
+            const reward = ad_watch_task.reward ?? 0;
+            adPillEl.textContent = `Ads ${progress}/${total}`;
+            adPillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}`;
+            adPillEl.style.fontSize = '10px';
+            adPillEl.style.color = '#6b7280';
+          }
+        }
+      );
+    }
+  }
 
   return card;
 }

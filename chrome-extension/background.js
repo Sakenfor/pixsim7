@@ -7,7 +7,8 @@
  * - Message passing between extension components
  */
 
-import { EMOJI_STATES } from './emojis.js';
+// Load emoji constants (service workers use self, not window)
+importScripts('emojis.js');
 
 console.log('[PixSim7 Extension] Background service worker loaded');
 
@@ -351,8 +352,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         const uploadData = await uploadResp.json();
 
-        // Then create the generation
-        const genUrl = `${settings.backendUrl}/api/v1/generations`;
+        // Then create the generation via the simple image-to-video endpoint
+        const genUrl = `${settings.backendUrl}/api/v1/generations/simple-image-to-video`;
         const genResp = await fetch(genUrl, {
           method: 'POST',
           headers: {
@@ -361,26 +362,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           },
           body: JSON.stringify({
             provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
-            config: {
-              generation_type: 'npc_response',
-              purpose: 'adaptive',
-              style: {
-                pacing: 'medium'
-              },
-              duration: {
-                target: 5.0
-              },
-              constraints: {
-                rating: 'PG-13'
-              },
-              strategy: 'once',
-              fallback: {
-                mode: 'placeholder',
-                timeout_ms: 30000
-              },
-              enabled: true,
-              version: 1
-            },
+            prompt: prompt,
+            image_url: uploadData.external_url || imageUrl,
             name: prompt ? `Quick generate: ${prompt.substring(0, 50)}` : 'Quick generate',
             priority: 7
           }),
@@ -434,6 +417,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.tabs.create({ url: target.url }, (tab) => {
           sendResponse({ success: true, tabId: tab?.id });
         });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Pixverse status (credits + ad-watched task) for a given account
+  if (message.action === 'getPixverseStatus') {
+    (async () => {
+      try {
+        const { accountId } = message;
+        if (!accountId) throw new Error('accountId is required');
+        const data = await backendRequest(`/api/v1/accounts/${accountId}/pixverse-status`);
+        sendResponse({ success: true, data });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

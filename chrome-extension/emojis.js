@@ -7,11 +7,12 @@
  * - Better maintainability
  *
  * Usage:
- *   import { EMOJI } from './emojis.js';
- *   element.textContent = `${EMOJI.CHECK} Success!`;
+ *   Load this file before other scripts in manifest.json
+ *   Access via window.PIXSIM7_EMOJI, window.PIXSIM7_EMOJI_STATES, etc.
+ *   Or use the global aliases: EMOJI, EMOJI_STATES, etc.
  */
 
-export const EMOJI = {
+const EMOJI = {
   // Status & Feedback
   CHECK: '✓',
   CHECK_MARK: '✅',
@@ -72,7 +73,7 @@ export const EMOJI = {
 /**
  * Common emoji combinations for specific UI states
  */
-export const EMOJI_STATES = {
+const EMOJI_STATES = {
   // Button states
   SAVED: `${EMOJI.CHECK} Saved!`,
   SAVING: `${EMOJI.REFRESH} Saving...`,
@@ -105,7 +106,7 @@ export const EMOJI_STATES = {
 /**
  * Emoji for provider status badges
  */
-export const PROVIDER_STATUS_EMOJI = {
+const PROVIDER_STATUS_EMOJI = {
   error: EMOJI.WARNING,
   success: EMOJI.CHECK,
   pending: EMOJI.REFRESH,
@@ -115,7 +116,7 @@ export const PROVIDER_STATUS_EMOJI = {
 /**
  * Widget-specific emojis
  */
-export const WIDGET_EMOJI = {
+const WIDGET_EMOJI = {
   TITLE: EMOJI.ART,
   HEADER: `${EMOJI.ART} PixSim7 Accounts`,
   REFRESH_BUTTON: EMOJI.REFRESH,
@@ -125,8 +126,23 @@ export const WIDGET_EMOJI = {
 /**
  * Account action emojis
  */
-export const ACCOUNT_ACTIONS = {
+const ACCOUNT_ACTIONS = {
   LOGIN: `${EMOJI.GLOBE} Login`,
   RUN_PRESET: `${EMOJI.PLAY} Preset`,
   RUN_LOOP: `${EMOJI.PLAY} Loop`,
 };
+
+// Export to global scope for use in Chrome extension
+// Use globalThis to work in both window context and service worker context
+globalThis.PIXSIM7_EMOJI = EMOJI;
+globalThis.PIXSIM7_EMOJI_STATES = EMOJI_STATES;
+globalThis.PIXSIM7_PROVIDER_STATUS_EMOJI = PROVIDER_STATUS_EMOJI;
+globalThis.PIXSIM7_WIDGET_EMOJI = WIDGET_EMOJI;
+globalThis.PIXSIM7_ACCOUNT_ACTIONS = ACCOUNT_ACTIONS;
+
+// Also create short aliases for convenience
+globalThis.EMOJI = EMOJI;
+globalThis.EMOJI_STATES = EMOJI_STATES;
+globalThis.PROVIDER_STATUS_EMOJI = PROVIDER_STATUS_EMOJI;
+globalThis.WIDGET_EMOJI = WIDGET_EMOJI;
+globalThis.ACCOUNT_ACTIONS = ACCOUNT_ACTIONS;

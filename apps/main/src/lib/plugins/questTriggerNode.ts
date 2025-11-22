@@ -71,7 +71,14 @@ export interface QuestTriggerNodeData {
  * Register the quest trigger node type
  * Call this once during app initialization
  */
+let questTriggerNodeRegistered = false;
+
 export function registerQuestTriggerNode() {
+  if (questTriggerNodeRegistered) {
+    return;
+  }
+  questTriggerNodeRegistered = true;
+
   nodeTypeRegistry.register<QuestTriggerNodeData>({
     // Identity
     id: 'quest-trigger',

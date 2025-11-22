@@ -138,6 +138,14 @@ class BatchSyncCreditsResponse(BaseModel):
     details: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+class PixverseStatusResponse(BaseModel):
+    """Combined Pixverse credits + ad task status"""
+    provider_id: str
+    email: str
+    credits: Dict[str, int]
+    ad_watch_task: Optional[Dict[str, Any]] = None
+
+
 @router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)
 async def sync_all_account_credits(
     user: CurrentUser,
@@ -427,6 +435,75 @@ async def get_account(
     try:
         account = await account_service.get_account(account_id)
         return _to_response(account, user.id)
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+
+# ===== PIXVERSE STATUS (CREDITS + AD TASK) =====
+
+@router.get("/accounts/{account_id}/pixverse-status", response_model=PixverseStatusResponse)
+async def get_pixverse_status(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """Get combined Pixverse credits + ad task status for an account.
+
+    Security:
+    - Only the owner or an admin can query this endpoint.
+    - Intended for tooling / extensions that need a quick snapshot of
+      current web/OpenAPI credits plus daily watch-ad task state.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+
+        # Ownership or admin required (system accounts are not exposed)
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot query system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to query this account")
+
+        # Get provider adapter
+        from pixsim7.backend.main.services.provider import registry
+        provider = registry.get(account.provider_id)
+
+        # Fetch credits via provider (best-effort)
+        credits_data: Dict[str, Any] = {}
+        try:
+            if hasattr(provider, "get_credits"):
+                credits_data = provider.get_credits(account) or {}
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"get_pixverse_status: provider.get_credits failed for {account.email}: {e}")
+            credits_data = {}
+
+        # Normalize credits dict: keep simple numeric buckets
+        credits: Dict[str, int] = {}
+        ad_watch_task: Optional[Dict[str, Any]] = None
+
+        if isinstance(credits_data, dict):
+            # Extract ad task metadata if present
+            ad = credits_data.get("ad_watch_task")
+            if isinstance(ad, dict):
+                ad_watch_task = ad
+
+            # Copy numeric credit buckets
+            for key, value in credits_data.items():
+                if key == "ad_watch_task":
+                    continue
+                try:
+                    credits[key] = int(value)
+                except (TypeError, ValueError):
+                    continue
+
+        # Fallback: if provider is not pixverse, ad_watch_task will be None
+        return PixverseStatusResponse(
+            provider_id=account.provider_id,
+            email=account.email,
+            credits=credits,
+            ad_watch_task=ad_watch_task,
+        )
+
     except ResourceNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
 

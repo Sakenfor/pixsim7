@@ -10,7 +10,7 @@ CHANGELOG (SDK Integration):
 
 For SDK source: https://github.com/Sakenfor/pixverse-py
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
@@ -915,10 +915,98 @@ class PixverseProvider(Provider):
             except Exception as e:
                 logger.warning(f"PixverseAPI get_openapi_credits failed: {e}")
 
-        return {
+        result: Dict[str, Any] = {
             "web": max(0, web_total),
             "openapi": max(0, openapi_total),
         }
+
+        # Best-effort: fetch ad task status (watch-ad daily task)
+        try:
+            ad_task = self._get_ad_task_status(account)
+            if ad_task is not None:
+                result["ad_watch_task"] = ad_task
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"Pixverse ad task status check failed: {e}")
+
+        return result
+
+    def _get_ad_task_status(self, account: ProviderAccount) -> Optional[Dict[str, Any]]:
+        """Check Pixverse daily watch-ad task status via creative_platform/task/list.
+
+        We are interested specifically in:
+          - task_type == 1
+          - sub_type == 11
+
+        Example response snippet:
+            {
+              "ErrCode": 0,
+              "ErrMsg": "Success",
+              "Resp": [
+                {
+                  "task_type": 1,
+                  "sub_type": 11,
+                  "reward": 30,
+                  "progress": 1,
+                  "total_counts": 2,
+                  "completed_counts": 0,
+                  ...
+                },
+                ...
+              ]
+            }
+
+        Returns a small dict with progress info or None on failure.
+        """
+        try:
+            import httpx  # type: ignore
+        except ImportError:  # pragma: no cover
+            return None
+
+        # Reuse account session (cookies + jwt)
+        cookies = account.cookies or {}
+        headers: Dict[str, str] = {
+            "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)",
+            "Accept": "application/json",
+        }
+        if account.jwt_token:
+            headers["Authorization"] = f"Bearer {account.jwt_token}"
+
+        url = "https://app-api.pixverse.ai/creative_platform/task/list"
+
+        try:
+            with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
+                resp = client.get(url, cookies=cookies)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning(f"Pixverse task list request failed: {e}")
+            return None
+
+        try:
+            if not isinstance(data, dict) or data.get("ErrCode") != 0:
+                return None
+
+            tasks = data.get("Resp") or []
+            for task in tasks:
+                try:
+                    if (
+                        isinstance(task, dict)
+                        and task.get("task_type") == 1
+                        and task.get("sub_type") == 11
+                    ):
+                        return {
+                            "reward": task.get("reward"),
+                            "progress": task.get("progress"),
+                            "total_counts": task.get("total_counts"),
+                            "completed_counts": task.get("completed_counts"),
+                            "expired_time": task.get("expired_time"),
+                        }
+                except Exception:
+                    continue
+        except Exception as e:
+            logger.warning(f"Pixverse ad task parsing failed: {e}")
+
+        return None
 
     async def extract_account_data(self, raw_data: dict) -> dict:
         """

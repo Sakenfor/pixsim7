@@ -1,0 +1,335 @@
+# Database Migrations Guide
+
+Simple guide for managing database migrations with Alembic in PixSim7.
+
+## Quick Start
+
+Use the helper script for common operations:
+
+```bash
+# Check migration status
+scripts\db.bat status
+
+# Apply pending migrations
+scripts\db.bat upgrade
+
+# Create new migration
+scripts\db.bat revision "add new column to users table"
+
+# View migration history
+scripts\db.bat history
+```
+
+## How Database Configuration Works
+
+**Good news:** You don't need to edit `alembic.ini` for port changes!
+
+### Configuration Priority
+
+The database URL is determined in this order:
+
+1. **`.env` file** (highest priority) - Your actual database URL
+2. **`config.py`** - Default fallback if .env doesn't specify
+3. **`alembic.ini`** - Ignored! (overridden by env.py)
+
+### Why alembic.ini Port Doesn't Matter
+
+When you run alembic commands, this happens:
+
+```
+alembic.ini (5434)
+   ↓ (overridden by...)
+env.py → reads settings.database_url
+   ↓ (which reads from...)
+.env → DATABASE_URL=postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7  ✓
+```
+
+So **editing `.env` is all you need** to change database connection settings!
+
+The `alembic.ini` defaults are just a fallback if `.env` is missing.
+
+## Common Operations
+
+### 1. Check Migration Status
+
+See what migrations are pending:
+
+```bash
+scripts\db.bat status
+```
+
+**What you'll see:**
+- Current revision (what's applied to database)
+- Head revision (latest migration file)
+- If they match = no pending migrations ✓
+
+### 2. Apply Migrations
+
+Run all pending migrations:
+
+```bash
+scripts\db.bat upgrade
+```
+
+This applies all migrations from your current revision to the latest.
+
+### 3. Create New Migration
+
+When you change a database model, create a migration:
+
+```bash
+scripts\db.bat revision "add preferences to user table"
+```
+
+**Autogenerate** will:
+- Compare your SQLModel models to the database
+- Generate migration code automatically
+- Create file in `migrations/versions/`
+
+**Always review** the generated migration before applying!
+
+### 4. Rollback Migration
+
+Made a mistake? Roll back one migration:
+
+```bash
+scripts\db.bat downgrade -1
+```
+
+Or go to specific revision:
+
+```bash
+scripts\db.bat downgrade abc123
+```
+
+## Understanding Migrations
+
+### What is Alembic?
+
+Alembic is a database migration tool that:
+- Tracks database schema changes over time
+- Allows you to upgrade/downgrade schema versions
+- Works with SQLAlchemy/SQLModel
+
+### Migration Files
+
+Located in: `pixsim7/backend/main/infrastructure/database/migrations/versions/`
+
+**Naming format:** `YYYYMMDD_HHMM_[revision_id]_[description].py`
+
+Example:
+```
+20251121_0000_add_api_keys_column.py
+```
+
+**Each migration has:**
+- `revision` - Unique ID for this migration
+- `down_revision` - Parent migration ID (what comes before)
+- `upgrade()` - SQL to apply changes
+- `downgrade()` - SQL to undo changes
+
+### The Alembic Version Table
+
+Alembic tracks which migrations are applied in a special table:
+
+```sql
+SELECT * FROM alembic_version;
+```
+
+This table contains ONE row with the current revision ID.
+
+## Troubleshooting
+
+### "Column already exists" Error
+
+**Problem:** Migration tries to add a column that already exists.
+
+**Cause:** Database schema was modified manually without creating a migration.
+
+**Solution:**
+```bash
+# Mark migration as applied without running it
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe stamp head
+```
+
+### "No such file or directory" Error
+
+**Problem:** Running alembic from wrong directory.
+
+**Solution:** Always run from repository root (`G:\code\pixsim7`)
+
+### Import Errors When Running Migrations
+
+**Problem:** Alembic fails with "cannot import name X"
+
+**Cause:** The `env.py` loads all domain models. Any import error in ANY model breaks migrations.
+
+**Solution:**
+1. Fix the import error in the model file
+2. Common issues:
+   - Missing imports (like `model_validator` from pydantic)
+   - Renamed models not updated in manifests
+   - Circular import dependencies
+
+### Migration Shows "head" but Database is Behind
+
+**Problem:** `alembic heads` shows a migration, but database is on older revision.
+
+**Solution:**
+```bash
+scripts\db.bat upgrade
+```
+
+## Manual Alembic Commands
+
+If you need more control than the helper script provides:
+
+```bash
+# Set environment
+set PYTHONPATH=G:\code\pixsim7
+
+# Check current revision
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe current
+
+# Show heads
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe heads
+
+# Upgrade to specific revision
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe upgrade abc123
+
+# Show SQL without executing
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe upgrade head --sql
+
+# Create empty migration (no autogenerate)
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe revision -m "manual changes"
+```
+
+## Best Practices
+
+### 1. Always Review Autogenerated Migrations
+
+Alembic's autogenerate is smart but not perfect. Always check:
+- Are the changes correct?
+- Did it miss any changes?
+- Are there any data migrations needed?
+
+### 2. Test Migrations on Development Database First
+
+Never run untested migrations on production!
+
+### 3. Keep Migrations Small and Focused
+
+One migration = one logical change
+
+**Good:**
+- "Add email column to users table"
+- "Create notifications table"
+
+**Bad:**
+- "Add 10 new features and refactor 5 tables"
+
+### 4. Never Edit Applied Migrations
+
+Once a migration is applied to any database (dev, staging, prod), **never edit it**.
+
+If you need changes, create a new migration.
+
+### 5. Commit Migrations to Git
+
+Always commit migration files with the code changes that require them.
+
+## Configuration Files
+
+### alembic.ini (Root)
+
+Location: `G:\code\pixsim7\alembic.ini`
+
+Purpose:
+- Tells alembic where migrations are located
+- Sets logging configuration
+- Provides fallback database URL (overridden by env.py)
+
+**You rarely need to edit this file.**
+
+### env.py
+
+Location: `G:\code\pixsim7\pixsim7\backend\main\infrastructure\database\migrations\env.py`
+
+Purpose:
+- Loads domain models for autogenerate
+- Sets database URL from settings (which reads .env)
+- Configures migration context
+
+**You rarely need to edit this file.**
+
+### .env
+
+Location: `G:\code\pixsim7\.env`
+
+Purpose:
+- **Primary configuration** for database connection
+- Edit this file to change database URL, port, credentials
+
+**This is what you edit to configure database!**
+
+```ini
+POSTGRES_PORT=5434
+DATABASE_URL=postgresql://pixsim:pixsim123@127.0.0.1:5434/pixsim7
+```
+
+## Advanced Topics
+
+### Multiple Database Heads
+
+If you see multiple heads, it means you have branching migrations:
+
+```bash
+# Merge multiple heads
+scripts\db.bat revision "merge branches"
+```
+
+Alembic will create a merge migration.
+
+### Offline Migrations
+
+Generate SQL without database connection:
+
+```bash
+G:\code\conda_envs\pixsim7\Scripts\alembic.exe upgrade head --sql > migration.sql
+```
+
+### Custom Migration Logic
+
+For complex data migrations, edit the generated migration:
+
+```python
+def upgrade() -> None:
+    # Schema changes
+    op.add_column('users', sa.Column('full_name', sa.String))
+
+    # Data migration
+    connection = op.get_bind()
+    connection.execute(
+        text("UPDATE users SET full_name = first_name || ' ' || last_name")
+    )
+```
+
+## Getting Help
+
+- Alembic docs: https://alembic.sqlalchemy.org/
+- SQLModel docs: https://sqlmodel.tiangolo.com/
+- Project issues: Check `docs/TROUBLESHOOTING.md`
+
+## Summary
+
+**For 90% of tasks, use the helper script:**
+
+```bash
+scripts\db.bat status    # Check status
+scripts\db.bat upgrade   # Apply migrations
+scripts\db.bat revision "description"  # Create migration
+```
+
+**To change database configuration, edit `.env`** - that's it!
+
+**The alembic.ini port doesn't matter** because env.py overrides it with settings from .env.

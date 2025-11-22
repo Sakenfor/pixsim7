@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$dbPath = Join-Path $projectRoot "pixsim7_backend\infrastructure\database"
+$dbPath = Join-Path $projectRoot "pixsim7\backend\main\infrastructure\database"
 
 Set-Location $dbPath
 $env:PYTHONPATH = $projectRoot

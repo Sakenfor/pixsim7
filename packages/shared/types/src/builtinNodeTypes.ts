@@ -2,8 +2,16 @@ import { nodeTypeRegistry } from './nodeTypeRegistry';
 import { registerNpcResponseNode } from './npcResponseNode';
 import { registerIntimacyNodeTypes } from './intimacyNodeTypes';
 
-/** Register all built-in node types */
+// Ensure built-in node types are only registered once per process
+let builtinNodeTypesRegistered = false;
+
+/** Register all built-in node types (idempotent) */
 export function registerBuiltinNodeTypes() {
+  if (builtinNodeTypesRegistered) {
+    return;
+  }
+  builtinNodeTypesRegistered = true;
+
   // Register NPC Response node
   registerNpcResponseNode();
 
