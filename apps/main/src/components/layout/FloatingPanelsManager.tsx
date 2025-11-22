@@ -1,57 +1,8 @@
 import { Rnd } from 'react-rnd';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
-import { AssetsRoute } from '../../routes/Assets';
-import { SceneBuilderPanel } from '../legacy/SceneBuilderPanel';
-import { GraphPanelWithProvider } from '../legacy/GraphPanel';
-import { InspectorPanel } from '../inspector/InspectorPanel';
-import { HealthPanel } from '../health/HealthPanel';
-import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
-import { GizmoLab } from '../../routes/GizmoLab';
-import { NpcBrainLab } from '../../routes/NpcBrainLab';
-import { GameThemingPanel } from '../game/GameThemingPanel';
-import { SceneManagementPanel } from '../scene/SceneManagementPanel';
-import { useRef, useEffect } from 'react';
-import { previewBridge } from '../../lib/preview-bridge';
+import { panelRegistry } from '../../lib/panels/panelRegistry';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
-
-// Game iframe
-function GameIframePanel() {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const url = import.meta.env.VITE_GAME_URL || 'http://localhost:5174';
-
-  useEffect(() => {
-    if (iframeRef.current) {
-      previewBridge.setIframe(iframeRef.current);
-    }
-  }, []);
-
-  return (
-    <div className="w-full h-full">
-      <iframe
-        ref={iframeRef}
-        src={url}
-        className="w-full h-full border-0"
-        title="Game Frontend"
-      />
-    </div>
-  );
-}
-
-const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType<any> }> = {
-  gallery: { title: 'Gallery', Component: AssetsRoute },
-  scene: { title: 'Scene Builder', Component: SceneBuilderPanel },
-  graph: { title: 'Graph', Component: GraphPanelWithProvider },
-  inspector: { title: 'Inspector', Component: InspectorPanel },
-  health: { title: 'Health', Component: HealthPanel },
-  game: { title: 'Game', Component: GameIframePanel },
-  providers: { title: 'Provider Settings', Component: ProviderSettingsPanel },
-  settings: { title: 'Settings', Component: () => <div>Settings (placeholder)</div> },
-  'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
-  'npc-brain-lab': { title: 'NPC Brain Lab', Component: NpcBrainLab },
-  'game-theming': { title: 'Game Theming', Component: GameThemingPanel },
-  'scene-management': { title: 'Scene Management', Component: SceneManagementPanel },
-};
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
@@ -94,10 +45,10 @@ export function FloatingPanelsManager() {
   return (
     <>
       {floatingPanels.map((panel) => {
-        const panelInfo = PANEL_MAP[panel.id];
-        if (!panelInfo) return null;
+        const panelDef = panelRegistry.get(panel.id);
+        if (!panelDef) return null;
 
-        const { Component, title } = panelInfo;
+        const { component: Component, title } = panelDef;
         const dockedCubes = Object.values(cubes).filter(
           (cube) => cube.dockedToPanelId === panel.id
         );

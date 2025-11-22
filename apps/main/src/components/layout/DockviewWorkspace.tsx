@@ -2,67 +2,9 @@ import { useRef, useEffect, useState } from 'react';
 import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
 import 'dockview/dist/styles/dockview.css';
-import { AssetsRoute } from '../../routes/Assets';
-import { SceneBuilderPanel } from '../legacy/SceneBuilderPanel';
-import { GraphPanelWithProvider } from '../legacy/GraphPanel';
-import { InspectorPanel } from '../inspector/InspectorPanel';
-import { HealthPanel } from '../health/HealthPanel';
-import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
-import { SettingsPanel } from '../settings/SettingsPanel';
-import { GameThemingPanel } from '../game/GameThemingPanel';
-import { SceneManagementPanel } from '../scene/SceneManagementPanel';
-import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../stores/workspaceStore';
-
-// Game iframe with preview bridge connection
-function GameIframePanel() {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const url = import.meta.env.VITE_GAME_URL || 'http://localhost:5174';
-
-  useEffect(() => {
-    if (iframeRef.current) {
-      previewBridge.setIframe(iframeRef.current);
-    }
-  }, []);
-
-  return (
-    <div className="w-full h-full">
-      <iframe
-        ref={iframeRef}
-        src={url}
-        className="w-full h-full border-0"
-        title="Game Frontend"
-      />
-    </div>
-  );
-}
-
-// Panel registry
-const PANEL_COMPONENTS: Record<PanelId, React.ComponentType> = {
-  gallery: AssetsRoute,
-  scene: SceneBuilderPanel,
-  graph: GraphPanelWithProvider,
-  inspector: InspectorPanel,
-  health: HealthPanel,
-  game: GameIframePanel,
-  providers: ProviderSettingsPanel,
-  settings: SettingsPanel,
-  'game-theming': GameThemingPanel,
-  'scene-management': SceneManagementPanel,
-};
-
-const PANEL_TITLES: Record<PanelId, string> = {
-  gallery: 'Gallery',
-  scene: 'Scene Builder',
-  graph: 'Graph',
-  inspector: 'Inspector',
-  health: 'Health',
-  game: 'Game',
-  providers: 'Provider Settings',
-  settings: 'Settings',
-  'game-theming': 'Game Theming',
-  'scene-management': 'Scene Management',
-};
+import { panelRegistry } from '../../lib/panels/panelRegistry';
+import { initializePanels } from '../../lib/panels/initializePanels';
 
 // Wrapper for panels to provide data-panel-id
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
@@ -73,11 +15,14 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
     return <div className="p-4 text-red-500">Error: No panel ID</div>;
   }
 
-  const Component = PANEL_COMPONENTS[panelId];
+  // Get panel from registry
+  const panelDef = panelRegistry.get(panelId);
 
-  if (!Component) {
+  if (!panelDef) {
     return <div className="p-4 text-red-500">Unknown panel: {panelId}</div>;
   }
+
+  const Component = panelDef.component;
 
   return (
     <div className="h-full w-full overflow-auto bg-white dark:bg-neutral-900" data-panel-id={panelId}>
@@ -157,6 +102,13 @@ export function DockviewWorkspace() {
   const currentLayout = useWorkspaceStore((s) => s.currentLayout);
   const setDockviewLayout = useWorkspaceStore((s) => s.setDockviewLayout);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
+
+  // Initialize panels on mount
+  useEffect(() => {
+    initializePanels().catch(error => {
+      console.error('Failed to initialize panels:', error);
+    });
+  }, []);
 
   const onReady = (event: DockviewReadyEvent) => {
     apiRef.current = event.api;
@@ -263,7 +215,14 @@ export function DockviewWorkspace() {
     if (currentLayout === lastAppliedLayoutRef.current) return;
 
     lastAppliedLayoutRef.current = currentLayout;
-    applyLayoutToDockview(apiRef.current, currentLayout, PANEL_TITLES);
+
+    // Build panel titles from registry
+    const panelTitles: Record<PanelId, string> = {} as any;
+    panelRegistry.getAll().forEach(panel => {
+      panelTitles[panel.id] = panel.title;
+    });
+
+    applyLayoutToDockview(apiRef.current, currentLayout, panelTitles);
   }, [currentLayout, isReady]);
 
   const components = {
