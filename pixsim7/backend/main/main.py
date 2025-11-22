@@ -47,8 +47,11 @@ async def lifespan(app: FastAPI):
 
     # Auto-register domain models with SQLModel
     from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
-    domain_registry = init_domain_registry("pixsim7/backend/main/domain_models")
-    logger.info(f"Registered {len(domain_registry.registered_models)} domain models")
+    domain_registry = init_domain_registry(str(settings.domain_models_dir))
+    logger.info(
+        f"Registered {len(domain_registry.registered_models)} domain models",
+        domain_models_dir=str(settings.domain_models_dir)
+    )
 
     # Initialize database
     await init_database()
@@ -98,18 +101,24 @@ async def lifespan(app: FastAPI):
     # Initialize plugin system (feature plugins)
     plugin_manager = init_plugin_manager(
         app,
-        "pixsim7/backend/main/plugins",
+        str(settings.feature_plugins_dir),
         fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
     )
-    logger.info(f"Loaded {len(plugin_manager.list_plugins())} feature plugins")
+    logger.info(
+        f"Loaded {len(plugin_manager.list_plugins())} feature plugins",
+        feature_plugins_dir=str(settings.feature_plugins_dir)
+    )
 
     # Initialize route plugin system (core API routes)
     routes_manager = init_plugin_manager(
         app,
-        "pixsim7/backend/main/routes",
+        str(settings.route_plugins_dir),
         fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
     )
-    logger.info(f"Loaded {len(routes_manager.list_plugins())} core routes")
+    logger.info(
+        f"Loaded {len(routes_manager.list_plugins())} core routes",
+        route_plugins_dir=str(settings.route_plugins_dir)
+    )
 
     # Register plugin managers for dependency injection (Phase 16.3)
     from pixsim7.backend.main.infrastructure.plugins import set_plugin_manager
@@ -175,8 +184,11 @@ app = FastAPI(
 
 # Initialize middleware plugin system
 # Middleware is loaded and registered here (before app startup)
-init_middleware_manager(app, "pixsim7/backend/main/middleware")
-logger.info("Middleware plugin system initialized")
+init_middleware_manager(app, str(settings.middleware_dir))
+logger.info(
+    "Middleware plugin system initialized",
+    middleware_dir=str(settings.middleware_dir)
+)
 
 
 # ===== HEALTH CHECK =====

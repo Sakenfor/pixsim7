@@ -4,6 +4,7 @@ Application configuration using Pydantic Settings
 Clean configuration for PixSim7 - simplified from PixSim6
 """
 from typing import List
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 import os
@@ -279,6 +280,54 @@ class Settings(BaseSettings):
             "Applied to route, feature, middleware, and event handler plugins that support 'enabled'."
         ),
     )
+
+    # ===== BACKEND DIRECTORY STRUCTURE =====
+    domain_models_dir: str | Path = Field(
+        default="pixsim7/backend/main/domain_models",
+        description="Directory containing domain model definitions for auto-registration"
+    )
+
+    feature_plugins_dir: str | Path = Field(
+        default="pixsim7/backend/main/plugins",
+        description="Directory containing feature plugins (game mechanics, capabilities, etc.)"
+    )
+
+    route_plugins_dir: str | Path = Field(
+        default="pixsim7/backend/main/routes",
+        description="Directory containing core API route plugins"
+    )
+
+    middleware_dir: str | Path = Field(
+        default="pixsim7/backend/main/middleware",
+        description="Directory containing middleware plugins"
+    )
+
+    @field_validator(
+        "domain_models_dir",
+        "feature_plugins_dir",
+        "route_plugins_dir",
+        "middleware_dir",
+        mode="before"
+    )
+    @classmethod
+    def normalize_directory_paths(cls, v):
+        """
+        Normalize directory paths to Path objects.
+
+        Accepts:
+            - String paths (from env vars or defaults)
+            - Path objects (pass through)
+
+        Examples:
+            FEATURE_PLUGINS_DIR="custom/plugins"  # Relative path
+            DOMAIN_MODELS_DIR="/opt/pixsim/models"  # Absolute path
+        """
+        if isinstance(v, str):
+            return Path(v)
+        elif isinstance(v, Path):
+            return v
+        else:
+            raise ValueError(f"Expected str or Path, got {type(v)}")
 
     @property
     def async_database_url(self) -> str:
