@@ -367,17 +367,19 @@ Plugin failures are handled based on two factors:
    - `required=true`: Always fail-fast, even in production
    - `required=false` or unset: Tolerant in production, fail-fast in dev/CI
 
-**Resolution Logic** (in `setup_plugins()`):
+**Resolution Logic** (in `PluginManager.check_required_plugins()`):
 ```python
-if fail_fast:
-    # Dev/CI mode - strict
-    raise PluginLoadError()
-elif plugin.manifest.required:
-    # Production, but plugin is marked required
-    raise PluginLoadError()
-else:
-    # Production, optional plugin - degrade gracefully
-    logger.warning("plugin_load_failed", plugin_id=plugin.id)
+if fail_fast and len(self.failed_plugins) > 0:
+    # Dev/CI mode - strict, ANY failure aborts
+    raise RuntimeError(f"Plugin loading failed in strict mode")
+
+# Check failed plugins for required=True
+for plugin_id, failure_info in self.failed_plugins.items():
+    if failure_info.get('required', False):
+        # Production, but plugin is marked required
+        raise RuntimeError(f"Required plugin failed: {plugin_id}")
+
+# Optional plugin failures in production → logged, startup continues
 ```
 
 ---
