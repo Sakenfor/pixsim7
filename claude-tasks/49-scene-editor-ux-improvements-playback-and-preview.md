@@ -5,12 +5,12 @@ Goal
 
 Improve the scene editor workflow for content creators by adding:
 
-1. **In-editor scene playback/testing** - Test scenes directly from the editor without full game launch
-2. **Visual content preview** - See media thumbnails and previews in nodes
-3. **Enhanced template workflows** - Leverage existing GraphTemplate system for better discoverability
-4. **Copy/paste and scene snippets** - Reuse subgraphs efficiently
+1. **In-editor scene playback/testing** – Test scenes directly from the editor without full game launch
+2. **Visual content preview** – See media thumbnails and previews in nodes
+3. **Enhanced template workflows** – Leverage existing GraphTemplate system for better discoverability
+4. **Copy/paste and scene snippets** – Reuse subgraphs efficiently
 
-This task focuses on **editor productivity** and **iteration speed**, using existing shared UI components and infrastructure wherever possible.
+This task focuses on **editor productivity** and **iteration speed**, using existing shared UI components and infrastructure wherever possible. The first implementation should prioritize a **simple, reliable v1** (play whole scene + play from node, basic previews, basic template usage, basic copy/paste); more advanced behaviors (step mode, execution timelines, richer wizard flows) can be layered on in follow-up work.
 
 Background
 
