@@ -5,6 +5,8 @@
  * Provides quick access to accounts without opening popup
  */
 
+import { EMOJI, EMOJI_STATES, WIDGET_EMOJI, PROVIDER_STATUS_EMOJI } from './emojis.js';
+
 console.log('[PixSim7 Widget] Loaded on:', window.location.href);
 
 // Inject extension ID into page so web frontend can communicate with it
@@ -26,16 +28,16 @@ function initializeWidget() {
   widget.id = 'pixsim7-floating-widget';
   widget.innerHTML = `
     <div class="widget-minimize-icon" title="Expand PixSim7 Widget">
-      🎨
+      ${WIDGET_EMOJI.TITLE}
     </div>
     <div class="widget-content">
       <div class="widget-header">
         <div class="widget-title">
-          🎨 PixSim7 Accounts
+          ${WIDGET_EMOJI.HEADER}
         </div>
         <div class="widget-controls">
           <button class="widget-btn" id="widget-refresh" title="Refresh accounts">
-            🔄
+            ${WIDGET_EMOJI.REFRESH_BUTTON}
           </button>
           <button class="widget-btn" id="widget-minimize" title="Minimize">
             −
@@ -194,7 +196,7 @@ async function fetchAndCacheAccounts(updateUI = true) {
     const settings = await chrome.runtime.sendMessage({ action: 'getSettings' });
 
     if (!settings.pixsim7Token) {
-      statusDiv.textContent = '⚠️ Not logged in to PixSim7';
+      statusDiv.textContent = EMOJI_STATES.NOT_LOGGED_IN;
       statusDiv.className = 'widget-status error';
       accountsDiv.innerHTML = `
         <div style="text-align: center; padding: 20px; opacity: 0.7;">
@@ -236,7 +238,7 @@ async function fetchAndCacheAccounts(updateUI = true) {
   } catch (error) {
     console.error('[PixSim7 Widget] Error loading accounts:', error);
     if (updateUI) {
-      statusDiv.textContent = `❌ Error: ${error.message}`;
+      statusDiv.textContent = EMOJI_STATES.ERROR(error.message);
       statusDiv.className = 'widget-status error';
     }
   }
@@ -300,7 +302,7 @@ function displayAccountsForProvider(accounts, settings) {
     const statusEmoji = {
       'active': '🟢',
       'exhausted': '🔴',
-      'error': '⚠️',
+      'error': PROVIDER_STATUS_EMOJI.error,
       'disabled': '⚫',
       'rate_limited': '🟡'
     }[account.status] || '⚪';
@@ -320,7 +322,7 @@ function displayAccountsForProvider(accounts, settings) {
       </div>
       ${account.has_cookies || account.has_jwt
         ? `<button class="widget-account-btn" data-account-id="${account.id}">
-             🌐 Open in Tab
+             ${WIDGET_EMOJI.OPEN_IN_TAB}
            </button>`
         : `<div style="text-align: center; opacity: 0.5; font-size: 11px;">
              No credentials
@@ -364,7 +366,7 @@ async function openAccountInTab(accountId, settings) {
     });
 
     if (response && response.success) {
-      btn.textContent = '✓ Opened';
+      btn.textContent = EMOJI_STATES.OPENED;
       setTimeout(() => {
         btn.textContent = originalText;
         btn.disabled = false;

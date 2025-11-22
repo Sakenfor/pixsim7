@@ -5,6 +5,8 @@
  * Detects when user is logged in and auto-imports cookies
  */
 
+import { EMOJI } from './emojis.js';
+
 console.log('[PixSim7 Content] Loaded on:', window.location.href);
 
 // Provider detection is delegated to backend via background API
@@ -153,7 +155,7 @@ async function importCookies(providerId, config) {
     });
 
     if (importResponse.success) {
-      console.log(`[PixSim7 Content] ✓ Cookies imported successfully:`, importResponse.data);
+      console.log(`[PixSim7 Content] ${EMOJI.CHECK} Cookies imported successfully:`, importResponse.data);
 
       // Only notify on first-time creation to avoid update spam
       if (importResponse.data.created) {
@@ -205,7 +207,7 @@ function showNotification(title, message) {
 
   notification.innerHTML = `
     <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">
-      🎨 ${title}
+      ${EMOJI.ART} ${title}
     </div>
     <div style="font-size: 12px; opacity: 0.9;">
       ${message}

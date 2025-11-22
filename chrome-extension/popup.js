@@ -7,6 +7,8 @@
  * - Display and manage accounts
  */
 
+import { EMOJI_STATES, ACCOUNT_ACTIONS } from './emojis.js';
+
 console.log('[Popup] Loaded');
 
 // State
@@ -485,12 +487,12 @@ function createAccountCard(account) {
     
     <div class="actions-row">
       ${(account.has_cookies || account.has_jwt) ? `
-        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}">🌐 Login</button>
+        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}">${ACCOUNT_ACTIONS.LOGIN}</button>
       ` : `
-        <button class="account-btn btn-tiny" disabled title="No credentials">🌐 Login</button>
+        <button class="account-btn btn-tiny" disabled title="No credentials">${ACCOUNT_ACTIONS.LOGIN}</button>
       `}
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}">▶ Preset</button>
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}">▶ Loop</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}">${ACCOUNT_ACTIONS.RUN_PRESET}</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}">${ACCOUNT_ACTIONS.RUN_LOOP}</button>
     </div>
   `;
 
@@ -723,7 +725,7 @@ async function saveSettings() {
 
   const btn = document.getElementById('saveSettingsBtn');
   const originalText = btn.textContent;
-  btn.textContent = '✓ Saved!';
+  btn.textContent = EMOJI_STATES.SAVED;
 
   // Re-check connection with new URL
   await checkBackendConnection();
@@ -749,7 +751,7 @@ async function resetSettings() {
   if (dup) await populateProvidersInSettings('pixverse');
   const btn = document.getElementById('resetSettingsBtn');
   const originalText = btn.textContent;
-  btn.textContent = '✓ Reset!';
+  btn.textContent = EMOJI_STATES.RESET;
 
   // Re-check connection
   await checkBackendConnection();
@@ -805,7 +807,7 @@ async function handleImportCookies() {
     });
 
     if (response.success) {
-      btn.textContent = '✓ Imported!';
+      btn.textContent = EMOJI_STATES.IMPORTED;
 
       // Show import info
       showLastImport(`Imported from ${currentProvider.name}`);
@@ -814,16 +816,16 @@ async function handleImportCookies() {
       await loadAccounts();
 
       setTimeout(() => {
-        btn.textContent = '📥 Import Cookies from This Site';
+        btn.textContent = EMOJI_STATES.IMPORT_PROMPT;
       }, 2000);
     } else {
       showError(response.error || 'Import failed');
-      btn.textContent = '📥 Import Cookies from This Site';
+      btn.textContent = EMOJI_STATES.IMPORT_PROMPT;
     }
   } catch (error) {
     console.error('[Popup] Import error:', error);
     showError(`Import error: ${error.message}`);
-    btn.textContent = '📥 Import Cookies from This Site';
+    btn.textContent = EMOJI_STATES.IMPORT_PROMPT;
   } finally {
     btn.disabled = false;
   }

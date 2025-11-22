@@ -167,6 +167,8 @@ async def sync_all_account_credits(
         try:
             # Get provider and sync credits
             from pixsim7.backend.main.services.provider import registry
+            from pixsim7.backend.main.domain import ProviderCredit
+
             provider = registry.get(account.provider_id)
 
             # Try provider's get_credits method first
@@ -189,6 +191,15 @@ async def sync_all_account_credits(
 
                 if account.provider_id == "pixverse":
                     # Pixverse has separate web and OpenAPI credit pools.
+                    # Treat this sync as authoritative and clear any legacy
+                    # credit buckets (e.g. old "package" rows) to avoid
+                    # double-counting in total_credits.
+                    await db.execute(
+                        ProviderCredit.__table__.delete().where(
+                            ProviderCredit.account_id == account.id
+                        )
+                    )
+
                     web_total = credits_data.get("web")
                     openapi_total = credits_data.get("openapi")
 
@@ -291,6 +302,8 @@ async def sync_account_credits(
 
         # Get provider and call dedicated credit fetch function
         from pixsim7.backend.main.services.provider import registry
+        from pixsim7.backend.main.domain import ProviderCredit
+
         provider = registry.get(account.provider_id)
 
         # Use provider's get_credits method if available
@@ -312,6 +325,14 @@ async def sync_account_credits(
         if credits_data and isinstance(credits_data, dict):
             if account.provider_id == "pixverse":
                 # For Pixverse, persist separate web and OpenAPI credit pools.
+                # Clear any legacy credit buckets for this account so we don't
+                # double-count in total_credits (e.g. old "package" rows).
+                await db.execute(
+                    ProviderCredit.__table__.delete().where(
+                        ProviderCredit.account_id == account.id
+                    )
+                )
+
                 web_total = credits_data.get("web")
                 openapi_total = credits_data.get("openapi")
 

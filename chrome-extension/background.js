@@ -7,6 +7,8 @@
  * - Message passing between extension components
  */
 
+import { EMOJI_STATES } from './emojis.js';
+
 console.log('[PixSim7 Extension] Background service worker loaded');
 
 // Default backend URL (configurable in settings)
@@ -712,7 +714,7 @@ async function showQuickGenerateDialog(imageUrl, providerId) {
           background: #065f46; color: white; padding: 12px 20px; border-radius: 8px;
           box-shadow: 0 8px 24px rgba(0,0,0,0.3); font-size: 14px; border: 1px solid #10b981;
         `;
-        toast.textContent = '✓ Video generation started!';
+        toast.textContent = EMOJI_STATES.VIDEO_STARTED;
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
         overlay.remove();
