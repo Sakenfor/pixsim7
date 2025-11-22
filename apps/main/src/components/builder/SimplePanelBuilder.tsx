@@ -16,6 +16,11 @@ import {
   type PanelComposition,
 } from '../../lib/widgets/panelComposer';
 import { ComposedPanel } from '../panels/ComposedPanel';
+import {
+  demoCompositions,
+  getDemoComposition,
+  getDemoCompositionIds,
+} from '../../lib/widgets/demoCompositions';
 
 export function SimplePanelBuilder() {
   const [composition, setComposition] = useState<PanelComposition>(() =>
@@ -23,6 +28,7 @@ export function SimplePanelBuilder() {
   );
   const [selectedWidget, setSelectedWidget] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showDemoPicker, setShowDemoPicker] = useState(false);
 
   const widgets = widgetRegistry.getAll();
 
@@ -117,6 +123,15 @@ export function SimplePanelBuilder() {
     input.click();
   };
 
+  const handleLoadDemo = (demoId: string) => {
+    const demo = getDemoComposition(demoId);
+    if (demo) {
+      setComposition(demo);
+      setShowDemoPicker(false);
+      setShowPreview(true); // Switch to preview to see the demo in action
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
       {/* Header */}
@@ -129,6 +144,12 @@ export function SimplePanelBuilder() {
             </p>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowDemoPicker(!showDemoPicker)}
+              className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded text-sm transition-colors"
+            >
+              Load Demo
+            </button>
             <button
               onClick={() => setShowPreview(!showPreview)}
               className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors"
@@ -161,8 +182,52 @@ export function SimplePanelBuilder() {
           <span>
             <strong>Widgets:</strong> {composition.widgets.length}
           </span>
+          {composition.widgets.some(w => w.dataBindings && Object.keys(w.dataBindings).length > 0) && (
+            <span className="text-green-600 dark:text-green-400">
+              ✓ Data Bindings Active
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Demo Picker */}
+      {showDemoPicker && (
+        <div className="border-b border-neutral-200 dark:border-neutral-700 p-4 bg-green-50 dark:bg-green-900/10">
+          <h3 className="text-sm font-semibold mb-3">Demo Compositions with Data Binding</h3>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-3">
+            These demos showcase the Task 51 data binding system integrated with Panel Builder widgets.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <button
+              onClick={() => handleLoadDemo('demo-workspace-status')}
+              className="p-3 bg-white dark:bg-neutral-800 rounded-lg border-2 border-green-500 hover:border-green-600 transition-colors text-left"
+            >
+              <div className="font-medium text-sm mb-1">Workspace Status Dashboard</div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                Displays workspace lock status, panel counts, and lists with live data from workspace store.
+              </div>
+            </button>
+            <button
+              onClick={() => handleLoadDemo('demo-game-state')}
+              className="p-3 bg-white dark:bg-neutral-800 rounded-lg border-2 border-green-500 hover:border-green-600 transition-colors text-left"
+            >
+              <div className="font-medium text-sm mb-1">Game State Monitor</div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                Shows game mode, world ID, session ID, and full context with transforms applied.
+              </div>
+            </button>
+            <button
+              onClick={() => handleLoadDemo('demo-mixed-data')}
+              className="p-3 bg-white dark:bg-neutral-800 rounded-lg border-2 border-green-500 hover:border-green-600 transition-colors text-left"
+            >
+              <div className="font-medium text-sm mb-1">Mixed Data Dashboard</div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                Combines workspace and game state data in a single organized panel.
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {showPreview ? (
         /* Preview Mode */
