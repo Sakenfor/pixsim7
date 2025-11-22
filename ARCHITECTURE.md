@@ -657,6 +657,74 @@ logger = get_plugin_logger("game-dialogue")  # Creates "plugin.game-dialogue" lo
 - Event handlers and plugins remain isolated from logging implementation details
 - Consistent naming conventions across all backend code
 
+### **Backend Startup & Readiness**
+
+The backend startup process distinguishes between **required** and **optional** subsystems to enable graceful degradation and proper orchestration health checks.
+
+#### Startup Policy
+
+**Required Subsystems** (fail-fast):
+- **Database**: Must be available. Startup aborts if DB is unreachable.
+- **Domain Registry**: Must load all domain models successfully.
+- **Core ECS Components**: Must register successfully.
+
+**Conditional Subsystems** (depends on environment):
+- **Feature Plugins**: Fail-fast in dev/CI (`DEBUG=true`), tolerant in production (unless marked `required=true` in manifest).
+- **Route Plugins**: Fail-fast in dev/CI, tolerant in production.
+
+**Optional Subsystems** (degraded mode):
+- **Redis**: Used for background jobs, LLM caching, and sessions. App continues without it, but background processing is disabled.
+- **Default Presets**: Database seeding is optional. Warnings logged if it fails.
+
+#### Health vs Readiness
+
+The backend provides three endpoints with different semantics:
+
+**`GET /` - Liveness Probe**
+- Always returns HTTP 200 (unless process is wedged)
+- Lightweight check with no dependency queries
+- Use for: Kubernetes `livenessProbe`, basic monitoring
+
+**`GET /health` - Health Check**
+- Always returns HTTP 200 with detailed status
+- Response includes DB/Redis/providers status
+- Status field: `"healthy"` or `"degraded"`
+- Use for: Monitoring dashboards, alerting on degraded state
+
+**`GET /ready` - Readiness Probe**
+- Returns HTTP 503 if database unavailable
+- Returns HTTP 200 if ready to serve traffic
+- Status field: `"ready"`, `"degraded"`, or `"unavailable"`
+- Redis failure → `"degraded"` (still returns 200)
+- Database failure → `"unavailable"` (returns 503)
+- Use for: Kubernetes `readinessProbe`, load balancer routing
+
+**Example Kubernetes Configuration:**
+```yaml
+livenessProbe:
+  httpGet:
+    path: /
+    port: 8001
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8001
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+```
+
+**Rationale:**
+- Liveness vs readiness separation prevents restart loops when DB is temporarily down
+- Degraded mode (Redis unavailable) still serves traffic but without background jobs
+- Fail-fast in dev/CI catches configuration errors early
+- Graceful degradation in production improves availability
+
+See `docs/BACKEND_STARTUP.md` for detailed startup sequence and helper function documentation.
+
 ---
 
 ## 📚 Key Design Decisions
