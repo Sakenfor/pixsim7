@@ -1,4 +1,4 @@
-"""
+﻿"""
 Backend Plugin Manager
 
 Dynamically loads and manages API router plugins.
@@ -365,10 +365,6 @@ class PluginManager:
             for plugin_id, plugin in self.plugins.items()
         ]
 
-    def has_failures(self) -> bool:
-        """Return True if any plugins failed to load."""
-        return bool(self.failed_plugins)
-
     def print_health_table(self) -> None:
         """
         Print a health table of all plugins (loaded and failed).
@@ -385,7 +381,7 @@ class PluginManager:
                 'kind': manifest.kind,
                 'required': "Yes" if manifest.required else "No",
                 'enabled': "Yes" if plugin['enabled'] else "No",
-                'status': "✓ Loaded"
+                'status': "Γ£ô Loaded"
             })
 
         # Add failed plugins
@@ -403,11 +399,11 @@ class PluginManager:
                 'kind': kind,
                 'required': "Yes" if required else "No",
                 'enabled': "?",
-                'status': f"✗ Failed: {error[:40]}..."
+                'status': f"Γ£ù Failed: {error[:40]}..."
             })
 
         # Sort by status (loaded first), then by ID
-        rows.sort(key=lambda r: (0 if r['status'].startswith("✓") else 1, r['id']))
+        rows.sort(key=lambda r: (0 if r['status'].startswith("Γ£ô") else 1, r['id']))
 
         # Format table manually
         headers = ["Plugin ID", "Kind", "Required", "Enabled", "Status"]

@@ -110,6 +110,9 @@ class ServiceProcess:
 
     def _append_log_buffer(self, line: str):
         """Append sanitized line to buffer enforcing char/line caps."""
+        # Keep ANSI sequences in the stored line so the console
+        # formatter can render colors/styles. Only clamp extremely
+        # long lines for performance.
         sanitized = self._sanitize_log_line(line)
         self.log_buffer.append(sanitized)
         self._buffer_char_count += len(sanitized)
@@ -673,9 +676,18 @@ class ServiceProcess:
     def _strip_ansi_codes(self, text: str) -> str:
         """Remove ANSI escape sequences (color codes) from text."""
         import re
-        # Pattern matches ANSI escape sequences
+        # Pattern matches ANSI escape sequences starting with ESC
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         return ansi_escape.sub('', text)
+
+    def _strip_ansi_artifacts(self, text: str) -> str:
+        """
+        Remove common SGR-like artifacts that may appear without the ESC prefix,
+        such as "[2m", "[36m", "[1m", "[22m", etc.
+        """
+        import re
+        ansi_fragment = re.compile(r'\[[0-9;]{1,5}m')
+        return ansi_fragment.sub('', text)
 
     def _sanitize_log_line(self, line: str) -> str:
         """Clamp extremely long log lines to keep GUI responsive."""

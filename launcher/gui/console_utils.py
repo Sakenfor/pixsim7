@@ -30,6 +30,9 @@ READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening
 ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
 WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
+# ANSI / SGR detection
+ANSI_SGR_REGEX = re.compile(r'(\x1b\[|\[)([0-9;]{1,5})m')
+
 
 def detect_console_level(line: str) -> str | None:
     """Detect log level from a line."""
@@ -39,12 +42,15 @@ def detect_console_level(line: str) -> str | None:
     return None
 
 
-def decorate_console_message(content: str) -> str:
-    """Escape and highlight console content."""
-    text = escape(content)
+def _apply_inline_highlighting(escaped_text: str) -> str:
+    """
+    Apply URL + keyword highlighting to already-escaped text.
+
+    This keeps HTML-safe content while decorating known patterns.
+    """
     text = URL_LINK_REGEX.sub(
         r'<a href="\1" style="color: #64B5F6; text-decoration: underline;">\1</a>',
-        text
+        escaped_text
     )
     text = READY_REGEX.sub(
         r'<span style="color: #81C784; font-weight: bold;">\1</span>', text
@@ -56,6 +62,117 @@ def decorate_console_message(content: str) -> str:
         r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text
     )
     return text
+
+
+def _build_style_from_sgr(state: dict) -> str:
+    """Convert a simple SGR style state into an inline CSS style string."""
+    styles: list[str] = []
+    color = state.get("color")
+    if color:
+        styles.append(f"color: {color}")
+    if state.get("bold"):
+        styles.append("font-weight: bold")
+    if state.get("dim"):
+        styles.append("opacity: 0.75")
+    return "; ".join(styles)
+
+
+def _convert_ansi_to_html(content: str) -> str:
+    """
+    Convert ANSI/SGR sequences (including bare '[36m' style fragments)
+    into HTML spans with inline styles.
+    """
+    # Basic color map for common SGR foreground codes
+    color_map = {
+        "30": "#000000",
+        "31": "#f44336",
+        "32": "#4CAF50",
+        "33": "#FFEB3B",
+        "34": "#2196F3",
+        "35": "#E91E63",
+        "36": "#00BCD4",
+        "37": "#FFFFFF",
+        "90": "#9E9E9E",
+        "91": "#FF5252",
+        "92": "#69F0AE",
+        "93": "#FFE57F",
+        "94": "#82B1FF",
+        "95": "#FF80AB",
+        "96": "#84FFFF",
+        "97": "#FFFFFF",
+    }
+
+    html_parts: list[str] = []
+    idx = 0
+    state = {"bold": False, "dim": False, "color": None}
+
+    for match in ANSI_SGR_REGEX.finditer(content):
+        start, end = match.span()
+        # Text before this sequence
+        chunk = content[idx:start]
+        if chunk:
+            escaped = escape(chunk)
+            escaped = _apply_inline_highlighting(escaped)
+            style_str = _build_style_from_sgr(state)
+            if style_str:
+                html_parts.append(f'<span style="{style_str}">{escaped}</span>')
+            else:
+                html_parts.append(escaped)
+
+        codes = (match.group(2) or "").split(";")
+        if not codes:
+            codes = ["0"]
+
+        for code in codes:
+            if not code:
+                continue
+            if code == "0":
+                # Reset all
+                state["bold"] = False
+                state["dim"] = False
+                state["color"] = None
+            elif code == "1":
+                state["bold"] = True
+            elif code == "2":
+                state["dim"] = True
+            elif code == "22":
+                # Normal intensity (clear bold/dim)
+                state["bold"] = False
+                state["dim"] = False
+            elif code in color_map:
+                state["color"] = color_map[code]
+            elif code == "39":
+                # Default foreground
+                state["color"] = None
+
+        idx = end
+
+    # Tail after last sequence
+    tail = content[idx:]
+    if tail:
+        escaped = escape(tail)
+        escaped = _apply_inline_highlighting(escaped)
+        style_str = _build_style_from_sgr(state)
+        if style_str:
+            html_parts.append(f'<span style="{style_str}">{escaped}</span>')
+        else:
+            html_parts.append(escaped)
+
+    return "".join(html_parts)
+
+
+def decorate_console_message(content: str) -> str:
+    """
+    Escape and highlight console content.
+
+    If ANSI/SGR sequences are present (e.g. Vite / pnpm dev output),
+    convert them into styled HTML spans; otherwise, apply simple highlighting.
+    """
+    if "\x1b[" in content or ANSI_SGR_REGEX.search(content):
+        return _convert_ansi_to_html(content)
+
+    escaped = escape(content)
+    return _apply_inline_highlighting(escaped)
 
 
 def format_console_log_html_classic(log_lines) -> str:

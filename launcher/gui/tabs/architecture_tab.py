@@ -9,17 +9,15 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 try:
     from .. import theme
     from ..config import read_env_ports
-    from ..widgets.architecture_metrics_panel import ArchitectureMetricsPanel
-    from ..widgets.routes_preview import RoutesPreviewWidget
-    from ..service_discovery import ServiceDiscovery, load_services_config
-    from ..multi_service_discovery import MultiServiceDiscovery
+    from ..widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
+    from ..service_discovery import ServiceDiscovery
+    from ..multi_service_discovery import MultiServiceDiscovery, load_services_config
 except ImportError:
     import theme
     from config import read_env_ports
-    from widgets.architecture_metrics_panel import ArchitectureMetricsPanel
-    from widgets.routes_preview import RoutesPreviewWidget
-    from service_discovery import ServiceDiscovery, load_services_config
-    from multi_service_discovery import MultiServiceDiscovery
+    from widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
+    from service_discovery import ServiceDiscovery
+    from multi_service_discovery import MultiServiceDiscovery, load_services_config
 
 
 class ArchitectureTab:

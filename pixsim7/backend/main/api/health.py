@@ -10,7 +10,7 @@ Endpoints:
 
 See docs/BACKEND_STARTUP.md for semantics and usage in k8s/ECS.
 """
-from fastapi import APIRouter, Response, status as http_status
+from fastapi import APIRouter, Response, Request, status as http_status
 from pydantic import BaseModel
 from typing import Literal
 
@@ -101,7 +101,7 @@ async def health_check():
 
 
 @router.get("/ready", response_model=ReadinessResponse)
-async def readiness_check(response: Response):
+async def readiness_check(response: Response, request: Request):
     """
     Readiness probe - can this instance handle traffic?
 
@@ -143,13 +143,37 @@ async def readiness_check(response: Response):
         db_connected = False
         db_status = f"error: {e.__class__.__name__}"
 
+    # Check plugin state (optional but affects degraded/ready)
+    plugins_loaded = True
+    plugins_ok = True
+    try:
+        plugin_manager = getattr(request.app.state, "plugin_manager", None)
+        routes_manager = getattr(request.app.state, "routes_manager", None)
+
+        if plugin_manager is None or routes_manager is None:
+            plugins_loaded = False
+            plugins_ok = False
+        else:
+            # Consider plugins loaded if both managers have at least one plugin
+            plugins_loaded = bool(plugin_manager.list_plugins()) and bool(routes_manager.list_plugins())
+
+            def _has_failures(manager) -> bool:
+                if hasattr(manager, "has_failures"):
+                    return manager.has_failures()
+                return bool(getattr(manager, "failed_plugins", {}))
+
+            plugins_ok = not _has_failures(plugin_manager) and not _has_failures(routes_manager)
+    except Exception:
+        plugins_loaded = False
+        plugins_ok = False
+
     # Determine overall readiness
     if not db_connected:
         # Database is required - return 503
         overall_status = "unavailable"
         response.status_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
-    elif not redis_available:
-        # Redis is optional - degraded but still ready
+    elif not redis_available or not plugins_ok:
+        # Redis or plugins degraded but still able to serve traffic
         overall_status = "degraded"
         response.status_code = http_status.HTTP_200_OK
     else:
@@ -161,5 +185,5 @@ async def readiness_check(response: Response):
         status=overall_status,
         database=db_status,
         redis=redis_status,
-        plugins_loaded=True  # Could check app.state.plugin_manager if needed
+        plugins_loaded=plugins_loaded,
     )

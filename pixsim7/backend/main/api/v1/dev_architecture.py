@@ -146,10 +146,16 @@ def discover_capabilities() -> List[Dict[str, Any]]:
     for cap in capability_classes:
         file_path = capabilities_dir / cap["file"]
         if file_path.exists():
+            # Try to get relative path, fall back to resolved path if not possible
+            try:
+                path_str = str(file_path.resolve().relative_to(Path.cwd()))
+            except ValueError:
+                path_str = str(file_path)
+
             capabilities.append({
                 **cap,
                 "exists": True,
-                "path": str(file_path.resolve().relative_to(Path.cwd())),
+                "path": path_str,
             })
 
     return capabilities
@@ -207,10 +213,16 @@ def discover_services() -> List[Dict[str, Any]]:
     for service_key, service_data in service_compositions.items():
         main_file = services_dir / service_data["file"]
         if main_file.exists():
+            # Try to get relative path, fall back to resolved path if not possible
+            try:
+                main_path = str(main_file.resolve().relative_to(Path.cwd()))
+            except ValueError:
+                main_path = str(main_file)
+
             service_entry = {
                 "id": service_key,
                 "name": service_data["name"],
-                "path": str(main_file.resolve().relative_to(Path.cwd())),
+                "path": main_path,
                 "type": service_data["type"],
                 "description": service_data["description"],
                 "sub_services": [],
@@ -220,9 +232,15 @@ def discover_services() -> List[Dict[str, Any]]:
             for sub in service_data["sub_services"]:
                 sub_file = services_dir / sub["file"]
                 if sub_file.exists():
+                    # Try to get relative path, fall back to resolved path if not possible
+                    try:
+                        sub_path = str(sub_file.resolve().relative_to(Path.cwd()))
+                    except ValueError:
+                        sub_path = str(sub_file)
+
                     service_entry["sub_services"].append({
                         "name": sub["name"],
-                        "path": str(sub_file.resolve().relative_to(Path.cwd())),
+                        "path": sub_path,
                         "lines": sub["lines"],
                         "responsibility": sub["responsibility"],
                         "exists": True,
@@ -275,13 +293,19 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
                 perm_content = perm_match.group(1)
                 permissions = re.findall(r'["\']([^"\']+)["\']', perm_content)
 
+            # Try to get relative path, fall back to resolved path if not possible
+            try:
+                manifest_path = str(manifest_file.resolve().relative_to(Path.cwd()))
+            except ValueError:
+                manifest_path = str(manifest_file)
+
             plugins.append({
                 "id": plugin_id,
                 "name": name,
                 "version": version,
                 "description": description,
                 "permissions": permissions,
-                "path": str(manifest_file.resolve().relative_to(Path.cwd())),
+                "path": manifest_path,
             })
         except Exception as e:
             # Skip files that can't be parsed

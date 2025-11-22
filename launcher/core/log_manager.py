@@ -85,7 +85,16 @@ class LogManager:
                     with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
                         lines = f.readlines()
                         # Load last N lines to respect max_log_lines
-                        state.log_buffer = [line.rstrip() for line in lines[-self.max_log_lines:]]
+                        cleaned: list[str] = []
+                        for line in lines[-self.max_log_lines:]:
+                            raw = line.rstrip()
+                            if not raw:
+                                continue
+                            clean = self._strip_ansi_codes(raw)
+                            clean = self._strip_ansi_artifacts(clean)
+                            if clean:
+                                cleaned.append(clean)
+                        state.log_buffer = cleaned
                         # Track file position
                         self._file_positions[key] = log_file.stat().st_size
                 except Exception:
@@ -137,8 +146,9 @@ class LogManager:
         if not state:
             return
 
-        # Strip ANSI color codes
+        # Strip ANSI color codes and common leftover artifacts (e.g. "[2m" without ESC)
         clean_line = self._strip_ansi_codes(line.strip())
+        clean_line = self._strip_ansi_artifacts(clean_line)
 
         if not clean_line:
             return
@@ -258,23 +268,29 @@ class LogManager:
                 new_lines = f.readlines()
                 self._file_positions[service_key] = f.tell()
 
-                for line in new_lines:
-                    line = line.rstrip()
-                    if line:
-                        state.log_buffer.append(line)
+                        for line in new_lines:
+                            raw = line.rstrip()
+                            if not raw:
+                                continue
+                            clean = self._strip_ansi_codes(raw)
+                            clean = self._strip_ansi_artifacts(clean)
+                            if not clean:
+                                continue
 
-                        # Check for errors
-                        if '[ERR]' in line or '[ERROR]' in line:
-                            parts = line.split('] ', 2)
-                            if len(parts) >= 3:
-                                state.last_error = parts[2]
+                            state.log_buffer.append(clean)
 
-                        # Callback
-                        if self.log_callback:
-                            try:
-                                self.log_callback(service_key, line)
-                            except Exception:
-                                pass
+                            # Check for errors
+                            if '[ERR]' in clean or '[ERROR]' in clean:
+                                parts = clean.split('] ', 2)
+                                if len(parts) >= 3:
+                                    state.last_error = parts[2]
+
+                            # Callback
+                            if self.log_callback:
+                                try:
+                                    self.log_callback(service_key, clean)
+                                except Exception:
+                                    pass
 
                 # Trim buffer if too large
                 if len(state.log_buffer) > self.max_log_lines:
@@ -298,6 +314,15 @@ class LogManager:
         """Remove ANSI escape sequences (color codes) from text."""
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         return ansi_escape.sub('', text)
+
+    @staticmethod
+    def _strip_ansi_artifacts(text: str) -> str:
+        """
+        Remove common SGR-like artifacts that may appear without the ESC prefix,
+        such as "[2m", "[36m", "[1m", "[22m", etc.
+        """
+        ansi_fragment = re.compile(r'\[[0-9;]{1,5}m')
+        return ansi_fragment.sub('', text)
 
     @staticmethod
     def _detect_error(line: str) -> bool:

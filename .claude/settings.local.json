@@ -1,9 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cmd /c \"cd /d G:\\code\\pixsim7 && set PYTHONPATH=G:\\code\\pixsim7 && G:\\code\\conda_envs\\pixsim7\\Scripts\\alembic.exe --help\")",
-      "Bash(for file in *.py)",
-      "Bash(done)"
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

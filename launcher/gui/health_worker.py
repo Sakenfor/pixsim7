@@ -36,6 +36,8 @@ class HealthWorker(QThread):
         self._stop = False
         self.failure_counts: Dict[str, int] = {}
         self.failure_threshold = 5  # default fallback
+        # Track services we've already warned about being externally managed
+        self._externally_managed_warned: Dict[str, bool] = {}
 
         # Adaptive mode state tracking
         self.service_healthy_since: Dict[str, Optional[float]] = {}  # timestamp when service became healthy
@@ -323,15 +325,18 @@ class HealthWorker(QThread):
                                         # Mark as externally managed (outside launcher control)
                                         if hasattr(sp, 'externally_managed'):
                                             sp.externally_managed = True
-                                        if _launcher_logger:
-                                            try:
-                                                _launcher_logger.warning(
-                                                    "service_running_despite_stop",
-                                                    service_key=key,
-                                                    msg="Service responding to health checks despite stop request - externally managed"
-                                                )
-                                            except Exception:
-                                                pass
+                                        # Only log this warning once per service until state changes
+                                        if not self._externally_managed_warned.get(key, False):
+                                            if _launcher_logger:
+                                                try:
+                                                    _launcher_logger.warning(
+                                                        "service_running_despite_stop",
+                                                        service_key=key,
+                                                        msg="Service responding to health checks despite stop request - externally managed"
+                                                    )
+                                                except Exception:
+                                                    pass
+                                            self._externally_managed_warned[key] = True
 
                                     # Detect PID if not started by launcher
                                     self._detect_and_store_pid(sp, url=health_url)
@@ -360,6 +365,9 @@ class HealthWorker(QThread):
                             # Otherwise, service is just stopped
                             else:
                                 sp.running = False
+                                # Clear externally managed warning when service is fully stopped
+                                if key in self._externally_managed_warned:
+                                    self._externally_managed_warned.pop(key, None)
                                 self._emit_health_update(key, HealthStatus.STOPPED)
                     else:
                         # No health URL, assume healthy if running flag is set
