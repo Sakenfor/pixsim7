@@ -3,12 +3,14 @@ Task 48 – Intermediate Graph Layers: Scene Collections & Campaigns
 
 Goal
 
-Fill architectural gaps in the multi-layer graph system by adding two intermediate layers:
+Fill architectural gaps in the multi-layer graph system by adding two intermediate layers, **without introducing new backend tables** and keeping all structure front-end–driven via world metadata:
 
 1. **Scene Collections (Layer 1.5):** Logical grouping of related scenes (chapters, episodes, conversations)
 2. **Campaign Layer (Layer 2.5):** Organize multiple arc graphs into complete narrative campaigns
 
-These layers improve content organization, provide better progress tracking, and enable more sophisticated story structuring without disrupting existing scene and arc graph functionality.
+These layers improve content organization, provide better progress tracking, and enable more sophisticated story structuring while:
+- Keeping all new structure under `GameWorld.meta` / `WorldManifest.meta`
+- Preserving existing scene and arc graph behavior
 
 Background
 
@@ -38,6 +40,11 @@ Evidence in codebase:
 // WorldManifest already hints at multiple arc graphs
 interface WorldManifest {
   enabled_arc_graphs?: string[];  // No structure or relationships
+  meta?: {
+    // New work in this task should extend meta.*, not add new top-level fields
+    scene_collections?: Record<string, unknown>;
+    campaigns?: Record<string, unknown>;
+  };
 }
 
 // Hotspots already reference scenes
@@ -48,6 +55,7 @@ interface GameHotspotDTO {
 // World has temporal tracking
 interface GameWorldDetail {
   world_time: number;  // Time progression exists
+  meta: any;           // World-specific structure lives here
 }
 ```
 
@@ -55,13 +63,13 @@ Scope
 
 Includes:
 
-- `apps/main/src/modules/scene-collection/` - New module for scene collections
-- `apps/main/src/modules/campaign/` - New module for campaigns
-- `apps/main/src/stores/sceneCollectionStore/` - Zustand store for collections
-- `apps/main/src/stores/campaignStore/` - Zustand store for campaigns
-- `apps/main/src/components/scene-collection/` - UI components
-- `apps/main/src/components/campaign/` - UI components
-- Updates to `WorldManifest` type to support campaigns
+- `apps/main/src/modules/scene-collection/` – New **front-end** module for scene collections (types, validation, helpers)
+- `apps/main/src/modules/campaign/` – New **front-end** module for campaigns (types, validation, helpers)
+- `apps/main/src/stores/sceneCollectionStore/` – Zustand store for collections (front-end state + world-meta mapping)
+- `apps/main/src/stores/campaignStore/` – Zustand store for campaigns (front-end state + world-meta mapping)
+- `apps/main/src/components/scene-collection/` – UI components
+- `apps/main/src/components/campaign/` – UI components
+- Updates to `WorldManifest` TypeScript type to expose campaigns/collections **under `meta`**, not as new top-level fields
 - Integration with existing scene and arc graph systems
 
 Out of scope:
@@ -69,7 +77,7 @@ Out of scope:
 - Location-based scene groups (deferred to Task 49)
 - Relationship arc layer (deferred to Task 50)
 - Timeline/temporal layer (deferred to Task 51)
-- Playthrough/save file management (separate backend concern)
+- Playthrough/save file management (separate backend concern; progression lives in `GameSession.flags` / `relationships`)
 - Conversation thread tracking (can be modeled as scene collections)
 
 Problems & Proposed Work
@@ -107,6 +115,7 @@ export type SceneCollectionType =
   | 'custom';
 
 export interface SceneCollectionScene {
+  /** Scene IDs use the same string IDs as GraphState scenes */
   sceneId: string;
   order: number;  // Position within collection
   optional?: boolean;  // Can be skipped
@@ -156,8 +165,10 @@ export interface SceneCollection {
 export interface UnlockCondition {
   type: 'relationship_tier' | 'quest_status' | 'flag' | 'time' | 'collection_complete';
   data: {
-    npcId?: number;
+    /** NPCs use the standard string IDs (e.g. "npc:12") */
+    npcId?: string;
     minTier?: string;
+    /** Quest IDs follow the existing world/quest ID convention (string) */
     questId?: string;
     status?: 'completed' | 'in_progress';
     flag?: string;
@@ -175,7 +186,10 @@ import type { SceneCollection } from './types';
 import type { ValidationIssue } from '../validation/types';
 
 /**
- * Validate scene collection structure
+ * Validate scene collection structure.
+ *
+ * Uses the shared ValidationIssue model so UI can render issues
+ * from scenes, arcs, collections, and campaigns consistently.
  */
 export function validateSceneCollection(
   collection: SceneCollection,
@@ -183,7 +197,7 @@ export function validateSceneCollection(
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  // Check for missing scenes
+  // Check for missing scenes (hard errors)
   for (const scene of collection.scenes) {
     if (!sceneIds.has(scene.sceneId)) {
       issues.push({
@@ -195,7 +209,7 @@ export function validateSceneCollection(
     }
   }
 
-  // Check for duplicate scene references
+  // Check for duplicate scene references (design warning)
   const seenScenes = new Set<string>();
   for (const scene of collection.scenes) {
     if (seenScenes.has(scene.sceneId)) {
@@ -208,7 +222,7 @@ export function validateSceneCollection(
     seenScenes.add(scene.sceneId);
   }
 
-  // Check for ordering gaps
+  // Check for ordering gaps (informational only)
   const orders = collection.scenes.map(s => s.order).sort((a, b) => a - b);
   for (let i = 0; i < orders.length - 1; i++) {
     if (orders[i + 1] - orders[i] > 1) {
@@ -244,7 +258,7 @@ interface SceneCollectionState {
   /** All scene collections by ID */
   collections: Record<string, SceneCollection>;
 
-  /** Currently active collection ID */
+  /** Currently active collection ID (per-world in UI context) */
   currentCollectionId: string | null;
 
   // CRUD operations
@@ -1022,13 +1036,15 @@ Create `apps/main/src/components/campaign/CampaignMapView.tsx`:
 
 ```typescript
 /**
- * Campaign Map Visualization
+ * Campaign Map Visualization (v1 stub)
  *
- * Shows campaign structure as a visual flowchart:
- * - Arcs as nodes
- * - Prerequisites as edges
- * - Parallel arcs shown side-by-side
- * - Completion state color-coded
+ * v1 scope:
+ * - List arcs in a campaign with basic dependency badges
+ * - Highlight broken references / unmet prerequisites
+ *
+ * v2 (follow-up task):
+ * - Full visual flowchart with edges and layout
+ * - Completion state color-coded from GameSession flags
  */
 ```
 
@@ -1170,21 +1186,6 @@ Documentation Updates
   - Unlock conditions and gating
   - Progression tracking patterns
 
-Migration Notes
-
-Backward Compatibility:
-
-- Existing `enabled_arc_graphs` in WorldManifest preserved
-- No breaking changes to scene or arc graph stores
-- Collections and campaigns are optional (existing content works without them)
-
-Migration Path:
-
-1. Existing worlds continue to work with `enabled_arc_graphs`
-2. UI prompts: "Upgrade to campaigns for better organization?"
-3. Migration tool creates campaign from existing arc graph list
-4. Users can gradually organize scenes into collections
-
 Follow-Up Tasks
 
 This task is part of the graph architecture improvement series:
@@ -1205,14 +1206,12 @@ Success Criteria
 
 - [ ] Scene collection module exists with types, validation, and store
 - [ ] Campaign module exists with types, validation, and store
-- [ ] WorldManifest supports enabled_campaigns
+- [ ] WorldManifest exposes campaigns/collections via meta.*
 - [ ] Dependency tracking includes collection and campaign layers
 - [ ] UI panels for managing collections and campaigns exist
-- [ ] Campaign map visualization works
-- [ ] Progression tracking works per-world
+- [ ] Campaign map visualization works (v1 list/badges)
+- [ ] Progression tracking hooks can read per-world state from GameSession flags
 - [ ] All validation detects broken references across layers
 - [ ] Unit and integration tests pass
 - [ ] Documentation complete
-- [ ] No regressions: existing scenes, arcs, and worlds continue to work
-- [ ] Migration path from enabled_arc_graphs to campaigns documented
 """
