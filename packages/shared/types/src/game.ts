@@ -161,8 +161,19 @@ export type IntimacyLevelId = DefaultIntimacyLevel | string;
 export interface WorldManifest {
   /** Default turn preset for turn-based mode (e.g., "ONE_HOUR") */
   turn_preset?: string;
-  /** List of arc graph IDs enabled in this world */
+  /** List of arc graph IDs enabled in this world (deprecated - use campaigns) */
   enabled_arc_graphs?: string[];
+  /** List of campaign IDs enabled in this world */
+  enabled_campaigns?: string[];
+  /** Campaign progression state */
+  campaign_progression?: Record<string, {
+    campaignId: string;
+    status: 'not_started' | 'in_progress' | 'completed';
+    currentArcId?: string;
+    completedArcIds: string[];
+    startedAt?: string;
+    completedAt?: string;
+  }>;
   /** List of plugin IDs enabled in this world */
   enabled_plugins?: string[];
   /** Additional custom configuration */

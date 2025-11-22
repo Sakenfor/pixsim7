@@ -741,9 +741,21 @@ PixSim7 implements a sophisticated multi-layer graph architecture for narrative 
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
+│      Layer 2.5: Campaign Layer (Arc Organization)       │
+│      High-level organization of multiple arc graphs     │
+│      Prerequisites, parallel campaigns, progression     │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
 │         Layer 2: Arc Graph (Story Structure)            │
 │         Story arcs, quests, milestones                  │
 │         References scenes via sceneId field             │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│    Layer 1.5: Scene Collections (Scene Grouping)        │
+│    Logical grouping of scenes (chapters, episodes)      │
+│    Ordered sequences, unlock conditions                 │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -779,15 +791,79 @@ Pure functions for tracking dependencies between layers:
   - Maintains single source of truth
   - No sync burden or stale data
 
-- **Bidirectional Index**:
-  - `sceneToArcNodes`: Map of sceneId → arc node IDs
-  - `arcNodeToScene`: Map of arc node ID → sceneId
+- **Complete Dependency Index** (`CompleteDependencyIndex`):
+  - **Scene → Arc**: `sceneToArcNodes`, `arcNodeToScene`
+  - **Scene → Collection**: `sceneToCollections`, `collectionToScenes`
+  - **Collection → Arc**: `arcToCollections`, `collectionToArcs`
+  - **Arc → Campaign**: `arcToCampaigns`, `campaignToArcs`
+  - **Collection → Campaign**: `collectionToCampaigns`, `campaignToCollections`
 
-- **React Hooks** (`hooks/useArcSceneDependencies.ts`):
-  - `useSceneArcDependencies(sceneId)`: Get arc nodes using a scene
-  - `useSceneHasDependencies(sceneId)`: Check for dependencies
-  - `useSceneDependencyCount(sceneId)`: Get dependency count
-  - Memoized for performance
+- **Helper Functions**:
+  - `sceneHasAnyDependencies(sceneId)`: Check all dependencies across layers
+  - `arcHasCampaignDependencies(arcGraphId)`: Check if arc is used in campaigns
+  - `collectionHasDependencies(collectionId)`: Check collection dependencies
+  - `getCollectionsForScene(sceneId)`: Get all collections using a scene
+  - `getCampaignsForArc(arcGraphId)`: Get all campaigns using an arc
+
+### **Intermediate Graph Layers** (Task 48)
+
+#### **Scene Collections (Layer 1.5)**
+
+Logical grouping of related scenes for better organization:
+
+- **Module**: `modules/scene-collection/`
+  - `types.ts`: SceneCollection, SceneCollectionType, UnlockCondition
+  - `validation.ts`: Collection validation (broken references, duplicates, ordering)
+
+- **Store**: `stores/sceneCollectionStore/`
+  - CRUD operations for collections
+  - Scene management (add, remove, reorder)
+  - Query helpers (by arc, by campaign, by scene)
+  - Import/Export functionality
+
+- **UI**: `components/scene-collection/`
+  - SceneCollectionPanel: Create/edit/delete collections
+  - Drag-and-drop scene reordering
+  - Visual organization by type (chapter, episode, conversation)
+
+- **Collection Types**:
+  - `chapter`: Story chapters
+  - `episode`: Episodic content
+  - `conversation`: Conversation threads
+  - `location_group`: Location-based groupings
+  - `custom`: User-defined types
+
+#### **Campaign Layer (Layer 2.5)**
+
+High-level organization of multiple arc graphs into complete campaigns:
+
+- **Module**: `modules/campaign/`
+  - `types.ts`: Campaign, CampaignType, CampaignProgression
+  - `validation.ts`: Campaign validation (broken arc refs, circular dependencies)
+
+- **Store**: `stores/campaignStore/`
+  - CRUD operations for campaigns
+  - Arc management (add, remove, reorder)
+  - Progression tracking (start, complete, track current arc)
+  - Query helpers (by world, by type, active campaigns)
+  - Import/Export functionality
+
+- **UI**: `components/campaign/`
+  - CampaignPanel: Create/edit/delete campaigns
+  - CampaignMapView: Visualize campaign structure and progression
+  - Prerequisites and parallel campaign management
+
+- **Campaign Types**:
+  - `main_story`: Main storyline campaigns
+  - `side_story`: Side quest chains
+  - `character_arc`: Character-specific storylines
+  - `seasonal_event`: Time-limited content
+  - `custom`: User-defined types
+
+- **WorldManifest Integration**:
+  - `enabled_campaigns`: List of active campaign IDs
+  - `campaign_progression`: Per-world progression state
+  - Backward compatibility with `enabled_arc_graphs`
 
 ### **Store Integration**
 
@@ -800,18 +876,37 @@ Pure functions for tracking dependencies between layers:
   - Provides `getSceneIds()` selector for efficient validation
   - Minimal coupling (arc validation only needs scene IDs, not full store)
 
+- **Scene Collection Store** (`stores/sceneCollectionStore/`)
+  - Manages scene groupings and collections
+  - Supports arc and campaign assignments
+  - Provides import/export for collection sharing
+
+- **Campaign Store** (`stores/campaignStore/`)
+  - Manages campaign definitions and arc sequences
+  - Tracks per-world progression state
+  - Supports prerequisite and parallel campaign logic
+
 ### **Testing**
 
-- Unit tests: `modules/arc-graph/validation.test.ts`
+- Unit tests:
+  - `modules/arc-graph/validation.test.ts`
+  - `modules/scene-collection/validation.test.ts`
+  - `modules/campaign/validation.test.ts`
 - Dependency tests: `lib/graph/dependencies.test.ts`
-- Full coverage of validation logic and dependency tracking
+- Full coverage of validation logic and dependency tracking across all layers
+
+### **Completed Enhancements**
+
+- **Task 43** ✅: Cross-layer validation and dependency tracking
+- **Task 48** ✅: Scene Collections & Campaign intermediate layers
 
 ### **Future Enhancements**
 
 - **Task 44**: Undo/Redo with temporal middleware
 - **Task 45**: Visual dependency indicators and cascade delete UI
-- **Task 46**: World/Campaign graph layer above arcs
-- **Task 47**: Scene lineage graph implementation
+- **Task 49**: Location-based scene groups and hotspot integration
+- **Task 50**: Relationship arc layer (separate from story arcs)
+- **Task 51**: Timeline/temporal layer for time-gated content
 
 ---
 
