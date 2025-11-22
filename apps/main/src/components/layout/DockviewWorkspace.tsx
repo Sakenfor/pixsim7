@@ -5,6 +5,7 @@ import 'dockview/dist/styles/dockview.css';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../stores/workspaceStore';
 import { panelRegistry } from '../../lib/panels/panelRegistry';
 import { initializePanels } from '../../lib/panels/initializePanels';
+import { initializeWidgets } from '../../lib/widgets/initializeWidgets';
 
 // Wrapper for panels to provide data-panel-id
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
@@ -103,10 +104,13 @@ export function DockviewWorkspace() {
   const setDockviewLayout = useWorkspaceStore((s) => s.setDockviewLayout);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
 
-  // Initialize panels on mount
+  // Initialize panels and widgets on mount
   useEffect(() => {
-    initializePanels().catch(error => {
-      console.error('Failed to initialize panels:', error);
+    Promise.all([
+      initializePanels(),
+      Promise.resolve(initializeWidgets()),
+    ]).catch(error => {
+      console.error('Failed to initialize:', error);
     });
   }, []);
 
