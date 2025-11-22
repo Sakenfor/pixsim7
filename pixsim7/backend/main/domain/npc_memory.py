@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, List
 from enum import Enum
 from sqlmodel import SQLModel, Field, Relationship, JSON, Column
 from sqlalchemy import Index
+from pydantic import ConfigDict
 
 
 class MemoryType(str, Enum):
@@ -405,6 +406,7 @@ class DialogueAnalytics(SQLModel, table=True):
     Tracks what prompts work well, player engagement,
     and helps optimize future dialogue.
     """
+    model_config = ConfigDict(protected_namespaces=())
     __tablename__ = "npc_dialogue_analytics"
 
     # Primary key

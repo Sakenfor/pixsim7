@@ -6,6 +6,15 @@ from typing import Dict, Optional
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
+# Global setting for SQL logging (set by launcher on startup)
+_sql_logging_enabled = False
+
+
+def set_sql_logging(enabled: bool) -> None:
+    """Set the global SQL logging preference."""
+    global _sql_logging_enabled
+    _sql_logging_enabled = enabled
+
 
 @dataclass
 class Ports:
@@ -116,7 +125,7 @@ def find_python_executable() -> str:
     return 'python'
 
 
-def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports] = None) -> Dict[str, str]:
+def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports] = None, sql_logging: Optional[bool] = None) -> Dict[str, str]:
     env = dict(base_env or os.environ)
     # Merge variables from .env so services inherit configuration (DB URLs, keys, etc.)
     try:
@@ -131,6 +140,9 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     env['VITE_ADMIN_PORT'] = str(p.admin)
     env['VITE_BACKEND_URL'] = f"http://localhost:{p.backend}"
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
+    # SQL logging control (use parameter if provided, otherwise use global setting)
+    sql_log_enabled = sql_logging if sql_logging is not None else _sql_logging_enabled
+    env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
     # Prefer direct DB ingestion via env if configured globally (.env)
     # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
     # We intentionally do NOT set PIXSIM_LOG_INGESTION_URL here to avoid routing through backend.
@@ -162,6 +174,7 @@ class UIState:
     # General settings
     stop_services_on_exit: bool = True  # Graceful shutdown of all services when closing launcher
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
+    sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
 
     # Health check settings
     health_check_interval: float = 5.0  # Seconds between health checks (default: 5s)
@@ -181,6 +194,8 @@ def load_ui_state() -> UIState:
                     data['stop_services_on_exit'] = True
                 if 'auto_refresh_logs' not in data:
                     data['auto_refresh_logs'] = False
+                if 'sql_logging_enabled' not in data:
+                    data['sql_logging_enabled'] = False
                 if 'health_check_interval' not in data:
                     data['health_check_interval'] = 5.0
                 if 'health_check_adaptive' not in data:

@@ -197,6 +197,11 @@ class SettingsDialog(QDialog):
         self.chk_auto_refresh_logs.setToolTip("Automatically refresh database logs when viewing them (may impact performance)")
         logging_layout.addWidget(self.chk_auto_refresh_logs)
 
+        self.chk_sql_logging = QCheckBox("Enable SQL query logging (verbose)")
+        self.chk_sql_logging.setChecked(self._state.sql_logging_enabled)
+        self.chk_sql_logging.setToolTip("Log all database queries from backend services (very verbose, requires service restart)")
+        logging_layout.addWidget(self.chk_sql_logging)
+
         layout.addWidget(logging_group)
 
         layout.addStretch()
@@ -311,6 +316,7 @@ class SettingsDialog(QDialog):
             defaults = UIState()
             self.chk_stop_on_exit.setChecked(defaults.stop_services_on_exit)
             self.chk_auto_refresh_logs.setChecked(defaults.auto_refresh_logs)
+            self.chk_sql_logging.setChecked(defaults.sql_logging_enabled)
             self.chk_adaptive_health.setChecked(defaults.health_check_adaptive)
             self.spin_health_interval.setValue(defaults.health_check_interval)
             self.spin_startup_interval.setValue(defaults.health_check_startup_interval)
@@ -320,6 +326,7 @@ class SettingsDialog(QDialog):
         """Get updated state from UI."""
         self._state.stop_services_on_exit = self.chk_stop_on_exit.isChecked()
         self._state.auto_refresh_logs = self.chk_auto_refresh_logs.isChecked()
+        self._state.sql_logging_enabled = self.chk_sql_logging.isChecked()
         self._state.health_check_adaptive = self.chk_adaptive_health.isChecked()
         self._state.health_check_interval = self.spin_health_interval.value()
         self._state.health_check_startup_interval = self.spin_startup_interval.value()

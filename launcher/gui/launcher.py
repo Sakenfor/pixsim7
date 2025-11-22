@@ -25,7 +25,7 @@ try:
     from .config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file
+        read_env_file, write_env_file, set_sql_logging
     )
     from .docker_utils import compose_ps, compose_up_detached, compose_down
     from .dialogs.git_tools_dialog import show_git_tools_dialog
@@ -42,7 +42,7 @@ except ImportError:
     from config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file
+        read_env_file, write_env_file, set_sql_logging
     )
     from docker_utils import compose_ps, compose_up_detached, compose_down
     from dialogs.git_tools_dialog import show_git_tools_dialog
@@ -81,6 +81,11 @@ except Exception:
     from widgets.architecture_panel import ArchitectureMetricsPanel, RoutesPreviewWidget
     from service_discovery import ServiceDiscovery
     from multi_service_discovery import MultiServiceDiscovery, load_services_config
+
+try:
+    from .tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
+except Exception:
+    from tabs import ConsoleTab, DbLogsTab, ToolsTab, ArchitectureTab
 
 try:
     from .processes import ServiceProcess
@@ -178,6 +183,8 @@ class LauncherWindow(QWidget):
 
         # Load UI state
         self.ui_state = load_ui_state()
+        # Apply SQL logging preference
+        set_sql_logging(self.ui_state.sql_logging_enabled)
         if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
             self.resize(self.ui_state.window_width, self.ui_state.window_height)
         else:
@@ -363,303 +370,27 @@ class LauncherWindow(QWidget):
         right_layout.addWidget(self.main_tabs)
 
         # === TAB 1: CONSOLE LOGS ===
-        console_tab = self._create_console_tab()
+        console_tab = ConsoleTab.create(self)
         self.main_tabs.addTab(console_tab, "📊 Console")
 
         # === TAB 2: DATABASE LOGS ===
-        db_logs_tab = self._create_db_logs_tab()
+        db_logs_tab = DbLogsTab.create(self)
         self.main_tabs.addTab(db_logs_tab, "🗄 Database Logs")
 
         # === TAB 3: TOOLS ===
-        tools_tab = self._create_tools_tab()
+        tools_tab = ToolsTab.create(self)
         self.main_tabs.addTab(tools_tab, "🔧 Tools")
 
         # === TAB 4: SETTINGS ===
-        settings_tab = self._create_settings_tab()
+        settings_tab = ToolsTab.create_settings(self)
         self.main_tabs.addTab(settings_tab, "⚙ Settings")
 
         # === TAB 5: BACKEND ARCHITECTURE ===
-        architecture_tab = self._create_architecture_tab()
+        architecture_tab = ArchitectureTab.create(self)
         self.main_tabs.addTab(architecture_tab, "🏗️ Architecture")
 
         # Setup all connections
         self._setup_connections()
-
-    def _create_console_tab(self):
-        """Create the console logs tab"""
-        console_tab = QWidget()
-        console_layout = QVBoxLayout(console_tab)
-
-        # Console header
-        console_header_layout = QHBoxLayout()
-        console_header_label = QLabel("Service Console")
-        console_header_font = QFont()
-        console_header_font.setPointSize(13)
-        console_header_font.setBold(True)
-        console_header_label.setFont(console_header_font)
-        console_header_layout.addWidget(console_header_label)
-
-        self.log_service_label = QLabel()
-        log_service_font = QFont()
-        log_service_font.setPointSize(10)
-        self.log_service_label.setFont(log_service_font)
-        self.log_service_label.setStyleSheet("color: #555; padding-left: 10px; font-weight: 500;")
-        console_header_layout.addWidget(self.log_service_label)
-
-        # Quick navigation into DB logs for the same service
-        self.btn_open_db_logs = QPushButton("Open DB Logs ▶")
-        self.btn_open_db_logs.setToolTip("Switch to Database Logs tab for this service")
-        console_header_layout.addWidget(self.btn_open_db_logs)
-
-        console_header_layout.addStretch()
-        console_layout.addLayout(console_header_layout)
-
-        # Compact toolbar with filters and actions
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
-
-        # Filter section
-        from PySide6.QtWidgets import QComboBox
-        self.console_level_combo = QComboBox()
-        for lvl in ["All", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
-            self.console_level_combo.addItem(lvl)
-        self.console_level_combo.setCurrentText("All")
-        self.console_level_combo.setFixedWidth(90)
-        self.console_level_combo.setToolTip("Filter by log level")
-        self.console_level_combo.setStyleSheet(theme.get_combobox_stylesheet())
-        self.console_level_combo.currentTextChanged.connect(lambda _: self._on_console_filter_changed())
-        toolbar.addWidget(self.console_level_combo)
-
-        self.console_search_input = QLineEdit()
-        self.console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")
-        self.console_search_input.setFixedWidth(180)
-        self.console_search_input.textChanged.connect(lambda _: self._on_console_filter_changed())
-        toolbar.addWidget(self.console_search_input)
-
-        self.console_style_checkbox = QCheckBox("Readable view")
-        self.console_style_checkbox.setChecked(True)
-        self.console_style_checkbox.setToolTip("Toggle enhanced console row layout")
-        self.console_style_checkbox.toggled.connect(self._on_console_style_changed)
-        toolbar.addWidget(self.console_style_checkbox)
-
-        # Action buttons (compact)
-        self.btn_refresh_logs = QPushButton('🔄')
-        self.btn_refresh_logs.setToolTip("Refresh console logs (F5)")
-        self.btn_refresh_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
-        toolbar.addWidget(self.btn_refresh_logs)
-
-        self.btn_clear_logs = QPushButton('🗑')
-        self.btn_clear_logs.setToolTip("Clear console logs (Ctrl+L)")
-        self.btn_clear_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
-        toolbar.addWidget(self.btn_clear_logs)
-        
-        self.autoscroll_checkbox = QCheckBox('Auto-scroll')
-        self.autoscroll_checkbox.setChecked(True)
-        self.autoscroll_checkbox.setToolTip("Automatically scroll to bottom")
-        self.autoscroll_checkbox.stateChanged.connect(self._on_autoscroll_changed)
-        toolbar.addWidget(self.autoscroll_checkbox)
-
-        toolbar.addStretch()
-        console_layout.addLayout(toolbar)
-
-        # Use QTextBrowser for clickable URLs
-        from PySide6.QtWidgets import QTextBrowser
-        self.log_view = QTextBrowser()
-        self.log_view.setReadOnly(True)
-        self.log_view.setOpenExternalLinks(True)  # Open URLs in browser
-        self.log_view.setUndoRedoEnabled(False)  # Disable undo to prevent memory leak
-        self.log_view.setStyleSheet(theme.get_text_browser_stylesheet())
-        console_layout.addWidget(self.log_view)
-
-        # Add keyboard shortcuts for console
-        self.console_refresh_shortcut = QShortcut(QKeySequence('F5'), console_tab)
-        self.console_refresh_shortcut.activated.connect(lambda: self._refresh_console_logs(force=True))
-        self.console_clear_shortcut = QShortcut(QKeySequence('Ctrl+L'), console_tab)
-        self.console_clear_shortcut.activated.connect(self._clear_console_display)
-
-        # Quick focus on console search
-        self.console_search_shortcut = QShortcut(QKeySequence('Ctrl+F'), console_tab)
-        self.console_search_shortcut.activated.connect(lambda: self.console_search_input.setFocus())
-
-        return console_tab
-
-    def _create_db_logs_tab(self):
-        """Create the database logs tab"""
-        p = read_env_ports()
-        self.db_log_viewer = DatabaseLogViewer(api_url=f"http://localhost:{p.backend}")
-        return self.db_log_viewer
-
-    def _create_tools_tab(self):
-        """Create the tools tab with organized sections"""
-        tools_tab = QWidget()
-        tools_layout = QVBoxLayout(tools_tab)
-        tools_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
-        tools_layout.setSpacing(theme.SPACING_LG)
-
-        # Database Tools Section
-        db_group = QFrame()
-        db_group.setFrameShape(QFrame.Shape.StyledPanel)
-        db_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        db_layout = QVBoxLayout(db_group)
-        
-        db_title = QLabel("🗄 Database Tools")
-        db_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        db_layout.addWidget(db_title)
-
-        self.btn_migrations = QPushButton('🗃 Migrations')
-        self.btn_migrations.setToolTip("Database migration manager")
-        self.btn_migrations.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_migrations.clicked.connect(lambda: show_migrations_dialog(self))
-        db_layout.addWidget(self.btn_migrations)
-
-        self.btn_db_browser = QPushButton('📊 Database Browser')
-        self.btn_db_browser.setToolTip("Browse accounts, copy passwords, export to CSV")
-        self.btn_db_browser.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_db_browser.clicked.connect(self._open_db_browser)
-        db_layout.addWidget(self.btn_db_browser)
-
-        self.btn_import_accounts = QPushButton('📥 Import Accounts from PixSim6')
-        self.btn_import_accounts.setToolTip("Import provider accounts from PixSim6 database")
-        self.btn_import_accounts.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_import_accounts.clicked.connect(self._open_import_accounts_dialog)
-        db_layout.addWidget(self.btn_import_accounts)
-        
-        tools_layout.addWidget(db_group)
-
-        # Development Tools Section
-        dev_group = QFrame()
-        dev_group.setFrameShape(QFrame.Shape.StyledPanel)
-        dev_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        dev_layout = QVBoxLayout(dev_group)
-
-        dev_title = QLabel("🔀 Development Tools")
-        dev_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        dev_layout.addWidget(dev_title)
-
-        self.btn_git_workflow = QPushButton('⚡ Git Workflow')
-        self.btn_git_workflow.setToolTip("Simple git operations: commit, push, pull, merge, cleanup")
-        self.btn_git_workflow.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_git_workflow.clicked.connect(lambda: show_simple_git_dialog(self))
-        dev_layout.addWidget(self.btn_git_workflow)
-
-        self.btn_git_tools = QPushButton('🔀 Advanced Git Tools')
-        self.btn_git_tools.setToolTip("Structured commit helper (grouped commits)")
-        self.btn_git_tools.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_git_tools.clicked.connect(lambda: show_git_tools_dialog(self))
-        dev_layout.addWidget(self.btn_git_tools)
-
-        self.btn_log_management = QPushButton('📋 Log Management')
-        self.btn_log_management.setToolTip("Manage, archive, and export console logs")
-        self.btn_log_management.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_log_management.clicked.connect(lambda: show_log_management_dialog(self, self.processes))
-        dev_layout.addWidget(self.btn_log_management)
-        
-        tools_layout.addWidget(dev_group)
-        
-        tools_layout.addStretch()
-        return tools_tab
-
-    def _create_settings_tab(self):
-        """Create the settings tab"""
-        settings_tab = QWidget()
-        settings_layout = QVBoxLayout(settings_tab)
-        settings_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
-        settings_layout.setSpacing(theme.SPACING_LG)
-
-        # Configuration Section
-        config_group = QFrame()
-        config_group.setFrameShape(QFrame.Shape.StyledPanel)
-        config_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        config_layout = QVBoxLayout(config_group)
-
-        config_title = QLabel("⚙ Configuration")
-        config_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        config_layout.addWidget(config_title)
-
-        self.btn_ports = QPushButton('🔌 Edit Ports')
-        self.btn_ports.setToolTip("Edit service ports")
-        self.btn_ports.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_ports.clicked.connect(self.edit_ports)
-        config_layout.addWidget(self.btn_ports)
-
-        self.btn_env = QPushButton('🔧 Edit Environment Variables')
-        self.btn_env.setToolTip("Edit environment variables")
-        self.btn_env.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_env.clicked.connect(self.edit_env)
-        config_layout.addWidget(self.btn_env)
-        
-        settings_layout.addWidget(config_group)
-
-        # Application Settings Section
-        app_group = QFrame()
-        app_group.setFrameShape(QFrame.Shape.StyledPanel)
-        app_group.setStyleSheet(theme.get_group_frame_stylesheet())
-        app_layout = QVBoxLayout(app_group)
-
-        app_title = QLabel("🎨 Application Settings")
-        app_title.setStyleSheet(f"font-size: {theme.FONT_SIZE_LG}; font-weight: bold; color: {theme.ACCENT_PRIMARY}; padding-bottom: {theme.SPACING_SM}px;")
-        app_layout.addWidget(app_title)
-
-        self.btn_settings = QPushButton('⚙ General Settings')
-        self.btn_settings.setToolTip("Configure launcher preferences")
-        self.btn_settings.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        self.btn_settings.clicked.connect(self._open_settings)
-        app_layout.addWidget(self.btn_settings)
-        
-        settings_layout.addWidget(app_group)
-        
-        settings_layout.addStretch()
-        return settings_tab
-
-    def _create_architecture_tab(self):
-        """Create the backend architecture tab"""
-        architecture_tab = QWidget()
-        architecture_layout = QVBoxLayout(architecture_tab)
-        architecture_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG, theme.SPACING_LG)
-        architecture_layout.setSpacing(theme.SPACING_LG)
-
-        # Header
-        header_label = QLabel("Backend Architecture")
-        header_label.setStyleSheet(f"font-size: {theme.FONT_SIZE_XL}; font-weight: bold; color: {theme.ACCENT_PRIMARY};")
-        architecture_layout.addWidget(header_label)
-
-        desc_label = QLabel(
-            "Live introspection of backend routes, services, and plugins.\n"
-            "This data is fetched from the /dev/architecture/map endpoint."
-        )
-        desc_label.setStyleSheet("color: palette(mid); font-size: 11px;")
-        desc_label.setWordWrap(True)
-        architecture_layout.addWidget(desc_label)
-
-        # Architecture metrics panel
-        self.architecture_panel = ArchitectureMetricsPanel()
-        architecture_layout.addWidget(self.architecture_panel)
-
-        # Routes preview
-        self.routes_preview = RoutesPreviewWidget()
-        architecture_layout.addWidget(self.routes_preview)
-
-        # Initialize service discovery (will connect when backend starts)
-        # Try to load services.json for multi-service discovery
-        services_config = load_services_config()
-
-        if services_config:
-            # Use multi-service discovery
-            self.multi_service_discovery = MultiServiceDiscovery(services_config)
-            self.service_discovery = None  # Legacy single service
-            self.architecture_panel.set_multi_discovery(self.multi_service_discovery)
-        else:
-            # Fall back to single service discovery
-            ports = read_env_ports()
-            self.service_discovery = ServiceDiscovery(f"http://localhost:{ports.backend}")
-            self.multi_service_discovery = None
-            self.architecture_panel.set_discovery(self.service_discovery)
-
-        # Connect metrics updates to routes preview
-        self.architecture_panel.metrics_updated.connect(self._on_architecture_metrics_updated)
-
-        architecture_layout.addStretch()
-        return architecture_tab
 
     def _on_architecture_metrics_updated(self, metrics):
         """Handle architecture metrics update."""
@@ -775,7 +506,12 @@ class LauncherWindow(QWidget):
             missing_deps = []
             for dep_key in sp.defn.depends_on:
                 dep_process = self.processes.get(dep_key)
-                if not dep_process or not dep_process.running:
+                # Treat a dependency as satisfied if either:
+                # - the launcher is managing it and it's running, or
+                # - it's healthy according to health checks (externally managed but OK).
+                dep_running = bool(dep_process and getattr(dep_process, "running", False))
+                dep_healthy = bool(dep_process and getattr(dep_process, "health_status", None) == HealthStatus.HEALTHY)
+                if not dep_process or (not dep_running and not dep_healthy):
                     dep_service = next((s for s in self.services if s.key == dep_key), None)
                     dep_title = dep_service.title if dep_service else dep_key
                     missing_deps.append(dep_title)
@@ -872,9 +608,6 @@ class LauncherWindow(QWidget):
         card = self.cards.get(key)
         if card:
             card.update_status(status)
-            # Update button states based on running flag
-            card.start_btn.setEnabled(not sp.running and sp.tool_available)
-            card.stop_btn.setEnabled(sp.running)
 
         # Refresh architecture panel when ANY backend service becomes healthy
         # Check if this is a backend service (main-api, generation-api, etc.)
@@ -1332,6 +1065,7 @@ class LauncherWindow(QWidget):
         if updated:
             self.ui_state = updated
             # Apply preferences immediately
+            set_sql_logging(self.ui_state.sql_logging_enabled)
             if self.ui_state.auto_refresh_logs:
                 try:
                     self.db_log_viewer.auto_refresh_checkbox.setChecked(True)

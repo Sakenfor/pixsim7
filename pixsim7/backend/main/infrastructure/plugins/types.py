@@ -147,6 +147,28 @@ class PluginHooks:
             results.append(result)
         return results
 
+    def emit_sync(self, event: str, *args, **kwargs) -> None:
+        """
+        Emit an event from synchronous code, calling only sync callbacks.
+        Async callbacks will be skipped with a warning.
+
+        Use this when emitting events from non-async contexts (e.g., plugin loading).
+        """
+        for callback in self._hooks.get(event, []):
+            if not callable(callback):
+                continue
+
+            result = callback(*args, **kwargs)
+            if inspect.isawaitable(result):
+                # Can't await in sync context, skip async callbacks
+                import structlog
+                logger = structlog.get_logger(__name__)
+                logger.warning(
+                    f"Skipping async callback for {event} in sync context",
+                    callback=callback.__name__ if hasattr(callback, '__name__') else str(callback)
+                )
+                continue
+
     def clear(self, event: Optional[str] = None) -> None:
         """Clear hooks for an event, or all hooks if event is None"""
         if event:

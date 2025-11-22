@@ -149,7 +149,7 @@ def discover_capabilities() -> List[Dict[str, Any]]:
             capabilities.append({
                 **cap,
                 "exists": True,
-                "path": str(file_path.relative_to(Path.cwd())),
+                "path": str(file_path.resolve().relative_to(Path.cwd())),
             })
 
     return capabilities
@@ -210,7 +210,7 @@ def discover_services() -> List[Dict[str, Any]]:
             service_entry = {
                 "id": service_key,
                 "name": service_data["name"],
-                "path": str(main_file.relative_to(Path.cwd())),
+                "path": str(main_file.resolve().relative_to(Path.cwd())),
                 "type": service_data["type"],
                 "description": service_data["description"],
                 "sub_services": [],
@@ -222,7 +222,7 @@ def discover_services() -> List[Dict[str, Any]]:
                 if sub_file.exists():
                     service_entry["sub_services"].append({
                         "name": sub["name"],
-                        "path": str(sub_file.relative_to(Path.cwd())),
+                        "path": str(sub_file.resolve().relative_to(Path.cwd())),
                         "lines": sub["lines"],
                         "responsibility": sub["responsibility"],
                         "exists": True,
@@ -281,7 +281,7 @@ def discover_plugin_manifests() -> List[Dict[str, Any]]:
                 "version": version,
                 "description": description,
                 "permissions": permissions,
-                "path": str(manifest_file.relative_to(Path.cwd())),
+                "path": str(manifest_file.resolve().relative_to(Path.cwd())),
             })
         except Exception as e:
             # Skip files that can't be parsed

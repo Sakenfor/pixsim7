@@ -184,8 +184,8 @@ class PluginManager:
                     f"Skipping on_load for disabled plugin: {manifest.id}"
                 )
 
-            # Emit event
-            plugin_hooks.emit(PluginEvents.PLUGIN_LOADED, manifest.id)
+            # Emit event (sync context)
+            plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)
 
             return True
 

@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager, contextmanager
 from typing import AsyncGenerator, Generator
 import logging
+import os
 
 from sqlmodel import SQLModel
 
@@ -16,12 +17,15 @@ from pixsim7.backend.main.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Check if SQL logging is enabled via environment variable (set by launcher)
+_sql_logging_enabled = os.getenv('SQL_LOGGING_ENABLED', '0') == '1'
+
 
 # ===== ASYNC ENGINE (Primary - Application Data) =====
 # For FastAPI async routes
 async_engine = create_async_engine(
     settings.async_database_url,
-    echo=settings.debug,
+    echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
     pool_size=20,
     max_overflow=40,
     pool_pre_ping=True,  # Test connections before using
@@ -42,7 +46,7 @@ AsyncSessionLocal = async_sessionmaker(
 # Separate database for log storage
 async_log_engine = create_async_engine(
     settings.async_log_database_url,
-    echo=settings.debug,
+    echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
     pool_size=10,  # Smaller pool for logs
     max_overflow=20,
     pool_pre_ping=True,
@@ -63,7 +67,7 @@ AsyncLogSessionLocal = async_sessionmaker(
 # For Alembic migrations and background workers
 sync_engine = create_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=_sql_logging_enabled,  # Controlled by SQL_LOGGING_ENABLED env var
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,

@@ -5,6 +5,8 @@ Provides narrative and action block generation for NPC dialogues.
 Converted from api/v1/game_dialogue.py to plugin format.
 """
 
+from __future__ import annotations
+
 from typing import Dict, Any, List, Optional, Literal
 
 from fastapi import APIRouter, HTTPException, Depends

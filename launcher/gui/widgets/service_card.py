@@ -212,13 +212,17 @@ class ServiceCard(QFrame):
         self._update_style()
 
     def update_status(self, status: HealthStatus):
+        # Determine running state from health status
+        # A service is "running" if it's STARTING, HEALTHY, or UNHEALTHY
         old_running = self.service_process.running
+        is_running = status in (HealthStatus.STARTING, HealthStatus.HEALTHY, HealthStatus.UNHEALTHY)
+
         self.service_process.health_status = status
 
         # Track start time
-        if self.service_process.running and not old_running:
+        if is_running and not old_running:
             self.start_time = datetime.now()
-        elif not self.service_process.running and old_running:
+        elif not is_running and old_running:
             self.start_time = None
 
         self.status_indicator.setStyleSheet(f"""
@@ -227,6 +231,9 @@ class ServiceCard(QFrame):
             border: none;
         """)
         status_info = STATUS_TEXT[status]
+        # Indicate if service is running outside launcher control
+        if getattr(self.service_process, "externally_managed", False):
+            status_info += " (external)"
         if not self.service_process.tool_available:
             status_info = f"⚠ {self.service_process.tool_check_message}"
         elif self.service_def.url:
@@ -237,7 +244,7 @@ class ServiceCard(QFrame):
                 pass
 
         # Add uptime if running
-        if self.service_process.running and self.start_time:
+        if is_running and self.start_time:
             uptime = datetime.now() - self.start_time
             hours = int(uptime.total_seconds() // 3600)
             minutes = int((uptime.total_seconds() % 3600) // 60)
@@ -254,9 +261,10 @@ class ServiceCard(QFrame):
                 err = err[:77] + '...'
             status_info += f" • {err}"
         self.status_label.setText(status_info)
-        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
-        self.stop_btn.setEnabled(self.service_process.running)
-        self.restart_btn.setEnabled(self.service_process.running)
+        # Update button states based on the new running state
+        self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
+        self.stop_btn.setEnabled(is_running)
+        self.restart_btn.setEnabled(is_running)
 
     def _update_style(self):
         if self.is_selected:
