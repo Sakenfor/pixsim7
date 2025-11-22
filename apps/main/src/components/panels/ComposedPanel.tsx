@@ -3,18 +3,40 @@
  *
  * Renders a custom panel composition with widgets and data bindings.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ *
+ * Integrated with Task 51 data binding system for live, reactive data.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import type { PanelComposition } from '../../lib/widgets/panelComposer';
 import { widgetRegistry } from '../../lib/widgets/widgetRegistry';
+import { dataSourceRegistry, useBindingValues } from '../../lib/dataBinding';
 
 export interface ComposedPanelProps {
   composition: PanelComposition;
-  data?: Record<string, any>; // Data for data sources
 }
 
-export function ComposedPanel({ composition, data = {} }: ComposedPanelProps) {
+export function ComposedPanel({ composition }: ComposedPanelProps) {
+  // Register all data sources from the composition
+  useEffect(() => {
+    if (composition.dataSources) {
+      composition.dataSources.forEach((dataSource) => {
+        // Only register if not already registered
+        if (!dataSourceRegistry.hasSource(dataSource.id)) {
+          dataSourceRegistry.registerSource(dataSource);
+        }
+      });
+    }
+
+    // Cleanup: Unregister data sources when composition changes
+    return () => {
+      if (composition.dataSources) {
+        composition.dataSources.forEach((dataSource) => {
+          dataSourceRegistry.unregisterSource(dataSource.id);
+        });
+      }
+    };
+  }, [composition.dataSources]);
   const { layout, widgets, styles } = composition;
 
   // Calculate grid template
@@ -33,64 +55,54 @@ export function ComposedPanel({ composition, data = {} }: ComposedPanelProps) {
 
   return (
     <div className="h-full w-full bg-neutral-50 dark:bg-neutral-950" style={gridStyle}>
-      {widgets.map((widget) => {
-        const widgetDef = widgetRegistry.get(widget.widgetType);
+      {widgets.map((widget) => (
+        <WidgetRenderer key={widget.id} widget={widget} />
+      ))}
+    </div>
+  );
+}
 
-        if (!widgetDef) {
-          return (
-            <div
-              key={widget.id}
-              style={{
-                gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
-                gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
-              }}
-              className="flex items-center justify-center bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded"
-            >
-              <p className="text-sm text-red-700 dark:text-red-300">
-                Unknown widget: {widget.widgetType}
-              </p>
-            </div>
-          );
-        }
+/**
+ * Renders a single widget instance with Task 51 data binding
+ */
+function WidgetRenderer({ widget }: { widget: any }) {
+  // Resolve all data bindings using Task 51 hooks
+  const bindingValues = useBindingValues(widget.dataBindings);
 
-        const Component = widgetDef.component;
+  const widgetDef = widgetRegistry.get(widget.widgetType);
 
-        // Resolve data for this widget
-        let widgetData = undefined;
-        if (widget.dataBindings) {
-          // For now, simple implementation: use first data binding
-          const firstBinding = Object.values(widget.dataBindings)[0];
-          if (firstBinding && data[firstBinding.source]) {
-            widgetData = data[firstBinding.source];
-            // Apply path if specified
-            if (firstBinding.path) {
-              const pathParts = firstBinding.path.split('.');
-              let current = widgetData;
-              for (const part of pathParts) {
-                if (current && typeof current === 'object' && part in current) {
-                  current = current[part];
-                } else {
-                  current = undefined;
-                  break;
-                }
-              }
-              widgetData = current;
-            }
-          }
-        }
+  if (!widgetDef) {
+    return (
+      <div
+        style={{
+          gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
+          gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
+        }}
+        className="flex items-center justify-center bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded"
+      >
+        <p className="text-sm text-red-700 dark:text-red-300">
+          Unknown widget: {widget.widgetType}
+        </p>
+      </div>
+    );
+  }
 
-        return (
-          <div
-            key={widget.id}
-            style={{
-              gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
-              gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
-            }}
-          >
-            <Component config={widget.config} data={widgetData} />
-          </div>
-        );
-      })}
+  const Component = widgetDef.component;
+
+  // Merge static config with resolved binding values
+  const props = {
+    config: widget.config,
+    ...bindingValues, // Live data from Task 51 bindings
+  };
+
+  return (
+    <div
+      style={{
+        gridColumn: `${widget.position.x + 1} / span ${widget.position.w}`,
+        gridRow: `${widget.position.y + 1} / span ${widget.position.h}`,
+      }}
+    >
+      <Component {...props} />
     </div>
   );
 }

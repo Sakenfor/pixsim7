@@ -3,6 +3,7 @@
  *
  * Display a list of items with optional filtering and sorting.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * Integrated with Task 51 data binding system.
  */
 
 import { useState, useMemo } from 'react';
@@ -17,7 +18,13 @@ export interface ListWidgetConfig {
   searchable?: boolean;
 }
 
-export function ListWidget({ config, data }: WidgetProps) {
+export interface ListWidgetProps extends WidgetProps {
+  config: ListWidgetConfig;
+  items?: any[]; // From Task 51 data binding
+  data?: any; // Legacy support
+}
+
+export function ListWidget({ config, items: boundItems, data }: ListWidgetProps) {
   const {
     title = 'List',
     itemKey,
@@ -25,24 +32,27 @@ export function ListWidget({ config, data }: WidgetProps) {
     maxItems,
     sortable = false,
     searchable = false,
-  } = config as ListWidgetConfig;
+  } = config;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  // Priority: bound items > data prop
+  const sourceData = boundItems !== undefined ? boundItems : data;
+
   // Convert data to array of strings
   const items: string[] = useMemo(() => {
-    if (!data) return [];
-    if (Array.isArray(data)) {
-      return data.map((item) => {
+    if (!sourceData) return [];
+    if (Array.isArray(sourceData)) {
+      return sourceData.map((item) => {
         if (typeof item === 'object' && itemKey) {
           return String(item[itemKey]);
         }
         return String(item);
       });
     }
-    return [String(data)];
-  }, [data, itemKey]);
+    return [String(sourceData)];
+  }, [sourceData, itemKey]);
 
   // Apply search and sort
   const filteredItems = useMemo(() => {

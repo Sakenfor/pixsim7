@@ -3,20 +3,27 @@
  *
  * Display a single metric/KPI with optional label and trend.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * Integrated with Task 51 data binding system.
  */
 
 import type { WidgetProps } from '../../lib/widgets/widgetRegistry';
 
 export interface MetricWidgetConfig {
   label: string;
-  value?: string | number;
+  value?: string | number; // Static value (used if no data binding)
   format?: 'number' | 'currency' | 'percentage' | 'text';
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   color?: string;
 }
 
-export function MetricWidget({ config, data }: WidgetProps) {
+export interface MetricWidgetProps extends WidgetProps {
+  config: MetricWidgetConfig;
+  value?: string | number; // From Task 51 data binding
+  data?: any; // Legacy support
+}
+
+export function MetricWidget({ config, value: boundValue, data }: MetricWidgetProps) {
   const {
     label = 'Metric',
     value: configValue,
@@ -24,10 +31,10 @@ export function MetricWidget({ config, data }: WidgetProps) {
     trend,
     trendValue,
     color = '#3b82f6',
-  } = config as MetricWidgetConfig;
+  } = config;
 
-  // Use data if provided, otherwise use config value
-  const value = data !== undefined ? data : configValue;
+  // Priority: bound value > data prop > config value
+  const value = boundValue !== undefined ? boundValue : (data !== undefined ? data : configValue);
 
   const formatValue = (val: any): string => {
     if (val === undefined || val === null) return '-';

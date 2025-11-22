@@ -3,6 +3,7 @@
  *
  * Simplified UI for creating composed panels.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * Integrated with Task 51 data binding system for live data.
  */
 
 import { useState } from 'react';
@@ -166,7 +167,7 @@ export function SimplePanelBuilder() {
       {showPreview ? (
         /* Preview Mode */
         <div className="flex-1 overflow-auto">
-          <ComposedPanel composition={composition} data={{}} />
+          <ComposedPanel composition={composition} />
         </div>
       ) : (
         /* Edit Mode */
@@ -196,7 +197,7 @@ export function SimplePanelBuilder() {
           {/* Canvas */}
           <div className="flex-1 overflow-auto p-4">
             <div className="bg-neutral-50 dark:bg-neutral-950 rounded-lg p-4 h-full">
-              <ComposedPanel composition={composition} data={{}} />
+              <ComposedPanel composition={composition} />
             </div>
           </div>
 

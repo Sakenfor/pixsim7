@@ -3,29 +3,36 @@
  *
  * Display static or dynamic text content.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ * Integrated with Task 51 data binding system.
  */
 
 import type { WidgetProps } from '../../lib/widgets/widgetRegistry';
 
 export interface TextWidgetConfig {
-  content: string;
+  content: string; // Static content (used if no data binding)
   align?: 'left' | 'center' | 'right';
   size?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl';
   weight?: 'normal' | 'medium' | 'semibold' | 'bold';
   color?: string;
 }
 
-export function TextWidget({ config, data }: WidgetProps) {
+export interface TextWidgetProps extends WidgetProps {
+  config: TextWidgetConfig;
+  content?: string; // From Task 51 data binding
+  data?: any; // Legacy support
+}
+
+export function TextWidget({ config, content: boundContent, data }: TextWidgetProps) {
   const {
-    content = 'Text',
+    content: configContent = 'Text',
     align = 'left',
     size = 'base',
     weight = 'normal',
     color,
-  } = config as TextWidgetConfig;
+  } = config;
 
-  // If data is provided, use it as content
-  const displayContent = data || content;
+  // Priority: bound content > data prop > config content
+  const displayContent = boundContent !== undefined ? boundContent : (data || configContent);
 
   const sizeClasses = {
     xs: 'text-xs',
