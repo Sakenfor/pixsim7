@@ -133,7 +133,7 @@ dataBindings: Record<string, DataBinding>;
 ### C. Registry API
 
 Create a dedicated registry module:
-- `apps/main/src/lib/panels/dataSourceRegistry.ts`
+- `apps/main/src/lib/dataBinding/dataSourceRegistry.ts`
 
 Responsibilities:
 - Track `DataSourceDefinition` instances.
@@ -167,7 +167,7 @@ Implementation:
 
 ### Files to Add/Modify
 
-- [ ] `apps/main/src/lib/panels/dataSourceRegistry.ts` – Core registry and types.
+- [ ] `apps/main/src/lib/dataBinding/dataSourceRegistry.ts` – Core registry and types.
 - [ ] `apps/main/src/types/panelBuilder.ts` – Shared types for `DataBinding` (if not already defined; can be co-located with existing builder types).
 - [ ] Update `claude-tasks/50-workspace-panel-system-enhancement.md` – Cross-link to this task for data binding specifics (optional).
 
@@ -186,7 +186,7 @@ Implementation:
 ### A. Resolution API
 
 Create a pure-ish resolver module:
-- `apps/main/src/lib/panels/dataResolver.ts`
+- `apps/main/src/lib/dataBinding/dataResolver.ts`
 
 Core function:
 
@@ -240,8 +240,8 @@ For 51.2, caching can be minimal:
 
 ### Files to Add/Modify
 
-- [ ] `apps/main/src/lib/panels/dataResolver.ts` – Binding resolution logic.
-- [ ] `apps/main/src/lib/panels/storeAccessors.ts` – Registry for whitelisted stores.
+- [ ] `apps/main/src/lib/dataBinding/dataResolver.ts` – Binding resolution logic.
+- [ ] `apps/main/src/lib/dataBinding/storeAccessors.ts` – Registry for whitelisted stores.
 
 ### Verification
 
@@ -288,7 +288,7 @@ This keeps Task 50 and Task 51 loosely coupled and safe to work on in parallel.
 
 ### Files to Add/Modify
 
-- [ ] `apps/main/src/lib/panels/useDataBindings.ts` – React hooks for resolution.
+- [ ] `apps/main/src/lib/dataBinding/useDataBindings.ts` – React hooks for resolution.
 - [ ] Panel Builder components (from Task 50.4) – Use hooks rather than reaching into resolver directly.
 
 ### Verification

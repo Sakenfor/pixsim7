@@ -40,7 +40,7 @@ DataSourceDefinition → DataBinding → ResolvedBinding → Widget Props
 Initialize the core data sources and transforms once at application startup:
 
 ```typescript
-import { initializeCoreDataSources } from './lib/panels/dataBinding';
+import { initializeCoreDataSources } from './lib/dataBinding';
 
 // In your app initialization (e.g., main.tsx or App.tsx)
 initializeCoreDataSources();
@@ -62,7 +62,7 @@ This registers:
 Static, unchanging values:
 
 ```typescript
-import { dataSourceRegistry, createStaticSource } from './lib/panels/dataBinding';
+import { dataSourceRegistry, createStaticSource } from './lib/dataBinding';
 
 dataSourceRegistry.registerSource(
   createStaticSource('config.appName', 'Application Name', 'PixSim7')
@@ -74,7 +74,7 @@ dataSourceRegistry.registerSource(
 Read from Zustand stores:
 
 ```typescript
-import { createStoreSource } from './lib/panels/dataBinding';
+import { createStoreSource } from './lib/dataBinding';
 
 dataSourceRegistry.registerSource(
   createStoreSource(
@@ -104,7 +104,7 @@ dataSourceRegistry.registerSource(
 Combine other sources with transforms:
 
 ```typescript
-import { createComputedSource } from './lib/panels/dataBinding';
+import { createComputedSource } from './lib/dataBinding';
 
 // First, ensure dependencies are registered
 dataSourceRegistry.registerSource(
@@ -129,8 +129,8 @@ dataSourceRegistry.registerSource(
 ### Registering Data Sources
 
 ```typescript
-import { dataSourceRegistry } from './lib/panels/dataBinding';
-import type { DataSourceDefinition } from './lib/panels/dataBinding';
+import { dataSourceRegistry } from './lib/dataBinding';
+import type { DataSourceDefinition } from './lib/dataBinding';
 
 const mySource: DataSourceDefinition = {
   id: 'my-custom-source',
@@ -174,8 +174,8 @@ Transforms are pure functions that manipulate data. They can be applied at the b
 ### Registering Custom Transforms
 
 ```typescript
-import { dataSourceRegistry } from './lib/panels/dataBinding';
-import type { DataTransform } from './lib/panels/dataBinding';
+import { dataSourceRegistry } from './lib/dataBinding';
+import type { DataTransform } from './lib/dataBinding';
 
 const myTransform: DataTransform = {
   id: 'double',
@@ -201,8 +201,8 @@ Data bindings connect widget properties to data sources.
 ### Creating Bindings
 
 ```typescript
-import { createBinding } from './lib/panels/dataBinding';
-import type { DataBinding } from './lib/panels/dataBinding';
+import { createBinding } from './lib/dataBinding';
+import type { DataBinding } from './lib/dataBinding';
 
 const binding: DataBinding = createBinding(
   'binding-1',              // unique ID
@@ -244,8 +244,8 @@ const widget: WidgetInstance = {
 ### Basic Usage with Hooks
 
 ```typescript
-import { useBindingValue, useBindingValues } from './lib/panels/dataBinding';
-import type { DataBinding } from './lib/panels/dataBinding';
+import { useBindingValue, useBindingValues } from './lib/dataBinding';
+import type { DataBinding } from './lib/dataBinding';
 
 // Single binding
 function StatusIndicator({ binding }: { binding: DataBinding }) {
@@ -274,7 +274,7 @@ function MyWidget({ dataBindings }: WidgetProps) {
 ### Advanced Usage with Full Resolution
 
 ```typescript
-import { useResolvedBinding, useResolvedBindings } from './lib/panels/dataBinding';
+import { useResolvedBinding, useResolvedBindings } from './lib/dataBinding';
 
 function DebugWidget({ dataBindings }: WidgetProps) {
   const resolved = useResolvedBindings(dataBindings);
@@ -299,7 +299,7 @@ function DebugWidget({ dataBindings }: WidgetProps) {
 ### Using the Registry in Builder UI
 
 ```typescript
-import { useDataSourceRegistry } from './lib/panels/dataBinding';
+import { useDataSourceRegistry } from './lib/dataBinding';
 
 function DataSourcePicker() {
   const { sources, searchSources } = useDataSourceRegistry();
@@ -333,7 +333,7 @@ export type StoreId = 'workspace' | 'game-state' | 'my-new-store';
 2. **Register the accessor**:
 
 ```typescript
-import { storeAccessorRegistry } from './lib/panels/dataBinding';
+import { storeAccessorRegistry } from './lib/dataBinding';
 import { useMyNewStore } from '../../stores/myNewStore';
 
 storeAccessorRegistry.registerAccessor({
@@ -372,7 +372,7 @@ const resolved = useResolvedBinding(binding);
 ### Manual Resolution (without React)
 
 ```typescript
-import { resolveBinding } from './lib/panels/dataBinding';
+import { resolveBinding } from './lib/dataBinding';
 
 const binding = createBinding('b1', 'workspace.isLocked', 'isLocked');
 const resolved = resolveBinding(binding);

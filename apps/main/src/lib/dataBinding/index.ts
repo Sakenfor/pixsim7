@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { dataSourceRegistry, useResolvedBinding, initializeCoreDataSources } from './panels/dataBinding';
+ * import { dataSourceRegistry, useResolvedBinding, initializeCoreDataSources } from './dataBinding';
  *
  * // Initialize core data sources (do this once at app startup)
  * initializeCoreDataSources();

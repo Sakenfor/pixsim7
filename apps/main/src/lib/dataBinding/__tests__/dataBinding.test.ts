@@ -13,8 +13,8 @@ import {
   createBinding,
   resolveBinding,
   getValueByPath,
-} from '../dataBinding';
-import type { DataTransform } from '../dataBinding';
+} from '..';
+import type { DataTransform } from '..';
 
 describe('Data Source Registry', () => {
   beforeEach(() => {

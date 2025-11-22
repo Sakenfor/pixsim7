@@ -16,8 +16,8 @@ import {
   useBindingValues,
   useDataSourceRegistry,
   initializeCoreDataSources,
-} from '../dataBinding';
-import type { DataBinding } from '../dataBinding';
+} from '..';
+import type { DataBinding } from '..';
 
 /**
  * Example 1: Simple widget with a single binding
