@@ -11,30 +11,15 @@
  */
 
 import type { DraftScene } from './index';
+import type {
+  ValidationIssue,
+  ValidationResult,
+  SceneValidationIssueType,
+} from '../validation/types';
 
-export type ValidationIssueType =
-  | 'missing-start'
-  | 'unreachable'
-  | 'dead-end'
-  | 'cycle'
-  | 'empty-media'
-  | 'invalid-selection'
-  | 'no-nodes';
-
-export interface ValidationIssue {
-  type: ValidationIssueType;
-  severity: 'error' | 'warning' | 'info';
-  message: string;
-  nodeId?: string;
-  details?: string;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  issues: ValidationIssue[];
-  errors: ValidationIssue[];
-  warnings: ValidationIssue[];
-}
+// Re-export shared types for backwards compatibility
+export type { ValidationIssue, ValidationResult, SceneValidationIssueType };
+export type ValidationIssueType = SceneValidationIssueType;
 
 /**
  * Validate a draft scene and return all issues

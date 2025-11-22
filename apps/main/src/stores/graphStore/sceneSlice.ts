@@ -172,4 +172,16 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get, _
       'renameScene'
     );
   },
+
+  /**
+   * Get set of all scene IDs (for validation)
+   *
+   * This is useful for cross-layer validation where arc graphs need
+   * to check if scene references are valid without accessing the full
+   * scenes object.
+   */
+  getSceneIds: () => {
+    const { scenes } = get();
+    return new Set(Object.keys(scenes));
+  },
 });
