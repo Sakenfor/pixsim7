@@ -10,13 +10,22 @@
 import { useMemo, useEffect } from 'react';
 import type { PanelComposition } from '../../lib/widgets/panelComposer';
 import { widgetRegistry } from '../../lib/widgets/widgetRegistry';
-import { dataSourceRegistry, useBindingValues } from '../../lib/dataBinding';
+import {
+  dataSourceRegistry,
+  useBindingValues,
+  initializeCoreDataSources,
+} from '../../lib/dataBinding';
 
 export interface ComposedPanelProps {
   composition: PanelComposition;
 }
 
 export function ComposedPanel({ composition }: ComposedPanelProps) {
+  // Initialize core data sources once on mount
+  useEffect(() => {
+    initializeCoreDataSources();
+  }, []);
+
   // Register all data sources from the composition
   useEffect(() => {
     if (composition.dataSources) {

@@ -442,6 +442,55 @@ export function registerCoreTransforms(): void {
       return input.map(String).join('');
     },
   });
+
+  // JSON transforms
+  dataSourceRegistry.registerTransform({
+    id: 'to-json',
+    label: 'Convert to JSON',
+    description: 'Converts a value to a JSON string',
+    apply: (input: unknown) => {
+      try {
+        return JSON.stringify(input, null, 2);
+      } catch {
+        return String(input);
+      }
+    },
+  });
+
+  dataSourceRegistry.registerTransform({
+    id: 'from-json',
+    label: 'Parse JSON',
+    description: 'Parses a JSON string to a value',
+    apply: (input: unknown) => {
+      try {
+        return JSON.parse(String(input));
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  // Boolean display transforms
+  dataSourceRegistry.registerTransform({
+    id: 'bool-to-yes-no',
+    label: 'Boolean to Yes/No',
+    description: 'Converts a boolean to "Yes" or "No"',
+    apply: (input: unknown) => (input ? 'Yes' : 'No'),
+  });
+
+  dataSourceRegistry.registerTransform({
+    id: 'bool-to-lock-status',
+    label: 'Boolean to Lock Status',
+    description: 'Converts a boolean to "Locked" or "Unlocked"',
+    apply: (input: unknown) => (input ? 'Locked' : 'Unlocked'),
+  });
+
+  dataSourceRegistry.registerTransform({
+    id: 'bool-to-emoji',
+    label: 'Boolean to Emoji',
+    description: 'Converts a boolean to ✓ or ✗',
+    apply: (input: unknown) => (input ? '✓' : '✗'),
+  });
 }
 
 /**
