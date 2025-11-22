@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Enum as SAEnum
 import hashlib
 import json
 
@@ -50,7 +50,12 @@ class Generation(SQLModel, table=True):
     )
 
     # Operation
-    operation_type: OperationType = Field(index=True)
+    operation_type: OperationType = Field(
+        sa_column=Column(
+            SAEnum(OperationType, name="operation_type_enum", native_enum=False),
+            index=True,
+        )
+    )
     provider_id: str = Field(max_length=50, index=True)
 
     # Params
@@ -111,7 +116,10 @@ class Generation(SQLModel, table=True):
     # Lifecycle
     status: GenerationStatus = Field(
         default=GenerationStatus.PENDING,
-        index=True,
+        sa_column=Column(
+            SAEnum(GenerationStatus, name="generation_status_enum", native_enum=False),
+            index=True,
+        ),
         description="Generation status (you can introduce GenerationStatus later)",
     )
     priority: int = Field(default=5, index=True)

@@ -1,9 +1,9 @@
 {
-  "window_x": 93,
-  "window_y": 80,
+  "window_x": 82,
+  "window_y": 212,
   "window_width": 1718,
   "window_height": 682,
-  "selected_service": "main-api",
+  "selected_service": "frontend",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,
   "sql_logging_enabled": false,

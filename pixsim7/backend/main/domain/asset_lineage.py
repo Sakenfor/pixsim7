@@ -9,7 +9,7 @@ Tracks asset derivation and branching for:
 from typing import Optional, Dict, Any
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Enum as SAEnum
 
 from .enums import OperationType
 
@@ -49,6 +49,9 @@ class AssetLineage(SQLModel, table=True):
 
     # What operation created the child
     operation_type: OperationType = Field(
+        sa_column=Column(
+            SAEnum(OperationType, name="asset_lineage_operation_enum", native_enum=False)
+        ),
         description="VIDEO_EXTEND, VIDEO_TRANSITION, IMAGE_TO_VIDEO, etc."
     )
 

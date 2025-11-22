@@ -69,6 +69,13 @@ class PixverseProvider(Provider):
     Uses pixverse-py SDK for API calls
     """
 
+    def __init__(self):
+        """Initialize provider with API session cache to avoid 'logged in elsewhere' errors"""
+        super().__init__()
+        # Cache PixverseAPI instances per account to reuse sessions
+        # Key format: (account_id, jwt_prefix)
+        self._api_cache: Dict[tuple, Any] = {}
+
     @property
     def provider_id(self) -> str:
         return "pixverse"
@@ -121,6 +128,42 @@ class PixverseProvider(Provider):
             email=account.email,
             session=session
         )
+
+    def _get_cached_api(self, account: ProviderAccount) -> Any:
+        """
+        Get cached PixverseAPI instance for account to reuse session.
+        
+        This prevents creating new sessions on every API call, which causes
+        Pixverse error 10005 ("logged in elsewhere").
+        
+        Args:
+            account: Provider account
+            
+        Returns:
+            Cached or new PixverseAPI instance
+        """
+        try:
+            from pixverse.api.client import PixverseAPI  # type: ignore
+        except ImportError:  # pragma: no cover
+            PixverseAPI = None  # type: ignore
+            
+        if not PixverseAPI:
+            raise Exception('pixverse-py not installed')
+            
+        # Create cache key from account ID and JWT prefix
+        jwt_prefix = (account.jwt_token or '')[:20] if account.jwt_token else ''
+        cache_key = (account.id, jwt_prefix)
+        
+        # Return cached API if exists and JWT hasn't changed
+        if cache_key in self._api_cache:
+            logger.debug(f'Reusing cached PixverseAPI for account {account.id}')
+            return self._api_cache[cache_key]
+        
+        # Create new API instance and cache it
+        logger.debug(f'Creating new PixverseAPI for account {account.id}')
+        api = PixverseAPI()
+        self._api_cache[cache_key] = api
+        return api
 
     def _map_pixverse_status(self, pv_video) -> VideoStatus:
         """
@@ -828,6 +871,7 @@ class PixverseProvider(Provider):
         user_info_data = {}
         if PixverseAPI and Account and temp_account:
             try:
+                # Note: Can't use cached API here as we don't have full account object, just JWT
                 api = PixverseAPI()
                 user_info_data = api.get_user_info(temp_account)
             except Exception as e:  # pragma: no cover - defensive fallback
@@ -895,8 +939,7 @@ class PixverseProvider(Provider):
             email=account.email,
             session=session,
         )
-
-        api = PixverseAPI()
+        api = self._get_cached_api(account)
 
         # 1) Web credits via /creative_platform/user/credits
         web_total = 0

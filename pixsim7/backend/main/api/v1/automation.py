@@ -166,11 +166,12 @@ async def list_presets(
     if provider_id:
         # Filter by app_package containing provider_id OR tags containing provider_id
         from sqlalchemy import or_, func
+        from sqlalchemy.dialects.postgresql import JSONB
         provider_lower = provider_id.lower()
         query = query.where(
             or_(
                 func.lower(AppActionPreset.app_package).contains(provider_lower),
-                AppActionPreset.tags.contains([provider_id])
+                cast(AppActionPreset.tags, JSONB).contains([provider_id])
             )
         )
 
