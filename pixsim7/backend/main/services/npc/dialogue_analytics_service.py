@@ -90,7 +90,7 @@ class DialogueAnalyticsService:
             contains_memory_reference=contains_memory_reference,
             emotional_consistency=emotional_consistency,
             variant_id=variant_id,
-            metadata=metadata or {}
+            meta=metadata or {}
         )
 
         self.db.add(analytics)

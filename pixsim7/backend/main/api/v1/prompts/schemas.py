@@ -31,6 +31,16 @@ class CreatePromptVersionRequest(BaseModel):
     tags: List[str] = Field(default_factory=list)
 
 
+class BatchVersionRequest(CreatePromptVersionRequest):
+    """
+    Request model for batch version creation.
+
+    Uses the same fields as CreatePromptVersionRequest for now, but is
+    defined separately so it can evolve independently if needed.
+    """
+    pass
+
+
 class ForkFromArtifactRequest(BaseModel):
     artifact_id: int = Field(..., description="Source artifact to fork from")
     family_id: UUID = Field(..., description="Target family for new version")

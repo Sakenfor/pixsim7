@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from pixsim7.backend.main.infrastructure.database.core import get_session
+from pixsim7.backend.main.infrastructure.database.session import get_sync_session
 from pixsim7.backend.main.domain.game.models import GameSession
 from pixsim7.backend.main.services.game.quest_service import QuestService, Quest, QuestObjective
 
@@ -37,7 +37,7 @@ class UpdateObjectiveRequest(BaseModel):
 async def list_session_quests(
     session_id: int,
     status: Optional[str] = None,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """List all quests for a game session, optionally filtered by status"""
     game_session = db.get(GameSession, session_id)
@@ -52,7 +52,7 @@ async def list_session_quests(
 async def get_session_quest(
     session_id: int,
     quest_id: str,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Get a specific quest from a game session"""
     game_session = db.get(GameSession, session_id)
@@ -70,7 +70,7 @@ async def get_session_quest(
 async def add_quest_to_session(
     session_id: int,
     request: AddQuestRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Add a new quest to a game session"""
     game_session = db.get(GameSession, session_id)
@@ -105,7 +105,7 @@ async def update_quest_status(
     session_id: int,
     quest_id: str,
     request: UpdateQuestStatusRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Update quest status"""
     game_session = db.get(GameSession, session_id)
@@ -134,7 +134,7 @@ async def update_objective_progress(
     session_id: int,
     quest_id: str,
     request: UpdateObjectiveRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Update objective progress"""
     game_session = db.get(GameSession, session_id)
@@ -165,7 +165,7 @@ async def complete_objective(
     session_id: int,
     quest_id: str,
     objective_id: str,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Mark an objective as completed"""
     game_session = db.get(GameSession, session_id)

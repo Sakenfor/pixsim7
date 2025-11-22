@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from pixsim7.backend.main.infrastructure.database.core import get_session
+from pixsim7.backend.main.infrastructure.database.session import get_sync_session
 from pixsim7.backend.main.domain.game.models import GameSession
 from pixsim7.backend.main.services.game.inventory_service import InventoryService, InventoryItem
 
@@ -35,7 +35,7 @@ class UpdateItemRequest(BaseModel):
 @router.get("/sessions/{session_id}/items", response_model=List[InventoryItem])
 async def list_inventory_items(
     session_id: int,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """List all items in a game session's inventory"""
     game_session = db.get(GameSession, session_id)
@@ -50,7 +50,7 @@ async def list_inventory_items(
 async def get_inventory_item(
     session_id: int,
     item_id: str,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Get a specific item from inventory"""
     game_session = db.get(GameSession, session_id)
@@ -68,7 +68,7 @@ async def get_inventory_item(
 async def add_item_to_inventory(
     session_id: int,
     request: AddItemRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Add an item to inventory or increase quantity if it exists"""
     game_session = db.get(GameSession, session_id)
@@ -97,7 +97,7 @@ async def remove_item_from_inventory(
     session_id: int,
     item_id: str,
     request: RemoveItemRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Remove quantity of an item from inventory"""
     game_session = db.get(GameSession, session_id)
@@ -126,7 +126,7 @@ async def update_inventory_item(
     session_id: int,
     item_id: str,
     request: UpdateItemRequest,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Update item properties"""
     game_session = db.get(GameSession, session_id)
@@ -156,7 +156,7 @@ async def update_inventory_item(
 @router.delete("/sessions/{session_id}/clear")
 async def clear_inventory(
     session_id: int,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Clear all items from inventory"""
     game_session = db.get(GameSession, session_id)
@@ -175,7 +175,7 @@ async def clear_inventory(
 @router.get("/sessions/{session_id}/stats")
 async def get_inventory_stats(
     session_id: int,
-    db: Session = Depends(get_session)
+    db: Session = Depends(get_sync_session)
 ):
     """Get inventory statistics"""
     game_session = db.get(GameSession, session_id)

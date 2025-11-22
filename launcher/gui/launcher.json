@@ -1,9 +1,9 @@
 {
-  "window_x": 223,
-  "window_y": 191,
+  "window_x": 214,
+  "window_y": 134,
   "window_width": 1718,
   "window_height": 682,
-  "selected_service": "frontend",
+  "selected_service": "main-api",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,
   "health_check_interval": 5.0,

@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import (
-    Job,
+    Generation,
     ProviderSubmission,
     ProviderAccount,
     VideoStatus,
@@ -41,7 +41,7 @@ class ProviderService:
 
     async def execute_job(
         self,
-        job: Job,
+        job: Generation,
         account: ProviderAccount,
         params: Dict[str, Any]
     ) -> ProviderSubmission:
@@ -49,7 +49,7 @@ class ProviderService:
         Execute job via provider
 
         Args:
-            job: Job to execute
+            job: Generation to execute
             account: Provider account to use
             params: Generation parameters
 

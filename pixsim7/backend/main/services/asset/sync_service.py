@@ -14,6 +14,7 @@ from pixsim7.backend.main.domain import (
     Asset,
     ProviderSubmission,
     SyncStatus,
+    User,
 )
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,

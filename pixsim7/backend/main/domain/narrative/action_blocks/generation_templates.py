@@ -428,3 +428,68 @@ Output as a GenerationTemplate with:
 Keep content at "intimate" maximum, no explicit sexual content.
 Focus on tension, movement, and emotional intensity.
 """
+
+# ============================================================================
+# Template Library and Helper Classes
+# ============================================================================
+
+class TemplateType(str, Enum):
+    """Types of templates available"""
+    CREATURE_INTERACTION = "creature_interaction"
+    MOVEMENT = "movement"
+    TRANSITION = "transition"
+    DIALOGUE = "dialogue"
+    ACTION = "action"
+
+
+class TemplateLibrary:
+    """
+    Library for managing and accessing generation templates.
+    Provides methods for retrieving templates by ID or type.
+    """
+
+    def __init__(self, templates: Dict[str, GenerationTemplate]):
+        self.templates = templates
+
+    def get_template(self, template_id: str) -> Optional[GenerationTemplate]:
+        """Get a template by its ID."""
+        return self.templates.get(template_id)
+
+    def get_templates_by_type(self, template_type: str) -> List[GenerationTemplate]:
+        """
+        Get all templates matching a certain type/category.
+        Currently returns all templates as we don't have explicit type categorization yet.
+        """
+        # For now, return all templates
+        # TODO: Add type categorization to templates
+        return list(self.templates.values())
+
+    def fill_template(self, template_id: str, **kwargs) -> str:
+        """Fill a template with the provided parameters."""
+        template = self.get_template(template_id)
+        if not template:
+            raise ValueError(f"Template '{template_id}' not found")
+        return template.fill(**kwargs)
+
+
+class PromptLayerBuilder:
+    """
+    Helper for building layered prompts from templates.
+    Allows composing multiple template elements.
+    """
+
+    def __init__(self):
+        self.layers: List[str] = []
+
+    def add_layer(self, content: str) -> 'PromptLayerBuilder':
+        """Add a content layer to the prompt."""
+        self.layers.append(content)
+        return self
+
+    def build(self) -> str:
+        """Build the final prompt from all layers."""
+        return "\n\n".join(self.layers)
+
+
+# Global template library instance
+template_library = TemplateLibrary(TEMPLATES)

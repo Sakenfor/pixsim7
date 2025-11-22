@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.infrastructure.database.session import get_async_db
+from pixsim7.backend.main.infrastructure.database.session import get_async_session
 from pixsim7.backend.main.domain.character_graph import (
     get_character_graph,
     find_characters_for_npc,
@@ -26,7 +26,7 @@ async def get_character_graph_route(
     world_id: Optional[int] = Query(None, description="Filter by world ID"),
     include_inactive: bool = Query(False, description="Include inactive nodes"),
     max_depth: int = Query(3, ge=1, le=5, description="Maximum graph depth (1-5)"),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Get full character identity graph for a character template
 
@@ -70,7 +70,7 @@ async def get_character_graph_route(
 async def get_characters_for_npc_route(
     npc_id: int,
     world_id: Optional[int] = Query(None, description="Filter by world ID"),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Find all character templates and instances linked to an NPC
 
@@ -95,7 +95,7 @@ async def get_characters_for_npc_route(
 @router.get("/character/{character_id}/scenes")
 async def get_scenes_for_character_route(
     character_id: UUID,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Find all scenes where a character appears
 
@@ -114,7 +114,7 @@ async def get_scenes_for_character_route(
 @router.get("/instance/{instance_id}/scenes")
 async def get_scenes_for_instance_route(
     instance_id: UUID,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Find all scenes where a character instance appears
 
@@ -130,7 +130,7 @@ async def get_scenes_for_instance_route(
 async def get_assets_for_character_route(
     character_id: UUID,
     world_id: Optional[int] = Query(None, description="Filter by world ID"),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Find all assets featuring a character
 
@@ -152,7 +152,7 @@ async def get_assets_for_character_route(
 async def get_assets_for_instance_route(
     instance_id: UUID,
     world_id: Optional[int] = Query(None, description="Filter by world ID"),
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Find all assets featuring a character instance
 
@@ -172,7 +172,7 @@ async def get_assets_for_instance_route(
 @router.get("/character/{character_id}/stats")
 async def get_character_stats_route(
     character_id: UUID,
-    db: AsyncSession = Depends(get_async_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """Get comprehensive usage statistics for a character
 

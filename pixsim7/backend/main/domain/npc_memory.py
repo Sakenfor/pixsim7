@@ -100,8 +100,11 @@ class ConversationMemory(SQLModel, table=True):
     # Tags for easy retrieval
     tags: List[str] = Field(default_factory=list, sa_column=Column(JSON))
 
-    # Additional metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Additional metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -196,8 +199,11 @@ class ConversationTopic(SQLModel, table=True):
     # Context
     relationship_tier_when_first_discussed: Optional[str] = Field(None)
 
-    # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Indexes
     __table_args__ = (
@@ -258,8 +264,11 @@ class RelationshipMilestone(SQLModel, table=True):
     unlocked_content: List[str] = Field(default_factory=list, sa_column=Column(JSON), description="Content unlocked by this milestone")
     emotional_impact: Optional[EmotionType] = Field(None, description="Emotion triggered by milestone")
 
-    # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Timestamp
     achieved_at: datetime = Field(default_factory=datetime.utcnow)
@@ -317,8 +326,11 @@ class NPCWorldContext(SQLModel, table=True):
     relevance_score: float = Field(default=0.5, ge=0.0, le=1.0, description="How relevant this is to NPC")
     expires_at: Optional[datetime] = Field(None, description="When this context becomes irrelevant")
 
-    # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Timestamps
     occurred_at: datetime = Field(default_factory=datetime.utcnow)
@@ -370,8 +382,11 @@ class PersonalityEvolutionEvent(SQLModel, table=True):
     relationship_tier_at_time: Optional[str] = Field(None)
     world_time: Optional[float] = Field(None)
 
-    # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Timestamp
     changed_at: datetime = Field(default_factory=datetime.utcnow)
@@ -431,8 +446,11 @@ class DialogueAnalytics(SQLModel, table=True):
     # A/B testing
     variant_id: Optional[str] = Field(None, description="For A/B testing different approaches")
 
-    # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    # Metadata stored in "metadata" column
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata"),
+    )
 
     # Timestamp
     generated_at: datetime = Field(default_factory=datetime.utcnow)

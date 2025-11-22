@@ -54,6 +54,7 @@ from .behavior import (
     CustomEffectHandlerSchema,
     NpcPreferencePresetSchema,
     BehaviorConfigSchema,
+    auto_migrate_behavior_config,
 )
 
 # ECS component schemas
@@ -125,6 +126,7 @@ __all__ = [
     "CustomEffectHandlerSchema",
     "NpcPreferencePresetSchema",
     "BehaviorConfigSchema",
+    "auto_migrate_behavior_config",
 
     # Component schemas
     "RelationshipCoreComponentSchema",

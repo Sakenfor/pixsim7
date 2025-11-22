@@ -74,7 +74,7 @@ class PersonalityEvolutionService:
             trigger_event_id=trigger_event_id,
             relationship_tier_at_time=relationship_tier_at_time,
             world_time=world_time,
-            metadata=metadata or {}
+            meta=metadata or {}
         )
 
         self.db.add(event)

@@ -431,6 +431,12 @@ class ServiceProcess:
             import time, os as _os, subprocess as _sp
             retries = 0
             current_pid = None
+            # Treat all backend-style services (backend, main-api, generation-api, and *-api)
+            # the same for Windows uvicorn reloader handling.
+            is_backend_service = (
+                self.defn.key in ("backend", "main-api", "generation-api")
+                or self.defn.key.endswith("-api")
+            )
             if success:
                 time.sleep(0.5)  # initial settle
             while True:
@@ -456,8 +462,8 @@ class ServiceProcess:
                 time.sleep(0.8)
                 retries += 1
 
-                # Fallback: on Windows and backend, also try killing by window title
-                if (_os.name == 'nt') and (self.defn.key == 'backend') and (retries == 2):
+                # Fallback: on Windows and backend-style services, also try killing by window title
+                if (_os.name == 'nt') and is_backend_service and (retries == 2):
                     try:
                         _sp.run([
                             "taskkill", "/F", "/FI", "WINDOWTITLE eq PixSim7 Backend*"
@@ -473,8 +479,8 @@ class ServiceProcess:
                     except Exception:
                         pass
 
-                # On Windows with backend, attempt to find uvicorn root and kill the tree
-                if (_os.name == 'nt') and (self.defn.key == 'backend') and retries == 3:
+                # On Windows with backend-style services, attempt to find uvicorn root and kill the tree
+                if (_os.name == 'nt') and is_backend_service and retries == 3:
                     try:
                         from .process_utils import find_uvicorn_root_pid_windows
                     except ImportError:

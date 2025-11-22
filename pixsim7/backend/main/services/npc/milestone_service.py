@@ -104,7 +104,7 @@ class MilestoneService:
             trigger_memory_id=trigger_memory_id,
             unlocked_content=unlocked_content or [],
             emotional_impact=emotional_impact,
-            metadata=metadata or {}
+            meta=metadata or {}
         )
 
         self.db.add(milestone)
@@ -241,7 +241,7 @@ class MilestoneService:
             relationship_tier=new_tier,
             session_id=session_id,
             triggered_by=triggered_by or "relationship_tier_change",
-            metadata={"auto_detected": True}
+            metadata={"auto_detected": True}  # passed through to meta via create_milestone
         )
 
         return milestone

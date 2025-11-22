@@ -80,7 +80,7 @@ class WorldAwarenessService:
             opinion=opinion,
             relevance_score=max(0.0, min(1.0, relevance_score)),
             expires_at=expires_at,
-            metadata=metadata or {}
+            meta=metadata or {}
         )
 
         self.db.add(context)

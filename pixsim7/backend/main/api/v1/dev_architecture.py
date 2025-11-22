@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 from pixsim7.backend.main.api.dependencies import get_database, get_current_user_optional
-from pixsim7.backend.main.domain.user.models import User
+from pixsim7.backend.main.domain.user import User
 
 router = APIRouter(prefix="/dev/architecture", tags=["dev"])
 

@@ -84,7 +84,7 @@ class MemoryService:
             importance=importance,
             memory_type=memory_type,
             tags=tags or [],
-            metadata=metadata or {},
+            meta=metadata or {},
             location_id=location_id,
             world_time=world_time,
             npc_emotion_at_time=npc_emotion,

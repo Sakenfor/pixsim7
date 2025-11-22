@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompts import PromptVersionService
 from .schemas import (
+    BatchVersionRequest,
     CreatePromptVersionRequest,
     PromptFamilyResponse,
     PromptVersionResponse,
