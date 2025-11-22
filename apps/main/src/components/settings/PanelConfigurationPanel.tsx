@@ -1,0 +1,319 @@
+/**
+ * Panel Configuration Panel
+ *
+ * Manage panel visibility, settings, and organization.
+ * Part of Task 50 Phase 50.2 - Panel Configuration UI
+ */
+
+import { useState, useMemo } from 'react';
+import { usePanelConfigStore } from '../../stores/panelConfigStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+
+type ViewMode = 'grid' | 'list';
+type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
+
+export function PanelConfigurationPanel() {
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
+  const togglePanelEnabled = usePanelConfigStore((s) => s.togglePanelEnabled);
+  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
+  const searchPanels = usePanelConfigStore((s) => s.searchPanels);
+  const getPanelsByCategory = usePanelConfigStore((s) => s.getPanelsByCategory);
+
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
+
+  // Filter panels based on search and category
+  const filteredPanels = useMemo(() => {
+    let panels = Object.values(panelConfigs);
+
+    // Search filter
+    if (searchQuery.trim()) {
+      panels = searchPanels(searchQuery);
+    }
+
+    // Category filter
+    if (filterCategory !== 'all') {
+      panels = panels.filter((p) => p.category === filterCategory);
+    }
+
+    return panels;
+  }, [panelConfigs, searchQuery, filterCategory, searchPanels]);
+
+  // Category counts
+  const categoryCounts = useMemo(() => {
+    const all = Object.values(panelConfigs);
+    return {
+      all: all.length,
+      core: all.filter((p) => p.category === 'core').length,
+      development: all.filter((p) => p.category === 'development').length,
+      game: all.filter((p) => p.category === 'game').length,
+      tools: all.filter((p) => p.category === 'tools').length,
+      custom: all.filter((p) => p.category === 'custom').length,
+    };
+  }, [panelConfigs]);
+
+  const handleTogglePanel = (panelId: string) => {
+    togglePanelEnabled(panelId as any);
+  };
+
+  const handleOpenPanel = (panelId: string) => {
+    openFloatingPanel(panelId as any, { width: 800, height: 600 });
+  };
+
+  return (
+    <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
+      {/* Header */}
+      <div className="border-b border-neutral-200 dark:border-neutral-700 p-4">
+        <h2 className="text-xl font-bold mb-4">Panel Configuration</h2>
+
+        {/* Search */}
+        <div className="mb-4">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search panels..."
+            className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+          />
+        </div>
+
+        {/* Category Filters */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          {(['all', 'core', 'development', 'game', 'tools', 'custom'] as const).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(cat)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                filterCategory === cat
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+              }`}
+            >
+              {cat.charAt(0).toUpperCase() + cat.slice(1)} ({categoryCounts[cat]})
+            </button>
+          ))}
+        </div>
+
+        {/* View Mode Toggle */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`px-3 py-1 rounded text-xs transition-colors ${
+              viewMode === 'grid'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-200 dark:bg-neutral-700'
+            }`}
+          >
+            Grid
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-3 py-1 rounded text-xs transition-colors ${
+              viewMode === 'list'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-200 dark:bg-neutral-700'
+            }`}
+          >
+            List
+          </button>
+        </div>
+      </div>
+
+      {/* Panel List */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {filteredPanels.length === 0 ? (
+          <div className="text-center py-8 text-neutral-500">
+            {searchQuery ? 'No panels match your search' : 'No panels available'}
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredPanels.map((panel) => (
+              <PanelCard
+                key={panel.id}
+                panel={panel}
+                onToggle={() => handleTogglePanel(panel.id)}
+                onOpen={() => handleOpenPanel(panel.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredPanels.map((panel) => (
+              <PanelListItem
+                key={panel.id}
+                panel={panel}
+                onToggle={() => handleTogglePanel(panel.id)}
+                onOpen={() => handleOpenPanel(panel.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Panel Card Component (Grid View)
+function PanelCard({
+  panel,
+  onToggle,
+  onOpen,
+}: {
+  panel: any;
+  onToggle: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      className={`
+        p-4 rounded-lg border-2 transition-all
+        ${
+          panel.enabled
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+            : 'border-neutral-200 dark:border-neutral-700 opacity-60'
+        }
+      `}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {panel.icon && <span className="text-2xl">{panel.icon}</span>}
+          <div>
+            <h3 className="font-semibold text-sm">{panel.id}</h3>
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                panel.category === 'core'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : panel.category === 'development'
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                    : panel.category === 'game'
+                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+              }`}
+            >
+              {panel.category}
+            </span>
+          </div>
+        </div>
+
+        {/* Enable Toggle */}
+        <label className="flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={panel.enabled}
+            onChange={onToggle}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
+        </label>
+      </div>
+
+      {/* Description */}
+      {panel.description && (
+        <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-3">
+          {panel.description}
+        </p>
+      )}
+
+      {/* Tags */}
+      {panel.tags && panel.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {panel.tags.map((tag: string) => (
+            <span
+              key={tag}
+              className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-700 rounded text-xs"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          onClick={onOpen}
+          disabled={!panel.enabled}
+          className="flex-1 px-3 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+        >
+          Open Panel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Panel List Item Component (List View)
+function PanelListItem({
+  panel,
+  onToggle,
+  onOpen,
+}: {
+  panel: any;
+  onToggle: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      className={`
+        p-3 rounded-lg border flex items-center justify-between transition-all
+        ${
+          panel.enabled
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+            : 'border-neutral-200 dark:border-neutral-700 opacity-60'
+        }
+      `}
+    >
+      <div className="flex items-center gap-3 flex-1">
+        {panel.icon && <span className="text-xl">{panel.icon}</span>}
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-sm">{panel.id}</h3>
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full ${
+                panel.category === 'core'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : panel.category === 'development'
+                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                    : panel.category === 'game'
+                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+              }`}
+            >
+              {panel.category}
+            </span>
+          </div>
+          {panel.description && (
+            <p className="text-xs text-neutral-600 dark:text-neutral-400">
+              {panel.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onOpen}
+          disabled={!panel.enabled}
+          className="px-3 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+        >
+          Open
+        </button>
+
+        <label className="flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={panel.enabled}
+            onChange={onToggle}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative"></div>
+        </label>
+      </div>
+    </div>
+  );
+}
