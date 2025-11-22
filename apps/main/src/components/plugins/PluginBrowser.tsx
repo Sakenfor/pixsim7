@@ -90,8 +90,45 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
     return filtered;
   }, [plugins, searchQuery, kindFilter, categoryFilter, featureFilter]);
 
+  // Check if there are any control center plugins
+  const hasControlCenterPlugins = useMemo(
+    () => filteredPlugins.some(p => p.providesFeatures?.includes('control-center')),
+    [filteredPlugins]
+  );
+
   return (
     <div className="space-y-4">
+      {/* Control Center Quick Link */}
+      {hasControlCenterPlugins && (
+        <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex-1">
+              <div className="text-sm font-medium text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                🎛️ Control Center Plugins
+              </div>
+              <div className="text-xs text-purple-700 dark:text-purple-300 mt-0.5">
+                These plugins provide different control center interfaces
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                // Trigger the Control Center selector
+                const event = new KeyboardEvent('keydown', {
+                  key: 'X',
+                  ctrlKey: true,
+                  shiftKey: true,
+                  bubbles: true,
+                });
+                window.dispatchEvent(event);
+              }}
+              className="px-3 py-1.5 text-sm font-medium rounded bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+            >
+              Switch Control Center
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}
@@ -208,6 +245,11 @@ function PluginListItem({
               {plugin.experimental && (
                 <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
                   Experimental
+                </span>
+              )}
+              {plugin.providesFeatures?.includes('control-center') && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 flex items-center gap-1">
+                  🎛️ Control Center
                 </span>
               )}
             </div>

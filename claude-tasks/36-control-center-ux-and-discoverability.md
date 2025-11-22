@@ -37,9 +37,9 @@ This task is about making the Control Center system **self-explanatory** and eas
 
 ## Phase Checklist
 
-- [ ] **Phase 36.1 – Settings Panel for Control Center Modes**
-- [ ] **Phase 36.2 – Selector & Quick Switcher UX Polish**
-- [ ] **Phase 36.3 – Plugin Manager Integration for Control Centers**
+- [x] **Phase 36.1 – Settings Panel for Control Center Modes** ✅ 2025-11-22
+- [x] **Phase 36.2 – Selector & Quick Switcher UX Polish** ✅ Already complete
+- [x] **Phase 36.3 – Plugin Manager Integration for Control Centers** ✅ 2025-11-22
 
 ---
 
@@ -73,15 +73,19 @@ Expose Control Center mode selection in a dedicated Settings section so users ca
 3. Display keyboard shortcut hint:
    - E.g., "Tip: Press Ctrl+Shift+X to open the Control Center selector."
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` ✅ Complete (2025-11-22)
 
-**Blocker:** No Settings route exists in the application yet
-
-**Next Steps if Implementing:**
-1. Create Settings route (`apps/main/src/routes/Settings.tsx`)
-2. Add Settings link to navigation/dock
-3. Implement "Control Center" settings section per task requirements
-4. Wire up to controlCenterRegistry.setActive()
+**Implementation:**
+- Component: `apps/main/src/components/settings/SettingsPanel.tsx`
+- Added "Control Center" section with all available modes from `controlCenterRegistry.getAll()`
+- Each mode displays:
+  - Display name with ACTIVE/DEFAULT badges
+  - Short description
+  - Feature tags
+- Click to switch calls `controlCenterRegistry.setActive(id)`
+- Shows success message: "Switched to [Mode Name]"
+- Includes keyboard shortcut tip: "Press Ctrl+Shift+X to quickly open selector"
+- Auto-updates when control centers change (1s polling interval)
 
 ---
 
@@ -156,5 +160,16 @@ Make it clear in the Plugin Manager which plugins provide control centers and ho
 3. Optionally, allow enabling/disabling non-default control centers:
    - If the plugin system supports disabling plugins, reflect that in both the registry and the selector (e.g., hide disabled modes or show them as “Disabled” with a re-enable button).
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` ✅ Complete (2025-11-22)
+
+**Implementation:**
+- Component: `apps/main/src/components/plugins/PluginBrowser.tsx`
+- ✅ Badge highlighting (lines 213-217):
+  - Purple "🎛️ Control Center" badge for plugins with `providesFeatures: ['control-center']`
+  - Displayed next to plugin name and experimental badge
+- ✅ Quick link banner (lines 102-130):
+  - Shows purple info banner when control center plugins are present
+  - "Switch Control Center" button opens selector overlay
+  - Triggers Ctrl+Shift+X keyboard shortcut programmatically
+- Plugin Manager now makes it immediately clear which plugins provide control center interfaces
 
