@@ -57,10 +57,6 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
-    # Provider moderation/flagging
-    provider_flagged: bool = False
-    provider_flag_reason: Optional[str] = None
-
     # Timestamps
     created_at: datetime
 

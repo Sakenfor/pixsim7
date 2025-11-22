@@ -10,6 +10,65 @@
 // Load emoji constants (service workers use self, not window)
 importScripts('emojis.js');
 
+const QUICK_GENERATE_PRESET_LIBRARY = {
+  __global: [
+    {
+      id: 'cinematic_orbit',
+      name: 'Cinematic Orbit',
+      prompt: [
+        'Cinematic camera slowly orbits around the character maintaining the exact starting pose,',
+        'lighting staying consistent and grounded in a moody neon alley.',
+        'The subject keeps eye contact with the lens as fabrics ripple gently,',
+        'emphasizing confident body language, subtle breathing detail, and atmospheric depth of field.'
+      ].join(' ')
+    },
+    {
+      id: 'creature_maintain_pose',
+      name: 'Creature Maintains Pose',
+      prompt: [
+        'Character maintains original pose while a towering creature looms behind them,',
+        'hands hovering just above their waist without actually touching.',
+        'Camera glides in a slow 180° arc, capturing tension, shallow depth of field, and cinematic rim lighting.',
+        'Consistent wardrobe & lighting, emphasize anticipation and unstoppable chemistry.'
+      ].join(' ')
+    },
+    {
+      id: 'silk_drift',
+      name: 'Silk Drift Portrait',
+      prompt: [
+        'Soft portrait of character wrapped in translucent fabrics drifting in zero gravity,',
+        'camera locked on their face as fabrics swirl around, creating delicate trails of light.',
+        'Subject floats but maintains subtle motion in hands and eyes.',
+        'Color palette is warm gold + deep teal with volumetric lighting and bokeh.'
+      ].join(' ')
+    }
+  ],
+  pixverse: [
+    {
+      id: 'pixverse_mantle',
+      name: 'Pixverse Mantle',
+      prompt: [
+        'She holds a powerful stance at center frame, city-scale holograms pulsing behind her.',
+        'Camera performs a gentle push-in as energy ribbons orbit around, syncing with her breathing.',
+        'Maintain pose and silhouette consistency; emphasize bold contrasty lighting and reflective surfaces.'
+      ].join(' ')
+    }
+  ]
+};
+
+function getQuickGeneratePresets(providerId) {
+  const scoped = QUICK_GENERATE_PRESET_LIBRARY[providerId] || [];
+  const global = QUICK_GENERATE_PRESET_LIBRARY.__global || [];
+  const combined = [...scoped, ...global];
+  const seen = new Set();
+  return combined.filter((preset) => {
+    const key = preset.id || preset.name || preset.prompt;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 console.log('[PixSim7 Extension] Background service worker loaded');
 
 // Default backend URL (configurable in settings)
@@ -124,6 +183,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     backendRequest('/api/v1/providers')
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message.action === 'getQuickPromptTemplates') {
+    try {
+      const { providerId } = message;
+      const prompts = getQuickGeneratePresets(providerId || 'pixverse');
+      sendResponse({ success: true, data: prompts });
+    } catch (error) {
+      sendResponse({ success: false, error: error.message });
+    }
     return true;
   }
 
@@ -761,24 +831,41 @@ async function showQuickGenerateDialog(imageUrl, providerId) {
   const refreshBtn = dialog.querySelector('#pixsim7-refresh-presets');
   
   async function loadPresets() {
-    const opts = await chrome.storage.local.get(['backendUrl', 'pixsim7Token']);
-    if (!opts.backendUrl || !opts.pixsim7Token) return;
-    
+    presetSelect.innerHTML = '<option value="">Custom Prompt</option>';
+
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage(
+        {
+          action: 'getQuickPromptTemplates',
+          providerId: providerId || 'pixverse',
+        },
+        (res) => renderPresetOptions(res)
+      );
+    } else {
+      renderPresetOptions({ success: true, data: getQuickGeneratePresets(providerId || 'pixverse') });
+    }
+  }
+
+  function renderPresetOptions(res) {
     try {
-      const url = `${opts.backendUrl}/api/v1/automation/presets?provider_id=${providerId || 'pixverse'}`;
-      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${opts.pixsim7Token}` } });
-      if (!res.ok) throw new Error('Failed');
-      const data = await res.json();
-      
-      presetSelect.innerHTML = '<option value="">Custom Prompt</option>';
-      (data.presets || []).forEach(p => {
+      if (!res || !res.success || !Array.isArray(res.data)) {
+        console.error('Preset load failed:', res?.error || 'Unknown error');
+        return;
+      }
+
+      res.data.forEach((preset) => {
+        if (!preset?.prompt) {
+          return;
+        }
         const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name || `Preset ${p.id}`;
-        opt.dataset.prompt = p.prompt || '';
+        opt.value = preset.id || preset.name;
+        opt.textContent = preset.name || 'Quick Prompt';
+        opt.dataset.prompt = preset.prompt;
         presetSelect.appendChild(opt);
       });
-    } catch (e) { console.error('Preset load failed:', e); }
+    } catch (e) {
+      console.error('Preset load failed:', e);
+    }
   }
   
   loadPresets();

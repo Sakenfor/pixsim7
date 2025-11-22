@@ -5,7 +5,7 @@ Minimal endpoints to manage devices and execution loops.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, cast
 from typing import List, Dict, Any, Optional
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
@@ -49,11 +49,12 @@ async def list_loops(
     if provider_id:
         # First get all preset IDs for this provider
         from sqlalchemy import or_, func
+        from sqlalchemy.dialects.postgresql import JSONB
         provider_lower = provider_id.lower()
         preset_query = select(AppActionPreset.id).where(
             or_(
                 func.lower(AppActionPreset.app_package).contains(provider_lower),
-                AppActionPreset.tags.contains([provider_id])
+                cast(AppActionPreset.tags, JSONB).contains([provider_id])
             )
         )
         preset_result = await db.execute(preset_query)
