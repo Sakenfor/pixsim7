@@ -35,6 +35,7 @@ import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
 import type { GraphTemplate } from '../lib/graph/graphTemplates';
 import { useWorldContextStore } from '../stores/worldContextStore';
 import { useTemplateAnalyticsStore } from '../lib/graph/templateAnalyticsStore';
+import { graphClipboard } from '../lib/graph/clipboard';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -628,6 +629,105 @@ export function GraphPanel() {
     },
     [currentScene, toast, addNode, connectNodes]
   );
+
+  // Keyboard shortcuts for copy/paste
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input or textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
+      if (!currentScene) return;
+
+      // Copy (Ctrl+C / Cmd+C)
+      if (ctrlOrCmd && e.key === 'c') {
+        if (selectedNodeIds.length === 0) return;
+
+        e.preventDefault();
+        graphClipboard.copy(selectedNodeIds, currentScene.nodes, currentScene.edges);
+        toast.success(`Copied ${selectedNodeIds.length} node(s) to clipboard`);
+        return;
+      }
+
+      // Paste (Ctrl+V / Cmd+V)
+      if (ctrlOrCmd && e.key === 'v') {
+        if (!graphClipboard.hasClipboardData()) {
+          toast.info('Clipboard is empty');
+          return;
+        }
+
+        e.preventDefault();
+        const pasted = graphClipboard.paste(currentScene.nodes, { x: 50, y: 50 });
+
+        if (pasted) {
+          try {
+            // Add pasted nodes
+            pasted.nodes.forEach((node) => {
+              addNode(node);
+            });
+
+            // Add pasted edges
+            pasted.edges.forEach((edge) => {
+              connectNodes(edge.from, edge.to, edge.meta);
+            });
+
+            toast.success(`Pasted ${pasted.nodes.length} node(s)`);
+
+            // Select pasted nodes
+            setSelectedNodeIds(pasted.nodes.map((n) => n.id));
+          } catch (error) {
+            toast.error('Failed to paste nodes');
+            console.error('[GraphPanel] Paste error:', error);
+          }
+        }
+        return;
+      }
+
+      // Duplicate (Ctrl+D / Cmd+D)
+      if (ctrlOrCmd && e.key === 'd') {
+        if (selectedNodeIds.length === 0) return;
+
+        e.preventDefault();
+
+        // Copy to clipboard
+        graphClipboard.copy(selectedNodeIds, currentScene.nodes, currentScene.edges);
+
+        // Immediately paste with small offset
+        const pasted = graphClipboard.paste(currentScene.nodes, { x: 20, y: 20 });
+
+        if (pasted) {
+          try {
+            // Add duplicated nodes
+            pasted.nodes.forEach((node) => {
+              addNode(node);
+            });
+
+            // Add duplicated edges
+            pasted.edges.forEach((edge) => {
+              connectNodes(edge.from, edge.to, edge.meta);
+            });
+
+            toast.success(`Duplicated ${pasted.nodes.length} node(s)`);
+
+            // Select duplicated nodes
+            setSelectedNodeIds(pasted.nodes.map((n) => n.id));
+          } catch (error) {
+            toast.error('Failed to duplicate nodes');
+            console.error('[GraphPanel] Duplicate error:', error);
+          }
+        }
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentScene, selectedNodeIds, addNode, connectNodes, toast, setSelectedNodeIds]);
 
   return (
     <div className="h-full w-full flex flex-col">
