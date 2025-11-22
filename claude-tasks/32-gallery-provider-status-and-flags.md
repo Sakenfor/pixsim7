@@ -42,7 +42,7 @@ We want the **Assets/Gallery** view to show a truthful, at-a-glance view of prov
 - [X] **Phase 32.4 – Filters & Quick-View for Provider Status** ✅ Complete
 - [X] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics** ✅ Complete
 
-**Overall Status:** 100% Complete (4 of 4 required phases done, optional phase backend-ready)
+**Overall Status:** ✅ 100% Complete (All required phases done, 1 optional phase backend-ready)
 
 ---
 
@@ -230,9 +230,13 @@ Ensure upload controls in the gallery (e.g. `MediaCard` upload button, gallery t
   - Uses `effectiveNote` from upload response (matches extension `note` field)
   - Falls back to `providerStatus` badges from Phase 32.2
   - Clear messaging: "Uploaded to provider successfully" vs "Saved locally; provider upload failed"
-- ✅ Semantic consistency:
-  - Detects local-only via note content (lines 135-139)
-  - Same keywords as extension: "saved locally", "provider upload failed", "Local only"
+- ✅ Semantic consistency (lines 135-139):
+  - Detects local-only via note content: "saved locally", "provider upload failed", "Local only"
+  - Same keywords and semantics as Chrome extension
   - Upload button visual state matches the meaning of the response
+- ✅ Provider status badges in hover overlay (lines 210-218):
+  - Green "Provider OK" badge for successful provider uploads
+  - Yellow "Local only" badge for local-only saves
+  - Red "Flagged" badge for moderated content
 
 **Result:** Gallery upload controls now use the same semantics and visual language as the Chrome extension

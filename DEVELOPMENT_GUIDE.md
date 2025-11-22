@@ -8,7 +8,32 @@ Complete guide for setting up, developing, and contributing to PixSim7.
 
 ## 🚀 Quick Start (5 Minutes)
 
-### **Option 1: Single Launcher (Easiest - Windows)**
+### **Option 1: Single Command Dev Mode (Recommended for coding)**
+
+Start everything with one command:
+
+```bash
+# Linux/macOS
+./scripts/dev-up.sh
+
+# Windows
+scripts\dev-up.bat
+
+# Access:
+# - Backend API: http://localhost:8001/docs
+# - Admin Panel: http://localhost:5173
+# - Health Check: http://localhost:8001/health
+```
+
+This starts:
+- Databases in Docker (PostgreSQL + Redis)
+- Backend API with hot-reload
+- Background worker
+- Frontend dev server
+
+Press Ctrl+C to stop all services.
+
+### **Option 2: GUI Launcher (Windows)**
 
 ```bash
 # Just double-click or run:
@@ -19,12 +44,10 @@ launch.bat
 # - Start all services from the web UI
 ```
 
-### **Option 2: Docker Everything**
+### **Option 3: Docker Everything**
 
 ```bash
-cd /g/code/pixsim7
-
-# Start all services
+# Start all services in Docker
 docker-compose up -d
 
 # Access:
@@ -32,7 +55,9 @@ docker-compose up -d
 # - Admin Panel: http://localhost:8002
 ```
 
-### **Option 3: Development Mode (Recommended for coding)**
+### **Option 4: Manual Multi-Terminal (Advanced)**
+
+For manual control over each service:
 
 ```bash
 # Terminal 1: Start databases
@@ -45,10 +70,7 @@ PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 
 PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
 # Terminal 4: Start admin panel
-cd admin && npm run dev
-
-# Terminal 5: Start frontend (optional)
-cd frontend && npm run dev
+cd apps/main && pnpm dev
 ```
 
 ---
