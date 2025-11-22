@@ -43,10 +43,10 @@ This task establishes a simple, explicit **documentation lifecycle and ADR (Arch
 
 ## Phase Checklist
 
-- [ ] **Phase 30.1 – Define Documentation Taxonomy & Lifecycle**
-- [ ] **Phase 30.2 – Introduce ADR Template & `docs/decisions/`**
-- [ ] **Phase 30.3 – Wire Lifecycle Rules into PR / Agent Workflows**
-- [ ] **Phase 30.4 – Light-weight Automation & Cleanup**
+- [x] **Phase 30.1 – Define Documentation Taxonomy & Lifecycle** ✅ 2025-11-22
+- [x] **Phase 30.2 – Introduce ADR Template & `docs/decisions/`** ✅ 2025-11-21
+- [x] **Phase 30.3 – Wire Lifecycle Rules into PR / Agent Workflows** ✅ 2025-11-22
+- [x] **Phase 30.4 – Light-weight Automation & Cleanup** ✅ 2025-11-22
 
 ---
 
@@ -67,9 +67,15 @@ Clarify which docs are canonical, which are episodic, which are archival, and ho
    - `DOCUMENTATION_CHANGELOG.md` (high-level overview).
    - `AI_README.md` or `DEVELOPMENT_GUIDE.md` (for contributors/agents).
 3. At the top of `docs/RECENT_CHANGES_2025_01.md`, add a note:
-   - “This file is a staging log; once changes settle, they must be reflected in canonical docs listed above.”
+   - "This file is a staging log; once changes settle, they must be reflected in canonical docs listed above."
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` Complete (2025-11-22)
+
+**Implementation:**
+- Added full "Documentation Lifecycle & Taxonomy" section to `DOCUMENTATION_CHANGELOG.md`
+- Defined four-tier lifecycle: Living Docs, Staging Logs, Decision Records, Archive
+- Added staging note to `docs/RECENT_CHANGES_2025_01.md` with links to canonical docs
+- Tracked RECENT_CHANGES file in DOCUMENTATION_CHANGELOG.md
 
 ---
 
@@ -92,7 +98,18 @@ Create a light-weight mechanism for capturing important design decisions without
    - Adoption of the backend plugin auto-discovery system.
    - GameSession flags/relationships conventions for gameplay systems.
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` Complete (2025-11-21, completed 2025-11-22)
+
+**Implementation:**
+- Created `docs/decisions/README.md` with comprehensive ADR guidelines
+- Created `docs/decisions/TEMPLATE.md` with standard sections
+- Created 6 seed ADRs covering major architectural decisions:
+  - Backend plugin auto-discovery
+  - Cross-provider asset system
+  - Extension architecture
+  - Game session JSON conventions
+  - Structured logging system
+  - **Documentation lifecycle** (created 2025-11-22)
 
 ---
 
@@ -112,7 +129,13 @@ Ensure future changes keep canonical docs and decision records in sync with code
    - Clarify that tasks are roadmaps/status, not primary specs.
 3. Add a 2–3 line header snippet that can be reused at the top of `RECENT_CHANGES_YYYY_MM.md` files explaining their staging nature and where to look for canonical information.
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` Complete (2025-11-22)
+
+**Implementation:**
+- `DEVELOPMENT_GUIDE.md` already contains ADR and documentation lifecycle guidance
+- Added comprehensive staging header to `docs/RECENT_CHANGES_2025_01.md`
+- `claude-tasks/README.md` already has guidance for agents on task usage
+- `DOCUMENTATION_CHANGELOG.md` provides full lifecycle taxonomy
 
 ---
 
@@ -131,5 +154,16 @@ Add small affordances that make it harder for docs to drift over time.
    - They are only needed as historical evidence (e.g. architecture validation result dumps).
 3. Record the use of this lifecycle in a short ADR once the process stabilizes.
 
-**Status:** `[ ]` Not started
+**Status:** `[x]` Complete (2025-11-22)
+
+**Implementation:**
+- Created `scripts/check_docs_lifecycle.py` to enforce lifecycle rules
+  - Checks for routes without manifests
+  - Validates RECENT_CHANGES_* files are tracked in DOCUMENTATION_CHANGELOG.md
+  - Exit code 1 for violations (CI/CD ready)
+- Archived historical status docs to `docs/archive/old-status/`:
+  - `PATH_NORMALIZATION_STATUS.md`
+  - `NPC_INTEGRATION_SUMMARY.md`
+- Created `docs/archive/old-status/README.md` documenting archival history
+- Created ADR `docs/decisions/20251122-documentation-lifecycle.md`
 

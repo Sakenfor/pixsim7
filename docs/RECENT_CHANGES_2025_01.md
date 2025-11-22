@@ -3,6 +3,24 @@
 **Last Updated**: 2025-01-21
 **Status**: Active Development
 
+---
+
+> **📝 STAGING DOCUMENT**
+>
+> This file is a **staging log** for recent changes. Once changes settle and are
+> validated, they must be reflected in the canonical documentation:
+>
+> - **Architecture:** `ARCHITECTURE.md`
+> - **Development:** `DEVELOPMENT_GUIDE.md`
+> - **Application Map:** `docs/APP_MAP.md`
+> - **Services:** `docs/backend/SERVICES.md`
+> - **Components:** `docs/frontend/COMPONENTS.md`
+> - **Major Decisions:** `docs/decisions/*.md` (ADRs)
+>
+> See `DOCUMENTATION_CHANGELOG.md` for the full documentation lifecycle.
+
+---
+
 ## Overview
 
 This document tracks recent architectural changes and fixes applied to the PixSim7 system.

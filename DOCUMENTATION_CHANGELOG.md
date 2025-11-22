@@ -23,6 +23,11 @@ All PixSim7 documentation follows a clear lifecycle to ensure maintainability an
   - `claude-tasks/*.md` - Track ongoing development tasks
   - Status: Active until task completion, then archived
 
+- **Staging Logs** - Temporary change tracking
+  - `docs/RECENT_CHANGES_2025_01.md` - January 2025 changes
+  - Track recent changes before they're reflected in canonical docs
+  - Content should be moved to canonical docs as changes settle
+
 #### **Stable Documents**
 - **Architecture Decision Records (ADRs)** - Immutable after acceptance
   - `docs/decisions/*.md`
