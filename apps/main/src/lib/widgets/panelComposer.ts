@@ -3,19 +3,17 @@
  *
  * System for composing custom panels from widgets with data binding.
  * Part of Task 50 Phase 50.4 - Panel Builder/Composer
+ *
+ * Integrates with Task 51 data binding system for live data.
  */
+
+import type { DataBinding, DataSourceDefinition } from '../dataBinding';
 
 export interface GridLayout {
   type: 'grid';
   columns: number;
   rows: number;
   gap?: number;
-}
-
-export interface DataBinding {
-  source: string; // Data source ID
-  path?: string; // Optional path within the data
-  transform?: string; // Optional transform function name
 }
 
 export interface WidgetInstance {
@@ -28,34 +26,7 @@ export interface WidgetInstance {
     h: number; // Height in grid units
   };
   config: Record<string, any>;
-  dataBindings?: Record<string, DataBinding>;
-}
-
-export type DataSourceType = 'store' | 'api' | 'computed' | 'static';
-
-export interface DataSource {
-  id: string;
-  type: DataSourceType;
-
-  // For Zustand stores
-  store?: string; // Store name
-  selector?: string; // Selector path (e.g., 'scenes.length')
-
-  // For API calls
-  endpoint?: string;
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  params?: Record<string, any>;
-
-  // For computed values
-  compute?: string; // Function name or expression
-  dependencies?: string[]; // Other data source IDs
-
-  // For static data
-  data?: any;
-
-  // Caching
-  cache?: boolean;
-  refreshInterval?: number; // ms
+  dataBindings?: Record<string, DataBinding>; // Using Task 51 DataBinding
 }
 
 export interface PanelComposition {
@@ -65,7 +36,7 @@ export interface PanelComposition {
   icon?: string;
   layout: GridLayout;
   widgets: WidgetInstance[];
-  dataSources?: DataSource[];
+  dataSources?: DataSourceDefinition[]; // Using Task 51 DataSourceDefinition
   styles?: React.CSSProperties;
   version?: string; // Schema version
   createdAt?: number;
@@ -130,9 +101,9 @@ export function validateComposition(composition: PanelComposition): {
     for (const widget of composition.widgets) {
       if (widget.dataBindings) {
         for (const [key, binding] of Object.entries(widget.dataBindings)) {
-          if (!dataSourceIds.has(binding.source)) {
+          if (!dataSourceIds.has(binding.sourceId)) {
             errors.push(
-              `Widget "${widget.id}" has invalid data binding "${key}": source "${binding.source}" not found`
+              `Widget "${widget.id}" has invalid data binding "${key}": source "${binding.sourceId}" not found`
             );
           }
         }
@@ -233,7 +204,7 @@ export function updateWidget(
  */
 export function addDataSource(
   composition: PanelComposition,
-  dataSource: DataSource
+  dataSource: DataSourceDefinition
 ): PanelComposition {
   return {
     ...composition,
@@ -253,7 +224,7 @@ export function removeDataSource(
   const updatedWidgets = composition.widgets.map((widget) => {
     if (widget.dataBindings) {
       const filteredBindings = Object.entries(widget.dataBindings).filter(
-        ([, binding]) => binding.source !== dataSourceId
+        ([, binding]) => binding.sourceId !== dataSourceId // Updated to use sourceId from Task 51
       );
       return {
         ...widget,
