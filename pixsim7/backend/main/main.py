@@ -147,43 +147,11 @@ logger.info(
 )
 
 
-# ===== HEALTH CHECK =====
+# ===== HEALTH AND READINESS ENDPOINTS =====
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "name": "PixSim7",
-        "version": settings.api_version,
-        "status": "running"
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check endpoint"""
-    from pixsim7.backend.main.services.provider import registry
-    from pixsim7.backend.main.infrastructure.redis import check_redis_connection
-    from sqlalchemy import text
-    from pixsim7.backend.main.infrastructure.database.session import get_async_session
-
-    # Check Redis connection
-    redis_status = "connected" if await check_redis_connection() else "disconnected"
-
-    # Check database connection
-    db_status = "connected"
-    try:
-        async with get_async_session() as db:
-            await db.execute(text("SELECT 1"))
-    except Exception as e:
-        db_status = f"error: {e.__class__.__name__}"
-
-    return {
-        "status": "healthy",
-        "database": db_status,
-        "redis": redis_status,
-        "providers": registry.list_provider_ids(),
-    }
+# Import health router (provides /, /health, /ready)
+from pixsim7.backend.main.api.health import router as health_router
+app.include_router(health_router)
 
 
 # ===== API ROUTES =====
