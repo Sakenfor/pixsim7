@@ -42,9 +42,9 @@ This task is about **pruning and normalizing** without changing the actual runni
 - [X] **Phase 33.2 – PixSim6 & Legacy Integration Artifacts** ✅ Complete
 - [X] **Phase 33.3 – Path/Name Consistency in Docs & Task Files** ✅ Complete
 - [X] **Phase 33.4 – Dead Script & Sample Data Triage** ✅ Complete
-- [ ] **Phase 33.5 – Optional: Unused Frontend Component & Hook Sweep** (Deferred)
+- [X] **Phase 33.5 – Optional: Unused Frontend Component & Hook Sweep** ✅ Complete
 
-**Overall Status:** ~98% Complete (4 of 4 required phases done, optional phase deferred)
+**Overall Status:** ✅ 100% Complete (All phases done including optional sweep)
 
 ---
 
@@ -254,5 +254,27 @@ Identify obviously unused components/hooks and either archive or remove them to 
 4. Be conservative:
    - If there’s any doubt about usage, prefer moving + documenting over deletion.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Results:**
+- **Created:** `apps/main/src/components/legacy/` folder with comprehensive README
+- **Analyzed:** All components and hooks in `apps/main/src/`
+- **Hooks:** All 14 hooks verified as actively used - no action needed
+- **Components:** 10 unused components identified and moved to legacy folder
+
+**Archived Components (2025-11-22):**
+1. **SessionStateViewer.tsx** - Debug panel for GameSession state inspection
+2. **PluginCatalogPanel.tsx** - Read-only plugin catalog (superseded by PluginBrowser)
+3. **PluginConfigPanel.tsx** - Plugin configuration UI
+4. **GraphPanel.tsx** - ReactFlow-based graph editor
+5. **ArcGraphPanel.tsx** - Arc-specific graph panel
+6. **SceneBuilderPanel.tsx** - Scene construction UI
+7. **WorldContextSelector.tsx** - World/workspace context selector
+8. **EdgeEffectsEditor.tsx** - Graph edge effects editor
+9. **HotspotEditor.tsx** - Hotspot/interaction point editor
+10. **SceneMetadataEditor.tsx** - Scene metadata fields editor
+
+**Verification:** All components confirmed to have zero import references outside their own files
+
+**See:** `apps/main/src/components/legacy/README.md` for detailed inventory and usage guidelines
 
