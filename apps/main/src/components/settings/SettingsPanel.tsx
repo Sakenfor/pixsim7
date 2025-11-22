@@ -1,11 +1,16 @@
 import { useMemo, useState, useEffect } from 'react';
 import { Select } from '@pixsim7/shared.ui';
 import { CubeSettingsPanel } from '../control/CubeSettingsPanel';
+import { PanelConfigurationPanel } from './PanelConfigurationPanel';
+import { WorkspaceProfileManager } from './WorkspaceProfileManager';
 import { useCubeSettingsStore, type LinkingGesture } from '../../stores/cubeSettingsStore';
 import { panelActionRegistry } from '../../lib/panelActions';
 import { controlCenterRegistry } from '../../lib/plugins/controlCenterPlugin';
 
+type SettingsTab = 'general' | 'panels' | 'profiles';
+
 export function SettingsPanel() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [showCubeSettings, setShowCubeSettings] = useState(false);
   const [controlCenters, setControlCenters] = useState(() => controlCenterRegistry.getAll());
   const [activeControlCenterId, setActiveControlCenterId] = useState(() => controlCenterRegistry.getActiveId());
@@ -53,8 +58,9 @@ export function SettingsPanel() {
 
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900">
-      <div className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 flex items-center justify-between">
-        <div>
+      {/* Header */}
+      <div className="border-b border-neutral-200 dark:border-neutral-800 px-4 py-3">
+        <div className="mb-3">
           <h1 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
             Settings
           </h1>
@@ -62,9 +68,49 @@ export function SettingsPanel() {
             Configure global behavior for cubes, panels, and providers.
           </p>
         </div>
+
+        {/* Tabs */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              activeTab === 'general'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            }`}
+          >
+            General
+          </button>
+          <button
+            onClick={() => setActiveTab('panels')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              activeTab === 'panels'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            }`}
+          >
+            Panels
+          </button>
+          <button
+            onClick={() => setActiveTab('profiles')}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+              activeTab === 'profiles'
+                ? 'bg-blue-500 text-white'
+                : 'bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+            }`}
+          >
+            Profiles
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
+      {/* Tab Content */}
+      {activeTab === 'panels' ? (
+        <PanelConfigurationPanel />
+      ) : activeTab === 'profiles' ? (
+        <WorkspaceProfileManager />
+      ) : (
+        <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
         {/* Control Center Mode Selection */}
         <section className="space-y-2">
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -261,11 +307,11 @@ export function SettingsPanel() {
             Workspace Layout
           </h2>
           <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-            Layout presets and workspace arrangement are managed from the main workspace toolbar.
-            Future global layout settings can be added here.
+            Layout presets and workspace arrangement are managed from the Profiles tab above.
           </p>
         </section>
-      </div>
+        </div>
+      )}
 
       {showCubeSettings && (
         <CubeSettingsPanel onClose={() => setShowCubeSettings(false)} />

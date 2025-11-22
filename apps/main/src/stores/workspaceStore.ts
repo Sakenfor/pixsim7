@@ -13,7 +13,8 @@ export type PanelId =
   | 'settings'
   | 'gizmo-lab'
   | 'npc-brain-lab'
-  | 'game-theming';
+  | 'game-theming'
+  | 'scene-management';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;
@@ -39,6 +40,11 @@ export interface WorkspacePreset {
   id: string;
   name: string;
   layout: LayoutNode<PanelId> | null;
+  description?: string; // Optional description
+  icon?: string; // Optional icon/emoji
+  visiblePanels?: PanelId[]; // Panels visible in this preset (if not specified, all are visible)
+  createdAt?: number; // Timestamp
+  isDefault?: boolean; // Whether this is a default preset (cannot be deleted)
 }
 
 export interface WorkspaceState {
@@ -77,6 +83,9 @@ const defaultPresets: WorkspacePreset[] = [
   {
     id: 'default',
     name: 'Default Workspace',
+    description: 'Balanced layout for general development',
+    icon: '🏠',
+    isDefault: true,
     layout: {
       direction: 'row',
       first: {
@@ -102,6 +111,9 @@ const defaultPresets: WorkspacePreset[] = [
   {
     id: 'minimal',
     name: 'Minimal (Graph + Game)',
+    description: 'Focus on graph editing and game preview',
+    icon: '⚡',
+    isDefault: true,
     layout: {
       direction: 'row',
       first: 'graph',
@@ -112,6 +124,9 @@ const defaultPresets: WorkspacePreset[] = [
   {
     id: 'creative',
     name: 'Creative Studio',
+    description: 'Optimized for content creation',
+    icon: '🎨',
+    isDefault: true,
     layout: {
       direction: 'row',
       first: 'gallery',
@@ -218,6 +233,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           id: `preset_${Date.now()}`,
           name,
           layout,
+          createdAt: Date.now(),
+          isDefault: false,
         };
         set((s) => ({ presets: [...s.presets, newPreset] }));
       },
@@ -230,8 +247,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       deletePreset: (id) => {
+        const preset = get().presets.find((p) => p.id === id);
         // Don't delete default presets
-        if (id === 'default' || id === 'minimal' || id === 'creative') return;
+        if (preset?.isDefault) return;
         set((s) => ({ presets: s.presets.filter((p) => p.id !== id) }));
       },
 
