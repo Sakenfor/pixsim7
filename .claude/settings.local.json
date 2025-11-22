@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(taskkill /F /PID 14936)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []

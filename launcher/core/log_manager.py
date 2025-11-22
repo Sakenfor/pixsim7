@@ -268,29 +268,29 @@ class LogManager:
                 new_lines = f.readlines()
                 self._file_positions[service_key] = f.tell()
 
-                        for line in new_lines:
-                            raw = line.rstrip()
-                            if not raw:
-                                continue
-                            clean = self._strip_ansi_codes(raw)
-                            clean = self._strip_ansi_artifacts(clean)
-                            if not clean:
-                                continue
+                for line in new_lines:
+                    raw = line.rstrip()
+                    if not raw:
+                        continue
+                    clean = self._strip_ansi_codes(raw)
+                    clean = self._strip_ansi_artifacts(clean)
+                    if not clean:
+                        continue
 
-                            state.log_buffer.append(clean)
+                    state.log_buffer.append(clean)
 
-                            # Check for errors
-                            if '[ERR]' in clean or '[ERROR]' in clean:
-                                parts = clean.split('] ', 2)
-                                if len(parts) >= 3:
-                                    state.last_error = parts[2]
+                    # Check for errors
+                    if '[ERR]' in clean or '[ERROR]' in clean:
+                        parts = clean.split('] ', 2)
+                        if len(parts) >= 3:
+                            state.last_error = parts[2]
 
-                            # Callback
-                            if self.log_callback:
-                                try:
-                                    self.log_callback(service_key, clean)
-                                except Exception:
-                                    pass
+                    # Callback
+                    if self.log_callback:
+                        try:
+                            self.log_callback(service_key, clean)
+                        except Exception:
+                            pass
 
                 # Trim buffer if too large
                 if len(state.log_buffer) > self.max_log_lines:

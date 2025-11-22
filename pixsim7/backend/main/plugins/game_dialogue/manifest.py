@@ -5,8 +5,6 @@ Provides narrative and action block generation for NPC dialogues.
 Converted from api/v1/game_dialogue.py to plugin format.
 """
 
-from __future__ import annotations
-
 from typing import Dict, Any, List, Optional, Literal
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -68,7 +66,7 @@ router = APIRouter(prefix="/game/dialogue", tags=["game-dialogue"])
 
 # ===== HELPER FUNCTIONS =====
 
-def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[PreviousSegmentSnapshot]:
+def _convert_previous_segment(data: Optional['PreviousSegmentInput']) -> Optional[PreviousSegmentSnapshot]:
     """Convert API input into a dataclass snapshot."""
     if not data:
         return None
@@ -87,7 +85,7 @@ def _convert_previous_segment(data: Optional[PreviousSegmentInput]) -> Optional[
     )
 
 
-def _build_generation_request(req: GenerateActionBlockRequest) -> GenerationRequest:
+def _build_generation_request(req: 'GenerateActionBlockRequest') -> GenerationRequest:
     """Create a GenerationRequest from API input."""
     try:
         content_rating = ContentRating(req.content_rating)
@@ -113,8 +111,8 @@ async def _persist_generated_block(
     *,
     source: str,
     user_id: int,
-    previous_segment: Optional[PreviousSegmentInput] = None,
-    selection: Optional[ActionSelectionRequest] = None
+    previous_segment: Optional['PreviousSegmentInput'] = None,
+    selection: Optional['ActionSelectionRequest'] = None
 ) -> None:
     """Store the generated block in the DB cache and register it in memory."""
     meta: Dict[str, Any] = {
@@ -529,6 +527,27 @@ class ActionSelectionResponse(BaseModel):
     segments: List[Dict[str, Any]]
 
 
+class GenerateActionBlockRequest(BaseModel):
+    """Request for generating a new action block dynamically."""
+    concept_type: str  # e.g., "creature_interaction", "position_maintenance"
+    parameters: Dict[str, Any]
+    content_rating: Optional[str] = "general"
+    duration: Optional[float] = 6.0
+    camera_settings: Optional[Dict[str, Any]] = None
+    consistency_settings: Optional[Dict[str, Any]] = None
+    intensity_settings: Optional[Dict[str, Any]] = None
+    previous_segment: Optional[PreviousSegmentInput] = None
+
+
+class GenerateActionBlockResponse(BaseModel):
+    """Response containing the generated action block."""
+    success: bool
+    action_block: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    generation_time: float
+    template_used: Optional[str] = None
+
+
 class ActionNextRequest(BaseModel):
     """Combined request that prefers library selection but can fall back to generation."""
     selection: ActionSelectionRequest
@@ -785,27 +804,6 @@ async def list_pose_taxonomy(
 # ============================================================================
 # DYNAMIC GENERATION ENDPOINTS
 # ============================================================================
-
-
-class GenerateActionBlockRequest(BaseModel):
-    """Request for generating a new action block dynamically."""
-    concept_type: str  # e.g., "creature_interaction", "position_maintenance"
-    parameters: Dict[str, Any]
-    content_rating: Optional[str] = "general"
-    duration: Optional[float] = 6.0
-    camera_settings: Optional[Dict[str, Any]] = None
-    consistency_settings: Optional[Dict[str, Any]] = None
-    intensity_settings: Optional[Dict[str, Any]] = None
-    previous_segment: Optional[PreviousSegmentInput] = None
-
-
-class GenerateActionBlockResponse(BaseModel):
-    """Response containing the generated action block."""
-    success: bool
-    action_block: Optional[Dict[str, Any]] = None
-    error_message: Optional[str] = None
-    generation_time: float
-    template_used: Optional[str] = None
 
 
 class GenerateCreatureInteractionRequest(BaseModel):

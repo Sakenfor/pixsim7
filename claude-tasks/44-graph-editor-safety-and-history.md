@@ -55,6 +55,7 @@ Includes:
 - `apps/main/src/components/dependency-badge/` - Visual dependency indicators
 - `apps/main/src/hooks/useUndo.ts` - Undo/redo hook
 - Integration with all graph stores (scene, arc, collection, campaign)
+  - Each store defines its own minimal `partialize` so only structural graph state (scenes/arcs/collections/campaigns and their current IDs) is tracked, and transient UI (selection/hover) is excluded.
 
 Out of scope:
 
