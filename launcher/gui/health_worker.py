@@ -194,8 +194,18 @@ class HealthWorker(QThread):
                             if ok and stdout:
                                 out = stdout.lower()
                                 if (' up ' in f" {out} ") or ('running' in out):
-                                    # Mark as running if containers are up
-                                    sp.running = True
+                                    # Containers are up
+                                    requested_running = getattr(sp, 'requested_running', True)
+
+                                    if requested_running:
+                                        sp.running = True
+                                        if hasattr(sp, 'externally_managed'):
+                                            sp.externally_managed = False
+                                    else:
+                                        # User stopped but containers still running - externally managed
+                                        if hasattr(sp, 'externally_managed'):
+                                            sp.externally_managed = True
+
                                     self._emit_health_update(key, HealthStatus.HEALTHY)
                                     self.failure_counts[key] = 0
                                 else:
@@ -235,7 +245,17 @@ class HealthWorker(QThread):
                                 except Exception:
                                     pass
                                 # Worker is running if Redis is accessible
-                                sp.running = True
+                                requested_running = getattr(sp, 'requested_running', True)
+
+                                if requested_running:
+                                    sp.running = True
+                                    if hasattr(sp, 'externally_managed'):
+                                        sp.externally_managed = False
+                                else:
+                                    # User stopped but worker still accessible - externally managed
+                                    if hasattr(sp, 'externally_managed'):
+                                        sp.externally_managed = True
+
                                 # Detect PID if not started by launcher
                                 self._detect_and_store_pid(sp, port=port)
                                 self._emit_health_update(key, HealthStatus.HEALTHY)
@@ -290,8 +310,29 @@ class HealthWorker(QThread):
                             req = urllib.request.Request(health_url, method='GET')
                             with urllib.request.urlopen(req, timeout=1.5) as response:  # Increased for reliability
                                 if response.status == 200:
-                                    # Service is responding, mark as running
-                                    sp.running = True
+                                    # Service is responding
+                                    requested_running = getattr(sp, 'requested_running', True)
+
+                                    if requested_running:
+                                        # User wants this service running, mark as healthy
+                                        sp.running = True
+                                        if hasattr(sp, 'externally_managed'):
+                                            sp.externally_managed = False
+                                    else:
+                                        # User requested stop but service is still responding
+                                        # Mark as externally managed (outside launcher control)
+                                        if hasattr(sp, 'externally_managed'):
+                                            sp.externally_managed = True
+                                        if _launcher_logger:
+                                            try:
+                                                _launcher_logger.warning(
+                                                    "service_running_despite_stop",
+                                                    service_key=key,
+                                                    msg="Service responding to health checks despite stop request - externally managed"
+                                                )
+                                            except Exception:
+                                                pass
+
                                     # Detect PID if not started by launcher
                                     self._detect_and_store_pid(sp, url=health_url)
                                     self._emit_health_update(key, HealthStatus.HEALTHY)

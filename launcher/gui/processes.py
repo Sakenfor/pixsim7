@@ -51,6 +51,8 @@ class ServiceProcess:
         self.max_log_lines = MAX_LOG_LINES
         self.detected_pid: Optional[int] = None  # PID of externally running process
         self.started_pid: Optional[int] = None  # PID of process we started (for detached processes)
+        self.requested_running = False  # User's intended state (start/stop button clicks)
+        self.externally_managed = False  # True if service is running outside launcher control
 
         # Console log file persistence
         self.log_file_path = os.path.join(ROOT, 'data', 'logs', 'console', f'{defn.key}.log')
@@ -199,6 +201,10 @@ class ServiceProcess:
         if not self.check_tool_availability():
             return False
 
+        # Mark that user requested the service to be running
+        self.requested_running = True
+        self.externally_managed = False
+
         # Special handling for DB: use compose up -d and do not keep a process open
         if self.defn.key == 'db':
             try:
@@ -329,6 +335,10 @@ class ServiceProcess:
     def stop(self, graceful=True):
         if not self.running:
             return
+
+        # Mark that user requested the service to be stopped
+        self.requested_running = False
+
         if _launcher_logger:
             try:
                 _launcher_logger.info("service_stop", service_key=self.defn.key, graceful=graceful)
@@ -555,7 +565,7 @@ class ServiceProcess:
                 # Keep detected_pid for retry
                 # Final fallback: scan for backend candidates by command line and kill their trees (Windows)
                 try:
-                    if _os.name == 'nt' and self.defn.key == 'backend':
+                    if _os.name == 'nt' and is_backend_service:
                         try:
                             from .process_utils import find_backend_candidate_pids_windows
                         except ImportError:
@@ -580,6 +590,23 @@ class ServiceProcess:
                                     except Exception:
                                         pass
                                 return
+                            else:
+                                # Port still occupied after exhaustive fallbacks
+                                # Mark as not running under launcher control, but keep detected_pid
+                                # so the UI can show what's there and allow force kill retry
+                                self.running = False
+                                self.health_status = HealthStatus.UNHEALTHY
+                                if _launcher_logger:
+                                    try:
+                                        _launcher_logger.warning(
+                                            "fallback_exhausted_still_running_external_supervisor",
+                                            service_key=self.defn.key,
+                                            port=port,
+                                            pid=current_pid2,
+                                            msg="Process still listening after all kill attempts - likely external supervisor"
+                                        )
+                                    except Exception:
+                                        pass
                 except Exception:
                     pass
             return

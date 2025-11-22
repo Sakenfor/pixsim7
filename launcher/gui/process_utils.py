@@ -174,7 +174,7 @@ def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:
 
     Rationale: In --reload mode, uvicorn spawns a reloader parent that respawns
     the worker. Killing only the listening worker causes immediate respawn.
-    We look for an ancestor whose CommandLine references uvicorn or our app module.
+    We look for an ancestor whose CommandLine references uvicorn or any backend-style API module.
     """
     if os.name != 'nt' or not child_pid:
         return None
@@ -194,13 +194,16 @@ def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:
         cmd = (info.get('CommandLine') or '').lower()
         name = (info.get('Name') or '').lower()
 
-        # Heuristics: uvicorn in command line, or python running pixsim7.backend.main
+        # Heuristics: uvicorn in command line, or python running any backend-style service
         if (
             'uvicorn' in cmd
             or 'pixsim7.backend.main' in cmd
+            or 'pixsim7.backend.generation' in cmd  # generation-api
             or 'pixsim7_backend.main' in cmd  # Legacy compatibility
             or 'pixsim7\\backend\\main\\main.py' in cmd
             or 'pixsim7/backend/main/main.py' in cmd
+            or 'pixsim7\\backend\\generation\\main.py' in cmd  # generation-api
+            or 'pixsim7/backend/generation/main.py' in cmd  # generation-api
             or 'pixsim7_backend\\main.py' in cmd  # Legacy compatibility
             or 'pixsim7_backend/main.py' in cmd  # Legacy compatibility
         ):
@@ -219,7 +222,8 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
     """Find backend-related PIDs by CommandLine heuristics and optional port.
 
     Matches python/uvicorn processes whose command lines reference uvicorn or
-    pixsim7.backend.main. If port is provided, it prefers PIDs listening on that port.
+    pixsim7.backend (main, generation, or any other backend-style API).
+    If port is provided, it prefers PIDs listening on that port.
     """
     if os.name != 'nt':
         return []
@@ -273,9 +277,12 @@ def find_backend_candidate_pids_windows(port: Optional[int] = None) -> list[int]
                 if (
                     'uvicorn' in cmdl
                     or 'pixsim7.backend.main' in cmdl
+                    or 'pixsim7.backend.generation' in cmdl  # generation-api
                     or 'pixsim7_backend.main:app' in cmdl  # Legacy compatibility
                     or 'pixsim7\\backend\\main\\main.py' in cmdl
                     or 'pixsim7/backend/main/main.py' in cmdl
+                    or 'pixsim7\\backend\\generation\\main.py' in cmdl  # generation-api
+                    or 'pixsim7/backend/generation/main.py' in cmdl  # generation-api
                     or 'pixsim7_backend\\main.py' in cmdl  # Legacy compatibility
                     or 'pixsim7_backend/main.py' in cmdl  # Legacy compatibility
                 ):
