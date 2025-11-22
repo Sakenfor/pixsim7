@@ -1,0 +1,335 @@
+"""
+Backend startup helpers
+
+Decomposed startup logic for testability and reusability.
+Each helper function has a single responsibility and minimal side effects.
+
+Usage:
+    from pixsim7.backend.main.startup import (
+        validate_settings,
+        setup_domain_registry,
+        setup_database_and_seed,
+        # ...
+    )
+"""
+from typing import Optional
+from pathlib import Path
+from fastapi import FastAPI
+
+from pixsim_logging import configure_logging
+
+logger = configure_logging("startup")
+
+
+def validate_settings(settings) -> None:
+    """
+    Validate settings for production safety.
+
+    Raises:
+        ValueError: If settings are invalid for the current environment
+
+    Why this is a separate function:
+    - Testable in isolation
+    - Clear failure message
+    - Single responsibility: validation only
+    """
+    if not settings.debug and settings.secret_key == "change-this-in-production":
+        raise ValueError(
+            "SECRET_KEY must be set in production mode. "
+            "Set DEBUG=true for development or provide a secure SECRET_KEY."
+        )
+
+
+def setup_domain_registry(models_dir: str | Path):
+    """
+    Initialize domain model registry from directory.
+
+    Args:
+        models_dir: Directory containing domain model definitions
+
+    Returns:
+        DomainModelRegistry instance with registered models
+
+    Why this is a separate function:
+    - Testable with a temporary directory
+    - Can be reused in worker processes
+    - No hidden globals
+    """
+    from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
+    return init_domain_registry(str(models_dir))
+
+
+async def setup_database_and_seed() -> None:
+    """
+    Initialize database (REQUIRED) and seed default data (OPTIONAL).
+
+    Database initialization must succeed or startup fails.
+    Default preset seeding is optional and will only warn if it fails.
+
+    Raises:
+        Exception: If database initialization fails (fail-fast)
+
+    Why this is a separate function:
+    - Clear separation of required vs optional steps
+    - Testable with test database
+    - Explicit error handling policy
+    """
+    from pixsim7.backend.main.infrastructure.database.session import (
+        init_database,
+        get_async_session
+    )
+
+    # DB initialization is REQUIRED - no try/except, let it fail
+    await init_database()
+    logger.info("database_initialized")
+
+    # Default preset seeding is OPTIONAL
+    try:
+        from pixsim7.backend.main.seeds.default_presets import seed_default_presets
+        async with get_async_session() as db:
+            await seed_default_presets(db)
+        logger.info("default_presets_seeded")
+    except Exception as e:
+        logger.warning(
+            "preset_seed_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing startup without default presets"
+        )
+
+
+async def setup_redis() -> bool:
+    """
+    Initialize Redis connection (OPTIONAL - degraded mode without it).
+
+    Redis is used for:
+    - Background job queue (ARQ)
+    - LLM response caching
+    - Session caching
+
+    If Redis is unavailable, the app continues but background jobs
+    and caching are disabled.
+
+    Returns:
+        bool: True if Redis is available, False otherwise
+
+    Why this is a separate function:
+    - Clear optional vs required semantics
+    - Returns status for readiness checks
+    - Explicit degraded mode handling
+    """
+    from pixsim7.backend.main.infrastructure.redis import check_redis_connection
+
+    try:
+        available = await check_redis_connection()
+        if available:
+            logger.info("redis_connected")
+        else:
+            logger.warning(
+                "redis_unavailable",
+                msg="Background jobs and caching disabled"
+            )
+        return available
+    except Exception as e:
+        logger.warning(
+            "redis_init_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing in degraded mode"
+        )
+        return False
+
+
+def setup_providers() -> None:
+    """
+    Register default provider implementations.
+
+    Providers are:
+    - Video generation providers (Pixverse, Runway, etc.)
+    - LLM providers (Anthropic, OpenAI)
+
+    Why this is a separate function:
+    - Independent of database/Redis
+    - Can be tested in isolation
+    - Clear registration point
+    """
+    from pixsim7.backend.main.services.provider import register_default_providers
+    register_default_providers()
+    logger.info("providers_registered")
+
+
+def setup_event_handlers() -> None:
+    """
+    Register event handlers and WebSocket handlers.
+
+    Event handlers include:
+    - Metrics collection
+    - Webhook delivery
+    - Auto-retry logic
+
+    Why this is a separate function:
+    - Independent initialization
+    - Can be disabled for testing
+    - Clear registration point
+    """
+    from pixsim7.backend.main.infrastructure.events.handlers import register_handlers
+    from pixsim7.backend.main.infrastructure.events.websocket_handler import (
+        register_websocket_handlers
+    )
+
+    register_handlers()
+    register_websocket_handlers()
+    logger.info("event_handlers_registered")
+
+
+def setup_ecs_components() -> int:
+    """
+    Register core ECS (Entity-Component-System) components.
+
+    Must happen before plugins load so plugins can see core components.
+
+    Returns:
+        int: Number of registered components
+
+    Why this is a separate function:
+    - Must run before plugins
+    - Testable independently
+    - Returns count for logging/assertions
+    """
+    from pixsim7.backend.main.domain.game.ecs import register_core_components
+    count = register_core_components()
+    logger.info("ecs_components_registered", count=count)
+    return count
+
+
+async def setup_plugins(
+    app: FastAPI,
+    plugins_dir: str | Path,
+    routes_dir: str | Path,
+    fail_fast: bool
+) -> tuple:
+    """
+    Initialize and enable plugin managers for features and routes.
+
+    Args:
+        app: FastAPI application instance
+        plugins_dir: Directory containing feature plugins
+        routes_dir: Directory containing route plugins
+        fail_fast: If True, abort startup on plugin failure (dev/CI mode)
+
+    Returns:
+        tuple: (plugin_manager, routes_manager)
+
+    Why this is a separate function:
+    - Complex initialization logic isolated
+    - Testable with dummy app
+    - Returns managers for app.state attachment
+    """
+    from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
+
+    # Initialize feature plugins
+    plugin_manager = init_plugin_manager(
+        app,
+        str(plugins_dir),
+        fail_fast=fail_fast
+    )
+    logger.info(
+        "feature_plugins_loaded",
+        count=len(plugin_manager.list_plugins()),
+        plugins_dir=str(plugins_dir)
+    )
+
+    # Initialize route plugins
+    routes_manager = init_plugin_manager(
+        app,
+        str(routes_dir),
+        fail_fast=fail_fast
+    )
+    logger.info(
+        "route_plugins_loaded",
+        count=len(routes_manager.list_plugins()),
+        routes_dir=str(routes_dir)
+    )
+
+    # Enable all plugins
+    await plugin_manager.enable_all()
+    await routes_manager.enable_all()
+    logger.info("plugins_enabled")
+
+    return plugin_manager, routes_manager
+
+
+def setup_behavior_registry_lock(plugin_manager, routes_manager) -> dict:
+    """
+    Lock behavior extension registry after plugins are loaded.
+
+    Prevents runtime registration of new behaviors, conditions, and effects.
+
+    Args:
+        plugin_manager: Feature plugin manager
+        routes_manager: Route plugin manager
+
+    Returns:
+        dict: Registry statistics (conditions, effects, simulation_configs)
+
+    Why this is a separate function:
+    - Must run after all plugins loaded
+    - Returns stats for logging/verification
+    - Single responsibility: registry locking
+    """
+    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import (
+        behavior_registry
+    )
+
+    behavior_registry.lock()
+    stats = behavior_registry.get_stats()
+
+    logger.info(
+        "behavior_registry_locked",
+        conditions=stats.get('conditions', {}).get('total', 0),
+        effects=stats.get('effects', {}).get('total', 0),
+        simulation_configs=stats.get('simulation_configs', {}).get('total', 0)
+    )
+
+    return stats
+
+
+async def setup_middleware_lifecycle(app: FastAPI) -> None:
+    """
+    Enable middleware lifecycle hooks.
+
+    Args:
+        app: FastAPI application instance
+
+    Why this is a separate function:
+    - Separate from middleware registration
+    - Can be called conditionally
+    - Clear lifecycle management
+    """
+    from pixsim7.backend.main.infrastructure.middleware.manager import middleware_manager
+
+    if middleware_manager:
+        await middleware_manager.enable_all()
+        logger.info("middleware_enabled")
+    else:
+        logger.warning("middleware_manager_not_initialized")
+
+
+def configure_admin_diagnostics(plugin_manager, routes_manager) -> None:
+    """
+    Configure admin plugin diagnostics endpoint.
+
+    Sets up the /admin/plugins endpoint to inspect plugin state.
+
+    Args:
+        plugin_manager: Feature plugin manager
+        routes_manager: Route plugin manager
+
+    Why this is a separate function:
+    - Optional admin feature
+    - Depends on both plugin managers
+    - Can be disabled for security
+    """
+    from pixsim7.backend.main.api.v1.admin_plugins import set_plugin_managers
+    set_plugin_managers(plugin_manager, routes_manager)
+    logger.info("admin_diagnostics_configured")

@@ -37,128 +37,82 @@ logger = configure_logging("api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events"""
-    # Startup
-    logger.info("Starting PixSim7...")
-    
-    # Assert secret_key in production
-    if not settings.debug and settings.secret_key == "change-this-in-production":
-        raise ValueError("SECRET_KEY must be set in production mode. Set DEBUG=true for development or provide a secure SECRET_KEY.")
+    """
+    Application lifespan - orchestrates startup and shutdown.
 
-    # Auto-register domain models with SQLModel
-    from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
-    domain_registry = init_domain_registry(str(settings.domain_models_dir))
-    logger.info(
-        f"Registered {len(domain_registry.registered_models)} domain models",
-        domain_models_dir=str(settings.domain_models_dir)
+    This function is intentionally short and focused on orchestration.
+    All complex logic is extracted into testable helpers in startup.py.
+    """
+    from pixsim7.backend.main.startup import (
+        validate_settings,
+        setup_domain_registry,
+        setup_database_and_seed,
+        setup_redis,
+        setup_providers,
+        setup_event_handlers,
+        setup_ecs_components,
+        setup_plugins,
+        setup_behavior_registry_lock,
+        configure_admin_diagnostics,
+        setup_middleware_lifecycle,
     )
-
-    # Initialize database
-    await init_database()
-    logger.info("Database initialized")
-
-    # Seed default presets
-    try:
-        from pixsim7.backend.main.seeds.default_presets import seed_default_presets
-        from pixsim7.backend.main.infrastructure.database.session import get_async_session
-        async with get_async_session() as db:
-            await seed_default_presets(db)
-        logger.info("Default presets seeded")
-    except Exception as e:
-        logger.warning(f"Failed to seed default presets: {e}")
-
-    # Initialize Redis
-    try:
-        from pixsim7.backend.main.infrastructure.redis import get_redis, check_redis_connection
-        redis_available = await check_redis_connection()
-        if redis_available:
-            logger.info("Redis connected")
-        else:
-            logger.warning("Redis not available - background jobs will not work")
-    except Exception as e:
-        logger.warning(f"Redis initialization failed: {e}")
-        logger.warning("Background jobs will not work without Redis")
-
-    # Register providers
-    from pixsim7.backend.main.services.provider import register_default_providers
-    register_default_providers()
-    logger.info("Providers registered")
-
-    # Initialize event handlers (metrics, webhooks, etc.)
-    from pixsim7.backend.main.infrastructure.events.handlers import register_handlers
-    register_handlers()
-
-    # Initialize WebSocket event handlers
-    from pixsim7.backend.main.infrastructure.events.websocket_handler import register_websocket_handlers
-    register_websocket_handlers()
-
-    # Register core ECS components (Task 27, Phase 27.2)
-    # This must happen before plugins are loaded so plugins can see core components
-    from pixsim7.backend.main.domain.game.ecs import register_core_components
-    core_components_count = register_core_components()
-    logger.info(f"Registered {core_components_count} core ECS components")
-
-    # Initialize plugin system (feature plugins)
-    plugin_manager = init_plugin_manager(
-        app,
-        str(settings.feature_plugins_dir),
-        fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
-    )
-    logger.info(
-        f"Loaded {len(plugin_manager.list_plugins())} feature plugins",
-        feature_plugins_dir=str(settings.feature_plugins_dir)
-    )
-
-    # Initialize route plugin system (core API routes)
-    routes_manager = init_plugin_manager(
-        app,
-        str(settings.route_plugins_dir),
-        fail_fast=settings.debug  # Fail fast in dev/CI if required plugins fail
-    )
-    logger.info(
-        f"Loaded {len(routes_manager.list_plugins())} core routes",
-        route_plugins_dir=str(settings.route_plugins_dir)
-    )
-
-    # Register plugin managers for dependency injection (Phase 16.3)
     from pixsim7.backend.main.infrastructure.plugins import set_plugin_manager
-    # Set the feature plugin manager as primary (routes can use same pattern)
-    set_plugin_manager(plugin_manager)
-    logger.info("Plugin dependency injection configured")
+    from pixsim7.backend.main.infrastructure.middleware.manager import middleware_manager
 
-    # Enable all plugins
-    await plugin_manager.enable_all()
-    await routes_manager.enable_all()
+    # ===== STARTUP =====
+    logger.info("pixsim7_startup_begin")
 
-    # Lock behavior extension registry (Phase 16.4)
-    # After all plugins are loaded, prevent runtime registration
-    from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
-    behavior_registry.lock()
-    stats = behavior_registry.get_stats()
-    logger.info(
-        "Behavior extension registry locked",
-        conditions=stats['conditions']['total'],
-        effects=stats['effects']['total'],
-        simulation_configs=stats['simulation_configs']['total'],
+    # Validate settings (fail-fast if invalid)
+    validate_settings(settings)
+
+    # Setup domain registry
+    domain_registry = setup_domain_registry(settings.domain_models_dir)
+    app.state.domain_registry = domain_registry
+    logger.info("domain_registry_attached", count=len(domain_registry.registered_models))
+
+    # Setup database and seed defaults
+    await setup_database_and_seed()
+
+    # Setup Redis (optional - degraded mode without it)
+    redis_available = await setup_redis()
+    app.state.redis_available = redis_available
+
+    # Setup providers, events, and ECS
+    setup_providers()
+    setup_event_handlers()
+    ecs_count = setup_ecs_components()
+
+    # Setup plugins
+    plugin_manager, routes_manager = await setup_plugins(
+        app,
+        settings.feature_plugins_dir,
+        settings.route_plugins_dir,
+        fail_fast=settings.debug
     )
 
-    # Configure admin plugin diagnostics endpoint (Phase 16.5)
-    from pixsim7.backend.main.api.v1.admin_plugins import set_plugin_managers
-    set_plugin_managers(plugin_manager, routes_manager)
-    logger.info("Admin plugin diagnostics configured")
+    # Attach managers to app.state for request-context access
+    app.state.plugin_manager = plugin_manager
+    app.state.routes_manager = routes_manager
+    app.state.middleware_manager = middleware_manager
 
-    # Enable all middleware (call lifecycle hooks)
-    # Note: Middleware was already registered before lifespan, this just calls hooks
-    from pixsim7.backend.main.infrastructure.middleware.manager import middleware_manager
-    if middleware_manager:
-        await middleware_manager.enable_all()
+    # Also set global plugin manager for backward compatibility
+    set_plugin_manager(plugin_manager)
 
-    logger.info("PixSim7 ready!")
+    # Lock behavior registry
+    stats = setup_behavior_registry_lock(plugin_manager, routes_manager)
+
+    # Configure admin diagnostics
+    configure_admin_diagnostics(plugin_manager, routes_manager)
+
+    # Enable middleware lifecycle hooks
+    await setup_middleware_lifecycle(app)
+
+    logger.info("pixsim7_ready")
 
     yield
 
-    # Shutdown
-    logger.info("Shutting down PixSim7...")
+    # ===== SHUTDOWN =====
+    logger.info("pixsim7_shutdown_begin")
 
     # Disable middleware
     if middleware_manager:
@@ -168,9 +122,11 @@ async def lifespan(app: FastAPI):
     await routes_manager.disable_all()
     await plugin_manager.disable_all()
 
+    # Close connections
     await close_redis()
     await close_database()
-    logger.info("Cleanup complete")
+
+    logger.info("pixsim7_shutdown_complete")
 
 
 # Create FastAPI app
