@@ -341,12 +341,43 @@ class ServiceProcess:
 
         # Mark that user requested the service to be stopped
         self.requested_running = False
-
         if _launcher_logger:
             try:
                 _launcher_logger.info("service_stop", service_key=self.defn.key, graceful=graceful)
             except Exception:
                 pass
+
+        # Best-effort PID detection even if health worker hasn't run yet.
+        # This helps after restarting the launcher while services are still running.
+        if self.proc is None and not self.detected_pid and getattr(self.defn, "health_url", None):
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(self.defn.health_url)
+                port = parsed.port
+            except Exception:
+                port = None
+
+            if port:
+                try:
+                    try:
+                        from .process_utils import find_pid_by_port
+                    except ImportError:
+                        from process_utils import find_pid_by_port
+                    pid = find_pid_by_port(port)
+                    if pid:
+                        self.detected_pid = pid
+                        if _launcher_logger:
+                            try:
+                                _launcher_logger.info(
+                                    "stop_detected_pid_by_port",
+                                    service_key=self.defn.key,
+                                    port=port,
+                                    pid=pid,
+                                )
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
 
         if self.defn.key == 'db':
             try:

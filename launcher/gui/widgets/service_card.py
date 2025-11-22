@@ -100,7 +100,7 @@ class ServiceCard(QFrame):
 
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setFixedSize(45, theme.BUTTON_HEIGHT_MD)
-        self.stop_btn.setToolTip("Stop service")
+        self.stop_btn.setToolTip("Stop service gracefully")
         self.stop_btn.setEnabled(self.service_process.running)
         self.stop_btn.setStyleSheet(f"""
             QPushButton {{
@@ -120,6 +120,29 @@ class ServiceCard(QFrame):
             }}
         """)
         btn_layout.addWidget(self.stop_btn)
+
+        self.force_stop_btn = QPushButton("⚠")
+        self.force_stop_btn.setFixedSize(28, theme.BUTTON_HEIGHT_MD)
+        self.force_stop_btn.setToolTip("Force stop service (kill all processes)")
+        self.force_stop_btn.setEnabled(self.service_process.running)
+        self.force_stop_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #8b0000;
+                color: white;
+                font-size: {theme.FONT_SIZE_SM};
+                font-weight: 700;
+                border: none;
+                border-radius: {theme.RADIUS_SM}px;
+            }}
+            QPushButton:hover {{
+                background-color: #a00000;
+            }}
+            QPushButton:disabled {{
+                background-color: {theme.BG_SECONDARY};
+                color: {theme.TEXT_DISABLED};
+            }}
+        """)
+        btn_layout.addWidget(self.force_stop_btn)
 
         self.restart_btn = QPushButton("Restart")
         self.restart_btn.setFixedSize(52, theme.BUTTON_HEIGHT_MD)
@@ -264,6 +287,7 @@ class ServiceCard(QFrame):
         # Update button states based on the new running state
         self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
         self.stop_btn.setEnabled(is_running)
+        self.force_stop_btn.setEnabled(is_running)
         self.restart_btn.setEnabled(is_running)
 
     def _update_style(self):

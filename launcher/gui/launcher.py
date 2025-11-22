@@ -327,6 +327,7 @@ class LauncherWindow(QWidget):
             card.clicked.connect(self._select_service)
             card.start_btn.clicked.connect(lambda checked, k=s.key: self._start_service(k))
             card.stop_btn.clicked.connect(lambda checked, k=s.key: self._stop_service(k))
+            card.force_stop_btn.clicked.connect(lambda checked, k=s.key: self._force_stop_service(k))
             card.restart_requested.connect(self._restart_service)
             if card.open_btn:
                 card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
@@ -550,6 +551,19 @@ class LauncherWindow(QWidget):
             if _launcher_logger:
                 try:
                     _launcher_logger.info("service_stopped", service_key=key)
+                except Exception:
+                    pass
+
+    def _force_stop_service(self, key: str):
+        """Force stop a specific service (kill all processes)."""
+        sp = self.processes.get(key)
+        if sp:
+            sp.stop(graceful=False)
+            self._refresh_console_logs()
+            # Log service force stop
+            if _launcher_logger:
+                try:
+                    _launcher_logger.info("service_force_stopped", service_key=key)
                 except Exception:
                     pass
 
