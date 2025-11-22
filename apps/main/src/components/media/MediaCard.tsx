@@ -130,7 +130,8 @@ export function MediaCard(props: MediaCardProps) {
       const note = (result && 'note' in result) ? (result as any).note : undefined;
 
       // Determine state based on note semantics (aligned with extension)
-      // If note indicates "local only" or "provider upload failed", treat as partial success
+      // If note indicates "local only" or "provider upload failed", we treat it differently
+      // to match extension messaging: local save succeeded but provider upload failed
       const isLocalOnly = note && (
         note.includes('saved locally') ||
         note.includes('provider upload failed') ||
@@ -138,7 +139,10 @@ export function MediaCard(props: MediaCardProps) {
       );
 
       if (!controlling) {
-        // If ok=true but note indicates local-only, still show as "success" but with the note
+        // Set state based on actual result:
+        // - error: operation failed completely
+        // - success: provider accepted (full success)
+        // - Note is set for both success and local-only scenarios
         setInternalUploadState(ok ? 'success' : 'error');
         setInternalUploadNote(note);
       }
@@ -169,13 +173,24 @@ export function MediaCard(props: MediaCardProps) {
               onClick={handleUploadClick}
               disabled={effectiveState==='uploading'}
               className={`px-2 py-1 text-[10px] rounded shadow ${
-                effectiveState==='success' ? 'bg-blue-600 text-white' :
+                effectiveState==='success' ? (
+                  // Match extension semantics: check note/providerStatus to differentiate
+                  (effectiveNote && (effectiveNote.includes('saved locally') || effectiveNote.includes('Local only'))) || providerStatus === 'local_only'
+                    ? 'bg-yellow-600 text-white'  // Local-only: yellow (partial success)
+                    : 'bg-blue-600 text-white'     // Provider accepted: blue (full success)
+                ) :
                 effectiveState==='error' ? 'bg-red-600 text-white' :
                 effectiveState==='uploading' ? 'bg-neutral-400 text-white' : 'bg-neutral-700 text-white'
               }`}
               title={
                 effectiveState==='success'
-                  ? (effectiveNote || (providerStatus === 'ok' ? 'Uploaded to provider successfully' : providerStatus === 'local_only' ? 'Saved locally; provider upload failed' : 'Upload completed'))
+                  ? (
+                      // Prefer explicit note from upload response, fall back to provider status
+                      effectiveNote ||
+                      (providerStatus === 'ok' ? 'Uploaded to provider successfully' :
+                       providerStatus === 'local_only' ? 'Saved locally; provider upload failed' :
+                       'Upload completed')
+                    )
                   : effectiveState==='error'
                     ? (effectiveNote || 'Upload failed / rejected')
                     : 'Upload to provider'

@@ -40,11 +40,11 @@ This task is about **pruning and normalizing** without changing the actual runni
 
 - [X] **Phase 33.1 – Backend Tree Duplication Audit** ✅ Complete
 - [X] **Phase 33.2 – PixSim6 & Legacy Integration Artifacts** ✅ Complete
-- [X] **Phase 33.3 – Path/Name Consistency in Docs & Task Files** ✅ Partially Complete
+- [X] **Phase 33.3 – Path/Name Consistency in Docs & Task Files** ✅ Complete
 - [X] **Phase 33.4 – Dead Script & Sample Data Triage** ✅ Complete
 - [ ] **Phase 33.5 – Optional: Unused Frontend Component & Hook Sweep** (Deferred)
 
-**Overall Status:** ~85% Complete (4 of 4 required phases done, optional phase deferred)
+**Overall Status:** ~98% Complete (4 of 4 required phases done, optional phase deferred)
 
 ---
 
@@ -152,26 +152,32 @@ Normalize references to package names and paths so there is a single canonical n
    - Avoid changing examples that intentionally show old names for historical reasons; add “historical note” lines instead.
 4. Record the sweep in `DOCUMENTATION_CHANGELOG.md` if it is substantial.
 
-**Status:** `[X]` ✅ Partially Complete
+**Status:** `[X]` ✅ Complete
 
 **Results:**
 - **Created:** `docs/PATH_NORMALIZATION_STATUS.md` - comprehensive tracking document
-- **Updated:** Critical files:
+- **Updated (2025-11-21 - Initial sweep):** Critical files:
   - claude-tasks/28-37 (all backend references fixed)
   - ARCHITECTURE.md (frontend/src → apps/main/src)
   - Removed broken pixsim6 symlink
 
-- **Scope:** 100+ files still need normalization:
-  - 47 files with `packages/game-core` references
-  - 100+ files with `frontend/src` references
-  - Most are lower priority (historical docs, archive files, task files 01-27)
+- **Updated (2025-11-21 - Mass normalization):** 93 additional files
+  - All claude-tasks/01-27*.md (31 files)
+  - All root documentation (GAMEPLAY_SYSTEMS.md, AI_README.md, README.md)
+  - All docs/*.md files (root level)
+  - All packages/*/README.md and apps/*/README.md
+  - Component documentation in apps/main/src/
 
-- **Decision:** Completed critical path normalization
-  - Root architecture docs updated
-  - Recent task files updated
-  - Tracking document created for remaining work
+- **Remaining (intentionally preserved):**
+  - docs/archive/* - Historical files with contextual README added
+  - A few subdocs in docs/decisions/, docs/generated/ (low priority)
 
-**See:** `docs/PATH_NORMALIZATION_STATUS.md` for full inventory and remaining work
+- **Completion:** Path normalization comprehensive and systematic
+  - 100+ files updated across two sweeps
+  - Batch replacements with manual verification of critical files
+  - Historical context preserved with docs/archive/README.md
+
+**See:** `docs/PATH_NORMALIZATION_STATUS.md` for full inventory and verification commands
 
 ---
 

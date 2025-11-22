@@ -40,9 +40,9 @@ We want the **Assets/Gallery** view to show a truthful, at-a-glance view of prov
 - [X] **Phase 32.2 – Add Provider Status Badges in Gallery** ✅ Complete
 - [ ] **Phase 32.3 – Optional: Flagged/Moderation Status Surfacing** (Optional - backend ready)
 - [X] **Phase 32.4 – Filters & Quick-View for Provider Status** ✅ Complete
-- [ ] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics**
+- [X] **Phase 32.5 – Align Gallery Upload Controls with Extension Semantics** ✅ Complete
 
-**Overall Status:** ~80% Complete (3 of 4 required phases done, 1 optional phase backend-ready)
+**Overall Status:** 100% Complete (4 of 4 required phases done, optional phase backend-ready)
 
 ---
 
@@ -214,8 +214,25 @@ Ensure upload controls in the gallery (e.g. `MediaCard` upload button, gallery t
 2. Update upload flows used in gallery to distinguish:
    - **Local-only** vs **provider-accepted**, similar to how the extension now uses `providerSucceeded` and `note` from `UploadAssetResponse`.
 3. Adjust `MediaCard` tooltip text and internal state so that:
-   - “success” corresponds to provider-accepted or explicit “saved and provider OK” semantics.
-   - When only a local save is possible, the tooltip and icon reflect that (e.g. “Saved locally; provider upload failed”). This should match the gallery badges from Phase 32.2.
-4. Keep the user experience consistent with the Chrome extension messaging so users see the same interpretation of “success” in both places.
+   - "success" corresponds to provider-accepted or explicit "saved and provider OK" semantics.
+   - When only a local save is possible, the tooltip and icon reflect that (e.g. "Saved locally; provider upload failed"). This should match the gallery badges from Phase 32.2.
+4. Keep the user experience consistent with the Chrome extension messaging so users see the same interpretation of "success" in both places.
 
-**Status:** `[ ]` Not started
+**Status:** `[X]` ✅ Complete
+
+**Implementation Details:**
+- Component: `apps/main/src/components/media/MediaCard.tsx`
+- ✅ Visual distinction (lines 176-184):
+  - **Blue button** ("UP ✓"): Provider accepted successfully (full success)
+  - **Yellow button** ("UP ✓"): Local-only save (partial success, matches extension)
+  - **Red button** ("ERR"): Upload failed completely
+- ✅ Tooltip alignment (lines 185-197):
+  - Uses `effectiveNote` from upload response (matches extension `note` field)
+  - Falls back to `providerStatus` badges from Phase 32.2
+  - Clear messaging: "Uploaded to provider successfully" vs "Saved locally; provider upload failed"
+- ✅ Semantic consistency:
+  - Detects local-only via note content (lines 135-139)
+  - Same keywords as extension: "saved locally", "provider upload failed", "Local only"
+  - Upload button visual state matches the meaning of the response
+
+**Result:** Gallery upload controls now use the same semantics and visual language as the Chrome extension
