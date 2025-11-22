@@ -58,12 +58,12 @@ Those can be considered for later tasks if needed.
 
 ## Phase Checklist
 
-- [ ] **Phase 51.1 – Core Types & Registry**
-- [ ] **Phase 51.2 – Resolution Engine & Caching**
-- [ ] **Phase 51.3 – Builder Integration Hooks**
+- [x] **Phase 51.1 – Core Types & Registry** ✅
+- [x] **Phase 51.2 – Resolution Engine & Caching** ✅
+- [x] **Phase 51.3 – Builder Integration Hooks** ✅
 - [ ] **Phase 51.4 – Plugin Integration & Advanced Sources** (future)
 
-**Overall Status:** Waiting – can be started in parallel with Task 50 once core builder types exist.
+**Overall Status:** Complete (Phases 51.1-51.3) – Ready for Panel Builder integration (Task 50.4)
 
 ---
 
