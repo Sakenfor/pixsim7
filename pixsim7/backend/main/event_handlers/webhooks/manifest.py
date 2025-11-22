@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
-from pixsim_logging import configure_logging
+from pixsim7.backend.main.shared.logging import get_event_logger
 
 
 # ===== HANDLER MANIFEST =====

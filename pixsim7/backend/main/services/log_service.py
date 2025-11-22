@@ -5,9 +5,9 @@ Handles centralized structured log storage and retrieval.
 """
 from __future__ import annotations
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Set
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, desc, func, delete
+from sqlalchemy import select, and_, or_, desc, func, delete, text
 from sqlmodel import col
 
 from pixsim7.backend.main.domain import LogEntry
@@ -260,3 +260,174 @@ class LogService:
         logger.info("cleaned_up_old_logs", deleted_count=count, cutoff_days=days)
 
         return count
+
+    async def get_fields(
+        self,
+        *,
+        service: Optional[str] = None,
+        sample_limit: int = 300
+    ) -> Dict[str, Any]:
+        """
+        Discover available log fields by inspecting recent log entries.
+
+        Returns a union of:
+        - Known column names from the LogEntry model
+        - Dynamic keys found in the 'extra' JSON field
+
+        Args:
+            service: Optional service name to scope field discovery
+            sample_limit: Number of recent rows to inspect (default: 300)
+
+        Returns:
+            Dictionary containing:
+            - service: The service filter used (or None)
+            - fields: All available fields (sorted)
+            - dynamic: Dynamic fields from 'extra' (sorted)
+            - count: Number of rows inspected
+        """
+        # Known columns from LogEntry model
+        known_cols: Set[str] = {
+            "id", "timestamp", "level", "service", "env", "msg", "request_id",
+            "job_id", "submission_id", "artifact_id", "provider_job_id",
+            "provider_id", "operation_type", "stage", "user_id", "error",
+            "error_type", "duration_ms", "attempt", "extra", "created_at"
+        }
+
+        params: Dict[str, Any] = {"limit": sample_limit}
+        where_service = ""
+        if service:
+            where_service = "WHERE service = :service"
+            params["service"] = service
+
+        # Fetch recent rows to discover dynamic keys in 'extra'
+        sql = text(
+            f"SELECT service, extra FROM log_entries {where_service} "
+            f"ORDER BY timestamp DESC LIMIT :limit"
+        )
+        rows = (await self.db.execute(sql, params)).all()
+
+        # Collect all dynamic keys from 'extra' JSON fields
+        dynamic_keys: Set[str] = set()
+        for svc, extra in rows:
+            if isinstance(extra, dict):
+                for k in extra.keys():
+                    dynamic_keys.add(k)
+
+        all_fields = sorted(list(known_cols.union(dynamic_keys)))
+
+        return {
+            "service": service,
+            "fields": all_fields,
+            "dynamic": sorted(list(dynamic_keys)),
+            "count": len(rows)
+        }
+
+    async def get_distinct(
+        self,
+        field: str,
+        *,
+        service: Optional[str] = None,
+        provider_id: Optional[str] = None,
+        operation_type: Optional[str] = None,
+        stage: Optional[str] = None,
+        request_id: Optional[str] = None,
+        job_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Get distinct values for a specified field.
+
+        Supports both base columns (e.g., 'level', 'service') and dynamic
+        keys stored in the 'extra' JSON field.
+
+        Args:
+            field: Field name to get distinct values for
+            service: Filter by service name
+            provider_id: Filter by provider
+            operation_type: Filter by operation type
+            stage: Filter by pipeline stage
+            request_id: Filter by request ID
+            job_id: Filter by job ID
+            user_id: Filter by user ID
+            limit: Maximum number of distinct values to return
+
+        Returns:
+            Dictionary containing:
+            - field: The field name queried
+            - count: Number of distinct values found
+            - values: List of distinct values (sorted)
+        """
+        # Known base columns that can be queried directly
+        base_cols = {
+            "level", "service", "env", "msg", "request_id", "job_id",
+            "submission_id", "artifact_id", "provider_job_id", "provider_id",
+            "operation_type", "stage", "user_id", "error_type", "attempt",
+            "duration_ms"
+        }
+
+        is_base = field in base_cols
+
+        # Build WHERE clause from filters
+        where_clauses: List[str] = []
+        params: Dict[str, Any] = {"limit": limit}
+
+        def add_clause(col: str, val: Any) -> None:
+            if val is not None:
+                where_clauses.append(f"{col} = :{col}")
+                params[col] = val
+
+        add_clause("service", service)
+        add_clause("provider_id", provider_id)
+        add_clause("operation_type", operation_type)
+        add_clause("stage", stage)
+        add_clause("request_id", request_id)
+        add_clause("job_id", job_id)
+        add_clause("user_id", user_id)
+
+        where_sql = ""
+        if where_clauses:
+            where_sql = "WHERE " + " AND ".join(where_clauses)
+
+        # Build SQL based on whether field is a base column or dynamic key
+        if is_base:
+            # Query base column directly
+            null_check = f"{field} IS NOT NULL"
+            if where_sql:
+                sql = text(
+                    f"SELECT DISTINCT {field} AS value FROM log_entries "
+                    f"{where_sql} AND {null_check} ORDER BY value LIMIT :limit"
+                )
+            else:
+                sql = text(
+                    f"SELECT DISTINCT {field} AS value FROM log_entries "
+                    f"WHERE {null_check} ORDER BY value LIMIT :limit"
+                )
+        else:
+            # Query dynamic key from 'extra' JSON field
+            # Use PostgreSQL JSON operators: ? for key existence, ->> for text extraction
+            extra_filter = "extra ? :extra_key"
+            params["extra_key"] = field
+
+            if where_sql:
+                sql = text(
+                    f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries "
+                    f"{where_sql} AND {extra_filter} AND extra->>:extra_key IS NOT NULL "
+                    f"ORDER BY value LIMIT :limit"
+                )
+            else:
+                sql = text(
+                    f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries "
+                    f"WHERE {extra_filter} AND extra->>:extra_key IS NOT NULL "
+                    f"ORDER BY value LIMIT :limit"
+                )
+
+        # Execute query
+        rows = (await self.db.execute(sql, params)).all()
+        values = [r[0] for r in rows if r[0] is not None]
+
+        return {
+            "field": field,
+            "count": len(values),
+            "values": values
+        }

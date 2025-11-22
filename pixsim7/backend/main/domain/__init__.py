@@ -8,6 +8,38 @@ Design principles:
 - No Duplication: ProviderSubmission is source of truth for generation params
 - Explicit over Implicit: No defaults for provider_id, operation_type
 - Separation of Concerns: Business logic in services, not models
+
+─────────────────────────────────────────────────────────────────────────
+DOMAIN PACKAGE IMPORT CONVENTIONS
+─────────────────────────────────────────────────────────────────────────
+
+This __init__.py exports only "core" cross-cutting models that are used
+throughout the application. Extended domain subsystems must be imported
+from their respective submodules.
+
+✅ Core models (exported from this __init__):
+   - User, UserSession, UserQuotaUsage, UserRole
+   - Workspace
+   - Asset, AssetVariant, Asset*Metadata, AssetLineage, AssetBranch, etc.
+   - Generation, ProviderSubmission, ProviderAccount, ProviderCredit
+   - Scene, SceneAsset, SceneConnection
+   - LogEntry
+   - PromptFamily, PromptVersion, PromptVariantFeedback
+
+🔒 Extended subsystems (import from submodules):
+   - Game models:     from pixsim7.backend.main.domain.game.models import GameWorld
+   - Metrics:         from pixsim7.backend.main.domain.metrics import ...
+   - Behavior:        from pixsim7.backend.main.domain.behavior import ...
+   - Scenarios:       from pixsim7.backend.main.domain.scenarios import ...
+   - Automation:      from pixsim7.backend.main.domain.automation import ...
+   - Narrative:       from pixsim7.backend.main.domain.narrative import ...
+
+❌ INCORRECT (will fail):
+   from pixsim7.backend.main.domain import game
+   from pixsim7.backend.main.domain import GameWorld
+
+See ARCHITECTURE.md § "Domain Package Boundaries" for rationale.
+─────────────────────────────────────────────────────────────────────────
 """
 
 # Enums

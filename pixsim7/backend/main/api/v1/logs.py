@@ -5,7 +5,6 @@ Provides centralized log collection and querying.
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -315,27 +314,11 @@ async def get_fields(
     If service is provided, restrict inspection to that service.
     """
     try:
-        # Known columns from LogEntry model (mirrors DB handler definitions)
-        known_cols = {
-            "id", "timestamp", "level", "service", "env", "msg", "request_id", "job_id", "submission_id",
-            "artifact_id", "provider_job_id", "provider_id", "operation_type", "stage", "user_id",
-            "error", "error_type", "duration_ms", "attempt", "extra", "created_at"
-        }
-        params = {"limit": sample_limit}
-        where_service = ""
-        if service:
-            where_service = "WHERE service = :service"
-            params["service"] = service
-        # Fetch recent rows
-        sql = text(f"SELECT service, extra FROM log_entries {where_service} ORDER BY timestamp DESC LIMIT :limit")
-        rows = (await db.execute(sql, params)).all()
-        dynamic_keys = set()
-        for svc, extra in rows:
-            if isinstance(extra, dict):
-                for k in extra.keys():
-                    dynamic_keys.add(k)
-        all_fields = sorted(list(known_cols.union(dynamic_keys)))
-        return {"service": service, "fields": all_fields, "dynamic": sorted(list(dynamic_keys)), "count": len(rows)}
+        service_obj = LogService(db)
+        return await service_obj.get_fields(
+            service=service,
+            sample_limit=sample_limit
+        )
     except Exception as e:
         logger.error("log_fields_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to discover fields: {str(e)}")
@@ -433,52 +416,22 @@ async def get_distinct(
     Supports base columns and dynamic keys stored in JSON 'extra'.
     Applies cascading filters so selections refine available values.
     """
-    base_cols = {
-        "level", "service", "env", "msg", "request_id", "job_id", "submission_id", "artifact_id",
-        "provider_job_id", "provider_id", "operation_type", "stage", "user_id", "error_type", "attempt", "duration_ms"
-    }
     if not field:
         raise HTTPException(status_code=400, detail="field is required")
-    is_base = field in base_cols
+
     try:
-        where_clauses = []
-        params = {"limit": limit}
-        def add_clause(col, val):
-            if val is not None:
-                where_clauses.append(f"{col} = :{col}")
-                params[col] = val
-        add_clause("service", service)
-        add_clause("provider_id", provider_id)
-        add_clause("operation_type", operation_type)
-        add_clause("stage", stage)
-        add_clause("request_id", request_id)
-        add_clause("job_id", job_id)
-        add_clause("user_id", user_id)
-        where_sql = ""
-        if where_clauses:
-            where_sql = "WHERE " + " AND ".join(where_clauses)
-        if is_base:
-            null_check = f"{field} IS NOT NULL"
-            if where_sql:
-                sql = text(
-                    f"SELECT DISTINCT {field} AS value FROM log_entries {where_sql} AND {null_check} ORDER BY value LIMIT :limit"
-                )
-            else:
-                sql = text(
-                    f"SELECT DISTINCT {field} AS value FROM log_entries WHERE {null_check} ORDER BY value LIMIT :limit"
-                )
-        else:
-            # Dynamic key in extra JSON: extra ? 'field'
-            # We also apply filters; for base column filters they remain same.
-            extra_filter = f"extra ? :extra_key"  # key existence
-            params["extra_key"] = field
-            if where_sql:
-                sql = text(f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries {where_sql} AND {extra_filter} AND extra->>:extra_key IS NOT NULL ORDER BY value LIMIT :limit")
-            else:
-                sql = text(f"SELECT DISTINCT extra->>:extra_key AS value FROM log_entries WHERE {extra_filter} AND extra->>:extra_key IS NOT NULL ORDER BY value LIMIT :limit")
-        rows = (await db.execute(sql, params)).all()
-        values = [r[0] for r in rows if r[0] is not None]
-        return {"field": field, "count": len(values), "values": values}
+        service_obj = LogService(db)
+        return await service_obj.get_distinct(
+            field=field,
+            service=service,
+            provider_id=provider_id,
+            operation_type=operation_type,
+            stage=stage,
+            request_id=request_id,
+            job_id=job_id,
+            user_id=user_id,
+            limit=limit
+        )
     except Exception as e:
         logger.error("log_distinct_error", field=field, error=str(e), error_type=e.__class__.__name__, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get distinct values: {str(e)}")

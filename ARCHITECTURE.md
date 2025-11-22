@@ -464,6 +464,201 @@ logger.info(
 
 ---
 
+## 🏛️ Backend Conventions
+
+### **Domain Package Boundaries**
+
+The `pixsim7.backend.main.domain` package follows a strict export convention to maintain clarity and prevent circular dependencies:
+
+**Core Models (exported from `domain/__init__.py`):**
+- User, authentication, and workspace models
+- Asset models (Asset, AssetVariant, metadata, lineage, branches, clips)
+- Generation models (Generation, ProviderSubmission, ProviderAccount, ProviderCredit)
+- Scene models (Scene, SceneAsset, SceneConnection)
+- Logging models (LogEntry)
+- Prompt versioning models (PromptFamily, PromptVersion, PromptVariantFeedback)
+
+These are considered "cross-cutting" models used throughout the application and can be imported directly from the domain package:
+
+```python
+from pixsim7.backend.main.domain import User, Asset, Generation
+```
+
+**Extended Subsystems (import from submodules):**
+- **Game models:** `from pixsim7.backend.main.domain.game.models import GameWorld, GameSession`
+- **Metrics:** `from pixsim7.backend.main.domain.metrics import ...`
+- **Behavior:** `from pixsim7.backend.main.domain.behavior import ...`
+- **Scenarios:** `from pixsim7.backend.main.domain.scenarios import ...`
+- **Automation:** `from pixsim7.backend.main.domain.automation import ...`
+- **Narrative:** `from pixsim7.backend.main.domain.narrative import ...`
+
+These subsystems are more specialized and must be imported from their specific submodules.
+
+**Rationale:**
+- Prevents `domain/__init__.py` from becoming bloated with every model
+- Makes it clear which models are core vs. feature-specific
+- Reduces risk of circular import issues
+- Easier to understand which imports are "safe" everywhere vs. feature-scoped
+
+See `pixsim7/backend/main/domain/__init__.py` for the definitive list and detailed documentation.
+
+### **Pydantic v2 and Type Annotations**
+
+The backend uses Pydantic v2 throughout. For type hint handling, we **allow** (but don't require) `from __future__ import annotations` in backend modules.
+
+**Convention:**
+- `from __future__ import annotations` is **optional** in backend modules
+- If used, **all type names** must be properly imported (e.g., `Optional`, `Dict`, `List`, `Any`)
+- Never rely on builtin types being magically available in string annotations
+
+**Example (correct usage):**
+```python
+from __future__ import annotations
+
+from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
+
+class MyModel(BaseModel):
+    data: Dict[str, Any]  # ✅ Dict imported
+    items: Optional[List[str]] = None  # ✅ Optional and List imported
+```
+
+**Example (incorrect - will fail with Pydantic):**
+```python
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+class MyModel(BaseModel):
+    data: Dict[str, Any]  # ❌ Dict not imported - PydanticUndefinedAnnotation
+    items: Optional[List[str]] = None  # ❌ Optional, List not imported
+```
+
+**Why this convention:**
+- With `__future__` annotations, Pydantic v2 needs to resolve forward references at runtime
+- Pydantic looks up annotation strings in the module's namespace
+- If `Optional`, `Dict`, etc. aren't imported, Pydantic raises `PydanticUndefinedAnnotation`
+
+**When in doubt:** omit `from __future__ import annotations` for Pydantic-heavy modules (API routes, plugin manifests). The performance benefit is minimal for most use cases.
+
+### **ORM Reserved Attribute Names**
+
+SQLAlchemy and Pydantic reserve certain attribute names. Using these names directly in ORM models (SQLModel with `table=True`) will cause errors.
+
+**Hard Rules:**
+1. **Never use `metadata` as an attribute name** in SQLModel table classes
+   - SQLAlchemy reserves `metadata` for table metadata
+   - Use `meta`, `extra`, or `data` instead
+2. **Never use `model_*` prefixes** for field names in Pydantic models
+   - Pydantic v2 reserves the `model_` namespace for internal methods
+3. **Use explicit column mapping** when database columns use reserved names
+
+**Example (correct approach):**
+```python
+from sqlmodel import SQLModel, Field, Column
+from sqlalchemy import JSON
+
+class MyModel(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+
+    # ✅ Safe: attribute is "meta", column is "metadata"
+    meta: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="metadata")
+    )
+```
+
+**Example (incorrect - will fail):**
+```python
+class MyModel(SQLModel, table=True):
+    id: int = Field(primary_key=True)
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # ❌ SQLAlchemy error!
+    model_data: str = Field(...)  # ❌ Conflicts with Pydantic internals!
+```
+
+**Other Reserved Names to Avoid:**
+- `metadata` (SQLAlchemy)
+- `model_*` (Pydantic v2)
+- `registry` (SQLAlchemy)
+- `_sa_*` (SQLAlchemy internals)
+
+See `pixsim7/backend/main/domain/npc_memory.py:104-107` for a reference implementation.
+
+### **API Route Import Isolation**
+
+To prevent cascading import failures where one broken API module prevents unrelated plugins or routes from loading:
+
+**Best Practices:**
+1. **Route manifests should import specific modules**, not the `api.v1` package:
+   ```python
+   # ✅ CORRECT - Import specific module
+   from pixsim7.backend.main.api.v1.logs import router
+
+   # ❌ INCORRECT - Import package (couples to all modules)
+   from pixsim7.backend.main.api import v1
+   ```
+
+2. **Run route import self-check** during development:
+   ```bash
+   python scripts/check_api_imports.py
+   ```
+   This script imports each `api/v1` module independently and surfaces import errors early.
+
+3. **Keep `api/v1/__init__.py` minimal** - it exists for IDE convenience and documentation,
+   but production code should use explicit module imports.
+
+**Rationale:**
+- A broken `dev_architecture.py` shouldn't prevent `logs.py` from loading
+- Plugin manifests that import specific modules are isolated from unrelated failures
+- Early detection of import errors via the self-check script reduces debugging time
+
+### **Logging Facade for Event Handlers and Plugins**
+
+Backend code, event handlers, and plugins should use the logging facade instead of directly importing from `pixsim_logging`. This isolates them from changes to the logging implementation.
+
+**Recommended Approach:**
+```python
+# ✅ CORRECT - Use backend logging facade
+from pixsim7.backend.main.shared.logging import get_event_logger
+
+logger = get_event_logger("auto_retry")
+logger.info("Event handled", event_type="job:failed")
+```
+
+**Legacy Approach (avoid for new code):**
+```python
+# ⚠️ LEGACY - Direct import (fragile to logging changes)
+from pixsim_logging import configure_logging
+
+logger = configure_logging("events.auto_retry")
+```
+
+**Available Helpers:**
+- `get_backend_logger(service_name)` - General backend logger
+- `get_event_logger(handler_name)` - For event handlers (prefixes with "events.")
+- `get_plugin_logger(plugin_id)` - For plugins (prefixes with "plugin.")
+
+**Example for Event Handlers:**
+```python
+from pixsim7.backend.main.shared.logging import get_event_logger
+
+logger = get_event_logger("auto_retry")  # Creates "events.auto_retry" logger
+```
+
+**Example for Plugins:**
+```python
+from pixsim7.backend.main.shared.logging import get_plugin_logger
+
+logger = get_plugin_logger("game-dialogue")  # Creates "plugin.game-dialogue" logger
+```
+
+**Rationale:**
+- Future changes to `pixsim_logging` structure only require updating the facade
+- Event handlers and plugins remain isolated from logging implementation details
+- Consistent naming conventions across all backend code
+
+---
+
 ## 📚 Key Design Decisions
 
 ### **Why Clean Architecture?**

@@ -301,6 +301,35 @@ CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
 # Alias for admin access (used by admin endpoints)
 require_admin = get_current_admin_user
 
+# ─────────────────────────────────────────────────────────────────────────
+# USAGE CONVENTIONS FOR CURRENT*USER TYPE ALIASES
+# ─────────────────────────────────────────────────────────────────────────
+#
+# These type aliases already include Depends(), so do NOT add another
+# Depends() call when using them in route signatures.
+#
+# ✅ CORRECT:
+#     @router.get("/me")
+#     async def get_me(user: CurrentUser):
+#         return user
+#
+#     @router.post("/admin/action")
+#     async def admin_action(admin: CurrentAdminUser):
+#         return {"status": "ok"}
+#
+# ❌ INCORRECT (will raise FastAPI error):
+#     async def get_me(user: CurrentUser = Depends()):  # Double Depends!
+#     async def admin_action(admin: CurrentAdminUser = Depends(get_current_admin_user)):  # Redundant!
+#
+# For optional authentication, use get_current_user_optional explicitly:
+#     async def optional_route(user: Optional[User] = Depends(get_current_user_optional)):
+#         if user:
+#             # authenticated behavior
+#         else:
+#             # unauthenticated behavior
+#
+# ─────────────────────────────────────────────────────────────────────────
+
 DatabaseSession = Annotated[AsyncSession, Depends(get_database)]
 
 # Service type aliases

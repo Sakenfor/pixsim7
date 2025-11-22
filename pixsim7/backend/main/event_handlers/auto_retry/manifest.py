@@ -11,9 +11,9 @@ Can be disabled via AUTO_RETRY_ENABLED=false in .env
 """
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
-from pixsim_logging import configure_logging
+from pixsim7.backend.main.shared.logging import get_event_logger
 
-logger = configure_logging("events.auto_retry")
+logger = get_event_logger("auto_retry")
 
 
 # Manifest

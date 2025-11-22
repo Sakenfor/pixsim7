@@ -11,7 +11,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
-from pixsim_logging import configure_logging
+from pixsim7.backend.main.shared.logging import get_event_logger
 
 
 # ===== HANDLER MANIFEST =====
