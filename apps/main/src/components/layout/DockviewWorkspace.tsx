@@ -3,12 +3,13 @@ import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
 import 'dockview/dist/styles/dockview.css';
 import { AssetsRoute } from '../../routes/Assets';
-import { SceneBuilderPanel } from '../SceneBuilderPanel';
-import { GraphPanelWithProvider } from '../GraphPanel';
+import { SceneBuilderPanel } from '../legacy/SceneBuilderPanel';
+import { GraphPanelWithProvider } from '../legacy/GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
+import { GameThemingPanel } from '../game/GameThemingPanel';
 import { previewBridge } from '../../lib/preview-bridge';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../stores/workspaceStore';
 
@@ -45,6 +46,7 @@ const PANEL_COMPONENTS: Record<PanelId, React.ComponentType> = {
   game: GameIframePanel,
   providers: ProviderSettingsPanel,
   settings: SettingsPanel,
+  'game-theming': GameThemingPanel,
 };
 
 const PANEL_TITLES: Record<PanelId, string> = {
@@ -56,6 +58,7 @@ const PANEL_TITLES: Record<PanelId, string> = {
   game: 'Game',
   providers: 'Provider Settings',
   settings: 'Settings',
+  'game-theming': 'Game Theming',
 };
 
 // Wrapper for panels to provide data-panel-id

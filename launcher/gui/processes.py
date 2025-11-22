@@ -292,7 +292,7 @@ class ServiceProcess:
                     start_new_session=True  # Creates new process group on Unix
                 )
 
-            # Store PID and track process
+              # Store PID and track process
             self.started_pid = self.proc.pid
             self.running = True
             self.health_status = HealthStatus.STARTING

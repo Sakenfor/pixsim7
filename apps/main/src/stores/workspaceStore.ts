@@ -12,7 +12,8 @@ export type PanelId =
   | 'providers'
   | 'settings'
   | 'gizmo-lab'
-  | 'npc-brain-lab';
+  | 'npc-brain-lab'
+  | 'game-theming';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;

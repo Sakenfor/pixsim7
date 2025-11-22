@@ -2,13 +2,14 @@ import { Rnd } from 'react-rnd';
 import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import { AssetsRoute } from '../../routes/Assets';
-import { SceneBuilderPanel } from '../SceneBuilderPanel';
-import { GraphPanelWithProvider } from '../GraphPanel';
+import { SceneBuilderPanel } from '../legacy/SceneBuilderPanel';
+import { GraphPanelWithProvider } from '../legacy/GraphPanel';
 import { InspectorPanel } from '../inspector/InspectorPanel';
 import { HealthPanel } from '../health/HealthPanel';
 import { ProviderSettingsPanel } from '../provider/ProviderSettingsPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
+import { GameThemingPanel } from '../game/GameThemingPanel';
 import { useRef, useEffect } from 'react';
 import { previewBridge } from '../../lib/preview-bridge';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
@@ -47,6 +48,7 @@ const PANEL_MAP: Record<PanelId, { title: string; Component: React.ComponentType
   settings: { title: 'Settings', Component: () => <div>Settings (placeholder)</div> },
   'gizmo-lab': { title: 'Gizmo Lab', Component: GizmoLab },
   'npc-brain-lab': { title: 'NPC Brain Lab', Component: NpcBrainLab },
+  'game-theming': { title: 'Game Theming', Component: GameThemingPanel },
 };
 
 export function FloatingPanelsManager() {
