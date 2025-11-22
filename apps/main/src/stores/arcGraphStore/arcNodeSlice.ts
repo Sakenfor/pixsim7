@@ -1,5 +1,7 @@
 import type { ArcStateCreator, ArcNodeManagementState } from './types';
 import type { ArcGraphNode, ArcGraphEdge } from '../../modules/arc-graph';
+import { validateArcGraphReferences } from '../../modules/arc-graph/validation';
+import { useGraphStore } from '../graphStore';
 import { useToastStore } from '@pixsim7/shared.ui';
 
 /**
@@ -30,6 +32,23 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
         duration: 4000,
       });
       return;
+    }
+
+    // Validate scene reference if present
+    if (node.type !== 'arc_group' && node.sceneId) {
+      const sceneIds = useGraphStore.getState().getSceneIds();
+      const updatedGraph = { ...graph, nodes: [...graph.nodes, node] };
+      const issues = validateArcGraphReferences(updatedGraph, sceneIds);
+
+      const errors = issues.filter(i => i.severity === 'error');
+      if (errors.length > 0) {
+        useToastStore.getState().addToast({
+          type: 'warning',
+          message: `Scene reference may be invalid: ${node.sceneId}`,
+          duration: 5000,
+        });
+        // Allow with warning, don't block
+      }
     }
 
     set((state) => ({
@@ -67,6 +86,28 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
         duration: 4000,
       });
       return;
+    }
+
+    // Validate scene reference if sceneId is being updated
+    if ('sceneId' in patch && patch.sceneId) {
+      const sceneIds = useGraphStore.getState().getSceneIds();
+      const updatedGraph = {
+        ...graph,
+        nodes: graph.nodes.map((n) =>
+          n.id === id ? { ...n, ...patch } : n
+        ),
+      };
+      const issues = validateArcGraphReferences(updatedGraph, sceneIds);
+
+      const errors = issues.filter(i => i.severity === 'error');
+      if (errors.length > 0) {
+        useToastStore.getState().addToast({
+          type: 'warning',
+          message: `Scene reference may be invalid: ${patch.sceneId}`,
+          duration: 5000,
+        });
+        // Allow with warning, don't block
+      }
     }
 
     set((state) => ({

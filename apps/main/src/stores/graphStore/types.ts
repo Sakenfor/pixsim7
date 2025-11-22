@@ -55,6 +55,7 @@ export interface SceneManagementState {
   getScene: (sceneId: string) => DraftScene | null;
   listScenes: () => DraftScene[];
   renameScene: (sceneId: string, newTitle: string) => void;
+  getSceneIds: () => Set<string>;
 }
 
 // ===== Signature Management =====

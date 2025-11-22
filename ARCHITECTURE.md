@@ -727,6 +727,94 @@ See `docs/BACKEND_STARTUP.md` for detailed startup sequence and helper function 
 
 ---
 
+## 🔀 Graph Cross-Layer Validation
+
+PixSim7 implements a sophisticated multi-layer graph architecture for narrative design:
+
+### **Graph Layers**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│         Layer 3: Character Graph (Meta-Layer)           │
+│         Query-based relationships between               │
+│         characters, NPCs, scenes, and assets            │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│         Layer 2: Arc Graph (Story Structure)            │
+│         Story arcs, quests, milestones                  │
+│         References scenes via sceneId field             │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│         Layer 1: Scene Graph (Narrative Flow)           │
+│         Node-based branching narrative within scenes    │
+│         Video nodes, choices, scene calls               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### **Cross-Layer Validation** (`modules/arc-graph/validation.ts`)
+
+Validates references between graph layers to prevent broken dependencies:
+
+- **Reference Validation**: Arc nodes can reference scenes via `sceneId`
+  - Broken references are detected as **errors** (data integrity issues)
+  - Validation runs on arc node add/update operations
+
+- **Structural Validation**: Graph topology analysis
+  - Unreachable nodes, dead ends, cycles detected as **warnings**
+  - Warnings allow intentional patterns (conditional unlocks, repeatable quests)
+
+- **Shared Types** (`modules/validation/types.ts`)
+  - Unified `ValidationIssue` and `ValidationResult` types
+  - Used by both scene graph and arc graph validation
+  - Consistent UI rendering via `SEVERITY_COLORS`
+
+### **Dependency Tracking** (`lib/graph/dependencies.ts`)
+
+Pure functions for tracking dependencies between layers:
+
+- **Design Principle**: Dependencies are **derived, not stored**
+  - Computed on-demand from current graph state
+  - Maintains single source of truth
+  - No sync burden or stale data
+
+- **Bidirectional Index**:
+  - `sceneToArcNodes`: Map of sceneId → arc node IDs
+  - `arcNodeToScene`: Map of arc node ID → sceneId
+
+- **React Hooks** (`hooks/useArcSceneDependencies.ts`):
+  - `useSceneArcDependencies(sceneId)`: Get arc nodes using a scene
+  - `useSceneHasDependencies(sceneId)`: Check for dependencies
+  - `useSceneDependencyCount(sceneId)`: Get dependency count
+  - Memoized for performance
+
+### **Store Integration**
+
+- **Arc Graph Store** (`stores/arcGraphStore/arcNodeSlice.ts`)
+  - Validates scene references on `addArcNode` and `updateArcNode`
+  - Shows non-blocking warnings via toast notifications
+  - Allows flexibility (users can reference scenes they plan to create later)
+
+- **Scene Graph Store** (`stores/graphStore/sceneSlice.ts`)
+  - Provides `getSceneIds()` selector for efficient validation
+  - Minimal coupling (arc validation only needs scene IDs, not full store)
+
+### **Testing**
+
+- Unit tests: `modules/arc-graph/validation.test.ts`
+- Dependency tests: `lib/graph/dependencies.test.ts`
+- Full coverage of validation logic and dependency tracking
+
+### **Future Enhancements**
+
+- **Task 44**: Undo/Redo with temporal middleware
+- **Task 45**: Visual dependency indicators and cascade delete UI
+- **Task 46**: World/Campaign graph layer above arcs
+- **Task 47**: Scene lineage graph implementation
+
+---
+
 ## 📚 Key Design Decisions
 
 ### **Why Clean Architecture?**
