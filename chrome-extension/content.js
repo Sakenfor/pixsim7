@@ -43,6 +43,55 @@ async function getAllCookiesSecure() {
   return cookies;
 }
 
+function isProviderSessionAuthenticated(providerId, cookies) {
+  const hints = PROVIDER_AUTH_COOKIE_HINTS[providerId];
+  if (!hints || hints.length === 0) {
+    return Object.keys(cookies || {}).length > 0;
+  }
+  return hints.some(name => Boolean(cookies?.[name]));
+}
+
+async function readProviderSessionStore() {
+  const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
+  return stored[PROVIDER_SESSION_STORAGE_KEY] || {};
+}
+
+async function rememberProviderAccount(providerId, info) {
+  const store = await readProviderSessionStore();
+  store[providerId] = { providerId, ...info, updatedAt: Date.now() };
+  await chrome.storage.local.set({ [PROVIDER_SESSION_STORAGE_KEY]: store });
+}
+
+async function getRememberedProviderAccount(providerId) {
+  const store = await readProviderSessionStore();
+  return store[providerId] || null;
+}
+
+async function clearRememberedProviderAccount(providerId) {
+  const store = await readProviderSessionStore();
+  if (store[providerId]) {
+    delete store[providerId];
+    await chrome.storage.local.set({ [PROVIDER_SESSION_STORAGE_KEY]: store });
+  }
+}
+
+async function notifyAccountStatus(accountId, status, reason) {
+  if (!accountId || !status) return;
+  try {
+    const res = await chrome.runtime.sendMessage({
+      action: 'updateAccountStatus',
+      accountId,
+      status,
+      reason,
+    });
+    if (!res || !res.success) {
+      console.warn('[PixSim7 Content] Failed to update account status', res?.error);
+    }
+  } catch (err) {
+    console.warn('[PixSim7 Content] Account status update error:', err);
+  }
+}
+
 async function detectProviderFromBackend() {
   try {
     const res = await chrome.runtime.sendMessage({ action: 'detectProvider', url: window.location.href });
@@ -155,6 +204,19 @@ async function importCookies(providerId, config) {
     if (importResponse.success) {
       console.log(`[PixSim7 Content] ${EMOJI.CHECK} Cookies imported successfully:`, importResponse.data);
 
+      const importedAccountId = importResponse.data?.account_id;
+      if (importedAccountId) {
+        try {
+          await rememberProviderAccount(providerId, {
+            accountId: importedAccountId,
+            email: importResponse.data?.email || null,
+          });
+          await notifyAccountStatus(importedAccountId, 'active', 'login_detected');
+        } catch (statusError) {
+          console.warn('[PixSim7 Content] Failed to update account status after import:', statusError);
+        }
+      }
+
       // Only notify on first-time creation to avoid update spam
       if (importResponse.data.created) {
         showNotification(
@@ -236,6 +298,12 @@ let hasImportedThisSession = false;
 let lastCookieSnapshot = null;
 let lastImportTimestamp = 0;
 const IMPORT_DEBOUNCE_MS = 10000;
+let pendingLogoutStartedAt = null;
+const LOGOUT_DEBOUNCE_MS = 4000;
+const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
+const PROVIDER_AUTH_COOKIE_HINTS = {
+  pixverse: ['_ai_token'],
+};
 
 function scheduleImport(providerId) {
   const now = Date.now();
@@ -265,43 +333,81 @@ function hashCookies(cookies) {
   }
 }
 
+async function handleProviderLogout(providerId) {
+  try {
+    const session = await getRememberedProviderAccount(providerId);
+    if (session?.accountId) {
+      await notifyAccountStatus(session.accountId, 'disabled', 'logout_detected');
+    }
+    await clearRememberedProviderAccount(providerId);
+  } catch (err) {
+    console.warn('[PixSim7 Content] Failed to handle logout status update:', err);
+  }
+}
+
 async function checkAndImport() {
   const auth = await checkAuth();
-  const isLoggedIn = !!auth;
-
-  // When provider is detected, also watch for cookie changes.
-  // This catches SPA-style logins where cookies update without a full reload.
-  if (isLoggedIn) {
-    try {
-      const cookies = await getAllCookiesSecure();
-      const currentHash = hashCookies(cookies);
-      if (currentHash !== null) {
-        if (lastCookieSnapshot === null) {
-          lastCookieSnapshot = currentHash;
-        } else if (currentHash !== lastCookieSnapshot) {
-          console.log('[PixSim7 Content] *** COOKIE CHANGE DETECTED - treating as login/update ***');
-          lastCookieSnapshot = currentHash;
-          hasImportedThisSession = true;
-          scheduleImport(auth.providerId);
-        }
-      }
-    } catch (e) {
-      console.warn('[PixSim7 Content] Cookie change detection failed:', e);
-    }
+  if (!auth) {
+    wasLoggedIn = false;
+    lastCookieSnapshot = null;
+    hasImportedThisSession = false;
+    return;
   }
 
-  // Still keep a basic login transition guard so we don't spam imports
-  if (isLoggedIn && !wasLoggedIn && !hasImportedThisSession) {
+  let cookies = {};
+  try {
+    cookies = await getAllCookiesSecure();
+  } catch (e) {
+    console.warn('[PixSim7 Content] Failed to read cookies for session detection:', e);
+  }
+  const isAuthenticated = isProviderSessionAuthenticated(auth.providerId, cookies);
+
+  if (!isAuthenticated) {
+    if (wasLoggedIn) {
+      pendingLogoutStartedAt = pendingLogoutStartedAt || Date.now();
+      const elapsed = Date.now() - pendingLogoutStartedAt;
+      if (elapsed >= LOGOUT_DEBOUNCE_MS) {
+        console.log('[PixSim7 Content] *** LOGOUT CONFIRMED ***');
+        pendingLogoutStartedAt = null;
+        await handleProviderLogout(auth.providerId);
+        wasLoggedIn = false;
+        lastCookieSnapshot = null;
+        hasImportedThisSession = false;
+      }
+    } else {
+      pendingLogoutStartedAt = null;
+      hasImportedThisSession = false;
+      lastCookieSnapshot = null;
+    }
+    return;
+  }
+
+  pendingLogoutStartedAt = null;
+
+  // When provider is detected and authenticated, watch for cookie changes for re-imports.
+  try {
+    const currentHash = hashCookies(cookies);
+    if (currentHash !== null) {
+      if (lastCookieSnapshot === null) {
+        lastCookieSnapshot = currentHash;
+      } else if (currentHash !== lastCookieSnapshot) {
+        console.log('[PixSim7 Content] *** COOKIE CHANGE DETECTED - treating as login/update ***');
+        lastCookieSnapshot = currentHash;
+        hasImportedThisSession = true;
+        scheduleImport(auth.providerId);
+      }
+    }
+  } catch (e) {
+    console.warn('[PixSim7 Content] Cookie change detection failed:', e);
+  }
+
+  if (!wasLoggedIn && !hasImportedThisSession) {
     console.log('[PixSim7 Content] *** LOGIN DETECTED (initial) ***');
     hasImportedThisSession = true;
     scheduleImport(auth.providerId);
-  } else if (!isLoggedIn) {
-    // Reset tracking when logged out / provider not detected
-    lastCookieSnapshot = null;
-    hasImportedThisSession = false;
   }
 
-  wasLoggedIn = isLoggedIn;
+  wasLoggedIn = true;
 }
 
 // Initial check after page load - longer delay to ensure page is fully loaded

@@ -16,6 +16,12 @@ let automationOptions = { presets: [], loops: [] };
 let hideZeroCredits = false; // Filter for hiding accounts with 0 credits
 let accountsSortBy = 'lastUsed'; // 'name', 'status', 'credits', 'lastUsed', 'success'
 let accountsSortDesc = true;
+const ACCOUNTS_CACHE_KEY = 'pixsim7AccountCache';
+const ACCOUNTS_CACHE_SCOPE_ALL = '__all__';
+const ACCOUNTS_CACHE_TTL_MS = 60 * 1000;
+let accountsRequestSeq = 0;
+const PIXVERSE_STATUS_CACHE_TTL_MS = 60 * 1000;
+const pixverseStatusCache = new Map();
 
 // ===== INIT =====
 
@@ -332,6 +338,26 @@ function showNoProvider() {
 
 // ===== ACCOUNTS =====
 
+function getAccountsCacheKey(providerId) {
+  return providerId || ACCOUNTS_CACHE_SCOPE_ALL;
+}
+
+async function readAccountsCache(cacheKey) {
+  const stored = await chrome.storage.local.get(ACCOUNTS_CACHE_KEY);
+  const cache = stored[ACCOUNTS_CACHE_KEY] || {};
+  return cache[cacheKey] || null;
+}
+
+async function writeAccountsCache(cacheKey, accounts) {
+  const stored = await chrome.storage.local.get(ACCOUNTS_CACHE_KEY);
+  const cache = stored[ACCOUNTS_CACHE_KEY] || {};
+  cache[cacheKey] = {
+    accounts,
+    updatedAt: Date.now(),
+  };
+  await chrome.storage.local.set({ [ACCOUNTS_CACHE_KEY]: cache });
+}
+
 async function loadAccounts() {
   if (!currentUser) {
     return; // Don't load if not logged in
@@ -341,8 +367,21 @@ async function loadAccounts() {
   const accountsLoading = document.getElementById('accountsLoading');
   const accountsError = document.getElementById('accountsError');
 
-  accountsList.innerHTML = '';
-  accountsLoading.classList.remove('hidden');
+  const cacheKey = getAccountsCacheKey(currentProvider?.provider_id || null);
+  const cachedEntry = await readAccountsCache(cacheKey);
+
+  accountsError.classList.add('hidden');
+
+  if (cachedEntry) {
+    displayAccounts(cachedEntry.accounts, { lastUpdatedAt: cachedEntry.updatedAt });
+    accountsLoading.classList.add('hidden');
+  } else {
+    accountsList.innerHTML = '';
+    accountsLoading.textContent = 'Loading accounts...';
+    accountsLoading.classList.remove('hidden');
+  }
+
+  const requestId = ++accountsRequestSeq;
   accountsError.classList.add('hidden');
 
   try {
@@ -352,23 +391,40 @@ async function loadAccounts() {
       providerId: currentProvider?.provider_id || null,
     });
 
+    if (requestId !== accountsRequestSeq) {
+      return;
+    }
+
     accountsLoading.classList.add('hidden');
 
     if (response.success) {
       const accounts = response.data;
-      displayAccounts(accounts);
+      displayAccounts(accounts, { lastUpdatedAt: Date.now() });
+      await writeAccountsCache(cacheKey, accounts);
     } else {
-      showAccountsError(response.error || 'Failed to load accounts');
+      if (cachedEntry) {
+        showToast('error', response.error || 'Failed to refresh accounts');
+      } else {
+        showAccountsError(response.error || 'Failed to load accounts');
+      }
     }
   } catch (error) {
+    if (requestId !== accountsRequestSeq) {
+      return;
+    }
     accountsLoading.classList.add('hidden');
-    showAccountsError(`Error: ${error.message}`);
+    if (cachedEntry) {
+      showToast('error', `Failed to refresh accounts: ${error.message}`);
+    } else {
+      showAccountsError(`Error: ${error.message}`);
+    }
   }
 }
 
-function displayAccounts(accounts) {
+function displayAccounts(accounts, options = {}) {
   const accountsList = document.getElementById('accountsList');
   const accountCount = document.getElementById('accountCount');
+  const lastUpdatedAt = options.lastUpdatedAt || null;
 
   accountCount.textContent = `(${accounts.length})`;
   accountsList.innerHTML = '';
@@ -422,6 +478,15 @@ function displayAccounts(accounts) {
   });
 
   accountsList.appendChild(sortControls);
+
+  if (lastUpdatedAt) {
+    const refreshInfo = document.createElement('div');
+    const isStale = (Date.now() - lastUpdatedAt) > ACCOUNTS_CACHE_TTL_MS;
+    refreshInfo.style.cssText = 'font-size: 10px; text-align: right; padding: 2px 8px;';
+    refreshInfo.style.color = isStale ? '#fbbf24' : '#9ca3af';
+    refreshInfo.textContent = `Updated ${formatRelativeTime(lastUpdatedAt)}${isStale ? ' (stale)' : ''}`;
+    accountsList.appendChild(refreshInfo);
+  }
 
   // Filter accounts
   let filtered = [...accounts];
@@ -510,27 +575,62 @@ function createAccountCard(account) {
   // For Pixverse accounts, enrich header line with live ad-task status
   if (account.provider_id === 'pixverse') {
     const adPillEl = card.querySelector('[data-role="ad-pill"]');
-    if (adPillEl) {
-      chrome.runtime.sendMessage(
-        { action: 'getPixverseStatus', accountId: account.id },
-        (res) => {
-          if (!res || !res.success || !res.data) return;
-          const { ad_watch_task } = res.data;
-          if (ad_watch_task && typeof ad_watch_task === 'object') {
-            const progress = ad_watch_task.progress ?? 0;
-            const total = ad_watch_task.total_counts ?? 0;
-            const reward = ad_watch_task.reward ?? 0;
-            adPillEl.textContent = `Ads ${progress}/${total}`;
-            adPillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}`;
-            adPillEl.style.fontSize = '10px';
-            adPillEl.style.color = '#6b7280';
-          }
-        }
-      );
-    }
+    attachPixverseAdStatus(account, adPillEl);
   }
 
   return card;
+}
+
+function attachPixverseAdStatus(account, pillEl) {
+  if (!pillEl) return;
+
+  const cacheEntry = pixverseStatusCache.get(account.id);
+  if (cacheEntry && (Date.now() - cacheEntry.updatedAt) < PIXVERSE_STATUS_CACHE_TTL_MS) {
+    renderPixverseAdPill(pillEl, cacheEntry.data);
+    return;
+  }
+
+  pillEl.textContent = 'Ads …';
+  pillEl.title = 'Refreshing Pixverse status...';
+  pillEl.style.fontSize = '10px';
+  pillEl.style.color = '#6b7280';
+
+  chrome.runtime.sendMessage(
+    { action: 'getPixverseStatus', accountId: account.id },
+    (res) => {
+      if (!pillEl.isConnected) {
+        return;
+      }
+      if (!res || !res.success || !res.data) {
+        pillEl.textContent = '';
+        pillEl.removeAttribute('title');
+        return;
+      }
+      pixverseStatusCache.set(account.id, { data: res.data, updatedAt: Date.now() });
+      if (pixverseStatusCache.size > 200) {
+        const firstKey = pixverseStatusCache.keys().next().value;
+        pixverseStatusCache.delete(firstKey);
+      }
+      renderPixverseAdPill(pillEl, res.data);
+    }
+  );
+}
+
+function renderPixverseAdPill(pillEl, payload) {
+  if (!pillEl) return;
+  const task = payload?.ad_watch_task;
+  if (task && typeof task === 'object') {
+    const progress = task.progress ?? 0;
+    const total = task.total_counts ?? 0;
+    const reward = task.reward ?? 0;
+    pillEl.textContent = `Ads ${progress}/${total}`;
+    pillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}`;
+    pillEl.style.fontSize = '10px';
+    pillEl.style.color = '#6b7280';
+  } else {
+    pillEl.textContent = '';
+    pillEl.removeAttribute('title');
+  }
 }
 
 // ===== AUTOMATION (Presets/Loops) =====
@@ -691,6 +791,20 @@ function formatCredits(credits, totalCredits) {
   }
 
   return parts.join('');
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return '';
+  const diff = Date.now() - timestamp;
+  if (diff < 5000) return 'just now';
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 async function handleAccountLogin(account) {

@@ -438,6 +438,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+
+  if (message.action === 'updateAccountStatus') {
+    (async () => {
+      try {
+        const { accountId, status, reason } = message;
+        if (!accountId) throw new Error('accountId is required');
+        if (!status) throw new Error('status is required');
+
+        const data = await backendRequest(`/api/v1/accounts/${accountId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status }),
+        });
+
+        console.log('[Background] Account status updated', {
+          accountId,
+          status,
+          reason: reason || 'unspecified',
+        });
+
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
 });
 
 // ===== COOKIE MANAGEMENT =====
