@@ -69,6 +69,13 @@ function getQuickGeneratePresets(providerId) {
   });
 }
 
+const PROVIDER_TARGETS = {
+  pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' },
+  runway: { domain: 'runwayml.com', url: 'https://app.runwayml.com' },
+  pika: { domain: 'pika.art', url: 'https://app.pika.art' },
+  sora: { domain: 'chatgpt.com', url: 'https://chatgpt.com' },
+};
+
 console.log('[PixSim7 Extension] Background service worker loaded');
 
 // Default backend URL (configurable in settings)
@@ -194,6 +201,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (error) {
       sendResponse({ success: false, error: error.message });
     }
+    return true;
+  }
+
+  if (message.action === 'openProviderHome') {
+    try {
+      const { providerId } = message;
+      const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
+      chrome.tabs.create({ url: target.url }, () => sendResponse({ success: true }));
+    } catch (error) {
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
+
+  if (message.action === 'reauthAccounts') {
+    (async () => {
+      try {
+        const { accountIds } = message;
+        if (!Array.isArray(accountIds) || accountIds.length === 0) {
+          throw new Error('No account IDs provided');
+        }
+
+        const results = [];
+        for (const accountId of accountIds) {
+          try {
+            await backendRequest(`/api/v1/accounts/${accountId}/reauth`, {
+              method: 'POST',
+              body: JSON.stringify({}),
+            });
+            results.push({ accountId, success: true });
+          } catch (err) {
+            results.push({ accountId, success: false, error: err.message });
+          }
+        }
+
+        const success = results.every((r) => r.success);
+        if (success) {
+          chrome.runtime.sendMessage({ action: 'accountsUpdated' });
+        }
+        sendResponse({ success, results });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
 
@@ -464,14 +515,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const providerId = data.provider_id;
         const cookies = data.cookies || {};
 
-        // Map provider -> domain + landing URL
-        const providerTargets = {
-          pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' },
-          runway: { domain: 'runwayml.com', url: 'https://app.runwayml.com' },
-          pika: { domain: 'pika.art', url: 'https://app.pika.art' },
-          sora: { domain: 'chatgpt.com', url: 'https://chatgpt.com' },
-        };
-        const target = providerTargets[providerId] || { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' };
+        const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
 
         // Inject cookies
         await injectCookies(cookies, target.domain);

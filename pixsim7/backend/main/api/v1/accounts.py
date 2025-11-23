@@ -20,6 +20,11 @@ from pixsim7.backend.main.shared.schemas.account_schemas import (
 from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token
 from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
+from pixsim7.backend.main.services.provider import registry
+from pixsim7.backend.main.services.provider.pixverse_auth_service import (
+    PixverseAuthService,
+    PixverseAuthError,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -79,6 +84,67 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         cooldown_until=account.cooldown_until,
         created_at=account.created_at,
     )
+
+
+async def _apply_extracted_account_data(
+    account: ProviderAccount,
+    extracted: Dict[str, Any],
+    account_service: AccountSvc,
+    db: DatabaseSession,
+    user_id: int,
+) -> tuple[ProviderAccount, List[str]]:
+    """Apply extracted provider data (cookies/JWT/etc.) to an account."""
+    updated_fields: List[str] = []
+    update_payload: Dict[str, Any] = {}
+
+    email = extracted.get('email')
+    nickname = extracted.get('nickname')
+    jwt_token = extracted.get('jwt_token')
+    cookies_dict = extracted.get('cookies')
+
+    if email and email != account.email:
+        update_payload['email'] = email
+    if nickname is not None:
+        update_payload['nickname'] = nickname
+    if jwt_token:
+        update_payload['jwt_token'] = jwt_token
+    if isinstance(cookies_dict, dict):
+        update_payload['cookies'] = cookies_dict
+
+    if update_payload:
+        account = await account_service.update_account(
+            account_id=account.id,
+            user_id=user_id,
+            **update_payload,
+        )
+        updated_fields.extend(update_payload.keys())
+
+    provider_user_id = extracted.get('account_id')
+    if provider_user_id and provider_user_id != account.provider_user_id:
+        account.provider_user_id = provider_user_id
+        updated_fields.append("provider_user_id")
+
+    provider_metadata = extracted.get('provider_metadata')
+    if provider_metadata:
+        account.provider_metadata = provider_metadata
+        updated_fields.append("provider_metadata")
+
+    await db.commit()
+    await db.refresh(account)
+
+    credits_data = extracted.get('credits')
+    if credits_data and isinstance(credits_data, dict):
+        for credit_type, amount in credits_data.items():
+            try:
+                await account_service.set_credit(account.id, credit_type, int(amount))
+                if "credits" not in updated_fields:
+                    updated_fields.append("credits")
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.debug(f"Failed to update credit {credit_type} for account {account.id}: {exc}")
+        await db.commit()
+        await db.refresh(account)
+
+    return account, updated_fields
 
 
 # ===== EXPORT COOKIES (FOR EXTENSION LOGIN) =====
@@ -144,6 +210,18 @@ class PixverseStatusResponse(BaseModel):
     email: str
     credits: Dict[str, int]
     ad_watch_task: Optional[Dict[str, Any]] = None
+
+
+class AccountReauthRequest(BaseModel):
+    """Request body for automated re-auth via Playwright"""
+    password: Optional[str] = None
+    headless: bool = True
+
+
+class AccountReauthResponse(BaseModel):
+    success: bool
+    updated_fields: List[str] = Field(default_factory=list)
+    account: AccountResponse
 
 
 @router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)
@@ -506,6 +584,62 @@ async def get_pixverse_status(
 
     except ResourceNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+
+@router.post("/accounts/{account_id}/reauth", response_model=AccountReauthResponse)
+async def reauth_account(
+    account_id: int,
+    request: AccountReauthRequest,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """Trigger automated Pixverse re-auth via Playwright to refresh JWT/cookies."""
+    try:
+        account = await account_service.get_account(account_id)
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+    if account.user_id is None or (account.user_id != user.id and not user.is_admin()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to re-auth this account")
+
+    if account.provider_id != "pixverse":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Automated re-auth currently supported for Pixverse only")
+
+    password = request.password or account.password
+    if not password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no stored password. Provide password in request.")
+
+    try:
+        async with PixverseAuthService() as auth_service:
+            cookies = await auth_service.login_with_password(
+                account.email,
+                password,
+                headless=request.headless,
+            )
+    except PixverseAuthError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"Pixverse login failed: {exc}",
+        )
+
+    provider = registry.get(account.provider_id)
+    raw_data = {"cookies": cookies}
+    extracted = await provider.extract_account_data(raw_data)
+
+    updated_account, updated_fields = await _apply_extracted_account_data(
+        account,
+        extracted,
+        account_service,
+        db,
+        user.id,
+    )
+
+    return AccountReauthResponse(
+        success=True,
+        updated_fields=updated_fields,
+        account=_to_response(updated_account, user.id),
+    )
 
 
 # ===== CREATE ACCOUNT =====

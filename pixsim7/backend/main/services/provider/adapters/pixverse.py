@@ -79,6 +79,31 @@ class PixverseProvider(Provider):
         # Key format: (account_id, use_method or 'auto', jwt_prefix)
         self._client_cache: Dict[tuple, Any] = {}
 
+    def _evict_account_cache(self, account: ProviderAccount) -> None:
+        """Remove cached API/client entries for account (e.g., session invalidated)."""
+        account_id = account.id
+        if account_id is None:
+            return
+
+        client_keys = [key for key in self._client_cache.keys() if key[0] == account_id]
+        for key in client_keys:
+            logger.debug('Evicting PixverseClient cache for account %s (key=%s)', account_id, key)
+            self._client_cache.pop(key, None)
+
+        api_keys = [key for key in self._api_cache.keys() if key[0] == account_id]
+        for key in api_keys:
+            logger.debug('Evicting PixverseAPI cache for account %s (key=%s)', account_id, key)
+            self._api_cache.pop(key, None)
+
+    @staticmethod
+    def _is_session_invalid_error(error: Exception) -> bool:
+        msg = str(error).lower()
+        return (
+            "logged in elsewhere" in msg
+            or "session expired" in msg
+            or "error 10005" in msg
+        )
+
     @property
     def provider_id(self) -> str:
         return "pixverse"
@@ -459,6 +484,8 @@ class PixverseProvider(Provider):
             )
 
         except Exception as e:
+            if self._is_session_invalid_error(e):
+                self._evict_account_cache(account)
             logger.error(
                 "provider:error",
                 msg="pixverse_api_error",
@@ -962,6 +989,8 @@ class PixverseProvider(Provider):
             web_data = api.get_credits(temp_account)
             web_total = int(web_data.get("total_credits") or 0)
         except Exception as e:
+            if self._is_session_invalid_error(e):
+                self._evict_account_cache(account)
             logger.warning(f"PixverseAPI get_credits (web) failed: {e}")
 
         # 2) OpenAPI credits via /openapi/v2/account/credits
@@ -971,6 +1000,8 @@ class PixverseProvider(Provider):
                 openapi_data = api.get_openapi_credits(temp_account)
                 openapi_total = int(openapi_data.get("total_credits") or 0)
             except Exception as e:
+                if self._is_session_invalid_error(e):
+                    self._evict_account_cache(account)
                 logger.warning(f"PixverseAPI get_openapi_credits failed: {e}")
 
         result: Dict[str, Any] = {

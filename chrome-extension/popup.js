@@ -22,6 +22,11 @@ const ACCOUNTS_CACHE_TTL_MS = 60 * 1000;
 let accountsRequestSeq = 0;
 const PIXVERSE_STATUS_CACHE_TTL_MS = 60 * 1000;
 const pixverseStatusCache = new Map();
+let accountJwtHealth = {
+  missing: [],
+  expired: [],
+  providers: [],
+};
 
 // ===== INIT =====
 
@@ -116,6 +121,9 @@ function setupEventListeners() {
   // Copy token button
   const copyTokenBtn = document.getElementById('copyTokenBtn');
   if (copyTokenBtn) copyTokenBtn.addEventListener('click', handleCopyToken);
+
+  const reauthBtn = document.getElementById('reauthBtn');
+  if (reauthBtn) reauthBtn.addEventListener('click', handleReauthMissingJwt);
 }
 
 // ===== CREDIT SYNC (THROTTLED) =====
@@ -369,6 +377,72 @@ async function writeAccountsCache(cacheKey, accounts) {
   await chrome.storage.local.set({ [ACCOUNTS_CACHE_KEY]: cache });
 }
 
+function analyzeAccountJwt(accounts) {
+  const missing = accounts.filter(a => !a.has_jwt);
+  const expired = accounts.filter(a => a.has_jwt && a.jwt_expired);
+  const providers = [...new Set([...missing, ...expired].map(a => a.provider_id))];
+  const accountIds = [...new Set([...missing, ...expired].map(a => a.id))];
+  return { missing, expired, providers, accountIds };
+}
+
+function updateJwtBanner(health) {
+  const banner = document.getElementById('jwtAlert');
+  const textEl = document.getElementById('jwtAlertText');
+  if (!banner || !textEl) {
+    return;
+  }
+
+  if (!currentUser || (health.missing.length === 0 && health.expired.length === 0)) {
+    banner.classList.add('hidden');
+    textEl.textContent = '';
+    return;
+  }
+
+  const parts = [];
+  if (health.missing.length) {
+    parts.push(`${health.missing.length} without session`);
+  }
+  if (health.expired.length) {
+    parts.push(`${health.expired.length} expired`);
+  }
+
+  textEl.textContent = `${parts.join(' • ')}. Click "Fix Sessions" to open provider login tabs, sign in, then re-import cookies.`;
+  banner.classList.remove('hidden');
+}
+
+async function handleReauthMissingJwt() {
+  if (!currentUser) {
+    return showError('Please login first');
+  }
+
+  const targetAccountIds = accountJwtHealth.accountIds || [];
+  if (!targetAccountIds.length) {
+    showToast('info', 'All accounts have active sessions');
+    return;
+  }
+
+  const confirmMsg = `Attempt to re-authenticate ${targetAccountIds.length} account(s) using stored credentials?`;
+  if (!window.confirm(confirmMsg)) return;
+
+  try {
+    const res = await chrome.runtime.sendMessage({
+      action: 'reauthAccounts',
+      accountIds: targetAccountIds,
+    });
+
+    if (res && res.success) {
+      showToast('success', `Re-auth triggered for ${targetAccountIds.length} account(s).`);
+      clearAccountsCache(currentProvider?.provider_id || null).catch(() => {});
+      loadAccounts();
+    } else {
+      const errorMsg = res?.error || 'Re-auth failed';
+      showError(errorMsg);
+    }
+  } catch (error) {
+    showError(`Re-auth error: ${error.message}`);
+  }
+}
+
 async function loadAccounts() {
   if (!currentUser) {
     return; // Don't load if not logged in
@@ -436,6 +510,9 @@ function displayAccounts(accounts, options = {}) {
   const accountsList = document.getElementById('accountsList');
   const accountCount = document.getElementById('accountCount');
   const lastUpdatedAt = options.lastUpdatedAt || null;
+
+  accountJwtHealth = analyzeAccountJwt(accounts);
+  updateJwtBanner(accountJwtHealth);
 
   accountCount.textContent = `(${accounts.length})`;
   accountsList.innerHTML = '';
@@ -545,6 +622,9 @@ function createAccountCard(account) {
   const statusClass = `status-${account.status}`;
   const totalCredits = account.total_credits || 0;
   const displayName = account.nickname || account.email;
+  const jwtFlag = !account.has_jwt
+    ? { text: 'Needs JWT', color: '#b91c1c' }
+    : (account.jwt_expired ? { text: 'JWT expired', color: '#f97316' } : null);
 
   card.innerHTML = `
     <div class="account-header">
@@ -556,6 +636,7 @@ function createAccountCard(account) {
         <span style="font-size: 13px; font-weight: 700; color: #10b981;">${totalCredits}</span>
         <span class="account-status ${statusClass}">${account.status}</span>
         <span class="account-ad-pill" data-role="ad-pill"></span>
+        ${jwtFlag ? `<span class="account-flag" style="font-size: 10px; padding: 2px 6px; border-radius: 999px; background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
       </div>
     </div>
 
