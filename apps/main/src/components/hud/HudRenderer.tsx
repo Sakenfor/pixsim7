@@ -16,6 +16,7 @@ import { DEFAULT_REGION_POSITIONS } from '../../lib/hud/types';
 
 export interface HudRendererProps {
   worldId: number | string;
+  layoutId?: string | null; // Optional override for dev/testing (Phase 58.4)
   className?: string;
 }
 
@@ -85,8 +86,10 @@ function HudRegion({ regionLayout }: { regionLayout: HudRegionLayout }) {
  *
  * Renders the HUD layout for a given world by reading from hudLayoutStore
  * and rendering each region using ComposedPanel.
+ *
+ * Phase 58.4: Supports optional layoutId override for dev testing.
  */
-export function HudRenderer({ worldId, className = '' }: HudRendererProps) {
+export function HudRenderer({ worldId, layoutId, className = '' }: HudRendererProps) {
   const store = useHudLayoutStore();
   const [layout, setLayout] = useState<WorldHudLayout | null>(null);
 
@@ -95,8 +98,18 @@ export function HudRenderer({ worldId, className = '' }: HudRendererProps) {
     initializeWidgets();
   }, []);
 
-  // Load the default layout for this world
+  // Load layout: prioritize override layoutId, then default, then first available
   useEffect(() => {
+    // If layoutId override is provided, use it (Phase 58.4)
+    if (layoutId) {
+      const overrideLayout = store.getLayout(layoutId);
+      if (overrideLayout) {
+        setLayout(overrideLayout);
+        return;
+      }
+    }
+
+    // Otherwise, load default layout
     const defaultLayout = store.getDefaultLayoutForWorld(worldId);
     if (defaultLayout) {
       setLayout(defaultLayout);
@@ -109,11 +122,20 @@ export function HudRenderer({ worldId, className = '' }: HudRendererProps) {
         setLayout(null);
       }
     }
-  }, [worldId, store]);
+  }, [worldId, layoutId, store]);
 
   // Subscribe to store changes
   useEffect(() => {
     const unsubscribe = useHudLayoutStore.subscribe((state) => {
+      // Respect layoutId override if present
+      if (layoutId) {
+        const overrideLayout = store.getLayout(layoutId);
+        if (overrideLayout) {
+          setLayout(overrideLayout);
+          return;
+        }
+      }
+
       const defaultLayout = store.getDefaultLayoutForWorld(worldId);
       if (defaultLayout) {
         setLayout(defaultLayout);
@@ -128,7 +150,7 @@ export function HudRenderer({ worldId, className = '' }: HudRendererProps) {
     });
 
     return unsubscribe;
-  }, [worldId, store]);
+  }, [worldId, layoutId, store]);
 
   // Sort regions by zIndex for proper layering
   const sortedRegions = useMemo(() => {

@@ -58,7 +58,7 @@ import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
 import { HudProfileSwitcherButton } from '../components/game/HudProfileSwitcher';
-import { HudRenderer, HudRendererToggle } from '../components/hud/HudRenderer';
+import { HudRenderer, HudRendererToggle, HudLayoutSwitcher } from '../components/hud';
 import { UserPreferencesPanel } from '../components/game/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
@@ -178,6 +178,7 @@ export function Game2D() {
   const [showPresetEditor, setShowPresetEditor] = useState(false);
   const [showUserPreferences, setShowUserPreferences] = useState(false);
   const [useNewHudSystem, setUseNewHudSystem] = useState(false); // Task 58: Toggle for new HUD system
+  const [hudLayoutOverride, setHudLayoutOverride] = useState<string | null>(null); // Task 58.4: Temporary HUD override
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -937,6 +938,13 @@ export function Game2D() {
               />
             </>
           )}
+          {selectedWorldId && useNewHudSystem && (
+            <HudLayoutSwitcher
+              worldId={selectedWorldId}
+              currentLayoutId={hudLayoutOverride}
+              onLayoutChange={setHudLayoutOverride}
+            />
+          )}
           {selectedWorldId && (
             <HudRendererToggle
               enabled={useNewHudSystem}
@@ -964,7 +972,7 @@ export function Game2D() {
       {/* Task 58: New HUD Renderer using widget compositions */}
       {useNewHudSystem && selectedWorldId && (
         <div className="relative">
-          <HudRenderer worldId={selectedWorldId} />
+          <HudRenderer worldId={selectedWorldId} layoutId={hudLayoutOverride} />
         </div>
       )}
 
