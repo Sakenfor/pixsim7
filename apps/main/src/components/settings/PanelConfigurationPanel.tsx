@@ -271,6 +271,101 @@ function PanelCard({
             </div>
           </div>
         )}
+
+        {/* Gallery panel badge configuration */}
+        {panel.id === 'gallery' && (
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
+              Card Badges
+            </span>
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showPrimaryIcon ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showPrimaryIcon: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Media type icon</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showStatusIcon ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showStatusIcon: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Status icon</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showStatusTextOnHover ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showStatusTextOnHover: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Status text on hover</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showTagsInOverlay ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showTagsInOverlay: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Tags in overlay</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showFooterProvider ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showFooterProvider: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Footer provider</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showFooterDate ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showFooterDate: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Footer date</span>
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tags */}

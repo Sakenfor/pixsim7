@@ -224,6 +224,27 @@ The Panel Configuration Panel now shows the plugin origin for non-builtin panels
 
 This helps users identify custom panels and understand their source.
 
+### Gallery Panel Badge Configuration (Task 62)
+
+The `gallery` panel now supports badge configuration for media cards:
+
+**Location:** Settings → Panel Configuration → Gallery panel → Card Badges section
+
+**Configurable Options:**
+- Media type icon - Show/hide primary media type icons (video, image, audio, 3D model)
+- Status icon - Show/hide colored rings around primary icon indicating provider status
+- Status text on hover - Show/hide contextual status badges on hover
+- Tags in overlay - Show/hide asset tags in the bottom overlay
+- Footer provider - Show/hide provider ID and media type in footer
+- Footer date - Show/hide creation date in footer
+
+**Configuration Priority:**
+Panel-level badge settings override surface-level defaults and are overridden by widget-level settings when using the Gallery Grid widget in composed panels.
+
+See also:
+- [Gallery Surfaces](../gallery/GALLERY_SURFACES.md#panel-integration-task-62)
+- [Gallery Grid Widget](../widgets/builtInWidgets.ts)
+
 ---
 
 ## Activation and Disable Behavior

@@ -324,6 +324,63 @@ Potential future improvements:
 
 ---
 
+## Panel Integration (Task 62)
+
+Gallery badge configuration can be controlled at multiple levels:
+
+### Configuration Priority
+
+Badge settings merge with the following priority (highest to lowest):
+1. **Widget-level** - `GalleryGridWidget` badgeConfig prop
+2. **Panel-level** - Gallery panel settings in `panelConfigStore`
+3. **Surface-level** - `badgeConfig` in `GallerySurfaceDefinition`
+
+### Panel Configuration
+
+The gallery panel can be configured via **Panel Configuration** (Settings panel):
+- Navigate to Settings → Panel Configuration → Gallery panel
+- Adjust badge visibility toggles:
+  - Media type icon
+  - Status icon
+  - Status text on hover
+  - Tags in overlay
+  - Footer provider
+  - Footer date
+
+These settings override surface defaults for the gallery panel.
+
+### Gallery Grid Widget
+
+The `GalleryGridWidget` allows embedding gallery views in composed panels:
+
+```tsx
+// In panel builder, add a Gallery Grid widget with custom badge config
+{
+  widgetType: 'gallery-grid',
+  config: {
+    title: 'Recent Videos',
+    limit: 12,
+    layout: 'masonry', // or 'grid'
+    filters: {
+      media_type: 'video',
+      provider_status: 'ok',
+    },
+    badgeConfig: {
+      showPrimaryIcon: true,
+      showStatusIcon: false, // Hide status icons for cleaner view
+      showTagsInOverlay: true,
+      showFooterProvider: false,
+    },
+  },
+}
+```
+
+Widget-level config overrides both panel and surface settings for maximum flexibility.
+
+---
+
 **Related Documentation:**
 - [Gallery Tools System](./types.ts)
 - [Asset Management](../../routes/Assets.tsx)
+- [Panel Configuration](../../stores/panelConfigStore.ts)
+- [Panel Builder Widgets](../widgets/widgetRegistry.ts)

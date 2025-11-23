@@ -380,6 +380,90 @@ dataSourceRegistry.registerSource(
 - Check that data source is properly registered
 - Verify store is whitelisted in `storeAccessors.ts`
 
+## Gallery Grid Widget (Task 62)
+
+The **Gallery Grid Widget** allows embedding gallery views in composed panels with full control over layout and badge configuration.
+
+### Features
+
+- **Dual Layout Support** - Switch between `masonry` (CSS columns) and `grid` (CSS grid) layouts
+- **Asset Filtering** - Filter by query, tags, provider, media type, and provider status
+- **Badge Configuration** - Control visibility of all media card badges
+- **Responsive Columns** - Adjust column count and gaps
+- **Limit Control** - Cap the number of assets displayed
+
+### Configuration
+
+```typescript
+{
+  widgetType: 'gallery-grid',
+  config: {
+    title: 'Recent Videos',
+    limit: 12,
+    layout: 'masonry', // or 'grid'
+    columns: 3, // Grid layout only
+    columnGap: 16,
+    rowGap: 16,
+    filters: {
+      q: 'landscape', // Search query
+      media_type: 'video',
+      provider_status: 'ok',
+    },
+    badgeConfig: {
+      showPrimaryIcon: true,
+      showStatusIcon: false,
+      showStatusTextOnHover: true,
+      showTagsInOverlay: true,
+      showFooterProvider: false,
+      showFooterDate: true,
+    },
+  },
+}
+```
+
+### Badge Configuration Priority
+
+When a Gallery Grid widget is used in a composed panel, badge configuration merges with this priority:
+
+1. **Widget-level** - `badgeConfig` in widget config (highest)
+2. **Panel-level** - Gallery panel settings from `panelConfigStore`
+3. **Surface-level** - `badgeConfig` from `GallerySurfaceDefinition` (lowest)
+
+This allows maximum flexibility: surfaces set defaults, panels override for all gallery views, and widgets override for specific use cases.
+
+### Example: Filtered Gallery Widget
+
+```typescript
+// Create a widget showing only approved videos
+const videoGalleryWidget = addWidget(
+  composition,
+  'gallery-grid',
+  { x: 0, y: 0, w: 6, h: 4 },
+  {
+    title: 'Approved Videos',
+    limit: 20,
+    layout: 'masonry',
+    filters: {
+      media_type: 'video',
+      provider_status: 'ok',
+    },
+    badgeConfig: {
+      showPrimaryIcon: true,
+      showStatusIcon: false, // Hide status since we're filtering to "ok" only
+      showTagsInOverlay: true,
+      showFooterProvider: true,
+      showFooterDate: true,
+    },
+  }
+);
+```
+
+### See Also
+
+- [Gallery Surfaces](../gallery/GALLERY_SURFACES.md#panel-integration-task-62)
+- [Media Card Badge Configuration](../../components/media/mediaBadgeConfig.ts)
+- [Panel Configuration](../../stores/panelConfigStore.ts)
+
 ## Next Steps
 
 1. **Build the Visual Builder UI** - Drag-drop interface for creating compositions

@@ -10,8 +10,11 @@ import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
+import { usePanelConfigStore } from '../stores/panelConfigStore';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
+import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
+import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
 
@@ -127,6 +130,18 @@ export function AssetsRoute() {
     const params = new URLSearchParams(location.search);
     return params.get('surface') || 'assets-default';
   }, [location.search]);
+
+  // Get badge config from panel settings
+  const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
+
+  // Merge badge configurations: surface < panel < widget
+  const effectiveBadgeConfig = useMemo(() => {
+    const surface = gallerySurfaceRegistry.get(currentSurfaceId);
+    const surfaceBadgeConfig = surface?.badgeConfig;
+    const panelBadgeConfig = panelConfig?.settings?.badgeConfig;
+
+    return mergeBadgeConfig(surfaceBadgeConfig, panelBadgeConfig);
+  }, [currentSurfaceId, panelConfig]);
 
   // Gallery tools state
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
@@ -388,6 +403,7 @@ export function AssetsRoute() {
                             onOpenDetails: () => navigate(`/assets/${a.id}`),
                             onShowMetadata: () => navigate(`/assets/${a.id}`),
                           }}
+                          badgeConfig={effectiveBadgeConfig}
                         />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -433,6 +449,7 @@ export function AssetsRoute() {
                           onOpenDetails: () => navigate(`/assets/${a.id}`),
                           onShowMetadata: () => navigate(`/assets/${a.id}`),
                         }}
+                        badgeConfig={effectiveBadgeConfig}
                       />
                       {/* Selection indicator */}
                       {isSelected && (
