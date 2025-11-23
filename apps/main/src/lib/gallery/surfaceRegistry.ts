@@ -72,6 +72,16 @@ export interface GallerySurfaceDefinition {
   /** Optional default tools for this surface */
   defaultTools?: string[];
 
+  /** Badge configuration for media cards in this surface */
+  badgeConfig?: {
+    showPrimaryIcon?: boolean;      // default true
+    showStatusIcon?: boolean;       // default true
+    showStatusTextOnHover?: boolean; // default true
+    showTagsInOverlay?: boolean;    // default true
+    showFooterProvider?: boolean;   // default true
+    showFooterDate?: boolean;       // default true
+  };
+
   /** Lifecycle: Called when surface is entered/mounted */
   onEnter?: () => void | Promise<void>;
 

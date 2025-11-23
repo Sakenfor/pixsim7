@@ -240,3 +240,31 @@ Ensure upload controls in the gallery (e.g. `MediaCard` upload button, gallery t
   - Red "Flagged" badge for moderated content
 
 **Result:** Gallery upload controls now use the same semantics and visual language as the Chrome extension
+
+---
+
+## Task 61 Badge Evolution
+
+**Note:** The provider status badges implemented in this task have been refined in [Task 61: Gallery Media Card Badges & Actions UX](./61-gallery-media-card-badges-and-actions.md).
+
+The new badge system (Task 61) introduces:
+
+1. **Icon-based primary badge (top-left):** Always-visible media type icon (🎬, 🖼️, 🎧, 📦) with a colored ring indicating provider status:
+   - Green ring: Provider OK (`provider_status === 'ok'`)
+   - Yellow ring: Local only (`provider_status === 'local_only'`)
+   - Red ring: Flagged (`provider_status === 'flagged'`)
+   - Gray ring: Unknown status
+
+2. **Contextual text badge (top-right):** Provider status appears as text on hover only:
+   - "✓ OK" (green)
+   - "↓ Local only" (yellow)
+   - "! Flagged" (red)
+   - "? Unknown" (gray)
+
+3. **Reduced clutter:** Provider ID, media type, and status badges have been moved out of the always-visible hover overlay and are now represented by the icon badge system.
+
+**Benefits:**
+- Less visual noise in the default state
+- Status information conveyed at a glance via color coding
+- Detailed status text available on intentional hover
+- Consistent with modern UI patterns (icon + contextual detail)

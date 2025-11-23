@@ -106,11 +106,30 @@ Interface defining a surface:
   supportsSelection?: boolean;
   routePath?: string;
   defaultTools?: string[];
+  badgeConfig?: {
+    showPrimaryIcon?: boolean;      // default true
+    showStatusIcon?: boolean;       // default true
+    showStatusTextOnHover?: boolean; // default true
+    showTagsInOverlay?: boolean;    // default true
+    showFooterProvider?: boolean;   // default true
+    showFooterDate?: boolean;       // default true
+  };
   onEnter?: () => void | Promise<void>;  // Lifecycle hook
   onExit?: () => void | Promise<void>;   // Lifecycle hook
   onSelectionChange?: (selectedIds: string[]) => void;  // Lifecycle hook
 }
 ```
+
+**Badge Configuration:**
+The `badgeConfig` object allows surfaces to customize media card badge visibility:
+- `showPrimaryIcon`: Display media type icon in top-left (🎬, 🖼️, 🎧, 📦)
+- `showStatusIcon`: Show colored ring around primary icon for status (green=OK, yellow=local, red=flagged)
+- `showStatusTextOnHover`: Display status text badge in top-right on hover ("OK", "Local only", etc.)
+- `showTagsInOverlay`: Include asset tags in bottom overlay on hover
+- `showFooterProvider`: Show provider ID and media type in card footer
+- `showFooterDate`: Show creation date in card footer
+
+All flags default to `true` if not specified, maintaining current behavior.
 
 **Lifecycle Hooks:**
 - `onEnter`: Called when the surface is mounted/entered
@@ -201,6 +220,57 @@ Tools without `supportedSurfaces` default to `['assets-default']` for backwards 
 
 When a surface is active, only tools that support it will appear in the tools panel.
 
+## Media Card Badge Layout
+
+Media cards use a consistent badge layout to convey asset information at a glance:
+
+### Badge Placement
+
+- **Top-left (always visible):** Primary media type icon badge (🎬 video, 🖼️ image, 🎧 audio, 📦 3D model)
+  - Icon badge includes a colored ring to indicate provider status:
+    - Green ring: Provider OK (asset successfully uploaded)
+    - Yellow ring: Local only (saved locally, provider upload failed)
+    - Red ring: Flagged (rejected by provider)
+    - Gray ring: Unknown status
+
+- **Top-right (contextual hover):** Status badge appears only on hover
+  - Shows icon + text: "✓ OK", "↓ Local only", "! Flagged", "? Unknown"
+  - Provides clear status feedback without overwhelming default view
+
+- **Bottom overlay (hover):** Detailed information
+  - Description (clamped to 2 lines)
+  - Up to 3 tags (with +N indicator if more exist)
+  - Metadata row: date, dimensions, duration
+
+- **Footer (always visible):** Compact info bar
+  - Provider ID and media type
+  - Creation date
+
+### More Actions Menu
+
+Each card has a three-dots menu (⋮) in the bottom-right of the hover overlay. This menu provides access to secondary actions:
+- **Open details:** Navigate to asset detail page
+- **Show metadata:** View full asset metadata
+- **Upload to provider:** Upload/retry provider upload (if applicable)
+
+Actions can be passed to `MediaCard` via the `actions` prop.
+
+### Badge Configuration
+
+Surfaces can customize badge visibility by passing `badgeConfig` to media cards. This allows different surfaces to emphasize different information:
+
+```typescript
+// Example: Review surface might hide tags in overlay to reduce clutter
+badgeConfig: {
+  showPrimaryIcon: true,
+  showStatusIcon: true,
+  showStatusTextOnHover: true,
+  showTagsInOverlay: false,  // Hide tags for cleaner review view
+  showFooterProvider: true,
+  showFooterDate: true,
+}
+```
+
 ## Best Practices
 
 1. **Focus on workflow:** Design surfaces around specific tasks (reviewing, curating, debugging)
@@ -209,6 +279,7 @@ When a surface is active, only tools that support it will appear in the tools pa
 4. **Declare tool support:** Explicitly list supported surfaces in tool definitions
 5. **Provide clear labels:** Use descriptive names and icons for easy identification
 6. **Consider media types:** Specify supported media types if your surface is specialized
+7. **Configure badges appropriately:** Use `badgeConfig` to show only relevant information for your surface's workflow
 
 ## Examples
 

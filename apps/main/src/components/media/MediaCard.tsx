@@ -4,6 +4,26 @@ import { StatusBadge } from '@pixsim7/shared.ui';
 import { useEffect, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 import { BACKEND_BASE } from '../../lib/api/client';
+import {
+  resolveMediaBadgeConfig,
+  MEDIA_TYPE_ICON,
+  MEDIA_STATUS_ICON,
+} from './mediaBadgeConfig';
+
+export interface MediaCardActions {
+  onOpenDetails?: (id: number) => void;
+  onShowMetadata?: (id: number) => void;
+  onUploadToProvider?: (id: number) => void;
+}
+
+export interface MediaCardBadgeConfig {
+  showPrimaryIcon?: boolean;
+  showStatusIcon?: boolean;
+  showStatusTextOnHover?: boolean;
+  showTagsInOverlay?: boolean;
+  showFooterProvider?: boolean;
+  showFooterDate?: boolean;
+}
 
 export interface MediaCardProps {
   id: number;
@@ -25,6 +45,10 @@ export interface MediaCardProps {
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
   uploadState?: 'idle' | 'uploading' | 'success' | 'error';
   uploadNote?: string;
+  // Optional actions for the more-actions menu
+  actions?: MediaCardActions;
+  // Optional badge configuration for surface-level customization
+  badgeConfig?: MediaCardBadgeConfig;
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -44,7 +68,22 @@ export function MediaCard(props: MediaCardProps) {
     onOpen,
     status,
     providerStatus,
+    actions,
+    badgeConfig: badgeConfigProp,
   } = props;
+
+  // Resolve badge configuration
+  const badges = resolveMediaBadgeConfig(mediaType, providerStatus, tags);
+
+  // Badge visibility configuration with defaults
+  const badgeVisibility = {
+    showPrimaryIcon: badgeConfigProp?.showPrimaryIcon ?? true,
+    showStatusIcon: badgeConfigProp?.showStatusIcon ?? true,
+    showStatusTextOnHover: badgeConfigProp?.showStatusTextOnHover ?? true,
+    showTagsInOverlay: badgeConfigProp?.showTagsInOverlay ?? true,
+    showFooterProvider: badgeConfigProp?.showFooterProvider ?? true,
+    showFooterDate: badgeConfigProp?.showFooterDate ?? true,
+  };
 
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
   const objectUrlRef = useRef<string | null>(null);
@@ -172,8 +211,51 @@ export function MediaCard(props: MediaCardProps) {
             <img src={thumbSrc} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
           )
         )}
+        {/* Top-left: Primary media type icon badge (always visible) */}
+        {badgeVisibility.showPrimaryIcon && badges.primary && (
+          <div className="absolute left-2 top-2">
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-lg ${
+                badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
+                  ? 'bg-white ring-2 ring-green-500'
+                  : badgeVisibility.showStatusIcon && badges.status === 'local_only'
+                  ? 'bg-white ring-2 ring-yellow-500'
+                  : badgeVisibility.showStatusIcon && badges.status === 'flagged'
+                  ? 'bg-white ring-2 ring-red-500'
+                  : badgeVisibility.showStatusIcon && badges.status
+                  ? 'bg-white ring-2 ring-gray-400'
+                  : 'bg-white shadow-md'
+              }`}
+              title={`${mediaType} (${badges.status ? MEDIA_STATUS_ICON[badges.status].label : 'no status'})`}
+            >
+              {MEDIA_TYPE_ICON[badges.primary]}
+            </div>
+          </div>
+        )}
+
+        {/* Top-right: Contextual status badge (shows on hover) */}
+        {badgeVisibility.showStatusTextOnHover && isHovered && badges.status && (
+          <div className="absolute right-2 top-2 animate-in fade-in duration-200">
+            <div
+              className={`px-2 py-1 text-xs rounded-md shadow-lg flex items-center gap-1 ${
+                MEDIA_STATUS_ICON[badges.status].color === 'green'
+                  ? 'bg-green-600 text-white'
+                  : MEDIA_STATUS_ICON[badges.status].color === 'yellow'
+                  ? 'bg-yellow-600 text-white'
+                  : MEDIA_STATUS_ICON[badges.status].color === 'red'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-gray-600 text-white'
+              }`}
+            >
+              <span>{MEDIA_STATUS_ICON[badges.status].icon}</span>
+              <span>{MEDIA_STATUS_ICON[badges.status].label}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Upload button (if upload hook is provided) - separate from status */}
         {props.onUploadClick && (
-          <div className="absolute right-1 top-1">
+          <div className="absolute right-2 top-12">
             <button
               onClick={handleUploadClick}
               disabled={effectiveState==='uploading'}
@@ -205,7 +287,9 @@ export function MediaCard(props: MediaCardProps) {
             </button>
           </div>
         )}
-        {status && (
+
+        {/* Legacy status badge (kept for backwards compatibility if status prop is provided) */}
+        {status && !badges.primary && (
           <div className="absolute left-1 top-1">
             <StatusBadge status={status} />
           </div>
@@ -224,30 +308,10 @@ export function MediaCard(props: MediaCardProps) {
         {/* Hover overlay with detailed info at bottom */}
         {isHovered && (
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent p-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge color="blue">{providerId}</Badge>
-              <Badge color="purple">{mediaType}</Badge>
-              {providerStatus === 'ok' && (
-                <Badge color="green" className="text-[10px]" title="Provider accepted this asset">
-                  Provider OK
-                </Badge>
-              )}
-              {providerStatus === 'local_only' && (
-                <Badge color="yellow" className="text-[10px]" title="Saved in PixSim7; provider upload failed">
-                  Local only
-                </Badge>
-              )}
-              {providerStatus === 'flagged' && (
-                <Badge color="red" className="text-[10px]" title="Flagged / rejected by provider">
-                  Flagged
-                </Badge>
-              )}
-              {status && <StatusBadge status={status} />}
-            </div>
             {description && (
               <p className="text-xs text-white/90 line-clamp-2">{description}</p>
             )}
-            {tags.length > 0 && (
+            {badgeVisibility.showTagsInOverlay && tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {tags.slice(0, 3).map(t => (
                   <Badge key={t} color="gray" className="text-[10px]">{t}</Badge>
@@ -261,7 +325,7 @@ export function MediaCard(props: MediaCardProps) {
               {durationSec && <span>{Math.round(durationSec)}s</span>}
             </div>
             {/* More actions menu trigger (three dots) */}
-            {onOpen && (
+            {(onOpen || actions) && (
               <div className="absolute bottom-2 right-2">
                 <div className="relative">
                   <button
@@ -277,19 +341,49 @@ export function MediaCard(props: MediaCardProps) {
                   </button>
                   {showMenu && (
                     <div
-                      className="absolute right-0 mt-1 w-32 rounded-md bg-neutral-900 text-white text-xs shadow-lg border border-neutral-700 z-10"
+                      className="absolute right-0 bottom-full mb-1 w-40 rounded-md bg-neutral-900 text-white text-xs shadow-lg border border-neutral-700 z-10"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <button
-                        type="button"
-                        className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                        onClick={() => {
-                          setShowMenu(false);
-                          handleOpen();
-                        }}
-                      >
-                        Open details
-                      </button>
+                      {(onOpen || actions?.onOpenDetails) && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                          onClick={() => {
+                            setShowMenu(false);
+                            if (actions?.onOpenDetails) {
+                              actions.onOpenDetails(id);
+                            } else {
+                              handleOpen();
+                            }
+                          }}
+                        >
+                          Open details
+                        </button>
+                      )}
+                      {actions?.onShowMetadata && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onShowMetadata(id);
+                          }}
+                        >
+                          Show metadata
+                        </button>
+                      )}
+                      {actions?.onUploadToProvider && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onUploadToProvider?.(id);
+                          }}
+                        >
+                          Upload to provider
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -300,14 +394,20 @@ export function MediaCard(props: MediaCardProps) {
       </div>
 
       {/* Compact footer: provider + date */}
-      <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
-        <span className="truncate max-w-[60%]">
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
-          {' · '}
-          {mediaType}
-        </span>
-        <span>{new Date(createdAt).toLocaleDateString()}</span>
-      </div>
+      {(badgeVisibility.showFooterProvider || badgeVisibility.showFooterDate) && (
+        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+          {badgeVisibility.showFooterProvider && (
+            <span className="truncate max-w-[60%]">
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
+              {' · '}
+              {mediaType}
+            </span>
+          )}
+          {badgeVisibility.showFooterDate && (
+            <span>{new Date(createdAt).toLocaleDateString()}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

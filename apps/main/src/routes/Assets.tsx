@@ -378,6 +378,10 @@ export function AssetsRoute() {
                           status={a.sync_status}
                           providerStatus={a.provider_status}
                           onOpen={() => handleOpenAsset(a)}
+                          actions={{
+                            onOpenDetails: () => navigate(`/assets/${a.id}`),
+                            onShowMetadata: () => navigate(`/assets/${a.id}`),
+                          }}
                         />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -418,6 +422,10 @@ export function AssetsRoute() {
                         status={a.sync_status}
                         providerStatus={a.provider_status}
                         onOpen={() => handleOpenAsset(a)}
+                        actions={{
+                          onOpenDetails: () => navigate(`/assets/${a.id}`),
+                          onShowMetadata: () => navigate(`/assets/${a.id}`),
+                        }}
                       />
                       {/* Selection indicator */}
                       {isSelected && (
