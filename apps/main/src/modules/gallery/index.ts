@@ -7,11 +7,8 @@ import { logEvent } from '../../lib/logging';
  *
  * Handles display and management of media assets (images, videos, audio)
  *
- * TODO: Implement actual functionality
- * - Asset browsing and filtering
- * - Upload functionality
- * - Asset preview
- * - Asset selection for other modules
+ * Note: Core gallery functionality is implemented in AssetsRoute.tsx
+ * This module provides programmatic access to gallery features for other modules.
  */
 
 export interface GalleryModule extends Module {

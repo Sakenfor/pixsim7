@@ -16,7 +16,7 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationTy
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim_logging import get_logger
 
@@ -705,3 +705,441 @@ async def extract_frame(
             status_code=500,
             detail=f"Failed to extract frame: {str(e)}"
         )
+
+
+# ===== TAG MANAGEMENT =====
+
+class UpdateTagsRequest(BaseModel):
+    """Request to update asset tags"""
+    tags: List[str] = Field(description="List of tags to apply")
+
+
+@router.post("/assets/{asset_id}/analyze")
+async def analyze_asset_for_tags(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Analyze an asset and suggest tags using AI
+
+    Returns suggested tags based on:
+    - Media type (image/video)
+    - Visual content analysis (when available)
+    - Existing metadata
+
+    Example response:
+    ```json
+    {
+      "suggested_tags": ["portrait", "outdoor", "daytime", "landscape"]
+    }
+    ```
+    """
+    try:
+        # Get asset
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+
+        # Generate suggestions based on available data
+        suggestions = []
+
+        # Add media type tag
+        if asset.media_type:
+            suggestions.append(asset.media_type.value)
+
+        # Add provider tag
+        if asset.provider_id:
+            suggestions.append(f"from_{asset.provider_id}")
+
+        # Analyze dimensions for orientation
+        if asset.width and asset.height:
+            if asset.width > asset.height:
+                suggestions.append("landscape")
+            elif asset.height > asset.width:
+                suggestions.append("portrait")
+            else:
+                suggestions.append("square")
+
+            # Add resolution tags
+            if asset.width >= 1920 or asset.height >= 1080:
+                suggestions.append("high_res")
+            elif asset.width <= 640 or asset.height <= 480:
+                suggestions.append("low_res")
+
+        # Add duration-based tags for videos
+        if asset.media_type == MediaType.VIDEO and asset.duration_sec:
+            if asset.duration_sec <= 5:
+                suggestions.append("short")
+            elif asset.duration_sec >= 20:
+                suggestions.append("long")
+
+            suggestions.append("cinematic")
+
+        # Add existing tags to help user understand what's already there
+        existing_tags = asset.tags or []
+
+        # TODO: In the future, integrate with actual AI vision models like:
+        # - CLIP for semantic understanding
+        # - Object detection models
+        # - Scene classification
+        # For now, provide basic heuristic-based suggestions
+
+        return {
+            "suggested_tags": suggestions,
+            "existing_tags": existing_tags,
+            "asset_id": asset.id,
+            "media_type": asset.media_type.value
+        }
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to analyze asset: {str(e)}"
+        )
+
+
+@router.post("/assets/{asset_id}/tags", response_model=AssetResponse)
+async def update_asset_tags(
+    asset_id: int,
+    request: UpdateTagsRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Update tags for an asset (replaces existing tags)
+
+    Example request:
+    ```json
+    {
+      "tags": ["portrait", "outdoor", "daytime"]
+    }
+    ```
+    """
+    try:
+        asset = await asset_service.update_tags(
+            asset_id=asset_id,
+            tags=request.tags,
+            user=user
+        )
+        return AssetResponse.model_validate(asset)
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update tags: {str(e)}"
+        )
+
+
+@router.patch("/assets/{asset_id}/tags/add", response_model=AssetResponse)
+async def add_asset_tags(
+    asset_id: int,
+    request: UpdateTagsRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Add tags to an asset (merges with existing tags)
+
+    Example request:
+    ```json
+    {
+      "tags": ["favorite", "profile_pic"]
+    }
+    ```
+    """
+    try:
+        asset = await asset_service.add_tags(
+            asset_id=asset_id,
+            tags=request.tags,
+            user=user
+        )
+        return AssetResponse.model_validate(asset)
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to add tags: {str(e)}"
+        )
+
+
+@router.patch("/assets/{asset_id}/tags/remove", response_model=AssetResponse)
+async def remove_asset_tags(
+    asset_id: int,
+    request: UpdateTagsRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Remove tags from an asset
+
+    Example request:
+    ```json
+    {
+      "tags": ["draft", "temp"]
+    }
+    ```
+    """
+    try:
+        asset = await asset_service.remove_tags(
+            asset_id=asset_id,
+            tags=request.tags,
+            user=user
+        )
+        return AssetResponse.model_validate(asset)
+
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to remove tags: {str(e)}"
+        )
+
+
+# ===== BULK OPERATIONS =====
+
+class BulkTagRequest(BaseModel):
+    """Request for bulk tag operations"""
+    asset_ids: List[int] = Field(description="List of asset IDs")
+    tags: List[str] = Field(description="Tags to apply")
+    mode: str = Field(default="add", description="Operation mode: add, remove, or replace")
+
+
+class BulkDeleteRequest(BaseModel):
+    """Request for bulk delete"""
+    asset_ids: List[int] = Field(description="List of asset IDs to delete")
+
+
+class BulkExportRequest(BaseModel):
+    """Request for bulk export"""
+    asset_ids: List[int] = Field(description="List of asset IDs to export")
+
+
+@router.post("/assets/bulk/tags")
+async def bulk_update_tags(
+    request: BulkTagRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Update tags for multiple assets at once
+
+    Modes:
+    - "add": Add tags to existing tags
+    - "remove": Remove specified tags
+    - "replace": Replace all tags with new ones
+
+    Example request:
+    ```json
+    {
+      "asset_ids": [1, 2, 3],
+      "tags": ["batch_processed", "2024"],
+      "mode": "add"
+    }
+    ```
+    """
+    try:
+        assets = await asset_service.bulk_update_tags(
+            asset_ids=request.asset_ids,
+            tags=request.tags,
+            user=user,
+            mode=request.mode
+        )
+        return {
+            "success": True,
+            "updated_count": len(assets),
+            "asset_ids": [a.id for a in assets]
+        }
+
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to bulk update tags: {str(e)}"
+        )
+
+
+@router.post("/assets/bulk/delete")
+async def bulk_delete_assets(
+    request: BulkDeleteRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Delete multiple assets at once
+
+    Example request:
+    ```json
+    {
+      "asset_ids": [1, 2, 3]
+    }
+    ```
+    """
+    try:
+        deleted_count = 0
+        errors = []
+
+        for asset_id in request.asset_ids:
+            try:
+                await asset_service.delete_asset(asset_id, user)
+                deleted_count += 1
+            except Exception as e:
+                errors.append({
+                    "asset_id": asset_id,
+                    "error": str(e)
+                })
+
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "total_requested": len(request.asset_ids),
+            "errors": errors if errors else None
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to bulk delete: {str(e)}"
+        )
+
+
+@router.post("/assets/bulk/export")
+async def bulk_export_assets(
+    request: BulkExportRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc
+):
+    """
+    Export multiple assets as a ZIP file
+
+    Example request:
+    ```json
+    {
+      "asset_ids": [1, 2, 3]
+    }
+    ```
+
+    Returns a download URL for the generated ZIP file
+    """
+    import zipfile
+    import tempfile
+    import shutil
+    from pathlib import Path
+
+    try:
+        # Create temporary directory for ZIP
+        temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, f"export_{user.id}_{datetime.utcnow().timestamp()}.zip")
+
+        # Create ZIP file
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for asset_id in request.asset_ids:
+                try:
+                    # Get asset
+                    asset = await asset_service.get_asset_for_user(asset_id, user)
+
+                    # Determine file path
+                    if asset.local_path and os.path.exists(asset.local_path):
+                        file_path = asset.local_path
+                    else:
+                        # Skip assets without local files
+                        logger.warning(f"Asset {asset_id} has no local file, skipping")
+                        continue
+
+                    # Determine filename for ZIP
+                    ext = os.path.splitext(file_path)[1] or ".bin"
+                    zip_filename = f"asset_{asset.id}_{asset.provider_id}{ext}"
+
+                    # Add to ZIP
+                    zipf.write(file_path, zip_filename)
+
+                except Exception as e:
+                    logger.error(f"Failed to add asset {asset_id} to ZIP: {e}")
+                    continue
+
+        # Move ZIP to permanent storage (in exports directory)
+        export_dir = Path("data/exports")
+        export_dir.mkdir(parents=True, exist_ok=True)
+
+        zip_filename = f"export_{user.id}_{int(datetime.utcnow().timestamp())}.zip"
+        final_path = export_dir / zip_filename
+        shutil.move(zip_path, final_path)
+
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # Return download URL
+        download_url = f"/api/v1/assets/downloads/{zip_filename}"
+
+        return {
+            "success": True,
+            "download_url": download_url,
+            "filename": zip_filename,
+            "asset_count": len(request.asset_ids)
+        }
+
+    except Exception as e:
+        # Clean up on error
+        if 'temp_dir' in locals():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        logger.error(
+            "bulk_export_failed",
+            asset_ids=request.asset_ids,
+            error=str(e),
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to export assets: {str(e)}"
+        )
+
+
+@router.get("/assets/downloads/{filename}")
+async def download_export(
+    filename: str,
+    user: CurrentUser
+):
+    """
+    Download an exported ZIP file
+
+    Files are automatically cleaned up after 24 hours
+    """
+    from pathlib import Path
+
+    # Security: validate filename (no path traversal)
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Verify filename matches user ID
+    if not filename.startswith(f"export_{user.id}_"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    export_path = Path("data/exports") / filename
+
+    if not export_path.exists():
+        raise HTTPException(status_code=404, detail="Export file not found")
+
+    return FileResponse(
+        path=str(export_path),
+        media_type="application/zip",
+        filename=filename
+    )

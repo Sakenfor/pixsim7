@@ -22,35 +22,119 @@ function BulkOperationsTool({ context }: { context: GalleryToolContext }) {
 
   const selectedCount = context.selectedAssets.length;
 
-  const handleBulkTag = () => {
+  const handleBulkTag = async () => {
     if (!tagInput.trim()) {
       setStatus('Please enter a tag');
       return;
     }
 
-    // TODO: Implement actual bulk tagging API call
-    setStatus(`Tagged ${selectedCount} assets with "${tagInput}"`);
-    setTagInput('');
-    setTimeout(() => setStatus(null), 3000);
+    try {
+      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+      const tags = tagInput.split(',').map(t => t.trim()).filter(t => t);
+
+      const response = await fetch('/api/v1/assets/bulk/tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          asset_ids: assetIds,
+          tags,
+          mode: 'add',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to tag assets');
+      }
+
+      const data = await response.json();
+      setStatus(`Successfully tagged ${data.updated_count} assets`);
+      setTagInput('');
+      setTimeout(() => {
+        setStatus(null);
+        context.refresh();
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to bulk tag:', error);
+      setStatus('Failed to tag assets. Please try again.');
+      setTimeout(() => setStatus(null), 3000);
+    }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (!confirm(`Delete ${selectedCount} assets? This cannot be undone.`)) {
       return;
     }
 
-    // TODO: Implement actual bulk delete API call
-    setStatus(`Deleted ${selectedCount} assets`);
-    setTimeout(() => {
-      setStatus(null);
-      context.refresh();
-    }, 3000);
+    try {
+      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+
+      const response = await fetch('/api/v1/assets/bulk/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          asset_ids: assetIds,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete assets');
+      }
+
+      const data = await response.json();
+      setStatus(`Deleted ${data.deleted_count} of ${data.total_requested} assets`);
+      setTimeout(() => {
+        setStatus(null);
+        context.refresh();
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to bulk delete:', error);
+      setStatus('Failed to delete assets. Please try again.');
+      setTimeout(() => setStatus(null), 3000);
+    }
   };
 
-  const handleBulkExport = () => {
-    // TODO: Implement actual bulk export
-    setStatus(`Exporting ${selectedCount} assets...`);
-    setTimeout(() => setStatus('Export complete!'), 2000);
+  const handleBulkExport = async () => {
+    try {
+      setStatus(`Exporting ${selectedCount} assets...`);
+
+      const assetIds = context.selectedAssets.map(a => parseInt(a.id));
+
+      const response = await fetch('/api/v1/assets/bulk/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          asset_ids: assetIds,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to export assets');
+      }
+
+      const data = await response.json();
+
+      // Trigger download
+      const downloadUrl = data.download_url;
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = data.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setStatus('Export complete! Download started.');
+      setTimeout(() => setStatus(null), 3000);
+    } catch (error) {
+      console.error('Failed to bulk export:', error);
+      setStatus('Failed to export assets. Please try again.');
+      setTimeout(() => setStatus(null), 3000);
+    }
   };
 
   return (

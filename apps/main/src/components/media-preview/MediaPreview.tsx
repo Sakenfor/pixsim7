@@ -32,20 +32,17 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
         setLoading(true);
         setError(null);
 
-        // TODO: Replace with actual API call to fetch asset
-        // For now, we'll simulate an API call
-        // In production, this would be something like:
-        // const asset = await getAsset(assetId);
-        // setMediaUrl(asset.url);
+        // Fetch asset from API
+        const response = await fetch(`/api/v1/assets/${assetId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch asset: ${response.statusText}`);
+        }
 
-        // Placeholder: Just set a loading state
-        console.log(`[MediaPreview] Fetching asset ${assetId}...`);
+        const asset = await response.json();
 
-        // Simulate delay
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // For now, set a placeholder error message
-        setError('Asset preview not yet implemented. Connect to asset API.');
+        // Use remote URL if available, otherwise use local file endpoint
+        const assetUrl = asset.remote_url || `/api/v1/assets/${assetId}/file`;
+        setMediaUrl(assetUrl);
         setLoading(false);
       } catch (err) {
         console.error('[MediaPreview] Failed to fetch asset:', err);

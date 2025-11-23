@@ -403,3 +403,126 @@ class AssetCoreService:
             query = query.limit(limit).offset(offset)
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    # ===== TAG MANAGEMENT =====
+
+    async def update_tags(
+        self,
+        asset_id: int,
+        tags: List[str],
+        user: User
+    ) -> Asset:
+        """
+        Update tags for an asset (replaces existing tags)
+
+        Args:
+            asset_id: Asset ID
+            tags: New list of tags
+            user: Current user
+
+        Returns:
+            Updated asset
+
+        Raises:
+            ResourceNotFoundError: Asset not found
+            PermissionError: User doesn't own asset
+        """
+        asset = await self.get_asset_for_user(asset_id, user)
+        asset.tags = tags
+        await self.db.commit()
+        await self.db.refresh(asset)
+        return asset
+
+    async def add_tags(
+        self,
+        asset_id: int,
+        tags: List[str],
+        user: User
+    ) -> Asset:
+        """
+        Add tags to an asset (merges with existing tags)
+
+        Args:
+            asset_id: Asset ID
+            tags: Tags to add
+            user: Current user
+
+        Returns:
+            Updated asset
+
+        Raises:
+            ResourceNotFoundError: Asset not found
+            PermissionError: User doesn't own asset
+        """
+        asset = await self.get_asset_for_user(asset_id, user)
+        existing_tags = set(asset.tags or [])
+        new_tags = existing_tags.union(set(tags))
+        asset.tags = list(new_tags)
+        await self.db.commit()
+        await self.db.refresh(asset)
+        return asset
+
+    async def remove_tags(
+        self,
+        asset_id: int,
+        tags: List[str],
+        user: User
+    ) -> Asset:
+        """
+        Remove tags from an asset
+
+        Args:
+            asset_id: Asset ID
+            tags: Tags to remove
+            user: Current user
+
+        Returns:
+            Updated asset
+
+        Raises:
+            ResourceNotFoundError: Asset not found
+            PermissionError: User doesn't own asset
+        """
+        asset = await self.get_asset_for_user(asset_id, user)
+        existing_tags = set(asset.tags or [])
+        remaining_tags = existing_tags - set(tags)
+        asset.tags = list(remaining_tags)
+        await self.db.commit()
+        await self.db.refresh(asset)
+        return asset
+
+    async def bulk_update_tags(
+        self,
+        asset_ids: List[int],
+        tags: List[str],
+        user: User,
+        mode: str = "add"  # "add", "remove", "replace"
+    ) -> List[Asset]:
+        """
+        Update tags for multiple assets at once
+
+        Args:
+            asset_ids: List of asset IDs
+            tags: Tags to apply
+            user: Current user
+            mode: Operation mode - "add", "remove", or "replace"
+
+        Returns:
+            List of updated assets
+
+        Raises:
+            ResourceNotFoundError: Any asset not found
+            PermissionError: User doesn't own any asset
+        """
+        assets = []
+        for asset_id in asset_ids:
+            if mode == "add":
+                asset = await self.add_tags(asset_id, tags, user)
+            elif mode == "remove":
+                asset = await self.remove_tags(asset_id, tags, user)
+            elif mode == "replace":
+                asset = await self.update_tags(asset_id, tags, user)
+            else:
+                raise InvalidOperationError(f"Invalid mode: {mode}")
+            assets.append(asset)
+        return assets
