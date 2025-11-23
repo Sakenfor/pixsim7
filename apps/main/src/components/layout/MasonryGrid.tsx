@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface MasonryGridProps {
   items: React.ReactNode[];
@@ -11,6 +11,7 @@ export function MasonryGrid({
   items,
   columnGap = 16,
   rowGap = 16,
+  minColumnWidth = 260,
 }: MasonryGridProps) {
   // Detect if user prefers reduced motion
   const prefersReducedMotion =
@@ -33,22 +34,120 @@ export function MasonryGrid({
     );
   }
 
-  // Use CSS columns for masonry layout
+  // JS-driven masonry layout for full control over placement
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [positions, setPositions] = useState<
+    { top: number; left: number; height: number }[]
+  >([]);
+  const [containerHeight, setContainerHeight] = useState<number>(0);
+  const [columnWidth, setColumnWidth] = useState<number>(0);
+
+  // Track container width via ResizeObserver for responsive layout
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof window === 'undefined') return;
+
+    const updateWidth = () => {
+      const width = el.clientWidth;
+      if (width !== containerWidth) setContainerWidth(width);
+    };
+
+    updateWidth();
+
+    let ro: ResizeObserver | null = null;
+    if ('ResizeObserver' in window) {
+      ro = new ResizeObserver(updateWidth);
+      ro.observe(el);
+    } else {
+      window.addEventListener('resize', updateWidth);
+    }
+
+    return () => {
+      if (ro) {
+        ro.disconnect();
+      } else {
+        window.removeEventListener('resize', updateWidth);
+      }
+    };
+  }, [containerWidth]);
+
+  // Compute positions once we know container width and item heights
+  useLayoutEffect(() => {
+    if (!containerWidth || items.length === 0) {
+      setPositions([]);
+      setContainerHeight(0);
+      return;
+    }
+
+    const cols = Math.max(
+      1,
+      Math.floor(
+        (containerWidth + columnGap) / (minColumnWidth + columnGap)
+      )
+    );
+
+    const colWidth =
+      cols > 1
+        ? (containerWidth - columnGap * (cols - 1)) / cols
+        : containerWidth;
+
+    const colHeights = new Array(cols).fill(0);
+    const nextPositions: { top: number; left: number; height: number }[] = [];
+
+    items.forEach((_, index) => {
+      const el = itemRefs.current[index];
+      if (!el) {
+        nextPositions[index] = { top: 0, left: 0, height: 0 };
+        return;
+      }
+      const height = el.offsetHeight;
+
+      // Find shortest column
+      let colIndex = 0;
+      let minHeight = colHeights[0];
+      for (let c = 1; c < cols; c++) {
+        if (colHeights[c] < minHeight) {
+          minHeight = colHeights[c];
+          colIndex = c;
+        }
+      }
+
+      const top = colHeights[colIndex];
+      const left = colIndex * (colWidth + columnGap);
+
+      nextPositions[index] = { top, left, height };
+      colHeights[colIndex] = top + height + rowGap;
+    });
+
+    setPositions(nextPositions);
+    setColumnWidth(colWidth);
+    setContainerHeight(
+      colHeights.length ? Math.max(...colHeights) - rowGap : 0
+    );
+  }, [items, containerWidth, columnGap, rowGap, minColumnWidth]);
+
   return (
     <div
-      className="columns-1 md:columns-2 lg:columns-3 xl:columns-4"
+      ref={containerRef}
+      className="relative"
       style={{
-        columnGap: `${columnGap}px`,
-        // @ts-expect-error CSS custom property for tailwind
-        '--masonry-row-gap': `${rowGap}px`,
+        position: 'relative',
+        height: containerHeight,
       }}
     >
       {items.map((item, index) => (
         <div
           key={index}
-          className="break-inside-avoid inline-block w-full"
+          ref={el => {
+            itemRefs.current[index] = el;
+          }}
+          className="absolute"
           style={{
-            marginBottom: `${rowGap}px`,
+            width: columnWidth || '100%',
+            top: positions[index]?.top ?? 0,
+            left: positions[index]?.left ?? 0,
           }}
         >
           {item}
