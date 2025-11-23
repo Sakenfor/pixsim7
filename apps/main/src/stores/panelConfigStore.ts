@@ -177,6 +177,15 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     description: 'Unified scene workflow management',
     icon: '📚',
   },
+  'hud-designer': {
+    id: 'hud-designer',
+    enabled: true,
+    settings: {},
+    category: 'tools',
+    tags: ['hud', 'designer', 'layout', 'ui'],
+    description: 'Design HUD layouts for game worlds',
+    icon: '🎨',
+  },
 };
 
 const STORAGE_KEY = 'panel_config_v1';

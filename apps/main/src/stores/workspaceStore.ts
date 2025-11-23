@@ -15,7 +15,8 @@ export type PanelId =
   | 'npc-brain-lab'
   | 'game-theming'
   | 'scene-management'
-  | 'dev-tools';
+  | 'dev-tools'
+  | 'hud-designer';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;

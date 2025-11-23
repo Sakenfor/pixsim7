@@ -18,6 +18,7 @@ import { SceneManagementPanel } from '../../components/scene/SceneManagementPane
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
 import { DevToolsPanel } from '../../components/dev/DevToolsPanel';
+import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 
 // Game iframe panel (defined inline since it's simple)
 import { useRef, useEffect } from 'react';
@@ -193,6 +194,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['dev', 'debug', 'tools', 'diagnostics', 'developer'],
       icon: '🧰',
       description: 'Developer tools and diagnostics',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'hud-designer',
+      title: 'HUD Designer',
+      component: HudDesignerPanel,
+      category: 'tools',
+      tags: ['hud', 'designer', 'layout', 'ui', 'widgets'],
+      icon: '🎨',
+      description: 'Design HUD layouts using widget compositions',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
