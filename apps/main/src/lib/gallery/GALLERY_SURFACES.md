@@ -339,7 +339,15 @@ Badge settings merge with the following priority (highest to lowest):
 
 The gallery panel can be configured via **Panel Configuration** (Settings panel):
 - Navigate to Settings → Panel Configuration → Gallery panel
-- Adjust badge visibility toggles:
+- Choose from **Quick Presets**:
+  - ⚖️ **Default** - Balanced view with all badges visible
+  - ✨ **Minimal** - Clean view with minimal badges
+  - 📦 **Compact** - Good for small cards and dense grids
+  - 📋 **Detailed** - Show all available information
+  - ⭐ **Curator** - Emphasis on tags and metadata
+  - ✓ **Review** - Emphasis on status and quality control
+  - 🎨 **Presentation** - Clean view for client presentations
+- Or customize individual toggles:
   - Media type icon
   - Status icon
   - Status text on hover

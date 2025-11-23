@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react';
 import { usePanelConfigStore } from '../../stores/panelConfigStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { pluginCatalog } from '../../lib/plugins/pluginSystem';
+import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../../lib/gallery/badgeConfigPresets';
 
 type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
@@ -278,7 +279,37 @@ function PanelCard({
             <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
               Card Badges
             </span>
-            <div className="grid grid-cols-2 gap-1.5">
+
+            {/* Preset Selector */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Quick Presets:</span>
+              <div className="grid grid-cols-2 gap-1">
+                {BADGE_CONFIG_PRESETS.map(preset => {
+                  const isActive = findMatchingPreset(panel.settings?.badgeConfig || {}) === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ badgeConfig: preset.config })}
+                      className={`px-2 py-1 rounded text-[10px] border transition-colors text-left ${
+                        isActive
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600 hover:border-blue-400'
+                      }`}
+                      title={preset.description}
+                    >
+                      {preset.icon && <span className="mr-1">{preset.icon}</span>}
+                      {preset.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Individual Toggles */}
+            <div className="flex flex-col gap-1 pt-1 border-t border-neutral-200 dark:border-neutral-700">
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Custom:</span>
+              <div className="grid grid-cols-2 gap-1.5">
               <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
                 <input
                   type="checkbox"
@@ -363,6 +394,7 @@ function PanelCard({
                 />
                 <span>Footer date</span>
               </label>
+              </div>
             </div>
           </div>
         )}
