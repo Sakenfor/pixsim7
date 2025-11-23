@@ -6,6 +6,7 @@
  */
 
 import type { PanelPlugin } from './panelPlugin';
+import { registerBuiltinPanel } from '../plugins/registryBridge';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../../components/legacy/SceneBuilderPanel';
 import { GraphEditorHost } from '../../components/graph/GraphEditorHost';
@@ -200,7 +201,13 @@ export const corePanelsPlugin: PanelPlugin = {
 
   initialize(registry) {
     console.log('Initializing core panels plugin...');
-    // Panels are registered automatically by the plugin manager
+
+    // Register all built-in panels with the unified plugin system
+    for (const panel of this.panels) {
+      registerBuiltinPanel(panel);
+    }
+
+    console.log(`Registered ${this.panels.length} core panels as plugins`);
   },
 
   cleanup() {

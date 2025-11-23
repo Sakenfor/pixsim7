@@ -27,13 +27,13 @@ Non-goals:
 
 ## Phase Checklist
 
-- [ ] **Phase 55.1 – Panel Plugin Family & Metadata**
-- [ ] **Phase 55.2 – Registry Bridge**
-- [ ] **Phase 55.3 – Built-in Panels as Plugins**
-- [ ] **Phase 55.4 – Plugin Browser UI**
-- [ ] **Phase 55.5 – UX & Docs**
+- [x] **Phase 55.1 – Panel Plugin Family & Metadata**
+- [x] **Phase 55.2 – Registry Bridge**
+- [x] **Phase 55.3 – Built-in Panels as Plugins**
+- [x] **Phase 55.4 – Plugin Browser UI**
+- [x] **Phase 55.5 – UX & Docs**
 
-**Status:** Not started.
+**Status:** ✅ Complete
 
 ---
 

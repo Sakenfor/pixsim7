@@ -8,6 +8,7 @@
 import { useState, useMemo } from 'react';
 import { usePanelConfigStore } from '../../stores/panelConfigStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { pluginCatalog } from '../../lib/plugins/pluginSystem';
 
 type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
@@ -174,6 +175,9 @@ function PanelCard({
   onOpen: () => void;
   onUpdateSettings: (settings: Record<string, any>) => void;
 }) {
+  // Get plugin metadata
+  const pluginMeta = pluginCatalog.get(panel.id);
+
   return (
     <div
       className={`
@@ -191,19 +195,26 @@ function PanelCard({
           {panel.icon && <span className="text-2xl">{panel.icon}</span>}
           <div>
             <h3 className="font-semibold text-sm">{panel.id}</h3>
-            <span
-              className={`text-xs px-2 py-0.5 rounded-full ${
-                panel.category === 'core'
-                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : panel.category === 'development'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                    : panel.category === 'game'
-                      ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-              }`}
-            >
-              {panel.category}
-            </span>
+            <div className="flex gap-1 mt-1">
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full ${
+                  panel.category === 'core'
+                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    : panel.category === 'development'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                      : panel.category === 'game'
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                }`}
+              >
+                {panel.category}
+              </span>
+              {pluginMeta && pluginMeta.origin !== 'builtin' && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                  from: {pluginMeta.origin}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -300,6 +311,9 @@ function PanelListItem({
   onToggle: () => void;
   onOpen: () => void;
 }) {
+  // Get plugin metadata
+  const pluginMeta = pluginCatalog.get(panel.id);
+
   return (
     <div
       className={`
@@ -329,6 +343,11 @@ function PanelListItem({
             >
               {panel.category}
             </span>
+            {pluginMeta && pluginMeta.origin !== 'builtin' && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                from: {pluginMeta.origin}
+              </span>
+            )}
           </div>
           {panel.description && (
             <p className="text-xs text-neutral-600 dark:text-neutral-400">

@@ -37,7 +37,8 @@ export type PluginFamily =
   | 'renderer'
   | 'ui-plugin'
   | 'graph-editor'
-  | 'dev-tool';
+  | 'dev-tool'
+  | 'workspace-panel';
 
 /**
  * Activation state - whether the plugin is currently active
@@ -121,6 +122,12 @@ export interface PluginMetadataExtensions {
   'dev-tool': {
     category?: string;
     icon?: string;
+  };
+  'workspace-panel': {
+    panelId: string;
+    category?: 'core' | 'development' | 'game' | 'tools' | 'custom';
+    supportsCompactMode?: boolean;
+    supportsMultipleInstances?: boolean;
   };
 }
 
