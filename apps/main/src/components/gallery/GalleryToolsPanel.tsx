@@ -10,20 +10,25 @@ import { galleryToolRegistry, type GalleryToolContext, type GalleryToolPlugin } 
 
 interface GalleryToolsPanelProps {
   context: GalleryToolContext;
+
+  /** Optional surface ID to filter tools by */
+  surfaceId?: string;
 }
 
 /**
  * Gallery tools panel component
  */
-export function GalleryToolsPanel({ context }: GalleryToolsPanelProps) {
+export function GalleryToolsPanel({ context, surfaceId }: GalleryToolsPanelProps) {
   const [visibleTools, setVisibleTools] = useState<GalleryToolPlugin[]>([]);
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
-  // Update visible tools when context changes
+  // Update visible tools when context or surface changes
   useEffect(() => {
-    const tools = galleryToolRegistry.getVisible(context);
+    const tools = surfaceId
+      ? galleryToolRegistry.getVisibleForSurface(surfaceId, context)
+      : galleryToolRegistry.getVisible(context);
     setVisibleTools(tools);
-  }, [context]);
+  }, [context, surfaceId]);
 
   const toggleTool = (toolId: string) => {
     const newExpanded = new Set(expandedTools);
@@ -95,19 +100,21 @@ export function GalleryToolsPanel({ context }: GalleryToolsPanelProps) {
 /**
  * Compact gallery tools panel (for floating panels)
  */
-export function CompactGalleryToolsPanel({ context }: GalleryToolsPanelProps) {
+export function CompactGalleryToolsPanel({ context, surfaceId }: GalleryToolsPanelProps) {
   const [visibleTools, setVisibleTools] = useState<GalleryToolPlugin[]>([]);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
 
   useEffect(() => {
-    const tools = galleryToolRegistry.getVisible(context);
+    const tools = surfaceId
+      ? galleryToolRegistry.getVisibleForSurface(surfaceId, context)
+      : galleryToolRegistry.getVisible(context);
     setVisibleTools(tools);
 
     // Auto-select first tool if none selected
     if (tools.length > 0 && !selectedTool) {
       setSelectedTool(tools[0].id);
     }
-  }, [context]);
+  }, [context, surfaceId]);
 
   const activeTool = visibleTools.find(t => t.id === selectedTool);
 

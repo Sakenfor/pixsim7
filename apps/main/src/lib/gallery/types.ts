@@ -79,6 +79,12 @@ export interface GalleryToolPlugin {
   category?: 'visualization' | 'automation' | 'analysis' | 'utility';
 
   /**
+   * Gallery surfaces this tool supports
+   * If undefined, defaults to ['assets-default'] for backwards compatibility
+   */
+  supportedSurfaces?: string[];
+
+  /**
    * Predicate to determine when this tool should be visible
    * @returns true if the tool should be shown
    */
@@ -153,6 +159,32 @@ export class GalleryToolRegistry {
    */
   getVisible(context: GalleryToolContext): GalleryToolPlugin[] {
     return this.getAll().filter(tool => {
+      if (!tool.whenVisible) return true;
+      try {
+        return tool.whenVisible(context);
+      } catch (e) {
+        console.error(`Error checking visibility for tool ${tool.id}:`, e);
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Get tools that support a specific surface
+   */
+  getBySurface(surfaceId: string): GalleryToolPlugin[] {
+    return this.getAll().filter(tool => {
+      // If no surfaces specified, default to 'assets-default' only
+      const supportedSurfaces = tool.supportedSurfaces || ['assets-default'];
+      return supportedSurfaces.includes(surfaceId);
+    });
+  }
+
+  /**
+   * Get visible tools for a specific surface and context
+   */
+  getVisibleForSurface(surfaceId: string, context: GalleryToolContext): GalleryToolPlugin[] {
+    return this.getBySurface(surfaceId).filter(tool => {
       if (!tool.whenVisible) return true;
       try {
         return tool.whenVisible(context);

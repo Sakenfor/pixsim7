@@ -10,6 +10,7 @@ import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
+import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 
 const SCOPE_TABS = [
@@ -113,6 +114,12 @@ export function AssetsRoute() {
   // View toggle between remote assets and local folders panel
   const [view, setView] = useState<'remote' | 'local'>('remote');
 
+  // Get current surface ID from URL
+  const currentSurfaceId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('surface') || 'assets-default';
+  }, []);
+
   // Gallery tools state
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [showToolsPanel, setShowToolsPanel] = useState(false);
@@ -196,8 +203,16 @@ export function AssetsRoute() {
       )}
 
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Assets</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold">Assets</h1>
+          {/* Current Surface Indicator */}
+          <span className="px-2 py-0.5 text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-700">
+            {currentSurfaceId}
+          </span>
+        </div>
         <div className="flex items-center gap-4">
+          {/* Surface Switcher */}
+          <GallerySurfaceSwitcher mode="dropdown" />
           <div className="flex gap-1 text-xs">
             <button
               className={`px-2 py-1 rounded ${view==='remote' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
@@ -328,7 +343,7 @@ export function AssetsRoute() {
           {/* Gallery Tools Panel */}
           {showToolsPanel && !isSelectionMode && (
             <div className="mb-4">
-              <GalleryToolsPanel context={galleryContext} />
+              <GalleryToolsPanel context={galleryContext} surfaceId={currentSurfaceId} />
             </div>
           )}
 
