@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAssets } from '../hooks/useAssets';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
@@ -21,6 +22,7 @@ const SCOPE_TABS = [
 ];
 
 export function AssetsRoute() {
+  const navigate = useNavigate();
   // Asset picker mode
   const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
   const selectAsset = useAssetPickerStore((s) => s.selectAsset);
@@ -63,6 +65,10 @@ export function AssetsRoute() {
   const handleCancelSelection = () => {
     exitSelectionMode();
     closeFloatingPanel('gallery');
+  };
+
+  const handleOpenAsset = (asset: any) => {
+    navigate(`/assets/${asset.id}`);
   };
 
   function updateURL(next: typeof filters) {
@@ -371,6 +377,7 @@ export function AssetsRoute() {
                           createdAt={a.created_at}
                           status={a.sync_status}
                           providerStatus={a.provider_status}
+                          onOpen={() => handleOpenAsset(a)}
                         />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -410,6 +417,7 @@ export function AssetsRoute() {
                         createdAt={a.created_at}
                         status={a.sync_status}
                         providerStatus={a.provider_status}
+                        onOpen={() => handleOpenAsset(a)}
                       />
                       {/* Selection indicator */}
                       {isSelected && (

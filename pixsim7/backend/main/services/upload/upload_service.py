@@ -64,11 +64,13 @@ class UploadService:
         account: ProviderAccount
         if provider_id == "pixverse":
             # Coarse filter: any account with non-null api_keys JSON;
-            # finer filtering by key kind is done in Python below.
+            # finer filtering by key kind is done in Python below. For uploads,
+            # we intentionally do not gate on AccountStatus/credits so that
+            # exhausted accounts with valid OpenAPI keys can still be used
+            # for media uploads.
             result = await self.db.execute(
                 select(ProviderAccount).where(
                     ProviderAccount.provider_id == "pixverse",
-                    ProviderAccount.status == AccountStatus.ACTIVE,
                     ProviderAccount.api_keys.is_not(None)
                 )
             )

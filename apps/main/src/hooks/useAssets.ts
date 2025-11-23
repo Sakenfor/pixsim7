@@ -1,5 +1,4 @@
-import { useEffect, useMemo } from 'react';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { apiClient } from '../lib/api/client';
 
 export interface AssetSummary {
@@ -45,6 +44,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  // Guard to avoid duplicate initial loads in React StrictMode
+  const initialLoadRequestedRef = useRef(false);
 
   const filterParams = useMemo(() => ({
     q: filters.q?.trim() || undefined,
@@ -96,6 +97,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
     setCursor(null);
     setHasMore(true);
     setError(null);
+    initialLoadRequestedRef.current = false;
   }
 
   // Reset and load when filters change
@@ -108,8 +110,9 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
   // NOTE: Only depends on items.length and loading to avoid double-loading
   // Filter changes are handled by the reset effect above
   useEffect(() => {
-    if (items.length === 0 && !loading) {
-      // initial or after reset
+    if (items.length === 0 && !loading && !initialLoadRequestedRef.current) {
+      // initial or after reset (guarded so StrictMode doesn't double-load)
+      initialLoadRequestedRef.current = true;
       loadMore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

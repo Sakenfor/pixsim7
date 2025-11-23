@@ -54,6 +54,7 @@ export function MediaCard(props: MediaCardProps) {
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const effectiveState = props.uploadState ?? internalUploadState;
   const effectiveNote = props.uploadNote ?? internalUploadNote;
@@ -121,28 +122,13 @@ export function MediaCard(props: MediaCardProps) {
 
   async function handleUploadClick() {
     if (!props.onUploadClick) return;
-    // Only manage internal state when parent doesn't control it
     const controlling = props.uploadState !== undefined;
     if (!controlling) setInternalUploadState('uploading');
     try {
       const result = await props.onUploadClick(id);
       const ok = (result && 'ok' in result) ? !!result.ok : true;
       const note = (result && 'note' in result) ? (result as any).note : undefined;
-
-      // Determine state based on note semantics (aligned with extension)
-      // If note indicates "local only" or "provider upload failed", we treat it differently
-      // to match extension messaging: local save succeeded but provider upload failed
-      const isLocalOnly = note && (
-        note.includes('saved locally') ||
-        note.includes('provider upload failed') ||
-        note.includes('Local only')
-      );
-
       if (!controlling) {
-        // Set state based on actual result:
-        // - error: operation failed completely
-        // - success: provider accepted (full success)
-        // - Note is set for both success and local-only scenarios
         setInternalUploadState(ok ? 'success' : 'error');
         setInternalUploadNote(note);
       }
@@ -151,13 +137,32 @@ export function MediaCard(props: MediaCardProps) {
     }
   }
 
+  const handleOpen = (event?: React.MouseEvent) => {
+    if (!onOpen) return;
+    // Respect modifier-click selection in parents: don't navigate on ctrl/shift/meta
+    if (event && (event.ctrlKey || event.shiftKey || event.metaKey)) {
+      return;
+    }
+    onOpen(id);
+  };
+
   return (
     <div
       className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setShowMenu(false);
+      }}
     >
-      <div ref={hover.containerRef} className="relative aspect-video w-full overflow-hidden bg-neutral-100" onMouseEnter={hover.onMouseEnter} onMouseLeave={hover.onMouseLeave} onMouseMove={hover.onMouseMove}>
+      <div
+        ref={hover.containerRef}
+        className="relative aspect-video w-full overflow-hidden bg-neutral-100 cursor-pointer"
+        onMouseEnter={hover.onMouseEnter}
+        onMouseLeave={hover.onMouseLeave}
+        onMouseMove={hover.onMouseMove}
+        onClick={handleOpen}
+      >
         {thumbSrc && (
           mediaType === 'video' ? (
             <video ref={videoRef} src={thumbSrc} className="h-full w-full object-cover" preload="metadata" muted playsInline />
@@ -255,19 +260,53 @@ export function MediaCard(props: MediaCardProps) {
               <span>{width && height ? `${width}×${height}` : ''}</span>
               {durationSec && <span>{Math.round(durationSec)}s</span>}
             </div>
+            {/* More actions menu trigger (three dots) */}
+            {onOpen && (
+              <div className="absolute bottom-2 right-2">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMenu((prev) => !prev);
+                    }}
+                    className="px-1.5 py-0.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-xs"
+                    title="More actions"
+                  >
+                    ⋮
+                  </button>
+                  {showMenu && (
+                    <div
+                      className="absolute right-0 mt-1 w-32 rounded-md bg-neutral-900 text-white text-xs shadow-lg border border-neutral-700 z-10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                        onClick={() => {
+                          setShowMenu(false);
+                          handleOpen();
+                        }}
+                      >
+                        Open details
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Minimal footer - only show when not hovering image */}
-      <div className="p-2 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Badge color="blue" className="text-[10px]">{providerId}</Badge>
-          <span className="text-[10px] text-neutral-500">{new Date(createdAt).toLocaleDateString()}</span>
-        </div>
-        <Button size="sm" variant="secondary" onClick={() => onOpen?.(id)} className="text-xs px-2 py-1">
-          Open
-        </Button>
+      {/* Compact footer: provider + date */}
+      <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+        <span className="truncate max-w-[60%]">
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
+          {' · '}
+          {mediaType}
+        </span>
+        <span>{new Date(createdAt).toLocaleDateString()}</span>
       </div>
     </div>
   );
