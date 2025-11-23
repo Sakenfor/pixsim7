@@ -28,12 +28,12 @@ Non-goals:
 ## Phase Checklist
 
 - [x] **Phase 58.1 – HUD Layout Types & Store**
-- [ ] **Phase 58.2 – HUD Builder Panel (Reuse Panel Builder)**
+- [x] **Phase 58.2 – HUD Builder Panel (Reuse Panel Builder)**
 - [ ] **Phase 58.3 – HUD Renderer in Game Frontends**
 - [ ] **Phase 58.4 – Presets, Profiles & Overrides**
 - [ ] **Phase 58.5 – UX & Docs**
 
-**Status:** In progress (Phase 58.1 complete).
+**Status:** In progress (Phases 58.1-58.2 complete).
 
 ---
 
