@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssets, type AssetSummary } from '../hooks/useAssets';
+import { useAsset } from '../hooks/useAsset';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
-import { Tabs } from '@pixsim7/shared.ui';
+import { Tabs, Modal } from '@pixsim7/shared.ui';
 import { Badge, Button } from '@pixsim7/shared.ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
@@ -18,6 +19,7 @@ import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
+import { BACKEND_BASE } from '../lib/api/client';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -49,10 +51,13 @@ export function AssetsRoute() {
     provider_status: (params.get('provider_status') as any) || persisted.provider_status || undefined,
   };
   const [filters, setFilters] = useState(initialFilters);
-  const { providers } = useProviders();
-  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
-  const jobsSocket = useJobsSocket({ autoConnect: true });
-  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
+	  const { providers } = useProviders();
+	  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
+	  const jobsSocket = useJobsSocket({ autoConnect: true });
+	  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
+	  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+	  const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
+	  const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
   // Handle asset selection
   const handleSelectAsset = (asset: any) => {
@@ -121,6 +126,10 @@ export function AssetsRoute() {
   const currentTab = SCOPE_TABS.find(t => t.id === scope);
   // View toggle between remote assets and local folders panel
   const [view, setView] = useState<'remote' | 'local'>('remote');
+  // Layout toggle for remote gallery
+  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
+  const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
+  const [showLayoutSettings, setShowLayoutSettings] = useState(false);
 
   // Get current surface ID from URL
   const location = useLocation();
@@ -193,26 +202,186 @@ export function AssetsRoute() {
     }
   };
 
-  const clearSelection = () => {
-    setSelectedAssetIds(new Set());
-  };
+	  const clearSelection = () => {
+	    setSelectedAssetIds(new Set());
+	  };
+	
+	  const handleOpenInViewer = (asset: AssetSummary) => {
+	    setViewerAsset(asset);
+	  };
+	
+	  const handleCloseViewer = () => {
+	    setViewerAsset(null);
+	    if (viewerSrc && viewerSrc.startsWith('blob:')) {
+	      URL.revokeObjectURL(viewerSrc);
+	    }
+	    setViewerSrc(null);
+	  };
+	
+	  const handleNavigateViewer = (direction: 'prev' | 'next') => {
+	    if (!viewerAsset) return;
+	    const index = items.findIndex(a => a.id === viewerAsset.id);
+	    if (index === -1) return;
+	    const nextIndex = direction === 'prev' ? index - 1 : index + 1;
+	    if (nextIndex < 0 || nextIndex >= items.length) return;
+	    setViewerAsset(items[nextIndex]);
+	  };
+	
+	  // Load viewer media source (supports backend-relative URLs with auth)
+	  useEffect(() => {
+	    let cancelled = false;
+	
+	    const load = async () => {
+	      if (!viewerAsset) {
+	        if (viewerSrc && viewerSrc.startsWith('blob:')) {
+	          URL.revokeObjectURL(viewerSrc);
+	        }
+	        setViewerSrc(null);
+	        return;
+	      }
+	
+	      const candidate = viewerAsset.remote_url || viewerAsset.thumbnail_url;
+	      if (!candidate) {
+	        setViewerSrc(null);
+	        return;
+	      }
+	
+	      // Absolute URL or blob URL: use directly
+	      if (candidate.startsWith('http://') || candidate.startsWith('https://') || candidate.startsWith('blob:')) {
+	        setViewerSrc(candidate);
+	        return;
+	      }
+	
+	      // Backend-relative path: fetch with Authorization and create blob URL
+	      const fullUrl = candidate.startsWith('/')
+	        ? `${BACKEND_BASE}${candidate}`
+	        : `${BACKEND_BASE}/${candidate}`;
+	
+	      const token = localStorage.getItem('access_token');
+	      if (!token) {
+	        setViewerSrc(fullUrl);
+	        return;
+	      }
+	
+	      try {
+	        const res = await fetch(fullUrl, {
+	          headers: { Authorization: `Bearer ${token}` },
+	        });
+	        if (!res.ok) {
+	          setViewerSrc(fullUrl);
+	          return;
+	        }
+	        const blob = await res.blob();
+	        const url = URL.createObjectURL(blob);
+	        if (!cancelled) {
+	          if (viewerSrc && viewerSrc.startsWith('blob:')) {
+	            URL.revokeObjectURL(viewerSrc);
+	          }
+	          setViewerSrc(url);
+	        } else {
+	          URL.revokeObjectURL(url);
+	        }
+	      } catch {
+	        if (!cancelled) {
+	          setViewerSrc(fullUrl);
+	        }
+	      }
+	    };
+	
+	    load();
+	
+	    return () => {
+	      cancelled = true;
+	    };
+	    // eslint-disable-next-line react-hooks/exhaustive-deps
+	  }, [viewerAsset]);
 
-  const handleOpenInViewer = (asset: AssetSummary) => {
-    setViewerAsset(asset);
-  };
+	  // Rendered cards for remote assets (shared between masonry/grid layouts)
+	  const cardItems = items.map(a => {
+	    const isSelected = selectedAssetIds.has(a.id);
 
-  const handleCloseViewer = () => {
-    setViewerAsset(null);
-  };
+	    if (isSelectionMode) {
+	      return (
+	        <div key={a.id} className="relative group rounded-md overflow-hidden">
+	          <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+	            <MediaCard
+	              id={a.id}
+	              mediaType={a.media_type}
+	              providerId={a.provider_id}
+	              providerAssetId={a.provider_asset_id}
+	              thumbUrl={a.thumbnail_url}
+	              remoteUrl={a.remote_url}
+	              width={a.width}
+	              height={a.height}
+	              durationSec={a.duration_sec}
+	              tags={a.tags}
+	              description={a.description}
+	              createdAt={a.created_at}
+	              status={a.sync_status}
+	              providerStatus={a.provider_status}
+	              // In selection mode, disable card open behavior to avoid navigation
+	              onOpen={undefined}
+	              actions={{
+	                onOpenDetails: (id) => setDetailAssetId(id),
+	                onShowMetadata: (id) => setDetailAssetId(id),
+	              }}
+	              badgeConfig={effectiveBadgeConfig}
+	            />
+	          </div>
+	          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <Button
+              variant="primary"
+              onClick={() => handleSelectAsset(a)}
+              className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1"
+            >
+              <ThemedIcon name="check" size={14} variant="default" />
+              Select Asset
+            </Button>
+	          </div>
+	        </div>
+	      );
+	    }
 
-  const handleNavigateViewer = (direction: 'prev' | 'next') => {
-    if (!viewerAsset) return;
-    const index = items.findIndex(a => a.id === viewerAsset.id);
-    if (index === -1) return;
-    const nextIndex = direction === 'prev' ? index - 1 : index + 1;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-    setViewerAsset(items[nextIndex]);
-  };
+	    return (
+	      <div
+	        key={a.id}
+	        className={`relative cursor-pointer group rounded-md overflow-hidden ${
+	          isSelected ? 'ring-4 ring-purple-500' : ''
+	        }`}
+	        onClick={(e) => {
+	          // Ctrl/Shift/Meta click: toggle selection instead of opening viewer
+	          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+	            e.preventDefault();
+	            e.stopPropagation();
+	            toggleAssetSelection(a.id);
+	          }
+	        }}
+	      >
+	        <MediaCard
+	          id={a.id}
+	          mediaType={a.media_type}
+	          providerId={a.provider_id}
+	          providerAssetId={a.provider_asset_id}
+	          thumbUrl={a.thumbnail_url}
+	          remoteUrl={a.remote_url}
+	          width={a.width}
+	          height={a.height}
+	          durationSec={a.duration_sec}
+	          tags={a.tags}
+	          description={a.description}
+	          createdAt={a.created_at}
+	          status={a.sync_status}
+	          providerStatus={a.provider_status}
+	          onOpen={() => handleOpenInViewer(a)}
+	          actions={{
+	            onOpenDetails: (id) => setDetailAssetId(id),
+	            onShowMetadata: (id) => setDetailAssetId(id),
+	          }}
+	          badgeConfig={effectiveBadgeConfig}
+	        />
+	      </div>
+	    );
+	  });
 
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
@@ -295,6 +464,38 @@ export function AssetsRoute() {
               onClick={() => setView('local')}
             >Local</button>
           </div>
+          {view === 'remote' && (
+            <div className="flex items-center gap-1 text-xs">
+              <button
+                className={`px-2 py-1 rounded ${
+                  layout === 'masonry'
+                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                    : 'bg-neutral-200 dark:bg-neutral-700'
+                }`}
+                onClick={() => setLayout('masonry')}
+              >
+                Masonry
+              </button>
+              <button
+                className={`px-2 py-1 rounded ${
+                  layout === 'grid'
+                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+                    : 'bg-neutral-200 dark:bg-neutral-700'
+                }`}
+                onClick={() => setLayout('grid')}
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                title="Layout settings"
+                onClick={() => setShowLayoutSettings(true)}
+              >
+                <ThemedIcon name="settings" size={12} variant="default" />
+              </button>
+            </div>
+          )}
           {!isSelectionMode && (
             <button
               className={`px-3 py-1 text-xs rounded border transition-colors flex items-center gap-1 ${
@@ -334,31 +535,6 @@ export function AssetsRoute() {
       {view === 'remote' && (
         <>
           <Tabs tabs={SCOPE_TABS} value={scope} onChange={handleScopeChange} />
-          {currentTab && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-neutral-600">Viewing:</span>
-              <Badge color="blue">{currentTab.label}</Badge>
-
-              {/* Provider Status Overview */}
-              {items.length > 0 && (
-                <>
-                  <span className="text-sm text-neutral-400">|</span>
-                  <span className="text-sm text-neutral-600">Status:</span>
-                  <Badge color="green" className="text-[10px]">
-                    {items.filter(a => a.provider_status === 'ok').length} OK
-                  </Badge>
-                  <Badge color="yellow" className="text-[10px]">
-                    {items.filter(a => a.provider_status === 'local_only').length} Local
-                  </Badge>
-                  {items.filter(a => a.provider_status === 'flagged').length > 0 && (
-                    <Badge color="red" className="text-[10px]">
-                      {items.filter(a => a.provider_status === 'flagged').length} Flagged
-                    </Badge>
-                  )}
-                </>
-              )}
-            </div>
-          )}
           {error && <div className="text-red-600 text-sm">{error}</div>}
           <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
             <div className="flex flex-wrap gap-2 items-center">
@@ -421,84 +597,24 @@ export function AssetsRoute() {
             </div>
           )}
 
-          <MasonryGrid
-            items={items.map(a => {
-              const isSelected = selectedAssetIds.has(a.id);
+          {layout === 'masonry' ? (
+            <MasonryGrid
+              items={cardItems}
+              rowGap={layoutSettings.rowGap}
+              columnGap={layoutSettings.columnGap}
+            />
+          ) : (
+            <div
+              className="grid md:grid-cols-3 lg:grid-cols-4"
+              style={{
+                rowGap: `${layoutSettings.rowGap}px`,
+                columnGap: `${layoutSettings.columnGap}px`,
+              }}
+            >
+              {cardItems}
+            </div>
+          )}
 
-              return (
-                <div key={a.id} className="break-inside-avoid rounded overflow-hidden inline-block w-full">
-                  {isSelectionMode ? (
-                    <div className="relative group">
-                      <div className="opacity-75 group-hover:opacity-100 transition-opacity">
-                        <MediaCard
-                          id={a.id}
-                          mediaType={a.media_type}
-                          providerId={a.provider_id}
-                          providerAssetId={a.provider_asset_id}
-                          thumbUrl={a.thumbnail_url}
-                          remoteUrl={a.remote_url}
-                          width={a.width}
-                          height={a.height}
-                          durationSec={a.duration_sec}
-                          tags={a.tags}
-                          description={a.description}
-                          createdAt={a.created_at}
-                          status={a.sync_status}
-                          providerStatus={a.provider_status}
-                          // In selection mode, disable card open behavior to avoid navigation
-                          onOpen={undefined}
-                          actions={{
-                            onOpenDetails: () => navigate(`/assets/${a.id}`),
-                            onShowMetadata: () => navigate(`/assets/${a.id}`),
-                          }}
-                          badgeConfig={effectiveBadgeConfig}
-                        />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <Button
-                          variant="primary"
-                          onClick={() => handleSelectAsset(a)}
-                          className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1"
-                        >
-                          <ThemedIcon name="check" size={14} variant="default" />
-                          Select Asset
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      className={`relative cursor-pointer group ${
-                        isSelected ? 'ring-4 ring-purple-500 rounded' : ''
-                      }`}
-                    >
-                      <MediaCard
-                        id={a.id}
-                        mediaType={a.media_type}
-                        providerId={a.provider_id}
-                        providerAssetId={a.provider_asset_id}
-                        thumbUrl={a.thumbnail_url}
-                        remoteUrl={a.remote_url}
-                        width={a.width}
-                        height={a.height}
-                        durationSec={a.duration_sec}
-                        tags={a.tags}
-                        description={a.description}
-                        createdAt={a.created_at}
-                        status={a.sync_status}
-                        providerStatus={a.provider_status}
-                        onOpen={() => handleOpenInViewer(a)}
-                        actions={{
-                          onOpenDetails: () => navigate(`/assets/${a.id}`),
-                          onShowMetadata: () => navigate(`/assets/${a.id}`),
-                        }}
-                        badgeConfig={effectiveBadgeConfig}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          />
           <div className="pt-4">
             {hasMore && (
               <button disabled={loading} onClick={loadMore} className="border px-4 py-2 rounded">
@@ -509,74 +625,137 @@ export function AssetsRoute() {
           </div>
         </>
       )}
-      {view === 'local' && <LocalFoldersPanel />}
+	      {view === 'local' && <LocalFoldersPanel />}
 
-      {/* Fullscreen viewer for remote assets */}
-      {viewerAsset && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="relative max-w-6xl max-h-[90vh] w-full flex flex-col gap-4">
-            <div className="bg-black rounded-lg overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
-              {viewerAsset.media_type === 'video' ? (
-                <video
-                  src={viewerAsset.remote_url || viewerAsset.thumbnail_url}
-                  className="w-full h-full object-contain"
-                  controls
-                  autoPlay
-                />
-              ) : (
-                <img
-                  src={viewerAsset.remote_url || viewerAsset.thumbnail_url}
-                  alt={viewerAsset.description || `asset-${viewerAsset.id}`}
-                  className="w-full h-full object-contain"
-                />
-              )}
-            </div>
+	      {/* Fullscreen viewer for remote assets */}
+	      {viewerAsset && viewerSrc && (
+	        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
+	          <div className="relative max-w-6xl max-h-[90vh] w-full flex flex-col gap-4">
+	            <div className="bg-black rounded-lg overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
+	              {viewerAsset.media_type === 'video' ? (
+	                <video
+	                  src={viewerSrc}
+	                  className="w-full h-full object-contain"
+	                  controls
+	                  autoPlay
+	                />
+	              ) : (
+	                <img
+	                  src={viewerSrc}
+	                  alt={viewerAsset.description || `asset-${viewerAsset.id}`}
+	                  className="w-full h-full object-contain"
+	                />
+	              )}
+	            </div>
+	
+	            <div className="flex items-center justify-between text-sm text-neutral-200">
+	              <div className="flex flex-col gap-1">
+	                <div className="text-lg font-semibold truncate">
+	                  {viewerAsset.description || `Asset #${viewerAsset.id}`}
+	                </div>
+	                <div className="flex gap-3 text-xs text-neutral-400">
+	                  <span>{viewerAsset.media_type}</span>
+	                  <span>{viewerAsset.provider_id}</span>
+	                  <span>
+	                    {new Date(viewerAsset.created_at).toLocaleString()}
+	                  </span>
+	                </div>
+	              </div>
+	              <div className="flex items-center gap-3">
+	                <button
+	                  type="button"
+	                  onClick={() => handleNavigateViewer('prev')}
+	                  disabled={items.findIndex(a => a.id === viewerAsset.id) <= 0}
+	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
+	                >
+	                  <ThemedIcon name="chevronLeft" size={14} variant="default" />
+	                  Prev
+	                </button>
+	                <button
+	                  type="button"
+	                  onClick={() => handleNavigateViewer('next')}
+	                  disabled={items.findIndex(a => a.id === viewerAsset.id) >= items.length - 1}
+	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
+	                >
+	                  Next
+	                  <ThemedIcon name="chevronRight" size={14} variant="default" />
+	                </button>
+	                <button
+	                  type="button"
+	                  onClick={handleCloseViewer}
+	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
+	                >
+	                  <ThemedIcon name="close" size={14} variant="default" />
+	                  Close
+	                </button>
+	              </div>
+	            </div>
+	          </div>
+	        </div>
+	      )}
+	
+	      {/* Floating asset detail window */}
+	      {detailAssetId !== null && (
+	        <Modal
+	          isOpen={true}
+	          onClose={() => setDetailAssetId(null)}
+	          title={`Asset #${detailAssetId}`}
+	          size="lg"
+	        >
+	          <div className="space-y-3 max-h-[70vh] overflow-auto text-xs">
+	            {detailLoading && <div>Loading...</div>}
+	            {detailError && (
+	              <div className="text-red-600 text-sm">{detailError}</div>
+	            )}
+	            {detailAsset && (
+	              <pre className="bg-neutral-100 dark:bg-neutral-900 p-3 rounded whitespace-pre-wrap break-all">
+	                {JSON.stringify(detailAsset, null, 2)}
+	              </pre>
+	            )}
+	          </div>
+	        </Modal>
+	      )}
 
-            <div className="flex items-center justify-between text-sm text-neutral-200">
-              <div className="flex flex-col gap-1">
-                <div className="text-lg font-semibold truncate">
-                  {viewerAsset.description || `Asset #${viewerAsset.id}`}
-                </div>
-                <div className="flex gap-3 text-xs text-neutral-400">
-                  <span>{viewerAsset.media_type}</span>
-                  <span>{viewerAsset.provider_id}</span>
-                  <span>
-                    {new Date(viewerAsset.created_at).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleNavigateViewer('prev')}
-                  disabled={items.findIndex(a => a.id === viewerAsset.id) <= 0}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
-                >
-                  <ThemedIcon name="chevronLeft" size={14} variant="default" />
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleNavigateViewer('next')}
-                  disabled={items.findIndex(a => a.id === viewerAsset.id) >= items.length - 1}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
-                >
-                  Next
-                  <ThemedIcon name="chevronRight" size={14} variant="default" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCloseViewer}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
-                >
-                  <ThemedIcon name="close" size={14} variant="default" />
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+	      {/* Layout settings modal */}
+	      {showLayoutSettings && (
+	        <Modal
+	          isOpen={true}
+	          onClose={() => setShowLayoutSettings(false)}
+	          title="Gallery Layout Settings"
+	          size="sm"
+	        >
+	          <div className="space-y-3 text-sm">
+	            <label className="flex items-center justify-between gap-2">
+	              <span>Vertical gap (px)</span>
+	              <input
+	                type="number"
+	                className="w-20 px-1 py-0.5 border rounded text-right"
+	                value={layoutSettings.rowGap}
+	                onChange={(e) =>
+	                  setLayoutSettings((s) => ({
+	                    ...s,
+	                    rowGap: Number(e.target.value) || 0,
+	                  }))
+	                }
+	              />
+	            </label>
+	            <label className="flex items-center justify-between gap-2">
+	              <span>Horizontal gap (px)</span>
+	              <input
+	                type="number"
+	                className="w-20 px-1 py-0.5 border rounded text-right"
+	                value={layoutSettings.columnGap}
+	                onChange={(e) =>
+	                  setLayoutSettings((s) => ({
+	                    ...s,
+	                    columnGap: Number(e.target.value) || 0,
+	                  }))
+	                }
+	              />
+	            </label>
+	          </div>
+	        </Modal>
+	      )}
+	    </div>
+	  );
+	}

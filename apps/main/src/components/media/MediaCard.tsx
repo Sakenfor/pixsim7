@@ -198,7 +198,9 @@ export function MediaCard(props: MediaCardProps) {
     >
       <div
         ref={hover.containerRef}
-        className="relative aspect-video w-full overflow-hidden bg-neutral-100 cursor-pointer"
+        className={`relative w-full overflow-hidden bg-neutral-100 cursor-pointer ${
+          mediaType === 'video' ? 'aspect-video' : ''
+        }`}
         data-pixsim7="media-thumbnail"
         onMouseEnter={hover.onMouseEnter}
         onMouseLeave={hover.onMouseLeave}
@@ -207,11 +209,23 @@ export function MediaCard(props: MediaCardProps) {
       >
         {thumbSrc && (
           mediaType === 'video' ? (
-            <video ref={videoRef} src={thumbSrc} className="h-full w-full object-cover" preload="metadata" muted playsInline />
+            <video
+              ref={videoRef}
+              src={thumbSrc}
+              className="h-full w-full object-cover"
+              preload="metadata"
+              muted
+              playsInline
+            />
           ) : (
             // For images, 3D models, and audio we show an img thumbnail (could be a generated preview or generic icon)
             // eslint-disable-next-line jsx-a11y/img-redundant-alt
-            <img src={thumbSrc} alt={`thumb-${id}`} className="h-full w-full object-cover" loading="lazy" />
+            <img
+              src={thumbSrc}
+              alt={`thumb-${id}`}
+              className="w-full h-auto object-cover"
+              loading="lazy"
+            />
           )
         )}
         {/* Top-left: Primary media type icon badge (always visible) */}
