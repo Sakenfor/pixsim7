@@ -19,6 +19,12 @@ import statistics
 
 from pixsim7.backend.main.infrastructure.redis import get_redis
 from pixsim7.backend.main.domain import Generation, GenerationStatus, OperationType
+from pixsim7.backend.main.shared.schemas.telemetry_schemas import (
+    CostData,
+    ProviderHealthMetrics,
+    OperationMetrics,
+    TelemetryAlert,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +52,7 @@ class GenerationTelemetryService:
     async def record_generation_metrics(
         self,
         generation: Generation,
-        cost_data: Optional[Dict[str, Any]] = None
+        cost_data: Optional[CostData] = None
     ) -> None:
         """
         Record metrics for a completed generation
@@ -83,9 +89,11 @@ class GenerationTelemetryService:
             # Add cost data if available
             if cost_data:
                 metrics.update({
-                    "tokens_used": cost_data.get("tokens_used", 0),
-                    "estimated_cost_usd": cost_data.get("estimated_cost_usd", 0.0),
-                    "compute_seconds": cost_data.get("compute_seconds", latency_seconds),
+                    "tokens_used": cost_data.tokens_used,
+                    "estimated_cost_usd": cost_data.estimated_cost_usd,
+                    "compute_seconds": cost_data.compute_seconds or latency_seconds,
+                    "input_tokens": cost_data.input_tokens,
+                    "output_tokens": cost_data.output_tokens,
                 })
 
             # Store individual metric (for detailed analysis)
@@ -116,7 +124,7 @@ class GenerationTelemetryService:
         operation_type: OperationType,
         status: GenerationStatus,
         latency: float,
-        cost_data: Optional[Dict[str, Any]] = None
+        cost_data: Optional[CostData] = None
     ) -> None:
         """
         Update aggregated metrics for provider/operation
@@ -168,16 +176,13 @@ class GenerationTelemetryService:
 
             # Store cost data if available
             if cost_data:
-                tokens = cost_data.get("tokens_used", 0)
-                cost_usd = cost_data.get("estimated_cost_usd", 0.0)
+                if cost_data.tokens_used > 0:
+                    await redis_client.hincrbyfloat(f"{provider_prefix}:counters", "total_tokens", cost_data.tokens_used)
+                    await redis_client.hincrbyfloat(f"{operation_prefix}:counters", "total_tokens", cost_data.tokens_used)
 
-                if tokens > 0:
-                    await redis_client.hincrbyfloat(f"{provider_prefix}:counters", "total_tokens", tokens)
-                    await redis_client.hincrbyfloat(f"{operation_prefix}:counters", "total_tokens", tokens)
-
-                if cost_usd > 0:
-                    await redis_client.hincrbyfloat(f"{provider_prefix}:counters", "total_cost_usd", cost_usd)
-                    await redis_client.hincrbyfloat(f"{operation_prefix}:counters", "total_cost_usd", cost_usd)
+                if cost_data.estimated_cost_usd > 0:
+                    await redis_client.hincrbyfloat(f"{provider_prefix}:counters", "total_cost_usd", cost_data.estimated_cost_usd)
+                    await redis_client.hincrbyfloat(f"{operation_prefix}:counters", "total_cost_usd", cost_data.estimated_cost_usd)
 
         except Exception as e:
             logger.error(f"Failed to update aggregated metrics: {e}")
@@ -185,7 +190,7 @@ class GenerationTelemetryService:
     async def get_provider_health(
         self,
         provider_id: str
-    ) -> Dict[str, Any]:
+    ) -> ProviderHealthMetrics:
         """
         Get health metrics for a specific provider
 
@@ -236,31 +241,35 @@ class GenerationTelemetryService:
                     latency_p95 = latency_values_sorted[p95_idx]
                     latency_p99 = latency_values_sorted[p99_idx]
 
-            return {
-                "provider_id": provider_id,
-                "total_generations": total,
-                "completed": completed,
-                "failed": failed,
-                "success_rate": round(success_rate, 4),
-                "latency_p50": round(latency_p50, 2) if latency_p50 else None,
-                "latency_p95": round(latency_p95, 2) if latency_p95 else None,
-                "latency_p99": round(latency_p99, 2) if latency_p99 else None,
-                "total_tokens": int(total_tokens),
-                "total_cost_usd": round(total_cost_usd, 4),
-                "avg_cost_per_generation": round(total_cost_usd / total, 4) if total > 0 else 0,
-            }
+            return ProviderHealthMetrics(
+                provider_id=provider_id,
+                total_generations=total,
+                completed=completed,
+                failed=failed,
+                success_rate=round(success_rate, 4),
+                latency_p50=round(latency_p50, 2) if latency_p50 else None,
+                latency_p95=round(latency_p95, 2) if latency_p95 else None,
+                latency_p99=round(latency_p99, 2) if latency_p99 else None,
+                total_tokens=int(total_tokens),
+                total_cost_usd=round(total_cost_usd, 4),
+                avg_cost_per_generation=round(total_cost_usd / total, 4) if total > 0 else 0,
+            )
 
         except Exception as e:
             logger.error(f"Failed to get provider health for {provider_id}: {e}")
-            return {
-                "provider_id": provider_id,
-                "error": str(e)
-            }
+            # Return empty metrics on error
+            return ProviderHealthMetrics(
+                provider_id=provider_id,
+                total_generations=0,
+                completed=0,
+                failed=0,
+                success_rate=0.0,
+            )
 
     async def get_operation_metrics(
         self,
         operation_type: OperationType
-    ) -> Dict[str, Any]:
+    ) -> OperationMetrics:
         """
         Get metrics for a specific operation type
 
@@ -299,30 +308,33 @@ class GenerationTelemetryService:
                     latency_p95 = latency_values_sorted[p95_idx]
                     latency_p99 = latency_values_sorted[p99_idx]
 
-            return {
-                "operation_type": operation_type.value,
-                "total_generations": total,
-                "completed": completed,
-                "failed": failed,
-                "success_rate": round(success_rate, 4),
-                "latency_p50": round(latency_p50, 2) if latency_p50 else None,
-                "latency_p95": round(latency_p95, 2) if latency_p95 else None,
-                "latency_p99": round(latency_p99, 2) if latency_p99 else None,
-                "total_tokens": int(total_tokens),
-                "total_cost_usd": round(total_cost_usd, 4),
-                "avg_cost_per_generation": round(total_cost_usd / total, 4) if total > 0 else 0,
-            }
+            return OperationMetrics(
+                operation_type=operation_type.value,
+                total_generations=total,
+                completed=completed,
+                failed=failed,
+                success_rate=round(success_rate, 4),
+                latency_p50=round(latency_p50, 2) if latency_p50 else None,
+                latency_p95=round(latency_p95, 2) if latency_p95 else None,
+                latency_p99=round(latency_p99, 2) if latency_p99 else None,
+                total_tokens=int(total_tokens),
+                total_cost_usd=round(total_cost_usd, 4),
+                avg_cost_per_generation=round(total_cost_usd / total, 4) if total > 0 else 0,
+            )
 
         except Exception as e:
             logger.error(f"Failed to get operation metrics for {operation_type.value}: {e}")
-            return {
-                "operation_type": operation_type.value,
-                "error": str(e)
-            }
+            return OperationMetrics(
+                operation_type=operation_type.value,
+                total_generations=0,
+                completed=0,
+                failed=0,
+                success_rate=0.0,
+            )
 
     async def get_all_provider_health(
         self
-    ) -> List[Dict[str, Any]]:
+    ) -> List[ProviderHealthMetrics]:
         """
         Get health metrics for all providers
 

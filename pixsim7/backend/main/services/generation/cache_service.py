@@ -140,9 +140,13 @@ class GenerationCacheService:
 
             if cached_value:
                 logger.info(f"Cache HIT: {cache_key}")
+                # Track cache hits for stats
+                await redis_client.incr("generation:stats:cache_hits_24h")
                 return int(cached_value)
 
             logger.debug(f"Cache MISS: {cache_key}")
+            # Track cache misses for stats
+            await redis_client.incr("generation:stats:cache_misses_24h")
             return None
 
         except Exception as e:
@@ -178,6 +182,9 @@ class GenerationCacheService:
                     str(generation_id)
                 )
                 logger.info(f"Cached generation {generation_id} with TTL {ttl}: {cache_key}")
+
+                # Increment cache stats counter for performance
+                await redis_client.incr("generation:stats:total_cached")
             else:
                 logger.warning(f"No TTL defined for strategy '{strategy}', skipping cache")
 
@@ -202,6 +209,8 @@ class GenerationCacheService:
             deleted = await redis_client.delete(cache_key)
             if deleted:
                 logger.info(f"Cache invalidated: {cache_key}")
+                # Decrement total cached counter
+                await redis_client.decr("generation:stats:total_cached")
             return bool(deleted)
 
         except Exception as e:
@@ -328,7 +337,7 @@ class GenerationCacheService:
         self
     ) -> Dict[str, Any]:
         """
-        Get cache statistics
+        Get cache statistics (optimized with counters)
 
         Returns:
             Dictionary with cache stats (hit rate, size, etc.)
@@ -336,24 +345,26 @@ class GenerationCacheService:
         try:
             redis_client = await self._get_redis()
 
-            # Count generation cache keys
-            cursor = 0
-            count = 0
-            pattern = "generation:*"
+            # Get cached count from counter (much faster than SCAN)
+            total_cached = await redis_client.get("generation:stats:total_cached")
+            total_cached = int(total_cached) if total_cached else 0
 
-            while True:
-                cursor, keys = await redis_client.scan(
-                    cursor=cursor,
-                    match=pattern,
-                    count=100
-                )
-                count += len(keys)
+            # Get hit/miss stats for 24h
+            hits_24h = await redis_client.get("generation:stats:cache_hits_24h")
+            misses_24h = await redis_client.get("generation:stats:cache_misses_24h")
 
-                if cursor == 0:
-                    break
+            hits_24h = int(hits_24h) if hits_24h else 0
+            misses_24h = int(misses_24h) if misses_24h else 0
+
+            # Calculate hit rate
+            total_requests_24h = hits_24h + misses_24h
+            hit_rate_24h = hits_24h / total_requests_24h if total_requests_24h > 0 else 0
 
             return {
-                "total_cached_generations": count,
+                "total_cached_generations": total_cached,
+                "cache_hits_24h": hits_24h,
+                "cache_misses_24h": misses_24h,
+                "hit_rate_24h": round(hit_rate_24h, 4),
                 "redis_connected": True,
             }
 

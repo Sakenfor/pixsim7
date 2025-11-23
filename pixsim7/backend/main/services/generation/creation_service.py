@@ -25,6 +25,7 @@ from pixsim7.backend.main.infrastructure.events.bus import event_bus, JOB_CREATE
 from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
 from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
+from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -128,17 +129,16 @@ class GenerationCreationService:
         # === PHASE 8: Content Rating Enforcement ===
         # Validate content rating against world/user constraints
         if is_structured and params.get("social_context"):
-            # Extract world_meta if available (may come from world lookup or be embedded in params)
-            world_meta = None
+            # Fetch world_meta from database
             player_context = params.get("player_context", {})
             world_id = player_context.get("world_id")
 
-            # Note: In a full implementation, we'd fetch world_meta from DB here
-            # For now, assume world_meta is passed in params if available
-            # This can be enhanced later to fetch from GameWorld model
+            world_meta = None
+            if world_id:
+                world_meta = await fetch_world_meta(self.db, world_id)
 
-            # Extract user preferences if available
-            user_preferences = None  # Could be passed from frontend or fetched from user settings
+            # Fetch user preferences from database
+            user_preferences = await fetch_user_preferences(self.db, user.id)
 
             # Validate content rating
             is_valid, violation_msg, clamped_context = self._validate_content_rating(
