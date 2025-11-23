@@ -726,7 +726,7 @@
             <li>Install ADB (Android Debug Bridge)</li>
             <li>Click "📋 Copy Token" button above to get your auth token</li>
             <li>Run the device agent from PixSim7 root:<br>
-              <code style="background: #2d3748; color: #10b981; padding: 8px 12px; border-radius: 6px; margin-top: 6px; display: block; overflow-x: auto; white-space: nowrap; font-size: 11px; border: 1px solid #374151;">python scripts/device_agent.py --server http://your-zerotier-ip:8001 --token YOUR_JWT_TOKEN</code>
+              <code style="background: #2d3748; color: #10b981; padding: 8px 12px; border-radius: 6px; margin-top: 6px; display: block; overflow-x: auto; white-space: nowrap; font-size: 11px; border: 1px solid #374151;">python scripts/device_agent.py --server http://your-zerotier-ip:8000 --token YOUR_JWT_TOKEN</code>
             </li>
           </ol>
 
@@ -747,9 +747,9 @@
         <div class="section-title">⚙️ Extension Settings</div>
 
         <label>PixSim7 Backend URL</label>
-        <input type="url" id="backendUrl" placeholder="http://10.243.48.125:8001">
+        <input type="url" id="backendUrl" placeholder="http://10.243.48.125:8000">
         <div style="font-size: 11px; color: #9ca3af; margin-top: 4px; margin-bottom: 12px;">
-          Change this if backend is running on different IP/port
+          Change this if backend is running on different IP/port (default: port 8000)
         </div>
 
         <div class="btn-row">

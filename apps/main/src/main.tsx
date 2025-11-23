@@ -10,6 +10,7 @@ import { registerDevTools } from './lib/devtools/registerDevTools'
 import { registerGallerySurfaces } from './lib/gallery/registerGallerySurfaces'
 import { registerGalleryTools } from './lib/gallery/registerGalleryTools'
 import { registerGizmoSurfaces } from './lib/gizmos'
+import { DevToolProvider } from './lib/devtools/devToolContext'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -31,6 +32,8 @@ registerGizmoSurfaces()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <DevToolProvider>
+      <App />
+    </DevToolProvider>
   </StrictMode>,
 )

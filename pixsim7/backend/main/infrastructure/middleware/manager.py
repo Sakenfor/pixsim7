@@ -6,6 +6,7 @@ Dynamically loads and manages HTTP middleware plugins.
 
 import importlib
 import importlib.util
+import asyncio
 from pathlib import Path
 from typing import Any, Optional, Type
 from fastapi import FastAPI
@@ -148,8 +149,19 @@ class MiddlewareManager:
                 except Exception as e:
                     logger.error(f"Error in on_load for {manifest.id}: {e}")
 
-            # Emit event
-            middleware_hooks.emit(MiddlewareEvents.MIDDLEWARE_LOADED, manifest.id)
+            # Emit event (supports async hooks)
+            try:
+                # If we're already in an event loop, schedule emit without blocking
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop yet (e.g., during app import) – run once in a fresh loop
+                asyncio.run(
+                    middleware_hooks.emit(MiddlewareEvents.MIDDLEWARE_LOADED, manifest.id)
+                )
+            else:
+                loop.create_task(
+                    middleware_hooks.emit(MiddlewareEvents.MIDDLEWARE_LOADED, manifest.id)
+                )
 
             return True
 

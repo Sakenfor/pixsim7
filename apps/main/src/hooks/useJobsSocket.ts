@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../lib/api/client';
 
 interface UseJobsSocketOptions {
   autoConnect?: boolean;
@@ -14,6 +15,22 @@ interface UseJobsSocketOptions {
 interface JobsSocketState {
   connected: boolean;
   error: string | null;
+}
+
+/**
+ * Compute the WebSocket URL for the jobs feed based on API_BASE_URL.
+ * This ensures we always connect to the backend (not the Vite dev server).
+ */
+function getJobsWebSocketUrl(): string {
+  try {
+    const apiUrl = new URL(API_BASE_URL);
+    const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    // API_BASE_URL already includes `/api/v1`
+    return `${protocol}//${apiUrl.host}/api/v1/ws/jobs`;
+  } catch {
+    // Fallback: assume localhost:8000
+    return 'ws://localhost:8000/api/v1/ws/jobs';
+  }
 }
 
 export function useJobsSocket(options: UseJobsSocketOptions = {}): JobsSocketState {
@@ -31,17 +48,14 @@ export function useJobsSocket(options: UseJobsSocketOptions = {}): JobsSocketSta
 
     const connect = () => {
       try {
-        // Determine WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/api/v1/ws/jobs`;
+        const wsUrl = getJobsWebSocketUrl();
 
         // Create WebSocket connection
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log('[useJobsSocket] Connected to jobs feed');
+          console.log('[useJobsSocket] Connected to jobs feed', { url: wsUrl });
           setState({ connected: true, error: null });
 
           // Start ping/pong keep-alive (every 30 seconds)

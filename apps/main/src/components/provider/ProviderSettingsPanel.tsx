@@ -378,6 +378,54 @@ export function ProviderSettingsPanel() {
     setRefreshKey(prev => prev + 1);
   };
 
+  // Get provider names map
+  const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
+    acc[p.id] = p.name;
+    return acc;
+  }, {});
+
+  // Auto-select first provider if none selected
+  const activeProvider = selectedProvider || (capacity.length > 0 ? capacity[0].provider_id : null);
+  const providerData = capacity.find(c => c.provider_id === activeProvider);
+
+  // Sorted accounts
+  const sortedAccounts = useMemo(() => {
+    if (!providerData) return [];
+    const accounts = [...providerData.accounts];
+
+    accounts.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case 'name':
+          comparison = (a.nickname || a.email).localeCompare(b.nickname || b.email);
+          break;
+        case 'status':
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case 'credits': {
+          const aCredits = Object.values(a.credits).reduce((sum, v) => sum + v, 0);
+          const bCredits = Object.values(b.credits).reduce((sum, v) => sum + v, 0);
+          comparison = aCredits - bCredits;
+          break;
+        }
+        case 'lastUsed': {
+          const aTime = a.last_used ? new Date(a.last_used).getTime() : 0;
+          const bTime = b.last_used ? new Date(b.last_used).getTime() : 0;
+          comparison = aTime - bTime;
+          break;
+        }
+        case 'success':
+          comparison = a.success_rate - b.success_rate;
+          break;
+      }
+
+      return sortDesc ? -comparison : comparison;
+    });
+
+    return accounts;
+  }, [providerData, sortBy, sortDesc]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -395,52 +443,6 @@ export function ProviderSettingsPanel() {
       </div>
     );
   }
-
-  // Get provider names map
-  const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
-    acc[p.id] = p.name;
-    return acc;
-  }, {});
-
-  // Auto-select first provider if none selected
-  const activeProvider = selectedProvider || (capacity.length > 0 ? capacity[0].provider_id : null);
-  const providerData = capacity.find(c => c.provider_id === activeProvider);
-
-  // Sorted accounts
-  const sortedAccounts = useMemo(() => {
-    if (!providerData) return [];
-    const accounts = [...providerData.accounts];
-    
-    accounts.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (sortBy) {
-        case 'name':
-          comparison = (a.nickname || a.email).localeCompare(b.nickname || b.email);
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-        case 'credits':
-          const aCredits = Object.values(a.credits).reduce((sum, v) => sum + v, 0);
-          const bCredits = Object.values(b.credits).reduce((sum, v) => sum + v, 0);
-          comparison = aCredits - bCredits;
-          break;
-        case 'lastUsed':
-          const aTime = a.last_used ? new Date(a.last_used).getTime() : 0;
-          const bTime = b.last_used ? new Date(b.last_used).getTime() : 0;
-          comparison = aTime - bTime;
-          break;
-        case 'success':
-          comparison = a.success_rate - b.success_rate;
-          break;
-      }
-      
-      return sortDesc ? -comparison : comparison;
-    });
-    
-    return accounts;
-  }, [providerData, sortBy, sortDesc]);
 
   const toggleSort = (field: typeof sortBy) => {
     if (sortBy === field) {

@@ -54,7 +54,8 @@ class EventMetrics:
         self.counts: Dict[str, int] = defaultdict(int)
         self.first_seen: Dict[str, datetime] = {}
         self.last_seen: Dict[str, datetime] = {}
-        self.logger = configure_logging("event_handler.metrics")
+        # Use shared logging facade to obtain a structured logger
+        self.logger = get_event_logger("metrics")
 
     async def track_event(self, event: Event) -> None:
         """Track event occurrence"""
@@ -95,13 +96,13 @@ handler = EventMetrics()
 
 def on_register():
     """Called when handler is registered"""
-    logger = configure_logging("event_handler.metrics")
+    logger = get_event_logger("metrics")
     logger.info("Event metrics tracker registered")
 
 
 def on_unregister():
     """Called when handler is unregistered"""
-    logger = configure_logging("event_handler.metrics")
+    logger = get_event_logger("metrics")
     logger.info("Event metrics tracker unregistered")
 
 

@@ -967,7 +967,7 @@ async function saveSettings() {
 }
 
 async function resetSettings() {
-  const defaultUrl = 'http://10.243.48.125:8001';
+  const defaultUrl = 'http://10.243.48.125:8000';
 
   await chrome.storage.local.set({
     backendUrl: defaultUrl,

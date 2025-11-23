@@ -1,5 +1,6 @@
 import type { Module } from '../types';
 import { registerWorkspaceFeature } from '../../lib/capabilities/registerCoreFeatures';
+import { initializePanels } from '../../lib/panels/initializePanels';
 
 /**
  * Workspace Module
@@ -12,7 +13,13 @@ export const workspaceModule: Module = {
   name: 'Workspace Module',
 
   async initialize() {
+    // Register workspace capabilities (hotspots, scene builder, etc.)
     registerWorkspaceFeature();
-    // Future: Register workspace-specific plugins if needed
+
+    // Ensure core panels (panelRegistry + corePanelsPlugin) are initialized
+    // even if the workspace route hasn't been visited yet. This allows
+    // features like the Control Center to open workspace panels (e.g. providers)
+    // as floating windows from anywhere.
+    await initializePanels();
   },
 };

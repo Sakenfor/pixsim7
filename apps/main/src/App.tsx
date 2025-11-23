@@ -30,7 +30,6 @@ import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
-import { DevToolProvider } from './lib/devtools/devToolContext';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 
@@ -65,9 +64,8 @@ function App() {
   }, [initialize, toast]);
 
   return (
-    <DevToolProvider>
-      <BrowserRouter>
-        <div className="min-h-screen flex flex-col">
+    <BrowserRouter>
+      <div className="min-h-screen flex flex-col">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -115,8 +113,7 @@ function App() {
       )}
       {/* Dev tool quick access modal (Ctrl+Shift+D) */}
       {isAuthenticated && <DevToolQuickAccess />}
-      </BrowserRouter>
-    </DevToolProvider>
+    </BrowserRouter>
   );
 }
 
