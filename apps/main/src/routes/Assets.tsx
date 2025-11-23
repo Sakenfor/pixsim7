@@ -13,6 +13,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
+import { ThemedIcon } from '../lib/icons';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -176,8 +177,9 @@ export function AssetsRoute() {
         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100">
-                📎 Asset Selection Mode
+              <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
+                <ThemedIcon name="target" size={20} variant="primary" />
+                Asset Selection Mode
               </h2>
               <p className="text-sm text-blue-700 dark:text-blue-300">
                 Click on an asset to select it for your scene node
@@ -195,8 +197,9 @@ export function AssetsRoute() {
         <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100">
-                🛠️ {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
+              <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                <ThemedIcon name="wrench" size={20} variant="primary" />
+                {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
               </h2>
               <p className="text-sm text-purple-700 dark:text-purple-300">
                 Use the tools panel below to perform actions on selected assets
@@ -232,14 +235,16 @@ export function AssetsRoute() {
           </div>
           {!isSelectionMode && (
             <button
-              className={`px-3 py-1 text-xs rounded border transition-colors ${
+              className={`px-3 py-1 text-xs rounded border transition-colors flex items-center gap-1 ${
                 showToolsPanel
                   ? 'bg-purple-500 text-white border-purple-600'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
               }`}
               onClick={() => setShowToolsPanel(!showToolsPanel)}
             >
-              🛠️ Tools {showToolsPanel ? '▼' : '▶'}
+              <ThemedIcon name="wrench" size={12} variant="default" />
+              Tools
+              <ThemedIcon name={showToolsPanel ? 'chevronDown' : 'chevronRight'} size={12} variant="default" />
             </button>
           )}
           <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -389,9 +394,10 @@ export function AssetsRoute() {
                         <Button
                           variant="primary"
                           onClick={() => handleSelectAsset(a)}
-                          className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                          className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1"
                         >
-                          ✓ Select Asset
+                          <ThemedIcon name="check" size={14} variant="default" />
+                          Select Asset
                         </Button>
                       </div>
                     </div>
@@ -431,7 +437,7 @@ export function AssetsRoute() {
                       {/* Selection indicator */}
                       {isSelected && (
                         <div className="absolute top-2 right-2 bg-purple-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
-                          ✓
+                          <ThemedIcon name="check" size={14} variant="default" />
                         </div>
                       )}
                       {/* Selection hint on hover */}
