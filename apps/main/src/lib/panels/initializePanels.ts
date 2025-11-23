@@ -7,6 +7,7 @@
 
 import { pluginManager } from './panelPlugin';
 import { corePanelsPlugin } from './corePanelsPlugin';
+import { registerGraphEditors } from '../graph/registerEditors';
 
 let initialized = false;
 
@@ -20,6 +21,9 @@ export async function initializePanels(): Promise<void> {
   }
 
   try {
+    // Register graph editor surfaces
+    registerGraphEditors();
+
     // Load core panels plugin
     await pluginManager.loadPlugin(corePanelsPlugin);
 

@@ -25,6 +25,7 @@ import { nodeTypeRegistry, type NodeTypeDefinition } from '@pixsim7/shared.types
 import { nodeRendererRegistry } from '../graph/nodeRendererRegistry';
 import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/registry';
 import type { GalleryToolPlugin } from '../gallery/types';
+import { graphEditorRegistry, type GraphEditorDefinition } from '../graph/editorRegistry';
 
 // ============================================================================
 // Registry Bridge Base
@@ -293,6 +294,48 @@ export function registerBuiltinGalleryTool(tool: GalleryToolPlugin): void {
 }
 
 // ============================================================================
+// Graph Editor Registry Bridge
+// ============================================================================
+
+/**
+ * Register a graph editor with metadata tracking
+ */
+export function registerGraphEditor(
+  editor: GraphEditorDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  // Register with graph editor registry
+  graphEditorRegistry.register(editor);
+
+  // Extract metadata
+  const metadata = extractCommonMetadata(editor as any);
+
+  // Register in catalog
+  pluginCatalog.register({
+    ...metadata,
+    id: editor.id,
+    name: editor.label,
+    family: 'graph-editor',
+    origin: options.origin ?? 'plugin-dir',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? true,
+    storeId: editor.storeId,
+    category: editor.category,
+    supportsMultiScene: editor.supportsMultiScene,
+    supportsWorldContext: editor.supportsWorldContext,
+    supportsPlayback: editor.supportsPlayback,
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'graph-editor'>);
+}
+
+/**
+ * Register built-in graph editor with origin tracking
+ */
+export function registerBuiltinGraphEditor(editor: GraphEditorDefinition): void {
+  registerGraphEditor(editor, { origin: 'builtin', canDisable: false });
+}
+
+// ============================================================================
 // Bulk Registration Helpers
 // ============================================================================
 
@@ -338,6 +381,13 @@ export function syncCatalogFromRegistries(): void {
       registerWorldTool(tool, { origin: 'builtin' });
     }
   }
+
+  // Sync graph editors
+  for (const editor of graphEditorRegistry.getAll()) {
+    if (!pluginCatalog.get(editor.id)) {
+      registerGraphEditor(editor, { origin: 'builtin' });
+    }
+  }
 }
 
 /**
@@ -350,4 +400,5 @@ export function printRegistryComparison(): void {
   console.log(`Node Types: ${nodeTypeRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('node-type').length} in catalog`);
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
+  console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
 }

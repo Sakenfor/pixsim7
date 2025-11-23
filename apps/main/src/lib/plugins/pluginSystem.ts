@@ -35,7 +35,8 @@ export type PluginFamily =
   | 'gallery-tool'
   | 'node-type'
   | 'renderer'
-  | 'ui-plugin';
+  | 'ui-plugin'
+  | 'graph-editor';
 
 /**
  * Activation state - whether the plugin is currently active
@@ -108,6 +109,13 @@ export interface PluginMetadataExtensions {
   'ui-plugin': {
     hasOverlays?: boolean;
     hasMenuItems?: boolean;
+  };
+  'graph-editor': {
+    storeId?: string;
+    category?: string;
+    supportsMultiScene?: boolean;
+    supportsWorldContext?: boolean;
+    supportsPlayback?: boolean;
   };
 }
 
