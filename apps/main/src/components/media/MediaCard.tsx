@@ -240,11 +240,11 @@ export function MediaCard(props: MediaCardProps) {
             />
           )
         )}
-        {/* Top-left: Primary media type icon badge (always visible) */}
+        {/* Top-left: Primary media type icon badge (always visible, hover for technical info) */}
         {badgeVisibility.showPrimaryIcon && badges.primary && (
-          <div className="absolute left-2 top-2">
+          <div className="absolute left-2 top-2 group/media-type">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-lg ${
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-lg transition-colors ${
                 badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
                   ? 'bg-white ring-2 ring-green-500'
                   : badgeVisibility.showStatusIcon && badges.status === 'local_only'
@@ -255,39 +255,146 @@ export function MediaCard(props: MediaCardProps) {
                   ? 'bg-white ring-2 ring-gray-400'
                   : 'bg-white shadow-md'
               }`}
-              title={`${mediaType} (${badges.status ? MEDIA_STATUS_ICON[badges.status].label : 'no status'})`}
             >
               <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
             </div>
+            {/* Technical tags tooltip on hover */}
+            {tags.filter(t => t.includes('_url') || t.includes('_id') || t.includes('from_')).length > 0 && (
+              <div className="absolute top-full left-0 mt-1 hidden group-hover/media-type:block z-30 min-w-max">
+                <div className="bg-black/90 text-white text-[10px] rounded-md shadow-lg px-2 py-1.5 space-y-0.5">
+                  {tags.filter(t => t.includes('_url') || t.includes('_id') || t.includes('from_')).map(tag => (
+                    <div key={tag} className="font-mono">{tag}</div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Top-right: Contextual status badge (shows on hover) */}
-        {badgeVisibility.showStatusTextOnHover && isHovered && badges.status && (
-          <div className="absolute right-2 top-2 animate-in fade-in duration-200">
-            <div
-              className={`px-2 py-1 text-xs rounded-md shadow-lg flex items-center gap-1 ${
-                MEDIA_STATUS_ICON[badges.status].color === 'green'
+        {/* Top-right: Always-visible provider status badge (click for actions) */}
+        {badges.status && (
+          <div className="absolute right-2 top-2 z-20">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu((prev) => !prev);
+              }}
+              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 ${
+                badges.status === 'provider_ok'
                   ? 'bg-green-600 text-white'
-                  : MEDIA_STATUS_ICON[badges.status].color === 'yellow'
+                  : badges.status === 'local_only'
                   ? 'bg-yellow-600 text-white'
-                  : MEDIA_STATUS_ICON[badges.status].color === 'red'
+                  : badges.status === 'flagged'
                   ? 'bg-red-600 text-white'
                   : 'bg-gray-600 text-white'
               }`}
+              title={`${MEDIA_STATUS_ICON[badges.status]?.label || badges.status} - Click for actions`}
             >
               <ThemedIcon
-                name={MEDIA_STATUS_ICON[badges.status].icon}
-                size={12}
-                variant={
-                  MEDIA_STATUS_ICON[badges.status].color === 'green' ? 'success' :
-                  MEDIA_STATUS_ICON[badges.status].color === 'yellow' ? 'warning' :
-                  MEDIA_STATUS_ICON[badges.status].color === 'red' ? 'error' :
-                  'muted'
-                }
+                name={badges.status === 'provider_ok' ? 'check' : badges.status === 'local_only' ? 'save' : MEDIA_STATUS_ICON[badges.status]?.icon || 'circle'}
+                size={16}
+                variant="default"
               />
-              <span>{MEDIA_STATUS_ICON[badges.status].label}</span>
-            </div>
+            </button>
+            {/* Actions menu */}
+            {showMenu && (
+              <div
+                className="absolute right-0 top-full mt-1 w-48 rounded-md bg-neutral-900 text-white text-xs shadow-xl border border-neutral-700 z-30 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-3 py-2 bg-neutral-800 font-medium border-b border-neutral-700">
+                  {MEDIA_STATUS_ICON[badges.status]?.label || badges.status}
+                </div>
+                {(onOpen || actions?.onOpenDetails) && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => {
+                      setShowMenu(false);
+                      if (actions?.onOpenDetails) {
+                        actions.onOpenDetails(id);
+                      } else {
+                        handleOpen();
+                      }
+                    }}
+                  >
+                    Open details
+                  </button>
+                )}
+                {badges.status === 'local_only' && actions?.onUploadToProvider && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onUploadToProvider?.(id);
+                    }}
+                  >
+                    ⬆️ Re-upload to provider
+                  </button>
+                )}
+                {actions?.onShowMetadata && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onShowMetadata(id);
+                    }}
+                  >
+                    Show metadata
+                  </button>
+                )}
+                {badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onImageToVideo?.(id);
+                    }}
+                  >
+                    ⚡ Image → Video
+                  </button>
+                )}
+                {badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onVideoExtend?.(id);
+                    }}
+                  >
+                    ⚡ Extend Video
+                  </button>
+                )}
+                {badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onAddToTransition?.(id);
+                    }}
+                  >
+                    ⚡ Add to Transition
+                  </button>
+                )}
+                {badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => {
+                      setShowMenu(false);
+                      actions.onAddToGenerate?.(id);
+                    }}
+                  >
+                    ⚡ Add to Generate
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -345,7 +452,7 @@ export function MediaCard(props: MediaCardProps) {
 
         {/* Bottom-left: Generation quick action badge (shows on hover) */}
         {badgeVisibility.showGenerationBadge && isHovered && badgeVisibility.generationQuickAction !== 'none' && (
-          <div className="absolute left-2 bottom-2 animate-in fade-in duration-200">
+          <div className="absolute left-2 bottom-2 z-20 animate-in fade-in duration-200">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -376,134 +483,19 @@ export function MediaCard(props: MediaCardProps) {
 
         {/* Hover overlay with detailed info at bottom */}
         {isHovered && (
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent p-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent pb-10 pt-8 px-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
             {description && (
               <p className="text-xs text-white/90 line-clamp-2">{description}</p>
             )}
-            {badgeVisibility.showTagsInOverlay && tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {tags.slice(0, 3).map(t => (
+            {/* Show non-technical tags only (technical tags shown in top-left tooltip) */}
+            {badgeVisibility.showTagsInOverlay && tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).slice(0, 3).map(t => (
                   <Badge key={t} color="gray" className="text-[10px]">{t}</Badge>
                 ))}
-                {tags.length > 3 && <Badge color="gray" className="text-[10px]">+{tags.length - 3}</Badge>}
-              </div>
-            )}
-            <div className="flex items-center justify-between text-[10px] text-white/70">
-              <span>{new Date(createdAt).toLocaleDateString()}</span>
-              <span>{width && height ? `${width}×${height}` : ''}</span>
-              {durationSec && <span>{Math.round(durationSec)}s</span>}
-            </div>
-            {/* More actions menu trigger (three dots) */}
-            {(onOpen || actions) && (
-              <div className="absolute bottom-2 right-2">
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMenu((prev) => !prev);
-                    }}
-                    className="px-1.5 py-0.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-xs"
-                    title="More actions"
-                  >
-                    ...
-                  </button>
-                  {showMenu && (
-                    <div
-                      className="absolute right-0 bottom-full mb-1 w-40 rounded-md bg-neutral-900 text-white text-xs shadow-lg border border-neutral-700 z-10"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(onOpen || actions?.onOpenDetails) && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                          onClick={() => {
-                            setShowMenu(false);
-                            if (actions?.onOpenDetails) {
-                              actions.onOpenDetails(id);
-                            } else {
-                              handleOpen();
-                            }
-                          }}
-                        >
-                          Open details
-                        </button>
-                      )}
-                      {actions?.onShowMetadata && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onShowMetadata(id);
-                          }}
-                        >
-                          Show metadata
-                        </button>
-                      )}
-                      {actions?.onUploadToProvider && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onUploadToProvider?.(id);
-                          }}
-                        >
-                          Upload to provider
-                        </button>
-                      )}
-                      {badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800 border-t border-neutral-700"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onImageToVideo?.(id);
-                          }}
-                        >
-                          ⚡ Image → Video
-                        </button>
-                      )}
-                      {badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800 border-t border-neutral-700"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onVideoExtend?.(id);
-                          }}
-                        >
-                          ⚡ Extend Video
-                        </button>
-                      )}
-                      {badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (mediaType === 'image' || mediaType === 'video') && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onAddToTransition?.(id);
-                          }}
-                        >
-                          ⚡ Add to Transition
-                        </button>
-                      )}
-                      {badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
-                          onClick={() => {
-                            setShowMenu(false);
-                            actions.onAddToGenerate?.(id);
-                          }}
-                        >
-                          ⚡ Add to Generate
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length > 3 && (
+                  <Badge color="gray" className="text-[10px]">+{tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length - 3}</Badge>
+                )}
               </div>
             )}
           </div>
@@ -513,7 +505,7 @@ export function MediaCard(props: MediaCardProps) {
       {/* Compact footer: provider + date */}
       {(badgeVisibility.showFooterProvider || badgeVisibility.showFooterDate) && (
         <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
-          {badgeVisibility.showFooterProvider && (
+          {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
             <span className="truncate max-w-[60%]">
               <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
               {' · '}

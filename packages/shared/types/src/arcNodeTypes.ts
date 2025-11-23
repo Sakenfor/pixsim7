@@ -1,9 +1,17 @@
 import { nodeTypeRegistry } from './nodeTypeRegistry';
 
+// Ensure arc node types are only registered once per process
+let arcNodeTypesRegistered = false;
+
 /**
- * Register all arc graph node types
+ * Register all arc graph node types (idempotent)
  */
 export function registerArcNodeTypes() {
+  if (arcNodeTypesRegistered) {
+    return;
+  }
+  arcNodeTypesRegistered = true;
+
   // Arc node - represents story beat/stage
   nodeTypeRegistry.register({
     id: 'arc',
