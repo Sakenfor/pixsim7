@@ -30,6 +30,9 @@ import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
+import { DevToolProvider } from './lib/devtools/devToolContext';
+import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
+import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
@@ -38,6 +41,9 @@ function App() {
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();
+
+  // Register dev tool keyboard shortcuts
+  useDevToolShortcuts();
 
   useEffect(() => {
     // Initialize all application modules
@@ -59,8 +65,9 @@ function App() {
   }, [initialize, toast]);
 
   return (
-    <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
+    <DevToolProvider>
+      <BrowserRouter>
+        <div className="min-h-screen flex flex-col">
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
@@ -106,7 +113,10 @@ function App() {
           <PluginOverlays />
         </ErrorBoundary>
       )}
-    </BrowserRouter>
+      {/* Dev tool quick access modal (Ctrl+Shift+D) */}
+      {isAuthenticated && <DevToolQuickAccess />}
+      </BrowserRouter>
+    </DevToolProvider>
   );
 }
 

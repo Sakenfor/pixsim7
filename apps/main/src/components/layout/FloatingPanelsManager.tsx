@@ -3,6 +3,8 @@ import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
 import { useControlCubeStore } from '../../stores/controlCubeStore';
 import { panelRegistry } from '../../lib/panels/panelRegistry';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
+import { DevToolDynamicPanel } from '../dev/DevToolDynamicPanel';
+import { devToolRegistry } from '../../lib/devtools/devToolRegistry';
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
@@ -45,10 +47,27 @@ export function FloatingPanelsManager() {
   return (
     <>
       {floatingPanels.map((panel) => {
-        const panelDef = panelRegistry.get(panel.id);
-        if (!panelDef) return null;
+        // Check if this is a dev-tool panel (format: "dev-tool:toolId")
+        const isDevToolPanel = typeof panel.id === 'string' && panel.id.startsWith('dev-tool:');
 
-        const { component: Component, title } = panelDef;
+        let Component: React.ComponentType<any>;
+        let title: string;
+
+        if (isDevToolPanel) {
+          // Extract tool ID from panel ID
+          const toolId = panel.id.slice('dev-tool:'.length);
+          const devTool = devToolRegistry.get(toolId);
+
+          Component = DevToolDynamicPanel;
+          title = devTool?.label || toolId;
+        } else {
+          // Regular panel from registry
+          const panelDef = panelRegistry.get(panel.id);
+          if (!panelDef) return null;
+
+          Component = panelDef.component;
+          title = panelDef.title;
+        }
         const dockedCubes = Object.values(cubes).filter(
           (cube) => cube.dockedToPanelId === panel.id
         );

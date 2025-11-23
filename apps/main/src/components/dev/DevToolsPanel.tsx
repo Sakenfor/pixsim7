@@ -9,6 +9,7 @@ import { useState, useMemo } from 'react';
 import { devToolRegistry } from '../../lib/devtools/devToolRegistry';
 import type { DevToolDefinition, DevToolCategory } from '../../lib/devtools/types';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useDevToolContext } from '../../lib/devtools/devToolContext';
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   session: 'Session & World',
@@ -34,6 +35,7 @@ export function DevToolsPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showExperimental, setShowExperimental] = useState(false);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const { addRecentTool, recentTools, clearRecentTools } = useDevToolContext();
 
   const allTools = useMemo(() => devToolRegistry.getAll(), []);
 
@@ -69,16 +71,25 @@ export function DevToolsPanel() {
   }, [filteredTools]);
 
   const handleOpenTool = (tool: DevToolDefinition) => {
+    // Add to recent tools
+    addRecentTool(tool.id);
+
     if (tool.routePath) {
       // Navigate to route
       window.location.href = tool.routePath;
     } else if (tool.panelComponent) {
-      // Open as floating panel - convert tool id to PanelId
-      // This requires the tool to be registered as a panel in corePanelsPlugin
-      // For now, just log a warning
-      console.warn(
-        `[DevToolsPanel] Tool "${tool.id}" has a panelComponent but no routePath. Opening as floating panel is not yet implemented for dev tools.`
-      );
+      // Open as floating panel using a special dev-tool panel ID
+      // The panel ID format is: dev-tool:<toolId>
+      const panelId = `dev-tool:${tool.id}` as any;
+
+      openFloatingPanel(panelId, {
+        width: 800,
+        height: 600,
+        context: {
+          toolId: tool.id,
+          toolDefinition: tool,
+        },
+      });
     }
   };
 
@@ -113,6 +124,30 @@ export function DevToolsPanel() {
 
       {/* Tool list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Recent Tools */}
+        {recentTools.length > 0 && !searchQuery && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Recently Used
+              </h3>
+              <button
+                onClick={clearRecentTools}
+                className="text-xs text-gray-500 hover:text-gray-300"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="space-y-2">
+              {recentTools.map((toolId) => {
+                const tool = devToolRegistry.get(toolId);
+                if (!tool) return null;
+                return <DevToolCard key={toolId} tool={tool} onOpen={handleOpenTool} />;
+              })}
+            </div>
+          </div>
+        )}
+
         {CATEGORY_ORDER.map((category) => {
           const tools = toolsByCategory.get(category);
           if (!tools || tools.length === 0) return null;

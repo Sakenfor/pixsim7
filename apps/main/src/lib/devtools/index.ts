@@ -6,3 +6,5 @@
 
 export * from './types';
 export * from './devToolRegistry';
+export * from './registerDevTools';
+export * from './devToolContext';
