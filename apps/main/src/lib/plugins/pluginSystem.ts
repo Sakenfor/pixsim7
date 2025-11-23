@@ -37,7 +37,8 @@ export type PluginFamily =
   | 'renderer'
   | 'ui-plugin'
   | 'graph-editor'
-  | 'dev-tool';
+  | 'dev-tool'
+  | 'gizmo-surface';
 
 /**
  * Activation state - whether the plugin is currently active
@@ -120,6 +121,12 @@ export interface PluginMetadataExtensions {
   };
   'dev-tool': {
     category?: string;
+    icon?: string;
+  };
+  'gizmo-surface': {
+    gizmoSurfaceId?: string;
+    category?: 'scene' | 'world' | 'npc' | 'debug' | 'custom';
+    supportsContexts?: Array<'scene-editor' | 'game-2d' | 'game-3d' | 'playground' | 'workspace' | 'hud'>;
     icon?: string;
   };
 }

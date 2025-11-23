@@ -7,6 +7,7 @@ import { registerBuiltInMiniGames } from '@pixsim7/game.components'
 import { registerFrontendMiniGames } from './components/minigames/registry'
 import './lib/providers/plugins' // Register provider generation UI plugins
 import { registerDevTools } from './lib/devtools/registerDevTools'
+import { registerGizmoSurfaces } from './lib/gizmos'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -18,6 +19,9 @@ registerFrontendMiniGames()
 
 // Register dev tools
 registerDevTools()
+
+// Register gizmo surfaces
+registerGizmoSurfaces()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
