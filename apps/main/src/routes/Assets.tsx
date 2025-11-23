@@ -11,6 +11,8 @@ import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
+import { useGenerationQueueStore } from '../stores/generationQueueStore';
+import { useControlCenterStore } from '../stores/controlCenterStore';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
@@ -33,6 +35,12 @@ export function AssetsRoute() {
   const selectAsset = useAssetPickerStore((s) => s.selectAsset);
   const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+
+  // Generation queue
+  const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
+  const addToTransitionQueue = useGenerationQueueStore((s) => s.addToTransitionQueue);
+  const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
+  const setControlCenterActiveModule = useControlCenterStore((s) => s.setActiveModule);
 
   // Filters state derived from URL + sessionStorage
   const params = new URLSearchParams(window.location.search);
@@ -74,6 +82,31 @@ export function AssetsRoute() {
 
   const handleOpenAsset = (asset: any) => {
     navigate(`/assets/${asset.id}`);
+  };
+
+  // Generation action handlers
+  const handleImageToVideo = (asset: any) => {
+    addToQueue(asset, 'image_to_video');
+    setControlCenterActiveModule('quickGenerate');
+    setControlCenterOpen(true);
+  };
+
+  const handleVideoExtend = (asset: any) => {
+    addToQueue(asset, 'video_extend');
+    setControlCenterActiveModule('quickGenerate');
+    setControlCenterOpen(true);
+  };
+
+  const handleAddToTransition = (asset: any) => {
+    addToTransitionQueue(asset);
+    setControlCenterActiveModule('quickGenerate');
+    setControlCenterOpen(true);
+  };
+
+  const handleAddToGenerate = (asset: any) => {
+    addToQueue(asset);
+    setControlCenterActiveModule('quickGenerate');
+    setControlCenterOpen(true);
   };
 
   function updateURL(next: typeof filters) {
@@ -435,6 +468,10 @@ export function AssetsRoute() {
                           actions={{
                             onOpenDetails: () => navigate(`/assets/${a.id}`),
                             onShowMetadata: () => navigate(`/assets/${a.id}`),
+                            onImageToVideo: () => handleImageToVideo(a),
+                            onVideoExtend: () => handleVideoExtend(a),
+                            onAddToTransition: () => handleAddToTransition(a),
+                            onAddToGenerate: () => handleAddToGenerate(a),
                           }}
                           badgeConfig={effectiveBadgeConfig}
                         />
@@ -481,6 +518,10 @@ export function AssetsRoute() {
                         actions={{
                           onOpenDetails: () => navigate(`/assets/${a.id}`),
                           onShowMetadata: () => navigate(`/assets/${a.id}`),
+                          onImageToVideo: () => handleImageToVideo(a),
+                          onVideoExtend: () => handleVideoExtend(a),
+                          onAddToTransition: () => handleAddToTransition(a),
+                          onAddToGenerate: () => handleAddToGenerate(a),
                         }}
                         badgeConfig={effectiveBadgeConfig}
                       />
