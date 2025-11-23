@@ -66,6 +66,16 @@ describe('NodeTypeRegistry', () => {
 
       consoleSpy.mockRestore();
     });
+
+    it('should throw when duplicate policy is set to error', () => {
+      const strictRegistry = new NodeTypeRegistry({ duplicatePolicy: 'error' });
+
+      strictRegistry.register({ id: 'test', name: 'Test 1', defaultData: {} });
+
+      expect(() =>
+        strictRegistry.register({ id: 'test', name: 'Test 2', defaultData: {} })
+      ).toThrow('Node type test already registered');
+    });
   });
 
   describe('Category operations', () => {
@@ -424,6 +434,22 @@ describe('NodeTypeRegistry', () => {
       const sceneActions = sceneTypes.filter(t => t.category === 'action');
       expect(sceneActions.length).toBe(1);
       expect(sceneActions[0].id).toBe('scene-action');
+    });
+
+    it('should remove entries from indexes when unregistering', () => {
+      registry.register({
+        id: 'scene-action',
+        name: 'Scene Action',
+        category: 'action',
+        scope: 'scene',
+        defaultData: {},
+      });
+
+      registry.unregister('scene-action');
+
+      expect(registry.getByCategory('action')).toHaveLength(0);
+      expect(registry.getByScope('scene')).toHaveLength(0);
+      expect(registry.has('scene-action')).toBe(false);
     });
   });
 });

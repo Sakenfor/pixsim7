@@ -55,7 +55,7 @@ export async function executeInteraction(
   config: any,
   context: any
 ) {
-  const plugin = interactionRegistry.get(interactionId);
+  const plugin = await interactionRegistry.getAsync(interactionId);
   if (!plugin) {
     throw new Error(`Unknown interaction type: ${interactionId}`);
   }

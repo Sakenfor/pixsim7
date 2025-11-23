@@ -28,6 +28,10 @@ export interface NodeRenderer {
   preloadPriority?: number;
 }
 
+export interface NodeRendererRegistryOptions {
+  duplicatePolicy?: 'warn' | 'error';
+}
+
 /**
  * LRU Cache for frequently accessed renderers
  */
@@ -87,11 +91,22 @@ export class NodeRendererRegistry {
   private cache = new LRUCache<string, NodeRenderer>(50);
   private loadingPromises = new Map<string, Promise<NodeRenderer>>();
   private preloadedIds = new Set<string>();
+  private duplicatePolicy: 'warn' | 'error';
+
+  constructor(options: NodeRendererRegistryOptions = {}) {
+    this.duplicatePolicy = options.duplicatePolicy ?? 'warn';
+  }
 
   /** Register a node renderer */
   register(renderer: NodeRenderer) {
     if (this.renderers.has(renderer.nodeType)) {
-      console.warn(`Node renderer for ${renderer.nodeType} already registered, overwriting`);
+      const message = `Node renderer for ${renderer.nodeType} already registered`;
+      if (this.duplicatePolicy === 'error') {
+        throw new Error(message);
+      }
+      console.warn(`${message}, overwriting`);
+      this.preloadedIds.delete(renderer.nodeType);
+      this.loadingPromises.delete(renderer.nodeType);
     }
     this.renderers.set(renderer.nodeType, renderer);
 
@@ -99,6 +114,18 @@ export class NodeRendererRegistry {
     if (this.cache.has(renderer.nodeType)) {
       this.cache.set(renderer.nodeType, renderer);
     }
+  }
+
+  unregister(nodeType: string): boolean {
+    if (!this.renderers.has(nodeType)) {
+      return false;
+    }
+
+    this.renderers.delete(nodeType);
+    this.cache.clear();
+    this.preloadedIds.delete(nodeType);
+    this.loadingPromises.delete(nodeType);
+    return true;
   }
 
   /** Get renderer for a node type (with caching and lazy loading) */
@@ -237,4 +264,4 @@ export class NodeRendererRegistry {
 }
 
 /** Global renderer registry instance */
-export const nodeRendererRegistry = new NodeRendererRegistry();
+export const nodeRendererRegistry = new NodeRendererRegistry({ duplicatePolicy: 'error' });

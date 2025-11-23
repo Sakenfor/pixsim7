@@ -8,6 +8,7 @@
  */
 
 import type { GameSessionDTO } from '@pixsim7/shared.types';
+import { describe, it } from 'vitest';
 import {
   // Session helpers
   getFlag,
@@ -313,3 +314,9 @@ export function runAllTests() {
 }
 
 // Note: Import and call runAllTests() from demo.ts or your own script to run these tests
+
+describe('core-logic harness', () => {
+  it('should execute the core logic smoke tests', () => {
+    runAllTests();
+  });
+});
