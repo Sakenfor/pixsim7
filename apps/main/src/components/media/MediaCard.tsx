@@ -189,6 +189,7 @@ export function MediaCard(props: MediaCardProps) {
   return (
     <div
       className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition"
+      data-pixsim7="media-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => {
         setIsHovered(false);
@@ -198,6 +199,7 @@ export function MediaCard(props: MediaCardProps) {
       <div
         ref={hover.containerRef}
         className="relative aspect-video w-full overflow-hidden bg-neutral-100 cursor-pointer"
+        data-pixsim7="media-thumbnail"
         onMouseEnter={hover.onMouseEnter}
         onMouseLeave={hover.onMouseLeave}
         onMouseMove={hover.onMouseMove}

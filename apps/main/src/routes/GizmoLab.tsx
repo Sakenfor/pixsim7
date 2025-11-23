@@ -32,7 +32,8 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
   const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
   const [gizmoFilter, setGizmoFilter] = useState<string>('all');
   const [toolFilter, setToolFilter] = useState<string>('all');
-  const [toolPosition, setToolPosition] = useState<Vector3D>({ x: 200, y: 200, z: 0 });
+  // Position tool in main area (after 320px sidebar + some margin)
+  const [toolPosition, setToolPosition] = useState<Vector3D>({ x: 600, y: 400, z: 0 });
   const [pressure, setPressure] = useState(0);
   const [lastPattern, setLastPattern] = useState<TouchPattern | null>(null);
 
@@ -71,6 +72,17 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
       setSelectedTool(allTools[0]);
     }
   }, [allGizmos, allTools, selectedGizmo, selectedTool]);
+
+  // Reset tool position when tool changes so it appears in view
+  useEffect(() => {
+    if (selectedTool) {
+      // Position tool in center of visible main area (accounting for 320px sidebar)
+      const sidebarWidth = 320;
+      const mainAreaCenterX = sidebarWidth + (window.innerWidth - sidebarWidth) / 2;
+      const centerY = window.innerHeight / 2;
+      setToolPosition({ x: mainAreaCenterX, y: centerY, z: 0 });
+    }
+  }, [selectedTool?.id]);
 
   // Create gizmo config from definition
   const gizmoConfig = useMemo((): SceneGizmoConfig | null => {
@@ -275,16 +287,21 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
                     </div>
                   </div>
 
-                  <div className="relative h-96 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 rounded border border-neutral-200 dark:border-neutral-700 overflow-hidden">
-                    <InteractiveTool
-                      tool={selectedTool}
-                      position={toolPosition}
-                      onPositionChange={setToolPosition}
-                      onPressureChange={setPressure}
-                      onPatternDetected={setLastPattern}
-                      isActive={true}
-                    />
-                    <div className="absolute bottom-2 left-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  <div
+                    className="relative h-96 bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 rounded border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+                    style={{ isolation: 'isolate' }}
+                  >
+                    <div className="absolute inset-0" style={{ position: 'relative' }}>
+                      <InteractiveTool
+                        tool={selectedTool}
+                        position={toolPosition}
+                        onPositionChange={setToolPosition}
+                        onPressureChange={setPressure}
+                        onPatternDetected={setLastPattern}
+                        isActive={true}
+                      />
+                    </div>
+                    <div className="absolute bottom-2 left-2 text-xs text-neutral-500 dark:text-neutral-400 pointer-events-none z-10">
                       Move your mouse around and click/drag to interact
                     </div>
                   </div>

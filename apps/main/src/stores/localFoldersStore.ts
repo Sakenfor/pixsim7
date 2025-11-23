@@ -277,3 +277,30 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     await cacheAssets(f.id, items);
   },
 }));
+
+/**
+ * Thumbnail cache helpers for local assets.
+ *
+ * Thumbnails are stored as Blobs in the same IndexedDB "kv" store, keyed by
+ * asset key and lastModified timestamp so updated files naturally invalidate
+ * old thumbnails.
+ */
+export async function getLocalThumbnailBlob(asset: LocalAsset): Promise<Blob | undefined> {
+  const version = asset.lastModified ?? 0;
+  const key = `thumb_${asset.key}_${version}`;
+  try {
+    return await idbGet<Blob>(key);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function setLocalThumbnailBlob(asset: LocalAsset, blob: Blob): Promise<void> {
+  const version = asset.lastModified ?? 0;
+  const key = `thumb_${asset.key}_${version}`;
+  try {
+    await idbSet<Blob>(key, blob);
+  } catch (e) {
+    console.warn('Failed to cache local thumbnail', e);
+  }
+}

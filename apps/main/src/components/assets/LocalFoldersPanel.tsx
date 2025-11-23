@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocalFolders } from '../../stores/localFoldersStore';
+import { useLocalFolders, getLocalThumbnailBlob, setLocalThumbnailBlob } from '../../stores/localFoldersStore';
 import { useProviders } from '../../hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
 import type { LocalAsset } from '../../stores/localFoldersStore';
-
-async function fileToObjectURL(fh: FileSystemFileHandle): Promise<string | undefined> {
-  try { const f = await fh.getFile(); return URL.createObjectURL(f); } catch { return undefined; }
-}
 
 type ViewMode = 'grid' | 'tree' | 'list';
 
@@ -36,17 +32,33 @@ export function LocalFoldersPanel() {
     }, {} as Record<string, string>);
   }, [folders]);
 
-  // Filter assets by selected folder path in tree mode
+  // Filter assets by selected folder path in tree mode.
+  // Semantics:
+  // - Selecting a root folder node (path === folderId) shows all assets under that root.
+  // - Selecting a subfolder shows only assets whose immediate parent folder matches
+  //   that subfolder (not all nested subfolders).
   const filteredAssets = useMemo(() => {
     if (viewMode !== 'tree' || !selectedFolderPath) return assetList;
 
     return assetList.filter(asset => {
-      // Check if asset belongs to selected folder or its subfolders
-      const assetFullPath = `${asset.folderId}/${asset.relativePath}`;
-      const selectedPath = selectedFolderPath;
+      // Root folder selected: path is just folderId
+      if (selectedFolderPath === asset.folderId) {
+        return true;
+      }
 
-      // Match exact folder or parent folder
-      return assetFullPath.startsWith(selectedPath + '/') || asset.folderId === selectedPath;
+      // For subfolders, ensure this asset belongs to the same root folder
+      if (!selectedFolderPath.startsWith(asset.folderId + '/')) {
+        return false;
+      }
+
+      // Compute the selected folder path relative to the root folder
+      const selectedRelPath = selectedFolderPath.slice(asset.folderId.length + 1);
+      const assetDir = asset.relativePath.includes('/')
+        ? asset.relativePath.split('/').slice(0, -1).join('/')
+        : '';
+
+      // Only include files whose immediate parent folder matches the selected folder
+      return assetDir === selectedRelPath;
     });
   }, [assetList, selectedFolderPath, viewMode]);
 
@@ -54,8 +66,33 @@ export function LocalFoldersPanel() {
     const asset = typeof keyOrAsset === 'string' ? assets[keyOrAsset] : keyOrAsset;
     if (!asset) return;
     if (previews[asset.key]) return;
-    const url = await fileToObjectURL(asset.fileHandle);
-    if (url) setPreviews(p => ({ ...p, [asset.key]: url }));
+
+    // Try cached thumbnail blob first (persisted in IndexedDB)
+    let url: string | undefined;
+    try {
+      const cached = await getLocalThumbnailBlob(asset);
+      if (cached) {
+        url = URL.createObjectURL(cached);
+      }
+    } catch {
+      // ignore cache errors and fall back to direct file read
+    }
+
+    // If no cached thumbnail, create from file and store
+    if (!url) {
+      try {
+        const file = await asset.fileHandle.getFile();
+        url = URL.createObjectURL(file);
+        // Cache original file blob as thumbnail for future sessions
+        void setLocalThumbnailBlob(asset, file);
+      } catch {
+        url = undefined;
+      }
+    }
+
+    if (url) {
+      setPreviews(p => ({ ...p, [asset.key]: url }));
+    }
   }
 
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
@@ -109,12 +146,15 @@ export function LocalFoldersPanel() {
 
   const handleNavigateViewer = (direction: 'prev' | 'next') => {
     if (!viewerAsset) return;
-    const currentIndex = assetList.findIndex(a => a.key === viewerAsset.key);
+    const sourceList =
+      viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
+
+    const currentIndex = sourceList.findIndex(a => a.key === viewerAsset.key);
     if (currentIndex === -1) return;
 
     const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex >= 0 && newIndex < assetList.length) {
-      const newAsset = assetList[newIndex];
+    if (newIndex >= 0 && newIndex < sourceList.length) {
+      const newAsset = sourceList[newIndex];
       preview(newAsset);
       setViewerAsset(newAsset);
     }

@@ -82,7 +82,18 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters }) 
         };
       }
 
-      setItems(prev => [...prev, ...data.assets]);
+      // Merge new assets while avoiding duplicates by ID.
+      setItems(prev => {
+        if (prev.length === 0) return data.assets;
+        const existingIds = new Set(prev.map(a => a.id));
+        const merged = [...prev];
+        for (const asset of data.assets) {
+          if (!existingIds.has(asset.id)) {
+            merged.push(asset);
+          }
+        }
+        return merged;
+      });
       setCursor(data.next_cursor || null);
       setHasMore(Boolean(data.next_cursor));
     } catch (e: unknown) {

@@ -87,12 +87,22 @@ export function useJobsSocket(options: UseJobsSocketOptions = {}): JobsSocketSta
         };
 
         ws.onerror = (error) => {
-          console.error('[useJobsSocket] WebSocket error:', error);
+          console.warn('[useJobsSocket] WebSocket error (backend may not be running):', error);
           setState({ connected: false, error: 'Connection error' });
         };
 
-        ws.onclose = () => {
-          console.log('[useJobsSocket] Connection closed');
+        ws.onclose = (event) => {
+          console.log('[useJobsSocket] Connection closed', {
+            code: event.code,
+            reason: event.reason,
+            wasClean: event.wasClean
+          });
+
+          // If closed immediately (code 1006 = abnormal closure), backend likely not running
+          if (event.code === 1006) {
+            console.warn('[useJobsSocket] Backend WebSocket not available (code 1006). This is normal if backend is not running.');
+          }
+
           setState({ connected: false, error: null });
 
           // Clear ping interval
@@ -101,11 +111,16 @@ export function useJobsSocket(options: UseJobsSocketOptions = {}): JobsSocketSta
             pingIntervalRef.current = null;
           }
 
-          // Attempt to reconnect after 5 seconds
-          reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('[useJobsSocket] Attempting to reconnect...');
-            connect();
-          }, 5000);
+          // Only attempt to reconnect if it was a clean close or server error
+          // Don't spam reconnects if backend is down (1006 = connection refused)
+          if (event.code !== 1006) {
+            reconnectTimeoutRef.current = setTimeout(() => {
+              console.log('[useJobsSocket] Attempting to reconnect...');
+              connect();
+            }, 5000);
+          } else {
+            console.log('[useJobsSocket] Skipping reconnect - backend appears to be offline');
+          }
         };
       } catch (err) {
         console.error('[useJobsSocket] Failed to connect:', err);

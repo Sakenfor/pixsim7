@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAssets } from '../hooks/useAssets';
+import { useAssets, type AssetSummary } from '../hooks/useAssets';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
@@ -52,6 +52,7 @@ export function AssetsRoute() {
   const { providers } = useProviders();
   const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
   const jobsSocket = useJobsSocket({ autoConnect: true });
+  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
 
   // Handle asset selection
   const handleSelectAsset = (asset: any) => {
@@ -70,10 +71,6 @@ export function AssetsRoute() {
   const handleCancelSelection = () => {
     exitSelectionMode();
     closeFloatingPanel('gallery');
-  };
-
-  const handleOpenAsset = (asset: any) => {
-    navigate(`/assets/${asset.id}`);
   };
 
   function updateURL(next: typeof filters) {
@@ -198,6 +195,23 @@ export function AssetsRoute() {
 
   const clearSelection = () => {
     setSelectedAssetIds(new Set());
+  };
+
+  const handleOpenInViewer = (asset: AssetSummary) => {
+    setViewerAsset(asset);
+  };
+
+  const handleCloseViewer = () => {
+    setViewerAsset(null);
+  };
+
+  const handleNavigateViewer = (direction: 'prev' | 'next') => {
+    if (!viewerAsset) return;
+    const index = items.findIndex(a => a.id === viewerAsset.id);
+    if (index === -1) return;
+    const nextIndex = direction === 'prev' ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= items.length) return;
+    setViewerAsset(items[nextIndex]);
   };
 
   return (
@@ -431,7 +445,8 @@ export function AssetsRoute() {
                           createdAt={a.created_at}
                           status={a.sync_status}
                           providerStatus={a.provider_status}
-                          onOpen={() => handleOpenAsset(a)}
+                          // In selection mode, disable card open behavior to avoid navigation
+                          onOpen={undefined}
                           actions={{
                             onOpenDetails: () => navigate(`/assets/${a.id}`),
                             onShowMetadata: () => navigate(`/assets/${a.id}`),
@@ -455,12 +470,6 @@ export function AssetsRoute() {
                       className={`relative cursor-pointer group ${
                         isSelected ? 'ring-4 ring-purple-500 rounded' : ''
                       }`}
-                      onClick={(e) => {
-                        // Allow selection via click when not in picker mode
-                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
-                          toggleAssetSelection(a.id);
-                        }
-                      }}
                     >
                       <MediaCard
                         id={a.id}
@@ -477,25 +486,13 @@ export function AssetsRoute() {
                         createdAt={a.created_at}
                         status={a.sync_status}
                         providerStatus={a.provider_status}
-                        onOpen={() => handleOpenAsset(a)}
+                        onOpen={() => handleOpenInViewer(a)}
                         actions={{
                           onOpenDetails: () => navigate(`/assets/${a.id}`),
                           onShowMetadata: () => navigate(`/assets/${a.id}`),
                         }}
                         badgeConfig={effectiveBadgeConfig}
                       />
-                      {/* Selection indicator */}
-                      {isSelected && (
-                        <div className="absolute top-2 right-2 bg-purple-500 text-white rounded-full w-6 h-6 flex items-center justify-center shadow-lg">
-                          <ThemedIcon name="check" size={14} variant="default" />
-                        </div>
-                      )}
-                      {/* Selection hint on hover */}
-                      <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="bg-black/70 text-white text-xs px-2 py-1 rounded text-center">
-                          {isSelected ? 'Ctrl+Click to deselect' : 'Ctrl+Click to select'}
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -513,6 +510,73 @@ export function AssetsRoute() {
         </>
       )}
       {view === 'local' && <LocalFoldersPanel />}
+
+      {/* Fullscreen viewer for remote assets */}
+      {viewerAsset && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="relative max-w-6xl max-h-[90vh] w-full flex flex-col gap-4">
+            <div className="bg-black rounded-lg overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
+              {viewerAsset.media_type === 'video' ? (
+                <video
+                  src={viewerAsset.remote_url || viewerAsset.thumbnail_url}
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                />
+              ) : (
+                <img
+                  src={viewerAsset.remote_url || viewerAsset.thumbnail_url}
+                  alt={viewerAsset.description || `asset-${viewerAsset.id}`}
+                  className="w-full h-full object-contain"
+                />
+              )}
+            </div>
+
+            <div className="flex items-center justify-between text-sm text-neutral-200">
+              <div className="flex flex-col gap-1">
+                <div className="text-lg font-semibold truncate">
+                  {viewerAsset.description || `Asset #${viewerAsset.id}`}
+                </div>
+                <div className="flex gap-3 text-xs text-neutral-400">
+                  <span>{viewerAsset.media_type}</span>
+                  <span>{viewerAsset.provider_id}</span>
+                  <span>
+                    {new Date(viewerAsset.created_at).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleNavigateViewer('prev')}
+                  disabled={items.findIndex(a => a.id === viewerAsset.id) <= 0}
+                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
+                >
+                  <ThemedIcon name="chevronLeft" size={14} variant="default" />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavigateViewer('next')}
+                  disabled={items.findIndex(a => a.id === viewerAsset.id) >= items.length - 1}
+                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
+                >
+                  Next
+                  <ThemedIcon name="chevronRight" size={14} variant="default" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseViewer}
+                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
+                >
+                  <ThemedIcon name="close" size={14} variant="default" />
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

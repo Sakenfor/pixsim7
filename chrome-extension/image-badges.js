@@ -157,10 +157,38 @@
 
   function hideBadge() { if (badgeEl) badgeEl.style.display = 'none'; }
 
+  // Check if we should skip this image (on own site, or already has PixSim7 badge/elements)
+  function shouldSkipImage(img) {
+    // Skip if on PixSim7 app itself (localhost or specific domains)
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' ||
+        hostname.includes('pixsim7') || hostname.includes('pixsim')) {
+      return true;
+    }
+
+    // Skip if image is part of PixSim7 UI (check parent elements for markers)
+    let el = img;
+    for (let i = 0; i < 8; i++) {
+      if (!el) break;
+      // Check for common PixSim7 UI markers
+      if (el.classList && (
+          el.classList.contains('pixsim7-') ||
+          el.hasAttribute('data-pixsim7') ||
+          el.id && el.id.includes('pixsim7')
+      )) {
+        return true;
+      }
+      el = el.parentElement;
+    }
+
+    return false;
+  }
+
   let hoverTimeout = null;
   function onImgEnter(e) {
     const img = e.target;
     if (!img || !img.src) return;
+    if (shouldSkipImage(img)) return;
     const rect = img.getBoundingClientRect();
     if (rect.width < 32 || rect.height < 32) return; // allow smaller than before
     currentImg = img;
@@ -171,16 +199,17 @@
   function onVideoEnter(e) {
     const video = e.target;
     if (!video || !video.src) return;
+    if (shouldSkipImage(video)) return; // Reuse same skip logic for videos
     const rect = video.getBoundingClientRect();
     if (rect.width < 32 || rect.height < 32) return;
-    
+
     // Check duration (5-30 seconds)
     const duration = video.duration;
     if (duration && (duration < 5 || duration > 30)) {
       // Don't show badge for videos outside range
       return;
     }
-    
+
     currentVideo = video;
     currentImg = null;
     positionBadgeFor(video);
