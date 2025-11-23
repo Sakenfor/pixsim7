@@ -8,6 +8,7 @@ import { registerFrontendMiniGames } from './components/minigames/registry'
 import './lib/providers/plugins' // Register provider generation UI plugins
 import { registerDevTools } from './lib/devtools/registerDevTools'
 import { registerGallerySurfaces } from './lib/gallery/registerGallerySurfaces'
+import { registerGalleryTools } from './lib/gallery/registerGalleryTools'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -20,8 +21,9 @@ registerFrontendMiniGames()
 // Register dev tools
 registerDevTools()
 
-// Register gallery surfaces
+// Register gallery surfaces and tools
 registerGallerySurfaces()
+registerGalleryTools()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

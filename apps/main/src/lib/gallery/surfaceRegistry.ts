@@ -71,6 +71,15 @@ export interface GallerySurfaceDefinition {
 
   /** Optional default tools for this surface */
   defaultTools?: string[];
+
+  /** Lifecycle: Called when surface is entered/mounted */
+  onEnter?: () => void | Promise<void>;
+
+  /** Lifecycle: Called when surface is exited/unmounted */
+  onExit?: () => void | Promise<void>;
+
+  /** Lifecycle: Called when asset selection changes */
+  onSelectionChange?: (selectedAssetIds: string[]) => void;
 }
 
 /**

@@ -10,3 +10,6 @@ export * from './surfaceRegistry';
 
 // Gallery surface registration
 export * from './registerGallerySurfaces';
+
+// Gallery tools registration
+export * from './registerGalleryTools';

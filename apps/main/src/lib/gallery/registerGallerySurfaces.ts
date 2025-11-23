@@ -8,6 +8,8 @@
 import { gallerySurfaceRegistry } from './surfaceRegistry';
 import { DefaultGallerySurface } from '../../components/assets/DefaultGallerySurface';
 import { ReviewGallerySurface } from '../../components/assets/ReviewGallerySurface';
+import { CuratorGallerySurface } from '../../components/assets/CuratorGallerySurface';
+import { DebugGallerySurface } from '../../components/assets/DebugGallerySurface';
 
 /**
  * Register all gallery surfaces
@@ -39,6 +41,45 @@ export function registerGallerySurfaces(): void {
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: false,
     routePath: '/assets/review',
+    onEnter: () => {
+      console.log('👁️ Review mode activated - Use A/R/S keys for quick review');
+    },
+    onExit: () => {
+      console.log('👋 Exiting review mode');
+    },
+  });
+
+  // Register the curator surface
+  gallerySurfaceRegistry.register({
+    id: 'assets-curator',
+    label: 'Assets – Curator',
+    description: 'Advanced curation tools for power users',
+    icon: '⭐',
+    category: 'curation',
+    component: CuratorGallerySurface,
+    supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
+    supportsSelection: true,
+    routePath: '/assets/curator',
+    defaultTools: ['bulk-tag'],
+    onEnter: () => {
+      console.log('⭐ Curator mode - Advanced tools enabled');
+    },
+  });
+
+  // Register the debug surface
+  gallerySurfaceRegistry.register({
+    id: 'assets-debug',
+    label: 'Assets – Debug',
+    description: 'Developer tools and diagnostics',
+    icon: '🐛',
+    category: 'debug',
+    component: DebugGallerySurface,
+    supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
+    supportsSelection: false,
+    routePath: '/assets/debug',
+    onEnter: () => {
+      console.log('🐛 Debug mode - System diagnostics enabled');
+    },
   });
 
   console.log(`✓ Registered ${gallerySurfaceRegistry.count} gallery surface(s)`);

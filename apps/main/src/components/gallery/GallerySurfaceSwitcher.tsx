@@ -56,15 +56,15 @@ export function GallerySurfaceSwitcher({
     const params = new URLSearchParams(window.location.search);
     params.set('surface', surfaceId);
     const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, '', newUrl);
+    window.history.pushState({}, '', newUrl);
 
-    // Trigger callback
+    // Trigger callback which will cause parent to re-render with new surface
     if (onSurfaceChange) {
       onSurfaceChange(surfaceId);
+    } else {
+      // If no callback provided, force a reload as fallback
+      window.location.reload();
     }
-
-    // Reload to apply the new surface
-    window.location.reload();
   };
 
   if (surfaces.length <= 1) {

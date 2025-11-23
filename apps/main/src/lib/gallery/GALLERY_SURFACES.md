@@ -32,11 +32,42 @@ The standard asset gallery with full features:
 Simplified view optimized for asset review and curation:
 - Larger card grid layout (3 columns)
 - Accept/Reject/Skip actions per asset
-- Review progress tracking
+- Review progress tracking with persistent state
+- **Keyboard shortcuts:** A (accept), R (reject), S (skip), ← → (navigate), ? (help)
 - Minimal filters (search and sort only)
-- No multi-selection
+- Auto-saves review session to localStorage
 
 **Use when:** Reviewing newly imported assets, curating collections, or performing quality control.
+
+### Assets – Curator (`assets-curator`)
+
+**Category:** Curation
+**Icon:** ⭐
+**Route:** `/assets?surface=assets-curator`
+
+Advanced curation interface for power users:
+- Multiple view modes (Grid, List, Compact)
+- Collection building and management
+- Bulk selection with Select All
+- Advanced filtering (media type, tags, provider, sort)
+- Gallery tools integration (bulk tag tool available)
+
+**Use when:** Organizing large asset libraries, building collections, or performing advanced curation workflows.
+
+### Assets – Debug (`assets-debug`)
+
+**Category:** Debug
+**Icon:** 🐛
+**Route:** `/assets?surface=assets-debug`
+
+Developer-focused diagnostic view:
+- Surface registry inspection (view all registered surfaces)
+- Gallery tools registry inspection
+- Asset statistics and detailed metadata
+- System health metrics
+- Tabbed interface (Surfaces / Tools / Assets)
+
+**Use when:** Debugging gallery issues, inspecting system state, or developing new surfaces and tools.
 
 ## Switching Surfaces
 
@@ -75,8 +106,16 @@ Interface defining a surface:
   supportsSelection?: boolean;
   routePath?: string;
   defaultTools?: string[];
+  onEnter?: () => void | Promise<void>;  // Lifecycle hook
+  onExit?: () => void | Promise<void>;   // Lifecycle hook
+  onSelectionChange?: (selectedIds: string[]) => void;  // Lifecycle hook
 }
 ```
+
+**Lifecycle Hooks:**
+- `onEnter`: Called when the surface is mounted/entered
+- `onExit`: Called when the surface is unmounted/exited
+- `onSelectionChange`: Called when asset selection changes (optional)
 
 #### `GallerySurfaceHost`
 Component that dynamically renders the active surface based on URL parameters.

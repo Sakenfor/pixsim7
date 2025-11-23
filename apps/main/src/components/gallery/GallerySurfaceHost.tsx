@@ -4,8 +4,9 @@
  * Dynamically renders the active gallery surface based on URL parameter or store.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { gallerySurfaceRegistry, type GallerySurfaceId } from '../../lib/gallery/surfaceRegistry';
+import { logEvent } from '../../lib/logging';
 
 interface GallerySurfaceHostProps {
   /** Surface ID to render (if not provided, uses URL param or default) */
@@ -34,6 +35,53 @@ export function GallerySurfaceHost({ surfaceId: propSurfaceId }: GallerySurfaceH
 
   // Get surface definition from registry
   const surface = gallerySurfaceRegistry.get(activeSurfaceId);
+
+  // Call lifecycle hooks when surface changes
+  useEffect(() => {
+    if (!surface) return;
+
+    const enterTime = Date.now();
+
+    // Call onEnter when surface mounts
+    const handleEnter = async () => {
+      try {
+        await surface.onEnter?.();
+        console.log(`📍 Entered surface: ${surface.id}`);
+
+        // Log analytics event
+        logEvent('INFO', 'gallery_surface_entered', {
+          surfaceId: surface.id,
+          category: surface.category,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error(`Error in onEnter for surface ${surface.id}:`, error);
+      }
+    };
+
+    handleEnter();
+
+    // Call onExit when surface unmounts or changes
+    return () => {
+      try {
+        const exitTime = Date.now();
+        const durationSeconds = (exitTime - enterTime) / 1000;
+
+        surface.onExit?.();
+        console.log(`📤 Exited surface: ${surface.id} (duration: ${durationSeconds.toFixed(1)}s)`);
+
+        // Log analytics event with duration
+        logEvent('INFO', 'gallery_surface_exited', {
+          surfaceId: surface.id,
+          category: surface.category,
+          durationSeconds,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.error(`Error in onExit for surface ${surface.id}:`, error);
+      }
+    };
+  }, [surface]);
 
   if (!surface) {
     return (
