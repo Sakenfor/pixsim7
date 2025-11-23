@@ -357,8 +357,8 @@ export function ProviderSettingsPanel() {
 
   // Provider-level settings
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
-  const [showProviderSettings, setShowProviderSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(true);
 
   const handleSaveAccount = async (accountId: number, data: {
     email?: string;
@@ -425,8 +425,12 @@ export function ProviderSettingsPanel() {
         throw new Error('Failed to save settings');
       }
 
-      alert('Provider settings saved successfully');
-      setShowProviderSettings(false);
+      // Show brief success message
+      const tempSuccess = document.createElement('div');
+      tempSuccess.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
+      tempSuccess.textContent = 'Settings saved successfully';
+      document.body.appendChild(tempSuccess);
+      setTimeout(() => tempSuccess.remove(), 2000);
     } catch (error) {
       console.error('Failed to save provider settings:', error);
       alert(`Failed to save settings: ${error}`);
@@ -534,108 +538,16 @@ export function ProviderSettingsPanel() {
           onConfirm={handleDeleteAccount}
         />
       )}
-      {showProviderSettings && providerSettings && (
-        <Modal isOpen={true} onClose={() => setShowProviderSettings(false)} title={`${providerNames[activeProvider!]} Settings`} size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-neutral-600 dark:text-neutral-400">
-              Configure provider-level settings for automatic re-authentication and password management.
-            </p>
-
-            <FormField
-              label="Global Password"
-              helpText="Fallback password used for accounts without a stored password (for auto re-auth)"
-              size="md"
-            >
-              <Input
-                type="password"
-                size="md"
-                value={providerSettings.global_password || ''}
-                onChange={(e) => setProviderSettings({...providerSettings, global_password: e.target.value})}
-                placeholder="Enter global password"
-                autoComplete="new-password"
-              />
-            </FormField>
-
-            <FormField
-              label="Auto Re-authentication"
-              helpText="Automatically re-authenticate using Playwright when session expires (error 10005)"
-              size="md"
-            >
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="rounded border-neutral-300 dark:border-neutral-600"
-                  checked={providerSettings.auto_reauth_enabled}
-                  onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_enabled: e.target.checked})}
-                />
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                  Enable automatic re-authentication
-                </span>
-              </label>
-            </FormField>
-
-            <FormField
-              label="Max Retry Attempts"
-              helpText="Maximum number of auto re-auth attempts per session expiry"
-              size="md"
-            >
-              <Input
-                type="number"
-                size="md"
-                min={1}
-                max={10}
-                value={providerSettings.auto_reauth_max_retries}
-                onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_max_retries: parseInt(e.target.value) || 3})}
-              />
-            </FormField>
-
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-800 dark:text-blue-300">
-              <strong>Note:</strong> Auto re-auth requires Playwright and uses the account's password or global password.
-              Sessions will be refreshed automatically when logged out elsewhere.
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 mt-6">
-            <Button
-              variant="secondary"
-              onClick={() => setShowProviderSettings(false)}
-              disabled={savingSettings}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={saveProviderSettings}
-              disabled={savingSettings}
-            >
-              {savingSettings ? 'Saving...' : 'Save Settings'}
-            </Button>
-          </div>
-        </Modal>
-      )}
 
       {/* Header */}
       <div className="p-4 border-b dark:border-neutral-700">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-            Provider Settings
-          </h2>
-          <div className="flex gap-2">
-            {activeProvider && (
-              <button
-                onClick={() => setShowProviderSettings(true)}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              >
-                Provider Config
-              </button>
-            )}
-            <button
-              onClick={() => setRefreshKey(prev => prev + 1)}
-              className="px-3 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
-            >
-              Refresh
-            </button>
-          </div>
+        <div className="flex items-center justify-end mb-3">
+          <button
+            onClick={() => setRefreshKey(prev => prev + 1)}
+            className="px-3 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+          >
+            Refresh
+          </button>
         </div>
 
         {/* Provider tabs */}
@@ -680,6 +592,95 @@ export function ProviderSettingsPanel() {
           </div>
         ) : providerData ? (
           <div className="p-4">
+            {/* Provider Configuration Section */}
+            {providerSettings && (
+              <div className="mb-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setSettingsExpanded(!settingsExpanded)}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
+                >
+                  <span className="font-medium text-neutral-800 dark:text-neutral-200">
+                    Provider Configuration
+                  </span>
+                  <span className="text-neutral-500 dark:text-neutral-400">
+                    {settingsExpanded ? '▼' : '▶'}
+                  </span>
+                </button>
+
+                {settingsExpanded && (
+                  <div className="p-4 space-y-4 bg-white dark:bg-neutral-900">
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                      Configure automatic re-authentication and password management for this provider.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        label="Global Password"
+                        helpText="Fallback password for accounts without stored passwords"
+                        size="sm"
+                      >
+                        <Input
+                          type="password"
+                          size="sm"
+                          value={providerSettings.global_password || ''}
+                          onChange={(e) => setProviderSettings({...providerSettings, global_password: e.target.value})}
+                          placeholder="Enter global password"
+                          autoComplete="new-password"
+                        />
+                      </FormField>
+
+                      <FormField
+                        label="Max Retry Attempts"
+                        helpText="Maximum auto re-auth attempts per session expiry"
+                        size="sm"
+                      >
+                        <Input
+                          type="number"
+                          size="sm"
+                          min={1}
+                          max={10}
+                          value={providerSettings.auto_reauth_max_retries}
+                          onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_max_retries: parseInt(e.target.value) || 3})}
+                        />
+                      </FormField>
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="rounded border-neutral-300 dark:border-neutral-600"
+                          checked={providerSettings.auto_reauth_enabled}
+                          onChange={(e) => setProviderSettings({...providerSettings, auto_reauth_enabled: e.target.checked})}
+                        />
+                        <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                          Enable automatic re-authentication
+                        </span>
+                      </label>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 ml-6 mt-1">
+                        Automatically re-login using Playwright when session expires (error 10005)
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                      <strong>Note:</strong> Auto re-auth requires Playwright. Sessions are refreshed automatically when logged out elsewhere using the account's password or global password.
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={saveProviderSettings}
+                        disabled={savingSettings}
+                      >
+                        {savingSettings ? 'Saving...' : 'Save Configuration'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Provider summary */}
             <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="p-3 border rounded-lg dark:border-neutral-700">
