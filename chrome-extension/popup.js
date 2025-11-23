@@ -122,6 +122,10 @@ function setupEventListeners() {
   const copyTokenBtn = document.getElementById('copyTokenBtn');
   if (copyTokenBtn) copyTokenBtn.addEventListener('click', handleCopyToken);
 
+  // Scan devices button
+  const scanDevicesBtn = document.getElementById('scanDevicesBtn');
+  if (scanDevicesBtn) scanDevicesBtn.addEventListener('click', handleScanDevices);
+
   const reauthBtn = document.getElementById('reauthBtn');
   if (reauthBtn) reauthBtn.addEventListener('click', handleReauthMissingJwt);
 }
@@ -1098,15 +1102,95 @@ async function updateDevicesTab() {
   const result = await chrome.storage.local.get(['pixsim7Token']);
   const tokenCopySection = document.getElementById('tokenCopySection');
   const loginRequiredMessage = document.getElementById('loginRequiredMessage');
+  const deviceScanSection = document.getElementById('deviceScanSection');
 
   if (result.pixsim7Token) {
     // Show token copy section, hide login message
     tokenCopySection.classList.remove('hidden');
+    deviceScanSection.classList.remove('hidden');
     loginRequiredMessage.classList.add('hidden');
+
+    // Fetch and display devices
+    await loadDevices();
   } else {
     // Hide token copy section, show login message
     tokenCopySection.classList.add('hidden');
+    deviceScanSection.classList.add('hidden');
     loginRequiredMessage.classList.remove('hidden');
+  }
+}
+
+async function loadDevices() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'apiRequest', path: '/automation/devices' });
+
+    if (response && response.success) {
+      displayDevices(response.data);
+    } else {
+      console.error('[Devices] Failed to load devices:', response?.error);
+    }
+  } catch (error) {
+    console.error('[Devices] Error loading devices:', error);
+  }
+}
+
+function displayDevices(devices) {
+  // Find or create devices list container
+  let devicesList = document.getElementById('devicesList');
+  if (!devicesList) {
+    // Insert devices list after token copy section
+    const tokenCopySection = document.getElementById('tokenCopySection');
+    devicesList = document.createElement('div');
+    devicesList.id = 'devicesList';
+    devicesList.style.marginBottom = '12px';
+    tokenCopySection.parentNode.insertBefore(devicesList, tokenCopySection.nextSibling);
+  }
+
+  if (!devices || devices.length === 0) {
+    devicesList.innerHTML = '<div class="info-box">No devices found. Run device_agent.py to register devices.</div>';
+    return;
+  }
+
+  devicesList.innerHTML = `
+    <div class="section-title">📱 Connected Devices (${devices.length})</div>
+    ${devices.map(device => `
+      <div class="device-card">
+        <div class="device-info">
+          <div class="device-name">${device.name || device.adb_id}</div>
+          <div class="device-serial">${device.adb_id}</div>
+          ${device.device_type ? `<div style="font-size: 9px; color: #9ca3af; margin-top: 2px;">${device.device_type}</div>` : ''}
+        </div>
+        <div class="device-status ${device.status}">${device.status || 'offline'}</div>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function handleScanDevices() {
+  const btn = document.getElementById('scanDevicesBtn');
+  btn.disabled = true;
+  btn.textContent = '🔍 Scanning...';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'apiRequest',
+      path: '/automation/devices/scan',
+      method: 'POST'
+    });
+
+    if (response && response.success) {
+      const stats = response.data;
+      showToast('success', `Scan complete! Found ${stats.scanned} devices. Added: ${stats.added}, Updated: ${stats.updated}`);
+      await loadDevices();
+    } else {
+      showToast('error', 'Device scan failed: ' + (response?.error || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('[Devices] Scan failed:', error);
+    showToast('error', 'Scan failed: ' + error.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Scan for ADB Devices (BlueStacks, Emulators)';
   }
 }
 

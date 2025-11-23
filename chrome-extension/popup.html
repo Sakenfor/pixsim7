@@ -687,6 +687,16 @@
       <div class="tab-pane" id="tab-devices">
         <div class="section-title">📱 Devices</div>
 
+        <!-- Scan Devices Button -->
+        <div id="deviceScanSection" class="hidden" style="margin-bottom: 12px;">
+          <button id="scanDevicesBtn" class="btn-primary">
+            🔍 Scan for ADB Devices (BlueStacks, Emulators)
+          </button>
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">
+            Scans for connected Android devices via ADB. Make sure BlueStacks is running and ADB is enabled.
+          </div>
+        </div>
+
         <div class="info-box" style="margin-bottom: 12px;">
           Device management is handled via standalone Python service running on each device.
         </div>

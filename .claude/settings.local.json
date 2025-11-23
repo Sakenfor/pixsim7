@@ -1,13 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(curl:*)",
-      "Bash(netstat:*)",
-      "Bash(findstr:*)",
-      "Bash(taskkill:*)",
-      "Bash(taskkill /F /PID 14936)",
-      "Bash(tasklist:*)",
-      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object -Property OwningProcess -Unique | ForEach-Object { $_OwningProcess }\")"
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []
