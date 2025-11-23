@@ -113,6 +113,141 @@ export interface PlaytestSession {
 }
 
 // ============================================================================
+// Quick Test Presets
+// ============================================================================
+
+/**
+ * Predefined test presets for common playtesting scenarios
+ */
+export const PLAYTEST_PRESETS = {
+  /** Pessimistic player - low metrics, slow progression */
+  pessimistic: {
+    name: 'Pessimistic Player',
+    description: 'Low starting metrics, slow progression - tests minimum requirements',
+    state: {
+      tier: 'stranger' as const,
+      intimacyLevel: 0,
+      metrics: {
+        affinity: 20,
+        trust: 15,
+        chemistry: 10,
+        tension: 5,
+      },
+      flags: {},
+    },
+  },
+
+  /** Balanced player - medium metrics */
+  balanced: {
+    name: 'Balanced Player',
+    description: 'Medium starting metrics - tests typical progression',
+    state: {
+      tier: 'acquaintance' as const,
+      intimacyLevel: 2,
+      metrics: {
+        affinity: 50,
+        trust: 50,
+        chemistry: 50,
+        tension: 50,
+      },
+      flags: {},
+    },
+  },
+
+  /** Optimistic player - high metrics, fast progression */
+  optimistic: {
+    name: 'Optimistic Player',
+    description: 'High starting metrics - tests if arc provides enough challenge',
+    state: {
+      tier: 'friend' as const,
+      intimacyLevel: 5,
+      metrics: {
+        affinity: 80,
+        trust: 80,
+        chemistry: 70,
+        tension: 60,
+      },
+      flags: {},
+    },
+  },
+
+  /** Speedrunner - maximum metrics */
+  speedrunner: {
+    name: 'Speedrunner',
+    description: 'Maximum metrics - tests if gates can be bypassed too easily',
+    state: {
+      tier: 'close_friend' as const,
+      intimacyLevel: 8,
+      metrics: {
+        affinity: 100,
+        trust: 100,
+        chemistry: 100,
+        tension: 100,
+      },
+      flags: {},
+    },
+  },
+
+  /** Min requirements - just above minimum for first gate */
+  minRequirements: {
+    name: 'Minimum Requirements',
+    description: 'Bare minimum to pass first gate - tests edge cases',
+    state: {
+      tier: 'stranger' as const,
+      intimacyLevel: 0,
+      metrics: {
+        affinity: 1,
+        trust: 1,
+        chemistry: 1,
+        tension: 1,
+      },
+      flags: {},
+    },
+  },
+
+  /** High tension scenario */
+  highTension: {
+    name: 'High Tension',
+    description: 'High tension with mixed other metrics - tests tension-gated content',
+    state: {
+      tier: 'acquaintance' as const,
+      intimacyLevel: 3,
+      metrics: {
+        affinity: 40,
+        trust: 30,
+        chemistry: 50,
+        tension: 90,
+      },
+      flags: {},
+    },
+  },
+} as const;
+
+export type PlaytestPresetKey = keyof typeof PLAYTEST_PRESETS;
+
+/**
+ * Get a preset by key
+ */
+export function getPlaytestPreset(key: PlaytestPresetKey): SimulatedRelationshipState {
+  return { ...PLAYTEST_PRESETS[key].state };
+}
+
+/**
+ * Get all preset names and descriptions
+ */
+export function getPlaytestPresetList(): Array<{
+  key: PlaytestPresetKey;
+  name: string;
+  description: string;
+}> {
+  return Object.entries(PLAYTEST_PRESETS).map(([key, preset]) => ({
+    key: key as PlaytestPresetKey,
+    name: preset.name,
+    description: preset.description,
+  }));
+}
+
+// ============================================================================
 // Playtest Session Management
 // ============================================================================
 

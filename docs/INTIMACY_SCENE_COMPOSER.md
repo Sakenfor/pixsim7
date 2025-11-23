@@ -2,11 +2,14 @@
 
 > Visual editor tooling for designing intimate scenes and relationship progression arcs with proper safety controls and content rating management.
 
-> **Status**: Phase 1-4 Implementation Complete (UI, Live Preview, Generation, Save/Load)
+> **Status**: All Phases Complete + Quality of Life Enhancements
 > **Phase 1**: Basic UI and type definitions ✓
 > **Phase 2**: Live preview with what-if analysis ✓
 > **Phase 3**: Generation integration with content preview ✓
-> **Phase 4**: Save/load & state persistence ✓ NEW
+> **Phase 4**: Save/load & state persistence ✓
+> **Phase 5**: Template library & presets ✓
+> **Phase 6**: Playtesting & analytics ✓
+> **Enhancements**: Duplicate scenes/arcs, Save as Template, CSV export, Quick test presets, Validation system ✓ NEW
 > **For Agents**: This doc covers the intimacy scene composer and progression editor UI. See `INTIMACY_AND_GENERATION.md` for the underlying generation system and `RELATIONSHIPS_AND_ARCS.md` for relationship data models.
 
 ---
@@ -1932,8 +1935,15 @@ await saveScene(scene);
 ### Components (Phase 3)
 - `apps/main/src/components/intimacy/GenerationPreviewPanel.tsx` - Generation preview panel
 
-### Components (Phase 4 - NEW)
+### Components (Phase 4)
 - `apps/main/src/components/intimacy/SaveLoadControls.tsx` - Save/load controls (Scene, Arc, State)
+
+### Components (Phase 5)
+- `apps/main/src/components/intimacy/TemplateBrowser.tsx` - Scene and arc template browser
+
+### Components (Phase 6)
+- `apps/main/src/components/intimacy/PlaytestingPanel.tsx` - Interactive playtesting panel
+- `apps/main/src/components/intimacy/AnalyticsDashboard.tsx` - Analytics dashboard with CSV export
 
 ### Utilities
 - `apps/main/src/lib/intimacy/validation.ts` - Validation functions
@@ -1941,6 +1951,11 @@ await saveScene(scene);
 - `apps/main/src/lib/intimacy/socialContextDerivation.ts` - Social context derivation (Phase 3)
 - `apps/main/src/lib/intimacy/generationPreview.ts` - Generation preview service (Phase 3)
 - `apps/main/src/lib/intimacy/saveLoad.ts` - Save/load utilities (Phase 4)
+- `apps/main/src/lib/intimacy/templates.ts` - Template library and user template management (Phase 5)
+- `apps/main/src/lib/intimacy/playtesting.ts` - Playtest session management and presets (Phase 6)
+- `apps/main/src/lib/intimacy/analytics.ts` - Analytics tracking and aggregation (Phase 6)
+- `apps/main/src/lib/intimacy/analyticsExport.ts` - CSV export for analytics (Enhancement)
+- `apps/main/src/lib/intimacy/templateValidation.ts` - Template validation system (Enhancement)
 
 ### Documentation
 - `docs/INTIMACY_AND_GENERATION.md` - Generation system integration
@@ -1950,16 +1965,240 @@ await saveScene(scene);
 
 ---
 
+## Quality of Life Enhancements (NEW)
+
+### Duplicate Scenes & Arcs
+
+**Feature**: Quick duplication of scenes and arcs for iteration
+
+**Location**:
+- `IntimacySceneComposer` - "📋 Duplicate" button in header
+- `ProgressionArcEditor` - "📋 Duplicate" button in header
+
+**Behavior**:
+- Creates a copy of the current scene/arc with a new ID
+- Appends "(Copy)" to the name
+- Duplicates all gates with new IDs
+- Allows rapid iteration without losing the original
+
+**Usage**:
+```typescript
+// Automatically handled by UI buttons
+// Scene duplication creates: `${sceneId}_copy_${timestamp}`
+// Gate IDs: `${gateId}_copy_${timestamp}_${index}`
+```
+
+### Save as Template
+
+**Feature**: Convert current scenes/arcs into reusable templates
+
+**Location**:
+- `IntimacySceneComposer` - "💾 Save as Template" button
+- `ProgressionArcEditor` - "💾 Save as Template" button
+
+**Workflow**:
+1. Click "Save as Template" button
+2. Modal opens with validation status
+3. Enter template metadata:
+   - Name (required)
+   - Description
+   - Category (flirt/date/kiss/intimate/custom for scenes, romance/friendship/rivalry/custom for arcs)
+   - Difficulty (easy/medium/hard)
+   - Duration (short/medium/long - arcs only)
+   - Tags (comma-separated)
+4. Validation warnings/errors displayed
+5. Confirm to save despite errors (optional)
+6. Template saved to localStorage
+
+**Validation**:
+- Automatic validation using `validateSceneForTemplate()` / `validateArcForTemplate()`
+- Shows errors (blocking issues) and warnings (potential issues)
+- Can save with warnings, prompted for errors
+
+**Template Storage**:
+```typescript
+// Stored in localStorage under:
+localStorage.setItem('pixsim7_user_scene_templates', JSON.stringify(templates));
+localStorage.setItem('pixsim7_user_arc_templates', JSON.stringify(templates));
+
+// Retrieved with:
+getAllSceneTemplates() // Returns built-in + user templates
+getAllArcTemplates()   // Returns built-in + user templates
+```
+
+### Template Validation System
+
+**Feature**: Comprehensive validation for templates before import/export
+
+**Files**:
+- `apps/main/src/lib/intimacy/templateValidation.ts`
+
+**Functions**:
+```typescript
+// Validate scene template
+validateSceneTemplate(template: SceneTemplate): ValidationResult
+
+// Validate arc template
+validateArcTemplate(template: ArcTemplate): ValidationResult
+
+// Validate scene before saving as template
+validateSceneForTemplate(scene: IntimacySceneConfig): ValidationResult
+
+// Validate arc before saving as template
+validateArcForTemplate(arc: RelationshipProgressionArc): ValidationResult
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];    // Blocking issues
+  warnings: string[];  // Potential issues
+}
+```
+
+**Validation Checks**:
+- **Required fields**: ID, name, scene/arc configuration
+- **Gate validation**: Metric ranges (0-100), flag conflicts, requirements
+- **Progression logic**: Tier order, stage reachability
+- **Conflict detection**: Conflicting gates, impossible conditions
+- **Content ratings**: Valid rating levels
+
+**Example**:
+```typescript
+const result = validateSceneTemplate(template);
+if (!result.valid) {
+  console.error('Template errors:', result.errors);
+}
+if (result.warnings.length > 0) {
+  console.warn('Template warnings:', result.warnings);
+}
+```
+
+### CSV Export for Analytics
+
+**Feature**: Export analytics data to CSV for external analysis
+
+**Files**:
+- `apps/main/src/lib/intimacy/analyticsExport.ts`
+- Enhanced `AnalyticsDashboard.tsx` with export buttons
+
+**Export Functions**:
+```typescript
+// Export scene analytics summary to CSV
+exportSceneAnalyticsToCSV(): string
+
+// Export arc analytics summary to CSV
+exportArcAnalyticsToCSV(): string
+
+// Export raw scene events to CSV
+exportSceneEventsToCSV(): string
+
+// Export raw arc events to CSV
+exportArcEventsToCSV(): string
+
+// Download helpers (trigger browser download)
+downloadSceneAnalyticsCSV(): void
+downloadArcAnalyticsCSV(): void
+downloadSceneEventsCSV(): void
+downloadArcEventsCSV(): void
+```
+
+**CSV Format**:
+- **Scene Analytics**: Total scenes, attempts, completion rate, most used scenes, gate blockages, scene type distribution
+- **Arc Analytics**: Total arcs, stage entries, completion rate, most completed arcs, stage completion rates, abandonment points
+- **Raw Events**: Timestamp, IDs, event types, metrics (affinity, trust, chemistry, tension)
+
+**Usage in UI**:
+```typescript
+// Analytics Dashboard has "📊 Export CSV" button
+// Downloads: scene_analytics_{timestamp}.csv or arc_analytics_{timestamp}.csv
+```
+
+### Quick Test Presets for Playtesting
+
+**Feature**: Pre-configured relationship states for common test scenarios
+
+**Files**:
+- `apps/main/src/lib/intimacy/playtesting.ts` - `PLAYTEST_PRESETS` constant
+- Enhanced `PlaytestingPanel.tsx` with preset selector
+
+**Available Presets**:
+
+1. **Pessimistic Player**
+   - Low metrics (affinity: 20, trust: 15, chemistry: 10, tension: 5)
+   - Tests minimum requirements
+   - Validates gates aren't too strict
+
+2. **Balanced Player**
+   - Medium metrics (all at 50)
+   - Tests typical progression
+   - Acquaintance tier, intimacy level 2
+
+3. **Optimistic Player**
+   - High metrics (affinity: 80, trust: 80, chemistry: 70, tension: 60)
+   - Tests if arc provides enough challenge
+   - Friend tier, intimacy level 5
+
+4. **Speedrunner**
+   - Maximum metrics (all at 100)
+   - Tests if gates can be bypassed too easily
+   - Close friend tier, intimacy level 8
+
+5. **Minimum Requirements**
+   - Bare minimum (all metrics at 1)
+   - Tests edge cases
+   - Stranger tier, intimacy level 0
+
+6. **High Tension**
+   - Mixed metrics with high tension (tension: 90, others lower)
+   - Tests tension-gated content
+   - Acquaintance tier, intimacy level 3
+
+**API**:
+```typescript
+// Get a specific preset
+const state = getPlaytestPreset('optimistic');
+
+// Get all presets for UI display
+const presets = getPlaytestPresetList();
+// Returns: [{ key, name, description }, ...]
+```
+
+**UI Integration**:
+- Playtest configuration screen shows grid of preset buttons
+- Each button displays name and truncated description
+- Click to instantly load preset state
+- Still allows manual state editing after loading preset
+
+### Updated Template Browser
+
+**Enhancement**: Now shows user-created templates alongside built-in templates
+
+**Changes**:
+- Uses `getAllSceneTemplates()` instead of `getSceneTemplates()`
+- Uses `getAllArcTemplates()` instead of `getArcTemplates()`
+- User templates have category "custom" by default
+- Can filter, search, and import user templates same as built-in
+
+**Storage Model**:
+```typescript
+// Built-in templates: Defined in templates.ts
+// User templates: Stored in localStorage
+// Combined view: getAllSceneTemplates() merges both sources
+```
+
+---
+
 ## Future Enhancements
 
 1. ~~**Live Preview**~~ - ✓ Implemented in Phase 2
-2. **Smart Templates** - AI-powered suggestions for common progression patterns
-3. **Metric Visualization** - Charts showing relationship metric changes over time
-4. **Playtesting Mode** - Full simulation with player choices and branching
-5. **Export/Import** - Share progression packs between projects
-6. **Analytics** - Track which gates/stages players reach most often
+2. ~~**Playtesting Mode**~~ - ✓ Implemented in Phase 6
+3. ~~**Analytics**~~ - ✓ Implemented in Phase 6
+4. ~~**Export/Import**~~ - ✓ Implemented in Phase 4 + CSV export in enhancements
+5. **Smart Templates** - AI-powered suggestions for common progression patterns
+6. **Metric Visualization** - Charts showing relationship metric changes over time
 7. **Branching Editor** - Visual editor for complex branching progressions
 8. **Content Library** - Reusable intimacy scenes across different arcs
+9. **Backend Analytics Persistence** - Move analytics from localStorage to database for long-term tracking
+10. **Template Sharing** - Cloud-based template sharing between designers
 
 ---
 

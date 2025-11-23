@@ -11,10 +11,12 @@
 import React, { useState, useMemo } from 'react';
 import type { IntimacySceneConfig, RelationshipProgressionArc } from '@pixsim7/shared.types';
 import {
-  getSceneTemplates,
-  getArcTemplates,
+  getAllSceneTemplates,
+  getAllArcTemplates,
   cloneSceneFromTemplate,
   cloneArcFromTemplate,
+  deleteUserSceneTemplate,
+  deleteUserArcTemplate,
   type SceneTemplate,
   type ArcTemplate,
 } from '../../lib/intimacy/templates';
@@ -48,7 +50,7 @@ export function SceneTemplateBrowser({
 
   // Get filtered templates
   const filteredTemplates = useMemo(() => {
-    let templates = getSceneTemplates(
+    let templates = getAllSceneTemplates(
       categoryFilter === 'all' ? undefined : { category: categoryFilter }
     );
 
@@ -324,7 +326,7 @@ export function ArcTemplateBrowser({
 
   // Get filtered templates
   const filteredTemplates = useMemo(() => {
-    let templates = getArcTemplates(
+    let templates = getAllArcTemplates(
       categoryFilter === 'all' ? undefined : { category: categoryFilter }
     );
 

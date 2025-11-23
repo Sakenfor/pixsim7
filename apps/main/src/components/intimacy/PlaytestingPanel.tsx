@@ -18,8 +18,11 @@ import {
   autoPlay,
   analyzePlaytest,
   exportPlaytestSession,
+  getPlaytestPreset,
+  getPlaytestPresetList,
   type PlaytestSession,
   type PlaytestConfig,
+  type PlaytestPresetKey,
 } from '../../lib/intimacy/playtesting';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { createDefaultState, createStateFromTier } from '../../lib/intimacy/gateChecking';
@@ -123,11 +126,30 @@ export function PlaytestingPanel({ arc, onClose }: PlaytestingPanelProps) {
               </h3>
 
               <div className="space-y-4">
-                {/* Initial State */}
+                {/* Initial State - Quick Presets */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Starting Relationship State
+                    Quick Test Presets
                   </label>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {getPlaytestPresetList().map((preset) => (
+                      <button
+                        key={preset.key}
+                        onClick={() => setConfig({ ...config, initialState: getPlaytestPreset(preset.key) })}
+                        className="px-3 py-2 text-left text-sm bg-gray-100 dark:bg-neutral-800 rounded hover:bg-gray-200 dark:hover:bg-neutral-700"
+                        title={preset.description}
+                      >
+                        <div className="font-medium">{preset.name}</div>
+                        <div className="text-xs text-neutral-600 dark:text-neutral-400 truncate">
+                          {preset.description}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="text-xs text-neutral-500 dark:text-neutral-500 mb-2">
+                    Or choose a basic tier:
+                  </div>
                   <div className="flex gap-2 mb-3">
                     <button
                       onClick={() => setConfig({ ...config, initialState: createStateFromTier('stranger') })}

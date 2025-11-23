@@ -915,3 +915,186 @@ export function cloneArcFromTemplate(
     })),
   };
 }
+
+// ============================================================================
+// User-Created Templates (localStorage)
+// ============================================================================
+
+const USER_SCENE_TEMPLATES_KEY = 'pixsim7_user_scene_templates';
+const USER_ARC_TEMPLATES_KEY = 'pixsim7_user_arc_templates';
+
+/**
+ * Save a scene as a user template
+ */
+export function saveSceneAsTemplate(
+  scene: IntimacySceneConfig,
+  metadata: {
+    name: string;
+    description: string;
+    category?: SceneTemplate['category'];
+    difficulty?: SceneTemplate['difficulty'];
+    tags?: string[];
+  }
+): SceneTemplate {
+  const template: SceneTemplate = {
+    id: `user_scene_${Date.now()}`,
+    name: metadata.name,
+    description: metadata.description,
+    category: metadata.category || 'custom',
+    tags: metadata.tags || [],
+    difficulty: metadata.difficulty || 'medium',
+    author: 'User',
+    scene: {
+      ...scene,
+      // Remove target NPC IDs so template can be reused
+      targetNpcIds: [],
+    },
+  };
+
+  const existing = getUserSceneTemplates();
+  existing.push(template);
+  localStorage.setItem(USER_SCENE_TEMPLATES_KEY, JSON.stringify(existing));
+
+  return template;
+}
+
+/**
+ * Save an arc as a user template
+ */
+export function saveArcAsTemplate(
+  arc: RelationshipProgressionArc,
+  metadata: {
+    name: string;
+    description: string;
+    category?: ArcTemplate['category'];
+    difficulty?: ArcTemplate['difficulty'];
+    estimatedDuration?: ArcTemplate['estimatedDuration'];
+    tags?: string[];
+  }
+): ArcTemplate {
+  const template: ArcTemplate = {
+    id: `user_arc_${Date.now()}`,
+    name: metadata.name,
+    description: metadata.description,
+    category: metadata.category || 'custom',
+    tags: metadata.tags || [],
+    difficulty: metadata.difficulty || 'medium',
+    estimatedDuration: metadata.estimatedDuration || 'medium',
+    author: 'User',
+    arc: {
+      ...arc,
+      // Reset target NPC so template can be reused
+      targetNpcId: 0,
+    },
+  };
+
+  const existing = getUserArcTemplates();
+  existing.push(template);
+  localStorage.setItem(USER_ARC_TEMPLATES_KEY, JSON.stringify(existing));
+
+  return template;
+}
+
+/**
+ * Get all user-created scene templates
+ */
+export function getUserSceneTemplates(): SceneTemplate[] {
+  const data = localStorage.getItem(USER_SCENE_TEMPLATES_KEY);
+  if (!data) return [];
+  try {
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get all user-created arc templates
+ */
+export function getUserArcTemplates(): ArcTemplate[] {
+  const data = localStorage.getItem(USER_ARC_TEMPLATES_KEY);
+  if (!data) return [];
+  try {
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get all scene templates (built-in + user-created)
+ */
+export function getAllSceneTemplates(filter?: {
+  category?: SceneTemplate['category'];
+  difficulty?: SceneTemplate['difficulty'];
+  tags?: string[];
+}): SceneTemplate[] {
+  const builtIn = getSceneTemplates(filter);
+  const user = getUserSceneTemplates();
+
+  // Apply same filters to user templates
+  let filteredUser = user;
+  if (filter?.category) {
+    filteredUser = filteredUser.filter((t) => t.category === filter.category);
+  }
+  if (filter?.difficulty) {
+    filteredUser = filteredUser.filter((t) => t.difficulty === filter.difficulty);
+  }
+  if (filter?.tags && filter.tags.length > 0) {
+    filteredUser = filteredUser.filter((t) =>
+      filter.tags!.some((tag) => t.tags.includes(tag))
+    );
+  }
+
+  return [...builtIn, ...filteredUser];
+}
+
+/**
+ * Get all arc templates (built-in + user-created)
+ */
+export function getAllArcTemplates(filter?: {
+  category?: ArcTemplate['category'];
+  difficulty?: ArcTemplate['difficulty'];
+  duration?: ArcTemplate['estimatedDuration'];
+  tags?: string[];
+}): ArcTemplate[] {
+  const builtIn = getArcTemplates(filter);
+  const user = getUserArcTemplates();
+
+  // Apply same filters to user templates
+  let filteredUser = user;
+  if (filter?.category) {
+    filteredUser = filteredUser.filter((t) => t.category === filter.category);
+  }
+  if (filter?.difficulty) {
+    filteredUser = filteredUser.filter((t) => t.difficulty === filter.difficulty);
+  }
+  if (filter?.duration) {
+    filteredUser = filteredUser.filter((t) => t.estimatedDuration === filter.duration);
+  }
+  if (filter?.tags && filter.tags.length > 0) {
+    filteredUser = filteredUser.filter((t) =>
+      filter.tags!.some((tag) => t.tags.includes(tag))
+    );
+  }
+
+  return [...builtIn, ...filteredUser];
+}
+
+/**
+ * Delete a user template
+ */
+export function deleteUserSceneTemplate(id: string): void {
+  const existing = getUserSceneTemplates();
+  const filtered = existing.filter((t) => t.id !== id);
+  localStorage.setItem(USER_SCENE_TEMPLATES_KEY, JSON.stringify(filtered));
+}
+
+/**
+ * Delete a user arc template
+ */
+export function deleteUserArcTemplate(id: string): void {
+  const existing = getUserArcTemplates();
+  const filtered = existing.filter((t) => t.id !== id);
+  localStorage.setItem(USER_ARC_TEMPLATES_KEY, JSON.stringify(filtered));
+}

@@ -18,6 +18,12 @@ import {
   type SceneAnalyticsSummary,
   type ArcAnalyticsSummary,
 } from '../../lib/intimacy/analytics';
+import {
+  downloadSceneAnalyticsCSV,
+  downloadArcAnalyticsCSV,
+  downloadSceneEventsCSV,
+  downloadArcEventsCSV,
+} from '../../lib/intimacy/analyticsExport';
 
 interface AnalyticsDashboardProps {
   /** Callback when dashboard is closed */
@@ -97,10 +103,22 @@ export function AnalyticsDashboard({ onClose }: AnalyticsDashboardProps) {
               🔄 Refresh
             </button>
             <button
-              onClick={handleExport}
+              onClick={() => {
+                if (activeTab === 'scenes') {
+                  downloadSceneAnalyticsCSV();
+                } else {
+                  downloadArcAnalyticsCSV();
+                }
+              }}
               className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600"
             >
-              💾 Export
+              📊 Export CSV
+            </button>
+            <button
+              onClick={handleExport}
+              className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+            >
+              💾 Export JSON
             </button>
             <button
               onClick={handleImport}
