@@ -75,6 +75,9 @@ class PixverseProvider(Provider):
         # Cache PixverseAPI instances per account to reuse sessions
         # Key format: (account_id, jwt_prefix)
         self._api_cache: Dict[tuple, Any] = {}
+        # Cache PixverseClient instances as well so we don't create new sessions per job
+        # Key format: (account_id, use_method or 'auto', jwt_prefix)
+        self._client_cache: Dict[tuple, Any] = {}
 
     @property
     def provider_id(self) -> str:
@@ -123,11 +126,23 @@ class PixverseProvider(Provider):
         if use_method:
             session["use_method"] = use_method
 
-        # Create PixverseClient
-        return PixverseClient(
+        jwt_prefix = (account.jwt_token or '')[:20] if account.jwt_token else ''
+        cache_key = (
+            account.id,
+            use_method or 'auto',
+            jwt_prefix,
+        )
+
+        if cache_key in self._client_cache:
+            logger.debug('Reusing cached PixverseClient for account %s', account.id)
+            return self._client_cache[cache_key]
+
+        client = PixverseClient(
             email=account.email,
             session=session
         )
+        self._client_cache[cache_key] = client
+        return client
 
     def _get_cached_api(self, account: ProviderAccount) -> Any:
         """
