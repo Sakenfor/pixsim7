@@ -1,5 +1,9 @@
 import type { Module } from '../types';
 import { registerCubeExpansions } from '../../lib/registerCubeExpansions';
+import { QuickGenerateModule } from '../../components/control/QuickGenerateModule';
+import { PresetsModule } from '../../components/control/PresetsModule';
+import { ProviderOverviewModule } from '../../components/control/ProviderOverviewModule';
+import { PanelLauncherModule } from '../../components/control/PanelLauncherModule';
 
 /**
  * Control Center Module
@@ -17,4 +21,56 @@ export const controlCenterModule: Module = {
     // Register cube expansions for the cube-based control center mode
     registerCubeExpansions();
   },
+
+  // Auto-register Control Center modules
+  controlCenterModules: [
+    {
+      id: 'quickGenerate',
+      label: 'Generate',
+      icon: '⚡',
+      component: QuickGenerateModule,
+      category: 'core',
+      order: 10,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Quick asset generation',
+      tags: ['generate', 'create', 'ai'],
+    },
+    {
+      id: 'presets',
+      label: 'Presets',
+      icon: '🎨',
+      component: PresetsModule,
+      category: 'core',
+      order: 20,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Generation presets and templates',
+      tags: ['presets', 'templates'],
+    },
+    {
+      id: 'providers',
+      label: 'Providers',
+      icon: '🌐',
+      component: ProviderOverviewModule,
+      category: 'system',
+      order: 30,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'API provider overview and status',
+      tags: ['providers', 'api', 'services'],
+    },
+    {
+      id: 'panels',
+      label: 'Panels',
+      icon: '🪟',
+      component: PanelLauncherModule,
+      category: 'system',
+      order: 40,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Panel launcher and workspace',
+      tags: ['panels', 'workspace'],
+    },
+  ],
 };

@@ -1,6 +1,7 @@
 import type { Module } from '../types';
 import { registerPluginsFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { pluginManager } from '../../lib/plugins';
+import { PluginsModule as PluginsModuleComponent } from '../../components/control/modules/PluginsModule';
 
 /**
  * Plugins Module
@@ -18,4 +19,20 @@ export const pluginsModule: Module = {
     // here we simply ensure the capability is registered.
     void pluginManager; // keep import used
   },
+
+  // Auto-register Control Center module
+  controlCenterModules: [
+    {
+      id: 'plugins',
+      label: 'Plugins',
+      icon: '🔌',
+      component: PluginsModuleComponent,
+      category: 'system',
+      order: 70,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Plugin management and browser',
+      tags: ['plugins', 'extensions'],
+    },
+  ],
 };
