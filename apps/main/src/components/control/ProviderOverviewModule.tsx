@@ -66,7 +66,8 @@ export function ProviderOverviewModule() {
             return (
               <div
                 key={cap.provider_id}
-                className="border rounded-lg p-3 bg-neutral-50/50 dark:bg-neutral-800/50 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/80 transition-colors"
+                onClick={openFullSettings}
+                className="border rounded-lg p-3 bg-neutral-50/50 dark:bg-neutral-800/50 hover:bg-neutral-100/50 dark:hover:bg-neutral-800/80 transition-colors cursor-pointer"
               >
                 {/* Provider name and status */}
                 <div className="flex items-center justify-between mb-2">
