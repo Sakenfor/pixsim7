@@ -23,16 +23,31 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
     setAnalyzing(true);
     setSuggestions([]);
 
-    // Simulate AI analysis (replace with actual API call)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      // Call AI analysis endpoint
+      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-    // Mock suggestions based on media type
-    const mockSuggestions = selectedAsset?.media_type === 'image'
-      ? ['portrait', 'outdoor', 'daytime', 'landscape', 'nature']
-      : ['video', 'cinematic', 'motion', 'edited', 'short'];
+      if (!response.ok) {
+        throw new Error('Failed to analyze asset');
+      }
 
-    setSuggestions(mockSuggestions);
-    setAnalyzing(false);
+      const data = await response.json();
+      setSuggestions(data.suggested_tags || []);
+    } catch (error) {
+      console.error('Failed to analyze asset:', error);
+      // Fallback to basic suggestions on error
+      const fallbackSuggestions = selectedAsset?.media_type === 'image'
+        ? ['portrait', 'outdoor', 'daytime']
+        : ['video', 'cinematic', 'short'];
+      setSuggestions(fallbackSuggestions);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const toggleTag = (tag: string) => {
@@ -45,12 +60,34 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
     setSelectedTags(newSelected);
   };
 
-  const handleApplyTags = () => {
-    // TODO: Implement actual tag application API call
+  const handleApplyTags = async () => {
     const tags = Array.from(selectedTags);
-    alert(`Applying tags: ${tags.join(', ')}`);
-    setSuggestions([]);
-    setSelectedTags(new Set());
+
+    try {
+      // Call tag update endpoint
+      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/add`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tags }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to apply tags');
+      }
+
+      // Success - show feedback and reset
+      alert(`Successfully applied ${tags.length} tag${tags.length !== 1 ? 's' : ''}`);
+      setSuggestions([]);
+      setSelectedTags(new Set());
+
+      // Trigger refresh of gallery
+      context.refresh();
+    } catch (error) {
+      console.error('Failed to apply tags:', error);
+      alert('Failed to apply tags. Please try again.');
+    }
   };
 
   return (
