@@ -20,7 +20,11 @@ import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '../../lib/intimacy/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { ArcSaveLoadControls } from './SaveLoadControls';
+import { ArcTemplateBrowser } from './TemplateBrowser';
+import { PlaytestingPanel } from './PlaytestingPanel';
 import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
+import { saveArcAsTemplate, type ArcTemplate } from '../../lib/intimacy/templates';
+import { validateArcForTemplate } from '../../lib/intimacy/templateValidation';
 
 interface ProgressionArcEditorProps {
   /** Current arc configuration */
@@ -43,6 +47,9 @@ interface ProgressionArcEditorProps {
 
   /** Layout mode */
   layout?: 'horizontal' | 'vertical' | 'list';
+
+  /** Available NPCs for arc assignment */
+  availableNpcs?: Array<{ id: number; name: string }>;
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -61,10 +68,14 @@ export function ProgressionArcEditor({
   userMaxRating,
   readOnly = false,
   layout = 'horizontal',
+  availableNpcs = [],
 }: ProgressionArcEditorProps) {
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [showTemplateBrowser, setShowTemplateBrowser] = useState(false);
+  const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [showPlaytest, setShowPlaytest] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
@@ -182,10 +193,52 @@ export function ProgressionArcEditor({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                const duplicated: RelationshipProgressionArc = {
+                  ...arc,
+                  id: `${arc.id}_copy_${Date.now()}`,
+                  name: `${arc.name} (Copy)`,
+                  stages: arc.stages.map((stage, idx) => ({
+                    ...stage,
+                    id: `${stage.id}_copy_${Date.now()}_${idx}`,
+                    gate: {
+                      ...stage.gate,
+                      id: `${stage.gate.id}_copy_${Date.now()}_${idx}`,
+                    },
+                  })),
+                };
+                onChange(duplicated);
+              }}
+              disabled={readOnly}
+              className="px-3 py-1 rounded text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              📋 Duplicate
+            </button>
+            <button
+              onClick={() => setShowTemplateBrowser(true)}
+              disabled={readOnly}
+              className="px-3 py-1 rounded text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              📚 Load Template
+            </button>
+            <button
+              onClick={() => setShowSaveTemplateModal(true)}
+              disabled={readOnly}
+              className="px-3 py-1 rounded text-sm font-medium bg-green-500 text-white hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              💾 Save as Template
+            </button>
+            <button
               onClick={() => setShowSaveLoad(true)}
               className="px-3 py-1 rounded text-sm font-medium bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
             >
               💾 Save/Load
+            </button>
+            <button
+              onClick={() => setShowPlaytest(true)}
+              className="px-3 py-1 rounded text-sm font-medium bg-green-500 text-white hover:bg-green-600"
+            >
+              🎮 Playtest
             </button>
             <button
               onClick={() => setPreviewMode(!previewMode)}
@@ -587,6 +640,247 @@ export function ProgressionArcEditor({
             </div>
           </div>
         )}
+
+        {/* Template Browser Modal */}
+        {showTemplateBrowser && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-6xl h-5/6">
+              <ArcTemplateBrowser
+                onImport={(importedArc) => {
+                  onChange(importedArc);
+                  setShowTemplateBrowser(false);
+                }}
+                availableNpcs={availableNpcs}
+                onClose={() => setShowTemplateBrowser(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Playtest Panel Modal */}
+        {showPlaytest && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-6xl h-5/6">
+              <PlaytestingPanel
+                arc={arc}
+                onClose={() => setShowPlaytest(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Save as Template Modal */}
+        {showSaveTemplateModal && (
+          <SaveArcTemplateModal
+            arc={arc}
+            onClose={() => setShowSaveTemplateModal(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Save Arc Template Modal
+// ============================================================================
+
+interface SaveArcTemplateModalProps {
+  arc: RelationshipProgressionArc;
+  onClose: () => void;
+}
+
+function SaveArcTemplateModal({ arc, onClose }: SaveArcTemplateModalProps) {
+  const [name, setName] = useState(arc.name || '');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<ArcTemplate['category']>('custom');
+  const [difficulty, setDifficulty] = useState<ArcTemplate['difficulty']>('medium');
+  const [estimatedDuration, setEstimatedDuration] = useState<ArcTemplate['estimatedDuration']>('medium');
+  const [tags, setTags] = useState<string>('');
+  const [validationResult, setValidationResult] = useState(validateArcForTemplate(arc));
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      alert('Please enter a template name');
+      return;
+    }
+
+    if (!validationResult.valid) {
+      const proceed = confirm(
+        `This arc has validation errors:\n${validationResult.errors.join('\n')}\n\nSave anyway?`
+      );
+      if (!proceed) return;
+    }
+
+    try {
+      saveArcAsTemplate(arc, {
+        name: name.trim(),
+        description: description.trim(),
+        category,
+        difficulty,
+        estimatedDuration,
+        tags: tags.split(',').map((t) => t.trim()).filter((t) => t.length > 0),
+      });
+
+      alert('Template saved successfully!');
+      onClose();
+    } catch (error) {
+      alert(`Failed to save template: ${error}`);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-2xl">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100">
+              💾 Save Arc as Template
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 text-xl"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Validation Status */}
+          {!validationResult.valid && (
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded">
+              <div className="text-sm font-medium text-red-900 dark:text-red-300 mb-1">
+                ⚠️ Validation Errors ({validationResult.errors.length})
+              </div>
+              <ul className="text-sm text-red-800 dark:text-red-400 list-disc list-inside">
+                {validationResult.errors.map((error, idx) => (
+                  <li key={idx}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {validationResult.warnings.length > 0 && (
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+              <div className="text-sm font-medium text-yellow-900 dark:text-yellow-300 mb-1">
+                ⚠️ Warnings ({validationResult.warnings.length})
+              </div>
+              <ul className="text-sm text-yellow-800 dark:text-yellow-400 list-disc list-inside">
+                {validationResult.warnings.map((warning, idx) => (
+                  <li key={idx}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {/* Name */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                Template Name *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                placeholder="e.g., Friends to Lovers Arc"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                placeholder="Describe what this progression arc is for..."
+              />
+            </div>
+
+            {/* Category, Difficulty, Duration */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Category
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as ArcTemplate['category'])}
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                >
+                  <option value="romance">Romance</option>
+                  <option value="friendship">Friendship</option>
+                  <option value="rivalry">Rivalry</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Difficulty
+                </label>
+                <select
+                  value={difficulty}
+                  onChange={(e) => setDifficulty(e.target.value as ArcTemplate['difficulty'])}
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                >
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Duration
+                </label>
+                <select
+                  value={estimatedDuration}
+                  onChange={(e) => setEstimatedDuration(e.target.value as ArcTemplate['estimatedDuration'])}
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                >
+                  <option value="short">Short</option>
+                  <option value="medium">Medium</option>
+                  <option value="long">Long</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                Tags (comma-separated)
+              </label>
+              <input
+                type="text"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                placeholder="e.g., slow-burn, comedy, dramatic"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 text-sm bg-green-500 text-white rounded hover:bg-green-600"
+            >
+              Save Template
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
