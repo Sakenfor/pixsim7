@@ -36,6 +36,7 @@ export interface ControlCenterState {
   floatingPosition: { x: number; y: number }; // position when floating
   floatingSize: { width: number; height: number }; // size when floating
   activeModule: ControlModule;
+  enabledModules: Record<string, boolean>; // module preferences
   operationType: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
   recentPrompts: string[];
   providerId?: string;      // selected provider
@@ -56,6 +57,7 @@ export interface ControlCenterActions {
   setFloatingPosition: (x: number, y: number) => void;
   setFloatingSize: (width: number, height: number) => void;
   setActiveModule: (m: ControlModule) => void;
+  setModuleEnabled: (moduleId: string, enabled: boolean) => void;
   setOperationType: (op: ControlCenterState['operationType']) => void;
   pushPrompt: (p: string) => void;
   setProvider: (id?: string) => void;
@@ -75,10 +77,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       dockPosition: 'bottom',
       open: false,
       pinned: false,
-      height: 180,
+      height: 300, // Increased from 180px
       floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
-      floatingSize: { width: 600, height: 500 },
+      floatingSize: { width: 700, height: 600 }, // Increased from 600x500
       activeModule: 'quickGenerate',
+      enabledModules: {}, // Empty = all enabled by default
       operationType: 'text_to_video',
       recentPrompts: [],
       providerId: undefined,
@@ -93,9 +96,9 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
       setDockPosition: (position) => {
         if (get().dockPosition === position) return;
-        // Adjust default size based on position
+        // Adjust default size based on position (increased defaults)
         const isVertical = position === 'left' || position === 'right';
-        const newHeight = isVertical ? 320 : 180;
+        const newHeight = isVertical ? 450 : 300; // Increased from 320/180
         // When switching to floating mode, ensure it's visible
         const updates: any = { dockPosition: position, height: newHeight };
         if (position === 'floating') {
@@ -115,8 +118,8 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       setHeight: (px) => {
         const pos = get().dockPosition;
         const isVertical = pos === 'left' || pos === 'right';
-        const min = isVertical ? 200 : 120;
-        const max = isVertical ? 600 : 480;
+        const min = isVertical ? 300 : 200; // Increased minimums
+        const max = isVertical ? 700 : 500; // Increased maximums
         const next = Math.max(min, Math.min(max, px));
         if (get().height === next) return;
         set({ height: next });
@@ -126,6 +129,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       setActiveModule: (m) => {
         if (get().activeModule === m) return;
         set({ activeModule: m });
+      },
+      setModuleEnabled: (moduleId, enabled) => {
+        set((s) => ({
+          enabledModules: { ...s.enabledModules, [moduleId]: enabled }
+        }));
       },
       setOperationType: (op) => {
         if (get().operationType === op) return;
@@ -146,28 +154,45 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 180, floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 }, floatingSize: { width: 600, height: 500 }, activeModule: 'quickGenerate', operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
+      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 300, floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 }, floatingSize: { width: 700, height: 600 }, activeModule: 'quickGenerate', enabledModules: {}, operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
     }),
     {
       name: STORAGE_KEY,
       storage: createBackendStorage('controlCenter'),
-      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, floatingPosition: s.floatingPosition, floatingSize: s.floatingSize, activeModule: s.activeModule, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
-      version: 5,
+      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, floatingPosition: s.floatingPosition, floatingSize: s.floatingSize, activeModule: s.activeModule, enabledModules: s.enabledModules, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
+      version: 6,
       migrate: (persistedState: any, version: number) => {
+        let migrated = { ...persistedState };
+
         // Migrate from version 4 to 5: add floating position/size defaults
         if (version < 5) {
-          const migrated = {
-            ...persistedState,
-            floatingPosition: persistedState.floatingPosition || { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
-            floatingSize: persistedState.floatingSize || { width: 600, height: 500 },
-          };
+          migrated.floatingPosition = migrated.floatingPosition || { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 };
+          migrated.floatingSize = migrated.floatingSize || { width: 600, height: 500 };
           // Ensure floating mode is always visible on load
           if (migrated.dockPosition === 'floating') {
             migrated.open = true;
           }
-          return migrated;
         }
-        return persistedState;
+
+        // Migrate from version 5 to 6: add enabledModules and increase defaults
+        if (version < 6) {
+          migrated.enabledModules = migrated.enabledModules || {};
+          // Increase default heights
+          if (migrated.height === 180) {
+            migrated.height = 300;
+          } else if (migrated.height === 320) {
+            migrated.height = 450;
+          }
+          // Increase floating size
+          if (migrated.floatingSize?.width === 600) {
+            migrated.floatingSize.width = 700;
+          }
+          if (migrated.floatingSize?.height === 500) {
+            migrated.floatingSize.height = 600;
+          }
+        }
+
+        return migrated;
       },
       onRehydrateStorage: () => (state) => {
         // After rehydration, ensure floating mode is visible

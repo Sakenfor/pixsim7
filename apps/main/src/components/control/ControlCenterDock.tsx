@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
-import { QuickGenerateModule } from './QuickGenerateModule';
-import { PresetsModule } from './PresetsModule';
-import { ProviderOverviewModule } from './ProviderOverviewModule';
-import { PanelLauncherModule } from './PanelLauncherModule';
+import { controlCenterModuleRegistry } from '../../lib/control/controlCenterModuleRegistry';
+import { registerBuiltInModules } from '../../lib/control/builtInModules';
 
-const MODULES: { id: ControlModule; label: string; icon: string }[] = [
-  { id: 'quickGenerate', label: 'Generate', icon: '⚡' },
-  { id: 'presets', label: 'Presets', icon: '🎨' },
-  { id: 'providers', label: 'Providers', icon: '🌐' },
-  { id: 'panels', label: 'Panels', icon: '🪟' },
-];
+// Register built-in modules on first import
+let modulesRegistered = false;
+if (!modulesRegistered) {
+  registerBuiltInModules();
+  modulesRegistered = true;
+}
 
 export function ControlCenterDock() {
   // Use separate selectors to avoid creating new objects on every render
@@ -20,6 +18,7 @@ export function ControlCenterDock() {
   const pinned = useControlCenterStore(s => s.pinned);
   const height = useControlCenterStore(s => s.height);
   const activeModule = useControlCenterStore(s => s.activeModule);
+  const enabledModules = useControlCenterStore(s => s.enabledModules);
   const dockPosition = useControlCenterStore(s => s.dockPosition);
   const floatingPosition = useControlCenterStore(s => s.floatingPosition);
   const floatingSize = useControlCenterStore(s => s.floatingSize);
@@ -34,6 +33,11 @@ export function ControlCenterDock() {
 
   const dockRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
+
+  // Get enabled modules from registry
+  const modules = useMemo(() => {
+    return controlCenterModuleRegistry.getEnabled(enabledModules);
+  }, [enabledModules]);
 
   // Use refs to avoid re-creating event listeners on every state change
   const openRef = useRef(open);
@@ -141,18 +145,11 @@ export function ControlCenterDock() {
   }, [setHeight]);
 
   function renderModule() {
-    switch (activeModule) {
-      case 'quickGenerate':
-        return <QuickGenerateModule />;
-      case 'presets':
-        return <PresetsModule />;
-      case 'providers':
-        return <ProviderOverviewModule />;
-      case 'panels':
-        return <PanelLauncherModule />;
-      default:
-        return null;
-    }
+    const module = controlCenterModuleRegistry.get(activeModule);
+    if (!module) return null;
+
+    const Component = module.component;
+    return <Component isActive={true} onSwitchModule={setActiveModule} />;
   }
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
@@ -224,22 +221,23 @@ export function ControlCenterDock() {
           <div className="flex-1" />
 
           {/* Module tabs with icons */}
-          <div className="flex gap-1" role="tablist" aria-label="Control center modules">
-            {MODULES.map(mod => (
+          <div className="flex gap-1 overflow-x-auto max-w-md" role="tablist" aria-label="Control center modules">
+            {modules.map(mod => (
               <button
                 key={mod.id}
                 role="tab"
                 aria-selected={activeModule === mod.id}
                 aria-controls={`module-${mod.id}`}
-                onClick={() => setActiveModule(mod.id)}
+                onClick={() => setActiveModule(mod.id as ControlModule)}
                 className={clsx(
-                  'text-xs px-2 py-1 rounded-lg transition-all duration-200',
+                  'text-xs px-2 py-1 rounded-lg transition-all duration-200 whitespace-nowrap',
                   'focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-1',
                   'transform hover:scale-105 active:scale-95',
                   activeModule === mod.id
                     ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-purple-500/30'
                     : 'bg-neutral-200/50 dark:bg-neutral-700/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 hover:shadow-md'
                 )}
+                title={mod.description}
               >
                 <span className="mr-1">{mod.icon}</span>
                 {mod.label}
