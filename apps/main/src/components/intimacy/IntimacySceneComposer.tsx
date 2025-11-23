@@ -24,6 +24,7 @@ import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { GatePreviewPanel } from './GatePreviewPanel';
 import { GenerationPreviewPanel } from './GenerationPreviewPanel';
 import { SceneSaveLoadControls, StateSaveLoadControls } from './SaveLoadControls';
+import { SceneTemplateBrowser } from './TemplateBrowser';
 import { createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface IntimacySceneComposerProps {
@@ -87,6 +88,7 @@ export function IntimacySceneComposer({
   const [activeTab, setActiveTab] = useState<'basic' | 'gates' | 'generation' | 'validation' | 'save'>('basic');
   const [expandedGateId, setExpandedGateId] = useState<string | null>(null);
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
+  const [showTemplateBrowser, setShowTemplateBrowser] = useState(false);
 
   // Validate scene
   const validation = validateIntimacyScene(scene, worldMaxRating, userMaxRating);
@@ -129,13 +131,25 @@ export function IntimacySceneComposer({
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
       {/* Header */}
       <div className="p-4 border-b dark:border-neutral-700">
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
-          <span>💕</span>
-          Intimacy Scene Composer
-        </h2>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
-          Create relationship-gated intimate scenes with proper safety controls
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+              <span>💕</span>
+              Intimacy Scene Composer
+            </h2>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+              Create relationship-gated intimate scenes with proper safety controls
+            </p>
+          </div>
+          <button
+            onClick={() => setShowTemplateBrowser(true)}
+            disabled={readOnly}
+            className="px-3 py-2 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <span>📚</span>
+            Load Template
+          </button>
+        </div>
 
         {/* Validation status */}
         {!validation.valid && (
@@ -617,6 +631,22 @@ export function IntimacySceneComposer({
           </div>
         )}
       </div>
+
+      {/* Template Browser Modal */}
+      {showTemplateBrowser && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-6xl h-5/6">
+            <SceneTemplateBrowser
+              onImport={(importedScene) => {
+                onChange(importedScene);
+                setShowTemplateBrowser(false);
+              }}
+              availableNpcs={availableNpcs}
+              onClose={() => setShowTemplateBrowser(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -20,6 +20,8 @@ import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 import { validateProgressionArc } from '../../lib/intimacy/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { ArcSaveLoadControls } from './SaveLoadControls';
+import { ArcTemplateBrowser } from './TemplateBrowser';
+import { PlaytestingPanel } from './PlaytestingPanel';
 import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
 
 interface ProgressionArcEditorProps {
@@ -43,6 +45,9 @@ interface ProgressionArcEditorProps {
 
   /** Layout mode */
   layout?: 'horizontal' | 'vertical' | 'list';
+
+  /** Available NPCs for arc assignment */
+  availableNpcs?: Array<{ id: number; name: string }>;
 }
 
 const TIER_COLORS: Record<string, string> = {
@@ -61,10 +66,13 @@ export function ProgressionArcEditor({
   userMaxRating,
   readOnly = false,
   layout = 'horizontal',
+  availableNpcs = [],
 }: ProgressionArcEditorProps) {
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showSaveLoad, setShowSaveLoad] = useState(false);
+  const [showTemplateBrowser, setShowTemplateBrowser] = useState(false);
+  const [showPlaytest, setShowPlaytest] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
 
@@ -182,10 +190,23 @@ export function ProgressionArcEditor({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowTemplateBrowser(true)}
+              disabled={readOnly}
+              className="px-3 py-1 rounded text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              📚 Load Template
+            </button>
+            <button
               onClick={() => setShowSaveLoad(true)}
               className="px-3 py-1 rounded text-sm font-medium bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
             >
               💾 Save/Load
+            </button>
+            <button
+              onClick={() => setShowPlaytest(true)}
+              className="px-3 py-1 rounded text-sm font-medium bg-green-500 text-white hover:bg-green-600"
+            >
+              🎮 Playtest
             </button>
             <button
               onClick={() => setPreviewMode(!previewMode)}
@@ -584,6 +605,34 @@ export function ProgressionArcEditor({
                   disabled={readOnly}
                 />
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Template Browser Modal */}
+        {showTemplateBrowser && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-6xl h-5/6">
+              <ArcTemplateBrowser
+                onImport={(importedArc) => {
+                  onChange(importedArc);
+                  setShowTemplateBrowser(false);
+                }}
+                availableNpcs={availableNpcs}
+                onClose={() => setShowTemplateBrowser(false)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Playtest Panel Modal */}
+        {showPlaytest && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl w-full max-w-6xl h-5/6">
+              <PlaytestingPanel
+                arc={arc}
+                onClose={() => setShowPlaytest(false)}
+              />
             </div>
           </div>
         )}

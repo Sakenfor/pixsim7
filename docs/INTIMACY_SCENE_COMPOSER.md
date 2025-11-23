@@ -1464,6 +1464,262 @@ if (exported.version !== CURRENT_VERSION) {
 
 ---
 
+## Phase 5: Template Library & Presets
+
+### Overview
+
+Phase 5 provides a comprehensive library of pre-built scene templates and progression arc presets. Designers can browse, preview, and import templates as starting points for their own content, accelerating content creation and providing learning examples.
+
+### Scene Templates
+
+Pre-built templates for common intimacy scenarios:
+
+**Flirt Templates:**
+- Casual Flirting - Light, playful flirting between acquaintances
+- Workplace Flirting - Subtle flirting in professional settings
+
+**Date Templates:**
+- Coffee Date - Casual, low-pressure first date
+- Romantic Dinner - Intimate dinner with romantic atmosphere
+- Adventure Date - Exciting outdoor or activity-based date
+
+**Kiss Templates:**
+- First Kiss - Sweet, nervous first kiss
+- Passionate Kiss - Intense, passionate kissing scene
+- Goodbye Kiss - Tender goodbye kiss at end of date
+
+**Intimate Templates:**
+- Cuddling Scene - Intimate cuddling and physical closeness
+- Morning After - Tender morning scene after intimacy (implied)
+
+### Progression Arc Templates
+
+Pre-built progression patterns:
+
+**Romance Arcs:**
+- Friends to Lovers - Classic progression from friendship to romance
+- Slow Burn Romance - Very gradual progression with lots of tension
+- Love at First Sight - Quick progression with instant chemistry
+
+**Friendship Arc:**
+- Platonic Friendship - Deep friendship without romantic elements
+
+### Template Browser UI
+
+```tsx
+import { SceneTemplateBrowser, ArcTemplateBrowser } from '@/components/intimacy/TemplateBrowser';
+
+// Scene template browser
+<SceneTemplateBrowser
+  onImport={(scene) => handleImport(scene)}
+  availableNpcs={npcs}
+  onClose={() => setShowBrowser(false)}
+/>
+
+// Arc template browser
+<ArcTemplateBrowser
+  onImport={(arc) => handleImport(arc)}
+  availableNpcs={npcs}
+  onClose={() => setShowBrowser(false)}
+/>
+```
+
+**Features:**
+- Search and filter by category, difficulty, tags
+- Live preview with full configuration details
+- NPC assignment during import
+- Automatic ID regeneration for cloned templates
+- Integration with IntimacySceneComposer and ProgressionArcEditor
+
+### Template API
+
+```typescript
+import {
+  getSceneTemplates,
+  getArcTemplates,
+  cloneSceneFromTemplate,
+  cloneArcFromTemplate,
+} from '@/lib/intimacy/templates';
+
+// Get filtered templates
+const flirtScenes = getSceneTemplates({ category: 'flirt' });
+const easyArcs = getArcTemplates({ difficulty: 'easy' });
+
+// Clone and customize
+const myScene = cloneSceneFromTemplate(template, [npcId]);
+const myArc = cloneArcFromTemplate(template, npcId);
+```
+
+---
+
+## Phase 6: Playtesting Tools & Analytics
+
+### Overview
+
+Phase 6 provides comprehensive playtesting and analytics tools for testing progression arcs and tracking content usage. Designers can simulate player progression, analyze engagement patterns, and optimize content balance.
+
+### Playtesting Panel
+
+Interactive simulation tool for testing progression arcs:
+
+```tsx
+import { PlaytestingPanel } from '@/components/intimacy/PlaytestingPanel';
+
+<PlaytestingPanel
+  arc={myArc}
+  onClose={() => setShowPlaytest(false)}
+/>
+```
+
+**Features:**
+- Configure starting relationship state
+- Step-by-step progression simulation
+- Auto-play to simulate full progression
+- Live state editing during playtest
+- Detailed analysis and metrics
+- Export playtest sessions
+
+### Playtest Session Management
+
+```typescript
+import {
+  startPlaytestSession,
+  advanceStage,
+  adjustState,
+  analyzePlaytest,
+} from '@/lib/intimacy/playtesting';
+
+// Start session
+const session = startPlaytestSession({
+  arc: myArc,
+  initialState: createStateFromTier('stranger'),
+  applyStageEffects: true,
+  trackAnalytics: true,
+});
+
+// Advance through stages
+const updated = advanceStage(session);
+
+// Analyze results
+const analysis = analyzePlaytest(session);
+console.log(`Completion: ${analysis.completionPercentage}%`);
+console.log(`Duration: ${analysis.durationFormatted}`);
+console.log(`Blocking gates: ${analysis.blockingGates.length}`);
+```
+
+### Analytics Dashboard
+
+Comprehensive analytics tracking and visualization:
+
+```tsx
+import { AnalyticsDashboard } from '@/components/intimacy/AnalyticsDashboard';
+
+<AnalyticsDashboard
+  onClose={() => setShowAnalytics(false)}
+/>
+```
+
+**Metrics Tracked:**
+- Scene usage patterns
+- Completion rates
+- Gate blockages
+- Arc progression
+- Stage completion rates
+- Abandonment points
+
+### Analytics API
+
+```typescript
+import {
+  getSceneAnalyticsSummary,
+  getArcAnalyticsSummary,
+  logSceneEvent,
+  logArcEvent,
+} from '@/lib/intimacy/analytics';
+
+// Log events
+logSceneEvent({
+  timestamp: new Date(),
+  sceneId: 'kiss_beach',
+  sceneName: 'Beach Kiss',
+  sceneType: 'kiss',
+  npcId: 12,
+  eventType: 'scene_completed',
+  playerMetrics: { affinity: 70, trust: 65, chemistry: 60, tension: 40 },
+});
+
+// Get analytics
+const sceneAnalytics = getSceneAnalyticsSummary();
+console.log(`Total scenes: ${sceneAnalytics.totalScenes}`);
+console.log(`Completion rate: ${sceneAnalytics.completionRate}%`);
+console.log(`Most used: ${sceneAnalytics.mostUsedScenes[0].sceneName}`);
+
+const arcAnalytics = getArcAnalyticsSummary();
+console.log(`Arc completion rate: ${arcAnalytics.completionRate}%`);
+console.log(`Avg stages completed: ${arcAnalytics.averageStagesCompleted}`);
+```
+
+### Usage Examples
+
+**Example 1: Playtest an Arc**
+
+```typescript
+// Configure playtest
+const config = {
+  arc: myRomanceArc,
+  initialState: createStateFromTier('stranger'),
+  applyStageEffects: true,
+  trackAnalytics: true,
+};
+
+// Start session
+let session = startPlaytestSession(config);
+
+// Auto-play to find how far we can progress
+session = autoPlay(session);
+
+// Analyze results
+const analysis = analyzePlaytest(session);
+console.log(`Reached stage ${session.currentStageIndex + 1} of ${myRomanceArc.stages.length}`);
+console.log(`Completion: ${analysis.completionPercentage}%`);
+
+// Check for blocking gates
+if (analysis.blockingGates.length > 0) {
+  console.log('Blocked at:', analysis.blockingGates[0].stageName);
+}
+```
+
+**Example 2: Track Usage Analytics**
+
+```typescript
+// Log scene usage
+logSceneEvent({
+  timestamp: new Date(),
+  sceneId: 'first_kiss',
+  sceneName: 'First Kiss',
+  sceneType: 'kiss',
+  npcId: 12,
+  eventType: 'scene_started',
+});
+
+// Later, after scene completes
+logSceneEvent({
+  timestamp: new Date(),
+  sceneId: 'first_kiss',
+  sceneName: 'First Kiss',
+  sceneType: 'kiss',
+  npcId: 12,
+  eventType: 'scene_completed',
+  playerMetrics: currentMetrics,
+});
+
+// View analytics
+const summary = getSceneAnalyticsSummary();
+console.log(`First Kiss attempts: ${summary.mostUsedScenes.find(s => s.sceneId === 'first_kiss')?.attempts}`);
+```
+
+---
+
 ## Implementation Status
 
 ### ✓ Phase 1 - Complete
@@ -1508,13 +1764,31 @@ if (exported.version !== CURRENT_VERSION) {
 - [x] Integration in ProgressionArcEditor (Save/Load modal)
 - [x] Documentation with usage examples
 
-### Phase 5 - Future
+### ✓ Phase 5 - Complete
 
-- [ ] Template library for common patterns
+- [x] Template library (`apps/main/src/lib/intimacy/templates.ts`)
+- [x] Scene templates (10 pre-built templates)
+- [x] Progression arc templates (4 pre-built arcs)
+- [x] Template browser UI (`apps/main/src/components/intimacy/TemplateBrowser.tsx`)
+- [x] Integration in IntimacySceneComposer (Load Template button)
+- [x] Integration in ProgressionArcEditor (Load Template button)
+- [x] Documentation with examples
+
+### ✓ Phase 6 - Complete
+
+- [x] Playtest simulation (`apps/main/src/lib/intimacy/playtesting.ts`)
+- [x] Analytics tracking (`apps/main/src/lib/intimacy/analytics.ts`)
+- [x] PlaytestingPanel component (`apps/main/src/components/intimacy/PlaytestingPanel.tsx`)
+- [x] AnalyticsDashboard component (`apps/main/src/components/intimacy/AnalyticsDashboard.tsx`)
+- [x] Integration in ProgressionArcEditor (Playtest button)
+- [x] Session analysis and export
+- [x] Documentation with examples
+
+### Phase 7 - Future
+
 - [ ] Advanced what-if scenarios (multi-NPC, temporal)
 - [ ] Branching progression paths
 - [ ] Multi-NPC progression arcs
-- [ ] Analytics and playtesting tools
 - [ ] A/B testing for content variations
 
 ---

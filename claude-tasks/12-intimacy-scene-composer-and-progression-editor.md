@@ -1,8 +1,8 @@
 **Task: Intimacy Scene Composer & Relationship Progression Editor (Multi‑Phase)**
 
-> **Status: Phase 1-2 Implementation Complete** ✓
-> **Phase 1 Date**: 2024-11-19
-> **Phase 2 Date**: 2024-11-19
+> **Status: All Phases Complete** ✓ (Phases 1-11)
+> **Phase 1-9 Date**: 2024-11-19
+> **Phase 10-11 Date**: 2025-11-23
 
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document** for editor tooling.
@@ -107,15 +107,25 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - Integration in ProgressionArcEditor (Save/Load modal)
   - Documentation in `docs/INTIMACY_SCENE_COMPOSER.md` (Phase 4 section)
 
-- [ ] **Phase 10 – Templates & Preset Library**
-  - Common scene templates
-  - Preset progression arcs
-  - Template browser and import
+- [x] **Phase 10 – Templates & Preset Library** ✓
+  - Pre-built scene templates (flirt, date, kiss, intimate)
+  - Preset progression arcs (friends-to-lovers, slow burn, etc.)
+  - Template browser UI with filtering and preview
+  - Implemented in:
+    - `apps/main/src/lib/intimacy/templates.ts` – Template definitions and queries
+    - `apps/main/src/components/intimacy/TemplateBrowser.tsx` – Browser UI
+  - Integrated into IntimacySceneComposer and ProgressionArcEditor
 
-- [ ] **Phase 11 – Playtesting Tools & Analytics**
-  - Simulation integration
-  - Progression analytics
-  - Advanced analytics dashboards
+- [x] **Phase 11 – Playtesting Tools & Analytics** ✓
+  - Playtest simulation for progression arcs
+  - Analytics tracking for scenes and arcs
+  - Analytics dashboard with visualizations
+  - Implemented in:
+    - `apps/main/src/lib/intimacy/playtesting.ts` – Playtest session management
+    - `apps/main/src/lib/intimacy/analytics.ts` – Analytics tracking and queries
+    - `apps/main/src/components/intimacy/PlaytestingPanel.tsx` – Playtest UI
+    - `apps/main/src/components/intimacy/AnalyticsDashboard.tsx` – Analytics dashboard
+  - Integrated into ProgressionArcEditor (Playtest button)
 
 ---
 
@@ -138,11 +148,17 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - `packages/types/src/intimacyNodeTypes.ts` – Node type registrations
   - `packages/types/src/generation.ts` – Generation & social context types
 
-- **Frontend Components (Phase 1 - IMPLEMENTED):**
+- **Frontend Components:**
   - `apps/main/src/components/intimacy/IntimacySceneComposer.tsx` – Main editor panel
   - `apps/main/src/components/intimacy/RelationshipGateVisualizer.tsx` – Gate configuration
   - `apps/main/src/components/intimacy/ProgressionArcEditor.tsx` – Timeline editor
+  - `apps/main/src/components/intimacy/TemplateBrowser.tsx` – Template browser (Phase 10)
+  - `apps/main/src/components/intimacy/PlaytestingPanel.tsx` – Playtesting UI (Phase 11)
+  - `apps/main/src/components/intimacy/AnalyticsDashboard.tsx` – Analytics dashboard (Phase 11)
   - `apps/main/src/lib/intimacy/validation.ts` – Validation utilities
+  - `apps/main/src/lib/intimacy/templates.ts` – Template library (Phase 10)
+  - `apps/main/src/lib/intimacy/playtesting.ts` – Playtest utilities (Phase 11)
+  - `apps/main/src/lib/intimacy/analytics.ts` – Analytics tracking (Phase 11)
   - `apps/main/src/components/generation/SocialContextPanel.tsx` – Social context display
 
 - **Backend/game-core (existing):**
