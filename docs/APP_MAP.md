@@ -229,7 +229,7 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 - Dialogue and interactions
 
 **Documentation:**
-- [ACTION_BLOCKS_CONCEPT_DISCOVERY.md](./ACTION_BLOCKS_CONCEPT_DISCOVERY.md) - Concept discovery workflow
+- [CONCEPT_DISCOVERY_WORKFLOW_EXAMPLE.md](./CONCEPT_DISCOVERY_WORKFLOW_EXAMPLE.md) - Concept discovery workflow
 - [ACTION_PROMPT_ENGINE_SPEC.md](./ACTION_PROMPT_ENGINE_SPEC.md) - Prompt engineering system
 - [DYNAMIC_GENERATION_FOUNDATION.md](./DYNAMIC_GENERATION_FOUNDATION.md) - Generation architecture
 

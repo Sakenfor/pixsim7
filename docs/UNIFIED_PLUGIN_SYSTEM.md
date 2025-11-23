@@ -70,6 +70,8 @@ The system supports these plugin families:
 | `node-type` | Scene/arc nodes | Named export (`register*Node`) | `/src/lib/plugins/` |
 | `renderer` | Node renderers | Auto-registered from node type metadata | `/src/components/graph/` |
 | `ui-plugin` | UI overlays/menus | PluginManager API | User-loaded bundles |
+| `dev-tool` | Developer/debug tools | Registry API (`registerDevTool`) | `/src/lib/devtools/` |
+| `graph-editor` | Graph editor surfaces | Registry API (`registerGraphEditor`) | `/src/lib/graph/` |
 
 ## Registration Patterns
 
@@ -177,6 +179,12 @@ interface PluginMetadata {
 
 // Renderers
 { nodeType: string, preloadPriority?: number }
+
+// Dev tools
+{ category?: string, icon?: string }
+
+// Graph editors
+{ storeId?: string, category?: string, supportsMultiScene?: boolean, supportsWorldContext?: boolean, supportsPlayback?: boolean }
 ```
 
 ## Discovery & Loading
@@ -506,6 +514,44 @@ export default function CraftingNodeRenderer({ node, data }: NodeRendererProps) 
 3. Renderer discovered via `/src/components/graph/**/*Renderer.tsx`
 4. Renderer auto-linked via `rendererComponent: 'CraftingNodeRenderer'`
 5. Both added to catalog with proper metadata
+
+### Creating a New Dev Tool Plugin
+
+```typescript
+// lib/devtools/customDevTool.ts
+import { registerDevTool } from '../plugins/registryBridge';
+import { MyDebugPanel } from '../../components/dev/MyDebugPanel';
+
+export function registerMyDebugTool() {
+  registerDevTool({
+    id: 'my-debug-tool',
+    label: 'My Debug Tool',
+    description: 'Custom debugging panel for my feature',
+    icon: '🔧',
+    category: 'debug',
+    panelComponent: MyDebugPanel,
+    tags: ['debug', 'custom', 'diagnostics'],
+  });
+}
+```
+
+```tsx
+// components/dev/MyDebugPanel.tsx
+export function MyDebugPanel() {
+  return (
+    <div className="p-4">
+      <h2 className="text-lg font-bold">My Debug Tool</h2>
+      <p>Custom debug information here...</p>
+    </div>
+  );
+}
+```
+
+**Auto-registration:**
+1. Call `registerMyDebugTool()` during app initialization
+2. Tool appears in DevToolsPanel and Plugin Browser
+3. Can be opened as a panel in dev workspace presets
+4. Metadata tracked in plugin catalog
 
 ### Querying the Plugin Catalog
 

@@ -1,6 +1,6 @@
 # PixSim7 Task Tracking Overview
 
-**Last Updated:** 2025-11-20
+**Last Updated:** 2025-11-23
 **Purpose:** Comprehensive status of all Claude tasks to enable quick coordination between agents and humans without redundant analysis.
 
 ---
@@ -47,6 +47,11 @@ This document provides a **single source of truth** for what's been completed an
 | 26 | Character Identity & Scene-Asset Graph | ✅ Complete | 5/5 | All phases complete; graph API + frontend browser |
 | 27 | Registry Unification & Dogfooding | ✅ Complete | 4/4 | All phases complete; core now uses plugin APIs |
 | 28 | Extensible Scoring & Simulation Config | ✅ Complete | 5/5 | All phases complete; pluggable scoring + custom styles |
+| 50 | Plugin-Based Panel Registry | ✅ Complete | 5/5 | All phases complete; panels as plugins |
+| 51 | Plugin Browser & Management | ✅ Complete | 5/5 | All phases complete; unified plugin UI |
+| 52 | Panel Configuration & Layout | ✅ Complete | 5/5 | All phases complete; panel config store |
+| 53 | Graph Editor Registry & Surfaces | ✅ Complete | 5/5 | All phases complete; graph editor plugin system |
+| 54 | Dev Tools Surface & Debug Workspace | ✅ Complete | 5/5 | All phases complete; dev tools registry and presets |
 
 **Legend:**
 - ✅ Complete: All or nearly all phases done
@@ -347,6 +352,119 @@ This document provides a **single source of truth** for what's been completed an
 - `packages/game/engine/src/world/gameProfile.ts`
 - `packages/types/src/game.ts`
 - `claude-tasks/28-extensible-scoring-and-simulation-config.md`
+
+---
+
+#### Task 50: Plugin-Based Panel Registry
+**Status:** ✅ All 5 phases complete (2025-11-22)
+
+**What it does:**
+- Unified panel registration via plugin system
+- Core panels as a plugin (corePanelsPlugin)
+- Panel metadata with categories, tags, icons
+- Plugin-based panel discovery and management
+
+**Key Changes:**
+- Created `PanelPlugin` type and `PanelDefinition` interface
+- Moved all core panels to `corePanelsPlugin.tsx`
+- Integrated panel registry with plugin catalog
+- Added panel categories: core, game, development, tools
+
+**Key Files:**
+- `apps/main/src/lib/panels/panelPlugin.ts`
+- `apps/main/src/lib/panels/corePanelsPlugin.tsx`
+- `apps/main/src/lib/panels/panelRegistry.ts`
+
+---
+
+#### Task 51: Plugin Browser & Management
+**Status:** ✅ All 5 phases complete (2025-11-22)
+
+**What it does:**
+- Unified plugin browser UI showing all plugin families
+- Filter by family, origin, activation state
+- Enable/disable plugins with activation controls
+- Plugin search and detailed plugin cards
+
+**Key Files:**
+- `apps/main/src/components/settings/PluginBrowserPanel.tsx`
+- `apps/main/src/lib/plugins/pluginSystem.ts`
+- Registered as 'plugin-browser' panel in settings
+
+---
+
+#### Task 52: Panel Configuration & Layout
+**Status:** ✅ All 5 phases complete (2025-11-22)
+
+**What it does:**
+- Panel configuration store (panelConfigStore)
+- Per-panel settings (compact mode, visibility, etc.)
+- Integration with workspace layouts
+- Panel state persistence
+
+**Key Files:**
+- `apps/main/src/stores/panelConfigStore.ts`
+- Panel configs for all core panels
+- Integration with workspace presets
+
+---
+
+#### Task 53: Graph Editor Registry & Surfaces
+**Status:** ✅ All 5 phases complete (2025-11-23)
+
+**What it does:**
+- Graph editor registry for multiple graph editor types
+- GraphEditorDefinition with metadata and store bindings
+- Built-in graph editors: scene-graph-v2, arc-graph
+- Workspace preset integration for graph editor selection
+- Graph editor switcher in workspace UI
+
+**Key Changes:**
+- Created `GraphEditorRegistry` and `GraphEditorDefinition`
+- Registered scene and arc graph editors
+- Added graph editor selection to workspace presets
+- Integrated with panel system
+
+**Key Files:**
+- `apps/main/src/lib/graph/editorRegistry.ts`
+- `apps/main/src/lib/graph/registerGraphEditors.ts`
+- `apps/main/src/components/graph/GraphEditorHost.tsx`
+- `docs/NODE_EDITOR_DEVELOPMENT.md`
+
+---
+
+#### Task 54: Dev Tools Surface & Debug Workspace
+**Status:** ✅ All 5 phases complete (2025-11-23)
+
+**What it does:**
+- Developer tools registry (devToolRegistry)
+- DevToolsPanel for browsing and accessing dev tools
+- Dev workspace presets (dev-default, dev-plugins, dev-architecture)
+- Plugin integration for dev tools
+- Registered 8 built-in dev tools: session viewer, plugin workspace, dependency graph, app map, backend architecture, generation health, template analytics, capability testing
+
+**Complete:**
+- Phase 1: Dev tool definition & registry with search/filtering
+- Phase 2: Registered existing dev tools (8 tools)
+- Phase 3: Dev workspace presets & navigation panel
+- Phase 4: Plugin integration ('dev-tool' family)
+- Phase 5: UX polish & comprehensive documentation
+
+**Key Changes:**
+- Created `DevToolRegistry` with category-based organization
+- Implemented `DevToolsPanel` with search and filtering
+- Added 3 dev workspace presets to workspaceStore
+- Extended plugin system with 'dev-tool' plugin family
+- Added registerDevTool() to registry bridge
+
+**Key Files:**
+- `apps/main/src/lib/devtools/devToolRegistry.ts`
+- `apps/main/src/lib/devtools/registerDevTools.ts`
+- `apps/main/src/components/dev/DevToolsPanel.tsx`
+- `apps/main/src/lib/plugins/registryBridge.ts`
+- `docs/APP_MAP.md` (Dev Tools section)
+- `docs/SYSTEM_OVERVIEW.md` (Dev Tools section)
+- `claude-tasks/54-dev-tools-surface-and-debug-workspace.md`
 
 ---
 
