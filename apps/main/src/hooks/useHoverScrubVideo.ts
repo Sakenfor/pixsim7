@@ -1,6 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from 'react';
 
-export function useHoverScrubVideo(videoRef: React.RefObject<HTMLVideoElement>) {
+export function useHoverScrubVideo(videoRef: RefObject<HTMLVideoElement>) {
   const [isHovered, setIsHovered] = useState(false);
   const [hasStartedPlaying, setHasStartedPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
@@ -29,7 +36,7 @@ export function useHoverScrubVideo(videoRef: React.RefObject<HTMLVideoElement>) 
     setProgress(0);
   }, [videoRef]);
 
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
+  const onMouseMove = useCallback((e: MouseEvent) => {
     const v = videoRef.current;
     const el = containerRef.current;
     if (!v || !el || !hasStartedPlaying) return;

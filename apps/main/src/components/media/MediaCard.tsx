@@ -88,8 +88,8 @@ export function MediaCard(props: MediaCardProps) {
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
   const objectUrlRef = useRef<string | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement>(null as unknown as HTMLVideoElement);
-  const hover = useHoverScrubVideo(videoRef as React.RefObject<HTMLVideoElement>);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hover = useHoverScrubVideo(videoRef);
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);

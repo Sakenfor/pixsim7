@@ -5,15 +5,16 @@
 
   const STYLE = `
     .${BADGE_CLASS} {
-      position: fixed; z-index: 2147483000;
+      position: fixed; z-index: 2147483646;
       background: rgba(17,24,39,0.92); color: #e5e7eb; font-size: 11px; line-height: 1;
       padding: 6px 8px; border-radius: 6px; cursor: pointer; opacity: 0.95;
       display: inline-flex; align-items: center; gap: 6px; user-select: none;
       box-shadow: 0 6px 18px rgba(0,0,0,.2); border: 1px solid rgba(55,65,81,.6);
+      pointer-events: auto;
     }
-    .${BADGE_CLASS}:hover { background: rgba(31,41,55,0.98); }
+    .${BADGE_CLASS}:hover { background: rgba(31,41,55,0.98); opacity: 1; }
 
-    .${MENU_CLASS} { position: fixed; z-index: 2147483001; background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+    .${MENU_CLASS} { position: fixed; z-index: 2147483647; background: #111827; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; pointer-events: auto; }
     .${MENU_CLASS} button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: inherit; padding: 8px 10px; font-size: 12px; cursor: pointer; }
     .${MENU_CLASS} button:hover { background: #1f2937; }
 
@@ -129,12 +130,27 @@
   function positionBadgeFor(img) {
     const b = ensureBadge();
     const r = img.getBoundingClientRect();
+
+    // Hide if image is mostly off-screen
+    if (r.top < -r.height * 0.5 || r.bottom > window.innerHeight + r.height * 0.5 ||
+        r.left < -r.width * 0.5 || r.right > window.innerWidth + r.width * 0.5) {
+      b.style.display = 'none';
+      return;
+    }
+
     b.style.display = 'inline-flex';
     // Force layout to get accurate size
     const bw = b.offsetWidth || 60;
     const bh = b.offsetHeight || 20;
-    const x = Math.floor(r.right - 8 - bw);
-    const y = Math.floor(r.bottom - 8 - bh);
+
+    // Position at top-right, with bounds checking
+    let x = Math.floor(r.right - 8 - bw);
+    let y = Math.floor(r.top + 8);
+
+    // Ensure badge stays within viewport
+    x = Math.max(8, Math.min(x, window.innerWidth - bw - 8));
+    y = Math.max(8, Math.min(y, window.innerHeight - bh - 8));
+
     b.style.left = `${x}px`;
     b.style.top = `${y}px`;
   }
@@ -205,9 +221,18 @@
     document.__pixsim7_badgeBound = true;
   }
 
-  function onScrollOrResize() { 
+  let scrollTimeout = null;
+  function onScrollOrResize() {
+    // Immediate update for better responsiveness
     if (currentImg) positionBadgeFor(currentImg);
     else if (currentVideo) positionBadgeFor(currentVideo);
+
+    // Also debounce to reduce overhead on fast scrolling
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      if (currentImg) positionBadgeFor(currentImg);
+      else if (currentVideo) positionBadgeFor(currentVideo);
+    }, 50);
   }
 
   async function init() {

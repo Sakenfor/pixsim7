@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssets } from '../hooks/useAssets';
 import { useProviders } from '../hooks/useProviders';
 import { MediaCard } from '../components/media/MediaCard';
@@ -121,10 +121,11 @@ export function AssetsRoute() {
   const [view, setView] = useState<'remote' | 'local'>('remote');
 
   // Get current surface ID from URL
+  const location = useLocation();
   const currentSurfaceId = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     return params.get('surface') || 'assets-default';
-  }, []);
+  }, [location.search]);
 
   // Gallery tools state
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
