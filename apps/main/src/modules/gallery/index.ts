@@ -1,6 +1,7 @@
 import type { Module } from '../types';
 import type { Asset } from '../../types';
 import { logEvent } from '../../lib/logging';
+import { GalleryModule as GalleryModuleComponent } from '../../components/control/modules/GalleryModule';
 
 /**
  * Gallery Module
@@ -27,6 +28,22 @@ export const galleryModule: GalleryModule = {
   },
 
   isReady: () => true,
+
+  // Auto-register Control Center module
+  controlCenterModules: [
+    {
+      id: 'gallery',
+      label: 'Gallery',
+      icon: '🖼️',
+      component: GalleryModuleComponent,
+      category: 'tools',
+      order: 50,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Gallery controls and asset management',
+      tags: ['gallery', 'assets', 'media'],
+    },
+  ],
 
   // Placeholder methods - to be implemented
   getAssets: async () => {

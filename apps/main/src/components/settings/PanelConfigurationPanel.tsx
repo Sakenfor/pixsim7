@@ -396,6 +396,62 @@ function PanelCard({
               </label>
               </div>
             </div>
+
+            {/* Generation Actions Section */}
+            <div className="flex flex-col gap-1 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+              <span className="text-[10px] font-semibold text-neutral-600 dark:text-neutral-400">Generation Actions:</span>
+              <div className="grid grid-cols-2 gap-1.5">
+                <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={panel.settings?.badgeConfig?.showGenerationBadge ?? true}
+                    onChange={(e) => onUpdateSettings({
+                      badgeConfig: {
+                        ...panel.settings?.badgeConfig,
+                        showGenerationBadge: e.target.checked,
+                      }
+                    })}
+                    className="w-3 h-3"
+                  />
+                  <span>⚡ Generation badge</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={panel.settings?.badgeConfig?.showGenerationInMenu ?? true}
+                    onChange={(e) => onUpdateSettings({
+                      badgeConfig: {
+                        ...panel.settings?.badgeConfig,
+                        showGenerationInMenu: e.target.checked,
+                      }
+                    })}
+                    className="w-3 h-3"
+                  />
+                  <span>Show in menu</span>
+                </label>
+              </div>
+
+              {/* Quick Action Selector */}
+              <div className="flex flex-col gap-1 mt-1">
+                <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Quick Action:</span>
+                <select
+                  value={panel.settings?.badgeConfig?.generationQuickAction ?? 'auto'}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      generationQuickAction: e.target.value as any,
+                    }
+                  })}
+                  className="px-2 py-1 text-[10px] border rounded bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+                >
+                  <option value="auto">Auto (Smart Default)</option>
+                  <option value="image_to_video">Image → Video</option>
+                  <option value="video_extend">Video Extend</option>
+                  <option value="add_to_transition">Add to Transition</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+            </div>
           </div>
         )}
       </div>

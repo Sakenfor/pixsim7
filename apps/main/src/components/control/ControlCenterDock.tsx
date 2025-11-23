@@ -3,14 +3,9 @@ import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
 import { controlCenterModuleRegistry } from '../../lib/control/controlCenterModuleRegistry';
-import { registerBuiltInModules } from '../../lib/control/builtInModules';
 
-// Register built-in modules on first import
-let modulesRegistered = false;
-if (!modulesRegistered) {
-  registerBuiltInModules();
-  modulesRegistered = true;
-}
+// Note: Control Center modules are now auto-registered when their parent modules
+// register with the global module registry (see modules/index.ts)
 
 export function ControlCenterDock() {
   // Use separate selectors to avoid creating new objects on every render

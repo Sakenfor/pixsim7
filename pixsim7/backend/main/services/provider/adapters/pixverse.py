@@ -937,6 +937,59 @@ class PixverseProvider(Provider):
             'raw_data': user_info_data,  # Save entire response
         }
 
+    async def _try_auto_reauth(self, account: ProviderAccount) -> bool:
+        """
+        Attempt automatic re-authentication using Playwright
+
+        Returns True if re-auth succeeded, False otherwise
+        """
+        try:
+            # Check if auto-reauth is enabled for this provider
+            from pixsim7.backend.main.api.v1.providers import _load_provider_settings
+            settings = _load_provider_settings()
+            provider_settings = settings.get(self.provider_id)
+
+            if not provider_settings or not provider_settings.auto_reauth_enabled:
+                logger.info(f"Auto-reauth disabled for {self.provider_id}")
+                return False
+
+            # Get password (account password or global password)
+            password = account.password or (provider_settings.global_password if provider_settings else None)
+            if not password:
+                logger.warning(f"No password available for auto-reauth (account {account.id})")
+                return False
+
+            logger.info(f"Attempting auto-reauth for account {account.id} (email: {account.email})")
+
+            # Use the auth service to re-login
+            from pixsim7.backend.main.services.provider.pixverse_auth_service import PixverseAuthService
+            async with PixverseAuthService() as auth_service:
+                cookies = await auth_service.login_with_password(
+                    account.email,
+                    password,
+                    headless=True,
+                )
+
+            # Extract new session data
+            raw_data = {"cookies": cookies}
+            extracted = await self.extract_account_data(raw_data)
+
+            # Update account credentials (simplified - normally would use account service)
+            if extracted.get("jwt_token"):
+                account.jwt_token = extracted["jwt_token"]
+            if extracted.get("cookies"):
+                account.cookies = extracted["cookies"]
+
+            # Evict cache so next call uses new credentials
+            self._evict_account_cache(account)
+
+            logger.info(f"Auto-reauth successful for account {account.id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Auto-reauth failed for account {account.id}: {e}", exc_info=True)
+            return False
+
     def get_credits(self, account: ProviderAccount) -> dict:
         """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
 
@@ -985,11 +1038,13 @@ class PixverseProvider(Provider):
 
         # 1) Web credits via /creative_platform/user/credits
         web_total = 0
+        session_invalid = False
         try:
             web_data = api.get_credits(temp_account)
             web_total = int(web_data.get("total_credits") or 0)
         except Exception as e:
             if self._is_session_invalid_error(e):
+                session_invalid = True
                 self._evict_account_cache(account)
             logger.warning(f"PixverseAPI get_credits (web) failed: {e}")
 
@@ -1001,8 +1056,27 @@ class PixverseProvider(Provider):
                 openapi_total = int(openapi_data.get("total_credits") or 0)
             except Exception as e:
                 if self._is_session_invalid_error(e):
+                    session_invalid = True
                     self._evict_account_cache(account)
                 logger.warning(f"PixverseAPI get_openapi_credits failed: {e}")
+
+        # If session was invalid, attempt auto-reauth
+        if session_invalid:
+            logger.warning(f"Session invalid for account {account.id}, attempting auto-reauth")
+            # Run async reauth in sync context (get_credits is sync)
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            reauth_success = loop.run_until_complete(self._try_auto_reauth(account))
+
+            if reauth_success:
+                # Retry getting credits with new session
+                logger.info(f"Retrying get_credits after successful auto-reauth")
+                return self.get_credits(account)  # Recursive retry once
 
         result: Dict[str, Any] = {
             "web": max(0, web_total),

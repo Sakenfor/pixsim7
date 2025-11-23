@@ -1,6 +1,7 @@
 import type { Module } from '../types';
 import { registerWorkspaceFeature } from '../../lib/capabilities/registerCoreFeatures';
 import { initializePanels } from '../../lib/panels/initializePanels';
+import { WorkspaceModule as WorkspaceModuleComponent } from '../../components/control/modules/WorkspaceModule';
 
 /**
  * Workspace Module
@@ -22,4 +23,20 @@ export const workspaceModule: Module = {
     // as floating windows from anywhere.
     await initializePanels();
   },
+
+  // Auto-register Control Center module
+  controlCenterModules: [
+    {
+      id: 'workspace',
+      label: 'Workspace',
+      icon: '🏗️',
+      component: WorkspaceModuleComponent,
+      category: 'tools',
+      order: 60,
+      enabledByDefault: true,
+      builtin: true,
+      description: 'Workspace management and presets',
+      tags: ['workspace', 'layout', 'presets'],
+    },
+  ],
 };

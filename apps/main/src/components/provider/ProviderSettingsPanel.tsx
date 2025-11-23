@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Modal, FormField, Input, Button } from '@pixsim7/shared.ui';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
@@ -338,6 +338,13 @@ function AccountRow({ account, onEditNickname, onToggleStatus, onDelete }: Accou
   );
 }
 
+interface ProviderSettings {
+  provider_id: string;
+  global_password: string | null;
+  auto_reauth_enabled: boolean;
+  auto_reauth_max_retries: number;
+}
+
 export function ProviderSettingsPanel() {
   const { providers } = useProviders();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -347,6 +354,11 @@ export function ProviderSettingsPanel() {
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
+
+  // Provider-level settings
+  const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
+  const [showProviderSettings, setShowProviderSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const handleSaveAccount = async (accountId: number, data: {
     email?: string;
@@ -376,6 +388,51 @@ export function ProviderSettingsPanel() {
   const handleDeleteAccount = async (accountId: number) => {
     await deleteAccount(accountId);
     setRefreshKey(prev => prev + 1);
+  };
+
+  // Load provider settings when activeProvider changes
+  const loadProviderSettings = async (providerId: string) => {
+    try {
+      const response = await fetch(`/api/v1/providers/${providerId}/settings`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const settings = await response.json();
+        setProviderSettings(settings);
+      }
+    } catch (error) {
+      console.error('Failed to load provider settings:', error);
+    }
+  };
+
+  const saveProviderSettings = async () => {
+    if (!activeProvider || !providerSettings) return;
+
+    setSavingSettings(true);
+    try {
+      const response = await fetch(`/api/v1/providers/${activeProvider}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          global_password: providerSettings.global_password || null,
+          auto_reauth_enabled: providerSettings.auto_reauth_enabled,
+          auto_reauth_max_retries: providerSettings.auto_reauth_max_retries
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save settings');
+      }
+
+      alert('Provider settings saved successfully');
+      setShowProviderSettings(false);
+    } catch (error) {
+      console.error('Failed to save provider settings:', error);
+      alert(`Failed to save settings: ${error}`);
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   // Get provider names map

@@ -1,4 +1,5 @@
 import { logEvent } from '../lib/logging';
+import type { ControlCenterModule } from '../lib/control/controlCenterModuleRegistry';
 
 /**
  * Base Module Interface
@@ -41,6 +42,12 @@ export interface Module {
 
   /** Check if module is ready to use */
   isReady?: () => boolean;
+
+  /**
+   * Control Center modules (optional)
+   * Modules can provide CC modules that will be automatically registered
+   */
+  controlCenterModules?: ControlCenterModule[];
 }
 
 /**
@@ -60,6 +67,21 @@ class ModuleRegistry {
 
     this.modules.set(module.id, module);
     logEvent('INFO', 'module_registered', { moduleId: module.id, moduleName: module.name });
+
+    // Auto-register any Control Center modules
+    if (module.controlCenterModules && module.controlCenterModules.length > 0) {
+      // Dynamic import to avoid circular dependency
+      import('../lib/control/controlCenterModuleRegistry').then(({ controlCenterModuleRegistry }) => {
+        module.controlCenterModules!.forEach(ccModule => {
+          controlCenterModuleRegistry.register(ccModule);
+          logEvent('INFO', 'cc_module_registered_from_module', {
+            moduleId: module.id,
+            ccModuleId: ccModule.id,
+            ccModuleLabel: ccModule.label
+          });
+        });
+      });
+    }
   }
 
   get<T extends Module>(id: string): T | undefined {

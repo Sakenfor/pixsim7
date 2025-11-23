@@ -31,6 +31,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: true,
       showFooterProvider: true,
       showFooterDate: true,
+      showGenerationBadge: true,
+      showGenerationInMenu: true,
+      generationQuickAction: 'auto',
     },
   },
   {
@@ -45,6 +48,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: false,
       showFooterProvider: false,
       showFooterDate: false,
+      showGenerationBadge: false,
+      showGenerationInMenu: true,
+      generationQuickAction: 'auto',
     },
   },
   {
@@ -59,6 +65,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: false,
       showFooterProvider: false,
       showFooterDate: true,
+      showGenerationBadge: true,
+      showGenerationInMenu: false,
+      generationQuickAction: 'auto',
     },
   },
   {
@@ -73,6 +82,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: true,
       showFooterProvider: true,
       showFooterDate: true,
+      showGenerationBadge: true,
+      showGenerationInMenu: true,
+      generationQuickAction: 'auto',
     },
   },
   {
@@ -87,6 +99,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: true,
       showFooterProvider: true,
       showFooterDate: true,
+      showGenerationBadge: false,
+      showGenerationInMenu: false,
+      generationQuickAction: 'none',
     },
   },
   {
@@ -101,6 +116,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: false,
       showFooterProvider: true,
       showFooterDate: false,
+      showGenerationBadge: false,
+      showGenerationInMenu: true,
+      generationQuickAction: 'none',
     },
   },
   {
@@ -115,6 +133,9 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: false,
       showFooterProvider: false,
       showFooterDate: false,
+      showGenerationBadge: false,
+      showGenerationInMenu: false,
+      generationQuickAction: 'none',
     },
   },
 ];

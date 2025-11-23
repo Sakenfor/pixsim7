@@ -2,15 +2,21 @@
 Provider Management API - Provider detection and information
 """
 from typing import Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from urllib.parse import urlparse
+import json
+from pathlib import Path
 
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import Provider
 
 router = APIRouter()
+
+# Provider settings storage (simple file-based for now)
+PROVIDER_SETTINGS_FILE = Path("data/provider_settings.json")
+PROVIDER_SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _method_overridden(provider: Provider, method_name: str) -> bool:
@@ -41,6 +47,21 @@ class ProviderDetectionResponse(BaseModel):
     detected: bool
     provider: Optional[ProviderInfo] = None
     url: str
+
+
+class ProviderSettings(BaseModel):
+    """Provider-level settings"""
+    provider_id: str
+    global_password: Optional[str] = None  # Global password for re-auth (encrypted in production)
+    auto_reauth_enabled: bool = True  # Enable automatic re-auth on session expiry
+    auto_reauth_max_retries: int = 3  # Max auto-reauth attempts
+
+
+class ProviderSettingsUpdate(BaseModel):
+    """Update provider settings"""
+    global_password: Optional[str] = None
+    auto_reauth_enabled: Optional[bool] = None
+    auto_reauth_max_retries: Optional[int] = None
 
 
 # Provider domain mappings (centralized configuration)
@@ -249,3 +270,87 @@ def extract_provider_capabilities(provider) -> dict:
         base["parameter_hints"] = {op: ["prompt"] for op in ops}
 
     return base
+
+
+# ===== PROVIDER SETTINGS =====
+
+def _load_provider_settings() -> dict[str, ProviderSettings]:
+    """Load provider settings from file"""
+    if not PROVIDER_SETTINGS_FILE.exists():
+        return {}
+    try:
+        with open(PROVIDER_SETTINGS_FILE, 'r') as f:
+            data = json.load(f)
+            return {k: ProviderSettings(**v) for k, v in data.items()}
+    except Exception:
+        return {}
+
+
+def _save_provider_settings(settings: dict[str, ProviderSettings]) -> None:
+    """Save provider settings to file"""
+    try:
+        with open(PROVIDER_SETTINGS_FILE, 'w') as f:
+            data = {k: v.model_dump() for k, v in settings.items()}
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        raise RuntimeError(f"Failed to save provider settings: {e}")
+
+
+@router.get("/providers/{provider_id}/settings", response_model=ProviderSettings)
+async def get_provider_settings(
+    provider_id: str,
+    user: CurrentUser
+):
+    """
+    Get settings for a specific provider
+
+    Returns default settings if none configured yet.
+    """
+    settings = _load_provider_settings()
+    if provider_id in settings:
+        return settings[provider_id]
+
+    # Return defaults
+    return ProviderSettings(
+        provider_id=provider_id,
+        global_password=None,
+        auto_reauth_enabled=True,
+        auto_reauth_max_retries=3
+    )
+
+
+@router.patch("/providers/{provider_id}/settings", response_model=ProviderSettings)
+async def update_provider_settings(
+    provider_id: str,
+    updates: ProviderSettingsUpdate,
+    user: CurrentUser
+):
+    """
+    Update settings for a specific provider
+
+    Supports partial updates (only provided fields are updated).
+    """
+    # Only admins can update provider settings for security
+    if not user.is_admin():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can update provider settings"
+        )
+
+    settings = _load_provider_settings()
+
+    # Get current or create new
+    if provider_id in settings:
+        current = settings[provider_id]
+    else:
+        current = ProviderSettings(provider_id=provider_id)
+
+    # Apply updates
+    update_data = updates.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(current, field, value)
+
+    settings[provider_id] = current
+    _save_provider_settings(settings)
+
+    return current

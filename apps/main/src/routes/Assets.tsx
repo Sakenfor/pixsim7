@@ -12,6 +12,8 @@ import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
+import { useGenerationQueueStore } from '../stores/generationQueueStore';
+import { useControlCenterStore } from '../stores/controlCenterStore';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
@@ -35,6 +37,12 @@ export function AssetsRoute() {
   const selectAsset = useAssetPickerStore((s) => s.selectAsset);
   const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+
+  // Generation queue
+  const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
+  const addToTransitionQueue = useGenerationQueueStore((s) => s.addToTransitionQueue);
+  const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
+  const setControlCenterActiveModule = useControlCenterStore((s) => s.setActiveModule);
 
   // Filters state derived from URL + sessionStorage
   const params = new URLSearchParams(window.location.search);
@@ -73,12 +81,12 @@ export function AssetsRoute() {
     closeFloatingPanel('gallery');
   };
 
-  const handleCancelSelection = () => {
-    exitSelectionMode();
-    closeFloatingPanel('gallery');
-  };
+	  const handleCancelSelection = () => {
+	    exitSelectionMode();
+	    closeFloatingPanel('gallery');
+	  };
 
-  function updateURL(next: typeof filters) {
+	  function updateURL(next: typeof filters) {
     const p = new URLSearchParams();
     if (next.q) p.set('q', next.q);
     if (next.tag) p.set('tag', next.tag);
@@ -597,10 +605,10 @@ export function AssetsRoute() {
             </div>
           )}
 
-          {layout === 'masonry' ? (
-            <MasonryGrid
-              items={cardItems}
-              rowGap={layoutSettings.rowGap}
+	          {layout === 'masonry' ? (
+	            <MasonryGrid
+	              items={cardItems}
+	              rowGap={layoutSettings.rowGap}
               columnGap={layoutSettings.columnGap}
             />
           ) : (
@@ -608,14 +616,13 @@ export function AssetsRoute() {
               className="grid md:grid-cols-3 lg:grid-cols-4"
               style={{
                 rowGap: `${layoutSettings.rowGap}px`,
-                columnGap: `${layoutSettings.columnGap}px`,
-              }}
-            >
-              {cardItems}
-            </div>
-          )}
-
-          <div className="pt-4">
+	              columnGap: `${layoutSettings.columnGap}px`,
+	              }}
+	            >
+	              {cardItems}
+	            </div>
+	          )}
+	          <div className="pt-4">
             {hasMore && (
               <button disabled={loading} onClick={loadMore} className="border px-4 py-2 rounded">
                 {loading ? 'Loading...' : 'Load More'}

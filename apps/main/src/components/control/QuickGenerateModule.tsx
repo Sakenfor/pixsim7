@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { useNavigate } from 'react-router-dom';
 import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
 import { useAssetSelectionStore } from '../../stores/assetSelectionStore';
+import { useGenerationQueueStore } from '../../stores/generationQueueStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '../../hooks/useProviders';
@@ -37,6 +38,12 @@ export function QuickGenerateModule() {
 
   // Active asset support
   const lastSelectedAsset = useAssetSelectionStore(s => s.lastSelectedAsset);
+
+  // Generation queue support
+  const mainQueue = useGenerationQueueStore(s => s.mainQueue);
+  const transitionQueue = useGenerationQueueStore(s => s.transitionQueue);
+  const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
+  const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
 
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
@@ -76,6 +83,40 @@ export function QuickGenerateModule() {
       setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
     }
   }, [lastSelectedAsset, operationType]);
+
+  // Auto-fill from generation queue
+  useEffect(() => {
+    const nextInQueue = mainQueue[0];
+    if (!nextInQueue) return;
+
+    const { asset, operation } = nextInQueue;
+
+    // Set operation type if specified
+    if (operation) {
+      setOperationType(operation);
+    }
+
+    // Auto-fill based on operation and asset type
+    if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
+      setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
+      if (!operation) setOperationType('image_to_video');
+    } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
+      setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
+      if (!operation) setOperationType('video_extend');
+    }
+  }, [mainQueue, setOperationType]);
+
+  // Auto-fill transition queue
+  useEffect(() => {
+    if (transitionQueue.length === 0) return;
+
+    // Set operation to video_transition
+    setOperationType('video_transition');
+
+    // Fill image URLs from transition queue
+    const urls = transitionQueue.map(item => item.asset.remote_url);
+    setImageUrls(urls);
+  }, [transitionQueue, setOperationType]);
 
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -237,6 +278,50 @@ export function QuickGenerateModule() {
               Use Asset
             </button>
           ) : null}
+        </div>
+      )}
+
+      {/* Queued assets indicator */}
+      {(mainQueue.length > 0 || transitionQueue.length > 0) && (
+        <div className="flex flex-col gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded text-xs flex-shrink-0">
+          {mainQueue.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-purple-700 dark:text-purple-300">
+                ⚡ Queue: {mainQueue[0].asset.provider_asset_id} ({mainQueue[0].asset.media_type})
+                {mainQueue.length > 1 && ` +${mainQueue.length - 1} more`}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => consumeFromQueue('main')}
+                className="px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-[10px]"
+                disabled={generating}
+              >
+                Use & Remove
+              </button>
+              <button
+                onClick={() => removeFromQueue(mainQueue[0].asset.id, 'main')}
+                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
+                disabled={generating}
+              >
+                Remove
+              </button>
+            </div>
+          )}
+          {transitionQueue.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-purple-700 dark:text-purple-300">
+                🎬 Transition Queue: {transitionQueue.length} asset{transitionQueue.length !== 1 ? 's' : ''}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => useGenerationQueueStore.getState().clearQueue('transition')}
+                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
+                disabled={generating}
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
       )}
 
