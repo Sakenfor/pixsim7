@@ -477,3 +477,94 @@ async def build_social_context(
     except Exception as e:
         logger.error(f"Failed to build social context: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to build social context: {str(e)}")
+
+
+# ===== PHASE 7: TELEMETRY ENDPOINTS =====
+
+@router.get("/generations/telemetry/providers")
+async def get_provider_health_metrics(
+    user: CurrentUser
+):
+    """
+    Get health metrics for all providers (Phase 7)
+
+    Returns aggregated metrics including:
+    - Success rates
+    - Latency percentiles (p50, p95, p99)
+    - Total costs and token usage
+    - Error counts
+
+    Useful for monitoring provider performance and debugging.
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        health_data = await telemetry.get_all_provider_health()
+        return {"providers": health_data}
+    except Exception as e:
+        logger.error(f"Failed to get provider health: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get provider health: {str(e)}")
+
+
+@router.get("/generations/telemetry/providers/{provider_id}")
+async def get_provider_health(
+    provider_id: str,
+    user: CurrentUser
+):
+    """
+    Get health metrics for a specific provider (Phase 7)
+
+    Returns:
+    - total_generations: Total number of generations
+    - completed/failed: Success and failure counts
+    - success_rate: Success rate (0.0 - 1.0)
+    - latency_p50/p95/p99: Latency percentiles in seconds
+    - total_tokens: Total tokens used
+    - total_cost_usd: Total estimated cost
+    - avg_cost_per_generation: Average cost per generation
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        health = await telemetry.get_provider_health(provider_id)
+        return health
+    except Exception as e:
+        logger.error(f"Failed to get provider health for {provider_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get provider health: {str(e)}")
+
+
+@router.get("/generations/telemetry/operations/{operation_type}")
+async def get_operation_metrics(
+    operation_type: OperationType,
+    user: CurrentUser
+):
+    """
+    Get metrics for a specific operation type (Phase 7)
+
+    Returns similar structure to provider health, aggregated by operation type.
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        metrics = await telemetry.get_operation_metrics(operation_type)
+        return metrics
+    except Exception as e:
+        logger.error(f"Failed to get operation metrics for {operation_type.value}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get operation metrics: {str(e)}")
+
+
+@router.get("/generations/cache/stats")
+async def get_cache_stats(
+    user: CurrentUser
+):
+    """
+    Get generation cache statistics (Phase 6)
+
+    Returns:
+    - total_cached_generations: Number of cached generations
+    - redis_connected: Redis connection status
+    """
+    try:
+        cache = GenerationCacheService()
+        stats = await cache.get_cache_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get cache stats: {str(e)}")

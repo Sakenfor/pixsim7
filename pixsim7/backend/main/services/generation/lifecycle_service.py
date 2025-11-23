@@ -27,6 +27,7 @@ from pixsim7.backend.main.infrastructure.events.bus import (
     JOB_FAILED,
     JOB_CANCELLED
 )
+from pixsim7.backend.main.services.generation.telemetry_service import GenerationTelemetryService
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class GenerationLifecycleService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.telemetry = GenerationTelemetryService()
 
     async def update_status(
         self,
@@ -113,6 +115,20 @@ class GenerationLifecycleService:
                 "user_id": generation.user_id,
                 "status": status.value
             })
+
+        # === PHASE 7: Record telemetry for terminal states ===
+        if generation.is_terminal:
+            # TODO: Extract cost data from provider submission if available
+            cost_data = None  # Can be populated from provider response
+            await self.telemetry.record_generation_metrics(generation, cost_data)
+
+            # Record provider error if failed
+            if status == GenerationStatus.FAILED and error_message:
+                await self.telemetry.record_provider_error(
+                    provider_id=generation.provider_id,
+                    error_type="generation_failed",
+                    error_message=error_message
+                )
 
         return generation
 
