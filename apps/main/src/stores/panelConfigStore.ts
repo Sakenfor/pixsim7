@@ -64,12 +64,35 @@ export interface PanelConfigActions {
   reset: () => void;
 }
 
+// Gallery panel badge configuration
+export interface GalleryPanelSettings {
+  badgeConfig?: {
+    showPrimaryIcon?: boolean;
+    showStatusIcon?: boolean;
+    showStatusTextOnHover?: boolean;
+    showTagsInOverlay?: boolean;
+    showFooterProvider?: boolean;
+    showFooterDate?: boolean;
+  };
+}
+
+const defaultGalleryBadgeConfig = {
+  showPrimaryIcon: true,
+  showStatusIcon: true,
+  showStatusTextOnHover: true,
+  showTagsInOverlay: true,
+  showFooterProvider: true,
+  showFooterDate: true,
+};
+
 // Default panel configurations
 const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
   gallery: {
     id: 'gallery',
     enabled: true,
-    settings: {},
+    settings: {
+      badgeConfig: defaultGalleryBadgeConfig,
+    } as GalleryPanelSettings,
     category: 'core',
     tags: ['assets', 'media'],
     description: 'Browse and manage project assets',
