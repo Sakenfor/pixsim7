@@ -58,6 +58,7 @@ import { HudLayoutEditor } from '../components/game/HudLayoutEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
 import { HudCustomizationButton } from '../components/game/HudCustomizationPanel';
 import { HudProfileSwitcherButton } from '../components/game/HudProfileSwitcher';
+import { HudRenderer, HudRendererToggle } from '../components/hud/HudRenderer';
 import { UserPreferencesPanel } from '../components/game/UserPreferencesPanel';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
@@ -176,6 +177,7 @@ export function Game2D() {
   const [showHudEditor, setShowHudEditor] = useState(false);
   const [showPresetEditor, setShowPresetEditor] = useState(false);
   const [showUserPreferences, setShowUserPreferences] = useState(false);
+  const [useNewHudSystem, setUseNewHudSystem] = useState(false); // Task 58: Toggle for new HUD system
 
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
@@ -935,6 +937,12 @@ export function Game2D() {
               />
             </>
           )}
+          {selectedWorldId && (
+            <HudRendererToggle
+              enabled={useNewHudSystem}
+              onToggle={setUseNewHudSystem}
+            />
+          )}
           <Button
             size="sm"
             variant="secondary"
@@ -948,8 +956,17 @@ export function Game2D() {
 
       {error && <p className="text-sm text-red-500">Error: {error}</p>}
 
-      {/* World Tools Panel - uses regional layout from world config */}
-      <RegionalHudLayout context={worldToolContext} tools={visibleWorldTools} worldDetail={worldDetail} />
+      {/* World Tools Panel - uses regional layout from world config (old system) or new HUD Renderer (Task 58) */}
+      {!useNewHudSystem && (
+        <RegionalHudLayout context={worldToolContext} tools={visibleWorldTools} worldDetail={worldDetail} />
+      )}
+
+      {/* Task 58: New HUD Renderer using widget compositions */}
+      {useNewHudSystem && selectedWorldId && (
+        <div className="relative">
+          <HudRenderer worldId={selectedWorldId} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Panel className="space-y-3">
