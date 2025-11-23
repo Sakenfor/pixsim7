@@ -24,6 +24,8 @@ from pixsim7.backend.main.shared.errors import (
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, JOB_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
+from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
+from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,7 @@ class GenerationCreationService:
     def __init__(self, db: AsyncSession, user_service: UserService):
         self.db = db
         self.users = user_service
+        self.cache = GenerationCacheService()
 
     async def create_generation(
         self,
@@ -126,17 +129,16 @@ class GenerationCreationService:
         # === PHASE 8: Content Rating Enforcement ===
         # Validate content rating against world/user constraints
         if is_structured and params.get("social_context"):
-            # Extract world_meta if available (may come from world lookup or be embedded in params)
-            world_meta = None
+            # Fetch world_meta from database
             player_context = params.get("player_context", {})
             world_id = player_context.get("world_id")
 
-            # Note: In a full implementation, we'd fetch world_meta from DB here
-            # For now, assume world_meta is passed in params if available
-            # This can be enhanced later to fetch from GameWorld model
+            world_meta = None
+            if world_id:
+                world_meta = await fetch_world_meta(self.db, world_id)
 
-            # Extract user preferences if available
-            user_preferences = None  # Could be passed from frontend or fetched from user settings
+            # Fetch user preferences from database
+            user_preferences = await fetch_user_preferences(self.db, user.id)
 
             # Validate content rating
             is_valid, violation_msg, clamped_context = self._validate_content_rating(
@@ -174,6 +176,53 @@ class GenerationCreationService:
         # Compute reproducible hash
         reproducible_hash = Generation.compute_hash(canonical_params, inputs)
 
+        # === PHASE 6: Caching & Deduplication ===
+        # Check for duplicate generation by hash
+        existing_generation_id = await self.cache.find_by_hash(reproducible_hash)
+        if existing_generation_id:
+            # Deduplication: return existing generation
+            logger.info(f"Deduplication: Found existing generation {existing_generation_id} for hash {reproducible_hash[:16]}...")
+            result = await self.db.execute(
+                select(Generation).where(Generation.id == existing_generation_id)
+            )
+            existing_generation = result.scalar_one_or_none()
+            if existing_generation:
+                logger.info(f"Returning deduplicated generation {existing_generation.id}")
+                return existing_generation
+
+        # Check cache based on strategy (if structured params)
+        generation_config = canonical_params.get("generation_config", {})
+        strategy = generation_config.get("strategy", "once")
+        purpose = generation_config.get("purpose", "unknown")
+
+        if strategy != "always":
+            # Extract context for cache key
+            player_context = params.get("player_context", {})
+            playthrough_id = player_context.get("playthrough_id")
+            player_id = user.id  # Use user ID as player ID
+
+            # Compute cache key
+            cache_key = await self.cache.compute_cache_key(
+                operation_type=operation_type,
+                purpose=purpose,
+                canonical_params=canonical_params,
+                strategy=strategy,
+                playthrough_id=playthrough_id,
+                player_id=player_id,
+                version=1,  # Can be incremented for cache invalidation
+            )
+
+            # Check cache
+            cached_generation_id = await self.cache.get_cached_generation(cache_key)
+            if cached_generation_id:
+                logger.info(f"Cache HIT: Returning cached generation {cached_generation_id}")
+                result = await self.db.execute(
+                    select(Generation).where(Generation.id == cached_generation_id)
+                )
+                cached_generation = result.scalar_one_or_none()
+                if cached_generation:
+                    return cached_generation
+
         # Resolve prompt if version provided
         final_prompt = None
         if prompt_version_id:
@@ -207,6 +256,31 @@ class GenerationCreationService:
 
         # Increment user's job count
         await self.users.increment_job_count(user)
+
+        # === PHASE 6: Store hash for deduplication ===
+        await self.cache.store_hash(reproducible_hash, generation.id)
+
+        # === PHASE 6: Cache generation if strategy permits ===
+        if strategy != "always":
+            # Extract context for cache key (same as lookup above)
+            player_context = params.get("player_context", {})
+            playthrough_id = player_context.get("playthrough_id")
+            player_id = user.id
+
+            cache_key = await self.cache.compute_cache_key(
+                operation_type=operation_type,
+                purpose=purpose,
+                canonical_params=canonical_params,
+                strategy=strategy,
+                playthrough_id=playthrough_id,
+                player_id=player_id,
+                version=1,
+            )
+
+            # Note: We cache the generation ID immediately, even if not yet completed
+            # This prevents duplicate requests during processing
+            # Cache will be refreshed on completion in lifecycle service
+            await self.cache.cache_generation(cache_key, generation.id, strategy)
 
         # Emit event for orchestration
         await event_bus.publish(JOB_CREATED, {

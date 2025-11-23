@@ -477,3 +477,215 @@ async def build_social_context(
     except Exception as e:
         logger.error(f"Failed to build social context: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to build social context: {str(e)}")
+
+
+# ===== PHASE 7: TELEMETRY ENDPOINTS =====
+
+@router.get("/generations/telemetry/providers")
+async def get_provider_health_metrics(
+    user: CurrentUser
+):
+    """
+    Get health metrics for all providers (Phase 7)
+
+    Returns aggregated metrics including:
+    - Success rates
+    - Latency percentiles (p50, p95, p99)
+    - Total costs and token usage
+    - Error counts
+
+    Useful for monitoring provider performance and debugging.
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        health_data = await telemetry.get_all_provider_health()
+        return {"providers": health_data}
+    except Exception as e:
+        logger.error(f"Failed to get provider health: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get provider health: {str(e)}")
+
+
+@router.get("/generations/telemetry/providers/{provider_id}")
+async def get_provider_health(
+    provider_id: str,
+    user: CurrentUser
+):
+    """
+    Get health metrics for a specific provider (Phase 7)
+
+    Returns:
+    - total_generations: Total number of generations
+    - completed/failed: Success and failure counts
+    - success_rate: Success rate (0.0 - 1.0)
+    - latency_p50/p95/p99: Latency percentiles in seconds
+    - total_tokens: Total tokens used
+    - total_cost_usd: Total estimated cost
+    - avg_cost_per_generation: Average cost per generation
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        health = await telemetry.get_provider_health(provider_id)
+        return health
+    except Exception as e:
+        logger.error(f"Failed to get provider health for {provider_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get provider health: {str(e)}")
+
+
+@router.get("/generations/telemetry/operations/{operation_type}")
+async def get_operation_metrics(
+    operation_type: OperationType,
+    user: CurrentUser
+):
+    """
+    Get metrics for a specific operation type (Phase 7)
+
+    Returns similar structure to provider health, aggregated by operation type.
+    """
+    try:
+        telemetry = GenerationTelemetryService()
+        metrics = await telemetry.get_operation_metrics(operation_type)
+        return metrics
+    except Exception as e:
+        logger.error(f"Failed to get operation metrics for {operation_type.value}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get operation metrics: {str(e)}")
+
+
+@router.get("/generations/cache/stats")
+async def get_cache_stats(
+    user: CurrentUser
+):
+    """
+    Get generation cache statistics (Phase 6)
+
+    Returns:
+    - total_cached_generations: Number of cached generations
+    - redis_connected: Redis connection status
+    """
+    try:
+        cache = GenerationCacheService()
+        stats = await cache.get_cache_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get cache stats: {str(e)}")
+
+
+# ===== CACHE MANAGEMENT ENDPOINTS =====
+
+@router.delete("/generations/cache/{cache_key}")
+async def invalidate_cache_key(
+    cache_key: str,
+    user: CurrentUser
+):
+    """
+    Invalidate specific cache key
+
+    Args:
+        cache_key: Cache key to invalidate (e.g., from cache check response)
+
+    Returns:
+        Success status and whether key was deleted
+    """
+    try:
+        cache = GenerationCacheService()
+        deleted = await cache.invalidate_cache(cache_key)
+        return {"success": True, "deleted": deleted, "cache_key": cache_key}
+    except Exception as e:
+        logger.error(f"Failed to invalidate cache key {cache_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to invalidate cache: {str(e)}")
+
+
+@router.post("/generations/cache/check")
+async def check_cache(
+    request: Request,
+    user: CurrentUser
+):
+    """
+    Check if generation would be cached (without creating it)
+
+    Request body should match CacheCheckRequest schema.
+
+    Returns CacheCheckResponse with:
+    - cached: boolean
+    - generation_id: ID if cached
+    - cache_key: computed cache key
+    - ttl_seconds: remaining TTL if cached
+    """
+    try:
+        from pixsim7.backend.main.shared.schemas.telemetry_schemas import CacheCheckRequest, CacheCheckResponse
+        from pixsim7.backend.main.domain.enums import OperationType as OpType
+
+        body = await request.json()
+        check_req = CacheCheckRequest(**body)
+
+        cache = GenerationCacheService()
+
+        # Compute cache key
+        cache_key = await cache.compute_cache_key(
+            operation_type=OpType(check_req.operation_type),
+            purpose=check_req.purpose,
+            canonical_params=check_req.canonical_params,
+            strategy=check_req.strategy,
+            playthrough_id=check_req.playthrough_id,
+            player_id=check_req.player_id,
+            version=check_req.version,
+        )
+
+        # Check if cached
+        generation_id = await cache.get_cached_generation(cache_key)
+
+        # Get TTL if cached
+        ttl_seconds = None
+        if generation_id:
+            from pixsim7.backend.main.infrastructure.redis import get_redis
+            redis_client = await get_redis()
+            ttl_seconds = await redis_client.ttl(cache_key)
+
+        return CacheCheckResponse(
+            cached=generation_id is not None,
+            generation_id=generation_id,
+            cache_key=cache_key,
+            ttl_seconds=ttl_seconds if ttl_seconds and ttl_seconds > 0 else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to check cache: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to check cache: {str(e)}")
+
+
+# ===== REDIS HEALTH CHECK =====
+
+@router.get("/health/redis")
+async def redis_health_check():
+    """
+    Check Redis connection health
+
+    Returns:
+    - connected: boolean
+    - latency_ms: ping latency in milliseconds
+    """
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_redis
+        import time
+
+        redis_client = await get_redis()
+
+        # Measure ping latency
+        start = time.time()
+        await redis_client.ping()
+        latency_ms = (time.time() - start) * 1000
+
+        return {
+            "connected": True,
+            "latency_ms": round(latency_ms, 2),
+            "status": "healthy"
+        }
+
+    except Exception as e:
+        logger.error(f"Redis health check failed: {e}")
+        return {
+            "connected": False,
+            "latency_ms": None,
+            "status": "unhealthy",
+            "error": str(e)
+        }

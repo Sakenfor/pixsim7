@@ -32,11 +32,16 @@ We want to **finish and harden** the end‑to‑end generation pipeline:
   *Full relationship/intimacy context integration with content rating enforcement – 2025‑11‑19*
 - [x] **Phase 5 – Validation & Health Panel for Generation Nodes**
   *Comprehensive validation with real-time UI feedback and health monitoring dashboard – 2025‑11‑19*
-- [ ] **Phase 6 – Caching, Determinism & Seed Strategy**
-- [ ] **Phase 7 – Telemetry: Cost, Latency, Provider Health**
-- [ ] **Phase 8 – Safety & Content Rating Enforcement**
-- [ ] **Phase 9 – Regression Harness for Generations**
-- [ ] **Phase 10 – Developer Tools & App Map Integration**
+- [x] **Phase 6 – Caching, Determinism & Seed Strategy**
+  *Redis caching with seed strategies, deduplication, and distributed locking – 2025‑11‑23*
+- [x] **Phase 7 – Telemetry: Cost, Latency, Provider Health**
+  *Comprehensive metrics tracking with p50/p95/p99 latencies and cost monitoring – 2025‑11‑23*
+- [x] **Phase 8 – Safety & Content Rating Enforcement**
+  *Content rating validation with world/user constraints (completed 2025‑11‑20)*
+- [x] **Phase 9 – Regression Harness for Generations**
+  *Comprehensive test suite with fixtures and regression anchors – 2025‑11‑23*
+- [x] **Phase 10 – Developer Tools & App Map Integration**
+  *Generation dev panel with telemetry dashboard and app-map documentation – 2025‑11‑23*
 
 ---
 
