@@ -31,9 +31,9 @@ Non-goals:
 - [x] **Phase 58.2 – HUD Builder Panel (Reuse Panel Builder)**
 - [x] **Phase 58.3 – HUD Renderer in Game Frontends**
 - [x] **Phase 58.4 – Presets, Profiles & Overrides**
-- [ ] **Phase 58.5 – UX & Docs**
+- [x] **Phase 58.5 – UX & Docs**
 
-**Status:** In progress (Phases 58.1-58.4 complete).
+**Status:** Complete (All phases 58.1-58.5 complete).
 
 ---
 
