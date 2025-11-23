@@ -4,6 +4,7 @@ import { StatusBadge } from '@pixsim7/shared.ui';
 import { useEffect, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 import { BACKEND_BASE } from '../../lib/api/client';
+import { ThemedIcon } from '../../lib/icons';
 import {
   resolveMediaBadgeConfig,
   MEDIA_TYPE_ICON,
@@ -228,7 +229,7 @@ export function MediaCard(props: MediaCardProps) {
               }`}
               title={`${mediaType} (${badges.status ? MEDIA_STATUS_ICON[badges.status].label : 'no status'})`}
             >
-              {MEDIA_TYPE_ICON[badges.primary]}
+              <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
             </div>
           </div>
         )}
@@ -247,7 +248,16 @@ export function MediaCard(props: MediaCardProps) {
                   : 'bg-gray-600 text-white'
               }`}
             >
-              <span>{MEDIA_STATUS_ICON[badges.status].icon}</span>
+              <ThemedIcon
+                name={MEDIA_STATUS_ICON[badges.status].icon}
+                size={12}
+                variant={
+                  MEDIA_STATUS_ICON[badges.status].color === 'green' ? 'success' :
+                  MEDIA_STATUS_ICON[badges.status].color === 'yellow' ? 'warning' :
+                  MEDIA_STATUS_ICON[badges.status].color === 'red' ? 'error' :
+                  'muted'
+                }
+              />
               <span>{MEDIA_STATUS_ICON[badges.status].label}</span>
             </div>
           </div>
@@ -283,7 +293,7 @@ export function MediaCard(props: MediaCardProps) {
                     : 'Upload to provider'
               }
             >
-              {effectiveState==='uploading' ? 'UP...' : effectiveState==='success' ? 'UP ✓' : effectiveState==='error' ? 'ERR' : 'UPLOAD'}
+              {effectiveState==='uploading' ? 'UP...' : effectiveState==='success' ? 'UP OK' : effectiveState==='error' ? 'ERR' : 'UPLOAD'}
             </button>
           </div>
         )}
@@ -337,7 +347,7 @@ export function MediaCard(props: MediaCardProps) {
                     className="px-1.5 py-0.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-xs"
                     title="More actions"
                   >
-                    ⋮
+                    ...
                   </button>
                   {showMenu && (
                     <div

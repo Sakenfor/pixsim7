@@ -5,6 +5,8 @@
  * Supports future user-configurable badge visibility.
  */
 
+import type { IconName } from '../../lib/icons';
+
 export type MediaPrimaryBadge = 'video' | 'image' | 'audio' | 'model';
 
 export type MediaStatusBadge = 'provider_ok' | 'local_only' | 'flagged' | 'unknown';
@@ -19,22 +21,22 @@ export interface MediaBadgeConfig {
 }
 
 /** Icon mapping for primary media type badges */
-export const MEDIA_TYPE_ICON: Record<MediaPrimaryBadge, string> = {
-  video: '🎬',
-  image: '🖼️',
-  audio: '🎧',
-  model: '📦',
+export const MEDIA_TYPE_ICON: Record<MediaPrimaryBadge, IconName> = {
+  video: 'video',
+  image: 'image',
+  audio: 'audio',
+  model: 'clapperboard',
 };
 
 /** Icon and color mapping for status badges */
 export const MEDIA_STATUS_ICON: Record<
   MediaStatusBadge,
-  { icon: string; label: string; color: 'green' | 'yellow' | 'red' | 'gray' }
+  { icon: IconName; label: string; color: 'green' | 'yellow' | 'red' | 'gray' }
 > = {
-  provider_ok: { icon: '✓', label: 'OK', color: 'green' },
-  local_only: { icon: '↓', label: 'Local only', color: 'yellow' },
-  flagged: { icon: '!', label: 'Flagged', color: 'red' },
-  unknown: { icon: '?', label: 'Unknown', color: 'gray' },
+  provider_ok: { icon: 'check', label: 'OK', color: 'green' },
+  local_only: { icon: 'download', label: 'Local only', color: 'yellow' },
+  flagged: { icon: 'alertCircle', label: 'Flagged', color: 'red' },
+  unknown: { icon: 'info', label: 'Unknown', color: 'gray' },
 };
 
 /**

@@ -16,6 +16,7 @@ import {
   Download,
   Video,
   Camera,
+  Headphones,
   Pin,
   Check,
   X,
@@ -86,6 +87,7 @@ export const Icons = {
   // Media types
   image: Image,
   video: Video,
+  audio: Headphones,
   camera: Camera,
   clapperboard: Clapperboard,
 
