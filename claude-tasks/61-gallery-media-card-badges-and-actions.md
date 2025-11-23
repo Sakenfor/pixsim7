@@ -33,13 +33,13 @@ Non-goals (for this task):
 
 ## Phase Checklist
 
-- [ ] **Phase 61.1 – Badge Model & Icon Mapping**
-- [ ] **Phase 61.2 – Layout & Hover Behavior**
-- [ ] **Phase 61.3 – More-Actions Menu Wiring**
-- [ ] **Phase 61.4 – Surface-Level Badge Config Hooks**
-- [ ] **Phase 61.5 – UX & Docs**
+- [X] **Phase 61.1 – Badge Model & Icon Mapping** ✅ Complete
+- [X] **Phase 61.2 – Layout & Hover Behavior** ✅ Complete
+- [X] **Phase 61.3 – More-Actions Menu Wiring** ✅ Complete
+- [X] **Phase 61.4 – Surface-Level Badge Config Hooks** ✅ Complete
+- [X] **Phase 61.5 – UX & Docs** ✅ Complete
 
-**Status:** Not started.
+**Status:** ✅ 100% Complete
 
 ---
 
