@@ -365,12 +365,23 @@ export class PluginDiscovery {
  */
 export class PluginCatalog {
   private plugins = new Map<string, ExtendedPluginMetadata>();
+  private listeners = new Set<() => void>();
 
   /**
    * Register a plugin in the catalog
    */
   register(metadata: ExtendedPluginMetadata): void {
+    // Check for duplicate IDs
+    const existing = this.plugins.get(metadata.id);
+    if (existing) {
+      console.warn(
+        `Plugin ID "${metadata.id}" is already registered (family: ${existing.family}, origin: ${existing.origin}). ` +
+        `Overwriting with new plugin (family: ${metadata.family}, origin: ${metadata.origin}).`
+      );
+    }
+
     this.plugins.set(metadata.id, metadata);
+    this.notifyListeners();
   }
 
   /**
@@ -431,6 +442,7 @@ export class PluginCatalog {
     const plugin = this.plugins.get(id);
     if (plugin) {
       plugin.activationState = state;
+      this.notifyListeners();
     }
   }
 
@@ -494,6 +506,30 @@ export class PluginCatalog {
     console.log('\nBy Origin:');
     for (const [origin, count] of Object.entries(summary.byOrigin)) {
       console.log(`  ${origin}: ${count}`);
+    }
+  }
+
+  /**
+   * Subscribe to catalog changes
+   * Returns an unsubscribe function
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /**
+   * Notify all listeners of changes
+   */
+  private notifyListeners(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (error) {
+        console.error('Error in plugin catalog listener:', error);
+      }
     }
   }
 }

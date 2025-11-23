@@ -257,10 +257,22 @@ function WorkspacePanelsBrowser() {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'core' | 'development' | 'game' | 'tools' | 'custom'>('all');
   const [originFilter, setOriginFilter] = useState<'all' | 'builtin' | 'plugin-dir' | 'ui-bundle'>('all');
 
-  // Load workspace panel plugins
+  // Load workspace panel plugins and subscribe to changes
   useEffect(() => {
-    const panels = pluginCatalog.getByFamily('workspace-panel');
-    setPanelPlugins(panels);
+    const loadPanels = () => {
+      const panels = pluginCatalog.getByFamily('workspace-panel');
+      setPanelPlugins(panels);
+    };
+
+    // Initial load
+    loadPanels();
+
+    // Subscribe to catalog changes
+    const unsubscribe = pluginCatalog.subscribe(loadPanels);
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Apply filters
@@ -301,9 +313,7 @@ function WorkspacePanelsBrowser() {
     } else {
       await pluginActivationManager.activate(panelId);
     }
-
-    // Refresh panel list
-    setPanelPlugins(pluginCatalog.getByFamily('workspace-panel'));
+    // Panel list will update automatically via subscription
   };
 
   return (
