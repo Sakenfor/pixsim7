@@ -86,7 +86,11 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
   graph: {
     id: 'graph',
     enabled: true,
-    settings: {},
+    settings: {
+      // Default graph editor surface for the Graph panel.
+      // Can be changed via advanced panel settings.
+      graphEditorId: 'scene-graph-v2',
+    },
     category: 'core',
     tags: ['graph', 'nodes'],
     description: 'Visual node-based editor',

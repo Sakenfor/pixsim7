@@ -98,6 +98,7 @@ function setupEventListeners() {
   chrome.runtime.onMessage.addListener((message) => {
     if (message && message.action === 'accountsUpdated') {
       if (currentUser) {
+        clearAccountsCache(message.providerId || null).catch(() => {});
         loadAccounts();
         if (message.email) {
           showLastImport(`Updated ${message.email}`);
@@ -340,6 +341,16 @@ function showNoProvider() {
 
 function getAccountsCacheKey(providerId) {
   return providerId || ACCOUNTS_CACHE_SCOPE_ALL;
+}
+
+async function clearAccountsCache(providerId) {
+  const stored = await chrome.storage.local.get(ACCOUNTS_CACHE_KEY);
+  const cache = stored[ACCOUNTS_CACHE_KEY] || {};
+  if (providerId) {
+    delete cache[getAccountsCacheKey(providerId)];
+  }
+  delete cache[ACCOUNTS_CACHE_SCOPE_ALL];
+  await chrome.storage.local.set({ [ACCOUNTS_CACHE_KEY]: cache });
 }
 
 async function readAccountsCache(cacheKey) {

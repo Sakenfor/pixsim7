@@ -14,6 +14,7 @@ export function WorkspaceProfileManager() {
   const loadPreset = useWorkspaceStore((s) => s.loadPreset);
   const savePreset = useWorkspaceStore((s) => s.savePreset);
   const deletePreset = useWorkspaceStore((s) => s.deletePreset);
+  const setPresetGraphEditor = useWorkspaceStore((s) => s.setPresetGraphEditor);
 
   const [newPresetName, setNewPresetName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -94,6 +95,9 @@ export function WorkspaceProfileManager() {
                 preset={preset}
                 onLoad={() => loadPreset(preset.id)}
                 onDelete={() => handleDeletePreset(preset.id)}
+                onSetGraphEditorId={(graphEditorId) =>
+                  setPresetGraphEditor(preset.id, graphEditorId)
+                }
               />
             ))}
           </div>
@@ -108,10 +112,12 @@ function ProfileCard({
   preset,
   onLoad,
   onDelete,
+  onSetGraphEditorId,
 }: {
   preset: any;
   onLoad: () => void;
   onDelete: () => void;
+  onSetGraphEditorId: (graphEditorId: string) => void;
 }) {
   return (
     <div className="p-4 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all">
@@ -146,6 +152,40 @@ function ProfileCard({
       <div className="mb-3 p-2 bg-neutral-100 dark:bg-neutral-800 rounded text-xs">
         <div className="text-neutral-600 dark:text-neutral-400">
           Layout: {preset.layout ? 'Custom' : 'Empty'}
+        </div>
+      </div>
+
+      {/* Graph Editor Preference (advanced) */}
+      <div className="mb-3 p-2 bg-neutral-50 dark:bg-neutral-900/40 rounded text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold">Graph editor</span>
+          <span className="font-mono">
+            {preset.graphEditorId || 'inherit (scene-graph-v2)'}
+          </span>
+        </div>
+        <div className="flex gap-1 mt-1">
+          <button
+            type="button"
+            onClick={() => onSetGraphEditorId('scene-graph-v2')}
+            className={`flex-1 px-2 py-1 rounded border ${
+              (preset.graphEditorId || 'scene-graph-v2') === 'scene-graph-v2'
+                ? 'bg-blue-500 text-white border-blue-500'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
+            }`}
+          >
+            Scene Graph
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetGraphEditorId('arc-graph')}
+            className={`flex-1 px-2 py-1 rounded border ${
+              preset.graphEditorId === 'arc-graph'
+                ? 'bg-blue-500 text-white border-blue-500'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
+            }`}
+          >
+            Arc Graph
+          </button>
         </div>
       </div>
 

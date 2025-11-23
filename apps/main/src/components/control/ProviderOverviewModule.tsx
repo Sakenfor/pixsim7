@@ -5,10 +5,10 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 export function ProviderOverviewModule() {
   const { providers } = useProviders();
   const { capacity, loading, error } = useProviderCapacity();
-  const restorePanel = useWorkspaceStore(s => s.restorePanel);
+  const openFloatingPanel = useWorkspaceStore(s => s.openFloatingPanel);
 
   const openFullSettings = () => {
-    restorePanel('providers');
+    openFloatingPanel('providers', { width: 900, height: 700 });
   };
 
   if (loading) {

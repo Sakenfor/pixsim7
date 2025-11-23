@@ -217,11 +217,18 @@ async function importCookies(providerId, config) {
         }
       }
 
-      // Only notify on first-time creation to avoid update spam
+      const updatedFields = importResponse.data.updated_fields || [];
+      const accountEmail = importResponse.data.email || 'account';
+
       if (importResponse.data.created) {
         showNotification(
           'Account Created',
-          `${importResponse.data.email} - Cookies imported successfully`
+          `${accountEmail} - Cookies imported successfully`
+        );
+      } else if (updatedFields.includes('jwt_token')) {
+        showNotification(
+          'Session Refreshed',
+          `${accountEmail} session updated`
         );
       }
 

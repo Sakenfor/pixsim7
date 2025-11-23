@@ -17,7 +17,7 @@
 
 The scene editor has a clear separation of concerns:
 
-### SceneBuilderPanel (`apps/main/src/components/SceneBuilderPanel.tsx`)
+### SceneBuilderPanel (`apps/main/src/components/legacy/SceneBuilderPanel.tsx`)
 **Purpose:** Scene-level context and actions
 - **Displays:** World/location context, current scene info
 - **Actions:** Preview in Game, Play from Here in 2D
@@ -40,6 +40,15 @@ The scene editor has a clear separation of concerns:
 **Purpose:** Lazy-load editor components
 - Auto-discovers editors in `apps/main/src/components/inspector/`
 - Provides dynamic import for editor components
+
+### Graph Editor Surfaces (`apps/main/src/lib/graph`)
+**Purpose:** Modular graph editor UIs
+- `GraphEditorRegistry` (`editorRegistry.ts`) tracks available graph editor surfaces
+- Built-in editors are registered via `registerGraphEditors()`:
+  - `scene-graph-v2` – Scene Graph Editor (legacy/core, ReactFlow-based)
+  - `arc-graph` – Arc Graph Editor (arc/quest-focused)
+- `GraphEditorHost` (`components/graph/GraphEditorHost.tsx`) renders the active editor by ID
+- The workspace **Graph** panel uses `GraphEditorHost` and defaults to `scene-graph-v2`
 
 ---
 

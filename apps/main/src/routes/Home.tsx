@@ -1,10 +1,12 @@
 import { useAuthStore } from '../stores/authStore';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 import { moduleRegistry } from '../modules';
 import { Button, Panel, ThemeToggle } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 
 export function Home() {
   const { user, logout } = useAuthStore();
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
 
   const modules = moduleRegistry.list();
 
@@ -93,7 +95,7 @@ export function Home() {
             </h3>
             <p className="text-xs text-neutral-500">Manage provider accounts and capacity</p>
             <div className="flex gap-2 pt-1">
-              <Button size="sm" variant="primary" onClick={() => window.open('/providers', '_self')}>Open Settings</Button>
+              <Button size="sm" variant="primary" onClick={() => openFloatingPanel('providers', { width: 900, height: 700 })}>Open Settings</Button>
             </div>
           </Panel>
 

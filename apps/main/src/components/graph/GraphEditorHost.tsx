@@ -9,6 +9,8 @@
 import { useMemo } from 'react';
 import { graphEditorRegistry } from '../../lib/graph/editorRegistry';
 import type { GraphEditorId } from '../../lib/graph/types';
+import { usePanelConfigStore } from '../../stores/panelConfigStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 
 export interface GraphEditorHostProps {
   /**
@@ -21,13 +23,31 @@ export interface GraphEditorHostProps {
 /**
  * GraphEditorHost - Dynamically renders a graph editor surface from the registry
  */
-export function GraphEditorHost({ editorId = 'scene-graph-v2' }: GraphEditorHostProps) {
-  const editorDef = useMemo(() => graphEditorRegistry.get(editorId), [editorId]);
+export function GraphEditorHost({ editorId }: GraphEditorHostProps) {
+  // Allow panel config to override the default editor for the Graph panel
+  const panelConfig = usePanelConfigStore((s) => s.panelConfigs.graph);
+  const activePresetId = useWorkspaceStore((s) => s.activePresetId);
+  const presets = useWorkspaceStore((s) => s.presets);
+
+  const presetGraphEditorId = activePresetId
+    ? presets.find((p) => p.id === activePresetId)?.graphEditorId
+    : undefined;
+
+  const effectiveEditorId: GraphEditorId =
+    editorId ||
+    (presetGraphEditorId as GraphEditorId) ||
+    (panelConfig?.settings?.graphEditorId as GraphEditorId) ||
+    'scene-graph-v2';
+
+  const editorDef = useMemo(
+    () => graphEditorRegistry.get(effectiveEditorId),
+    [effectiveEditorId]
+  );
 
   if (!editorDef) {
     return (
       <div className="p-4 text-sm text-red-500">
-        Unknown graph editor: <code>{editorId}</code>
+        Unknown graph editor: <code>{effectiveEditorId}</code>
         <div className="mt-2 text-xs text-neutral-500">
           Available editors: {graphEditorRegistry.getAll().map(e => e.id).join(', ')}
         </div>
@@ -36,5 +56,19 @@ export function GraphEditorHost({ editorId = 'scene-graph-v2' }: GraphEditorHost
   }
 
   const EditorComponent = editorDef.component;
-  return <EditorComponent />;
+  return (
+    <div className="h-full flex flex-col">
+      <div className="px-3 py-1 border-b border-neutral-200 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 flex items-center justify-between bg-neutral-50 dark:bg-neutral-900/60">
+        <span className="font-medium">
+          Graph editor: <span className="font-mono">{editorDef.label}</span>
+        </span>
+        <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+          id: <span className="font-mono">{editorDef.id}</span>
+        </span>
+      </div>
+      <div className="flex-1 min-h-0">
+        <EditorComponent />
+      </div>
+    </div>
+  );
 }

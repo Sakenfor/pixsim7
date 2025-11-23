@@ -289,6 +289,21 @@ export function AssetsRoute() {
               </select>
               <select
                 className="px-2 py-1 text-sm border rounded"
+                value={filters.media_type || ''}
+                onChange={(e) =>
+                  setAndPersist({
+                    media_type: (e.target.value || undefined) as any,
+                  })
+                }
+              >
+                <option value="">All Media</option>
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+                <option value="audio">Audio</option>
+                <option value="3d_model">3D Models</option>
+              </select>
+              <select
+                className="px-2 py-1 text-sm border rounded"
                 value={filters.sort}
                 onChange={(e) => setAndPersist({ sort: e.target.value as any })}
               >

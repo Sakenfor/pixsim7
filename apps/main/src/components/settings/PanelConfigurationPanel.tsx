@@ -26,6 +26,8 @@ export function PanelConfigurationPanel() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
 
+  const [graphEditorSelectorOpen, setGraphEditorSelectorOpen] = useState(false);
+
   // Filter panels based on search and category
   const filteredPanels = useMemo(() => {
     let panels = Object.values(panelConfigs);
@@ -137,6 +139,9 @@ export function PanelConfigurationPanel() {
                 panel={panel}
                 onToggle={() => handleTogglePanel(panel.id)}
                 onOpen={() => handleOpenPanel(panel.id)}
+                onUpdateSettings={(settings) =>
+                  updatePanelSettings(panel.id as any, settings)
+                }
               />
             ))}
           </div>
@@ -162,10 +167,12 @@ function PanelCard({
   panel,
   onToggle,
   onOpen,
+  onUpdateSettings,
 }: {
   panel: any;
   onToggle: () => void;
   onOpen: () => void;
+  onUpdateSettings: (settings: Record<string, any>) => void;
 }) {
   return (
     <div
@@ -212,12 +219,48 @@ function PanelCard({
         </label>
       </div>
 
-      {/* Description */}
-      {panel.description && (
-        <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-3">
-          {panel.description}
-        </p>
-      )}
+      {/* Description + Advanced Settings */}
+      <div className="mb-3 space-y-2">
+        {panel.description && (
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">{panel.description}</p>
+        )}
+
+        {/* Graph panel advanced settings: choose active graph editor */}
+        {panel.id === 'graph' && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-neutral-500 dark:text-neutral-500">
+              Active editor:{' '}
+              <span className="font-mono">
+                {panel.settings?.graphEditorId || 'scene-graph-v2'}
+              </span>
+            </span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => onUpdateSettings({ graphEditorId: 'scene-graph-v2' })}
+                className={`flex-1 px-2 py-1 rounded text-[11px] border ${
+                  (panel.settings?.graphEditorId || 'scene-graph-v2') === 'scene-graph-v2'
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
+                }`}
+              >
+                Scene Graph
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdateSettings({ graphEditorId: 'arc-graph' })}
+                className={`flex-1 px-2 py-1 rounded text-[11px] border ${
+                  panel.settings?.graphEditorId === 'arc-graph'
+                    ? 'bg-blue-500 text-white border-blue-500'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-600'
+                }`}
+              >
+                Arc Graph
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Tags */}
       {panel.tags && panel.tags.length > 0 && (

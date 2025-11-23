@@ -45,6 +45,8 @@ export interface WorkspacePreset {
   visiblePanels?: PanelId[]; // Panels visible in this preset (if not specified, all are visible)
   createdAt?: number; // Timestamp
   isDefault?: boolean; // Whether this is a default preset (cannot be deleted)
+  // Optional: preferred graph editor surface for this profile (e.g., 'scene-graph-v2', 'arc-graph')
+  graphEditorId?: string;
 }
 
 export interface WorkspaceState {
@@ -55,6 +57,8 @@ export interface WorkspaceState {
   presets: WorkspacePreset[];
   fullscreenPanel: PanelId | null;
   floatingPanels: FloatingPanelState[];
+  // ID of the currently active workspace preset/profile (if any)
+  activePresetId: string | null;
 }
 
 export interface WorkspaceActions {
@@ -68,6 +72,8 @@ export interface WorkspaceActions {
   savePreset: (name: string) => void;
   loadPreset: (id: string) => void;
   deletePreset: (id: string) => void;
+  // Update preset-specific metadata (currently used for graph editor selection)
+  setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
   reset: () => void;
   openFloatingPanel: (panelId: PanelId, options?: { x?: number; y?: number; width?: number; height?: number; context?: Record<string, any> }) => void;
   closeFloatingPanel: (panelId: PanelId) => void;
@@ -176,6 +182,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
+      activePresetId: defaultPresets[0].id,
 
       setLayout: (layout) => {
         if (get().isLocked) return;
@@ -236,13 +243,18 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           createdAt: Date.now(),
           isDefault: false,
         };
-        set((s) => ({ presets: [...s.presets, newPreset] }));
+        set((s) => ({ presets: [...s.presets, newPreset], activePresetId: newPreset.id }));
       },
 
       loadPreset: (id) => {
         const preset = get().presets.find((p) => p.id === id);
         if (preset) {
-          set({ currentLayout: preset.layout, closedPanels: [], fullscreenPanel: null });
+          set({
+            currentLayout: preset.layout,
+            closedPanels: [],
+            fullscreenPanel: null,
+            activePresetId: id,
+          });
         }
       },
 
@@ -250,7 +262,20 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const preset = get().presets.find((p) => p.id === id);
         // Don't delete default presets
         if (preset?.isDefault) return;
-        set((s) => ({ presets: s.presets.filter((p) => p.id !== id) }));
+        set((s) => {
+          const remaining = s.presets.filter((p) => p.id !== id);
+          const newActiveId =
+            s.activePresetId === id ? (remaining.find((p) => p.isDefault)?.id ?? null) : s.activePresetId;
+          return { presets: remaining, activePresetId: newActiveId };
+        });
+      },
+
+      setPresetGraphEditor: (presetId, graphEditorId) => {
+        set((s) => ({
+          presets: s.presets.map((p) =>
+            p.id === presetId ? { ...p, graphEditorId } : p
+          ),
+        }));
       },
 
       reset: () =>
@@ -261,6 +286,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
+          activePresetId: defaultPresets[0].id,
         }),
 
       openFloatingPanel: (panelId, options = {}) => {
