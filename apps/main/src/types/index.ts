@@ -59,3 +59,6 @@ export * from './automation';
 
 // Re-export game types
 export * from './game';
+
+// Re-export display types
+export * from './display';

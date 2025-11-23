@@ -13,13 +13,15 @@
 
 ## Overview
 
-This document defines how 2D narrative content (videos / `ScenePlayer` scenes) is presented within the 3D world, without baking "room" or any specific visual metaphor into the core domain.
+This document defines how 2D narrative content (videos / `ScenePlayer` scenes) is presented within the 3D world, **without baking “room” or any specific visual metaphor into the core domain**.
 
 The goal is to keep:
 - **Assets** generic (`3d_model`, `video`, etc.),
 - **Scenes** reusable (graph of nodes/edges referencing assets),
 - **World** as the long‑lived context (locations, hotspots, NPCs),
-and express "how to show a scene here" as configuration, not new hard‑coded types.
+and express “how to show a scene here” as configuration, not new hard‑coded types.
+
+3D “rooms” (and similar metaphors) are modeled as **display spaces** owned by the world, not as new scene types.
 
 ---
 
@@ -28,23 +30,33 @@ and express "how to show a scene here" as configuration, not new hard‑coded ty
 - **Scene** (`GameScene` + `@pixsim7/types.Scene`):
   - Narrative unit: graph of nodes/edges referencing media assets.
   - Reusable across locations/world contexts.
+  - **Does not know about 3D rooms / spaces** – it is display‑agnostic.
 
 - **World / Location** (`GameLocation`, `GameHotspot`, future `GameObject`):
   - Long‑lived context hosted on the server.
   - Decides **where** and **how** to trigger a scene or play a media asset.
+  - Owns the topology of **display spaces** that can host content.
 
-- **Display Mode** (new concept, expressed in `GameHotspot.meta` or similar):
+- **Display Mode** (expressed in `GameHotspot.meta.display`):
   - Describes **how** a given scene/video is presented when triggered from a hotspot:
     - fullscreen overlay,
     - on a surface in 3D,
     - in a fixed 2D panel over the 3D view,
     - etc.
 
+- **Display Space** (expressed in `GameWorld.meta.display.spaces`):
+  - World‑level definition of places where content can appear (e.g. 3D rooms, outdoor areas, 2D layers).
+  - Each space has a `kind` (e.g. `"3d-room"`, `"3d-outdoor"`, `"2d-layer"`, `"ar-surface"`) and optional **surfaces** (e.g. screens, billboards).
+
+- **Display Target** (expressed in `GameHotspot.meta.displayTarget`):
+  - A reference from a hotspot (or other trigger) into the world’s display spaces: which `spaceId`, which `surfaceId`, and optional logical `layerId`.
+  - Lets us say “play this scene on the lounge TV” without baking “lounge” or “TV” into the scene itself.
+
 ---
 
 ## 2. Display Mode Schema (Hotspot Metadata)
 
-Display settings live in `GameHotspot.meta.display`, keeping the core `GameHotspot` schema generic.
+Display **mode** settings live in `GameHotspot.meta.display`, keeping the core `GameHotspot` schema generic.
 
 ### 2.1 Base shape
 
@@ -86,7 +98,7 @@ Display settings live in `GameHotspot.meta.display`, keeping the core `GameHotsp
 
 - Client behavior (3D + UI):
   - Fade/blur 3D view.
-  - Render `ScenePlayer` full‑screen.
+  - Render `ScenePlayer` fullscreen.
   - Optionally show skip/exit controls based on `overlayStyle` and scene rules.
 
 ### 2.3 Surface mode (video on a 3D mesh)
@@ -140,6 +152,115 @@ Display settings live in `GameHotspot.meta.display`, keeping the core `GameHotsp
 
 ---
 
+## 2.5 Display Spaces (World Topology)
+
+Display spaces live in `GameWorld.meta.display.spaces`, and describe the topology of places where content can appear. This is **world configuration only** – no DB/schema changes, just JSON conventions.
+
+Example:
+
+```jsonc
+{
+  "meta": {
+    "display": {
+      "spaces": {
+        "lounge": {
+          "id": "lounge",
+          "kind": "3d-room",
+          "label": "Lounge",
+          "surfaces": [
+            {
+              "id": "main-screen",
+              "label": "Main Screen",
+              "nodeName": "tv_screen_01"
+            }
+          ],
+          "config": {
+            "cameraPresets": ["wide", "closeup"],
+            "lightingProfile": "evening"
+          }
+        },
+        "story-overlay": {
+          "id": "story-overlay",
+          "kind": "2d-layer",
+          "label": "Story Overlay Layer"
+        }
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- `kind` is intentionally generic:
+  - `"3d-room"` – traditional room with screens, couches, etc.
+  - `"3d-outdoor"` – courtyards, plazas, rooftop spaces.
+  - `"2d-layer"` – overlay layers used by HUD or 2D UI.
+  - `"ar-surface"`, `"vr-space"`, and custom values are allowed in the future.
+- `surfaces` describe specific projection targets within a space (e.g. screens, billboards) using IDs and optional renderer hints like `nodeName`.
+
+This lets us talk about “rooms” **as one kind of display space**, without baking “room” into the core domain model.
+
+---
+
+## 2.6 Display Targets (Hotspot References)
+
+Display targets live in `GameHotspot.meta.displayTarget` and point into the world’s display spaces.
+
+They work **alongside** `meta.display`:
+
+- `meta.display` says **how** to show the content (fullscreen / surface / panel).
+- `meta.displayTarget` says **where** in the world topology (which space/surface/layer).
+
+Example: video on a lounge TV screen
+
+```jsonc
+{
+  "meta": {
+    "display": {
+      "mode": "surface",
+      "autoPlay": true,
+      "pauseWorld": false,
+      "closeOnEnd": false,
+      "surface": {
+        "fit": "cover",
+        "loop": true,
+        "emissive": true
+      }
+    },
+    "displayTarget": {
+      "spaceId": "lounge",
+      "surfaceId": "main-screen"
+    }
+  }
+}
+```
+
+Example: fullscreen story overlay (no specific 3D surface)
+
+```jsonc
+{
+  "meta": {
+    "display": {
+      "mode": "fullscreen",
+      "pauseWorld": true
+    },
+    "displayTarget": {
+      "spaceId": "story-overlay"
+    }
+  }
+}
+```
+
+Client behavior:
+
+- When a hotspot is triggered:
+  - Use `meta.display` to determine the presentation mode.
+  - Use `meta.displayTarget.spaceId` / `surfaceId` to resolve the actual 3D space + surface (or 2D layer) from `GameWorld.meta.display.spaces`.
+  - Scenes remain unchanged; they simply provide the content (video/graph) to play at that target.
+
+---
+
 ## 3. Triggering Scenes vs Raw Videos
 
 Each `GameHotspot` can point to either:
@@ -155,7 +276,8 @@ Suggested convention in `GameHotspot`:
   "linked_scene_id": 42,
   "meta": {
     "asset_id": 123,               // optional: direct video asset
-    "display": { ... }             // display spec from above
+    "display": { ... },            // display spec from above
+    "displayTarget": { ... }       // optional: where to show it
   }
 }
 ```
@@ -165,7 +287,11 @@ Client logic:
 - If `linked_scene_id` is present → load scene via `/api/v1/game/scenes/:id` and drive `ScenePlayer`.
 - Else if `meta.asset_id` is present → load video asset and play it according to `display`.
 
-This keeps “what” (scene vs raw clip) and “how” (display mode) separate.
+This keeps:
+- **what** – scene vs raw clip,
+- **how** – fullscreen / surface / panel,
+- **where** – which space/surface,
+cleanly separated.
 
 ---
 
@@ -181,26 +307,42 @@ In the **Game World editor** (main frontend):
   - For `"panel"`:
     - anchor + size.
   - Optional `asset_id` if you want to point directly to a video asset instead of a full scene.
+  - Optional `displayTarget`:
+    - `spaceId` (dropdown from `GameWorld.meta.display.spaces`),
+    - `surfaceId` (dropdown from selected space’s `surfaces`, if any).
 
-Initially, these can be stored as raw JSON in `meta.display` and edited with a simple JSON field; later you can break them into structured form inputs.
+Initially, these can be stored as raw JSON in `meta.display` / `meta.displayTarget` and edited with a simple JSON field; later you can break them into structured form inputs.
+
+On the **world** side:
+
+- Provide a simple way to:
+  - View and edit `GameWorld.meta.display.spaces` (ID, label, kind).
+  - Add/remove surfaces within a space (ID, label, optional `nodeName`).
+- This can start as a basic JSON editor or dev‑only panel before becoming a full UI.
 
 ---
 
 ## 5. Scenes vs World – Modeling Choice
 
 - Keep **Scenes** as reusable narrative units:
-  - Server‑hosted, referenced by ID, independent of any particular 3D layout.
+  - Server‑hosted, referenced by ID, independent of any particular 3D layout or space.
 
 - Keep the **World** as the long‑lived context:
   - `GameLocation` / `GameHotspot` / (future) `GameObject` describe where scenes and assets appear.
+  - `GameWorld.meta.display.spaces` defines the available display spaces and surfaces.
 
 - Avoid “scene packages” that bundle 3D + logic + media into opaque blobs:
   - Instead, compose them at runtime:
-    - World → decides 3D assets + hotspots + display modes.
-    - Scene → describes narrative flow and which media assets to use.
+    - World + display spaces decide 3D assets, hotspots, and where content can appear.
+    - Hotspots choose `display.mode` + `displayTarget`.
+    - Scenes describe narrative flow and which media assets to use.
 
 This structure means:
-- 2D content (`ScenePlayer` scenes) can be reused in multiple locations and display modes.
+
+- 2D content (`ScenePlayer` scenes) can be reused in multiple locations, spaces, and display modes.
 - 3D content (assets) stays generic; world decides how to place and use it.
-- Adding new display types (e.g., AR‑style overlays, VR) becomes a matter of defining new `display.mode` variants, not changing core domain models.
+- Adding new display types (e.g., AR‑style overlays, VR spaces, new room types) becomes a matter of:
+  - defining new `kind` values for display spaces, and
+  - defining new `display.mode` variants,
+not changing core domain models or scene types.
 

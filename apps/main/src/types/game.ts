@@ -5,6 +5,8 @@
  * Corresponds to Pydantic schemas in pixsim7/backend/main/domain/game/schemas.py
  */
 
+import type { GameWorldDisplayMeta } from './display';
+
 // ===================
 // World Simulation Scheduler Types (Task 21)
 // ===================
@@ -90,6 +92,8 @@ export function getDefaultWorldSchedulerConfig(): WorldSchedulerConfig {
 export interface GameWorldMeta {
   /** World simulation scheduler config */
   simulation?: WorldSchedulerConfig;
+  /** World display configuration (spaces, surfaces, etc.) */
+  display?: GameWorldDisplayMeta;
   /** Relationship schemas */
   relationship_schemas?: Record<string, any>;
   /** Intimacy schema */
