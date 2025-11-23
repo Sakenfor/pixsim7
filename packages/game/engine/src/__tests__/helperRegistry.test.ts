@@ -2,7 +2,7 @@
  * Tests for SessionHelperRegistry
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   SessionHelperRegistry,
   VALID_HELPER_CATEGORIES,
@@ -229,6 +229,21 @@ describe('SessionHelperRegistry', () => {
     it('should return empty array for category with no helpers', () => {
       const helpers = registry.getByCategory('inventory');
       expect(helpers).toHaveLength(0);
+    });
+  });
+
+  describe('Unregistration', () => {
+    it('should remove helpers from the registry', () => {
+      registry.register({ name: 'removeMe', fn: (session) => session });
+
+      const removed = registry.unregister('removeMe');
+
+      expect(removed).toBe(true);
+      expect(registry.get('removeMe')).toBeUndefined();
+    });
+
+    it('should return false when unregistering unknown helpers', () => {
+      expect(registry.unregister('doesNotExist')).toBe(false);
     });
   });
 

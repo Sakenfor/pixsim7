@@ -258,8 +258,8 @@ describe('generateHelper', () => {
         },
       };
 
-      expect(registry.execute('getGuildRep', mockSession, 'thieves')).toBe(50);
-      expect(registry.execute('getGuildRep', mockSession, 'mages')).toBe(80);
+      expect(sessionHelperRegistry.execute('getGuildRep', mockSession, 'thieves')).toBe(50);
+      expect(sessionHelperRegistry.execute('getGuildRep', mockSession, 'mages')).toBe(80);
     });
 
     it('should handle multiple parameters', () => {

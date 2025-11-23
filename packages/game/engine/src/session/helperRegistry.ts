@@ -151,6 +151,11 @@ export class SessionHelperRegistry {
     return this.getAll().filter(h => h.category === category);
   }
 
+  /** Remove a helper by name */
+  unregister(name: string): boolean {
+    return this.helpers.delete(name);
+  }
+
   /** Execute a helper by name */
   execute(name: string, session: GameSessionDTO, ...args: any[]): any {
     const helper = this.get(name);

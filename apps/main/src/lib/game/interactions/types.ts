@@ -244,6 +244,12 @@ export interface InteractionPlugin<TConfig extends BaseInteractionConfig> {
   /** Capabilities/effects for UI hints */
   capabilities?: InteractionCapabilities;
 
+  /** Lazy loading support for large plugins */
+  loader?: () => Promise<InteractionPlugin<TConfig>>;
+
+  /** Priority for preload when lazy loaded */
+  preloadPriority?: number;
+
   defaultConfig: TConfig; // Default values when enabled
   configFields: FormField[]; // Auto-generates UI forms
 
@@ -309,11 +315,21 @@ class LRUCache<K, V> {
  * - Lazy loading support for plugin-based interactions
  * - Automatic preloading of high-priority plugins
  */
+export interface InteractionRegistryOptions {
+  duplicatePolicy?: 'warn' | 'error';
+}
+
 export class InteractionRegistry {
   private plugins = new Map<string, InteractionPlugin<any>>();
+  private categoryIndex = new Map<string, Set<string>>();
   private cache = new LRUCache<string, InteractionPlugin<any>>(50);
   private loadingPromises = new Map<string, Promise<InteractionPlugin<any>>>();
   private preloadedIds = new Set<string>();
+  private duplicatePolicy: 'warn' | 'error';
+
+  constructor(options: InteractionRegistryOptions = {}) {
+    this.duplicatePolicy = options.duplicatePolicy ?? 'warn';
+  }
 
   register<TConfig extends BaseInteractionConfig>(plugin: InteractionPlugin<TConfig>) {
     // Validate required fields
@@ -335,7 +351,25 @@ export class InteractionRegistry {
       console.debug(`Interaction plugin "${plugin.id}" has no category`);
     }
 
+    if (this.plugins.has(plugin.id)) {
+      const message = `Interaction plugin "${plugin.id}" already registered`;
+      if (this.duplicatePolicy === 'error') {
+        throw new Error(message);
+      }
+      console.warn(`${message}, overwriting`);
+      this.removeFromCategoryIndex(plugin.id);
+      this.preloadedIds.delete(plugin.id);
+      this.loadingPromises.delete(plugin.id);
+    }
+
     this.plugins.set(plugin.id, plugin);
+
+    if (plugin.category) {
+      if (!this.categoryIndex.has(plugin.category)) {
+        this.categoryIndex.set(plugin.category, new Set());
+      }
+      this.categoryIndex.get(plugin.category)!.add(plugin.id);
+    }
 
     // Update cache if already cached
     if (this.cache.has(plugin.id)) {
@@ -352,9 +386,33 @@ export class InteractionRegistry {
     }
 
     const plugin = this.plugins.get(id);
-    if (plugin) {
+    if (!plugin) {
+      return undefined;
+    }
+
+    if (!plugin.loader || this.preloadedIds.has(id)) {
       this.cache.set(id, plugin);
     }
+    return plugin;
+  }
+
+  /** Get plugin asynchronously, loading lazy plugins on demand */
+  async getAsync(id: string): Promise<InteractionPlugin<any> | undefined> {
+    const cached = this.cache.get(id);
+    if (cached && (!cached.loader || this.preloadedIds.has(id))) {
+      return cached;
+    }
+
+    const plugin = this.plugins.get(id);
+    if (!plugin) {
+      return undefined;
+    }
+
+    if (plugin.loader && !this.preloadedIds.has(id)) {
+      return this.loadPlugin(id);
+    }
+
+    this.cache.set(id, plugin);
     return plugin;
   }
 
@@ -363,9 +421,35 @@ export class InteractionRegistry {
     return Array.from(this.plugins.values());
   }
 
+  /** Get plugins by category (indexed) */
+  getByCategory(category: string): InteractionPlugin<any>[] {
+    const ids = this.categoryIndex.get(category);
+    if (!ids) {
+      return [];
+    }
+
+    return Array.from(ids)
+      .map(id => this.plugins.get(id))
+      .filter((plugin): plugin is InteractionPlugin<any> => plugin !== undefined);
+  }
+
   /** Check if plugin exists */
   has(id: string): boolean {
     return this.plugins.has(id);
+  }
+
+  /** Remove a plugin and clear indexes */
+  unregister(id: string): boolean {
+    if (!this.plugins.has(id)) {
+      return false;
+    }
+
+    this.plugins.delete(id);
+    this.removeFromCategoryIndex(id);
+    this.cache.clear();
+    this.preloadedIds.delete(id);
+    this.loadingPromises.delete(id);
+    return true;
   }
 
   /** Clear cache (useful for testing/debugging) */
@@ -380,12 +464,69 @@ export class InteractionRegistry {
       maxSize: 50,
     };
   }
+
+  /** Preload lazy plugins by priority or IDs */
+  async preload(ids?: string[]): Promise<void> {
+    const toPreload = ids || this.getPreloadCandidates();
+
+    await Promise.all(toPreload.map(id => this.loadPlugin(id)));
+  }
+
+  /** Get plugins that should be preloaded */
+  private getPreloadCandidates(): string[] {
+    const plugins = Array.from(this.plugins.values());
+    return plugins
+      .filter(p => p.loader && !this.preloadedIds.has(p.id))
+      .sort((a, b) => (b.preloadPriority || 0) - (a.preloadPriority || 0))
+      .map(p => p.id)
+      .slice(0, 10);
+  }
+
+  /** Load a lazy plugin */
+  private async loadPlugin(id: string): Promise<InteractionPlugin<any> | undefined> {
+    if (this.loadingPromises.has(id)) {
+      return this.loadingPromises.get(id);
+    }
+
+    const plugin = this.plugins.get(id);
+    if (!plugin || !plugin.loader) {
+      return plugin;
+    }
+
+    const loadPromise = plugin.loader()
+      .then(loadedPlugin => {
+        this.plugins.set(id, loadedPlugin);
+        this.cache.set(id, loadedPlugin);
+        this.preloadedIds.add(id);
+        this.loadingPromises.delete(id);
+        return loadedPlugin;
+      })
+      .catch(error => {
+        console.error(`Failed to load interaction plugin ${id}:`, error);
+        this.loadingPromises.delete(id);
+        return plugin;
+      });
+
+    this.loadingPromises.set(id, loadPromise);
+    return loadPromise;
+  }
+
+  private removeFromCategoryIndex(id: string): void {
+    for (const [category, ids] of this.categoryIndex.entries()) {
+      if (ids.has(id)) {
+        ids.delete(id);
+        if (ids.size === 0) {
+          this.categoryIndex.delete(category);
+        }
+      }
+    }
+  }
 }
 
 /**
  * Global registry instance
  */
-export const interactionRegistry = new InteractionRegistry();
+export const interactionRegistry = new InteractionRegistry({ duplicatePolicy: 'error' });
 
 /**
  * Execute an interaction by ID
@@ -395,7 +536,7 @@ export async function executeInteraction(
   config: BaseInteractionConfig,
   context: InteractionContext
 ): Promise<InteractionResult> {
-  const plugin = interactionRegistry.get(interactionId);
+  const plugin = await interactionRegistry.getAsync(interactionId);
   if (!plugin) {
     throw new Error(`Unknown interaction plugin: ${interactionId}`);
   }

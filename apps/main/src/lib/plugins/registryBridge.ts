@@ -96,6 +96,18 @@ export function registerHelper(
 }
 
 /**
+ * Unregister a helper and prune catalog metadata
+ */
+export function unregisterHelper(id: string): boolean {
+  const helperMeta = pluginCatalog.get(id);
+  const removed =
+    sessionHelperRegistry.unregister(id) ||
+    (helperMeta?.name ? sessionHelperRegistry.unregister(helperMeta.name) : false);
+  pluginCatalog.unregister(id);
+  return removed;
+}
+
+/**
  * Register built-in helpers with origin tracking
  */
 export function registerBuiltinHelper(helper: HelperDefinition): void {
@@ -132,6 +144,15 @@ export function registerInteraction(
     icon: interaction.icon,
     ...options.metadata,
   } as ExtendedPluginMetadata<'interaction'>);
+}
+
+/**
+ * Unregister an interaction and remove it from the catalog
+ */
+export function unregisterInteraction(id: string): boolean {
+  const removed = interactionRegistry.unregister(id);
+  pluginCatalog.unregister(id);
+  return removed;
 }
 
 /**
@@ -176,6 +197,15 @@ export function registerNodeType(
 }
 
 /**
+ * Unregister a node type and prune its catalog entry
+ */
+export function unregisterNodeType(id: string): boolean {
+  const removed = nodeTypeRegistry.unregister(id);
+  pluginCatalog.unregister(id);
+  return removed;
+}
+
+/**
  * Register built-in node type with origin tracking
  */
 export function registerBuiltinNodeType(nodeType: NodeTypeDefinition): void {
@@ -211,6 +241,15 @@ export function registerRenderer(
     preloadPriority: renderer.preloadPriority,
     ...options.metadata,
   } as ExtendedPluginMetadata<'renderer'>);
+}
+
+/**
+ * Unregister a renderer and clear the catalog entry
+ */
+export function unregisterRenderer(nodeType: string): boolean {
+  const removed = nodeRendererRegistry.unregister(nodeType);
+  pluginCatalog.unregister(`renderer:${nodeType}`);
+  return removed;
 }
 
 /**
@@ -253,6 +292,15 @@ export function registerWorldTool(
 }
 
 /**
+ * Unregister a world tool and clean up catalog metadata
+ */
+export function unregisterWorldTool(id: string): boolean {
+  const removed = worldToolRegistry.unregister(id);
+  pluginCatalog.unregister(id);
+  return removed;
+}
+
+/**
  * Register built-in world tool with origin tracking
  */
 export function registerBuiltinWorldTool(tool: WorldToolPlugin): void {
@@ -287,6 +335,13 @@ export function registerGalleryTool(
     category: tool.category,
     ...options.metadata,
   } as ExtendedPluginMetadata<'gallery-tool'>);
+}
+
+/**
+ * Unregister a gallery tool catalog entry
+ */
+export function unregisterGalleryTool(id: string): boolean {
+  return pluginCatalog.unregister(id);
 }
 
 /**
@@ -332,6 +387,16 @@ export function registerGraphEditor(
 }
 
 /**
+ * Unregister a graph editor and remove its catalog entry
+ */
+export function unregisterGraphEditor(id: string): boolean {
+  const existed = graphEditorRegistry.has(id as any);
+  graphEditorRegistry.unregister(id as any);
+  pluginCatalog.unregister(id);
+  return existed;
+}
+
+/**
  * Register built-in graph editor with origin tracking
  */
 export function registerBuiltinGraphEditor(editor: GraphEditorDefinition): void {
@@ -368,6 +433,16 @@ export function registerDevTool(
     icon: tool.icon,
     ...options.metadata,
   } as ExtendedPluginMetadata<'dev-tool'>);
+}
+
+/**
+ * Unregister a dev tool and clear catalog metadata
+ */
+export function unregisterDevTool(id: string): boolean {
+  const existed = devToolRegistry.get(id as any) !== undefined;
+  devToolRegistry.unregister(id as any);
+  pluginCatalog.unregister(id);
+  return existed;
 }
 
 /**
@@ -413,6 +488,16 @@ export function registerPanelWithPlugin(
 }
 
 /**
+ * Unregister a workspace panel and remove it from the catalog
+ */
+export function unregisterPanelWithPlugin(id: string): boolean {
+  const existed = panelRegistry.has(id as any);
+  panelRegistry.unregister(id as any);
+  pluginCatalog.unregister(id);
+  return existed;
+}
+
+/**
  * Register built-in panel with origin tracking
  */
 export function registerBuiltinPanel(panel: PanelDefinition): void {
@@ -452,6 +537,15 @@ export function registerGizmoSurface(
     tags: surface.tags,
     ...options.metadata,
   } as ExtendedPluginMetadata<'gizmo-surface'>);
+}
+
+/**
+ * Unregister a gizmo surface and remove from catalog
+ */
+export function unregisterGizmoSurface(id: string): boolean {
+  const removed = gizmoSurfaceRegistry.unregister(id as any);
+  pluginCatalog.unregister(id);
+  return removed;
 }
 
 /**

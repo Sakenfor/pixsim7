@@ -120,7 +120,7 @@ export async function executeSlotInteractions(
     }
 
     // Get the plugin to check its UI mode
-    const plugin = (await import('./index')).interactionRegistry.get(interactionId);
+    const plugin = await (await import('./index')).interactionRegistry.getAsync(interactionId);
 
     // Handle dialogue-mode interactions (e.g., talk)
     if (plugin?.uiMode === 'dialogue') {

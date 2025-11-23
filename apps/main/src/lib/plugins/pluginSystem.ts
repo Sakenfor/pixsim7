@@ -101,7 +101,7 @@ export interface PluginMetadataExtensions {
   };
   'node-type': {
     category?: string;
-    scope?: 'scene' | 'global';
+    scope?: 'scene' | 'arc' | 'world' | 'custom';
     userCreatable?: boolean;
     preloadPriority?: number;
   };
@@ -389,6 +389,17 @@ export class PluginCatalog {
 
     this.plugins.set(metadata.id, metadata);
     this.notifyListeners();
+  }
+
+  /**
+   * Remove a plugin from the catalog
+   */
+  unregister(id: string): boolean {
+    const existed = this.plugins.delete(id);
+    if (existed) {
+      this.notifyListeners();
+    }
+    return existed;
   }
 
   /**

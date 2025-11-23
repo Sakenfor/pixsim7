@@ -98,6 +98,11 @@ export interface NodeTypeDefinition<TData = any> {
   preloadPriority?: number;
 }
 
+export interface NodeTypeRegistryOptions {
+  /** How to handle duplicate registrations */
+  duplicatePolicy?: 'warn' | 'error';
+}
+
 /**
  * LRU Cache for frequently accessed node types
  */
@@ -153,11 +158,20 @@ export class NodeTypeRegistry {
   private cache = new LRUCache<string, NodeTypeDefinition>(50);
   private loadingPromises = new Map<string, Promise<NodeTypeDefinition>>();
   private preloadedIds = new Set<string>();
+  private duplicatePolicy: 'warn' | 'error';
+
+  constructor(options: NodeTypeRegistryOptions = {}) {
+    this.duplicatePolicy = options.duplicatePolicy ?? 'warn';
+  }
 
   /** Register a node type */
   register<TData = any>(def: NodeTypeDefinition<TData>) {
     if (this.types.has(def.id)) {
-      console.warn(`Node type ${def.id} already registered, overwriting`);
+      const message = `Node type ${def.id} already registered`;
+      if (this.duplicatePolicy === 'error') {
+        throw new Error(message);
+      }
+      console.warn(`${message}, overwriting`);
       // Remove from old indexes
       this.removeFromCategoryIndex(def.id);
       this.removeFromScopeIndex(def.id);
@@ -185,6 +199,11 @@ export class NodeTypeRegistry {
     if (this.cache.has(def.id)) {
       this.cache.set(def.id, def);
     }
+  }
+
+  /** Configure how duplicate registrations are handled */
+  setDuplicatePolicy(policy: 'warn' | 'error'): void {
+    this.duplicatePolicy = policy;
   }
 
   /** Get node type definition (with caching and lazy loading) */
@@ -332,6 +351,21 @@ export class NodeTypeRegistry {
     return this.types.has(id);
   }
 
+  /** Remove a node type and clean indexes */
+  unregister(id: string): boolean {
+    if (!this.types.has(id)) {
+      return false;
+    }
+
+    this.types.delete(id);
+    this.removeFromCategoryIndex(id);
+    this.removeFromScopeIndex(id);
+    this.cache.clear();
+    this.preloadedIds.delete(id);
+    this.loadingPromises.delete(id);
+    return true;
+  }
+
   /** Remove type from category index */
   private removeFromCategoryIndex(id: string): void {
     for (const [category, ids] of this.categoryIndex.entries()) {
@@ -371,4 +405,4 @@ export class NodeTypeRegistry {
 }
 
 /** Global registry instance */
-export const nodeTypeRegistry = new NodeTypeRegistry();
+export const nodeTypeRegistry = new NodeTypeRegistry({ duplicatePolicy: 'error' });
