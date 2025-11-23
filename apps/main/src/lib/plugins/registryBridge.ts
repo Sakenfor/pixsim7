@@ -27,6 +27,7 @@ import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/registry'
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '../graph/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '../devtools';
+import { panelRegistry, type PanelDefinition } from '../panels/panelRegistry';
 
 // ============================================================================
 // Registry Bridge Base
@@ -376,6 +377,48 @@ export function registerBuiltinDevTool(tool: DevToolDefinition): void {
 }
 
 // ============================================================================
+// Workspace Panel Registry Bridge
+// ============================================================================
+
+/**
+ * Register a workspace panel with metadata tracking
+ */
+export function registerPanelWithPlugin(
+  panel: PanelDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  // Register with panel registry
+  panelRegistry.register(panel);
+
+  // Extract metadata
+  const metadata = extractCommonMetadata(panel as any);
+
+  // Register in catalog
+  pluginCatalog.register({
+    ...metadata,
+    id: panel.id,
+    name: panel.title,
+    family: 'workspace-panel',
+    origin: options.origin ?? 'builtin',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? true,
+    panelId: panel.id,
+    category: panel.category,
+    supportsCompactMode: panel.supportsCompactMode,
+    supportsMultipleInstances: panel.supportsMultipleInstances,
+    tags: panel.tags,
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'workspace-panel'>);
+}
+
+/**
+ * Register built-in panel with origin tracking
+ */
+export function registerBuiltinPanel(panel: PanelDefinition): void {
+  registerPanelWithPlugin(panel, { origin: 'builtin', canDisable: false });
+}
+
+// ============================================================================
 // Bulk Registration Helpers
 // ============================================================================
 
@@ -428,6 +471,13 @@ export function syncCatalogFromRegistries(): void {
       registerGraphEditor(editor, { origin: 'builtin' });
     }
   }
+
+  // Sync workspace panels
+  for (const panel of panelRegistry.getAll()) {
+    if (!pluginCatalog.get(panel.id)) {
+      registerPanelWithPlugin(panel, { origin: 'builtin' });
+    }
+  }
 }
 
 /**
@@ -441,4 +491,5 @@ export function printRegistryComparison(): void {
   console.log(`Renderers: ${nodeRendererRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('renderer').length} in catalog`);
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
+  console.log(`Workspace Panels: ${panelRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
 }

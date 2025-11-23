@@ -1,5 +1,27 @@
 /**
- * Plugin Catalog
+ * Plugin Catalog (Legacy)
+ *
+ * @deprecated This is the legacy plugin catalog system. For new code, use the unified
+ * plugin system from `./pluginSystem.ts` instead, which provides:
+ * - Consistent metadata across all plugin families
+ * - Activation/deactivation management
+ * - Origin tracking (builtin vs user plugins)
+ * - Reactive updates via subscriptions
+ * - Integration with workspace panels
+ *
+ * **Migration Guide:**
+ * ```typescript
+ * // Old (legacy catalog)
+ * import { listAllPlugins } from '@/lib/plugins/catalog';
+ * const plugins = listAllPlugins();
+ *
+ * // New (unified plugin system)
+ * import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+ * const plugins = pluginCatalog.getAll();
+ * const helpers = pluginCatalog.getByFamily('helper');
+ * ```
+ *
+ * ---
  *
  * Provides a unified metadata layer over all plugin systems in PixSim7.
  * This is a thin, read-only abstraction that does NOT replace individual registries.

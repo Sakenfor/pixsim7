@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
+import { pluginCatalog } from '../lib/plugins/pluginSystem';
 
 export type PanelId =
   | 'gallery'
@@ -255,6 +256,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       restorePanel: (panelId) => {
+        // Check if panel is disabled via plugin system
+        const pluginMeta = pluginCatalog.get(panelId);
+        if (pluginMeta && pluginMeta.activationState === 'inactive') {
+          console.warn(`Cannot restore panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`);
+          // TODO: Show user-facing notification
+          return;
+        }
+
         const current = get().currentLayout;
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
 
@@ -342,6 +351,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }),
 
       openFloatingPanel: (panelId, options = {}) => {
+        // Check if panel is disabled via plugin system
+        const pluginMeta = pluginCatalog.get(panelId);
+        if (pluginMeta && pluginMeta.activationState === 'inactive') {
+          console.warn(`Cannot open panel "${panelId}": Panel is disabled. Enable it in the Plugin Browser first.`);
+          // TODO: Show user-facing notification
+          return;
+        }
+
         const { x, y, width, height, context } = options;
         const existing = get().floatingPanels.find(p => p.id === panelId);
         if (existing) {

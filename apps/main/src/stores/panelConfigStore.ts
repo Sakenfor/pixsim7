@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 import type { PanelId } from './workspaceStore';
+import { pluginCatalog } from '../lib/plugins/pluginSystem';
 
 /**
  * Panel Configuration Store
@@ -207,6 +208,14 @@ export const usePanelConfigStore = create<PanelConfigState & PanelConfigActions>
       },
 
       togglePanelEnabled: (panelId) => {
+        // Check if panel is disabled via plugin system
+        const pluginMeta = pluginCatalog.get(panelId);
+        if (pluginMeta && pluginMeta.activationState === 'inactive') {
+          console.warn(`Cannot enable panel "${panelId}": Panel is disabled at plugin level. Enable it in the Plugin Browser first.`);
+          // TODO: Show user-facing notification
+          return;
+        }
+
         const config = get().panelConfigs[panelId];
         if (config) {
           get().setPanelConfig(panelId, { enabled: !config.enabled });
