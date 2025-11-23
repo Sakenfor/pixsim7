@@ -9,6 +9,7 @@ import './lib/providers/plugins' // Register provider generation UI plugins
 import { registerDevTools } from './lib/devtools/registerDevTools'
 import { registerGallerySurfaces } from './lib/gallery/registerGallerySurfaces'
 import { registerGalleryTools } from './lib/gallery/registerGalleryTools'
+import { registerGizmoSurfaces } from './lib/gizmos'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -24,6 +25,9 @@ registerDevTools()
 // Register gallery surfaces and tools
 registerGallerySurfaces()
 registerGalleryTools()
+
+// Register gizmo surfaces
+registerGizmoSurfaces()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

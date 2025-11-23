@@ -28,6 +28,7 @@ import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '../graph/editorRegistry';
 import { devToolRegistry, type DevToolDefinition } from '../devtools';
 import { panelRegistry, type PanelDefinition } from '../panels/panelRegistry';
+import { gizmoSurfaceRegistry, type GizmoSurfaceDefinition } from '../gizmos/surfaceRegistry';
 
 // ============================================================================
 // Registry Bridge Base
@@ -419,6 +420,48 @@ export function registerBuiltinPanel(panel: PanelDefinition): void {
 }
 
 // ============================================================================
+// Gizmo Surface Registry Bridge
+// ============================================================================
+
+/**
+ * Register a gizmo surface with metadata tracking
+ */
+export function registerGizmoSurface(
+  surface: GizmoSurfaceDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  // Register with gizmo surface registry
+  gizmoSurfaceRegistry.register(surface);
+
+  // Extract metadata
+  const metadata = extractCommonMetadata(surface as any);
+
+  // Register in catalog
+  pluginCatalog.register({
+    ...metadata,
+    id: surface.id,
+    name: surface.label,
+    family: 'gizmo-surface',
+    origin: options.origin ?? 'plugin-dir',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? true,
+    gizmoSurfaceId: surface.id,
+    category: surface.category,
+    supportsContexts: surface.supportsContexts,
+    icon: surface.icon,
+    tags: surface.tags,
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'gizmo-surface'>);
+}
+
+/**
+ * Register built-in gizmo surface with origin tracking
+ */
+export function registerBuiltinGizmoSurface(surface: GizmoSurfaceDefinition): void {
+  registerGizmoSurface(surface, { origin: 'builtin', canDisable: false });
+}
+
+// ============================================================================
 // Bulk Registration Helpers
 // ============================================================================
 
@@ -478,6 +521,13 @@ export function syncCatalogFromRegistries(): void {
       registerPanelWithPlugin(panel, { origin: 'builtin' });
     }
   }
+
+  // Sync gizmo surfaces
+  for (const surface of gizmoSurfaceRegistry.getAll()) {
+    if (!pluginCatalog.get(surface.id)) {
+      registerGizmoSurface(surface, { origin: 'builtin' });
+    }
+  }
 }
 
 /**
@@ -492,4 +542,5 @@ export function printRegistryComparison(): void {
   console.log(`World Tools: ${worldToolRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('world-tool').length} in catalog`);
   console.log(`Graph Editors: ${graphEditorRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('graph-editor').length} in catalog`);
   console.log(`Workspace Panels: ${panelRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('workspace-panel').length} in catalog`);
+  console.log(`Gizmo Surfaces: ${gizmoSurfaceRegistry.getAll().length} in registry, ${pluginCatalog.getByFamily('gizmo-surface').length} in catalog`);
 }

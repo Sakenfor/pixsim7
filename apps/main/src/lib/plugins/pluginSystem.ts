@@ -38,7 +38,8 @@ export type PluginFamily =
   | 'ui-plugin'
   | 'graph-editor'
   | 'dev-tool'
-  | 'workspace-panel';
+  | 'workspace-panel'
+  | 'gizmo-surface';
 
 /**
  * Activation state - whether the plugin is currently active
@@ -128,6 +129,12 @@ export interface PluginMetadataExtensions {
     category?: 'core' | 'development' | 'game' | 'tools' | 'custom';
     supportsCompactMode?: boolean;
     supportsMultipleInstances?: boolean;
+  };
+  'gizmo-surface': {
+    gizmoSurfaceId?: string;
+    category?: 'scene' | 'world' | 'npc' | 'debug' | 'custom';
+    supportsContexts?: Array<'scene-editor' | 'game-2d' | 'game-3d' | 'playground' | 'workspace' | 'hud'>;
+    icon?: string;
   };
 }
 

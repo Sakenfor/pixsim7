@@ -15,6 +15,7 @@ import { CapabilityTestingPanel } from '../../components/dev/CapabilityTestingPa
 import { DependencyGraphPanel } from '../../components/dev/DependencyGraphPanel';
 import { GenerationHealthView } from '../../components/dev/GenerationHealthView';
 import { TemplateAnalyticsPanel } from '../../components/dev/TemplateAnalyticsPanel';
+import { GizmoSurfacesPanel } from '../../components/devtools/GizmoSurfacesPanel';
 
 /**
  * Register all built-in dev tools
@@ -102,6 +103,17 @@ export function registerDevTools(): void {
     category: 'debug',
     panelComponent: TemplateAnalyticsPanel,
     tags: ['templates', 'analytics', 'metrics', 'performance'],
+  });
+
+  // Gizmo & Surface Management
+  devToolRegistry.register({
+    id: 'gizmo-surfaces',
+    label: 'Gizmo Surfaces',
+    description: 'Manage gizmo overlays and debug dashboard surfaces',
+    icon: '🎮',
+    category: 'debug',
+    panelComponent: GizmoSurfacesPanel,
+    tags: ['gizmos', 'surfaces', 'overlays', 'dashboards', 'debug'],
   });
 
   console.log(`[DevToolRegistry] Registered ${devToolRegistry.getAll().length} dev tools`);

@@ -26,13 +26,13 @@ Non-goals:
 
 ## Phase Checklist
 
-- [ ] **Phase 57.1 – Gizmo Surface Types & Registry**
-- [ ] **Phase 57.2 – Register Existing Gizmo Surfaces**
-- [ ] **Phase 57.3 – Workspace & HUD Integration**
-- [ ] **Phase 57.4 – Plugin Integration (Optional)**
-- [ ] **Phase 57.5 – UX & Docs**
+- [x] **Phase 57.1 – Gizmo Surface Types & Registry**
+- [x] **Phase 57.2 – Register Existing Gizmo Surfaces**
+- [x] **Phase 57.3 – Workspace & HUD Integration**
+- [x] **Phase 57.4 – Plugin Integration (Optional)**
+- [x] **Phase 57.5 – UX & Docs**
 
-**Status:** Not started.
+**Status:** ✅ Complete (2025-11-23)
 
 ---
 

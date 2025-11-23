@@ -128,6 +128,127 @@ frontend (app-specific implementations)
 2. Move them to `game-ui` if they become generic enough
 3. Keep them in frontend if they remain app-specific
 
+## Gizmo Surface Registry (Added 2025-11-23)
+
+**Context:** Gizmo components needed a way to be dynamically enabled/disabled across different contexts (Game2D, scene editor, playground) and integrated into the dev tools and plugin system.
+
+**Decision:** We created a **Gizmo Surface Registry** system that treats gizmos and debug dashboards as "surfaces" - pluggable UI components that can be:
+- Registered centrally with metadata (category, contexts, priority)
+- Enabled/disabled per context (scene-editor, game-2d, game-3d, playground, workspace, HUD)
+- Managed via a Dev Tools panel
+- Contributed by plugins
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Gizmo Surface System                                   │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────────────────┐    ┌─────────────────────┐  │
+│  │ GizmoSurfaceRegistry │───▶│  Surface Definitions │  │
+│  │  (lib/gizmos/)       │    │  - RingsGizmo        │  │
+│  └──────────────────────┘    │  - OrbGizmo          │  │
+│            │                  │  - ConstellationGizmo │  │
+│            │                  │  - BodyMapGizmo      │  │
+│            ▼                  │  - Relationship      │  │
+│  ┌──────────────────────┐    │    Dashboard         │  │
+│  │ GizmoSurfaceStore    │    │  - WorldToolsPanel   │  │
+│  │  (Zustand + persist) │    └─────────────────────┘  │
+│  │  - Enabled surfaces  │                             │
+│  │    per context       │                             │
+│  └──────────────────────┘                             │
+│            │                                            │
+│            ▼                                            │
+│  ┌──────────────────────────────────────────────┐     │
+│  │  UI Components                               │     │
+│  │  • GizmoSurfaceRenderer - Renders active     │     │
+│  │    overlays/panels for a context             │     │
+│  │  • GizmoSurfacesPanel - Dev tools panel for  │     │
+│  │    managing surfaces                         │     │
+│  │  • ActiveGizmosIndicator - Shows active      │     │
+│  │    gizmos in context                         │     │
+│  └──────────────────────────────────────────────┘     │
+│                                                          │
+│  ┌──────────────────────────────────────────────┐     │
+│  │  Plugin Integration                          │     │
+│  │  • PluginFamily: 'gizmo-surface'             │     │
+│  │  • registerGizmoSurface() in registryBridge  │     │
+│  │  • Plugins can contribute custom surfaces    │     │
+│  └──────────────────────────────────────────────┘     │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Files
+
+**Types & Registry:**
+- `apps/main/src/lib/gizmos/surfaceRegistry.ts` - Core types and registry
+- `apps/main/src/lib/gizmos/gizmoSurfaceStore.ts` - State management
+
+**Registration:**
+- `apps/main/src/lib/gizmos/registerGizmoSurfaces.ts` - Register all surfaces
+- `apps/main/src/main.tsx` - Calls registration on startup
+
+**UI Components:**
+- `apps/main/src/components/devtools/GizmoSurfacesPanel.tsx` - Dev tools panel
+- `apps/main/src/components/gizmos/GizmoSurfaceRenderer.tsx` - Renders active surfaces
+- `apps/main/src/components/gizmos/ActiveGizmosIndicator.tsx` - Active gizmo indicator
+
+**Plugin Integration:**
+- `apps/main/src/lib/plugins/pluginSystem.ts` - Added `'gizmo-surface'` to PluginFamily
+- `apps/main/src/lib/plugins/registryBridge.ts` - Plugin registration functions
+
+### Usage
+
+**For Users:**
+1. Open Dev Tools → Gizmo Surfaces (🎮)
+2. Browse available surfaces by category/context
+3. Enable/disable surfaces per context (e.g., enable RingsGizmo for Game2D)
+4. Active gizmos show an indicator in the corner
+
+**For Developers:**
+```tsx
+// In Game2D.tsx or similar
+import { GizmoSurfaceRenderer, ActiveGizmosIndicator } from './components/gizmos';
+
+<div className="game-container">
+  {/* Render active overlays */}
+  <GizmoSurfaceRenderer
+    context="game-2d"
+    componentType="overlay"
+  />
+
+  {/* Show active gizmos indicator */}
+  <ActiveGizmosIndicator context="game-2d" position="top-right" />
+</div>
+```
+
+**For Plugin Authors:**
+```ts
+import { registerGizmoSurface } from './lib/plugins/registryBridge';
+
+registerGizmoSurface({
+  id: 'my-custom-gizmo',
+  label: 'My Gizmo',
+  overlayComponent: MyGizmoComponent,
+  category: 'custom',
+  supportsContexts: ['game-2d', 'playground'],
+}, {
+  origin: 'plugin-dir',
+  author: 'Your Name',
+});
+```
+
+### Benefits
+
+✅ **Centralized Management** - All gizmos registered in one place
+✅ **Context-Aware** - Enable different gizmos per context
+✅ **User Control** - Dev tools panel for easy management
+✅ **Plugin Support** - Third-party plugins can contribute surfaces
+✅ **State Persistence** - Settings saved across sessions
+✅ **Type Safe** - Full TypeScript support
+
 ## Validation
 
 ### Build Checks
