@@ -15,6 +15,11 @@ export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
   onShowMetadata?: (id: number) => void;
   onUploadToProvider?: (id: number) => void;
+  // Generation actions
+  onAddToGenerate?: (id: number, operation?: string) => void;
+  onImageToVideo?: (id: number) => void;
+  onVideoExtend?: (id: number) => void;
+  onAddToTransition?: (id: number) => void;
 }
 
 export interface MediaCardBadgeConfig {
@@ -24,6 +29,10 @@ export interface MediaCardBadgeConfig {
   showTagsInOverlay?: boolean;
   showFooterProvider?: boolean;
   showFooterDate?: boolean;
+  // Generation actions
+  showGenerationBadge?: boolean;
+  showGenerationInMenu?: boolean;
+  generationQuickAction?: 'auto' | 'image_to_video' | 'video_extend' | 'add_to_transition' | 'none';
 }
 
 export interface MediaCardProps {
@@ -84,6 +93,9 @@ export function MediaCard(props: MediaCardProps) {
     showTagsInOverlay: badgeConfigProp?.showTagsInOverlay ?? true,
     showFooterProvider: badgeConfigProp?.showFooterProvider ?? true,
     showFooterDate: badgeConfigProp?.showFooterDate ?? true,
+    showGenerationBadge: badgeConfigProp?.showGenerationBadge ?? true,
+    showGenerationInMenu: badgeConfigProp?.showGenerationInMenu ?? true,
+    generationQuickAction: badgeConfigProp?.generationQuickAction ?? 'auto',
   };
 
   const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
@@ -315,6 +327,37 @@ export function MediaCard(props: MediaCardProps) {
           </div>
         )}
 
+        {/* Bottom-left: Generation quick action badge (shows on hover) */}
+        {badgeVisibility.showGenerationBadge && isHovered && badgeVisibility.generationQuickAction !== 'none' && (
+          <div className="absolute left-2 bottom-2 animate-in fade-in duration-200">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const operation = badgeVisibility.generationQuickAction === 'auto'
+                  ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
+                  : badgeVisibility.generationQuickAction;
+
+                if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
+                else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
+                else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
+                else actions?.onAddToGenerate?.(id, operation);
+              }}
+              className="px-2 py-1 text-xs rounded-md shadow-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-1"
+              title={
+                badgeVisibility.generationQuickAction === 'auto'
+                  ? `Generate (${mediaType === 'image' ? 'Image → Video' : mediaType === 'video' ? 'Extend Video' : 'Add'})`
+                  : badgeVisibility.generationQuickAction === 'image_to_video' ? 'Image → Video'
+                  : badgeVisibility.generationQuickAction === 'video_extend' ? 'Extend Video'
+                  : badgeVisibility.generationQuickAction === 'add_to_transition' ? 'Add to Transition'
+                  : 'Add to Generate'
+              }
+            >
+              <span>⚡</span>
+              <span>Generate</span>
+            </button>
+          </div>
+        )}
+
         {/* Hover overlay with detailed info at bottom */}
         {isHovered && (
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent p-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
@@ -392,6 +435,54 @@ export function MediaCard(props: MediaCardProps) {
                           }}
                         >
                           Upload to provider
+                        </button>
+                      )}
+                      {badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800 border-t border-neutral-700"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onImageToVideo?.(id);
+                          }}
+                        >
+                          ⚡ Image → Video
+                        </button>
+                      )}
+                      {badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800 border-t border-neutral-700"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onVideoExtend?.(id);
+                          }}
+                        >
+                          ⚡ Extend Video
+                        </button>
+                      )}
+                      {badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (mediaType === 'image' || mediaType === 'video') && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onAddToTransition?.(id);
+                          }}
+                        >
+                          ⚡ Add to Transition
+                        </button>
+                      )}
+                      {badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
+                        <button
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 hover:bg-neutral-800"
+                          onClick={() => {
+                            setShowMenu(false);
+                            actions.onAddToGenerate?.(id);
+                          }}
+                        >
+                          ⚡ Add to Generate
                         </button>
                       )}
                     </div>
