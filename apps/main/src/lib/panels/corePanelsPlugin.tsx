@@ -17,6 +17,7 @@ import { GameThemingPanel } from '../../components/game/GameThemingPanel';
 import { SceneManagementPanel } from '../../components/scene/SceneManagementPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
+import { DevToolsPanel } from '../../components/dev/DevToolsPanel';
 
 // Game iframe panel (defined inline since it's simple)
 import { useRef, useEffect } from 'react';
@@ -181,6 +182,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['scene', 'management', 'workflow', 'organization'],
       icon: '📚',
       description: 'Unified scene workflow management',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'dev-tools',
+      title: 'Dev Tools',
+      component: DevToolsPanel,
+      category: 'development',
+      tags: ['dev', 'debug', 'tools', 'diagnostics', 'developer'],
+      icon: '🧰',
+      description: 'Developer tools and diagnostics',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

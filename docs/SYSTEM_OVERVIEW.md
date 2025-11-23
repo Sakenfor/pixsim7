@@ -197,6 +197,41 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 
 ---
 
+### Dev Tools Surface & Debug Workspace
+
+**`apps/main/src/lib/devtools/`** – Developer tools registry and infrastructure:
+- **`devToolRegistry`** – Central registry for all dev/debug tools
+- **`DevToolDefinition`** – Type definition for dev tools with metadata (category, icon, component, route)
+- **`registerDevTools()`** – Initializes all built-in dev tools at app startup
+
+**`apps/main/src/components/dev/DevToolsPanel.tsx`** – Main dev tools navigation panel:
+- Browse all registered dev tools by category (session, plugins, graph, generation, etc.)
+- Search and filter tools by name, description, or tags
+- Open tools as panels or navigate to full routes
+
+**Dev Workspace Presets** (in `workspaceStore.ts`):
+- **`dev-default`** – Graph + Dev Tools panel + Health monitoring
+- **`dev-plugins`** – Plugin development and testing layout
+- **`dev-architecture`** – Graph editor with architecture visualization
+
+**Built-in Dev Tools:**
+- **Session State Viewer** – Inspect session flags, relationships, world time
+- **Plugin Workspace** – Develop and test plugins (UI, interactions, node types)
+- **Dependency Graph** – Visualize module dependencies
+- **App Map** – Visual map of application structure
+- **Backend Architecture** – View backend service architecture
+- **Generation Health** – Monitor content generation diagnostics
+- **Template Analytics** – Analyze template usage and performance
+
+**Plugin Integration:**
+- Dev tools can be contributed as plugins via the `'dev-tool'` plugin family
+- Use `registerDevTool()` from `registryBridge.ts` to register with metadata tracking
+- Dev tools appear in both DevToolsPanel and the Plugin Browser
+
+**See:** `claude-tasks/54-dev-tools-surface-and-debug-workspace.md` for implementation details
+
+---
+
 ## For Agents: Where to Start
 
 ### If you're working on 2D gameplay (hotspots, actions, playback)

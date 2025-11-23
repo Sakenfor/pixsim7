@@ -14,7 +14,8 @@ export type PanelId =
   | 'gizmo-lab'
   | 'npc-brain-lab'
   | 'game-theming'
-  | 'scene-management';
+  | 'scene-management'
+  | 'dev-tools';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;
@@ -144,6 +145,57 @@ const defaultPresets: WorkspacePreset[] = [
       },
       splitPercentage: 25,
     },
+  },
+  {
+    id: 'dev-default',
+    name: 'Dev – Default Debug',
+    description: 'Graph, session state, dev tools, and health monitoring',
+    icon: '🧪',
+    isDefault: true,
+    layout: {
+      direction: 'row',
+      first: 'graph',
+      second: {
+        direction: 'column',
+        first: 'dev-tools',
+        second: 'health',
+        splitPercentage: 60,
+      },
+      splitPercentage: 60,
+    },
+    graphEditorId: 'scene-graph-v2',
+  },
+  {
+    id: 'dev-plugins',
+    name: 'Dev – Plugin Workshop',
+    description: 'Focus on plugin development and testing',
+    icon: '🔌',
+    isDefault: true,
+    layout: {
+      direction: 'row',
+      first: {
+        direction: 'column',
+        first: 'dev-tools',
+        second: 'settings',
+        splitPercentage: 70,
+      },
+      second: 'game',
+      splitPercentage: 40,
+    },
+  },
+  {
+    id: 'dev-architecture',
+    name: 'Dev – Architecture View',
+    description: 'Graph editor with architecture and dependency visualization',
+    icon: '🏗️',
+    isDefault: true,
+    layout: {
+      direction: 'row',
+      first: 'graph',
+      second: 'dev-tools',
+      splitPercentage: 50,
+    },
+    graphEditorId: 'scene-graph-v2',
   },
 ];
 

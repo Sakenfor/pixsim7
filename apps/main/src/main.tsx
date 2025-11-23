@@ -6,6 +6,7 @@ import { initWebLogger, logEvent } from './lib/logging'
 import { registerBuiltInMiniGames } from '@pixsim7/game.components'
 import { registerFrontendMiniGames } from './components/minigames/registry'
 import './lib/providers/plugins' // Register provider generation UI plugins
+import { registerDevTools } from './lib/devtools/registerDevTools'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -14,6 +15,9 @@ logEvent('INFO', 'frontend_app_started')
 // Register mini-games
 registerBuiltInMiniGames()
 registerFrontendMiniGames()
+
+// Register dev tools
+registerDevTools()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

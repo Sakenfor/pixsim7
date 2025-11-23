@@ -267,6 +267,54 @@ These interactive tools provide real-time visibility into the app's structure an
 
 ---
 
+## Dev Tools Surface & Debug Workspace
+
+**Purpose:** Unified developer tools and debugging infrastructure for inspecting, testing, and diagnosing PixSim7 systems.
+
+**Code Locations:**
+- `apps/main/src/lib/devtools/` - Dev tools registry and infrastructure
+- `apps/main/src/components/dev/DevToolsPanel.tsx` - Dev tools navigation panel
+- `apps/main/src/components/dev/` - Individual dev tool components
+- `apps/main/src/stores/workspaceStore.ts` - Dev workspace presets
+
+**Dev Tools Registry:**
+- **`devToolRegistry`** - Central registry for all developer tools
+- **`DevToolDefinition`** - Type definition with metadata (id, label, category, icon, component, route)
+- **`registerDevTools()`** - Initializes built-in dev tools at app startup
+- **Plugin integration:** Dev tools can be contributed via `'dev-tool'` plugin family
+
+**Dev Workspace Presets:**
+| Preset | Layout | Purpose |
+|--------|--------|---------|
+| `dev-default` | Graph + Dev Tools + Health | General debugging and monitoring |
+| `dev-plugins` | Dev Tools + Settings + Game | Plugin development and testing |
+| `dev-architecture` | Graph + Dev Tools | Architecture visualization and analysis |
+
+**Built-in Dev Tools:**
+
+| Tool | Category | Component/Route | Description |
+|------|----------|----------------|-------------|
+| **Session State Viewer** | Session | `SessionStateViewer.tsx` | Inspect session flags, relationships, world time |
+| **Plugin Workspace** | Plugins | `/dev/plugins` | Develop and test plugins with harnesses |
+| **App Map** | Graph | `AppMapPanel.tsx` | Visual map of app architecture |
+| **Dependency Graph** | Graph | `DependencyGraphPanel.tsx` | Module dependency visualization |
+| **Backend Architecture** | Graph | `BackendArchitecturePanel.tsx` | Backend service architecture view |
+| **Generation Health** | Generation | `GenerationHealthView.tsx` | Content generation diagnostics |
+| **Template Analytics** | Debug | `TemplateAnalyticsPanel.tsx` | Template usage and performance |
+| **Capability Testing** | Debug | `CapabilityTestingPanel.tsx` | Test capabilities and APIs |
+
+**Accessing Dev Tools:**
+1. **Via Workspace Presets:** Select a dev preset from the workspace menu
+2. **Via Dev Tools Panel:** Open the Dev Tools panel to browse all tools by category
+3. **Via Direct Routes:** Navigate to tool routes (e.g., `/dev/plugins`)
+4. **Via Plugin Browser:** Dev tools registered as plugins appear in the plugin browser
+
+**Documentation:**
+- [SYSTEM_OVERVIEW.md](./SYSTEM_OVERVIEW.md#dev-tools-surface--debug-workspace) - Dev tools system overview
+- [claude-tasks/54-dev-tools-surface-and-debug-workspace.md](../claude-tasks/54-dev-tools-surface-and-debug-workspace.md) - Implementation details
+
+---
+
 ## Roadmap / Next Steps
 
 The following designer-focused features are planned (see `claude-tasks/` for detailed specs):

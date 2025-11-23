@@ -26,6 +26,7 @@ import { nodeRendererRegistry } from '../graph/nodeRendererRegistry';
 import { worldToolRegistry, type WorldToolPlugin } from '../worldTools/registry';
 import type { GalleryToolPlugin } from '../gallery/types';
 import { graphEditorRegistry, type GraphEditorDefinition } from '../graph/editorRegistry';
+import { devToolRegistry, type DevToolDefinition } from '../devtools';
 
 // ============================================================================
 // Registry Bridge Base
@@ -333,6 +334,45 @@ export function registerGraphEditor(
  */
 export function registerBuiltinGraphEditor(editor: GraphEditorDefinition): void {
   registerGraphEditor(editor, { origin: 'builtin', canDisable: false });
+}
+
+// ============================================================================
+// Dev Tool Registry Bridge
+// ============================================================================
+
+/**
+ * Register a dev tool with metadata tracking
+ */
+export function registerDevTool(
+  tool: DevToolDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  // Register with dev tool registry
+  devToolRegistry.register(tool);
+
+  // Extract metadata
+  const metadata = extractCommonMetadata(tool as any);
+
+  // Register in catalog
+  pluginCatalog.register({
+    ...metadata,
+    id: tool.id,
+    name: tool.label,
+    family: 'dev-tool',
+    origin: options.origin ?? 'plugin-dir',
+    activationState: options.activationState ?? 'active',
+    canDisable: options.canDisable ?? true,
+    category: tool.category,
+    icon: tool.icon,
+    ...options.metadata,
+  } as ExtendedPluginMetadata<'dev-tool'>);
+}
+
+/**
+ * Register built-in dev tool with origin tracking
+ */
+export function registerBuiltinDevTool(tool: DevToolDefinition): void {
+  registerDevTool(tool, { origin: 'builtin', canDisable: false });
 }
 
 // ============================================================================
