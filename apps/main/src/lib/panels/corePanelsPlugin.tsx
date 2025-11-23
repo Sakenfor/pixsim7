@@ -8,7 +8,7 @@
 import type { PanelPlugin } from './panelPlugin';
 import { AssetsRoute } from '../../routes/Assets';
 import { SceneBuilderPanel } from '../../components/legacy/SceneBuilderPanel';
-import { GraphPanelWithProvider } from '../../components/legacy/GraphPanel';
+import { GraphEditorHost } from '../../components/graph/GraphEditorHost';
 import { InspectorPanel } from '../../components/inspector/InspectorPanel';
 import { HealthPanel } from '../../components/health/HealthPanel';
 import { ProviderSettingsPanel } from '../../components/provider/ProviderSettingsPanel';
@@ -77,7 +77,7 @@ export const corePanelsPlugin: PanelPlugin = {
     {
       id: 'graph',
       title: 'Graph',
-      component: GraphPanelWithProvider,
+      component: GraphEditorHost,
       category: 'core',
       tags: ['graph', 'nodes', 'flow'],
       icon: '🔀',
