@@ -15,6 +15,7 @@ import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
+import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
 
@@ -133,6 +134,7 @@ export function AssetsRoute() {
 
   // Get badge config from panel settings
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
+  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
   // Merge badge configurations: surface < panel < widget
   const effectiveBadgeConfig = useMemo(() => {
@@ -142,6 +144,19 @@ export function AssetsRoute() {
 
     return mergeBadgeConfig(surfaceBadgeConfig, panelBadgeConfig);
   }, [currentSurfaceId, panelConfig]);
+
+  // Find current badge preset
+  const currentBadgePreset = useMemo(() => {
+    return findMatchingPreset(panelConfig?.settings?.badgeConfig || {}) || 'default';
+  }, [panelConfig]);
+
+  // Handle badge preset change
+  const handleBadgePresetChange = (presetId: string) => {
+    const preset = BADGE_CONFIG_PRESETS.find(p => p.id === presetId);
+    if (preset) {
+      updatePanelSettings('gallery', { badgeConfig: preset.config });
+    }
+  };
 
   // Gallery tools state
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
@@ -238,6 +253,24 @@ export function AssetsRoute() {
         <div className="flex items-center gap-4">
           {/* Surface Switcher */}
           <GallerySurfaceSwitcher mode="dropdown" />
+
+          {/* Badge Style Preset Switcher */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">Badge Style:</span>
+            <select
+              value={currentBadgePreset}
+              onChange={(e) => handleBadgePresetChange(e.target.value)}
+              className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+              title="Quick badge style presets"
+            >
+              {BADGE_CONFIG_PRESETS.map(preset => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.icon} {preset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-1 text-xs">
             <button
               className={`px-2 py-1 rounded ${view==='remote' ? 'bg-blue-600 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
