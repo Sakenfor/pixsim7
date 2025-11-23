@@ -108,7 +108,11 @@ export {
   validateSocialContextAgainstWorld,
   validateSocialContextAgainstUser,
   isGenerationNodeValid,
+  getValidationStatus,
+  getValidationSummary,
 } from './generation/validator';
+
+export type { ValidationStatus } from './generation/validator';
 
 // ===== Interactions =====
 export {

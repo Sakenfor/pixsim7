@@ -266,6 +266,11 @@ class ServiceCard(QFrame):
             except Exception:
                 pass
 
+        # Add PID if available
+        pid = self.service_process.started_pid or self.service_process.detected_pid
+        if pid:
+            status_info += f" • PID {pid}"
+
         # Add uptime if running
         if is_running and self.start_time:
             uptime = datetime.now() - self.start_time

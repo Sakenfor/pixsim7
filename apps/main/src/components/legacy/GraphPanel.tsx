@@ -14,28 +14,28 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
-import { useGraphStore, type GraphState } from '../stores/graphStore';
-import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '../modules/scene-builder/graphSync';
-import { useSelectionStore } from '../stores/selectionStore';
-import { logEvent } from '../lib/logging';
-import { SceneNode } from './nodes/SceneNode';
-import { NodeGroup } from './nodes/NodeGroup';
-import { Breadcrumbs } from './navigation/Breadcrumbs';
-import type { DraftSceneNode, DraftEdge } from '../modules/scene-builder';
-import { validateConnection, getValidationMessage } from '../modules/scene-builder/portValidation';
-import { NodePalette, type NodeType } from './nodes/NodePalette';
-import { previewBridge } from '../lib/preview-bridge';
-import { ValidationPanel } from './validation/ValidationPanel';
+import { useGraphStore, type GraphState } from '../../stores/graphStore';
+import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '../../modules/scene-builder/graphSync';
+import { useSelectionStore } from '../../stores/selectionStore';
+import { logEvent } from '../../lib/logging';
+import { SceneNode } from '../nodes/SceneNode';
+import { NodeGroup } from '../nodes/NodeGroup';
+import { Breadcrumbs } from '../navigation/Breadcrumbs';
+import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
+import { validateConnection, getValidationMessage } from '../../modules/scene-builder/portValidation';
+import { NodePalette, type NodeType } from '../nodes/NodePalette';
+import { previewBridge } from '../../lib/preview-bridge';
+import { ValidationPanel } from '../validation/ValidationPanel';
 import { WorldContextSelector } from './WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
-import { GraphTemplatePalette } from './graph/GraphTemplatePalette';
-import { TemplateWizardPalette } from './graph/TemplateWizardPalette';
-import { useTemplateStore } from '../lib/graph/templatesStore';
-import { captureTemplate, applyTemplate } from '../lib/graph/graphTemplates';
-import type { GraphTemplate } from '../lib/graph/graphTemplates';
-import { useWorldContextStore } from '../stores/worldContextStore';
-import { useTemplateAnalyticsStore } from '../lib/graph/templateAnalyticsStore';
-import { graphClipboard } from '../lib/graph/clipboard';
+import { GraphTemplatePalette } from '../graph/GraphTemplatePalette';
+import { TemplateWizardPalette } from '../graph/TemplateWizardPalette';
+import { useTemplateStore } from '../../lib/graph/templatesStore';
+import { captureTemplate, applyTemplate } from '../../lib/graph/graphTemplates';
+import type { GraphTemplate } from '../../lib/graph/graphTemplates';
+import { useWorldContextStore } from '../../stores/worldContextStore';
+import { useTemplateAnalyticsStore } from '../../lib/graph/templateAnalyticsStore';
+import { graphClipboard } from '../../lib/graph/clipboard';
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {

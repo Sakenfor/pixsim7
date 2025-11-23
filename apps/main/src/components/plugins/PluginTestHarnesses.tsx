@@ -13,6 +13,33 @@ import type {
   WorldToolPluginProject,
 } from '../../lib/plugins/projects';
 
+/**
+ * Dynamically load a plugin from source code without using eval.
+ *
+ * Supports CommonJS-style exports (module.exports / exports.default)
+ * and a window.__lastPlugin fallback used by some plugin examples.
+ */
+function loadPluginFromCode<T = any>(code: string): T {
+  const exports: any = {};
+  const module: any = { exports };
+  const globalWindow: any = typeof window !== 'undefined' ? window : {};
+
+  const fn = new Function(
+    'exports',
+    'module',
+    'window',
+    `
+      ${code}
+
+      return (typeof module !== 'undefined' && module.exports)
+        || (typeof exports !== 'undefined' && exports.default)
+        || window.__lastPlugin;
+    `
+  ) as (exports: any, module: any, window: any) => T;
+
+  return fn(exports, module, globalWindow);
+}
+
 // ============================================================================
 // Interaction Test Harness
 // ============================================================================
@@ -62,16 +89,8 @@ export function InteractionTestHarness({ project }: { project: InteractionPlugin
         onSuccess: (msg: string) => console.log('Success:', msg),
       };
 
-      // Evaluate the plugin code
-      const evalCode = `
-        ${project.code}
-
-        // Return the plugin default export
-        (typeof module !== 'undefined' && module.exports) || (typeof exports !== 'undefined' && exports.default) || window.__lastPlugin;
-      `;
-
-      // Execute in a controlled way
-      const plugin = eval(evalCode);
+      // Load plugin implementation from project code
+      const plugin = loadPluginFromCode<any>(project.code);
 
       if (!plugin || typeof plugin.execute !== 'function') {
         throw new Error('Plugin must export an execute function');
@@ -158,13 +177,8 @@ export function NodeTypeTestHarness({ project }: { project: NodeTypePluginProjec
       // Parse node data
       const parsedData = JSON.parse(nodeData);
 
-      // Evaluate the plugin code
-      const evalCode = `
-        ${project.code}
-        (typeof module !== 'undefined' && module.exports) || (typeof exports !== 'undefined' && exports.default) || window.__lastPlugin;
-      `;
-
-      const nodeType = eval(evalCode);
+      // Load node type definition from project code
+      const nodeType = loadPluginFromCode<any>(project.code);
 
       if (!nodeType) {
         throw new Error('Plugin must export a node type definition');
@@ -326,13 +340,8 @@ export function GalleryToolTestHarness({ project }: { project: GalleryToolPlugin
         isSelectionMode: false,
       };
 
-      // Evaluate the plugin code
-      const evalCode = `
-        ${project.code}
-        (typeof module !== 'undefined' && module.exports) || (typeof exports !== 'undefined' && exports.default) || window.__lastPlugin;
-      `;
-
-      const tool = eval(evalCode);
+      // Load gallery tool from project code
+      const tool = loadPluginFromCode<any>(project.code);
 
       if (!tool || typeof tool.render !== 'function') {
         throw new Error('Plugin must export a render function');
@@ -440,13 +449,8 @@ export function WorldToolTestHarness({ project }: { project: WorldToolPluginProj
         refresh: () => console.log('Refresh called'),
       };
 
-      // Evaluate the plugin code
-      const evalCode = `
-        ${project.code}
-        (typeof module !== 'undefined' && module.exports) || (typeof exports !== 'undefined' && exports.default) || window.__lastPlugin;
-      `;
-
-      const tool = eval(evalCode);
+      // Load world tool from project code
+      const tool = loadPluginFromCode<any>(project.code);
 
       if (!tool || typeof tool.render !== 'function') {
         throw new Error('Plugin must export a render function');
