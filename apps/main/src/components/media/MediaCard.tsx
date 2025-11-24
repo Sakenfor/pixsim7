@@ -12,11 +12,37 @@ import {
   MEDIA_STATUS_ICON,
 } from './mediaBadgeConfig';
 
-const STATUS_BG_CLASSES: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
-  green: 'bg-green-600 text-white',
-  yellow: 'bg-yellow-600 text-white',
-  red: 'bg-red-600 text-white',
-  gray: 'bg-gray-600 text-white',
+// Glassmorphism status badge styles with subtle animations
+const STATUS_STYLES: Record<'green' | 'yellow' | 'red' | 'gray', {
+  base: string;
+  hover: string;
+  ring: string;
+  glow: string;
+}> = {
+  green: {
+    base: 'bg-green-500/20 dark:bg-green-500/30 text-white backdrop-blur-md',
+    hover: 'hover:bg-green-500/30 dark:hover:bg-green-500/40',
+    ring: 'ring-2 ring-green-500 dark:ring-green-400 ring-offset-1',
+    glow: 'hover:shadow-[0_0_20px_rgba(34,197,94,0.4)]',
+  },
+  yellow: {
+    base: 'bg-amber-500/20 dark:bg-amber-500/30 text-white backdrop-blur-md',
+    hover: 'hover:bg-amber-500/30 dark:hover:bg-amber-500/40',
+    ring: 'ring-2 ring-amber-500 dark:ring-amber-400 ring-offset-1 animate-pulse-subtle',
+    glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.4)]',
+  },
+  red: {
+    base: 'bg-red-500/20 dark:bg-red-500/30 text-white backdrop-blur-md',
+    hover: 'hover:bg-red-500/30 dark:hover:bg-red-500/40',
+    ring: 'ring-2 ring-red-500 dark:ring-red-400 ring-offset-1 animate-pulse-subtle',
+    glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]',
+  },
+  gray: {
+    base: 'bg-neutral-500/20 dark:bg-neutral-500/30 text-white backdrop-blur-md',
+    hover: 'hover:bg-neutral-500/30 dark:hover:bg-neutral-500/40',
+    ring: 'ring-2 ring-neutral-500 dark:ring-neutral-400 ring-offset-1',
+    glow: 'hover:shadow-[0_0_20px_rgba(115,115,115,0.3)]',
+  },
 };
 
 const PROVIDER_TEXT_CLASSES: Record<string, string> = {
@@ -144,7 +170,8 @@ export function MediaCard(props: MediaCardProps) {
   const effectiveNote = props.uploadNote ?? internalUploadNote;
 
   const statusMeta = badges.status ? MEDIA_STATUS_ICON[badges.status] : null;
-  const statusBgClass = statusMeta ? STATUS_BG_CLASSES[statusMeta.color] : 'bg-gray-600 text-white';
+  const statusStyle = statusMeta ? STATUS_STYLES[statusMeta.color] : STATUS_STYLES.gray;
+  const statusBgClass = `${statusStyle.base} ${statusStyle.hover} ${statusStyle.ring} ${statusStyle.glow}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -276,16 +303,18 @@ export function MediaCard(props: MediaCardProps) {
         {badgeVisibility.showPrimaryIcon && badges.primary && (
           <div className="absolute left-2 top-2 group/media-type">
             <div
+              role="img"
+              aria-label={`${badges.primary} media type`}
               className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 ${
                 badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(34,197,94,0.3)]'
                   : badgeVisibility.showStatusIcon && badges.status === 'local_only'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-yellow-500 ring-offset-1'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-amber-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(245,158,11,0.3)]'
                   : badgeVisibility.showStatusIcon && badges.status === 'flagged'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-red-500 ring-offset-1'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-red-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(239,68,68,0.3)]'
                   : badgeVisibility.showStatusIcon && badges.status
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-gray-400 ring-offset-1'
-                  : 'bg-white/95 dark:bg-neutral-800/95 backdrop-blur-sm shadow-md'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-neutral-400 ring-offset-1 hover:shadow-[0_0_16px_rgba(115,115,115,0.2)]'
+                  : 'bg-white/95 dark:bg-neutral-800/95 backdrop-blur-sm shadow-md hover:shadow-[0_0_16px_rgba(255,255,255,0.2)]'
               }`}
             >
               <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
@@ -326,6 +355,9 @@ export function MediaCard(props: MediaCardProps) {
                   }}
                   className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all ${statusBgClass}`}
                   title={`${statusMeta?.label || badges.status} - Hover for actions`}
+                  aria-label={`Provider status: ${statusMeta?.label || badges.status}. Click to open details, hover for more actions.`}
+                  role="button"
+                  aria-haspopup="true"
                 >
                   <ThemedIcon
                     name={statusMeta?.icon || 'circle'}
@@ -480,15 +512,15 @@ export function MediaCard(props: MediaCardProps) {
             <button
               onClick={handleUploadClick}
               disabled={effectiveState==='uploading'}
-              className={`px-2 py-1 text-[10px] rounded shadow ${
+              className={`px-2 py-1 text-[10px] rounded shadow transition-all ${
                 effectiveState==='success' ? (
                   // Match extension semantics: check note/providerStatus to differentiate
                   (effectiveNote && (effectiveNote.includes('saved locally') || effectiveNote.includes('Local only'))) || providerStatus === 'local_only'
-                    ? 'bg-yellow-600 text-white'  // Local-only: yellow (partial success)
-                    : 'bg-blue-600 text-white'     // Provider accepted: blue (full success)
+                    ? 'bg-amber-600 text-white animate-bounce-once'  // Local-only: amber (partial success)
+                    : 'bg-blue-600 text-white animate-bounce-once'     // Provider accepted: blue (full success)
                 ) :
-                effectiveState==='error' ? 'bg-red-600 text-white' :
-                effectiveState==='uploading' ? 'bg-neutral-400 text-white' : 'bg-neutral-700 text-white'
+                effectiveState==='error' ? 'bg-red-600 text-white animate-shake' :
+                effectiveState==='uploading' ? 'bg-neutral-400 text-white animate-pulse' : 'bg-neutral-700 text-white hover:bg-neutral-600'
               }`}
               title={
                 effectiveState==='success'
@@ -503,6 +535,8 @@ export function MediaCard(props: MediaCardProps) {
                     ? (effectiveNote || 'Upload failed / rejected')
                     : 'Upload to provider'
               }
+              aria-label={`Upload status: ${effectiveState}`}
+              aria-live="polite"
             >
               {effectiveState==='uploading' ? 'UP...' : effectiveState==='success' ? 'UP OK' : effectiveState==='error' ? 'ERR' : 'UPLOAD'}
             </button>
@@ -529,16 +563,16 @@ export function MediaCard(props: MediaCardProps) {
             )}
             {/* Show non-technical tags only (technical tags shown in top-left tooltip) */}
             {badgeVisibility.showTagsInOverlay && displayTags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
+              <div className="flex flex-wrap gap-1.5 mt-1.5" role="list" aria-label="Media tags">
                 {displayTags.slice(0, 3).map(t => (
-                  <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-neutral-700 dark:text-neutral-300 border border-white/20 shadow-sm">
+                  <Badge key={t} color="gray" className="backdrop-blur-sm border border-white/20 shadow-sm text-[10px]">
                     {t}
-                  </span>
+                  </Badge>
                 ))}
                 {displayTags.length > 3 && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-neutral-700 dark:text-neutral-300 border border-white/20 shadow-sm">
+                  <Badge color="gray" className="backdrop-blur-sm border border-white/20 shadow-sm text-[10px]">
                     +{displayTags.length - 3}
-                  </span>
+                  </Badge>
                 )}
               </div>
             )}
@@ -562,7 +596,7 @@ export function MediaCard(props: MediaCardProps) {
               trigger={
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg transition-all"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105"
                   onClick={(e) => {
                     e.stopPropagation();
                     // Default action on click
@@ -576,6 +610,8 @@ export function MediaCard(props: MediaCardProps) {
                     else actions?.onAddToGenerate?.(id, operation);
                   }}
                   title="Click for quick action, hover for all options"
+                  aria-label="Generate actions. Click for quick action, hover for all options."
+                  aria-haspopup="true"
                 >
                   <ThemedIcon name="zap" size={12} variant="default" />
                   <span>Generate</span>
