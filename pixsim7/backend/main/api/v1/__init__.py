@@ -3,7 +3,7 @@ API v1 routers
 """
 from . import (
     auth, users, assets, admin, services, accounts, automation, prompts, generations, websocket,
-    dialogue, actions, generation, npc_state, llm_cache, analytics, dev_architecture, dev_info
+    dialogue, actions, generation, npc_state, llm_cache, analytics, dev_architecture, dev_info, dev_prompt_inspector
 )
 
 __all__ = [
@@ -27,4 +27,5 @@ __all__ = [
 	# Dev tools
 	"dev_architecture",
 	"dev_info",
+	"dev_prompt_inspector",
 ]
