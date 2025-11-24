@@ -98,8 +98,11 @@ export function MediaCard(props: MediaCardProps) {
     badgeConfig: badgeConfigProp,
   } = props;
 
-  // Resolve badge configuration
-  const badges = resolveMediaBadgeConfig(mediaType, providerStatus, tags);
+  // Resolve badge configuration (memoized for performance)
+  const badges = useMemo(
+    () => resolveMediaBadgeConfig(mediaType, providerStatus, tags),
+    [mediaType, providerStatus, tags]
+  );
 
   // Partition tags into technical vs display tags once per render
   const { technicalTags, displayTags } = useMemo(() => {
@@ -273,16 +276,16 @@ export function MediaCard(props: MediaCardProps) {
         {badgeVisibility.showPrimaryIcon && badges.primary && (
           <div className="absolute left-2 top-2 group/media-type">
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-lg shadow-lg transition-colors ${
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 ${
                 badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
-                  ? 'bg-white ring-2 ring-green-500'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status === 'local_only'
-                  ? 'bg-white ring-2 ring-yellow-500'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-yellow-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status === 'flagged'
-                  ? 'bg-white ring-2 ring-red-500'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-red-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status
-                  ? 'bg-white ring-2 ring-gray-400'
-                  : 'bg-white shadow-md'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-gray-400 ring-offset-1'
+                  : 'bg-white/95 dark:bg-neutral-800/95 backdrop-blur-sm shadow-md'
               }`}
             >
               <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
@@ -321,7 +324,7 @@ export function MediaCard(props: MediaCardProps) {
                       handleOpen();
                     }
                   }}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all ${statusBgClass}`}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all ${statusBgClass}`}
                   title={`${statusMeta?.label || badges.status} - Hover for actions`}
                 >
                   <ThemedIcon
@@ -332,71 +335,76 @@ export function MediaCard(props: MediaCardProps) {
                 </button>
               }
               direction="down"
-              hoverDelay={200}
-              offset={4}
+              hoverDelay={180}
+              offset={6}
               staggerChildren={true}
-              staggerDelay={0.05}
+              staggerDelay={0.04}
             >
               <div
-                className="w-48 rounded-md bg-neutral-900 text-white text-xs shadow-xl border border-neutral-700 overflow-hidden"
+                className="min-w-[12rem] rounded-lg bg-neutral-900/95 backdrop-blur-sm text-white text-xs shadow-2xl border border-neutral-700 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="px-3 py-2 bg-neutral-800 font-medium border-b border-neutral-700">
-                  {MEDIA_STATUS_ICON[badges.status]?.label || badges.status}
+                <div className="px-3 py-2 bg-gradient-to-r from-neutral-800 to-neutral-800/80 font-semibold border-b border-neutral-700 flex items-center gap-2">
+                  <ThemedIcon name={statusMeta?.icon || 'circle'} size={14} variant="default" />
+                  <span>{MEDIA_STATUS_ICON[badges.status]?.label || badges.status}</span>
                 </div>
-                {(onOpen || actions?.onOpenDetails) && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
-                    className="block"
-                  >
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
-                      onClick={() => {
-                        if (actions?.onOpenDetails) {
-                          actions.onOpenDetails(id);
-                        } else {
-                          handleOpen();
-                        }
-                      }}
+                <div className="py-1">
+                  {(onOpen || actions?.onOpenDetails) && (
+                    <ExpandableItem
+                      variants={expandableItemVariants}
+                      className="block"
                     >
-                      Open details
-                    </button>
-                  </ExpandableItem>
-                )}
-                {badges.status === 'local_only' && actions?.onUploadToProvider && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
-                    className="block"
-                  >
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
-                      onClick={() => {
-                        actions.onUploadToProvider?.(id);
-                      }}
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                        onClick={() => {
+                          if (actions?.onOpenDetails) {
+                            actions.onOpenDetails(id);
+                          } else {
+                            handleOpen();
+                          }
+                        }}
+                      >
+                        <ThemedIcon name="eye" size={14} variant="default" className="text-neutral-400 group-hover/item:text-blue-400" />
+                        <span className="font-medium">Open details</span>
+                      </button>
+                    </ExpandableItem>
+                  )}
+                  {badges.status === 'local_only' && actions?.onUploadToProvider && (
+                    <ExpandableItem
+                      variants={expandableItemVariants}
+                      className="block"
                     >
-                      <ThemedIcon name="upload" size={14} variant="default" />
-                      <span>Re-upload to provider</span>
-                    </button>
-                  </ExpandableItem>
-                )}
-                {actions?.onShowMetadata && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
-                    className="block"
-                  >
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
-                      onClick={() => {
-                        actions.onShowMetadata(id);
-                      }}
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                        onClick={() => {
+                          actions.onUploadToProvider?.(id);
+                        }}
+                      >
+                        <ThemedIcon name="upload" size={14} variant="default" className="text-neutral-400 group-hover/item:text-yellow-400" />
+                        <span className="font-medium">Re-upload to provider</span>
+                      </button>
+                    </ExpandableItem>
+                  )}
+                  {actions?.onShowMetadata && (
+                    <ExpandableItem
+                      variants={expandableItemVariants}
+                      className="block"
                     >
-                      Show metadata
-                    </button>
-                  </ExpandableItem>
-                )}
+                      <button
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                        onClick={() => {
+                          actions.onShowMetadata(id);
+                        }}
+                      >
+                        <ThemedIcon name="info" size={14} variant="default" className="text-neutral-400 group-hover/item:text-purple-400" />
+                        <span className="font-medium">Show metadata</span>
+                      </button>
+                    </ExpandableItem>
+                  )}
+                </div>
               </div>
             </ExpandableButtonGroup>
           </div>
@@ -451,18 +459,22 @@ export function MediaCard(props: MediaCardProps) {
 
         {/* Hover overlay with detailed info at bottom */}
         {isHovered && (
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/80 to-transparent pb-10 pt-8 px-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/95 via-black/75 to-transparent pb-10 pt-8 px-3 space-y-1.5 animate-in slide-in-from-bottom-2 duration-200">
             {description && (
-              <p className="text-xs text-white/90 line-clamp-2">{description}</p>
+              <p className="text-xs text-white/95 line-clamp-2 font-medium">{description}</p>
             )}
             {/* Show non-technical tags only (technical tags shown in top-left tooltip) */}
             {badgeVisibility.showTagsInOverlay && displayTags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {displayTags.slice(0, 3).map(t => (
-                  <Badge key={t} color="gray" className="text-[10px]">{t}</Badge>
+                  <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-neutral-700 dark:text-neutral-300 border border-white/20 shadow-sm">
+                    {t}
+                  </span>
                 ))}
                 {displayTags.length > 3 && (
-                  <Badge color="gray" className="text-[10px]">+{displayTags.length - 3}</Badge>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/90 dark:bg-neutral-900/90 backdrop-blur-sm text-neutral-700 dark:text-neutral-300 border border-white/20 shadow-sm">
+                    +{displayTags.length - 3}
+                  </span>
                 )}
               </div>
             )}
@@ -505,71 +517,57 @@ export function MediaCard(props: MediaCardProps) {
                   <span>Generate</span>
                 </button>
               }
-              direction="up"
-              hoverDelay={250}
-              offset={6}
-              staggerChildren={true}
-              staggerDelay={0.04}
+              direction="left"
+              hoverDelay={200}
+              offset={8}
             >
               <div
-                className="flex flex-col gap-1 p-2 rounded-md bg-neutral-900 shadow-xl border border-neutral-700"
+                className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700"
                 onClick={(e) => e.stopPropagation()}
               >
                 {actions?.onImageToVideo && mediaType === 'image' && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
+                  <button
+                    type="button"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    onClick={() => actions.onImageToVideo?.(id)}
+                    title="Image to Video"
                   >
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
-                      onClick={() => actions.onImageToVideo?.(id)}
-                    >
-                      <ThemedIcon name="zap" size={12} variant="default" />
-                      <span>Image → Video</span>
-                    </button>
-                  </ExpandableItem>
+                    <ThemedIcon name="video" size={16} variant="default" className="text-white" />
+                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Img→Vid</span>
+                  </button>
                 )}
                 {actions?.onVideoExtend && mediaType === 'video' && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
+                  <button
+                    type="button"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    onClick={() => actions.onVideoExtend?.(id)}
+                    title="Extend Video"
                   >
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
-                      onClick={() => actions.onVideoExtend?.(id)}
-                    >
-                      <ThemedIcon name="zap" size={12} variant="default" />
-                      <span>Extend Video</span>
-                    </button>
-                  </ExpandableItem>
+                    <ThemedIcon name="arrowRight" size={16} variant="default" className="text-white" />
+                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Extend</span>
+                  </button>
                 )}
                 {actions?.onAddToTransition && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
+                  <button
+                    type="button"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    onClick={() => actions.onAddToTransition?.(id)}
+                    title="Add to Transition"
                   >
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
-                      onClick={() => actions.onAddToTransition?.(id)}
-                    >
-                      <ThemedIcon name="zap" size={12} variant="default" />
-                      <span>Add to Transition</span>
-                    </button>
-                  </ExpandableItem>
+                    <ThemedIcon name="shuffle" size={16} variant="default" className="text-white" />
+                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Trans</span>
+                  </button>
                 )}
                 {actions?.onAddToGenerate && (
-                  <ExpandableItem
-                    variants={expandableItemVariants}
+                  <button
+                    type="button"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    onClick={() => actions.onAddToGenerate?.(id)}
+                    title="Add to Generate Queue"
                   >
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
-                      onClick={() => actions.onAddToGenerate?.(id)}
-                    >
-                      <ThemedIcon name="zap" size={12} variant="default" />
-                      <span>Add to Generate</span>
-                    </button>
-                  </ExpandableItem>
+                    <ThemedIcon name="plus" size={16} variant="default" className="text-white" />
+                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Queue</span>
+                  </button>
                 )}
               </div>
             </ExpandableButtonGroup>
