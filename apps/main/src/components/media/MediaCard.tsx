@@ -354,20 +354,58 @@ export function MediaCard(props: MediaCardProps) {
                       variants={expandableItemVariants}
                       className="block"
                     >
-                      <button
-                        type="button"
-                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
-                        onClick={() => {
-                          if (actions?.onOpenDetails) {
-                            actions.onOpenDetails(id);
-                          } else {
-                            handleOpen();
-                          }
-                        }}
+                      <ExpandableButtonGroup
+                        trigger={
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                            onClick={() => {
+                              if (actions?.onOpenDetails) {
+                                actions.onOpenDetails(id);
+                              } else {
+                                handleOpen();
+                              }
+                            }}
+                          >
+                            <ThemedIcon name="eye" size={14} variant="default" className="text-neutral-400 group-hover/item:text-blue-400" />
+                            <span className="font-medium">Open details</span>
+                          </button>
+                        }
+                        direction="right"
+                        hoverDelay={300}
+                        offset={4}
                       >
-                        <ThemedIcon name="eye" size={14} variant="default" className="text-neutral-400 group-hover/item:text-blue-400" />
-                        <span className="font-medium">Open details</span>
-                      </button>
+                        <div className="flex items-center gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-blue-600 transition-colors whitespace-nowrap"
+                            onClick={() => {
+                              if (actions?.onOpenDetails) {
+                                actions.onOpenDetails(id);
+                              } else {
+                                handleOpen();
+                              }
+                            }}
+                            title="Quick view"
+                          >
+                            Quick
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-blue-600 transition-colors whitespace-nowrap"
+                            onClick={() => {
+                              if (actions?.onOpenDetails) {
+                                actions.onOpenDetails(id);
+                              } else {
+                                handleOpen();
+                              }
+                            }}
+                            title="Full details"
+                          >
+                            Full
+                          </button>
+                        </div>
+                      </ExpandableButtonGroup>
                     </ExpandableItem>
                   )}
                   {badges.status === 'local_only' && actions?.onUploadToProvider && (
@@ -375,16 +413,42 @@ export function MediaCard(props: MediaCardProps) {
                       variants={expandableItemVariants}
                       className="block"
                     >
-                      <button
-                        type="button"
-                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
-                        onClick={() => {
-                          actions.onUploadToProvider?.(id);
-                        }}
+                      <ExpandableButtonGroup
+                        trigger={
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                            onClick={() => {
+                              actions.onUploadToProvider?.(id);
+                            }}
+                          >
+                            <ThemedIcon name="upload" size={14} variant="default" className="text-neutral-400 group-hover/item:text-yellow-400" />
+                            <span className="font-medium">Re-upload to provider</span>
+                          </button>
+                        }
+                        direction="right"
+                        hoverDelay={300}
+                        offset={4}
                       >
-                        <ThemedIcon name="upload" size={14} variant="default" className="text-neutral-400 group-hover/item:text-yellow-400" />
-                        <span className="font-medium">Re-upload to provider</span>
-                      </button>
+                        <div className="flex items-center gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                            onClick={() => actions.onUploadToProvider?.(id)}
+                            title="Upload immediately"
+                          >
+                            Now
+                          </button>
+                          <button
+                            type="button"
+                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                            onClick={() => actions.onUploadToProvider?.(id)}
+                            title="Retry with force"
+                          >
+                            Force
+                          </button>
+                        </div>
+                      </ExpandableButtonGroup>
                     </ExpandableItem>
                   )}
                   {actions?.onShowMetadata && (
@@ -526,26 +590,86 @@ export function MediaCard(props: MediaCardProps) {
                 onClick={(e) => e.stopPropagation()}
               >
                 {actions?.onImageToVideo && mediaType === 'image' && (
-                  <button
-                    type="button"
-                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
-                    onClick={() => actions.onImageToVideo?.(id)}
-                    title="Image to Video"
+                  <ExpandableButtonGroup
+                    trigger={
+                      <button
+                        type="button"
+                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                        onClick={() => actions.onImageToVideo?.(id)}
+                        title="Image to Video"
+                      >
+                        <ThemedIcon name="video" size={16} variant="default" className="text-white" />
+                        <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Img→Vid</span>
+                      </button>
+                    }
+                    direction="up"
+                    hoverDelay={300}
+                    offset={4}
                   >
-                    <ThemedIcon name="video" size={16} variant="default" className="text-white" />
-                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Img→Vid</span>
-                  </button>
+                    <div className="flex flex-col gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        onClick={() => actions.onImageToVideo?.(id)}
+                        title="Standard quality"
+                      >
+                        Standard
+                      </button>
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        onClick={() => actions.onImageToVideo?.(id)}
+                        title="High quality"
+                      >
+                        HD
+                      </button>
+                    </div>
+                  </ExpandableButtonGroup>
                 )}
                 {actions?.onVideoExtend && mediaType === 'video' && (
-                  <button
-                    type="button"
-                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
-                    onClick={() => actions.onVideoExtend?.(id)}
-                    title="Extend Video"
+                  <ExpandableButtonGroup
+                    trigger={
+                      <button
+                        type="button"
+                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                        onClick={() => actions.onVideoExtend?.(id)}
+                        title="Extend Video"
+                      >
+                        <ThemedIcon name="arrowRight" size={16} variant="default" className="text-white" />
+                        <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Extend</span>
+                      </button>
+                    }
+                    direction="up"
+                    hoverDelay={300}
+                    offset={4}
                   >
-                    <ThemedIcon name="arrowRight" size={16} variant="default" className="text-white" />
-                    <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Extend</span>
-                  </button>
+                    <div className="flex flex-col gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        onClick={() => actions.onVideoExtend?.(id)}
+                        title="2 seconds"
+                      >
+                        +2s
+                      </button>
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        onClick={() => actions.onVideoExtend?.(id)}
+                        title="4 seconds"
+                      >
+                        +4s
+                      </button>
+                      <button
+                        type="button"
+                        className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap"
+                        onClick={() => actions.onVideoExtend?.(id)}
+                        title="8 seconds"
+                      >
+                        +8s
+                      </button>
+                    </div>
+                  </ExpandableButtonGroup>
                 )}
                 {actions?.onAddToTransition && (
                   <button

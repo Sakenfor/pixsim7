@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 export interface MasonryGridProps {
   items: React.ReactNode[];
@@ -73,25 +73,31 @@ export function MasonryGrid({
     };
   }, [containerWidth]);
 
+  // Memoize column count calculation
+  const cols = useMemo(() => {
+    if (!containerWidth) return 1;
+    return Math.max(
+      1,
+      Math.floor((containerWidth + columnGap) / (minColumnWidth + columnGap))
+    );
+  }, [containerWidth, columnGap, minColumnWidth]);
+
+  // Memoize column width calculation
+  const colWidth = useMemo(() => {
+    if (!containerWidth) return 0;
+    return cols > 1
+      ? (containerWidth - columnGap * (cols - 1)) / cols
+      : containerWidth;
+  }, [containerWidth, columnGap, cols]);
+
   // Compute positions once we know container width and item heights
   useLayoutEffect(() => {
     if (!containerWidth || items.length === 0) {
       setPositions([]);
       setContainerHeight(0);
+      setColumnWidth(0);
       return;
     }
-
-    const cols = Math.max(
-      1,
-      Math.floor(
-        (containerWidth + columnGap) / (minColumnWidth + columnGap)
-      )
-    );
-
-    const colWidth =
-      cols > 1
-        ? (containerWidth - columnGap * (cols - 1)) / cols
-        : containerWidth;
 
     const colHeights = new Array(cols).fill(0);
     const nextPositions: { top: number; left: number; height: number }[] = [];
@@ -126,7 +132,7 @@ export function MasonryGrid({
     setContainerHeight(
       colHeights.length ? Math.max(...colHeights) - rowGap : 0
     );
-  }, [items, containerWidth, columnGap, rowGap, minColumnWidth]);
+  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth]);
 
   return (
     <div
