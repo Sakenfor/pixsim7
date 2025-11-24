@@ -96,11 +96,14 @@ export function Home() {
     userId: user?.username,
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<PageCategory | null>(null);
   const [registryVersion, setRegistryVersion] = useState(0);
 
   // Subscribe to module registry changes
   useEffect(() => {
+    // Ensure we pick up modules that were registered before this component mounted
+    setRegistryVersion(v => v + 1);
+
     const unsubscribe = moduleRegistry.subscribe(() => {
       // Increment version to trigger recomputation
       setRegistryVersion(v => v + 1);
@@ -191,7 +194,7 @@ export function Home() {
     }
   }, [allPages, navigateToPage]);
 
-  const categories = Object.keys(CATEGORY_LABELS);
+  const categories = Object.keys(CATEGORY_LABELS) as PageCategory[];
 
   return (
     <div className="mx-auto max-w-7xl p-6 space-y-8 content-with-dock min-h-screen">

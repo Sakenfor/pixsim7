@@ -317,7 +317,7 @@ class ModuleRegistry {
    * Get all modules that have page configurations
    * Useful for rendering navigation and page listings
    */
-  getPages(options?: { category?: string; featured?: boolean; includeHidden?: boolean }) {
+  getPages(options?: { category?: PageCategory; featured?: boolean; includeHidden?: boolean }) {
     return Array.from(this.modules.values())
       .filter(module => {
         if (!module.page) return false;

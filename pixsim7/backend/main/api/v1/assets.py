@@ -80,14 +80,19 @@ async def list_assets(
         for a in assets:
             # Heuristic:
             # - provider_flagged == True -> flagged (highest priority)
+            # - remote_url is a valid HTTP(S) URL -> provider OK
             # - provider_asset_id present and doesn't start with "local_" -> provider OK
-            # - provider_asset_id missing or starts with "local_" -> local-only
+            # - provider_asset_id present and starts with "local_" and no remote_url -> local-only
+            # - otherwise -> unknown
             provider_asset_id = getattr(a, "provider_asset_id", None)
             provider_flagged = getattr(a, "provider_flagged", False)
+            remote_url = getattr(a, "remote_url", None)
 
             status: str
             if provider_flagged:
                 status = "flagged"
+            elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
+                status = "ok"
             elif provider_asset_id and not provider_asset_id.startswith("local_"):
                 status = "ok"
             elif provider_asset_id and provider_asset_id.startswith("local_"):
@@ -135,9 +140,12 @@ async def get_asset(
         # Compute provider_status
         provider_asset_id = getattr(asset, "provider_asset_id", None)
         provider_flagged = getattr(asset, "provider_flagged", False)
+        remote_url = getattr(asset, "remote_url", None)
 
         if provider_flagged:
             status = "flagged"
+        elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
+            status = "ok"
         elif provider_asset_id and not provider_asset_id.startswith("local_"):
             status = "ok"
         elif provider_asset_id and provider_asset_id.startswith("local_"):
