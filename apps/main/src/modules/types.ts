@@ -48,6 +48,27 @@ export interface Module {
    * Modules can provide CC modules that will be automatically registered
    */
   controlCenterModules?: ControlCenterModule[];
+
+  /**
+   * Page/Route Configuration (optional)
+   * If the module provides a user-accessible page, define it here
+   */
+  page?: {
+    /** Route path (e.g., '/assets', '/workspace') */
+    route: string;
+    /** Icon name from icon library */
+    icon: string;
+    /** Short description for the page card */
+    description: string;
+    /** Category for grouping pages */
+    category: 'creation' | 'development' | 'management' | 'game' | 'automation';
+    /** Show in featured/quick access section */
+    featured?: boolean;
+    /** Hide from page listing (for internal/dev pages) */
+    hidden?: boolean;
+    /** Custom icon color class (e.g., 'text-red-500') */
+    iconColor?: string;
+  };
 }
 
 /**
@@ -202,6 +223,44 @@ class ModuleRegistry {
 
   list() {
     return Array.from(this.modules.values());
+  }
+
+  /**
+   * Get all modules that have page configurations
+   * Useful for rendering navigation and page listings
+   */
+  getPages(options?: { category?: string; featured?: boolean; includeHidden?: boolean }) {
+    return Array.from(this.modules.values())
+      .filter(module => {
+        if (!module.page) return false;
+        if (!options?.includeHidden && module.page.hidden) return false;
+        if (options?.category && module.page.category !== options.category) return false;
+        if (options?.featured !== undefined && module.page.featured !== options.featured) return false;
+        return true;
+      })
+      .map(module => ({
+        id: module.id,
+        name: module.name,
+        ...module.page!,
+        isReady: module.isReady?.() ?? true,
+      }));
+  }
+
+  /**
+   * Get pages grouped by category
+   */
+  getPagesByCategory(options?: { includeHidden?: boolean }) {
+    const pages = this.getPages(options);
+    const grouped: Record<string, typeof pages> = {};
+
+    for (const page of pages) {
+      if (!grouped[page.category]) {
+        grouped[page.category] = [];
+      }
+      grouped[page.category].push(page);
+    }
+
+    return grouped;
   }
 }
 
