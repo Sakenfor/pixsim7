@@ -12,8 +12,7 @@ import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
-import { useGenerationQueueStore } from '../stores/generationQueueStore';
-import { useControlCenterStore } from '../stores/controlCenterStore';
+import { useMediaGenerationActions } from '../hooks/useMediaGenerationActions';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
@@ -38,11 +37,12 @@ export function AssetsRoute() {
   const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
 
-  // Generation queue
-  const addToQueue = useGenerationQueueStore((s) => s.addToQueue);
-  const addToTransitionQueue = useGenerationQueueStore((s) => s.addToTransitionQueue);
-  const setControlCenterOpen = useControlCenterStore((s) => s.setOpen);
-  const setControlCenterActiveModule = useControlCenterStore((s) => s.setActiveModule);
+  const {
+    queueImageToVideo,
+    queueVideoExtend,
+    queueAddToTransition,
+    queueAutoGenerate,
+  } = useMediaGenerationActions();
 
   // Filters state derived from URL + sessionStorage
   const params = new URLSearchParams(window.location.search);
@@ -59,13 +59,13 @@ export function AssetsRoute() {
     provider_status: (params.get('provider_status') as any) || persisted.provider_status || undefined,
   };
   const [filters, setFilters] = useState(initialFilters);
-	  const { providers } = useProviders();
-	  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
-	  const jobsSocket = useJobsSocket({ autoConnect: true });
-	  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
-	  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
-	  const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
-	  const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
+  const { providers } = useProviders();
+  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
+  const jobsSocket = useJobsSocket({ autoConnect: true });
+  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
+  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
+  const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
   // Handle asset selection
   const handleSelectAsset = (asset: any) => {
@@ -81,12 +81,12 @@ export function AssetsRoute() {
     closeFloatingPanel('gallery');
   };
 
-	  const handleCancelSelection = () => {
-	    exitSelectionMode();
-	    closeFloatingPanel('gallery');
-	  };
+  const handleCancelSelection = () => {
+    exitSelectionMode();
+    closeFloatingPanel('gallery');
+  };
 
-	  function updateURL(next: typeof filters) {
+  function updateURL(next: typeof filters) {
     const p = new URLSearchParams();
     if (next.q) p.set('q', next.q);
     if (next.tag) p.set('tag', next.tag);
@@ -332,6 +332,10 @@ export function AssetsRoute() {
 	              actions={{
 	                onOpenDetails: (id) => setDetailAssetId(id),
 	                onShowMetadata: (id) => setDetailAssetId(id),
+	                onImageToVideo: () => queueImageToVideo(a),
+	                onVideoExtend: () => queueVideoExtend(a),
+	                onAddToTransition: () => queueAddToTransition(a),
+	                onAddToGenerate: () => queueAutoGenerate(a),
 	              }}
 	              badgeConfig={effectiveBadgeConfig}
 	            />
@@ -384,6 +388,10 @@ export function AssetsRoute() {
 	          actions={{
 	            onOpenDetails: (id) => setDetailAssetId(id),
 	            onShowMetadata: (id) => setDetailAssetId(id),
+	            onImageToVideo: () => queueImageToVideo(a),
+	            onVideoExtend: () => queueVideoExtend(a),
+	            onAddToTransition: () => queueAddToTransition(a),
+	            onAddToGenerate: () => queueAutoGenerate(a),
 	          }}
 	          badgeConfig={effectiveBadgeConfig}
 	        />

@@ -14,6 +14,7 @@ import { MediaCard } from '../media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '../../hooks/usePersistentState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { useMediaGenerationActions } from '../../hooks/useMediaGenerationActions';
 import type { GalleryAsset } from '../../lib/gallery/types';
 
 export function ReviewGallerySurface() {
@@ -25,6 +26,12 @@ export function ReviewGallerySurface() {
   });
 
   const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
+  const {
+    queueImageToVideo,
+    queueVideoExtend,
+    queueAddToTransition,
+    queueAutoGenerate,
+  } = useMediaGenerationActions();
 
   // Persistent review state - survives page reloads
   const [reviewedAssets, setReviewedAssets] = usePersistentSet('review-session:reviewed', new Set());
@@ -256,6 +263,12 @@ export function ReviewGallerySurface() {
                 createdAt={asset.created_at}
                 status={asset.sync_status}
                 providerStatus={asset.provider_status}
+                actions={{
+                  onImageToVideo: () => queueImageToVideo(asset),
+                  onVideoExtend: () => queueVideoExtend(asset),
+                  onAddToTransition: () => queueAddToTransition(asset),
+                  onAddToGenerate: () => queueAutoGenerate(asset),
+                }}
               />
 
               {/* Review Actions */}

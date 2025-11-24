@@ -1,7 +1,7 @@
 import { Badge } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { StatusBadge } from '@pixsim7/shared.ui';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 import { BACKEND_BASE } from '../../lib/api/client';
 import { ThemedIcon } from '../../lib/icons';
@@ -10,6 +10,21 @@ import {
   MEDIA_TYPE_ICON,
   MEDIA_STATUS_ICON,
 } from './mediaBadgeConfig';
+
+const STATUS_BG_CLASSES: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
+  green: 'bg-green-600 text-white',
+  yellow: 'bg-yellow-600 text-white',
+  red: 'bg-red-600 text-white',
+  gray: 'bg-gray-600 text-white',
+};
+
+const PROVIDER_TEXT_CLASSES: Record<string, string> = {
+  pixverse: 'text-purple-700 dark:text-purple-300',
+  'pixverse-openapi': 'text-purple-700 dark:text-purple-300',
+  leonardo: 'text-amber-700 dark:text-amber-300',
+  midjourney: 'text-indigo-700 dark:text-indigo-300',
+  dalle: 'text-emerald-700 dark:text-emerald-300',
+};
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -85,6 +100,20 @@ export function MediaCard(props: MediaCardProps) {
   // Resolve badge configuration
   const badges = resolveMediaBadgeConfig(mediaType, providerStatus, tags);
 
+  // Partition tags into technical vs display tags once per render
+  const { technicalTags, displayTags } = useMemo(() => {
+    const isTechnical = (tag: string) =>
+      tag.includes('_url') ||
+      tag.includes('_id') ||
+      tag.includes('from_') ||
+      tag === 'user_upload';
+
+    const technical = (tags ?? []).filter(isTechnical);
+    const display = (tags ?? []).filter(tag => !isTechnical(tag));
+
+    return { technicalTags: technical, displayTags: display };
+  }, [tags]);
+
   // Badge visibility configuration with defaults
   const badgeVisibility = {
     showPrimaryIcon: badgeConfigProp?.showPrimaryIcon ?? true,
@@ -107,9 +136,13 @@ export function MediaCard(props: MediaCardProps) {
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showGenerationMenu, setShowGenerationMenu] = useState(false);
 
   const effectiveState = props.uploadState ?? internalUploadState;
   const effectiveNote = props.uploadNote ?? internalUploadNote;
+
+  const statusMeta = badges.status ? MEDIA_STATUS_ICON[badges.status] : null;
+  const statusBgClass = statusMeta ? STATUS_BG_CLASSES[statusMeta.color] : 'bg-gray-600 text-white';
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +239,7 @@ export function MediaCard(props: MediaCardProps) {
       onMouseLeave={() => {
         setIsHovered(false);
         setShowMenu(false);
+        setShowGenerationMenu(false);
       }}
     >
       <div
@@ -258,16 +292,23 @@ export function MediaCard(props: MediaCardProps) {
             >
               <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
             </div>
-            {/* Technical tags tooltip on hover */}
-            {tags.filter(t => t.includes('_url') || t.includes('_id') || t.includes('from_')).length > 0 && (
+            {/* Provider + technical info tooltip on hover */}
+            {(badgeVisibility.showFooterProvider && providerId && !providerId.includes('_')) || technicalTags.length > 0 ? (
               <div className="absolute top-full left-0 mt-1 hidden group-hover/media-type:block z-30 min-w-max">
                 <div className="bg-black/90 text-white text-[10px] rounded-md shadow-lg px-2 py-1.5 space-y-0.5">
-                  {tags.filter(t => t.includes('_url') || t.includes('_id') || t.includes('from_')).map(tag => (
+                  {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
+                    <div className="font-medium">
+                      {providerId}
+                      {' · '}
+                      {mediaType}
+                    </div>
+                  )}
+                  {technicalTags.map(tag => (
                     <div key={tag} className="font-mono">{tag}</div>
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -279,19 +320,11 @@ export function MediaCard(props: MediaCardProps) {
                 e.stopPropagation();
                 setShowMenu((prev) => !prev);
               }}
-              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 ${
-                badges.status === 'provider_ok'
-                  ? 'bg-green-600 text-white'
-                  : badges.status === 'local_only'
-                  ? 'bg-yellow-600 text-white'
-                  : badges.status === 'flagged'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-600 text-white'
-              }`}
-              title={`${MEDIA_STATUS_ICON[badges.status]?.label || badges.status} - Click for actions`}
+              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 ${statusBgClass}`}
+              title={`${statusMeta?.label || badges.status} - Click for actions`}
             >
               <ThemedIcon
-                name={badges.status === 'provider_ok' ? 'check' : badges.status === 'local_only' ? 'save' : MEDIA_STATUS_ICON[badges.status]?.icon || 'circle'}
+                name={statusMeta?.icon || 'circle'}
                 size={16}
                 variant="default"
               />
@@ -324,13 +357,14 @@ export function MediaCard(props: MediaCardProps) {
                 {badges.status === 'local_only' && actions?.onUploadToProvider && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
                     onClick={() => {
                       setShowMenu(false);
                       actions.onUploadToProvider?.(id);
                     }}
                   >
-                    ⬆️ Re-upload to provider
+                    <ThemedIcon name="upload" size={14} variant="default" />
+                    <span>Re-upload to provider</span>
                   </button>
                 )}
                 {actions?.onShowMetadata && (
@@ -345,52 +379,56 @@ export function MediaCard(props: MediaCardProps) {
                     Show metadata
                   </button>
                 )}
-                {badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
+                {false && badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
                     onClick={() => {
                       setShowMenu(false);
                       actions.onImageToVideo?.(id);
                     }}
                   >
-                    ⚡ Image → Video
+                    <ThemedIcon name="zap" size={14} variant="default" />
+                    <span>Image → Video</span>
                   </button>
                 )}
-                {badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
+                {false && badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
                     onClick={() => {
                       setShowMenu(false);
                       actions.onVideoExtend?.(id);
                     }}
                   >
-                    ⚡ Extend Video
+                    <ThemedIcon name="zap" size={14} variant="default" />
+                    <span>Extend Video</span>
                   </button>
                 )}
-                {badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (
+                {false && badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
                     onClick={() => {
                       setShowMenu(false);
                       actions.onAddToTransition?.(id);
                     }}
                   >
-                    ⚡ Add to Transition
+                    <ThemedIcon name="zap" size={14} variant="default" />
+                    <span>Add to Transition</span>
                   </button>
                 )}
-                {badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
+                {false && badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
                     onClick={() => {
                       setShowMenu(false);
                       actions.onAddToGenerate?.(id);
                     }}
                   >
-                    ⚡ Add to Generate
+                    <ThemedIcon name="zap" size={14} variant="default" />
+                    <span>Add to Generate</span>
                   </button>
                 )}
               </div>
@@ -451,7 +489,7 @@ export function MediaCard(props: MediaCardProps) {
         )}
 
         {/* Bottom-left: Generation quick action badge (shows on hover) */}
-        {badgeVisibility.showGenerationBadge && isHovered && badgeVisibility.generationQuickAction !== 'none' && (
+        {false && badgeVisibility.showGenerationBadge && isHovered && badgeVisibility.generationQuickAction !== 'none' && (
           <div className="absolute left-2 bottom-2 z-20 animate-in fade-in duration-200">
             <button
               onClick={(e) => {
@@ -475,9 +513,70 @@ export function MediaCard(props: MediaCardProps) {
                   : 'Add to Generate'
               }
             >
-              <span>⚡</span>
+              <ThemedIcon name="zap" size={14} variant="default" />
               <span>Generate</span>
             </button>
+          </div>
+        )}
+
+        {badgeVisibility.showGenerationInMenu && showGenerationMenu && (
+          <div className="px-2 pt-1 pb-1 flex flex-wrap gap-1 border-t border-neutral-100 dark:border-neutral-800">
+            {actions?.onImageToVideo && mediaType === 'image' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.onImageToVideo?.(id);
+                }}
+              >
+                <ThemedIcon name="zap" size={12} variant="default" />
+                <span>Image → Video</span>
+              </Button>
+            )}
+            {actions?.onVideoExtend && mediaType === 'video' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.onVideoExtend?.(id);
+                }}
+              >
+                <ThemedIcon name="zap" size={12} variant="default" />
+                <span>Extend Video</span>
+              </Button>
+            )}
+            {actions?.onAddToTransition && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.onAddToTransition?.(id);
+                }}
+              >
+                <ThemedIcon name="zap" size={12} variant="default" />
+                <span>Add to Transition</span>
+              </Button>
+            )}
+            {actions?.onAddToGenerate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.onAddToGenerate?.(id);
+                }}
+              >
+                <ThemedIcon name="zap" size={12} variant="default" />
+                <span>Add to Generate</span>
+              </Button>
+            )}
           </div>
         )}
 
@@ -488,13 +587,13 @@ export function MediaCard(props: MediaCardProps) {
               <p className="text-xs text-white/90 line-clamp-2">{description}</p>
             )}
             {/* Show non-technical tags only (technical tags shown in top-left tooltip) */}
-            {badgeVisibility.showTagsInOverlay && tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length > 0 && (
+            {badgeVisibility.showTagsInOverlay && displayTags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1.5">
-                {tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).slice(0, 3).map(t => (
+                {displayTags.slice(0, 3).map(t => (
                   <Badge key={t} color="gray" className="text-[10px]">{t}</Badge>
                 ))}
-                {tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length > 3 && (
-                  <Badge color="gray" className="text-[10px]">+{tags.filter(t => !t.includes('_url') && !t.includes('_id') && !t.includes('from_')).length - 3}</Badge>
+                {displayTags.length > 3 && (
+                  <Badge color="gray" className="text-[10px]">+{displayTags.length - 3}</Badge>
                 )}
               </div>
             )}
@@ -503,7 +602,7 @@ export function MediaCard(props: MediaCardProps) {
       </div>
 
       {/* Compact footer: provider + date */}
-      {(badgeVisibility.showFooterProvider || badgeVisibility.showFooterDate) && (
+      {false && (badgeVisibility.showFooterProvider || badgeVisibility.showFooterDate) && (
         <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
           {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
             <span className="truncate max-w-[60%]">
@@ -514,6 +613,44 @@ export function MediaCard(props: MediaCardProps) {
           )}
           {badgeVisibility.showFooterDate && (
             <span>{new Date(createdAt).toLocaleDateString()}</span>
+          )}
+        </div>
+      )}
+
+      {/* Footer: provider + Generate */}
+      {(badgeVisibility.showFooterProvider || badgeVisibility.showGenerationBadge) && (
+        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+          {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
+            <span className="truncate max-w-[60%]">
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
+              {' · '}
+              {mediaType}
+            </span>
+          )}
+          {badgeVisibility.showGenerationBadge && (actions?.onImageToVideo || actions?.onVideoExtend || actions?.onAddToTransition || actions?.onAddToGenerate) && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] hover:bg-purple-700 transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (badgeVisibility.showGenerationInMenu) {
+                  setShowGenerationMenu(prev => !prev);
+                  return;
+                }
+
+                const operation = badgeVisibility.generationQuickAction === 'auto'
+                  ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
+                  : badgeVisibility.generationQuickAction;
+
+                if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
+                else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
+                else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
+                else actions?.onAddToGenerate?.(id, operation);
+              }}
+            >
+              <ThemedIcon name="zap" size={12} variant="default" />
+              <span>Generate</span>
+            </button>
           )}
         </div>
       )}

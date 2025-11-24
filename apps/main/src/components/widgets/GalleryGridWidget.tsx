@@ -10,6 +10,7 @@ import { useAssets } from '../../hooks/useAssets';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import type { WidgetProps, WidgetDefinition } from '../../lib/widgets/widgetRegistry';
+import { useMediaGenerationActions } from '../../hooks/useMediaGenerationActions';
 
 export interface GalleryGridWidgetConfig {
   title?: string;
@@ -53,6 +54,13 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
   // Apply limit
   const displayItems = items.slice(0, limit);
 
+  const {
+    queueImageToVideo,
+    queueVideoExtend,
+    queueAddToTransition,
+    queueAutoGenerate,
+  } = useMediaGenerationActions();
+
   // Render media cards
   const renderCards = () => {
     return displayItems.map((asset) => (
@@ -75,6 +83,10 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
         actions={{
           onOpenDetails: () => navigate(`/assets/${asset.id}`),
           onShowMetadata: () => navigate(`/assets/${asset.id}`),
+          onImageToVideo: () => queueImageToVideo(asset),
+          onVideoExtend: () => queueVideoExtend(asset),
+          onAddToTransition: () => queueAddToTransition(asset),
+          onAddToGenerate: () => queueAutoGenerate(asset),
         }}
         badgeConfig={badgeConfig}
       />

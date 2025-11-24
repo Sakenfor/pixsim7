@@ -6,10 +6,10 @@
  */
 
 import { create } from 'zustand';
-import type { Asset } from '../types';
+import type { AssetSummary } from '../hooks/useAssets';
 
 export interface QueuedAsset {
-  asset: Asset;
+  asset: AssetSummary;
   operation?: 'image_to_video' | 'video_extend' | 'add_to_transition';
   queuedAt: string;
 }
@@ -20,8 +20,8 @@ export interface GenerationQueueState {
   transitionQueue: QueuedAsset[];     // Assets queued for video transition
 
   // Actions
-  addToQueue: (asset: Asset, operation?: 'image_to_video' | 'video_extend') => void;
-  addToTransitionQueue: (asset: Asset) => void;
+  addToQueue: (asset: AssetSummary, operation?: 'image_to_video' | 'video_extend') => void;
+  addToTransitionQueue: (asset: AssetSummary) => void;
   removeFromQueue: (assetId: number, queueType?: 'main' | 'transition') => void;
   clearQueue: (queueType?: 'main' | 'transition' | 'all') => void;
   getNextInQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;

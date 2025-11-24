@@ -1,0 +1,32 @@
+      {(badgeVisibility.showFooterProvider || badgeVisibility.showGenerationBadge) && (
+        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+          {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
+            <span className="truncate max-w-[60%]">
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
+              {' · '}
+              {mediaType}
+            </span>
+          )}
+          {badgeVisibility.showGenerationBadge && (actions?.onImageToVideo || actions?.onVideoExtend || actions?.onAddToTransition || actions?.onAddToGenerate) && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] hover:bg-purple-700 transition"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (badgeVisibility.showGenerationInMenu) {
+                  setShowGenerationMenu(prev => !prev);
+                  return;
+                }
+
+                const operation = badgeVisibility.generationQuickAction === 'auto'
+                  ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
+                  : badgeVisibility.generationQuickAction;
+
+                if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
+                else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
+                else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
+                else actions?.onAddToGenerate?.(id, operation);
+              }}
+            >
+              <ThemedIcon name="zap" size={12} variant="default" />
+              <span>Generate</span>
