@@ -22,6 +22,9 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.generation import Generation
 from pixsim7.backend.main.domain.asset import Asset
 from pixsim7.backend.main.services.prompt_dsl_adapter import parse_prompt_to_blocks
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 router = APIRouter(prefix="/dev/prompt-inspector", tags=["dev"])
 
@@ -127,8 +130,12 @@ async def inspect_prompt(
                 detail=f"No generation found for asset {asset_id}"
             )
 
-    # Extract prompt text
+    # Extract prompt text (prefer final_prompt, fallback to inlinePrompt in prompt_config)
     prompt_text = generation.final_prompt
+    if not prompt_text and generation.prompt_config:
+        inline_prompt = generation.prompt_config.get("inlinePrompt")
+        if inline_prompt:
+            prompt_text = inline_prompt
 
     if not prompt_text:
         raise HTTPException(
@@ -142,9 +149,14 @@ async def inspect_prompt(
     except Exception as e:
         # Log error but don't fail - return empty blocks
         # This ensures the UI can still show the prompt text
+        logger.warning(
+            "prompt_dsl_parse_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            generation_id=generation.id,
+            user_id=user.id,
+        )
         parsed = {"blocks": []}
-        # Could log here if needed
-        # logger.error(f"Failed to parse prompt: {e}")
 
     # Return response
     return {
