@@ -31,6 +31,7 @@ import {
   npcBrainLabModule,
   appMapModule as appMapPageModule,
   pluginWorkspaceModule,
+  modulesDevModule,
 } from './pages';
 
 // Register all modules
@@ -71,6 +72,7 @@ export function registerModules() {
   moduleRegistry.register(npcBrainLabModule);
   moduleRegistry.register(appMapPageModule);
   moduleRegistry.register(pluginWorkspaceModule);
+  moduleRegistry.register(modulesDevModule);
 
   // Note: sceneBuilderModule removed - now uses graphStore (Zustand) for state management
   // scene-builder module now only exports types
@@ -78,6 +80,9 @@ export function registerModules() {
 
 // Export registry for easy access
 export { moduleRegistry };
+
+// Export page category constants and types
+export { PAGE_CATEGORIES, type PageCategory } from './types';
 
 // Export module instances for direct access
 export { galleryModule } from './gallery';

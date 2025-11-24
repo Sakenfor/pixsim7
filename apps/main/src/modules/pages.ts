@@ -148,3 +148,16 @@ export const pluginWorkspaceModule: Module = {
     hidden: true, // Dev tool
   },
 };
+
+export const modulesDevModule: Module = {
+  id: 'modules-dev',
+  name: 'Modules Overview',
+  page: {
+    route: '/dev/modules',
+    icon: 'code',
+    iconColor: 'text-cyan-500',
+    description: 'View all registered modules and their status',
+    category: 'development',
+    hidden: true, // Dev tool
+  },
+};

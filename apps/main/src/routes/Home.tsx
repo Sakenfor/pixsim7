@@ -1,16 +1,20 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { moduleRegistry } from '../modules';
+import { moduleRegistry, PAGE_CATEGORIES, type PageCategory } from '../modules';
 import { Button, Panel, ThemeToggle } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { usePageTracking } from '../hooks/usePageTracking';
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
-  creation: { label: '🎨 Content Creation', icon: 'palette', color: 'text-blue-500' },
-  automation: { label: '🤖 Automation & AI', icon: 'bot', color: 'text-purple-500' },
-  game: { label: '🎮 Game & World', icon: 'play', color: 'text-green-500' },
-  management: { label: '⚙️ Management', icon: 'settings', color: 'text-orange-500' },
-  development: { label: '🔧 Development', icon: 'code', color: 'text-gray-500' },
+/**
+ * Category display configuration
+ * Maps PAGE_CATEGORIES to display properties for the homepage
+ */
+const CATEGORY_LABELS: Record<PageCategory, { label: string; icon: string; color: string }> = {
+  [PAGE_CATEGORIES.creation]: { label: '🎨 Content Creation', icon: 'palette', color: 'text-blue-500' },
+  [PAGE_CATEGORIES.automation]: { label: '🤖 Automation & AI', icon: 'bot', color: 'text-purple-500' },
+  [PAGE_CATEGORIES.game]: { label: '🎮 Game & World', icon: 'play', color: 'text-green-500' },
+  [PAGE_CATEGORIES.management]: { label: '⚙️ Management', icon: 'settings', color: 'text-orange-500' },
+  [PAGE_CATEGORIES.development]: { label: '🔧 Development', icon: 'code', color: 'text-gray-500' },
 };
 
 interface PageCardProps {
@@ -88,14 +92,36 @@ function PageCard(props: PageCardProps) {
 
 export function Home() {
   const { user, logout } = useAuthStore();
-  const { favorites, recentPages, toggleFavorite, isFavorite, addToRecent } = usePageTracking();
+  const { favorites, recentPages, toggleFavorite, isFavorite, addToRecent } = usePageTracking({
+    userId: user?.username,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [registryVersion, setRegistryVersion] = useState(0);
 
-  // Get all pages from module registry
-  const allPages = useMemo(() => moduleRegistry.getPages({ includeHidden: false }), []);
-  const featuredPages = useMemo(() => moduleRegistry.getPages({ featured: true }), []);
-  const pagesByCategory = useMemo(() => moduleRegistry.getPagesByCategory(), []);
+  // Subscribe to module registry changes
+  useEffect(() => {
+    const unsubscribe = moduleRegistry.subscribe(() => {
+      // Increment version to trigger recomputation
+      setRegistryVersion(v => v + 1);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Get all pages from module registry - recompute when registry changes
+  const allPages = useMemo(
+    () => moduleRegistry.getPages({ includeHidden: false }),
+    [registryVersion]
+  );
+  const featuredPages = useMemo(
+    () => moduleRegistry.getPages({ featured: true }),
+    [registryVersion]
+  );
+  const pagesByCategory = useMemo(
+    () => moduleRegistry.getPagesByCategory(),
+    [registryVersion]
+  );
 
   // Filter pages by search query
   const filteredPages = useMemo(() => {
@@ -136,7 +162,11 @@ export function Home() {
     return allPages.filter(page => favorites.includes(page.id));
   }, [allPages, favorites]);
 
-  const handlePageClick = (page: { id: string; name: string; route: string; icon: string; iconColor?: string }) => {
+  /**
+   * Centralized navigation helper
+   * Ensures all navigation updates recent pages consistently
+   */
+  const navigateToPage = useCallback((page: { id: string; name: string; route: string; icon: string; iconColor?: string }) => {
     addToRecent({
       id: page.id,
       name: page.name,
@@ -145,7 +175,21 @@ export function Home() {
       iconColor: page.iconColor,
     });
     window.open(page.route, '_self');
-  };
+  }, [addToRecent]);
+
+  /**
+   * Navigate to a page by route
+   * Looks up the page in the registry and uses centralized navigation
+   */
+  const navigateToRoute = useCallback((route: string) => {
+    const page = allPages.find(p => p.route === route);
+    if (page) {
+      navigateToPage(page);
+    } else {
+      // Fallback for routes not in registry
+      window.open(route, '_self');
+    }
+  }, [allPages, navigateToPage]);
 
   const categories = Object.keys(CATEGORY_LABELS);
 
@@ -169,16 +213,16 @@ export function Home() {
 
       {/* Quick Actions */}
       <section className="flex flex-wrap gap-2">
-        <Button size="sm" variant="primary" onClick={() => window.open('/workspace', '_self')}>
+        <Button size="sm" variant="primary" onClick={() => navigateToRoute('/workspace')}>
           <Icon name="palette" size={14} /> Workspace
         </Button>
-        <Button size="sm" variant="primary" onClick={() => window.open('/assets', '_self')}>
+        <Button size="sm" variant="primary" onClick={() => navigateToRoute('/assets')}>
           <Icon name="image" size={14} /> Gallery
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => window.open('/automation', '_self')}>
+        <Button size="sm" variant="secondary" onClick={() => navigateToRoute('/automation')}>
           <Icon name="bot" size={14} /> Automation
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => window.open('/game-world', '_self')}>
+        <Button size="sm" variant="secondary" onClick={() => navigateToRoute('/game-world')}>
           <Icon name="map" size={14} /> Game World
         </Button>
       </section>
@@ -200,7 +244,7 @@ export function Home() {
                 isReady={true}
                 isFavorite={isFavorite(page.id)}
                 onToggleFavorite={() => toggleFavorite(page.id)}
-                onClick={() => handlePageClick(page)}
+                onClick={() => navigateToPage(page)}
               />
             ))}
           </div>
@@ -221,7 +265,7 @@ export function Home() {
                 {...page}
                 isFavorite={true}
                 onToggleFavorite={() => toggleFavorite(page.id)}
-                onClick={() => handlePageClick(page)}
+                onClick={() => navigateToPage(page)}
               />
             ))}
           </div>
@@ -289,7 +333,7 @@ export function Home() {
                     {...page}
                     isFavorite={isFavorite(page.id)}
                     onToggleFavorite={() => toggleFavorite(page.id)}
-                    onClick={() => handlePageClick(page)}
+                    onClick={() => navigateToPage(page)}
                   />
                 ))}
               </div>

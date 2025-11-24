@@ -2,12 +2,11 @@
  * Page Tracking Hook
  *
  * Manages favorites and recent pages using localStorage
+ * Supports per-user storage scoping via userId parameter
  */
 
 import { useState, useEffect, useCallback } from 'react';
 
-const FAVORITES_KEY = 'pixsim7:favorites';
-const RECENT_PAGES_KEY = 'pixsim7:recent-pages';
 const MAX_RECENT_PAGES = 5;
 
 export interface PageInfo {
@@ -19,26 +18,85 @@ export interface PageInfo {
   timestamp?: number;
 }
 
-export function usePageTracking() {
+export interface UsePageTrackingOptions {
+  /**
+   * User identifier for scoping storage
+   * If not provided, uses a default 'guest' prefix
+   */
+  userId?: string;
+}
+
+/**
+ * Generate storage keys scoped to a user
+ */
+function getStorageKeys(userId?: string) {
+  const prefix = userId ? `pixsim7:user:${userId}` : 'pixsim7:guest';
+  return {
+    favorites: `${prefix}:favorites`,
+    recentPages: `${prefix}:recent-pages`,
+  };
+}
+
+/**
+ * Safely parse JSON from localStorage with validation
+ */
+function safeParseArray<T>(value: string | null, validator: (data: unknown) => data is T[]): T[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (validator(parsed)) {
+      return parsed;
+    }
+    console.warn('Invalid data format in localStorage, resetting to empty array');
+    return [];
+  } catch (error) {
+    console.warn('Failed to parse localStorage data:', error);
+    return [];
+  }
+}
+
+/**
+ * Validate that data is an array of strings (for favorites)
+ */
+function isStringArray(data: unknown): data is string[] {
+  return Array.isArray(data) && data.every(item => typeof item === 'string');
+}
+
+/**
+ * Validate that data is an array of PageInfo objects (for recent pages)
+ */
+function isPageInfoArray(data: unknown): data is PageInfo[] {
+  return (
+    Array.isArray(data) &&
+    data.every(
+      item =>
+        typeof item === 'object' &&
+        item !== null &&
+        'id' in item &&
+        'name' in item &&
+        'route' in item &&
+        'icon' in item
+    )
+  );
+}
+
+export function usePageTracking(options?: UsePageTrackingOptions) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentPages, setRecentPages] = useState<PageInfo[]>([]);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedFavorites = localStorage.getItem(FAVORITES_KEY);
-      if (savedFavorites) {
-        setFavorites(JSON.parse(savedFavorites));
-      }
+  const storageKeys = getStorageKeys(options?.userId);
 
-      const savedRecent = localStorage.getItem(RECENT_PAGES_KEY);
-      if (savedRecent) {
-        setRecentPages(JSON.parse(savedRecent));
-      }
-    } catch (error) {
-      console.warn('Failed to load page tracking data:', error);
-    }
-  }, []);
+  // Load from localStorage on mount or when userId changes
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem(storageKeys.favorites);
+    const parsedFavorites = safeParseArray(savedFavorites, isStringArray);
+    setFavorites(parsedFavorites);
+
+    const savedRecent = localStorage.getItem(storageKeys.recentPages);
+    const parsedRecent = safeParseArray(savedRecent, isPageInfoArray);
+    setRecentPages(parsedRecent);
+  }, [storageKeys.favorites, storageKeys.recentPages]);
 
   // Toggle favorite
   const toggleFavorite = useCallback((pageId: string) => {
@@ -48,14 +106,14 @@ export function usePageTracking() {
         : [...prev, pageId];
 
       try {
-        localStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavorites));
+        localStorage.setItem(storageKeys.favorites, JSON.stringify(newFavorites));
       } catch (error) {
         console.warn('Failed to save favorites:', error);
       }
 
       return newFavorites;
     });
-  }, []);
+  }, [storageKeys.favorites]);
 
   // Check if page is favorited
   const isFavorite = useCallback((pageId: string) => {
@@ -75,24 +133,24 @@ export function usePageTracking() {
       ].slice(0, MAX_RECENT_PAGES);
 
       try {
-        localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(newRecent));
+        localStorage.setItem(storageKeys.recentPages, JSON.stringify(newRecent));
       } catch (error) {
         console.warn('Failed to save recent pages:', error);
       }
 
       return newRecent;
     });
-  }, []);
+  }, [storageKeys.recentPages]);
 
   // Clear recent pages
   const clearRecent = useCallback(() => {
     setRecentPages([]);
     try {
-      localStorage.removeItem(RECENT_PAGES_KEY);
+      localStorage.removeItem(storageKeys.recentPages);
     } catch (error) {
       console.warn('Failed to clear recent pages:', error);
     }
-  }, []);
+  }, [storageKeys.recentPages]);
 
   return {
     favorites,

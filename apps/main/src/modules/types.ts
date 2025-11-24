@@ -2,6 +2,54 @@ import { logEvent } from '../lib/logging';
 import type { ControlCenterModule } from '../lib/control/controlCenterModuleRegistry';
 
 /**
+ * Page Categories
+ *
+ * Defines the available categories for organizing pages in the application.
+ * These categories are used for grouping pages on the homepage and filtering.
+ */
+export const PAGE_CATEGORIES = {
+  /**
+   * Content Creation
+   * Pages for creating and editing content (scenes, arcs, narratives, assets)
+   * Examples: Workspace, Arc Graph Editor, Scene Builder
+   */
+  creation: 'creation',
+
+  /**
+   * Automation & AI
+   * Pages for automation, workflows, and AI-powered generation
+   * Examples: Automation Hub, Generation Queue, Template Editor
+   */
+  automation: 'automation',
+
+  /**
+   * Game & World
+   * Pages for game mechanics, world building, and gameplay
+   * Examples: Game World, NPC Brain Lab, 2D Game, Interaction Studio
+   */
+  game: 'game',
+
+  /**
+   * Management
+   * Pages for system management, monitoring, and configuration
+   * Examples: Gallery, Health Monitor, Asset Management
+   */
+  management: 'management',
+
+  /**
+   * Development
+   * Pages for development tools, debugging, and technical exploration
+   * Examples: Graph View, Gizmo Lab, App Map, Modules Overview
+   */
+  development: 'development',
+} as const;
+
+/**
+ * Page category type
+ */
+export type PageCategory = (typeof PAGE_CATEGORIES)[keyof typeof PAGE_CATEGORIES];
+
+/**
  * Base Module Interface
  *
  * All modules should implement this interface to ensure consistent communication
@@ -60,8 +108,11 @@ export interface Module {
     icon: string;
     /** Short description for the page card */
     description: string;
-    /** Category for grouping pages */
-    category: 'creation' | 'development' | 'management' | 'game' | 'automation';
+    /**
+     * Category for grouping pages
+     * Use PAGE_CATEGORIES constants to ensure consistency
+     */
+    category: PageCategory;
     /** Show in featured/quick access section */
     featured?: boolean;
     /** Hide from page listing (for internal/dev pages) */
@@ -79,6 +130,40 @@ export interface Module {
  */
 class ModuleRegistry {
   private modules = new Map<string, Module>();
+  private listeners: Array<() => void> = [];
+
+  /**
+   * Subscribe to module registry changes
+   * The listener will be called whenever a module is registered
+   * @returns unsubscribe function
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.push(listener);
+    return () => this.unsubscribe(listener);
+  }
+
+  /**
+   * Unsubscribe from module registry changes
+   */
+  private unsubscribe(listener: () => void): void {
+    const index = this.listeners.indexOf(listener);
+    if (index > -1) {
+      this.listeners.splice(index, 1);
+    }
+  }
+
+  /**
+   * Notify all listeners of a registry change
+   */
+  private notifyListeners(): void {
+    this.listeners.forEach(listener => {
+      try {
+        listener();
+      } catch (error) {
+        console.error('Error in module registry listener:', error);
+      }
+    });
+  }
 
   register(module: Module) {
     if (this.modules.has(module.id)) {
@@ -88,6 +173,9 @@ class ModuleRegistry {
 
     this.modules.set(module.id, module);
     logEvent('INFO', 'module_registered', { moduleId: module.id, moduleName: module.name });
+
+    // Notify listeners of the registry change
+    this.notifyListeners();
 
     // Auto-register any Control Center modules
     if (module.controlCenterModules && module.controlCenterModules.length > 0) {
