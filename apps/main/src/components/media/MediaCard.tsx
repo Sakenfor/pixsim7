@@ -1,6 +1,7 @@
 import { Badge } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { StatusBadge } from '@pixsim7/shared.ui';
+import { ExpandableButtonGroup, ExpandableItem, expandableItemVariants } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 import { BACKEND_BASE } from '../../lib/api/client';
@@ -135,8 +136,6 @@ export function MediaCard(props: MediaCardProps) {
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [showGenerationMenu, setShowGenerationMenu] = useState(false);
 
   const effectiveState = props.uploadState ?? internalUploadState;
   const effectiveNote = props.uploadNote ?? internalUploadNote;
@@ -236,11 +235,7 @@ export function MediaCard(props: MediaCardProps) {
       className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition"
       data-pixsim7="media-card"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        setShowMenu(false);
-        setShowGenerationMenu(false);
-      }}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <div
         ref={hover.containerRef}
@@ -312,127 +307,98 @@ export function MediaCard(props: MediaCardProps) {
           </div>
         )}
 
-        {/* Top-right: Always-visible provider status badge (click for actions) */}
+        {/* Top-right: Expandable provider status badge (hover to reveal actions) */}
         {badges.status && (
           <div className="absolute right-2 top-2 z-20">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowMenu((prev) => !prev);
-              }}
-              className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 ${statusBgClass}`}
-              title={`${statusMeta?.label || badges.status} - Click for actions`}
+            <ExpandableButtonGroup
+              trigger={
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (actions?.onOpenDetails) {
+                      actions.onOpenDetails(id);
+                    } else {
+                      handleOpen();
+                    }
+                  }}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl transition-all ${statusBgClass}`}
+                  title={`${statusMeta?.label || badges.status} - Hover for actions`}
+                >
+                  <ThemedIcon
+                    name={statusMeta?.icon || 'circle'}
+                    size={16}
+                    variant="default"
+                  />
+                </button>
+              }
+              direction="down"
+              hoverDelay={200}
+              offset={4}
+              staggerChildren={true}
+              staggerDelay={0.05}
             >
-              <ThemedIcon
-                name={statusMeta?.icon || 'circle'}
-                size={16}
-                variant="default"
-              />
-            </button>
-            {/* Actions menu */}
-            {showMenu && (
               <div
-                className="absolute right-0 top-full mt-1 w-48 rounded-md bg-neutral-900 text-white text-xs shadow-xl border border-neutral-700 z-30 overflow-hidden"
+                className="w-48 rounded-md bg-neutral-900 text-white text-xs shadow-xl border border-neutral-700 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="px-3 py-2 bg-neutral-800 font-medium border-b border-neutral-700">
                   {MEDIA_STATUS_ICON[badges.status]?.label || badges.status}
                 </div>
                 {(onOpen || actions?.onOpenDetails) && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
-                    onClick={() => {
-                      setShowMenu(false);
-                      if (actions?.onOpenDetails) {
-                        actions.onOpenDetails(id);
-                      } else {
-                        handleOpen();
-                      }
-                    }}
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                    className="block"
                   >
-                    Open details
-                  </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                      onClick={() => {
+                        if (actions?.onOpenDetails) {
+                          actions.onOpenDetails(id);
+                        } else {
+                          handleOpen();
+                        }
+                      }}
+                    >
+                      Open details
+                    </button>
+                  </ExpandableItem>
                 )}
                 {badges.status === 'local_only' && actions?.onUploadToProvider && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onUploadToProvider?.(id);
-                    }}
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                    className="block"
                   >
-                    <ThemedIcon name="upload" size={14} variant="default" />
-                    <span>Re-upload to provider</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
+                      onClick={() => {
+                        actions.onUploadToProvider?.(id);
+                      }}
+                    >
+                      <ThemedIcon name="upload" size={14} variant="default" />
+                      <span>Re-upload to provider</span>
+                    </button>
+                  </ExpandableItem>
                 )}
                 {actions?.onShowMetadata && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onShowMetadata(id);
-                    }}
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                    className="block"
                   >
-                    Show metadata
-                  </button>
-                )}
-                {false && badgeVisibility.showGenerationInMenu && actions?.onImageToVideo && mediaType === 'image' && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors border-t border-neutral-700 flex items-center gap-2"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onImageToVideo?.(id);
-                    }}
-                  >
-                    <ThemedIcon name="zap" size={14} variant="default" />
-                    <span>Image → Video</span>
-                  </button>
-                )}
-                {false && badgeVisibility.showGenerationInMenu && actions?.onVideoExtend && mediaType === 'video' && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onVideoExtend?.(id);
-                    }}
-                  >
-                    <ThemedIcon name="zap" size={14} variant="default" />
-                    <span>Extend Video</span>
-                  </button>
-                )}
-                {false && badgeVisibility.showGenerationInMenu && actions?.onAddToTransition && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onAddToTransition?.(id);
-                    }}
-                  >
-                    <ThemedIcon name="zap" size={14} variant="default" />
-                    <span>Add to Transition</span>
-                  </button>
-                )}
-                {false && badgeVisibility.showGenerationInMenu && actions?.onAddToGenerate && (
-                  <button
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors flex items-center gap-2"
-                    onClick={() => {
-                      setShowMenu(false);
-                      actions.onAddToGenerate?.(id);
-                    }}
-                  >
-                    <ThemedIcon name="zap" size={14} variant="default" />
-                    <span>Add to Generate</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 transition-colors"
+                      onClick={() => {
+                        actions.onShowMetadata(id);
+                      }}
+                    >
+                      Show metadata
+                    </button>
+                  </ExpandableItem>
                 )}
               </div>
-            )}
+            </ExpandableButtonGroup>
           </div>
         )}
 
@@ -471,12 +437,6 @@ export function MediaCard(props: MediaCardProps) {
           </div>
         )}
 
-        {/* Legacy status badge (kept for backwards compatibility if status prop is provided) */}
-        {status && !badges.primary && (
-          <div className="absolute left-1 top-1">
-            <StatusBadge status={status} />
-          </div>
-        )}
         {mediaType === 'video' && hover.hasStartedPlaying && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
             <div className="h-full bg-white/80" style={{ width: `${Math.round(hover.progress * 100)}%` }} />
@@ -488,97 +448,6 @@ export function MediaCard(props: MediaCardProps) {
           </div>
         )}
 
-        {/* Bottom-left: Generation quick action badge (shows on hover) */}
-        {false && badgeVisibility.showGenerationBadge && isHovered && badgeVisibility.generationQuickAction !== 'none' && (
-          <div className="absolute left-2 bottom-2 z-20 animate-in fade-in duration-200">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const operation = badgeVisibility.generationQuickAction === 'auto'
-                  ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
-                  : badgeVisibility.generationQuickAction;
-
-                if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
-                else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
-                else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
-                else actions?.onAddToGenerate?.(id, operation);
-              }}
-              className="px-2 py-1 text-xs rounded-md shadow-lg bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 transition-all flex items-center gap-1"
-              title={
-                badgeVisibility.generationQuickAction === 'auto'
-                  ? `Generate (${mediaType === 'image' ? 'Image → Video' : mediaType === 'video' ? 'Extend Video' : 'Add'})`
-                  : badgeVisibility.generationQuickAction === 'image_to_video' ? 'Image → Video'
-                  : badgeVisibility.generationQuickAction === 'video_extend' ? 'Extend Video'
-                  : badgeVisibility.generationQuickAction === 'add_to_transition' ? 'Add to Transition'
-                  : 'Add to Generate'
-              }
-            >
-              <ThemedIcon name="zap" size={14} variant="default" />
-              <span>Generate</span>
-            </button>
-          </div>
-        )}
-
-        {badgeVisibility.showGenerationInMenu && showGenerationMenu && (
-          <div className="px-2 pt-1 pb-1 flex flex-wrap gap-1 border-t border-neutral-100 dark:border-neutral-800">
-            {actions?.onImageToVideo && mediaType === 'image' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.onImageToVideo?.(id);
-                }}
-              >
-                <ThemedIcon name="zap" size={12} variant="default" />
-                <span>Image → Video</span>
-              </Button>
-            )}
-            {actions?.onVideoExtend && mediaType === 'video' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.onVideoExtend?.(id);
-                }}
-              >
-                <ThemedIcon name="zap" size={12} variant="default" />
-                <span>Extend Video</span>
-              </Button>
-            )}
-            {actions?.onAddToTransition && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.onAddToTransition?.(id);
-                }}
-              >
-                <ThemedIcon name="zap" size={12} variant="default" />
-                <span>Add to Transition</span>
-              </Button>
-            )}
-            {actions?.onAddToGenerate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] rounded-full bg-black/40 text-white hover:bg-purple-700/80 border border-purple-500/60"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  actions.onAddToGenerate?.(id);
-                }}
-              >
-                <ThemedIcon name="zap" size={12} variant="default" />
-                <span>Add to Generate</span>
-              </Button>
-            )}
-          </div>
-        )}
 
         {/* Hover overlay with detailed info at bottom */}
         {isHovered && (
@@ -601,21 +470,6 @@ export function MediaCard(props: MediaCardProps) {
         )}
       </div>
 
-      {/* Compact footer: provider + date */}
-      {false && (badgeVisibility.showFooterProvider || badgeVisibility.showFooterDate) && (
-        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
-          {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
-            <span className="truncate max-w-[60%]">
-              <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
-              {' · '}
-              {mediaType}
-            </span>
-          )}
-          {badgeVisibility.showFooterDate && (
-            <span>{new Date(createdAt).toLocaleDateString()}</span>
-          )}
-        </div>
-      )}
 
       {/* Footer: provider + Generate */}
       {(badgeVisibility.showFooterProvider || badgeVisibility.showGenerationBadge) && (
@@ -628,29 +482,97 @@ export function MediaCard(props: MediaCardProps) {
             </span>
           )}
           {badgeVisibility.showGenerationBadge && (actions?.onImageToVideo || actions?.onVideoExtend || actions?.onAddToTransition || actions?.onAddToGenerate) && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] hover:bg-purple-700 transition"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (badgeVisibility.showGenerationInMenu) {
-                  setShowGenerationMenu(prev => !prev);
-                  return;
-                }
+            <ExpandableButtonGroup
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg transition-all"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Default action on click
+                    const operation = badgeVisibility.generationQuickAction === 'auto'
+                      ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
+                      : badgeVisibility.generationQuickAction;
 
-                const operation = badgeVisibility.generationQuickAction === 'auto'
-                  ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
-                  : badgeVisibility.generationQuickAction;
-
-                if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
-                else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
-                else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
-                else actions?.onAddToGenerate?.(id, operation);
-              }}
+                    if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
+                    else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
+                    else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
+                    else actions?.onAddToGenerate?.(id, operation);
+                  }}
+                  title="Click for quick action, hover for all options"
+                >
+                  <ThemedIcon name="zap" size={12} variant="default" />
+                  <span>Generate</span>
+                </button>
+              }
+              direction="up"
+              hoverDelay={250}
+              offset={6}
+              staggerChildren={true}
+              staggerDelay={0.04}
             >
-              <ThemedIcon name="zap" size={12} variant="default" />
-              <span>Generate</span>
-            </button>
+              <div
+                className="flex flex-col gap-1 p-2 rounded-md bg-neutral-900 shadow-xl border border-neutral-700"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {actions?.onImageToVideo && mediaType === 'image' && (
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
+                      onClick={() => actions.onImageToVideo?.(id)}
+                    >
+                      <ThemedIcon name="zap" size={12} variant="default" />
+                      <span>Image → Video</span>
+                    </button>
+                  </ExpandableItem>
+                )}
+                {actions?.onVideoExtend && mediaType === 'video' && (
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
+                      onClick={() => actions.onVideoExtend?.(id)}
+                    >
+                      <ThemedIcon name="zap" size={12} variant="default" />
+                      <span>Extend Video</span>
+                    </button>
+                  </ExpandableItem>
+                )}
+                {actions?.onAddToTransition && (
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
+                      onClick={() => actions.onAddToTransition?.(id)}
+                    >
+                      <ThemedIcon name="zap" size={12} variant="default" />
+                      <span>Add to Transition</span>
+                    </button>
+                  </ExpandableItem>
+                )}
+                {actions?.onAddToGenerate && (
+                  <ExpandableItem
+                    variants={expandableItemVariants}
+                  >
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded hover:bg-purple-700/80 transition-colors whitespace-nowrap"
+                      onClick={() => actions.onAddToGenerate?.(id)}
+                    >
+                      <ThemedIcon name="zap" size={12} variant="default" />
+                      <span>Add to Generate</span>
+                    </button>
+                  </ExpandableItem>
+                )}
+              </div>
+            </ExpandableButtonGroup>
           )}
         </div>
       )}

@@ -1,6 +1,7 @@
 export * from './Badge'
 export * from './Button'
 export * from './Dropdown'
+export * from './ExpandableButtonGroup'
 export * from './FormField'
 export * from './Input'
 export * from './Modal'
