@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
+import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
 import { controlCenterModuleRegistry } from '../../lib/control/controlCenterModuleRegistry';
 
@@ -242,52 +243,124 @@ export function ControlCenterDock() {
 
           <div className="w-px h-4 bg-gradient-to-b from-transparent via-neutral-300 to-transparent dark:via-neutral-600" />
 
-          {/* Dock Position Dropdown */}
-          <select
-            value={dockPosition}
-            onChange={(e) => setDockPosition(e.target.value as any)}
-            className="text-xs px-1.5 py-0.5 border border-neutral-300/50 dark:border-neutral-600/50 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-            title="Dock position"
+          {/* Dock Position Selector - Expandable Icon Grid */}
+          <ExpandableButtonGroup
+            trigger={
+              <button className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95">
+                {dockPosition === 'bottom' && '⬇'}
+                {dockPosition === 'top' && '⬆'}
+                {dockPosition === 'left' && '⬅'}
+                {dockPosition === 'right' && '➡'}
+                {dockPosition === 'floating' && '⊡'}
+              </button>
+            }
+            direction="up"
+            hoverDelay={200}
+            offset={6}
           >
-            <option value="bottom">⬇ Bottom</option>
-            <option value="top">⬆ Top</option>
-            <option value="left">⬅ Left</option>
-            <option value="right">➡ Right</option>
-            <option value="floating">⊡ Float</option>
-          </select>
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
+              <button
+                onClick={() => setDockPosition('top')}
+                className={clsx(
+                  'w-8 h-8 rounded transition-all flex items-center justify-center text-sm',
+                  dockPosition === 'top' ? 'bg-blue-600 text-white' : 'hover:bg-blue-600/80 text-white'
+                )}
+                title="Dock Top"
+              >
+                ⬆
+              </button>
+              <button
+                onClick={() => setDockPosition('left')}
+                className={clsx(
+                  'w-8 h-8 rounded transition-all flex items-center justify-center text-sm',
+                  dockPosition === 'left' ? 'bg-blue-600 text-white' : 'hover:bg-blue-600/80 text-white'
+                )}
+                title="Dock Left"
+              >
+                ⬅
+              </button>
+              <button
+                onClick={() => setDockPosition('floating')}
+                className={clsx(
+                  'w-8 h-8 rounded transition-all flex items-center justify-center text-sm',
+                  dockPosition === 'floating' ? 'bg-purple-600 text-white' : 'hover:bg-purple-600/80 text-white'
+                )}
+                title="Float"
+              >
+                ⊡
+              </button>
+              <button
+                onClick={() => setDockPosition('right')}
+                className={clsx(
+                  'w-8 h-8 rounded transition-all flex items-center justify-center text-sm',
+                  dockPosition === 'right' ? 'bg-blue-600 text-white' : 'hover:bg-blue-600/80 text-white'
+                )}
+                title="Dock Right"
+              >
+                ➡
+              </button>
+              <button
+                onClick={() => setDockPosition('bottom')}
+                className={clsx(
+                  'w-8 h-8 rounded transition-all flex items-center justify-center text-sm',
+                  dockPosition === 'bottom' ? 'bg-blue-600 text-white' : 'hover:bg-blue-600/80 text-white'
+                )}
+                title="Dock Bottom"
+              >
+                ⬇
+              </button>
+            </div>
+          </ExpandableButtonGroup>
 
-          {/* Mode toggle */}
-          <button
-            onClick={toggleMode}
-            className="text-xs px-2 py-1 border border-purple-300/50 dark:border-purple-500/30 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all duration-200 hover:scale-105 active:scale-95 hover:shadow-md"
-            title="Switch to Cube Mode"
+          {/* Action Button Group - Expandable */}
+          <ExpandableButtonGroup
+            trigger={
+              <button className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95">
+                ⚙️
+              </button>
+            }
+            direction="up"
+            hoverDelay={200}
+            offset={6}
           >
-            🎲 Cubes
-          </button>
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
+              {/* Mode Switch */}
+              <button
+                onClick={toggleMode}
+                className="flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                title="Switch Mode"
+              >
+                <span className="text-sm">🎲</span>
+                <span className="text-[9px] text-neutral-400 group-hover:text-white">Mode</span>
+              </button>
 
-          <button
-            onClick={() => setOpen(!open)}
-            className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all duration-200 hover:scale-105 active:scale-95"
-            aria-label={open ? 'Hide control center' : 'Show control center'}
-          >
-            {open ? '▼' : '▲'}
-          </button>
-          <button
-            onClick={() => setPinned(!pinned)}
-            className={clsx(
-              'text-xs px-2 py-1 border rounded-lg transition-all duration-200',
-              'focus:outline-none focus:ring-2 focus:ring-amber-500',
-              'hover:scale-105 active:scale-95',
-              pinned
-                ? 'bg-amber-200/70 dark:bg-amber-800/50 border-amber-400/70 dark:border-amber-600/50 shadow-md shadow-amber-500/30'
-                : 'border-neutral-300/50 dark:border-neutral-600/50 hover:bg-neutral-100 dark:hover:bg-neutral-700'
-            )}
-            title="Pin to keep open"
-            aria-label={pinned ? 'Unpin control center' : 'Pin control center'}
-            aria-pressed={pinned}
-          >
-            {pinned ? '📌' : '📍'}
-          </button>
+              {/* Show/Hide */}
+              <button
+                onClick={() => setOpen(!open)}
+                className="flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-blue-600 transition-all"
+                title="Toggle Visibility"
+                aria-label={open ? 'Hide control center' : 'Show control center'}
+              >
+                <span className="text-sm">{open ? '▼' : '▲'}</span>
+                <span className="text-[9px] text-neutral-400 group-hover:text-white">Show</span>
+              </button>
+
+              {/* Pin */}
+              <button
+                onClick={() => setPinned(!pinned)}
+                className={clsx(
+                  'flex flex-col items-center gap-1 px-3 py-2 rounded-md transition-all',
+                  pinned ? 'bg-amber-600 hover:bg-amber-700' : 'bg-neutral-800 hover:bg-blue-600'
+                )}
+                title={pinned ? 'Unpin' : 'Pin'}
+                aria-label={pinned ? 'Unpin control center' : 'Pin control center'}
+                aria-pressed={pinned}
+              >
+                <span className="text-sm">{pinned ? '📌' : '📍'}</span>
+                <span className="text-[9px] text-neutral-400 group-hover:text-white">Pin</span>
+              </button>
+            </div>
+          </ExpandableButtonGroup>
         </div>
 
       {/* Module content with smooth fade-in */}
