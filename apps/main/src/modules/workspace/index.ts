@@ -11,7 +11,7 @@ import { WorkspaceModule as WorkspaceModuleComponent } from '../../components/co
  */
 export const workspaceModule: Module = {
   id: 'workspace',
-  name: 'Workspace Module',
+  name: 'Scene Builder',
 
   async initialize() {
     // Register workspace capabilities (hotspots, scene builder, etc.)
@@ -39,4 +39,12 @@ export const workspaceModule: Module = {
       tags: ['workspace', 'layout', 'presets'],
     },
   ],
+
+  page: {
+    route: '/workspace',
+    icon: 'palette',
+    description: 'Create and edit scenes with timeline',
+    category: 'creation',
+    featured: true,
+  },
 };

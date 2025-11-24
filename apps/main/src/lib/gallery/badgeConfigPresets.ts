@@ -22,7 +22,7 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
   {
     id: 'default',
     name: 'Default',
-    description: 'Balanced view with all badges visible',
+    description: 'Balanced view with essential badges and info',
     icon: '⚖️',
     config: {
       showPrimaryIcon: true,
@@ -39,7 +39,7 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
   {
     id: 'minimal',
     name: 'Minimal',
-    description: 'Clean view with minimal badges',
+    description: 'Only primary badge, actions on click',
     icon: '✨',
     config: {
       showPrimaryIcon: true,
@@ -50,13 +50,13 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showFooterDate: false,
       showGenerationBadge: false,
       showGenerationInMenu: true,
-      generationQuickAction: 'auto',
+      generationQuickAction: 'none',
     },
   },
   {
     id: 'compact',
     name: 'Compact',
-    description: 'Good for small cards and dense grids',
+    description: 'Essential badges only, perfect for dense grids',
     icon: '📦',
     config: {
       showPrimaryIcon: true,
@@ -65,15 +65,15 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showTagsInOverlay: false,
       showFooterProvider: false,
       showFooterDate: true,
-      showGenerationBadge: true,
-      showGenerationInMenu: false,
-      generationQuickAction: 'auto',
+      showGenerationBadge: false,
+      showGenerationInMenu: true,
+      generationQuickAction: 'none',
     },
   },
   {
     id: 'detailed',
     name: 'Detailed',
-    description: 'Show all available information',
+    description: 'All badges and info visible, including technical tags',
     icon: '📋',
     config: {
       showPrimaryIcon: true,
@@ -88,9 +88,26 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
     },
   },
   {
+    id: 'generation',
+    name: 'Generation',
+    description: 'Optimized for generation workflows with quick actions',
+    icon: '⚡',
+    config: {
+      showPrimaryIcon: true,
+      showStatusIcon: true,
+      showStatusTextOnHover: false,
+      showTagsInOverlay: false,
+      showFooterProvider: false,
+      showFooterDate: false,
+      showGenerationBadge: true,
+      showGenerationInMenu: true,
+      generationQuickAction: 'auto',
+    },
+  },
+  {
     id: 'curator',
     name: 'Curator',
-    description: 'Emphasis on tags and metadata',
+    description: 'Focus on tags, metadata, and organization',
     icon: '⭐',
     config: {
       showPrimaryIcon: true,
@@ -107,7 +124,7 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
   {
     id: 'review',
     name: 'Review',
-    description: 'Emphasis on status and quality control',
+    description: 'Status-focused for quality control and review',
     icon: '✓',
     config: {
       showPrimaryIcon: true,
@@ -115,7 +132,24 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
       showStatusTextOnHover: true,
       showTagsInOverlay: false,
       showFooterProvider: true,
-      showFooterDate: false,
+      showFooterDate: true,
+      showGenerationBadge: false,
+      showGenerationInMenu: true,
+      generationQuickAction: 'none',
+    },
+  },
+  {
+    id: 'technical',
+    name: 'Technical',
+    description: 'All technical info for debugging and inspection',
+    icon: '🔧',
+    config: {
+      showPrimaryIcon: true,
+      showStatusIcon: true,
+      showStatusTextOnHover: true,
+      showTagsInOverlay: true,
+      showFooterProvider: true,
+      showFooterDate: true,
       showGenerationBadge: false,
       showGenerationInMenu: true,
       generationQuickAction: 'none',
@@ -124,7 +158,7 @@ export const BADGE_CONFIG_PRESETS: BadgeConfigPreset[] = [
   {
     id: 'presentation',
     name: 'Presentation',
-    description: 'Clean view for client presentations',
+    description: 'Ultra-clean, no badges or overlays for demos',
     icon: '🎨',
     config: {
       showPrimaryIcon: false,

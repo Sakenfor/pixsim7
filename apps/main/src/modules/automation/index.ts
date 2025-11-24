@@ -9,9 +9,17 @@ import { registerAutomationFeature } from '../../lib/capabilities/registerCoreFe
  */
 export const automationModule: Module = {
   id: 'automation',
-  name: 'Automation Module',
+  name: 'Automation',
 
   async initialize() {
     registerAutomationFeature();
+  },
+
+  page: {
+    route: '/automation',
+    icon: 'bot',
+    description: 'Manage Android devices and automation loops',
+    category: 'automation',
+    featured: true,
   },
 };

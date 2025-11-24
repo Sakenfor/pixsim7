@@ -18,6 +18,20 @@ import { gameModule } from './game';
 import { automationModule } from './automation';
 import { pluginsModule } from './plugins';
 import { appMapModule } from './app-map';
+import {
+  arcGraphModule,
+  graphModule as graphPageModule,
+  npcPortraitsModule,
+  game2DModule,
+  gizmoLabModule,
+  interactionStudioModule,
+  interactionDemoModule,
+  healthModule,
+  simulationModule,
+  npcBrainLabModule,
+  appMapModule as appMapPageModule,
+  pluginWorkspaceModule,
+} from './pages';
 
 // Register all modules
 export function registerModules() {
@@ -43,6 +57,20 @@ export function registerModules() {
 
   // Legacy gallery module (kept for compatibility)
   moduleRegistry.register(galleryModule);
+
+  // Page-only modules (no initialization logic, just navigation metadata)
+  moduleRegistry.register(arcGraphModule);
+  moduleRegistry.register(graphPageModule);
+  moduleRegistry.register(npcPortraitsModule);
+  moduleRegistry.register(game2DModule);
+  moduleRegistry.register(gizmoLabModule);
+  moduleRegistry.register(interactionStudioModule);
+  moduleRegistry.register(interactionDemoModule);
+  moduleRegistry.register(healthModule);
+  moduleRegistry.register(simulationModule);
+  moduleRegistry.register(npcBrainLabModule);
+  moduleRegistry.register(appMapPageModule);
+  moduleRegistry.register(pluginWorkspaceModule);
 
   // Note: sceneBuilderModule removed - now uses graphStore (Zustand) for state management
   // scene-builder module now only exports types
