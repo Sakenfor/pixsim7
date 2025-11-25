@@ -615,7 +615,7 @@ async def reauth_account(
 
     try:
         async with PixverseAuthService() as auth_service:
-            cookies = await auth_service.login_with_password(
+            session_data = await auth_service.login_with_password(
                 account.email,
                 password,
                 headless=request.headless,
@@ -627,8 +627,8 @@ async def reauth_account(
         )
 
     provider = registry.get(account.provider_id)
-    raw_data = {"cookies": cookies}
-    extracted = await provider.extract_account_data(raw_data)
+    # session_data already contains jwt_token + cookies in SDK format
+    extracted = await provider.extract_account_data(session_data)
 
     updated_account, updated_fields = await _apply_extracted_account_data(
         account,
