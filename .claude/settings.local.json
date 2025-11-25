@@ -5,7 +5,8 @@
       "Bash(nul)",
       "Bash(pip install:*)",
       "Bash(python:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

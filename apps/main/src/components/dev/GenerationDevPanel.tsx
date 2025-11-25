@@ -21,6 +21,8 @@
 
 import { useState, useEffect } from 'react';
 import type { OperationType } from '@pixsim7/shared.types';
+import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
+import { usePromptInspection } from '../../hooks/usePromptInspection';
 
 interface Generation {
   id: number;
@@ -352,6 +354,9 @@ export function GenerationDevPanel({
                   <div className="text-sm">{selectedGeneration.prompt_source_type}</div>
                 </div>
               )}
+
+              {/* Prompt Inspector (Dev) */}
+              <PromptInspectorSection generationId={selectedGeneration.id} />
             </div>
           ) : (
             <div className="text-center text-gray-500 py-8">
@@ -360,6 +365,54 @@ export function GenerationDevPanel({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Prompt Inspector Section - Inline collapsible viewer for generation prompts
+ */
+interface PromptInspectorSectionProps {
+  generationId: number;
+}
+
+function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
+  // Use the hook to fetch prompt inspection data
+  const { prompt, blocks, loading, error } = usePromptInspection({
+    jobId: generationId,
+  });
+
+  // Don't show anything if there's no prompt
+  if (!prompt && !loading && !error) {
+    return null;
+  }
+
+  return (
+    <div className="mb-4">
+      <h4 className="font-medium mb-2 text-gray-600 text-sm">
+        Prompt (Dev Inspector)
+      </h4>
+
+      {loading && (
+        <div className="text-sm text-gray-500 italic">
+          Loading prompt analysis...
+        </div>
+      )}
+
+      {error && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-2 rounded">
+          {error}
+        </div>
+      )}
+
+      {prompt && (
+        <PromptBlocksViewer
+          prompt={prompt}
+          blocks={blocks}
+          collapsible={true}
+          initialOpen={false}
+        />
+      )}
     </div>
   );
 }
