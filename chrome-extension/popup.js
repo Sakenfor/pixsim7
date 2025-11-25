@@ -726,16 +726,25 @@ function attachPixverseAdStatus(account, pillEl) {
 
 function renderPixverseAdPill(pillEl, payload) {
   if (!pillEl) return;
+
+  // Debug: log the entire payload structure
+  console.log('[Ads] Full payload:', JSON.stringify(payload, null, 2));
+  console.log('[Ads] Payload keys:', Object.keys(payload || {}));
+
   const task = payload?.ad_watch_task;
+  console.log('[Ads] ad_watch_task:', task);
+
   if (task && typeof task === 'object') {
     const progress = task.progress ?? 0;
     const total = task.total_counts ?? 0;
     const reward = task.reward ?? 0;
+    console.log('[Ads] Task values - progress:', progress, 'total:', total, 'reward:', reward);
     pillEl.textContent = `Ads ${progress}/${total}`;
     pillEl.title = `Watch-ad task: ${progress}/${total}, reward ${reward}`;
     pillEl.style.fontSize = '10px';
     pillEl.style.color = '#6b7280';
   } else {
+    console.warn('[Ads] No valid ad_watch_task found in payload');
     // Show 0/0 when no task data instead of hiding
     pillEl.textContent = 'Ads 0/0';
     pillEl.title = 'No ad watch task available';

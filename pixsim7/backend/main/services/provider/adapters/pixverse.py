@@ -1093,8 +1093,11 @@ class PixverseProvider(Provider):
             ad_task = self._get_ad_task_status(account)
             if ad_task is not None:
                 result["ad_watch_task"] = ad_task
+                logger.info(f"Ad task found for account {account.id}: {ad_task}")
+            else:
+                logger.warning(f"No ad task returned for account {account.id} (method returned None)")
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning(f"Pixverse ad task status check failed: {e}")
+            logger.error(f"Pixverse ad task status check failed for account {account.id}: {e}", exc_info=True)
 
         return result
 
@@ -1131,7 +1134,12 @@ class PixverseProvider(Provider):
             return None
 
         # Reuse account session (cookies + jwt)
-        cookies = account.cookies or {}
+        cookies = dict(account.cookies or {})
+
+        # Ensure JWT is in cookies as _ai_token (required for task list endpoint)
+        if account.jwt_token and "_ai_token" not in cookies:
+            cookies["_ai_token"] = account.jwt_token
+
         headers: Dict[str, str] = {
             "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)",
             "Accept": "application/json",
@@ -1144,17 +1152,26 @@ class PixverseProvider(Provider):
         try:
             with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
                 resp = client.get(url, cookies=cookies)
+                logger.debug(f"Ad task API response status: {resp.status_code}")
                 resp.raise_for_status()
                 data = resp.json()
+                logger.debug(f"Ad task API response: {data}")
         except Exception as e:
-            logger.warning(f"Pixverse task list request failed: {e}")
+            logger.warning(f"Pixverse task list request failed for account {account.id}: {e}", exc_info=True)
             return None
 
         try:
-            if not isinstance(data, dict) or data.get("ErrCode") != 0:
+            if not isinstance(data, dict):
+                logger.warning(f"Ad task response is not a dict: {type(data)}")
+                return None
+
+            if data.get("ErrCode") != 0:
+                logger.warning(f"Ad task API returned error: ErrCode={data.get('ErrCode')}, ErrMsg={data.get('ErrMsg')}")
                 return None
 
             tasks = data.get("Resp") or []
+            logger.debug(f"Found {len(tasks)} tasks, looking for task_type=1, sub_type=11")
+
             for task in tasks:
                 try:
                     if (

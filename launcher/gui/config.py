@@ -176,6 +176,12 @@ class UIState:
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
 
+    # Console settings
+    autoscroll_enabled: bool = True     # Auto-scroll console logs to bottom
+    console_style_enhanced: bool = True  # Use enhanced readable console view
+    console_level_filter: str = 'All'   # Console log level filter
+    console_search_text: str = ''       # Console search text
+
     # Health check settings
     health_check_interval: float = 5.0  # Seconds between health checks (default: 5s)
     health_check_adaptive: bool = True  # Use adaptive intervals (fast on startup, slow when stable)

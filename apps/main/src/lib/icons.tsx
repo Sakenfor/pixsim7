@@ -69,6 +69,7 @@ import {
   Map,
   User,
   Clock,
+  Code,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -134,6 +135,7 @@ export const Icons = {
   sliders: Sliders,
   fileText: FileText,
   clock: Clock,
+  code: Code,
 
   // Panels & Features
   heart: Heart,

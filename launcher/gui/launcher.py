@@ -243,11 +243,12 @@ class LauncherWindow(QWidget):
         for sp in self.processes.values():
             sp.check_tool_availability()
 
-        # Initialize attributes before _init_ui
-        self.autoscroll_enabled = True
-        self.console_style_enhanced = True
+        # Initialize attributes before _init_ui (load from saved state)
+        self.autoscroll_enabled = self.ui_state.autoscroll_enabled
+        self.console_style_enhanced = self.ui_state.console_style_enhanced
         self.log_filter = ''
         self.log_timer = QTimer(self)
+        self.service_scroll_positions = {}  # Track scroll position per service
 
         self._init_ui()
 
@@ -374,6 +375,18 @@ class LauncherWindow(QWidget):
         console_tab = ConsoleTab.create(self)
         self.main_tabs.addTab(console_tab, "📊 Console")
 
+        # Restore console settings from saved state
+        if hasattr(self, 'autoscroll_checkbox'):
+            self.autoscroll_checkbox.setChecked(self.ui_state.autoscroll_enabled)
+        if hasattr(self, 'console_style_checkbox'):
+            self.console_style_checkbox.setChecked(self.ui_state.console_style_enhanced)
+        if hasattr(self, 'console_level_combo') and self.ui_state.console_level_filter:
+            idx = self.console_level_combo.findText(self.ui_state.console_level_filter)
+            if idx >= 0:
+                self.console_level_combo.setCurrentIndex(idx)
+        if hasattr(self, 'console_search_input') and self.ui_state.console_search_text:
+            self.console_search_input.setText(self.ui_state.console_search_text)
+
         # === TAB 2: DATABASE LOGS ===
         db_logs_tab = DbLogsTab.create(self)
         self.main_tabs.addTab(db_logs_tab, "🗄 Database Logs")
@@ -427,6 +440,10 @@ class LauncherWindow(QWidget):
         self.last_log_hash = {}  # Track log buffer hashes to avoid unnecessary UI updates
         self.console_refresh_timer.start(1000)  # Refresh every second
 
+        # Track scroll position changes for current service
+        if hasattr(self, 'log_view'):
+            self.log_view.verticalScrollBar().valueChanged.connect(self._on_console_scroll)
+
     def _open_db_logs_for_current_service(self):
         """Switch to Database Logs tab and apply current service filter."""
         if not hasattr(self, 'db_log_viewer') or not self.db_log_viewer:
@@ -459,6 +476,13 @@ class LauncherWindow(QWidget):
     def _select_service(self, key: str):
         """Select a service and refresh logs."""
         _startup_trace(f"_select_service start ({key})")
+
+        # Save scroll position of previous service
+        if self.selected_service_key and hasattr(self, 'log_view'):
+            scrollbar = self.log_view.verticalScrollBar()
+            self.service_scroll_positions[self.selected_service_key] = scrollbar.value()
+            _startup_trace(f"_select_service saved scroll position for {self.selected_service_key}")
+
         # Deselect previous card
         if self.selected_service_key and self.selected_service_key in self.cards:
             self.cards[self.selected_service_key].set_selected(False)
@@ -469,8 +493,8 @@ class LauncherWindow(QWidget):
         if key in self.cards:
             self.cards[key].set_selected(True)
             _startup_trace("_select_service card selected")
-            # Reset scroll to top and force refresh when switching services
-            self.log_view.verticalScrollBar().setValue(0)
+
+            # Refresh logs (scroll position will be restored in _refresh_console_logs)
             self._refresh_console_logs(force=True)
             _startup_trace("_select_service console refreshed")
 
@@ -903,6 +927,13 @@ class LauncherWindow(QWidget):
 
     def _on_autoscroll_changed(self, state):
         self.autoscroll_enabled = (state == Qt.Checked)
+        self.ui_state.autoscroll_enabled = self.autoscroll_enabled
+        save_ui_state(self.ui_state)
+
+    def _on_console_scroll(self, value):
+        """Track scroll position when user manually scrolls."""
+        if self.selected_service_key and not self.autoscroll_enabled:
+            self.service_scroll_positions[self.selected_service_key] = value
 
     def _on_filter_changed(self, text):
         self.log_filter = text.lower()
@@ -986,11 +1017,18 @@ class LauncherWindow(QWidget):
                     self.log_view.setTextCursor(cursor)
                     scrollbar.setValue(scrollbar.maximum())
                 else:
-                    # Restore previous scroll position when auto-scroll is disabled
-                    # Maintain relative position from bottom to handle new content gracefully
-                    new_max = scrollbar.maximum()
-                    target_value = max(0, new_max - distance_from_bottom)
-                    scrollbar.setValue(target_value)
+                    # Restore scroll position when auto-scroll is disabled
+                    # First check if we have a saved position for this service (from tab switch)
+                    if self.selected_service_key in self.service_scroll_positions:
+                        saved_pos = self.service_scroll_positions[self.selected_service_key]
+                        scrollbar.setValue(saved_pos)
+                        _startup_trace(f"_refresh_console_logs restored saved position {saved_pos}")
+                    else:
+                        # Otherwise maintain relative position from bottom to handle new content
+                        new_max = scrollbar.maximum()
+                        target_value = max(0, new_max - distance_from_bottom)
+                        scrollbar.setValue(target_value)
+                        _startup_trace(f"_refresh_console_logs maintained relative position {target_value}")
             else:
                 if sp.running:
                     # Check health status to provide more context
@@ -1054,11 +1092,19 @@ class LauncherWindow(QWidget):
 
     def _on_console_filter_changed(self):
         """React immediately to console filter changes."""
+        # Save filter settings
+        if hasattr(self, 'console_level_combo'):
+            self.ui_state.console_level_filter = self.console_level_combo.currentText()
+        if hasattr(self, 'console_search_input'):
+            self.ui_state.console_search_text = self.console_search_input.text()
+        save_ui_state(self.ui_state)
         self._refresh_console_logs(force=True)
 
     def _on_console_style_changed(self, checked: bool):
         """Swap between classic and enhanced console layouts."""
         self.console_style_enhanced = bool(checked)
+        self.ui_state.console_style_enhanced = self.console_style_enhanced
+        save_ui_state(self.ui_state)
         self._refresh_console_logs(force=True)
 
     def _clear_console_display(self):

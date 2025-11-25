@@ -7,8 +7,41 @@
 
 	let showLogs = false;
 
+	// Load settings from localStorage
+	function loadPageSettings() {
+		try {
+			const saved = localStorage.getItem('launcher.settings');
+			if (saved) {
+				const settings = JSON.parse(saved);
+				showLogs = settings.showLogs ?? false;
+			}
+		} catch (err) {
+			console.error('Failed to load page settings:', err);
+		}
+	}
+
+	// Save settings to localStorage
+	function savePageSettings() {
+		try {
+			localStorage.setItem('launcher.settings', JSON.stringify({
+				showLogs
+			}));
+		} catch (err) {
+			console.error('Failed to save page settings:', err);
+		}
+	}
+
+	// Save when showLogs changes
+	$: {
+		showLogs;
+		if (typeof window !== 'undefined') {
+			savePageSettings();
+		}
+	}
+
 	// Load services on mount
 	onMount(() => {
+		loadPageSettings();
 		loadServices();
 
 		// Refresh services every 5 seconds
