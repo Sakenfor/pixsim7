@@ -14,8 +14,48 @@
 
 	let logContainer;
 	let refreshInterval;
+	let savedScrollPosition = 0; // Track scroll position when auto-scroll is off
 
 	const logLevels = ['', 'ERROR', 'WARNING', 'INFO', 'DEBUG'];
+
+	// Load settings from localStorage
+	function loadSettings() {
+		try {
+			const saved = localStorage.getItem('logViewer.settings');
+			if (saved) {
+				const settings = JSON.parse(saved);
+				autoScroll = settings.autoScroll ?? true;
+				tail = settings.tail ?? 200;
+				filterText = settings.filterText ?? '';
+				filterLevel = settings.filterLevel ?? '';
+			}
+		} catch (err) {
+			console.error('Failed to load settings:', err);
+		}
+	}
+
+	// Save settings to localStorage
+	function saveSettings() {
+		try {
+			localStorage.setItem('logViewer.settings', JSON.stringify({
+				autoScroll,
+				tail,
+				filterText,
+				filterLevel
+			}));
+		} catch (err) {
+			console.error('Failed to save settings:', err);
+		}
+	}
+
+	// Save settings when they change
+	$: {
+		autoScroll;
+		tail;
+		filterText;
+		filterLevel;
+		saveSettings();
+	}
 
 	// Detect log level from line
 	function getLineLevel(line) {
@@ -38,6 +78,11 @@
 	async function loadLogs() {
 		if (!serviceKey) return;
 
+		// Save current scroll position if auto-scroll is off
+		if (!autoScroll && logContainer) {
+			savedScrollPosition = logContainer.scrollTop;
+		}
+
 		loading = true;
 		error = null;
 
@@ -50,10 +95,16 @@
 
 			logs = response.lines;
 
-			// Auto-scroll to bottom
-			if (autoScroll && logContainer) {
+			// Handle scroll behavior
+			if (logContainer) {
 				setTimeout(() => {
-					logContainer.scrollTop = logContainer.scrollHeight;
+					if (autoScroll) {
+						// Auto-scroll to bottom
+						logContainer.scrollTop = logContainer.scrollHeight;
+					} else {
+						// Restore previous scroll position
+						logContainer.scrollTop = savedScrollPosition;
+					}
 				}, 50);
 			}
 		} catch (err) {
@@ -81,6 +132,9 @@
 	}
 
 	onMount(() => {
+		// Load saved settings
+		loadSettings();
+
 		// Auto-refresh logs every 2 seconds
 		refreshInterval = setInterval(loadLogs, 2000);
 	});

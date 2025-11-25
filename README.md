@@ -60,7 +60,7 @@ PixSim7 is a **provider-agnostic video generation platform** that unifies multip
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/pixsim7.git
+git clone https://github.com/sakenfor/pixsim7.git
 cd pixsim7
 
 # Configure environment
@@ -406,8 +406,8 @@ We welcome contributions! Please see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.
 
 ## Support
 
-- **Issues:** [GitHub Issues](https://github.com/yourusername/pixsim7/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/pixsim7/discussions)
+- **Issues:** [GitHub Issues](https://github.com/sakenfor/pixsim7/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/sakenfor/pixsim7/discussions)
 - **Documentation:** [docs/](./docs/)
 
 ---
@@ -417,7 +417,7 @@ We welcome contributions! Please see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.
 Built with:
 - [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
 - [SvelteKit](https://kit.svelte.dev/) - Frontend framework
-- [pixverse-py](https://github.com/yourusername/pixverse-py) - Pixverse API client
+- [pixverse-py](https://github.com/sakenfor/pixverse-py) - Pixverse API client
 - Community contributors and testers
 
 ---

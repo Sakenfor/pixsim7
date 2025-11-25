@@ -6,6 +6,7 @@ import type { ProviderAccount } from '../../hooks/useProviderAccounts';
 import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync, connectPixverseWithGoogle } from '../../lib/api/accounts';
 import { apiClient } from '../../lib/api/client';
 import { CompactAccountCard } from './CompactAccountCard';
+import { getGoogleIdTokenViaGIS } from '../../lib/googleAuth';
 
 interface EditAccountModalProps {
   account: ProviderAccount;
@@ -436,11 +437,7 @@ export function ProviderSettingsPanel() {
   const handleConnectGoogle = async (account: ProviderAccount) => {
     if (account.provider_id !== 'pixverse') return;
 
-    const idToken = window.prompt(
-      'Paste Google ID token for this Pixverse account.\n\n' +
-        'In the future this will be obtained via Google sign-in, but for now you can paste an id_token manually.',
-      ''
-    );
+    const idToken = await getGoogleIdTokenViaGIS();
     if (!idToken) return;
 
     try {
