@@ -9,12 +9,13 @@ from sqlalchemy import select, cast
 from typing import List, Dict, Any, Optional
 
 from pixsim7.backend.main.infrastructure.database.session import get_db
-from pixsim7.backend.main.domain.automation import AndroidDevice, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
+from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceAgent, ExecutionLoop, LoopStatus, AppActionPreset, AutomationExecution, AutomationStatus
 from pixsim7.backend.main.domain import ProviderAccount
 from pixsim7.backend.main.services.automation import ExecutionLoopService
 from pixsim7.backend.main.services.automation.device_sync_service import DeviceSyncService
 from pixsim7.backend.main.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category
 from pixsim7.backend.main.infrastructure.queue import queue_task
+from pixsim7.backend.main.api.dependencies import CurrentUser
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -22,8 +23,25 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 
 
 @router.get("/devices", response_model=List[AndroidDevice])
-async def list_devices(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(AndroidDevice))
+async def list_devices(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    List Android devices.
+
+    Visibility rules:
+    - Admins see all devices (including server-scanned ones with agent_id=None).
+    - Regular users see only devices whose agent belongs to them (DeviceAgent.user_id).
+    """
+    if user.is_admin():
+        result = await db.execute(select(AndroidDevice))
+    else:
+        result = await db.execute(
+            select(AndroidDevice)
+            .join(DeviceAgent, AndroidDevice.agent_id == DeviceAgent.id)
+            .where(DeviceAgent.user_id == user.id)
+        )
     return result.scalars().all()
 
 

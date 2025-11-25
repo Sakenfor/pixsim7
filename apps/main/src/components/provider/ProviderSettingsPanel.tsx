@@ -3,7 +3,7 @@ import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
-import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync } from '../../lib/api/accounts';
+import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync, connectPixverseWithGoogle } from '../../lib/api/accounts';
 import { apiClient } from '../../lib/api/client';
 import { CompactAccountCard } from './CompactAccountCard';
 
@@ -401,6 +401,7 @@ export function ProviderSettingsPanel() {
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(true);
+  const toast = useToast();
 
   const handleSaveAccount = async (accountId: number, data: {
     email?: string;
@@ -430,6 +431,32 @@ export function ProviderSettingsPanel() {
   const handleDeleteAccount = async (accountId: number) => {
     await deleteAccount(accountId);
     setRefreshKey(prev => prev + 1);
+  };
+
+  const handleConnectGoogle = async (account: ProviderAccount) => {
+    if (account.provider_id !== 'pixverse') return;
+
+    const idToken = window.prompt(
+      'Paste Google ID token for this Pixverse account.\n\n' +
+        'In the future this will be obtained via Google sign-in, but for now you can paste an id_token manually.',
+      ''
+    );
+    if (!idToken) return;
+
+    try {
+      await connectPixverseWithGoogle(account.id, idToken);
+      setRefreshKey(prev => prev + 1);
+      if (toast && (toast as any).success) {
+        (toast as any).success('Connected Pixverse account via Google');
+      }
+    } catch (error) {
+      console.error('Failed to connect Pixverse via Google:', error);
+      if (toast && (toast as any).error) {
+        (toast as any).error('Failed to connect Pixverse via Google');
+      } else {
+        alert('Failed to connect Pixverse via Google');
+      }
+    }
   };
 
   // Load provider settings when activeProvider changes
@@ -796,6 +823,7 @@ export function ProviderSettingsPanel() {
                   onEdit={() => setEditingAccount(account)}
                   onToggle={() => handleToggleStatus(account)}
                   onDelete={() => setDeletingAccount(account)}
+                  onConnectGoogle={account.provider_id === 'pixverse' ? () => handleConnectGoogle(account) : undefined}
                 />
               ))}
             </div>

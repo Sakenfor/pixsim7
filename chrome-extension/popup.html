@@ -702,7 +702,7 @@
         </div>
 
         <div class="info-box" style="margin-bottom: 12px;">
-          Device management is handled via standalone Python service running on each device.
+          Device management is handled by a standalone PixSim7 device agent running on each machine that should expose ADB devices to the server.
         </div>
 
         <!-- Quick Token Copy -->
@@ -710,7 +710,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #10b981;">Your Auth Token</div>
-              <div style="font-size: 11px; color: #9ca3af;">Use this token to run device_agent.py</div>
+              <div style="font-size: 11px; color: #9ca3af;">Use this token when running the PixSim7 device agent (for example, set <code>PIXSIM7_JWT</code> in your agent environment).</div>
             </div>
             <button id="copyTokenBtn" class="btn-primary" style="font-size: 12px; padding: 6px 12px;">
               📋 Copy Token

@@ -77,3 +77,19 @@ export async function dryRunPixverseSync(
   const response = await apiClient.get(`/dev/pixverse-sync/dry-run?${params.toString()}`);
   return response.data;
 }
+
+/**
+ * Connect an existing Pixverse account using a Google ID token.
+ *
+ * Assumes the caller has already obtained a Google `id_token` via
+ * Google Identity Services or another OAuth flow.
+ */
+export async function connectPixverseWithGoogle(
+  accountId: number,
+  idToken: string
+): Promise<ProviderAccount> {
+  const response = await apiClient.post(`/accounts/${accountId}/connect-google`, {
+    id_token: idToken,
+  });
+  return response.data.account as ProviderAccount;
+}

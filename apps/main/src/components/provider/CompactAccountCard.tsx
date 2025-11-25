@@ -5,9 +5,16 @@ interface CompactAccountCardProps {
   onEdit: () => void;
   onToggle: () => void;
   onDelete: () => void;
+  onConnectGoogle?: () => void;
 }
 
-export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: CompactAccountCardProps) {
+export function CompactAccountCard({
+  account,
+  onEdit,
+  onToggle,
+  onDelete,
+  onConnectGoogle,
+}: CompactAccountCardProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   const totalCredits = Object.values(account.credits).reduce((sum, val) => sum + val, 0);
@@ -71,7 +78,7 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
             className="p-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
             title="Edit"
           >
-            ✎
+            E
           </button>
           <button
             onClick={onToggle}
@@ -91,6 +98,15 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
           >
             ✕
           </button>
+          {onConnectGoogle && account.provider_id === 'pixverse' && (
+            <button
+              onClick={onConnectGoogle}
+              className="p-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
+              title="Connect via Google (paste id_token)"
+            >
+              G
+            </button>
+          )}
         </div>
       </div>
 
@@ -99,7 +115,11 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
         {/* Credits */}
         <div className="flex flex-col">
           <span className="text-neutral-500 dark:text-neutral-400">Credits</span>
-          <span className={`font-mono font-semibold ${totalCredits === 0 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'}`}>
+          <span
+            className={`font-mono font-semibold ${
+              totalCredits === 0 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'
+            }`}
+          >
             {totalCredits.toLocaleString()}
           </span>
         </div>
@@ -115,13 +135,15 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
         {/* Success Rate */}
         <div className="flex flex-col">
           <span className="text-neutral-500 dark:text-neutral-400">Success</span>
-          <span className={`font-mono font-semibold ${
-            account.success_rate >= 0.8
-              ? 'text-green-600 dark:text-green-400'
-              : account.success_rate >= 0.5
-              ? 'text-amber-600 dark:text-amber-400'
-              : 'text-red-600 dark:text-red-400'
-          }`}>
+          <span
+            className={`font-mono font-semibold ${
+              account.success_rate >= 0.8
+                ? 'text-green-600 dark:text-green-400'
+                : account.success_rate >= 0.5
+                ? 'text-amber-600 dark:text-amber-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
             {(account.success_rate * 100).toFixed(0)}%
           </span>
         </div>
@@ -139,3 +161,4 @@ export function CompactAccountCard({ account, onEdit, onToggle, onDelete }: Comp
     </div>
   );
 }
+

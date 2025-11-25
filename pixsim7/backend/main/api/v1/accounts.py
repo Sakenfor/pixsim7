@@ -227,6 +227,11 @@ class AccountReauthResponse(BaseModel):
     account: AccountResponse
 
 
+class PixverseGoogleConnectRequest(BaseModel):
+    """Connect Pixverse account using a Google ID token (OAuth auto_login)."""
+    id_token: str
+
+
 @router.post("/accounts/sync-all-credits", response_model=BatchSyncCreditsResponse)
 async def sync_all_account_credits(
     user: CurrentUser,
@@ -628,6 +633,62 @@ async def reauth_account(
 
     provider = registry.get(account.provider_id)
     # session_data already contains jwt_token + cookies in SDK format
+    extracted = await provider.extract_account_data(session_data)
+
+    updated_account, updated_fields = await _apply_extracted_account_data(
+        account,
+        extracted,
+        account_service,
+        db,
+        user.id,
+    )
+
+    return AccountReauthResponse(
+        success=True,
+        updated_fields=updated_fields,
+        account=_to_response(updated_account, user.id),
+    )
+
+
+@router.post("/accounts/{account_id}/connect-google", response_model=AccountReauthResponse)
+async def connect_pixverse_with_google(
+    account_id: int,
+    request: PixverseGoogleConnectRequest,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """
+    Connect an existing Pixverse account using a Google ID token.
+
+    This exchanges the Google ID token for a Pixverse JWT/cookies via
+    pixverse-py and updates the account credentials.
+
+    Security:
+    - Only the account owner or admin may connect via Google.
+    - Only supported for provider_id="pixverse".
+    """
+    try:
+        account = await account_service.get_account(account_id)
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+    if account.provider_id != "pixverse":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google connect is supported for Pixverse accounts only")
+
+    if account.user_id is None or (account.user_id != user.id and not user.is_admin()):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to connect this account via Google")
+
+    try:
+        async with PixverseAuthService() as auth_service:
+            session_data = await auth_service.login_with_google_id_token(request.id_token)
+    except PixverseAuthError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"Pixverse Google login failed: {exc}",
+        )
+
+    provider = registry.get(account.provider_id)
     extracted = await provider.extract_account_data(session_data)
 
     updated_account, updated_fields = await _apply_extracted_account_data(

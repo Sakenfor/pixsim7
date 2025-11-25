@@ -85,3 +85,29 @@ class PixverseAuthService:
         except Exception as exc:
             logger.error("Pixverse login failed", exc_info=True)
             raise PixverseAuthError(f"Pixverse login failed: {exc}") from exc
+
+    async def login_with_google_id_token(
+        self,
+        id_token: str,
+    ) -> Dict[str, object]:
+        """
+        Login to Pixverse using a Google ID token (OAuth auto_login).
+
+        This exchanges the Google ID token for a Pixverse JWT and cookies
+        via pixverse-py's google_id_token helper.
+        """
+        try:
+            from pixverse.auth import PixverseAuth  # type: ignore
+        except ImportError as exc:
+            raise PixverseAuthError("pixverse-py not installed") from exc
+
+        loop = asyncio.get_event_loop()
+        try:
+            session = await loop.run_in_executor(
+                _executor,
+                lambda: PixverseAuth().login_with_google_id_token(id_token),
+            )
+            return session
+        except Exception as exc:
+            logger.error("Pixverse Google ID token login failed", exc_info=True)
+            raise PixverseAuthError(f"Pixverse Google ID token login failed: {exc}") from exc
