@@ -85,7 +85,7 @@ export function PromptInspectorDev() {
                 placeholder="Enter asset ID"
                 value={assetId}
                 onChange={(e) => setAssetId(e.target.value)}
-                disabled={isLoading}
+                disabled={loading}
               />
             </div>
             <div>
@@ -97,7 +97,7 @@ export function PromptInspectorDev() {
                 placeholder="Enter job/generation ID"
                 value={jobId}
                 onChange={(e) => setJobId(e.target.value)}
-                disabled={isLoading}
+                disabled={loading}
               />
             </div>
           </div>

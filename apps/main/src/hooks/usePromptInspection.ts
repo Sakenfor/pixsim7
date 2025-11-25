@@ -95,7 +95,8 @@ export function usePromptInspection(
     };
 
     fetchPrompt();
-  }, [assetId, jobId, api]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetId, jobId]);
 
   return state;
 }
