@@ -3,6 +3,7 @@
   "window_y": 211,
   "window_width": 1347,
   "window_height": 746,
+  "window_always_on_top": false,
   "selected_service": "main-api",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,

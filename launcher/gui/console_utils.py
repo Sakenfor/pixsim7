@@ -21,8 +21,10 @@ CONSOLE_LEVEL_STYLES = {
 
 # Parsing regexes
 CONSOLE_TIMESTAMP_REGEX = re.compile(r'\[(\d{2}:\d{2}:\d{2})\] \[(OUT|ERR)\] (.+)')
-ISO_TIMESTAMP_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(.*)')
+ISO_TIMESTAMP_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\.?\d*(Z|[+-]\d{2}:\d{2})?\s*(.*)')
 LEVEL_PREFIX_REGEX = re.compile(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', re.IGNORECASE)
+# Match structured log format: timestamp [level] message
+STRUCTURED_LOG_REGEX = re.compile(r'^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})[^\[]*\[(\w+)\s*\]\s*(.*)$')
 
 # Decoration regexes
 URL_LINK_REGEX = re.compile(r'(https?://[^\s]+)')
@@ -201,8 +203,23 @@ def format_console_log_html_enhanced(log_lines) -> str:
     """Format console logs with enhanced styling."""
     html_lines = ['<div style="margin: 0; padding: 0; line-height: 1.45; font-family: \'Consolas\', \'Courier New\', monospace; font-size: 9pt;">']
 
+    in_traceback = False
     for raw_line in log_lines:
         line = str(raw_line)
+
+        # Detect traceback lines for better visual grouping
+        is_traceback_line = line.strip().startswith(('File "', 'Traceback', '  File', 'at ')) or 'File "' in line
+        is_exception_line = any(x in line for x in ('Error:', 'Exception:', 'Warning:'))
+
+        # Start traceback block
+        if not in_traceback and (is_traceback_line or (is_exception_line and 'Traceback' in '\n'.join(str(l) for l in log_lines[max(0, log_lines.index(raw_line)-5):log_lines.index(raw_line)]))):
+            in_traceback = True
+            html_lines.append('<div style="background-color: rgba(239,83,80,0.08); border-left: 4px solid #EF5350; margin: 8px 0; padding: 8px; border-radius: 4px;">')
+        elif in_traceback and not is_traceback_line and not is_exception_line and line.strip() and not line.startswith(' '):
+            # End traceback block
+            html_lines.append('</div>')
+            in_traceback = False
+
         line_level = detect_console_level(line)
         style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
         border_color = style_def.get("accent", "#555")
@@ -214,27 +231,39 @@ def format_console_log_html_enhanced(log_lines) -> str:
         if bg_color:
             wrapper_style += f" background-color: {bg_color};"
 
-        timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
-        if timestamp_match:
-            time, tag, content = timestamp_match.groups()
+        # Try structured log format first (most specific)
+        structured_match = STRUCTURED_LOG_REGEX.match(line)
+        if structured_match:
+            timestamp_str, level, content = structured_match.groups()
+            # Extract just HH:MM:SS from timestamp
+            time_match = re.search(r'(\d{2}:\d{2}:\d{2})', timestamp_str)
+            time = time_match.group(1) if time_match else None
+            tag = None
+            line_level = level.upper() if level.upper() in CONSOLE_LEVEL_STYLES else line_level
         else:
-            iso_match = ISO_TIMESTAMP_REGEX.match(line)
-            if iso_match:
-                time = iso_match.group(2)
-                tag = None
-                remainder = iso_match.group(3).strip()
-                content = remainder or line[iso_match.start(3):].strip() or line
+            # Try launcher timestamp format
+            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
+            if timestamp_match:
+                time, tag, content = timestamp_match.groups()
             else:
-                prefix_match = LEVEL_PREFIX_REGEX.match(line)
-                if prefix_match:
-                    possible_level = prefix_match.group(1).upper()
-                    if not line_level:
-                        line_level = "WARNING" if possible_level == "WARN" else possible_level
-                    time = None
+                # Try ISO timestamp format
+                iso_match = ISO_TIMESTAMP_REGEX.match(line)
+                if iso_match:
+                    time = iso_match.group(2)  # Just HH:MM:SS part
                     tag = None
-                    content = prefix_match.group(2) or line
+                    content = iso_match.group(4).strip() or line
                 else:
-                    time, tag, content = None, None, line
+                    # Try level prefix format
+                    prefix_match = LEVEL_PREFIX_REGEX.match(line)
+                    if prefix_match:
+                        possible_level = prefix_match.group(1).upper()
+                        if not line_level:
+                            line_level = "WARNING" if possible_level == "WARN" else possible_level
+                        time = None
+                        tag = None
+                        content = prefix_match.group(2) or line
+                    else:
+                        time, tag, content = None, None, line
 
         tag_color = '#f44336' if (tag or '').upper() == 'ERR' else '#4CAF50'
         time_display = time or '--:--:--'
@@ -272,6 +301,10 @@ def format_console_log_html_enhanced(log_lines) -> str:
             f'{level_html}&nbsp;'
             f'{text_html}</div>'
         )
+
+    # Close traceback block if still open
+    if in_traceback:
+        html_lines.append('</div>')
 
     html_lines.append('</div>')
     return '\n'.join(html_lines)

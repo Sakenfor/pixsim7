@@ -778,13 +778,19 @@ class DatabaseLogViewer(QWidget):
         # Smart scroll restoration:
         # - If user was at bottom OR auto-refresh is enabled, scroll to bottom
         # - Otherwise preserve their exact scroll position
+        # CRITICAL: Use QTimer.singleShot to defer scroll restoration until AFTER
+        # Qt has finished processing the setHtml() and updated scrollbar maximum
         if scrollbar is not None:
-            if was_at_bottom or self.auto_refresh_enabled:
-                # Scroll to bottom for new content
-                scrollbar.setValue(scrollbar.maximum())
-            else:
-                # User was scrolled up - preserve exact position
-                scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
+            def restore_scroll():
+                if was_at_bottom or self.auto_refresh_enabled:
+                    # Scroll to bottom for new content
+                    scrollbar.setValue(scrollbar.maximum())
+                else:
+                    # User was scrolled up - preserve exact position
+                    scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
+
+            # Defer scroll restoration until Qt event loop processes the document change
+            QTimer.singleShot(0, restore_scroll)
 
         # Build informative status message
         total = data.get('total', 0)

@@ -1013,27 +1013,33 @@ class LauncherWindow(QWidget):
                 _startup_trace("_refresh_console_logs html applied")
 
                 # Scroll behavior based on auto-scroll setting and user's scroll position
-                if self.autoscroll_enabled or was_at_bottom:
-                    # Auto-scroll to bottom when:
-                    # 1. Auto-scroll is explicitly enabled, OR
-                    # 2. User was already at the bottom before update
-                    cursor = self.log_view.textCursor()
-                    cursor.movePosition(QTextCursor.End)
-                    self.log_view.setTextCursor(cursor)
-                    scrollbar.setValue(scrollbar.maximum())
-                    _startup_trace("_refresh_console_logs scrolled to bottom")
-                else:
-                    # User was scrolled up - preserve their EXACT scroll position
-                    # This prevents jumping when new logs arrive
-                    # First check if we have a saved position for this service (from tab switch)
-                    if self.selected_service_key in self.service_scroll_positions:
-                        saved_pos = self.service_scroll_positions[self.selected_service_key]
-                        scrollbar.setValue(saved_pos)
-                        _startup_trace(f"_refresh_console_logs restored saved position {saved_pos}")
+                # CRITICAL: Use QTimer.singleShot to defer scroll restoration until AFTER
+                # Qt has finished processing the setHtml() and updated scrollbar maximum
+                def restore_scroll():
+                    if self.autoscroll_enabled or was_at_bottom:
+                        # Auto-scroll to bottom when:
+                        # 1. Auto-scroll is explicitly enabled, OR
+                        # 2. User was already at the bottom before update
+                        cursor = self.log_view.textCursor()
+                        cursor.movePosition(QTextCursor.End)
+                        self.log_view.setTextCursor(cursor)
+                        scrollbar.setValue(scrollbar.maximum())
+                        _startup_trace("_refresh_console_logs scrolled to bottom")
                     else:
-                        # Preserve exact scroll position (don't adjust for new content)
-                        scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
-                        _startup_trace(f"_refresh_console_logs preserved scroll position {old_scroll_value}")
+                        # User was scrolled up - preserve their EXACT scroll position
+                        # This prevents jumping when new logs arrive
+                        # First check if we have a saved position for this service (from tab switch)
+                        if self.selected_service_key in self.service_scroll_positions:
+                            saved_pos = self.service_scroll_positions[self.selected_service_key]
+                            scrollbar.setValue(saved_pos)
+                            _startup_trace(f"_refresh_console_logs restored saved position {saved_pos}")
+                        else:
+                            # Preserve exact scroll position (don't adjust for new content)
+                            scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
+                            _startup_trace(f"_refresh_console_logs preserved scroll position {old_scroll_value}")
+
+                # Defer scroll restoration until Qt event loop processes the document change
+                QTimer.singleShot(0, restore_scroll)
             else:
                 if sp.running:
                     # Check health status to provide more context
