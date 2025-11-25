@@ -61,3 +61,19 @@ export async function updateAccountNickname(
 ): Promise<ProviderAccount> {
   return updateAccount(accountId, { nickname });
 }
+
+/**
+ * Dev-only: dry-run Pixverse video sync for a provider account.
+ */
+export async function dryRunPixverseSync(
+  accountId: number,
+  options?: { limit?: number; offset?: number }
+): Promise<any> {
+  const params = new URLSearchParams();
+  params.set('account_id', String(accountId));
+  if (options?.limit !== undefined) params.set('limit', String(options.limit));
+  if (options?.offset !== undefined) params.set('offset', String(options.offset));
+
+  const response = await apiClient.get(`/dev/pixverse-sync/dry-run?${params.toString()}`);
+  return response.data;
+}

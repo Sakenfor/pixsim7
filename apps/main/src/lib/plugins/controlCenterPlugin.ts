@@ -64,6 +64,27 @@ class ControlCenterRegistry {
 
   private activeId: string | null = null;
   private defaultId: string | null = null;
+  private listeners = new Set<() => void>();
+
+  private notify() {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('[ControlCenter] Listener error', err);
+      }
+    }
+  }
+
+  /**
+   * Subscribe to registry changes (register/unregister/active change)
+   */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   /**
    * Register a control center plugin
@@ -76,6 +97,7 @@ class ControlCenterRegistry {
     }
 
     console.log(`[ControlCenter] Registered: ${manifest.controlCenter.displayName}`);
+    this.notify();
   }
 
   /**
@@ -90,6 +112,7 @@ class ControlCenterRegistry {
       if (this.activeId === id) {
         this.activeId = this.defaultId;
       }
+      this.notify();
     }
   }
 
@@ -114,6 +137,7 @@ class ControlCenterRegistry {
     localStorage.setItem('control-center-preference', id);
 
     console.log(`[ControlCenter] Activated: ${id}`);
+    this.notify();
     return true;
   }
 
@@ -158,6 +182,7 @@ class ControlCenterRegistry {
     } else {
       this.activeId = this.defaultId;
     }
+    this.notify();
   }
 }
 

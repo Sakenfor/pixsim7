@@ -20,11 +20,11 @@ export function SettingsPanel() {
 
   // Update control centers when they change
   useEffect(() => {
-    const interval = setInterval(() => {
+    const unsubscribe = controlCenterRegistry.subscribe(() => {
       setControlCenters(controlCenterRegistry.getAll());
       setActiveControlCenterId(controlCenterRegistry.getActiveId());
-    }, 1000);
-    return () => clearInterval(interval);
+    });
+    return unsubscribe;
   }, []);
 
   // Clear switch message after 3 seconds

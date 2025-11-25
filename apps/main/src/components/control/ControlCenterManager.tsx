@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { controlCenterRegistry } from '../../lib/plugins/controlCenterPlugin';
 import { Button } from '@pixsim7/shared.ui';
+import { useToast } from '@pixsim7/shared.ui';
 
 export function ControlCenterManager() {
   const [activePlugin, setActivePlugin] = useState(() => controlCenterRegistry.getActive());
@@ -15,6 +16,7 @@ export function ControlCenterManager() {
   const [availableControlCenters, setAvailableControlCenters] = useState(() =>
     controlCenterRegistry.getAll()
   );
+  const toast = useToast();
 
   // Load user preference on mount
   useEffect(() => {
@@ -23,14 +25,13 @@ export function ControlCenterManager() {
     setAvailableControlCenters(controlCenterRegistry.getAll());
   }, []);
 
-  // Listen for registry changes (when plugins are installed/uninstalled)
+  // Listen for registry changes (when plugins are installed/uninstalled or active changes)
   useEffect(() => {
-    const checkInterval = setInterval(() => {
+    const unsubscribe = controlCenterRegistry.subscribe(() => {
       setAvailableControlCenters(controlCenterRegistry.getAll());
       setActivePlugin(controlCenterRegistry.getActive());
-    }, 1000);
-
-    return () => clearInterval(checkInterval);
+    });
+    return unsubscribe;
   }, []);
 
   // Keyboard shortcut to open selector
@@ -55,8 +56,7 @@ export function ControlCenterManager() {
       // Show notification
       const cc = availableControlCenters.find(c => c.id === id);
       if (cc) {
-        // TODO: Use toast system
-        console.log(`Switched to ${cc.displayName}`);
+        toast.success(`Switched Control Center to ${cc.displayName}`);
       }
     }
   };

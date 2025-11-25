@@ -24,6 +24,7 @@ import type { OperationType } from '@pixsim7/shared.types';
 import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
 import { usePromptInspection } from '../../hooks/usePromptInspection';
 import { usePromptAiEdit } from '../../hooks/usePromptAiEdit';
+import { useAiProviders } from '../../hooks/useAiProviders';
 
 interface Generation {
   id: number;
@@ -386,6 +387,28 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
   // AI prompt editing
   const { runEdit, loading: aiLoading, error: aiError, promptAfter, clear } = usePromptAiEdit();
   const [showAiResult, setShowAiResult] = useState(false);
+  const { providers, loading: providersLoading } = useAiProviders();
+  const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>(undefined);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+
+  // Default model suggestions per provider (can be refined later)
+  const defaultModels: Record<string, string[]> = {
+    'openai-llm': ['gpt-4.1-mini', 'gpt-4.1'],
+    'anthropic-llm': ['claude-3.5-sonnet', 'claude-3.5-haiku'],
+  };
+
+  // Initialize provider/model selection when providers load
+  useEffect(() => {
+    if (!providersLoading && providers.length > 0 && !selectedProviderId) {
+      const first = providers[0];
+      setSelectedProviderId(first.provider_id);
+      const models = defaultModels[first.provider_id];
+      if (models && models.length > 0) {
+        setSelectedModelId(models[0]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providersLoading, providers]);
 
   // Don't show anything if there's no prompt
   if (!prompt && !loading && !error) {
@@ -396,8 +419,16 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
     if (!prompt) return;
 
     setShowAiResult(false);
+    const provider_id = selectedProviderId;
+    // Fallback model if none selected
+    const model_id =
+      selectedModelId ||
+      (provider_id && defaultModels[provider_id] && defaultModels[provider_id][0]) ||
+      'gpt-4';
+
     await runEdit({
-      model_id: 'gpt-4',
+      provider_id,
+      model_id,
       prompt_before: prompt,
       generation_id: generationId,
     });
@@ -422,15 +453,44 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
         <h4 className="font-medium text-gray-600 text-sm">
           Prompt (Dev Inspector)
         </h4>
-        {prompt && (
-          <button
-            onClick={handleAiEdit}
-            disabled={aiLoading}
-            className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:bg-gray-400"
-          >
-            {aiLoading ? 'Editing...' : 'Edit with AI (Dev)'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Provider/Model selectors (dev-only) */}
+          {providers.length > 0 && (
+            <>
+              <select
+                className="text-xs border rounded px-2 py-1"
+                value={selectedProviderId || ''}
+                onChange={(e) => {
+                  const pid = e.target.value || undefined;
+                  setSelectedProviderId(pid);
+                  const models = pid ? defaultModels[pid] : undefined;
+                  setSelectedModelId(models && models.length > 0 ? models[0] : '');
+                }}
+              >
+                {providers.map((p) => (
+                  <option key={p.provider_id} value={p.provider_id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="text-xs border rounded px-2 py-1 w-40"
+                placeholder="Model (e.g. gpt-4.1-mini)"
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+              />
+            </>
+          )}
+          {prompt && (
+            <button
+              onClick={handleAiEdit}
+              disabled={aiLoading || providersLoading}
+              className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:bg-gray-400"
+            >
+              {aiLoading ? 'Editing...' : 'Edit with AI (Dev)'}
+            </button>
+          )}
+        </div>
       </div>
 
       {loading && (

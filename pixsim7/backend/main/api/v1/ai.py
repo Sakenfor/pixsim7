@@ -1,10 +1,11 @@
 """
 AI Hub API - LLM-powered operations for prompt editing and AI assistance
 """
-from typing import Optional
-from fastapi import APIRouter, HTTPException, status, Depends
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
@@ -70,6 +71,25 @@ class AvailableProvidersResponse(BaseModel):
     providers: list[dict] = Field(
         ...,
         description="List of available LLM providers"
+    )
+
+
+class AiInteractionItem(BaseModel):
+  """Single AI interaction record (for debugging/inspection)"""
+  id: int
+  generation_id: Optional[int]
+  provider_id: str
+  model_id: str
+  prompt_before: str
+  prompt_after: str
+  created_at: datetime
+
+
+class AiInteractionsResponse(BaseModel):
+    """Response with AI interactions"""
+    interactions: List[AiInteractionItem] = Field(
+        ...,
+        description="List of AI interactions for the user (optionally filtered by generation)"
     )
 
 
@@ -170,3 +190,34 @@ async def get_available_providers(
     """
     providers = ai_hub.get_available_providers()
     return AvailableProvidersResponse(providers=providers)
+
+
+@router.get("/interactions", response_model=AiInteractionsResponse)
+async def get_ai_interactions(
+    generation_id: Optional[int] = Query(
+        None,
+        description="Optional generation ID to filter interactions"
+    ),
+    current_user: CurrentUser = Depends(),
+    ai_hub: AiHubService = Depends(get_ai_hub_service),
+):
+    """
+    Get AI interactions for the current user.
+
+    Optional `generation_id` filter limits results to interactions linked to a specific generation.
+    Intended for dev/debug tooling and audit.
+    """
+    interactions = await ai_hub.list_interactions(current_user, generation_id=generation_id)
+    items = [
+        AiInteractionItem(
+            id=i.id,
+            generation_id=i.generation_id,
+            provider_id=i.provider_id,
+            model_id=i.model_id,
+            prompt_before=i.prompt_before,
+            prompt_after=i.prompt_after,
+            created_at=i.created_at,
+        )
+        for i in interactions
+    ]
+    return AiInteractionsResponse(interactions=items)

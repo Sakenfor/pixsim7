@@ -13,7 +13,9 @@ from pixsim7.backend.main.services.llm.registry import llm_registry
 from pixsim7.backend.main.shared.errors import (
     ProviderNotFoundError,
     ProviderAuthenticationError,
+    ProviderError,
 )
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,20 @@ class AiHubService:
             f"AI Hub edit_prompt: user={user.id}, provider={provider_id}, "
             f"model={model_id}, gen_id={generation_id}"
         )
+
+        # Simple per-user rate limiting (in-process)
+        # Prevents accidental hammering from dev tools
+        now = time.time()
+        if not hasattr(self, "_last_edit_ts"):
+            self._last_edit_ts: dict[int, float] = {}
+        last = self._last_edit_ts.get(user.id)
+        # Require at least 1 second between edits per user/process
+        if last and (now - last) < 1.0:
+            raise ProviderError(
+                provider_id,
+                "Too many prompt edits; please wait a moment and try again.",
+            )
+        self._last_edit_ts[user.id] = now
 
         # Get LLM provider from registry
         try:
@@ -172,3 +188,20 @@ class AiHubService:
                 "name": provider_id.replace("-llm", "").title(),
             })
         return providers
+
+    async def list_interactions(
+        self,
+        user: User,
+        generation_id: int | None = None,
+    ) -> list[AiInteraction]:
+        """
+        List AI interactions for a user, optionally filtered by generation_id.
+        Newest-first order.
+        """
+        stmt = select(AiInteraction).where(AiInteraction.user_id == user.id)
+        if generation_id is not None:
+            stmt = stmt.where(AiInteraction.generation_id == generation_id)
+        stmt = stmt.order_by(AiInteraction.created_at.desc())
+
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())

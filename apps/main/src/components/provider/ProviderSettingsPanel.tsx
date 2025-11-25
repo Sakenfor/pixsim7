@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Modal, FormField, Input, Button } from '@pixsim7/shared.ui';
+import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
 import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
-import { deleteAccount, toggleAccountStatus, updateAccount } from '../../lib/api/accounts';
+import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync } from '../../lib/api/accounts';
 import { CompactAccountCard } from './CompactAccountCard';
 
 interface EditAccountModalProps {
@@ -306,7 +306,7 @@ function AccountRow({ account, onEditNickname, onToggleStatus, onDelete }: Accou
         </div>
       </td>
       <td className="px-3 py-2">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           <button
             onClick={() => onEditNickname(account)}
             className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -332,9 +332,50 @@ function AccountRow({ account, onEditNickname, onToggleStatus, onDelete }: Accou
           >
             Delete
           </button>
+
+          {/* Dev-only: Pixverse dry-run sync */}
+          {account.provider_id === 'pixverse' && (
+            <PixverseDryRunButton accountId={account.id} />
+          )}
         </div>
       </td>
     </tr>
+  );
+}
+
+function PixverseDryRunButton({ accountId }: { accountId: number }) {
+  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+
+  const handleClick = async () => {
+    setLoading(true);
+    try {
+      const res = await dryRunPixverseSync(accountId, { limit: 10, offset: 0 });
+      const existing = res.existing_count ?? 0;
+      const total = res.total_remote ?? 0;
+      toast.success(
+        `Pixverse dry-run: ${existing} / ${total} videos already imported (first ${res.videos?.length ?? 0} checked).`
+      );
+      // For deeper inspection, leverage Dev Tools / network tab rather than UI spam.
+      console.debug('Pixverse dry-run result', res);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to run Pixverse sync dry-run';
+      toast.error(message);
+      console.error('Pixverse dry-run error', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:bg-neutral-500 transition-colors"
+      title="Dev: Dry-run Pixverse video sync (no changes)"
+    >
+      {loading ? 'Pixverse…' : 'Pixverse Dry-Run'}
+    </button>
   );
 }
 
