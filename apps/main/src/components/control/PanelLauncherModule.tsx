@@ -117,67 +117,67 @@ export function PanelLauncherModule() {
         </div>
       </div>
 
-      {/* Panel categories - compact list */}
-      {Object.entries(categories).map(([category, panels]) => (
-        <div key={category}>
-          <h4 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1.5 uppercase tracking-wide">
-            {categoryLabels[category as keyof typeof categoryLabels]}
-          </h4>
-          <div className="space-y-1">
-            {panels.map((panel) => {
-              const isOpen = openPanels.has(panel.id);
-              const isFloating = floatingPanelIds.has(panel.id);
-              const isClosed = closedPanels.includes(panel.id);
+      {/* All panels in compact square grid */}
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
+        {PANEL_INFO.map((panel) => {
+          const isOpen = openPanels.has(panel.id);
+          const isFloating = floatingPanelIds.has(panel.id);
+          const isClosed = closedPanels.includes(panel.id);
 
-              return (
-                <div
-                  key={panel.id}
-                  className={`border rounded p-2 transition-colors flex items-center gap-2 ${
-                    isOpen || isFloating
-                      ? 'bg-green-50/50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
-                      : 'bg-neutral-50/50 dark:bg-neutral-800/50 border-neutral-300 dark:border-neutral-700'
+          return (
+            <div
+              key={panel.id}
+              className={`border rounded p-1.5 transition-all hover:shadow-md flex flex-col items-center justify-center gap-1 aspect-square ${
+                isOpen
+                  ? 'bg-green-50/50 dark:bg-green-900/20 border-green-400 dark:border-green-600'
+                  : isFloating
+                  ? 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-400 dark:border-blue-600'
+                  : 'bg-neutral-50/50 dark:bg-neutral-800/50 border-neutral-300 dark:border-neutral-700 hover:border-blue-300'
+              }`}
+            >
+              {/* Icon */}
+              <Icon
+                name={panel.icon}
+                size={18}
+                className={isOpen ? 'text-green-600 dark:text-green-400' : isFloating ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-400'}
+              />
+
+              {/* Title */}
+              <div className="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 text-center leading-tight line-clamp-2">
+                {panel.title}
+              </div>
+
+              {/* Status indicator - just colored dot */}
+              {(isOpen || isFloating) && (
+                <div className={`w-1 h-1 rounded-full ${isOpen ? 'bg-green-500' : 'bg-blue-500'}`} />
+              )}
+
+              {/* Action buttons - ultra compact */}
+              <div className="flex gap-0.5 w-full">
+                <button
+                  onClick={() => handleOpenPanel(panel.id)}
+                  disabled={isOpen}
+                  className={`flex-1 text-[9px] px-1 py-0.5 rounded transition-colors ${
+                    isOpen
+                      ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}
+                  title={isOpen ? 'Already docked' : 'Dock panel'}
                 >
-                  {/* Panel info - compact */}
-                  <Icon name={panel.icon} size={16} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200 truncate">
-                      {panel.title}
-                    </div>
-                    <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                      {isOpen && <span className="text-green-600 dark:text-green-400 font-medium">DOCKED</span>}
-                      {isFloating && <span className="text-blue-600 dark:text-blue-400 font-medium">FLOATING</span>}
-                      {isClosed && !isOpen && !isFloating && <span>Closed</span>}
-                    </div>
-                  </div>
-                  {/* Actions - compact */}
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => handleOpenPanel(panel.id)}
-                      disabled={isOpen}
-                      className={`text-[11px] px-1.5 py-0.5 rounded transition-colors ${
-                        isOpen
-                          ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 cursor-not-allowed'
-                          : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                      title={isOpen ? 'Panel is docked' : 'Dock panel'}
-                    >
-                      {isOpen ? <Icon name="check" size={12} /> : 'Dock'}
-                    </button>
-                    <button
-                      onClick={() => handleOpenFloating(panel.id)}
-                      className="text-[11px] px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                      title="Float panel"
-                    >
-                      Float
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                  {isOpen ? '✓' : 'D'}
+                </button>
+                <button
+                  onClick={() => handleOpenFloating(panel.id)}
+                  className="flex-1 text-[9px] px-1 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                  title="Open as floating"
+                >
+                  F
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

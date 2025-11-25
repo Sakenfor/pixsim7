@@ -4,6 +4,7 @@ import { Rnd } from 'react-rnd';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
 import { controlCenterModuleRegistry } from '../../lib/control/controlCenterModuleRegistry';
+import { useNavigate } from 'react-router-dom';
 
 // Note: Control Center modules are now auto-registered when their parent modules
 // register with the global module registry (see modules/index.ts)
@@ -27,6 +28,7 @@ export function ControlCenterDock() {
   const setFloatingSize = useControlCenterStore(s => s.setFloatingSize);
   const toggleMode = useControlCenterStore(s => s.toggleMode);
 
+  const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -150,6 +152,12 @@ export function ControlCenterDock() {
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
 
+  // Smart expand direction based on dock position
+  const expandDirection = dockPosition === 'top' ? 'down' :
+                         dockPosition === 'bottom' ? 'up' :
+                         dockPosition === 'left' ? 'right' :
+                         dockPosition === 'right' ? 'left' : 'up';
+
   // Position classes (for docked modes)
   const positionClasses = clsx(
     'fixed z-40 select-none transition-all duration-300 ease-out',
@@ -214,10 +222,65 @@ export function ControlCenterDock() {
           <span className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             Control Center
           </span>
+
+          {/* Inline Quick Actions - Compact */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleMode}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+              title="Switch Mode"
+            >
+              🎲
+            </button>
+            <button
+              onClick={() => setPinned(!pinned)}
+              className={clsx(
+                'text-xs px-1.5 py-0.5 rounded transition-colors',
+                pinned ? 'bg-amber-100 dark:bg-amber-900/30' : 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
+              )}
+              title={pinned ? 'Unpin' : 'Pin'}
+              aria-pressed={pinned}
+            >
+              {pinned ? '📌' : '📍'}
+            </button>
+          </div>
+
           <div className="flex-1" />
 
-          {/* Module tabs with icons */}
-          <div className="flex gap-1 overflow-x-auto max-w-md" role="tablist" aria-label="Control center modules">
+          {/* Quick Navigation Shortcuts */}
+          <div className="flex items-center gap-0.5 mr-2">
+            <button
+              onClick={() => navigate('/assets')}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+              title="Gallery"
+            >
+              🖼️
+            </button>
+            <button
+              onClick={() => navigate('/workspace')}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+              title="Workspace"
+            >
+              🎨
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+              title="Home"
+            >
+              🏠
+            </button>
+            <button
+              onClick={() => navigate('/graph/1')}
+              className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+              title="Graph"
+            >
+              🕸️
+            </button>
+          </div>
+
+          {/* Module tabs with icons - single horizontal line */}
+          <div className="flex gap-1" role="tablist" aria-label="Control center modules">
             {modules.map(mod => (
               <button
                 key={mod.id}
@@ -254,7 +317,7 @@ export function ControlCenterDock() {
                 {dockPosition === 'floating' && '⊡'}
               </button>
             }
-            direction="up"
+            direction={expandDirection}
             hoverDelay={200}
             offset={6}
             contentClassName="right-0"
@@ -313,55 +376,6 @@ export function ControlCenterDock() {
             </div>
           </ExpandableButtonGroup>
 
-          {/* Action Button Group - Expandable */}
-          <ExpandableButtonGroup
-            trigger={
-              <button className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95">
-                ⚙️
-              </button>
-            }
-            direction="up"
-            hoverDelay={200}
-            offset={6}
-          >
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
-              {/* Mode Switch */}
-              <button
-                onClick={toggleMode}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
-                title="Switch Mode"
-              >
-                <span className="text-sm">🎲</span>
-                <span className="text-[9px] text-neutral-400 group-hover:text-white">Mode</span>
-              </button>
-
-              {/* Show/Hide */}
-              <button
-                onClick={() => setOpen(!open)}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-blue-600 transition-all"
-                title="Toggle Visibility"
-                aria-label={open ? 'Hide control center' : 'Show control center'}
-              >
-                <span className="text-sm">{open ? '▼' : '▲'}</span>
-                <span className="text-[9px] text-neutral-400 group-hover:text-white">Show</span>
-              </button>
-
-              {/* Pin */}
-              <button
-                onClick={() => setPinned(!pinned)}
-                className={clsx(
-                  'flex flex-col items-center gap-1 px-3 py-2 rounded-md transition-all',
-                  pinned ? 'bg-amber-600 hover:bg-amber-700' : 'bg-neutral-800 hover:bg-blue-600'
-                )}
-                title={pinned ? 'Unpin' : 'Pin'}
-                aria-label={pinned ? 'Unpin control center' : 'Pin control center'}
-                aria-pressed={pinned}
-              >
-                <span className="text-sm">{pinned ? '📌' : '📍'}</span>
-                <span className="text-[9px] text-neutral-400 group-hover:text-white">Pin</span>
-              </button>
-            </div>
-          </ExpandableButtonGroup>
         </div>
 
       {/* Module content with smooth fade-in */}

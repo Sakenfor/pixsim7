@@ -378,6 +378,7 @@ async def upload_asset_from_url(
     user: CurrentUser,
     db: DatabaseSession,
     account_service: AccountSvc,
+    asset_service: AssetSvc,
 ):
     """
     Backend-side fetch of a remote URL and upload to the chosen provider.
@@ -496,6 +497,44 @@ async def upload_asset_from_url(
             for chunk in iter(lambda: f.read(8192), b""):
                 sha256_hash.update(chunk)
         sha256 = sha256_hash.hexdigest()
+
+        # Deduplication: reuse existing asset with same hash for this user
+        try:
+            existing = await asset_service.find_asset_by_hash(sha256, user.id)
+        except Exception as e:
+            existing = None
+            logger.warning(
+                "asset_dedup_lookup_failed",
+                error=str(e),
+                detail="Failed to check for existing asset by hash; continuing with new asset",
+            )
+
+        if existing:
+            # Clean up temp files since we're reusing an existing asset
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            try:
+                if os.path.exists(temp_local_path):
+                    os.unlink(temp_local_path)
+            except Exception:
+                pass
+
+            # Build external URL from existing asset (prefer remote_url, fallback to file endpoint)
+            existing_external = existing.remote_url
+            if not existing_external or not (
+                existing_external.startswith("http://") or existing_external.startswith("https://")
+            ):
+                existing_external = f"/api/v1/assets/{existing.id}/file"
+
+            return UploadAssetResponse(
+                provider_id=request.provider_id,
+                media_type=existing.media_type,
+                external_url=existing_external,
+                provider_asset_id=existing.provider_asset_id,
+                note="Reused existing asset (deduplicated by sha256)",
+            )
 
         # Extract image dimensions if it's an image
         width = height = None

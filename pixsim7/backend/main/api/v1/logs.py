@@ -191,7 +191,8 @@ async def ingest_log_batch(
 
 @router.get("/query", response_model=LogQueryResponse)
 async def query_logs(
-    admin: CurrentAdminUser,
+    # NOTE: No auth required for local development/launcher use
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     service: Optional[str] = Query(None, description="Filter by service name"),
     level: Optional[str] = Query(None, description="Filter by log level"),
     job_id: Optional[int] = Query(None, description="Filter by job ID"),
@@ -247,7 +248,7 @@ async def query_logs(
 
 @router.get("/trace/job/{job_id}", response_model=List[LogEntryResponse])
 async def get_job_trace(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     job_id: int,
     db: AsyncSession = Depends(get_log_db),
 ) -> List[LogEntryResponse]:
@@ -275,7 +276,7 @@ async def get_job_trace(
 
 @router.get("/trace/request/{request_id}", response_model=List[LogEntryResponse])
 async def get_request_trace(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     request_id: str,
     db: AsyncSession = Depends(get_log_db),
 ) -> List[LogEntryResponse]:
@@ -303,7 +304,7 @@ async def get_request_trace(
 
 @router.get("/fields")
 async def get_fields(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     service: Optional[str] = Query(None, description="Service name to scope field discovery"),
     sample_limit: int = Query(300, ge=1, le=2000, description="Number of recent rows to inspect"),
     db: AsyncSession = Depends(get_log_db),
@@ -327,7 +328,7 @@ async def get_fields(
 
 @router.get("/files")
 async def list_log_files(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
 ):
     """List available log files."""
     import os
@@ -360,7 +361,7 @@ async def list_log_files(
 
 @router.get("/files/tail")
 async def tail_log_file(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     path: str = Query(..., description="Log file path (e.g., data/logs/console/backend.log)"),
     lines: int = Query(100, ge=1, le=10000, description="Number of lines to return"),
 ):
@@ -399,7 +400,7 @@ async def tail_log_file(
 
 @router.get("/distinct")
 async def get_distinct(
-    admin: CurrentAdminUser,
+    # admin: CurrentAdminUser,  # Commented out for local dev access
     field: str = Query(..., description="Field name to get distinct values for (column or extra key)"),
     service: Optional[str] = Query(None, description="Restrict to service"),
     provider_id: Optional[str] = None,

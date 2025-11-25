@@ -222,70 +222,53 @@ export function PresetsModule() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {presets.map(preset => {
           const isSelected = preset.id === presetId;
           return (
             <div
               key={preset.id}
               className={clsx(
-                'flex flex-col gap-2 p-3 rounded-lg',
+                'flex flex-col gap-1.5 p-2 rounded-lg cursor-pointer',
                 'border transition-all duration-150',
                 isSelected
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 shadow-sm'
-                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900'
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:border-blue-300'
               )}
+              onClick={() => selectPreset(preset)}
             >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              {/* Operation Type Badge */}
+              <div className="text-[9px] font-bold uppercase tracking-wide text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded self-start">
+                {operationType.replace('_', '→')}
+              </div>
+
+              <div className="flex items-start justify-between gap-1">
+                <span className="text-xs font-medium text-neutral-900 dark:text-neutral-100 leading-tight">
                   {preset.name}
                 </span>
                 {isSelected && (
-                  <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                    ✓ Selected
-                  </span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400">✓</span>
                 )}
               </div>
 
-              {preset.description && (
-                <span className="text-xs text-neutral-600 dark:text-neutral-400">
-                  {preset.description}
-                </span>
-              )}
-
-              {/* Parameter preview */}
-              <div className="text-xs text-neutral-500 dark:text-neutral-500 font-mono">
+              {/* Compact params */}
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-500 font-mono line-clamp-2">
                 {Object.entries(preset.params)
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(', ')}
+                  .map(([k, v]) => `${k}:${v}`)
+                  .join(' ')}
               </div>
 
-              {/* Action buttons */}
-              <div className="flex gap-2 mt-2">
+              {/* Compact action */}
+              {supportsOperator && (
                 <button
-                  onClick={() => selectPreset(preset)}
-                  className={clsx(
-                    'flex-1 py-1.5 px-3 text-xs rounded transition-colors',
-                    'focus:outline-none focus:ring-2 focus:ring-blue-500',
-                    isSelected
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
-                  )}
+                  onClick={(e) => { e.stopPropagation(); openOperator(preset); }}
+                  className="mt-1 py-0.5 px-1.5 text-[10px] rounded bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-0.5 self-start"
+                  title="Open advanced operator"
                 >
-                  {isSelected ? 'Selected' : 'Quick Select'}
+                  <Settings2 className="w-2.5 h-2.5" />
+                  Op
                 </button>
-
-                {supportsOperator && (
-                  <button
-                    onClick={() => openOperator(preset)}
-                    className="py-1.5 px-3 text-xs rounded bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    title="Open advanced operator"
-                  >
-                    <Settings2 className="w-3.5 h-3.5" />
-                    Operator
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           );
         })}

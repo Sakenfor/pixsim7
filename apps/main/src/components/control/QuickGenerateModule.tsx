@@ -482,40 +482,7 @@ export function QuickGenerateModule() {
         </div>
       )}
 
-      {/* Quick shortcuts */}
-      <div className="border-t pt-3 flex-shrink-0">
-        <div className="text-xs text-neutral-500 font-medium mb-2">Quick shortcuts:</div>
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={() => navigate('/assets')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
-          >
-            <span>🖼️</span>
-            <span>Gallery</span>
-          </button>
-          <button
-            onClick={() => navigate('/workspace')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
-          >
-            <span>🎨</span>
-            <span>Workspace</span>
-          </button>
-          <button
-            onClick={() => navigate('/')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
-          >
-            <span>🏠</span>
-            <span>Home</span>
-          </button>
-          <button
-            onClick={() => navigate('/graph/1')}
-            className="flex flex-col items-center gap-1 p-2 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs"
-          >
-            <span>🕸️</span>
-            <span>Graph</span>
-          </button>
-        </div>
-      </div>
+      {/* Quick shortcuts moved to Control Center header */}
     </div>
   );
 }

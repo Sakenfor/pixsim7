@@ -32,6 +32,7 @@ import {
   Play,
   Pause,
   Square,
+  Shuffle,
   AlertCircle,
   Info,
   CheckCircle,
@@ -123,6 +124,7 @@ export const Icons = {
   play: Play,
   pause: Pause,
   stop: Square,
+  shuffle: Shuffle,
 
   // UI elements
   settings: Settings,

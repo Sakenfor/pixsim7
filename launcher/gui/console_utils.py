@@ -26,6 +26,35 @@ LEVEL_PREFIX_REGEX = re.compile(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', 
 # Match structured log format: timestamp [level] message
 STRUCTURED_LOG_REGEX = re.compile(r'^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})[^\[]*\[(\w+)\s*\]\s*(.*)$')
 
+
+def convert_utc_to_local_time(timestamp_str: str) -> str | None:
+    """
+    Convert UTC timestamp to local time.
+
+    Args:
+        timestamp_str: ISO timestamp string (e.g., "2025-11-20T11:31:22.200605Z")
+
+    Returns:
+        Local time string in HH:MM:SS format, or None if parsing fails
+    """
+    from datetime import datetime
+
+    try:
+        # Parse ISO timestamp (handles both with and without 'Z')
+        if timestamp_str.endswith('Z'):
+            dt_utc = datetime.fromisoformat(timestamp_str[:-1])
+        else:
+            dt_utc = datetime.fromisoformat(timestamp_str)
+
+        # Assume it's UTC, convert to local time
+        from datetime import timezone
+        dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+        dt_local = dt_utc.astimezone()
+
+        return dt_local.strftime('%H:%M:%S')
+    except Exception:
+        return None
+
 # Decoration regexes
 URL_LINK_REGEX = re.compile(r'(https?://[^\s]+)')
 READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening)\b')
@@ -235,9 +264,12 @@ def format_console_log_html_enhanced(log_lines) -> str:
         structured_match = STRUCTURED_LOG_REGEX.match(line)
         if structured_match:
             timestamp_str, level, content = structured_match.groups()
-            # Extract just HH:MM:SS from timestamp
-            time_match = re.search(r'(\d{2}:\d{2}:\d{2})', timestamp_str)
-            time = time_match.group(1) if time_match else None
+            # Convert UTC to local time if it's a full ISO timestamp
+            time = convert_utc_to_local_time(timestamp_str)
+            if not time:
+                # Fallback: Extract just HH:MM:SS from timestamp
+                time_match = re.search(r'(\d{2}:\d{2}:\d{2})', timestamp_str)
+                time = time_match.group(1) if time_match else None
             tag = None
             line_level = level.upper() if level.upper() in CONSOLE_LEVEL_STYLES else line_level
         else:
@@ -249,7 +281,14 @@ def format_console_log_html_enhanced(log_lines) -> str:
                 # Try ISO timestamp format
                 iso_match = ISO_TIMESTAMP_REGEX.match(line)
                 if iso_match:
-                    time = iso_match.group(2)  # Just HH:MM:SS part
+                    full_timestamp = f"{iso_match.group(1)}T{iso_match.group(2)}"
+                    if iso_match.group(3):  # Has timezone indicator
+                        full_timestamp += iso_match.group(3)
+                    # Convert UTC to local time
+                    time = convert_utc_to_local_time(full_timestamp)
+                    if not time:
+                        # Fallback: Just use HH:MM:SS part
+                        time = iso_match.group(2)
                     tag = None
                     content = iso_match.group(4).strip() or line
                 else:
