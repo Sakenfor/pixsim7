@@ -149,7 +149,10 @@ class ProviderAccount(SQLModel, table=True):
     # ===== RELATIONSHIPS =====
     credits: list["ProviderCredit"] = Relationship(
         back_populates="account",
-        sa_relationship_kwargs={"lazy": "selectin"}  # Eager load credits with account
+        sa_relationship_kwargs={
+            "lazy": "selectin",  # Eager load credits with account
+            "cascade": "all, delete-orphan"  # Delete credits when account is deleted
+        }
     )
 
     # ===== CONSTRAINTS =====

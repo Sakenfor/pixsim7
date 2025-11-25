@@ -10,7 +10,7 @@
   "autoscroll_enabled": false,
   "console_style_enhanced": true,
   "console_level_filter": "All",
-  "console_search_text": "dele",
+  "console_search_text": "",
   "health_check_interval": 5.0,
   "health_check_adaptive": true,
   "health_check_startup_interval": 2.0,

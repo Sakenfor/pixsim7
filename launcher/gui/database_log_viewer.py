@@ -743,7 +743,16 @@ class DatabaseLogViewer(QWidget):
     def _render_logs(self, data):
         """Render logs with current expansion state."""
         scrollbar = self.log_display.verticalScrollBar()
-        scroll_value = scrollbar.value() if scrollbar is not None else 0
+
+        # Check if user was at the bottom before rendering
+        if scrollbar is not None:
+            old_scroll_value = scrollbar.value()
+            old_scroll_max = scrollbar.maximum()
+            # User is "at bottom" if within 10 pixels of maximum
+            was_at_bottom = (old_scroll_value >= old_scroll_max - 10) if old_scroll_max > 0 else True
+        else:
+            old_scroll_value = 0
+            was_at_bottom = True
 
         logs = data.get('logs', [])
         if not logs:
@@ -765,8 +774,17 @@ class DatabaseLogViewer(QWidget):
         self._expanded_rows.intersection_update(set(row_keys))
 
         self.log_display.setHtml('\n'.join(html_parts))
+
+        # Smart scroll restoration:
+        # - If user was at bottom OR auto-refresh is enabled, scroll to bottom
+        # - Otherwise preserve their exact scroll position
         if scrollbar is not None:
-            scrollbar.setValue(min(scroll_value, scrollbar.maximum()))
+            if was_at_bottom or self.auto_refresh_enabled:
+                # Scroll to bottom for new content
+                scrollbar.setValue(scrollbar.maximum())
+            else:
+                # User was scrolled up - preserve exact position
+                scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
 
         # Build informative status message
         total = data.get('total', 0)

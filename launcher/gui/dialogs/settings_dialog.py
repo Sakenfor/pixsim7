@@ -175,6 +175,18 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
+        # Window Group
+        window_group = QGroupBox("Window")
+        window_layout = QVBoxLayout(window_group)
+        window_layout.setSpacing(12)
+
+        self.chk_always_on_top = QCheckBox("Always on top")
+        self.chk_always_on_top.setChecked(self._state.window_always_on_top)
+        self.chk_always_on_top.setToolTip("Keep the launcher window on top of other windows")
+        window_layout.addWidget(self.chk_always_on_top)
+
+        layout.addWidget(window_group)
+
         # Behavior Group
         behavior_group = QGroupBox("Behavior")
         behavior_layout = QVBoxLayout(behavior_group)
@@ -314,6 +326,7 @@ class SettingsDialog(QDialog):
 
         if reply == QMessageBox.Yes:
             defaults = UIState()
+            self.chk_always_on_top.setChecked(defaults.window_always_on_top)
             self.chk_stop_on_exit.setChecked(defaults.stop_services_on_exit)
             self.chk_auto_refresh_logs.setChecked(defaults.auto_refresh_logs)
             self.chk_sql_logging.setChecked(defaults.sql_logging_enabled)
@@ -324,6 +337,7 @@ class SettingsDialog(QDialog):
 
     def get_state(self) -> UIState:
         """Get updated state from UI."""
+        self._state.window_always_on_top = self.chk_always_on_top.isChecked()
         self._state.stop_services_on_exit = self.chk_stop_on_exit.isChecked()
         self._state.auto_refresh_logs = self.chk_auto_refresh_logs.isChecked()
         self._state.sql_logging_enabled = self.chk_sql_logging.isChecked()

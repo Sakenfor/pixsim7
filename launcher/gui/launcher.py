@@ -193,6 +193,9 @@ class LauncherWindow(QWidget):
         if self.ui_state.window_x >= 0 and self.ui_state.window_y >= 0:
             self.move(self.ui_state.window_x, self.ui_state.window_y)
 
+        # Apply window flags (always on top)
+        self._apply_window_flags()
+
         self.services = build_services_with_fallback()
 
         # Initialize service management
@@ -1009,26 +1012,28 @@ class LauncherWindow(QWidget):
                 self.log_view.setHtml(log_html)
                 _startup_trace("_refresh_console_logs html applied")
 
-                # Scroll behavior based on auto-scroll setting
-                if self.autoscroll_enabled:
-                    # Auto-scroll to bottom when explicitly enabled
+                # Scroll behavior based on auto-scroll setting and user's scroll position
+                if self.autoscroll_enabled or was_at_bottom:
+                    # Auto-scroll to bottom when:
+                    # 1. Auto-scroll is explicitly enabled, OR
+                    # 2. User was already at the bottom before update
                     cursor = self.log_view.textCursor()
                     cursor.movePosition(QTextCursor.End)
                     self.log_view.setTextCursor(cursor)
                     scrollbar.setValue(scrollbar.maximum())
+                    _startup_trace("_refresh_console_logs scrolled to bottom")
                 else:
-                    # Restore scroll position when auto-scroll is disabled
+                    # User was scrolled up - preserve their EXACT scroll position
+                    # This prevents jumping when new logs arrive
                     # First check if we have a saved position for this service (from tab switch)
                     if self.selected_service_key in self.service_scroll_positions:
                         saved_pos = self.service_scroll_positions[self.selected_service_key]
                         scrollbar.setValue(saved_pos)
                         _startup_trace(f"_refresh_console_logs restored saved position {saved_pos}")
                     else:
-                        # Otherwise maintain relative position from bottom to handle new content
-                        new_max = scrollbar.maximum()
-                        target_value = max(0, new_max - distance_from_bottom)
-                        scrollbar.setValue(target_value)
-                        _startup_trace(f"_refresh_console_logs maintained relative position {target_value}")
+                        # Preserve exact scroll position (don't adjust for new content)
+                        scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
+                        _startup_trace(f"_refresh_console_logs preserved scroll position {old_scroll_value}")
             else:
                 if sp.running:
                     # Check health status to provide more context
@@ -1120,12 +1125,33 @@ class LauncherWindow(QWidget):
             pass
         _startup_trace("_refresh_console_logs end")
 
+    def _apply_window_flags(self):
+        """Apply window flags based on UI state."""
+        flags = self.windowFlags()
+
+        if self.ui_state.window_always_on_top:
+            # Add always on top flag
+            flags |= Qt.WindowStaysOnTopHint
+        else:
+            # Remove always on top flag
+            flags &= ~Qt.WindowStaysOnTopHint
+
+        self.setWindowFlags(flags)
+        # Need to show again after changing flags
+        self.show()
+
     def _open_settings(self):
         updated = show_settings_dialog(self, self.ui_state)
         if updated:
+            old_always_on_top = self.ui_state.window_always_on_top
             self.ui_state = updated
             # Apply preferences immediately
             set_sql_logging(self.ui_state.sql_logging_enabled)
+
+            # Apply window flags if changed
+            if old_always_on_top != self.ui_state.window_always_on_top:
+                self._apply_window_flags()
+
             if self.ui_state.auto_refresh_logs:
                 try:
                     self.db_log_viewer.auto_refresh_checkbox.setChecked(True)

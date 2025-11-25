@@ -169,6 +169,7 @@ class UIState:
     window_y: int = -1
     window_width: int = 1100
     window_height: int = 700
+    window_always_on_top: bool = False  # Keep window on top of other windows
     selected_service: str = ''
 
     # General settings
@@ -202,6 +203,8 @@ def load_ui_state() -> UIState:
                     data['auto_refresh_logs'] = False
                 if 'sql_logging_enabled' not in data:
                     data['sql_logging_enabled'] = False
+                if 'window_always_on_top' not in data:
+                    data['window_always_on_top'] = False
                 if 'health_check_interval' not in data:
                     data['health_check_interval'] = 5.0
                 if 'health_check_adaptive' not in data:

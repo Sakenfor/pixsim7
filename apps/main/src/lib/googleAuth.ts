@@ -78,6 +78,9 @@ export async function getGoogleIdTokenViaGIS(): Promise<string | null> {
       },
       cancel_on_tap_outside: true,
       auto_select: false,
+      // Explicitly disable FedCM for prompt to avoid clientmetadata
+      // issues while keeping legacy One Tap behavior.
+      use_fedcm_for_prompt: false,
     });
 
     window.google.accounts.id.prompt((notification: any) => {
@@ -91,4 +94,3 @@ export async function getGoogleIdTokenViaGIS(): Promise<string | null> {
     });
   });
 }
-
