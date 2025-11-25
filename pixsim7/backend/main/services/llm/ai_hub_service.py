@@ -5,7 +5,8 @@ This service manages AI-assisted prompt editing using configured LLM providers.
 """
 import logging
 from typing import Optional
-from sqlmodel import Session, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from pixsim7.backend.main.domain import User, ProviderAccount, AiInteraction
 from pixsim7.backend.main.services.llm.registry import llm_registry
@@ -25,10 +26,10 @@ class AiHubService:
     - LLM provider selection
     - Account management for LLM providers
     - Prompt editing operations
-    - Interaction logging (after AiInteraction model is created)
+    - Interaction logging
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
     async def edit_prompt(
@@ -82,7 +83,7 @@ class AiHubService:
         # Get account for this provider (if configured)
         # For now, we'll use API keys from environment
         # Later, users can configure LLM accounts in the database
-        account = self._get_llm_account(user, provider_id)
+        account = await self._get_llm_account(user, provider_id)
 
         # Call LLM provider to edit prompt
         try:
@@ -107,8 +108,8 @@ class AiHubService:
         )
 
         self.db.add(interaction)
-        self.db.commit()
-        self.db.refresh(interaction)
+        await self.db.commit()
+        await self.db.refresh(interaction)
 
         logger.info(
             f"Prompt edited successfully: {len(prompt_before)} -> {len(prompt_after)} chars "
@@ -122,7 +123,7 @@ class AiHubService:
             "interaction_id": interaction.id,
         }
 
-    def _get_llm_account(
+    async def _get_llm_account(
         self,
         user: User,
         provider_id: str
@@ -139,14 +140,18 @@ class AiHubService:
             (falls back to environment API keys)
         """
         # Query for user's account for this LLM provider
-        stmt = select(ProviderAccount).where(
-            ProviderAccount.user_id == user.id,
-            ProviderAccount.provider_id == provider_id
+        stmt = (
+            select(ProviderAccount)
+            .where(
+                ProviderAccount.user_id == user.id,
+                ProviderAccount.provider_id == provider_id,
+            )
         )
-        account = self.db.exec(stmt).first()
+        result = await self.db.execute(stmt)
+        account = result.scalar_one_or_none()
 
         if account:
-            logger.debug(f"Using configured account for {provider_id}")
+            logger.debug("Using configured LLM account for %s", provider_id)
             return account
 
         # No account configured - will use environment API keys
