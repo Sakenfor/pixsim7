@@ -565,13 +565,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Inject cookies
         await injectCookies(cookies, target.domain);
 
-        // Best-effort: sync credits after opening tab
-        try {
-          await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, { method: 'POST' });
-        } catch (e) {
-          console.warn('[Background] Credit sync failed:', e);
-        }
-
         // Open tab
         chrome.tabs.create({ url: target.url }, (tab) => {
           sendResponse({ success: true, tabId: tab?.id });

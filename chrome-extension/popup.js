@@ -46,11 +46,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if logged in
   await checkLogin();
 
-  // Sync credits on popup open (only if logged in, throttled)
-  if (currentUser) {
-    syncCreditsThrottled('popup-open'); // fire-and-forget, best-effort
-  }
-
   // Detect provider from current tab
   await detectProviderFromTab();
 
@@ -86,7 +81,15 @@ function setupEventListeners() {
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 
   // Refresh accounts
-  document.getElementById('refreshBtn').addEventListener('click', loadAccounts);
+  const refreshBtn = document.getElementById('refreshBtn');
+  const refreshBtnTop = document.getElementById('refreshBtnTop');
+  const handleRefreshClick = () => {
+    if (currentUser) {
+      syncCreditsThrottled('manual-refresh', { force: true });
+    }
+  };
+  if (refreshBtn) refreshBtn.addEventListener('click', handleRefreshClick);
+  if (refreshBtnTop) refreshBtnTop.addEventListener('click', handleRefreshClick);
 
   // Import cookies
   document.getElementById('importBtn').addEventListener('click', handleImportCookies);
@@ -275,10 +278,6 @@ async function handleLogin() {
     if (response.success) {
       currentUser = response.data.user;
       showLoggedIn();
-
-      // Sync credits for all accounts after login (best-effort, forced)
-      loginBtn.textContent = 'Syncing credits...';
-      await syncCreditsThrottled('login', { force: true });
     } else {
       showError(response.error || 'Login failed');
     }

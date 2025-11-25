@@ -139,6 +139,8 @@ class PixverseProvider(Provider):
             "logged in elsewhere" in msg
             or "session expired" in msg
             or "error 10005" in msg
+            or "error 10003" in msg
+            or "user is not login" in msg
         )
 
     @property
