@@ -4,6 +4,7 @@ import { useProviderCapacity } from '../../hooks/useProviderAccounts';
 import { useProviders } from '../../hooks/useProviders';
 import type { ProviderAccount } from '../../hooks/useProviderAccounts';
 import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync } from '../../lib/api/accounts';
+import { apiClient } from '../../lib/api/client';
 import { CompactAccountCard } from './CompactAccountCard';
 
 interface EditAccountModalProps {
@@ -434,13 +435,8 @@ export function ProviderSettingsPanel() {
   // Load provider settings when activeProvider changes
   const loadProviderSettings = async (providerId: string) => {
     try {
-      const response = await fetch(`/api/v1/providers/${providerId}/settings`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const settings = await response.json();
-        setProviderSettings(settings);
-      }
+      const response = await apiClient.get<ProviderSettings>(`/providers/${providerId}/settings`);
+      setProviderSettings(response.data);
     } catch (error) {
       console.error('Failed to load provider settings:', error);
     }
@@ -449,22 +445,13 @@ export function ProviderSettingsPanel() {
   const saveProviderSettings = async () => {
     if (!activeProvider || !providerSettings) return;
 
-    setSavingSettings(true);
-    try {
-      const response = await fetch(`/api/v1/providers/${activeProvider}/settings`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+      setSavingSettings(true);
+      try {
+        await apiClient.patch<ProviderSettings>(`/providers/${activeProvider}/settings`, {
           global_password: providerSettings.global_password || null,
           auto_reauth_enabled: providerSettings.auto_reauth_enabled,
-          auto_reauth_max_retries: providerSettings.auto_reauth_max_retries
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save settings');
-      }
+          auto_reauth_max_retries: providerSettings.auto_reauth_max_retries,
+        });
 
       // Show brief success message
       const tempSuccess = document.createElement('div');

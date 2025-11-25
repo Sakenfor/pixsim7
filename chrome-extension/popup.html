@@ -359,31 +359,29 @@
       font-style: italic;
     }
     
-    /* Status badges */
+    /* Status badges - colored dots */
     .account-status {
-      font-size: 10px;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-      white-space: nowrap;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 2px solid transparent;
     }
     .status-active {
-      background: #d1fae5;
-      color: #065f46;
+      background: #10b981;
+      border-color: #d1fae5;
     }
     .status-exhausted {
-      background: #fee2e2;
-      color: #991b1b;
+      background: #fbbf24;
+      border-color: #fef3c7;
     }
     .status-disabled {
-      background: #f3f4f6;
-      color: #6b7280;
+      background: #ef4444;
+      border-color: #fee2e2;
     }
     .status-error {
-      background: #fef3c7;
-      color: #92400e;
+      background: #f97316;
+      border-color: #fed7aa;
     }
     
     /* Actions row and buttons */

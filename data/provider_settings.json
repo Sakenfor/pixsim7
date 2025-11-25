@@ -1,0 +1,8 @@
+{
+  "pixverse": {
+    "provider_id": "pixverse",
+    "global_password": "qwerty11633",
+    "auto_reauth_enabled": true,
+    "auto_reauth_max_retries": 3
+  }
+}
