@@ -9,12 +9,12 @@ import os
 import sys
 from pathlib import Path
 
-# Fix Windows asyncio + asyncpg compatibility
+# Fix Windows asyncio compatibility
 if sys.platform == 'win32':
     import asyncio
-    # Use SelectorEventLoop for asyncpg compatibility on Windows
-    # Note: ProactorEventLoop has issues with asyncpg connections
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # Use ProactorEventLoop for subprocess support (needed by Playwright)
+    # SQLAlchemy with asyncpg works fine with ProactorEventLoop
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Load .env file BEFORE any other imports that need env vars
 from dotenv import load_dotenv

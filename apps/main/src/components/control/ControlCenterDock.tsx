@@ -257,6 +257,7 @@ export function ControlCenterDock() {
             direction="up"
             hoverDelay={200}
             offset={6}
+            contentClassName="right-0"
           >
             <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
               <button

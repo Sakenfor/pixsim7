@@ -193,6 +193,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Generic API passthrough (used for devices scan, etc.)
+  if (message.action === 'apiRequest') {
+    (async () => {
+      try {
+        let path = message.path || '';
+        const method = message.method || 'GET';
+        const body = message.body || undefined;
+
+        // Normalize path and ensure /api/v1 prefix
+        if (!path.startsWith('/')) {
+          path = '/' + path;
+        }
+        const endpoint = path.startsWith('/api/')
+          ? path
+          : `/api/v1${path}`;
+
+        const data = await backendRequest(endpoint, {
+          method,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.action === 'getQuickPromptTemplates') {
     try {
       const { providerId } = message;

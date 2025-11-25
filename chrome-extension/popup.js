@@ -638,7 +638,7 @@ function createAccountCard(account) {
   card.innerHTML = `
     <div class="account-header" style="padding: 6px 8px;">
       <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-        <span class="account-status ${statusClass}" style="font-size: 9px; padding: 2px 5px; flex-shrink: 0;">${account.status}</span>
+        <span class="account-status ${statusClass}" title="Status: ${account.status}"></span>
         <div class="account-title" style="flex: 1; min-width: 0;">
           <div class="account-name" style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
           ${account.nickname ? `<div class="account-email-sub" style="font-size: 9px;">${account.email}</div>` : ''}
@@ -704,11 +704,16 @@ function attachPixverseAdStatus(account, pillEl) {
       if (!pillEl.isConnected) {
         return;
       }
-      if (!res || !res.success || !res.data) {
-        pillEl.textContent = '';
-        pillEl.removeAttribute('title');
+      if (!res || !res.success) {
+        console.warn('[Ads] API failed for account', account.id, res?.error);
+        pillEl.textContent = 'Ads: N/A';
+        pillEl.title = 'Failed to fetch ad status';
+        pillEl.style.fontSize = '10px';
+        pillEl.style.color = '#ef4444';
         return;
       }
+
+      console.log('[Ads] Status for account', account.id, res.data);
       pixverseStatusCache.set(account.id, { data: res.data, updatedAt: Date.now() });
       if (pixverseStatusCache.size > 200) {
         const firstKey = pixverseStatusCache.keys().next().value;
@@ -731,8 +736,11 @@ function renderPixverseAdPill(pillEl, payload) {
     pillEl.style.fontSize = '10px';
     pillEl.style.color = '#6b7280';
   } else {
-    pillEl.textContent = '';
-    pillEl.removeAttribute('title');
+    // Show 0/0 when no task data instead of hiding
+    pillEl.textContent = 'Ads 0/0';
+    pillEl.title = 'No ad watch task available';
+    pillEl.style.fontSize = '10px';
+    pillEl.style.color = '#9ca3af';
   }
 }
 

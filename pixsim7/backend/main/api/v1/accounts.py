@@ -804,8 +804,8 @@ async def set_account_credit(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
 
 
-  @router.post("/accounts/credits/bulk-update")
-  async def bulk_update_credits(
+@router.post("/accounts/credits/bulk-update")
+async def bulk_update_credits(
     updates: list[AccountBulkCreditUpdate],
     user: CurrentUser,
     account_service: AccountSvc,
@@ -837,12 +837,12 @@ async def set_account_credit(
                 "credits": {c.credit_type: c.amount for c in acc.credits} if acc.credits else {}
             })
 
-      await db.commit()
-  
-      return {
-          "updated": len(results),
-          "details": results
-      }
+    await db.commit()
+
+    return {
+        "updated": len(results),
+        "details": results
+    }
 
 
 # ===== JWT REFRESH FROM COOKIES =====

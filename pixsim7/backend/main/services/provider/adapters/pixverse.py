@@ -962,18 +962,17 @@ class PixverseProvider(Provider):
 
             logger.info(f"Attempting auto-reauth for account {account.id} (email: {account.email})")
 
-            # Use the auth service to re-login
+            # Use the auth service to re-login (uses API, fast!)
             from pixsim7.backend.main.services.provider.pixverse_auth_service import PixverseAuthService
             async with PixverseAuthService() as auth_service:
-                cookies = await auth_service.login_with_password(
+                session_data = await auth_service.login_with_password(
                     account.email,
                     password,
                     headless=True,
                 )
 
-            # Extract new session data
-            raw_data = {"cookies": cookies}
-            extracted = await self.extract_account_data(raw_data)
+            # Extract new session data (session_data already has jwt_token + cookies)
+            extracted = await self.extract_account_data(session_data)
 
             # Update account credentials (simplified - normally would use account service)
             if extracted.get("jwt_token"):
@@ -1179,15 +1178,15 @@ class PixverseProvider(Provider):
 
     async def extract_account_data(self, raw_data: dict) -> dict:
         """
-        Extract Pixverse account data from raw cookies
+        Extract Pixverse account data from raw cookies or API login response
 
         Pixverse-specific extraction (like pixsim6):
-        1. Extract JWT from _ai_token cookie
+        1. Extract JWT from _ai_token cookie OR from jwt_token field (API login)
         2. Call Pixverse API getUserInfo to get real email
         3. Fallback to JWT parsing if API call fails
 
         Args:
-            raw_data: {'cookies': {...}}
+            raw_data: {'cookies': {...}} or {'jwt_token': str, 'cookies': {...}, ...}
 
         Returns:
             {'email': str, 'jwt_token': str, 'cookies': dict, 'username': str, 'nickname': str}
@@ -1200,10 +1199,10 @@ class PixverseProvider(Provider):
 
         cookies = raw_data.get('cookies', {})
 
-        # Extract _ai_token (Pixverse's main JWT)
-        ai_token = cookies.get('_ai_token')
+        # Extract JWT token (from _ai_token cookie OR from jwt_token field for API login)
+        ai_token = raw_data.get('jwt_token') or cookies.get('_ai_token')
         if not ai_token:
-            raise ValueError("Pixverse: _ai_token cookie not found")
+            raise ValueError("Pixverse: JWT token not found in cookies or raw_data")
 
         # Try to get email from Pixverse API (like pixsim6)
         email = None

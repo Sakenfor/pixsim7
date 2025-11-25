@@ -10,6 +10,8 @@ export function DeviceList() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<DeviceStatus | 'ALL'>('ALL');
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingBusy, setPairingBusy] = useState(false);
 
   const loadDevices = async () => {
     try {
@@ -45,6 +47,24 @@ export function DeviceList() {
       console.error('Error scanning devices:', err);
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleCompletePairing = async () => {
+    const code = pairingCode.trim();
+    if (!code) return;
+
+    try {
+      setPairingBusy(true);
+      setError(null);
+      await automationService.completeDevicePairing(code);
+      setPairingCode('');
+      await loadDevices();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete device pairing');
+      console.error('Error completing device pairing:', err);
+    } finally {
+      setPairingBusy(false);
     }
   };
 
@@ -109,6 +129,44 @@ export function DeviceList() {
             </>
           )}
         </button>
+      </div>
+
+      {/* Remote agent pairing helper */}
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Pair Remote Device Agent
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Download the device agent on your PC, run it, then enter the pairing code it shows here.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/downloads/pixsim7-device-agent.py"
+              className="px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              Download Python Agent
+            </a>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <input
+            type="text"
+            value={pairingCode}
+            onChange={(e) => setPairingCode(e.target.value)}
+            placeholder="Enter pairing code (e.g. ABCD-1234)"
+            className="flex-1 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={handleCompletePairing}
+            disabled={pairingBusy || !pairingCode.trim()}
+            className="px-4 py-2 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {pairingBusy ? 'Pairing…' : 'Pair Device'}
+          </button>
+        </div>
       </div>
 
       {/* Error message */}

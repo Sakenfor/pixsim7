@@ -20,6 +20,12 @@ class AutomationService {
     return response.data;
   }
 
+  async completeDevicePairing(pairingCode: string): Promise<void> {
+    await apiClient.post('/automation/agents/complete-pairing', {
+      pairing_code: pairingCode,
+    });
+  }
+
   // ===== Preset Management =====
 
   async getPresets(): Promise<AppActionPreset[]> {
