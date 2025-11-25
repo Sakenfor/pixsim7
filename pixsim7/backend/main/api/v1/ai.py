@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
+from pixsim7.backend.main.api.dependencies import get_current_user, get_database
+from pixsim7.backend.main.domain import User
 from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
 from pixsim7.backend.main.shared.errors import (
     ProviderNotFoundError,
@@ -105,7 +106,7 @@ def get_ai_hub_service(db: AsyncSession = Depends(get_database)) -> AiHubService
 @router.post("/prompt-edit", response_model=PromptEditResponse)
 async def edit_prompt(
     request: PromptEditRequest,
-    current_user: CurrentUser,
+    current_user: User = Depends(get_current_user),
     ai_hub: AiHubService = Depends(get_ai_hub_service)
 ):
     """
@@ -170,7 +171,7 @@ async def edit_prompt(
 
 @router.get("/providers", response_model=AvailableProvidersResponse)
 async def get_available_providers(
-    current_user: CurrentUser,
+    current_user: User = Depends(get_current_user),
     ai_hub: AiHubService = Depends(get_ai_hub_service)
 ):
     """
@@ -198,7 +199,7 @@ async def get_ai_interactions(
         None,
         description="Optional generation ID to filter interactions"
     ),
-    current_user: CurrentUser = Depends(),
+    current_user: User = Depends(get_current_user),
     ai_hub: AiHubService = Depends(get_ai_hub_service),
 ):
     """

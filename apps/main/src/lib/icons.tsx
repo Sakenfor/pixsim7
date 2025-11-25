@@ -68,6 +68,7 @@ import {
   KeyRound,
   Map,
   User,
+  Clock,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -132,6 +133,7 @@ export const Icons = {
   eyeOff: EyeOff,
   sliders: Sliders,
   fileText: FileText,
+  clock: Clock,
 
   // Panels & Features
   heart: Heart,

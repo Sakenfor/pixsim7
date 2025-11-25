@@ -43,6 +43,7 @@ from pixsim7.backend.main.services.provider.base import (
     ContentFilteredError,
     JobNotFoundError,
 )
+from pixsim7.backend.main.shared.jwt_utils import extract_jwt_from_cookies, needs_refresh
 
 # Use structured logging from pixsim_logging
 from pixsim_logging import get_logger
@@ -990,7 +991,7 @@ class PixverseProvider(Provider):
             logger.error(f"Auto-reauth failed for account {account.id}: {e}", exc_info=True)
             return False
 
-    def get_credits(self, account: ProviderAccount) -> dict:
+    async def get_credits(self, account: ProviderAccount) -> dict:
         """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
 
         Web and OpenAPI credits are **separate** budgets and must not be
@@ -1018,9 +1019,21 @@ class PixverseProvider(Provider):
         if not Account or not PixverseAPI:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
+        # Prefer fresh JWT from cookies if current token is missing/expiring.
+        jwt_token = account.jwt_token
+        if needs_refresh(jwt_token, hours_threshold=12) and account.cookies:
+            cookie_token = extract_jwt_from_cookies(account.cookies or {})
+            if cookie_token:
+                jwt_token = cookie_token
+
+        # If we resolved a better JWT from cookies, update the in-memory account.
+        # The surrounding API layer will commit the updated token when it saves changes.
+        if jwt_token and jwt_token != account.jwt_token:
+            account.jwt_token = jwt_token
+
         # Build session including both JWT (web) and OpenAPI key if present.
         session: Dict[str, Any] = {
-            "jwt_token": account.jwt_token,
+            "jwt_token": jwt_token,
             "cookies": account.cookies or {},
         }
         # OpenAPI key from api_keys (kind="openapi"), if configured
@@ -1063,20 +1076,13 @@ class PixverseProvider(Provider):
         # If session was invalid, attempt auto-reauth
         if session_invalid:
             logger.warning(f"Session invalid for account {account.id}, attempting auto-reauth")
-            # Run async reauth in sync context (get_credits is sync)
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
 
-            reauth_success = loop.run_until_complete(self._try_auto_reauth(account))
+            reauth_success = await self._try_auto_reauth(account)
 
             if reauth_success:
                 # Retry getting credits with new session
-                logger.info(f"Retrying get_credits after successful auto-reauth")
-                return self.get_credits(account)  # Recursive retry once
+                logger.info("Retrying get_credits after successful auto-reauth")
+                return await self.get_credits(account)  # Recursive retry once
 
         result: Dict[str, Any] = {
             "web": max(0, web_total),
@@ -1215,7 +1221,7 @@ class PixverseProvider(Provider):
             account_id = user_info.get('account_id')
             provider_metadata = user_info.get('raw_data')
             logger.debug(
-                f"[Pixverse] getUserInfo success: email={email}, username={username}, credits={credits_data}"
+                f"[Pixverse] getUserInfo success: email={email}, username={username}"
             )
 
         except Exception as e:

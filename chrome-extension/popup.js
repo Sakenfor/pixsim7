@@ -27,6 +27,7 @@ let accountJwtHealth = {
   expired: [],
   providers: [],
 };
+let availableDevices = [];
 
 // ===== INIT =====
 
@@ -534,20 +535,24 @@ function displayAccounts(accounts, options = {}) {
   // Add sort and filter controls
   const sortControls = document.createElement('div');
   sortControls.className = 'sort-controls';
+  sortControls.style.cssText = 'display: flex; align-items: center; gap: 3px; padding: 3px 6px; background: #111827; border-radius: 4px; margin-bottom: 6px;';
   sortControls.innerHTML = `
-    <span style="font-size: 9px; color: #9ca3af; margin-right: 4px;">Sort:</span>
-    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits">
-      Credits ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits"
+      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'credits' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
+      ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''} Cr
     </button>
-    <button class="sort-btn ${accountsSortBy === 'name' ? 'active' : ''}" data-sort="name">
-      Name ${accountsSortBy === 'name' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <button class="sort-btn ${accountsSortBy === 'name' ? 'active' : ''}" data-sort="name"
+      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'name' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
+      ${accountsSortBy === 'name' ? (accountsSortDesc ? '↓' : '↑') : ''} Name
     </button>
-    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed">
-      Last ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''}
+    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed"
+      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'lastUsed' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
+      ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''} Last
     </button>
-    <span style="font-size: 9px; color: #9ca3af; margin: 0 6px;">|</span>
-    <button class="sort-btn ${hideZeroCredits ? 'active' : ''}" data-filter="hideZero" style="background: ${hideZeroCredits ? '#ef4444' : '#1f2937'}; color: white; border-color: ${hideZeroCredits ? '#ef4444' : '#374151'};">
-      ${hideZeroCredits ? '✓' : ''} Hide 0 Credits
+    <span style="font-size: 9px; color: #4b5563; margin: 0 2px;">|</span>
+    <button class="sort-btn ${hideZeroCredits ? 'active' : ''}" data-filter="hideZero"
+      style="font-size: 9px; padding: 2px 5px; background: ${hideZeroCredits ? '#dc2626' : 'transparent'}; border: 1px solid ${hideZeroCredits ? '#dc2626' : '#374151'}; border-radius: 3px; color: ${hideZeroCredits ? '#fff' : '#9ca3af'}; cursor: pointer;">
+      ${hideZeroCredits ? '✓ ' : ''}Hide 0
     </button>
   `;
 
@@ -631,27 +636,29 @@ function createAccountCard(account) {
     : (account.jwt_expired ? { text: 'JWT expired', color: '#f97316' } : null);
 
   card.innerHTML = `
-    <div class="account-header">
-      <div class="account-title">
-        <div class="account-name">${displayName}</div>
-        ${account.nickname ? `<div class="account-email-sub">${account.email}</div>` : ''}
-      </div>
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <span style="font-size: 13px; font-weight: 700; color: #10b981;">${totalCredits}</span>
-        <span class="account-status ${statusClass}">${account.status}</span>
-        <span class="account-ad-pill" data-role="ad-pill"></span>
-        ${jwtFlag ? `<span class="account-flag" style="font-size: 10px; padding: 2px 6px; border-radius: 999px; background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
+    <div class="account-header" style="padding: 6px 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+        <span class="account-status ${statusClass}" style="font-size: 9px; padding: 2px 5px; flex-shrink: 0;">${account.status}</span>
+        <div class="account-title" style="flex: 1; min-width: 0;">
+          <div class="account-name" style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
+          ${account.nickname ? `<div class="account-email-sub" style="font-size: 9px;">${account.email}</div>` : ''}
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+          ${jwtFlag ? `<span class="account-flag" style="font-size: 9px; padding: 2px 4px; border-radius: 3px; background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
+          <span class="account-ad-pill" data-role="ad-pill"></span>
+          <span style="font-size: 16px; font-weight: 700; color: #10b981; min-width: 32px; text-align: right;">${totalCredits}</span>
+        </div>
       </div>
     </div>
 
-    <div class="actions-row">
+    <div class="actions-row" style="padding: 4px 8px; gap: 4px;">
       ${(account.has_cookies || account.has_jwt) ? `
-        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}">${ACCOUNT_ACTIONS.LOGIN}</button>
+        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.LOGIN}</button>
       ` : `
-        <button class="account-btn btn-tiny" disabled title="No credentials">${ACCOUNT_ACTIONS.LOGIN}</button>
+        <button class="account-btn btn-tiny" disabled title="No credentials" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.LOGIN}</button>
       `}
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}">${ACCOUNT_ACTIONS.RUN_PRESET}</button>
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}">${ACCOUNT_ACTIONS.RUN_LOOP}</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_PRESET}</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_LOOP}</button>
     </div>
   `;
 
@@ -792,14 +799,20 @@ async function executePresetForAccount(account) {
   if (!presetId) {
     return showError('Select a preset in the toolbar');
   }
+
+  // Get selected device from global selector
+  const deviceSelect = document.getElementById('deviceSelect');
+  const deviceId = deviceSelect?.value || null;
+
   try {
     const res = await chrome.runtime.sendMessage({
       action: 'executePreset',
       presetId,
       accountId: account.id,
+      deviceId: deviceId || undefined,
     });
     if (res.success) {
-      showLastImport(`Queued preset '${res.data.preset_name}' for ${account.email}`);
+      showLastImport(`Queued preset '${res.data.preset_name}' for ${account.email}${deviceId ? ' on device' : ''}`);
       showToast('success', `Preset queued for ${account.email}`);
     } else {
       showError(res.error || 'Failed to queue preset');
@@ -815,14 +828,20 @@ async function executeLoopForAccount(account) {
   if (!loopId) {
     return showError('Select a loop in the toolbar');
   }
+
+  // Get selected device from global selector
+  const deviceSelect = document.getElementById('deviceSelect');
+  const deviceId = deviceSelect?.value || null;
+
   try {
     const res = await chrome.runtime.sendMessage({
       action: 'executeLoopForAccount',
       loopId,
       accountId: account.id,
+      deviceId: deviceId || undefined,
     });
     if (res.success) {
-      showLastImport(`Queued loop preset '${res.data.preset_name}' for ${account.email}`);
+      showLastImport(`Queued loop preset '${res.data.preset_name}' for ${account.email}${deviceId ? ' on device' : ''}`);
       showToast('success', `Loop queued for ${account.email}`);
     } else {
       showError(res.error || 'Failed to queue loop execution');
@@ -1122,16 +1141,39 @@ async function updateDevicesTab() {
 
 async function loadDevices() {
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'apiRequest', path: '/automation/devices' });
+    const response = await chrome.runtime.sendMessage({ action: 'getDevices' });
 
     if (response && response.success) {
-      displayDevices(response.data);
+      availableDevices = response.data || [];
+      displayDevices(availableDevices);
+      populateGlobalDeviceSelect();
     } else {
       console.error('[Devices] Failed to load devices:', response?.error);
     }
   } catch (error) {
     console.error('[Devices] Error loading devices:', error);
   }
+}
+
+function populateGlobalDeviceSelect() {
+  const selectElement = document.getElementById('deviceSelect');
+  if (!selectElement) return;
+
+  // Clear and add no device option
+  selectElement.innerHTML = '<option value="">No Device</option>';
+
+  // Add available devices
+  availableDevices.forEach(device => {
+    const option = document.createElement('option');
+    option.value = device.id || device.adb_id;
+    option.textContent = `${device.name || device.adb_id}`;
+    if (device.status !== 'online') {
+      option.disabled = true;
+      option.textContent += ' (offline)';
+      option.style.color = '#6b7280';
+    }
+    selectElement.appendChild(option);
+  });
 }
 
 function displayDevices(devices) {

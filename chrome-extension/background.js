@@ -290,6 +290,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Automation: fetch devices
+  if (message.action === 'getDevices') {
+    backendRequest('/api/v1/automation/devices')
+      .then((data) => sendResponse({ success: true, data }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   // Automation: fetch presets (with optional provider filter)
   if (message.action === 'getPresets') {
     let endpoint = '/api/v1/automation/presets';
@@ -316,13 +324,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Automation: execute preset for account
   if (message.action === 'executePreset') {
+    const payload = {
+      preset_id: message.presetId,
+      account_id: message.accountId,
+      priority: message.priority || 1,
+    };
+    if (message.deviceId) {
+      payload.device_id = message.deviceId;
+    }
     backendRequest('/api/v1/automation/execute-preset', {
       method: 'POST',
-      body: JSON.stringify({
-        preset_id: message.presetId,
-        account_id: message.accountId,
-        priority: message.priority || 1,
-      }),
+      body: JSON.stringify(payload),
     })
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));
@@ -331,12 +343,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Automation: execute next loop preset for account
   if (message.action === 'executeLoopForAccount') {
+    const payload = {
+      loop_id: message.loopId,
+      account_id: message.accountId,
+    };
+    if (message.deviceId) {
+      payload.device_id = message.deviceId;
+    }
     backendRequest('/api/v1/automation/loops/execute-for-account', {
       method: 'POST',
-      body: JSON.stringify({
-        loop_id: message.loopId,
-        account_id: message.accountId,
-      }),
+      body: JSON.stringify(payload),
     })
       .then((data) => sendResponse({ success: true, data }))
       .catch((error) => sendResponse({ success: false, error: error.message }));

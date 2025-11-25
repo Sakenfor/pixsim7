@@ -139,3 +139,34 @@ def is_jwt_expired(token: str) -> bool:
     """
     info = parse_jwt_token(token)
     return info.is_expired
+
+
+def needs_refresh(token: Optional[str], hours_threshold: int = 24) -> bool:
+    """
+    Check if JWT token needs refresh (expired or expires soon).
+
+    Args:
+        token: JWT token string or None.
+        hours_threshold: Refresh if expires within this many hours.
+
+    Returns:
+        True if token is missing, expired, or expires soon.
+    """
+    if not token:
+        return True
+
+    info = parse_jwt_token(token)
+    if not info.is_valid:
+        return True
+
+    if info.is_expired:
+        return True
+
+    if info.expires_at is not None:
+        from datetime import datetime, timedelta
+
+        threshold = datetime.utcnow() + timedelta(hours=hours_threshold)
+        if info.expires_at < threshold:
+            return True
+
+    return False

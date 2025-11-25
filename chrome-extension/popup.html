@@ -658,7 +658,7 @@
         </div>
 
         <!-- Compact Automation Toolbar -->
-        <div id="automationToolbar" class="hidden" style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+        <div id="automationToolbar" class="hidden" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
           <div style="display:flex; gap:6px; align-items:center;">
             <label for="presetSelect" style="margin:0; font-size:11px;">Preset</label>
             <select id="presetSelect" style="font-size:11px; padding:4px 6px;"></select>
@@ -668,6 +668,12 @@
             <label for="loopSelect" style="margin:0; font-size:11px;">Loop</label>
             <select id="loopSelect" style="font-size:11px; padding:4px 6px;"></select>
             <button id="loopRefreshBtn" class="btn-secondary" style="padding:6px 8px; font-size:11px; width:auto;">↻</button>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <label for="deviceSelect" style="margin:0; font-size:11px;">Device</label>
+            <select id="deviceSelect" style="font-size:11px; padding:4px 6px;">
+              <option value="">No Device</option>
+            </select>
           </div>
         </div>
 

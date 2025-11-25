@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import asyncio
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, get_database
-from pixsim7.backend.main.domain import ProviderAccount, Asset
+from pixsim7.backend.main.api.dependencies import get_current_user, get_database
+from pixsim7.backend.main.domain import ProviderAccount, Asset, User
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
 from pixsim7.backend.main.shared.errors import ProviderError
 from pixsim_logging import get_logger
@@ -38,7 +38,7 @@ async def pixverse_sync_dry_run(
     account_id: int = Query(..., description="ProviderAccount ID for Pixverse"),
     limit: int = Query(20, ge=1, le=100, description="Max videos to inspect"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
-    current_user: CurrentUser = Depends(),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_database),
 ):
     """

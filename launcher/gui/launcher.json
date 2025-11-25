@@ -1,8 +1,8 @@
 {
-  "window_x": 107,
-  "window_y": 136,
-  "window_width": 1534,
-  "window_height": 682,
+  "window_x": -8,
+  "window_y": 88,
+  "window_width": 1539,
+  "window_height": 784,
   "selected_service": "main-api",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,

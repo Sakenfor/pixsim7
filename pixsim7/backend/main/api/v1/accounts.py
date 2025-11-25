@@ -17,7 +17,10 @@ from pixsim7.backend.main.shared.schemas.account_schemas import (
     AccountBulkCreditUpdate,
     SetCreditRequest,
 )
-from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token
+from pixsim7.backend.main.shared.jwt_utils import (
+    parse_jwt_token,
+    extract_jwt_from_cookies,
+)
 from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 from pixsim7.backend.main.services.provider import registry
@@ -261,7 +264,7 @@ async def sync_all_account_credits(
             credits_data = None
             if hasattr(provider, 'get_credits'):
                 try:
-                    credits_data = provider.get_credits(account)
+                    credits_data = await provider.get_credits(account)
                 except Exception as e:
                     logger.debug(f"Provider get_credits failed for {account.email}: {e}")
 
@@ -396,7 +399,7 @@ async def sync_account_credits(
         credits_data = None
         if hasattr(provider, 'get_credits'):
             try:
-                credits_data = provider.get_credits(account)
+                credits_data = await provider.get_credits(account)
             except Exception as e:
                 print(f"Provider get_credits failed: {e}, falling back to extract_account_data")
         
@@ -550,7 +553,7 @@ async def get_pixverse_status(
         credits_data: Dict[str, Any] = {}
         try:
             if hasattr(provider, "get_credits"):
-                credits_data = provider.get_credits(account) or {}
+                credits_data = await provider.get_credits(account) or {}
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"get_pixverse_status: provider.get_credits failed for {account.email}: {e}")
             credits_data = {}
@@ -801,8 +804,8 @@ async def set_account_credit(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
 
 
-@router.post("/accounts/credits/bulk-update")
-async def bulk_update_credits(
+  @router.post("/accounts/credits/bulk-update")
+  async def bulk_update_credits(
     updates: list[AccountBulkCreditUpdate],
     user: CurrentUser,
     account_service: AccountSvc,
@@ -834,12 +837,75 @@ async def bulk_update_credits(
                 "credits": {c.credit_type: c.amount for c in acc.credits} if acc.credits else {}
             })
 
-    await db.commit()
+      await db.commit()
+  
+      return {
+          "updated": len(results),
+          "details": results
+      }
 
-    return {
-        "updated": len(results),
-        "details": results
-    }
+
+# ===== JWT REFRESH FROM COOKIES =====
+
+class RefreshJWTResponse(BaseModel):
+    """Response for JWT refresh from cookies"""
+    success: bool
+    message: str
+    account_id: int
+    email: str
+    jwt_expired: bool
+    jwt_expires_at: datetime | None
+
+
+@router.post("/accounts/{account_id}/refresh-jwt", response_model=RefreshJWTResponse)
+async def refresh_jwt_from_cookies(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """
+    Refresh JWT token from stored cookies (_ai_token).
+
+    Useful when the JWT is expired but cookies are still valid.
+    Extracts a fresh JWT from the `_ai_token` cookie and updates the account.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+
+    if not account.cookies:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no cookies to extract JWT from")
+
+    # Only owner or admin may refresh; system accounts (user_id=None) require admin
+    if account.user_id is None:
+        if not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can refresh system accounts")
+    elif account.user_id != user.id and not user.is_admin():
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to refresh this account")
+
+    jwt_token = extract_jwt_from_cookies(account.cookies or {})
+    if not jwt_token:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No _ai_token found in cookies")
+
+    jwt_info = parse_jwt_token(jwt_token)
+    if not jwt_info.is_valid:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "JWT token in cookies is invalid")
+
+    # Update account JWT
+    account.jwt_token = jwt_token
+    await db.commit()
+    await db.refresh(account)
+
+    return RefreshJWTResponse(
+        success=True,
+        message="JWT token refreshed from cookies",
+        account_id=account.id,
+        email=account.email,
+        jwt_expired=jwt_info.is_expired,
+        jwt_expires_at=jwt_info.expires_at,
+    )
 
 
 # ===== COOKIE IMPORT =====
