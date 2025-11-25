@@ -410,6 +410,74 @@ await service.start_loop(device_id=1)
 
 ---
 
+### **11. AiHubService** (`services/llm/ai_hub_service.py`)
+
+AI-powered prompt editing using LLM providers (OpenAI, Anthropic, local models).
+
+**Purpose:**
+- Refine and improve video generation prompts using AI
+- Track all AI interactions for audit and analysis
+- Support multiple LLM providers with unified interface
+
+**Key Methods:**
+```python
+async def edit_prompt(
+    user: User,
+    provider_id: str | None,
+    model_id: str,
+    prompt_before: str,
+    context: dict | None = None,
+    generation_id: int | None = None,
+) -> dict  # Returns {prompt_after, model_id, provider_id, interaction_id}
+
+def get_available_providers() -> list[dict]
+```
+
+**Supported Providers:**
+- `openai-llm` - OpenAI GPT models (gpt-4, gpt-4-turbo)
+- `anthropic-llm` - Anthropic Claude models (claude-sonnet-4)
+- `local-llm` - Local models (stub, not yet implemented)
+
+**Usage Example:**
+```python
+from pixsim7.backend.main.services.llm.ai_hub_service import AiHubService
+
+service = AiHubService(db)
+
+# Edit a prompt using AI
+result = await service.edit_prompt(
+    user=current_user,
+    provider_id="openai-llm",  # Optional, defaults to openai-llm
+    model_id="gpt-4",
+    prompt_before="A sunset",
+    context={"style": "cinematic", "duration": 5},
+    generation_id=123
+)
+
+# Result contains:
+# {
+#   "prompt_after": "A breathtaking cinematic sunset...",
+#   "model_id": "gpt-4",
+#   "provider_id": "openai-llm",
+#   "interaction_id": 456
+# }
+```
+
+**API Endpoint:**
+```
+POST /api/v1/ai/prompt-edit
+```
+
+**Database Model:**
+- `AiInteraction` - Logs all prompt editing operations (domain/ai_interaction.py)
+
+**LLM Provider Registry:**
+- LLM providers are auto-discovered from `providers/` directory
+- Each provider must have `kind: ProviderKind.LLM` in manifest
+- Uses separate registry from video providers (`llm_registry`)
+
+---
+
 ## 🔄 Service Interaction Patterns
 
 ### **Pattern 1: Simple CRUD**

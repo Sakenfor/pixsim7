@@ -5,22 +5,11 @@ Video generation provider for Pixverse AI.
 Auto-discovered and registered via provider plugin system.
 """
 
-from pydantic import BaseModel
 from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseProvider
+from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
 
 
 # ===== PROVIDER MANIFEST =====
-
-class ProviderManifest(BaseModel):
-    """Manifest for provider plugins"""
-    id: str
-    name: str
-    version: str
-    description: str
-    author: str
-    enabled: bool = True
-    requires_credentials: bool = True
-
 
 manifest = ProviderManifest(
     id="pixverse",
@@ -28,6 +17,7 @@ manifest = ProviderManifest(
     version="1.0.0",
     description="Pixverse AI video generation provider supporting text-to-video, image-to-video, video extension, transitions, and fusion",
     author="PixSim Team",
+    kind=ProviderKind.VIDEO,
     enabled=True,
     requires_credentials=True,
 )

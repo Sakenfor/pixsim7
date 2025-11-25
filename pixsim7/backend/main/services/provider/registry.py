@@ -137,6 +137,8 @@ def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backe
     """
     Load and register a provider plugin
 
+    Supports both video and LLM providers - routes to appropriate registry based on kind.
+
     Args:
         provider_name: Provider directory name
         providers_dir: Path to providers directory
@@ -169,8 +171,29 @@ def load_provider_plugin(provider_name: str, providers_dir: str = "pixsim7/backe
             logger.info(f"Provider plugin {provider_name} is disabled, skipping")
             return False
 
-        # Register provider
-        registry.register(provider_instance)
+        # Register provider based on kind
+        if manifest and hasattr(manifest, 'kind'):
+            from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderKind
+
+            if manifest.kind == ProviderKind.LLM:
+                # Register LLM provider in LLM registry
+                from pixsim7.backend.main.services.llm.registry import llm_registry
+                llm_registry.register(provider_instance)
+            elif manifest.kind in (ProviderKind.VIDEO, ProviderKind.BOTH):
+                # Register video provider in video registry
+                registry.register(provider_instance)
+
+                # If BOTH, also register in LLM registry
+                if manifest.kind == ProviderKind.BOTH:
+                    from pixsim7.backend.main.services.llm.registry import llm_registry
+                    llm_registry.register(provider_instance)
+            else:
+                logger.warning(f"Unknown provider kind for {provider_name}: {manifest.kind}")
+                return False
+        else:
+            # No kind specified - assume video provider (backward compatibility)
+            logger.warning(f"Provider {provider_name} has no 'kind' in manifest, assuming VIDEO")
+            registry.register(provider_instance)
 
         # Call on_register hook if exists
         on_register = getattr(module, 'on_register', None)

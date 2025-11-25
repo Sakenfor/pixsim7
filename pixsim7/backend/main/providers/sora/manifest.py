@@ -5,22 +5,11 @@ Video generation provider for OpenAI Sora.
 Auto-discovered and registered via provider plugin system.
 """
 
-from pydantic import BaseModel
 from pixsim7.backend.main.services.provider.adapters.sora import SoraProvider
+from pixsim7.backend.main.shared.schemas.provider_schemas import ProviderManifest, ProviderKind
 
 
 # ===== PROVIDER MANIFEST =====
-
-class ProviderManifest(BaseModel):
-    """Manifest for provider plugins"""
-    id: str
-    name: str
-    version: str
-    description: str
-    author: str
-    enabled: bool = True
-    requires_credentials: bool = True
-
 
 manifest = ProviderManifest(
     id="sora",
@@ -28,6 +17,7 @@ manifest = ProviderManifest(
     version="1.0.0",
     description="OpenAI Sora video generation provider supporting text-to-video and image-to-video",
     author="PixSim Team",
+    kind=ProviderKind.VIDEO,
     enabled=True,
     requires_credentials=True,
 )

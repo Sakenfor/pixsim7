@@ -23,6 +23,7 @@ import { useState, useEffect } from 'react';
 import type { OperationType } from '@pixsim7/shared.types';
 import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
 import { usePromptInspection } from '../../hooks/usePromptInspection';
+import { usePromptAiEdit } from '../../hooks/usePromptAiEdit';
 
 interface Generation {
   id: number;
@@ -382,16 +383,55 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
     jobId: generationId,
   });
 
+  // AI prompt editing
+  const { runEdit, loading: aiLoading, error: aiError, promptAfter, clear } = usePromptAiEdit();
+  const [showAiResult, setShowAiResult] = useState(false);
+
   // Don't show anything if there's no prompt
   if (!prompt && !loading && !error) {
     return null;
   }
 
+  const handleAiEdit = async () => {
+    if (!prompt) return;
+
+    setShowAiResult(false);
+    await runEdit({
+      model_id: 'gpt-4',
+      prompt_before: prompt,
+      generation_id: generationId,
+    });
+    setShowAiResult(true);
+  };
+
+  const handleDismiss = () => {
+    setShowAiResult(false);
+    clear();
+  };
+
+  const handleCopyToClipboard = () => {
+    if (promptAfter) {
+      navigator.clipboard.writeText(promptAfter);
+      alert('Prompt copied to clipboard!');
+    }
+  };
+
   return (
     <div className="mb-4">
-      <h4 className="font-medium mb-2 text-gray-600 text-sm">
-        Prompt (Dev Inspector)
-      </h4>
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="font-medium text-gray-600 text-sm">
+          Prompt (Dev Inspector)
+        </h4>
+        {prompt && (
+          <button
+            onClick={handleAiEdit}
+            disabled={aiLoading}
+            className="px-3 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:bg-gray-400"
+          >
+            {aiLoading ? 'Editing...' : 'Edit with AI (Dev)'}
+          </button>
+        )}
+      </div>
 
       {loading && (
         <div className="text-sm text-gray-500 italic">
@@ -412,6 +452,51 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
           collapsible={true}
           initialOpen={false}
         />
+      )}
+
+      {/* AI Edit Result */}
+      {showAiResult && (
+        <div className="mt-3 border border-purple-300 rounded bg-purple-50 p-3">
+          <div className="flex justify-between items-start mb-2">
+            <h5 className="font-medium text-sm text-purple-900">
+              AI-Edited Prompt
+            </h5>
+            <button
+              onClick={handleDismiss}
+              className="text-xs text-gray-500 hover:text-gray-700"
+            >
+              ✕ Dismiss
+            </button>
+          </div>
+
+          {aiError && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-2 rounded mb-2">
+              {aiError}
+            </div>
+          )}
+
+          {promptAfter && (
+            <div>
+              <div className="text-sm bg-white p-3 rounded border border-purple-200 mb-2 whitespace-pre-wrap">
+                {promptAfter}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyToClipboard}
+                  className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  onClick={handleDismiss}
+                  className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

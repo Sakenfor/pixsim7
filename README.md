@@ -68,6 +68,7 @@ cd /g/code/pixsim7
 - **Admin Panel** - Svelte web UI with comprehensive log viewer
 - **Database** - PostgreSQL with async support
 - **Cache & Queue** - Redis for job queue and caching
+- **AI Hub** - LLM-powered prompt editing (OpenAI, Anthropic) with interaction logging
 - **ZeroTier Support** - Remote access configuration
 - **Structured Logging** - JSON logs with advanced filtering
 - **Configurable Ports** - Avoid conflicts with other services

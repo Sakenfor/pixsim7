@@ -87,6 +87,9 @@ from .log_entry import LogEntry
 # Prompt versioning (Phase 7)
 from .prompt_versioning import PromptFamily, PromptVersion, PromptVariantFeedback
 
+# AI interactions (AI Hub)
+from .ai_interaction import AiInteraction
+
 __all__ = [
     # Enums
     "MediaType",
@@ -128,4 +131,6 @@ __all__ = [
     "PromptFamily",
     "PromptVersion",
     "PromptVariantFeedback",
+    # AI interactions
+    "AiInteraction",
 ]
