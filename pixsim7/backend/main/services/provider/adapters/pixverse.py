@@ -96,6 +96,42 @@ class PixverseProvider(Provider):
             logger.debug('Evicting PixverseAPI cache for account %s (key=%s)', account_id, key)
             self._api_cache.pop(key, None)
 
+    def _build_web_session(self, account: ProviderAccount) -> Dict[str, Any]:
+        """Build a unified Pixverse web session from account credentials.
+
+        Responsibilities:
+        - Choose the JWT token to use (existing account.jwt_token or fresher from cookies).
+        - Keep account.jwt_token in sync with the chosen token.
+        - Attach cookies and optional OpenAPI key.
+
+        Returns:
+            Dict with jwt_token, cookies, and optionally openapi_key
+        """
+        # Prefer fresh JWT from cookies if current token is missing/expiring.
+        jwt_token = account.jwt_token
+        if needs_refresh(jwt_token, hours_threshold=12) and account.cookies:
+            cookie_token = extract_jwt_from_cookies(account.cookies or {})
+            if cookie_token:
+                jwt_token = cookie_token
+
+        # Keep account.jwt_token in sync with what we actually use.
+        if jwt_token and jwt_token != account.jwt_token:
+            account.jwt_token = jwt_token
+
+        session: Dict[str, Any] = {
+            "jwt_token": jwt_token,
+            "cookies": account.cookies or {},
+        }
+
+        # Attach OpenAPI key from api_keys (kind="openapi"), if present.
+        api_keys = getattr(account, "api_keys", None) or []
+        for entry in api_keys:
+            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
+                session["openapi_key"] = entry["value"]
+                break
+
+        return session
+
     @staticmethod
     def _is_session_invalid_error(error: Exception) -> bool:
         msg = str(error).lower()
@@ -134,19 +170,11 @@ class PixverseProvider(Provider):
         Returns:
             Configured PixverseClient
         """
-        # Build session from stored credentials
-        session: Dict[str, Any] = {
-            "jwt_token": account.jwt_token,
-            "api_key": account.api_key,
-            "cookies": account.cookies or {},
-        }
+        # Build unified web session (handles JWT refresh, cookies, and OpenAPI key)
+        session = self._build_web_session(account)
 
-        # Attach OpenAPI key from api_keys (kind="openapi"), if present
-        api_keys = getattr(account, "api_keys", None) or []
-        for entry in api_keys:
-            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
-                session["openapi_key"] = entry["value"]
-                break
+        # Add api_key (for backward compatibility with existing session structure)
+        session["api_key"] = account.api_key
 
         # Add use_method if specified
         if use_method:
@@ -1018,29 +1046,8 @@ class PixverseProvider(Provider):
         if not Account or not PixverseAPI:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
-        # Prefer fresh JWT from cookies if current token is missing/expiring.
-        jwt_token = account.jwt_token
-        if needs_refresh(jwt_token, hours_threshold=12) and account.cookies:
-            cookie_token = extract_jwt_from_cookies(account.cookies or {})
-            if cookie_token:
-                jwt_token = cookie_token
-
-        # If we resolved a better JWT from cookies, update the in-memory account.
-        # The surrounding API layer will commit the updated token when it saves changes.
-        if jwt_token and jwt_token != account.jwt_token:
-            account.jwt_token = jwt_token
-
-        # Build session including both JWT (web) and OpenAPI key if present.
-        session: Dict[str, Any] = {
-            "jwt_token": jwt_token,
-            "cookies": account.cookies or {},
-        }
-        # OpenAPI key from api_keys (kind="openapi"), if configured
-        api_keys = getattr(account, "api_keys", None) or []
-        for entry in api_keys:
-            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
-                session["openapi_key"] = entry["value"]
-                break
+        # Build unified web session (handles JWT refresh, cookies, and OpenAPI key)
+        session = self._build_web_session(account)
 
         temp_account = Account(
             email=account.email,
@@ -1133,19 +1140,22 @@ class PixverseProvider(Provider):
         except ImportError:  # pragma: no cover
             return None
 
-        # Reuse account session (cookies + jwt)
-        cookies = dict(account.cookies or {})
+        # Build unified web session (same as credits, to avoid auth mismatches)
+        session = self._build_web_session(account)
+        cookies = dict(session.get("cookies") or {})
+        jwt_token = session.get("jwt_token")
 
         # Ensure JWT is in cookies as _ai_token (required for task list endpoint)
-        if account.jwt_token and "_ai_token" not in cookies:
-            cookies["_ai_token"] = account.jwt_token
+        # Always sync to the chosen JWT (not only when missing) to avoid stale tokens
+        if jwt_token:
+            cookies["_ai_token"] = jwt_token
 
         headers: Dict[str, str] = {
             "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)",
             "Accept": "application/json",
         }
-        if account.jwt_token:
-            headers["Authorization"] = f"Bearer {account.jwt_token}"
+        if jwt_token:
+            headers["Authorization"] = f"Bearer {jwt_token}"
 
         url = "https://app-api.pixverse.ai/creative_platform/task/list"
 
@@ -1165,8 +1175,15 @@ class PixverseProvider(Provider):
                 logger.warning(f"Ad task response is not a dict: {type(data)}")
                 return None
 
-            if data.get("ErrCode") != 0:
-                logger.warning(f"Ad task API returned error: ErrCode={data.get('ErrCode')}, ErrMsg={data.get('ErrMsg')}")
+            err_code = data.get("ErrCode")
+            if err_code != 0:
+                logger.warning(
+                    f"Ad task API returned error: ErrCode={err_code}, ErrMsg={data.get('ErrMsg')}"
+                )
+                # Treat error codes 10003 (user not login) and 10005 (session expired) as session invalidation
+                if err_code in (10003, 10005):
+                    logger.warning(f"Session likely invalid (ErrCode={err_code}); evicting cache for account {account.id}")
+                    self._evict_account_cache(account)
                 return None
 
             tasks = data.get("Resp") or []
