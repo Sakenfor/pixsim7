@@ -27,8 +27,6 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
   const [saving, setSaving] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const toast = useToast();
-  const [connectingGoogle, setConnectingGoogle] = useState(false);
-  const toast = useToast();
 
   const handleSave = async () => {
     setSaving(true);
