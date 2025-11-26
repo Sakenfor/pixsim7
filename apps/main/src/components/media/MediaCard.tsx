@@ -12,7 +12,7 @@ import {
   MEDIA_STATUS_ICON,
 } from './mediaBadgeConfig';
 
-// Glassmorphism status badge styles with subtle animations
+// Glassmorphism status badge styles
 const STATUS_STYLES: Record<'green' | 'yellow' | 'red' | 'gray', {
   base: string;
   hover: string;
@@ -23,25 +23,25 @@ const STATUS_STYLES: Record<'green' | 'yellow' | 'red' | 'gray', {
     base: 'bg-green-500/20 dark:bg-green-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-green-500/30 dark:hover:bg-green-500/40',
     ring: 'ring-2 ring-green-500 dark:ring-green-400 ring-offset-1',
-    glow: 'hover:shadow-[0_0_20px_rgba(34,197,94,0.4)]',
+    glow: '',
   },
   yellow: {
     base: 'bg-amber-500/20 dark:bg-amber-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-amber-500/30 dark:hover:bg-amber-500/40',
     ring: 'ring-2 ring-amber-500 dark:ring-amber-400 ring-offset-1',
-    glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.4)]',
+    glow: '',
   },
   red: {
     base: 'bg-red-500/20 dark:bg-red-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-red-500/30 dark:hover:bg-red-500/40',
     ring: 'ring-2 ring-red-500 dark:ring-red-400 ring-offset-1',
-    glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]',
+    glow: '',
   },
   gray: {
     base: 'bg-neutral-500/20 dark:bg-neutral-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-neutral-500/30 dark:hover:bg-neutral-500/40',
     ring: 'ring-2 ring-neutral-500 dark:ring-neutral-400 ring-offset-1',
-    glow: 'hover:shadow-[0_0_20px_rgba(115,115,115,0.3)]',
+    glow: '',
   },
 };
 
@@ -262,7 +262,7 @@ export function MediaCard(props: MediaCardProps) {
 
   return (
     <div
-      className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition"
+      className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition overflow-visible relative"
       data-pixsim7="media-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -305,16 +305,16 @@ export function MediaCard(props: MediaCardProps) {
             <div
               role="img"
               aria-label={`${badges.primary} media type`}
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 ${
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg transition ${
                 badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(34,197,94,0.3)]'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status === 'local_only'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-amber-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(245,158,11,0.3)]'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-amber-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status === 'flagged'
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-red-500 ring-offset-1 hover:shadow-[0_0_16px_rgba(239,68,68,0.3)]'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-red-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status
-                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-neutral-400 ring-offset-1 hover:shadow-[0_0_16px_rgba(115,115,115,0.2)]'
-                  : 'bg-white/95 dark:bg-neutral-800/95 backdrop-blur-sm shadow-md hover:shadow-[0_0_16px_rgba(255,255,255,0.2)]'
+                  ? 'bg-white dark:bg-neutral-800 ring-2 ring-neutral-400 ring-offset-1'
+                  : 'bg-white/95 dark:bg-neutral-800/95 backdrop-blur-sm shadow-md'
               }`}
             >
               <ThemedIcon name={MEDIA_TYPE_ICON[badges.primary]} size={18} variant="default" />
@@ -353,7 +353,7 @@ export function MediaCard(props: MediaCardProps) {
                       handleOpen();
                     }
                   }}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-105 transition-all ${statusBgClass}`}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition ${statusBgClass}`}
                   title={`${statusMeta?.label || badges.status} - Hover for actions`}
                   aria-label={`Provider status: ${statusMeta?.label || badges.status}. Click to open details, hover for more actions.`}
                   role="button"
@@ -583,7 +583,7 @@ export function MediaCard(props: MediaCardProps) {
 
       {/* Footer: provider + Generate */}
       {(badgeVisibility.showFooterProvider || badgeVisibility.showGenerationBadge) && (
-        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500">
+        <div className="px-2 py-1.5 flex items-center justify-between text-[10px] text-neutral-500 relative overflow-visible">
           {badgeVisibility.showFooterProvider && providerId && !providerId.includes('_') && (
             <span className="truncate max-w-[60%]">
               <span className="font-medium text-neutral-700 dark:text-neutral-200">{providerId}</span>
@@ -592,35 +592,36 @@ export function MediaCard(props: MediaCardProps) {
             </span>
           )}
           {badgeVisibility.showGenerationBadge && (actions?.onImageToVideo || actions?.onVideoExtend || actions?.onAddToTransition || actions?.onAddToGenerate) && (
-            <ExpandableButtonGroup
-              trigger={
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Default action on click
-                    const operation = badgeVisibility.generationQuickAction === 'auto'
-                      ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
-                      : badgeVisibility.generationQuickAction;
+            <div className="relative z-10">
+              <ExpandableButtonGroup
+                trigger={
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Default action on click
+                      const operation = badgeVisibility.generationQuickAction === 'auto'
+                        ? (mediaType === 'image' ? 'image_to_video' : mediaType === 'video' ? 'video_extend' : undefined)
+                        : badgeVisibility.generationQuickAction;
 
-                    if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
-                    else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
-                    else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
-                    else actions?.onAddToGenerate?.(id, operation);
-                  }}
-                  title="Click for quick action, hover for all options"
-                  aria-label="Generate actions. Click for quick action, hover for all options."
-                  aria-haspopup="true"
-                >
-                  <ThemedIcon name="zap" size={12} variant="default" />
-                  <span>Generate</span>
-                </button>
-              }
-              direction="left"
-              hoverDelay={200}
-              offset={8}
-            >
+                      if (operation === 'image_to_video') actions?.onImageToVideo?.(id);
+                      else if (operation === 'video_extend') actions?.onVideoExtend?.(id);
+                      else if (operation === 'add_to_transition') actions?.onAddToTransition?.(id);
+                      else actions?.onAddToGenerate?.(id, operation);
+                    }}
+                    title="Click for quick action, hover for all options"
+                    aria-label="Generate actions. Click for quick action, hover for all options."
+                    aria-haspopup="true"
+                  >
+                    <ThemedIcon name="zap" size={12} variant="default" />
+                    <span>Generate</span>
+                  </button>
+                }
+                direction="up"
+                hoverDelay={200}
+                offset={8}
+              >
               <div
                 className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700"
                 onClick={(e) => e.stopPropagation()}
@@ -725,12 +726,13 @@ export function MediaCard(props: MediaCardProps) {
                     onClick={() => actions.onAddToGenerate?.(id)}
                     title="Add to Generate Queue"
                   >
-                    <ThemedIcon name="plus" size={16} variant="default" className="text-white" />
+                    <ThemedIcon name="add" size={16} variant="default" className="text-white" />
                     <span className="text-[9px] text-neutral-400 group-hover/gen:text-white font-medium">Queue</span>
                   </button>
                 )}
               </div>
-            </ExpandableButtonGroup>
+              </ExpandableButtonGroup>
+            </div>
           )}
         </div>
       )}

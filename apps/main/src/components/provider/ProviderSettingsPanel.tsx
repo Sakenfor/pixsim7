@@ -6,7 +6,6 @@ import type { ProviderAccount } from '../../hooks/useProviderAccounts';
 import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync, connectPixverseWithGoogle } from '../../lib/api/accounts';
 import { apiClient } from '../../lib/api/client';
 import { CompactAccountCard } from './CompactAccountCard';
-import { getGoogleIdTokenViaGIS } from '../../lib/googleAuth';
 
 interface EditAccountModalProps {
   account: ProviderAccount;
@@ -26,6 +25,10 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
   const [apiKeyPaid, setApiKeyPaid] = useState('');
   const [clearOpenApiKey, setClearOpenApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const toast = useToast();
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const toast = useToast();
 
   const handleSave = async () => {
     setSaving(true);
@@ -434,28 +437,6 @@ export function ProviderSettingsPanel() {
     setRefreshKey(prev => prev + 1);
   };
 
-  const handleConnectGoogle = async (account: ProviderAccount) => {
-    if (account.provider_id !== 'pixverse') return;
-
-    const idToken = await getGoogleIdTokenViaGIS();
-    if (!idToken) return;
-
-    try {
-      await connectPixverseWithGoogle(account.id, idToken);
-      setRefreshKey(prev => prev + 1);
-      if (toast && (toast as any).success) {
-        (toast as any).success('Connected Pixverse account via Google');
-      }
-    } catch (error) {
-      console.error('Failed to connect Pixverse via Google:', error);
-      if (toast && (toast as any).error) {
-        (toast as any).error('Failed to connect Pixverse via Google');
-      } else {
-        alert('Failed to connect Pixverse via Google');
-      }
-    }
-  };
-
   // Load provider settings when activeProvider changes
   const loadProviderSettings = async (providerId: string) => {
     try {
@@ -820,7 +801,6 @@ export function ProviderSettingsPanel() {
                   onEdit={() => setEditingAccount(account)}
                   onToggle={() => handleToggleStatus(account)}
                   onDelete={() => setDeletingAccount(account)}
-                  onConnectGoogle={account.provider_id === 'pixverse' ? () => handleConnectGoogle(account) : undefined}
                 />
               ))}
             </div>

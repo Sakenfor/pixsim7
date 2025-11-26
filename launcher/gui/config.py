@@ -178,7 +178,7 @@ class UIState:
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
 
     # Console settings
-    autoscroll_enabled: bool = True     # Auto-scroll console logs to bottom
+    autoscroll_enabled: bool = False    # Auto-scroll console logs to bottom
     console_style_enhanced: bool = True  # Use enhanced readable console view
     console_level_filter: str = 'All'   # Console log level filter
     console_search_text: str = ''       # Console search text

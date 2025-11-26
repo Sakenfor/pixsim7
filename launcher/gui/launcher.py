@@ -248,6 +248,7 @@ class LauncherWindow(QWidget):
 
         # Initialize attributes before _init_ui (load from saved state)
         self.autoscroll_enabled = self.ui_state.autoscroll_enabled
+        self.logs_paused = False  # Pause log updates
         self.console_style_enhanced = self.ui_state.console_style_enhanced
         self.log_filter = ''
         self.log_timer = QTimer(self)
@@ -933,6 +934,19 @@ class LauncherWindow(QWidget):
         self.ui_state.autoscroll_enabled = self.autoscroll_enabled
         save_ui_state(self.ui_state)
 
+    def _on_pause_logs_changed(self, checked):
+        """Pause/resume log updates."""
+        self.logs_paused = checked
+        if hasattr(self, 'pause_logs_button'):
+            if checked:
+                self.pause_logs_button.setText('▶ Resume')
+                self.pause_logs_button.setToolTip("Resume log updates")
+            else:
+                self.pause_logs_button.setText('⏸ Pause')
+                self.pause_logs_button.setToolTip("Pause log updates to scroll through history")
+                # Refresh logs immediately when resuming
+                self._refresh_console_logs(force=True)
+
     def _on_console_scroll(self, value):
         """Track scroll position when user manually scrolls."""
         if self.selected_service_key and not self.autoscroll_enabled:
@@ -946,6 +960,12 @@ class LauncherWindow(QWidget):
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         _startup_trace("_refresh_console_logs start")
+
+        # Don't update if logs are paused (unless forced)
+        if not force and self.logs_paused:
+            _startup_trace("_refresh_console_logs paused")
+            return
+
         if not self.selected_service_key:
             _startup_trace("_refresh_console_logs skipped (no selection)")
             return

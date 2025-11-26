@@ -100,10 +100,19 @@ class ConsoleTab:
         toolbar.addWidget(launcher.btn_clear_logs)
 
         launcher.autoscroll_checkbox = QCheckBox('Auto-scroll')
-        launcher.autoscroll_checkbox.setChecked(True)
+        launcher.autoscroll_checkbox.setChecked(False)  # Default OFF to allow manual scrolling
         launcher.autoscroll_checkbox.setToolTip("Automatically scroll to bottom")
         launcher.autoscroll_checkbox.stateChanged.connect(launcher._on_autoscroll_changed)
         toolbar.addWidget(launcher.autoscroll_checkbox)
+
+        # Pause logs button
+        launcher.pause_logs_button = QPushButton('⏸ Pause')
+        launcher.pause_logs_button.setCheckable(True)
+        launcher.pause_logs_button.setChecked(False)
+        launcher.pause_logs_button.setToolTip("Pause log updates to scroll through history")
+        launcher.pause_logs_button.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
+        launcher.pause_logs_button.toggled.connect(launcher._on_pause_logs_changed)
+        toolbar.addWidget(launcher.pause_logs_button)
 
         toolbar.addStretch()
         console_layout.addLayout(toolbar)

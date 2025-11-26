@@ -33,7 +33,7 @@ export const ControlCubeFaces = (dockedPanelId?: string): CubeFaceContent => {
       back: <div className="text-purple-300 text-sm flex flex-col items-center gap-0.5"><Icon name="drama" size={18} /><span className="text-[10px]">Layer</span></div>,
       left: <div className="text-indigo-300 text-sm flex flex-col items-center gap-0.5"><Icon name="palette" size={18} /><span className="text-[10px]">Paint</span></div>,
       right: <div className="text-cyan-300 text-sm flex flex-col items-center gap-0.5"><Icon name="wrench" size={18} /><span className="text-[10px]">Tool</span></div>,
-      top: <div className="text-violet-300 text-sm flex flex-col items-center gap-0.5"><Icon name="plus" size={18} /><span className="text-[10px]">Add</span></div>,
+      top: <div className="text-violet-300 text-sm flex flex-col items-center gap-0.5"><Icon name="add" size={18} /><span className="text-[10px]">Add</span></div>,
       bottom: <div className="text-blue-400 text-sm flex flex-col items-center gap-0.5"><Icon name="target" size={18} /><span className="text-[10px]">Select</span></div>,
     };
   }
@@ -42,7 +42,7 @@ export const ControlCubeFaces = (dockedPanelId?: string): CubeFaceContent => {
     return {
       front: <div className="text-blue-300 text-sm flex flex-col items-center gap-0.5"><Icon name="barChart" size={18} /><span className="text-[10px]">Graph</span></div>,
       back: <div className="text-purple-300 text-sm flex flex-col items-center gap-0.5"><Icon name="link" size={18} /><span className="text-[10px]">Connect</span></div>,
-      left: <div className="text-indigo-300 text-sm flex flex-col items-center gap-0.5"><Icon name="plus" size={18} /><span className="text-[10px]">Node</span></div>,
+      left: <div className="text-indigo-300 text-sm flex flex-col items-center gap-0.5"><Icon name="add" size={18} /><span className="text-[10px]">Node</span></div>,
       right: <div className="text-cyan-300 text-sm flex flex-col items-center gap-0.5"><Icon name="cut" size={18} /><span className="text-[10px]">Cut</span></div>,
       top: <div className="text-violet-300 text-sm flex flex-col items-center gap-0.5"><Icon name="copy" size={18} /><span className="text-[10px]">Copy</span></div>,
       bottom: <div className="text-blue-400 text-sm flex flex-col items-center gap-0.5"><Icon name="trash" size={18} /><span className="text-[10px]">Delete</span></div>,

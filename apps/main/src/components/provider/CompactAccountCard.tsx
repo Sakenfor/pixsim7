@@ -5,7 +5,6 @@ interface CompactAccountCardProps {
   onEdit: () => void;
   onToggle: () => void;
   onDelete: () => void;
-  onConnectGoogle?: () => void;
 }
 
 export function CompactAccountCard({
@@ -13,7 +12,6 @@ export function CompactAccountCard({
   onEdit,
   onToggle,
   onDelete,
-  onConnectGoogle,
 }: CompactAccountCardProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
@@ -89,24 +87,15 @@ export function CompactAccountCard({
             }`}
             title={isActive ? 'Disable' : 'Enable'}
           >
-            {isActive ? '⏸' : '▶'}
+            {isActive ? 'ƒ?,' : 'ƒ-'}
           </button>
           <button
             onClick={onDelete}
             className="p-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
             title="Delete"
           >
-            ✕
+            ƒo
           </button>
-          {onConnectGoogle && account.provider_id === 'pixverse' && (
-            <button
-              onClick={onConnectGoogle}
-              className="p-1 text-[10px] text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
-              title="Connect via Google (paste id_token)"
-            >
-              G
-            </button>
-          )}
         </div>
       </div>
 

@@ -81,15 +81,15 @@ export async function dryRunPixverseSync(
 /**
  * Connect an existing Pixverse account using a Google ID token.
  *
- * Assumes the caller has already obtained a Google `id_token` via
- * Google Identity Services or another OAuth flow.
+ * Currently used to flag an account as Google-authenticated so that
+ * auto-reauth can avoid using the global password flow. The backend
+ * ignores the id_token value for now.
  */
 export async function connectPixverseWithGoogle(
-  accountId: number,
-  idToken: string
+  accountId: number
 ): Promise<ProviderAccount> {
   const response = await apiClient.post(`/accounts/${accountId}/connect-google`, {
-    id_token: idToken,
+    id_token: 'manual',
   });
   return response.data.account as ProviderAccount;
 }
