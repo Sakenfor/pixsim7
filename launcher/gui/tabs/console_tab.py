@@ -6,14 +6,16 @@ Creates and configures the console logs tab with filtering and search.
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QComboBox, QTextBrowser
+    QLineEdit, QCheckBox, QComboBox
 )
 from PySide6.QtGui import QFont, QShortcut, QKeySequence
 
 try:
     from .. import theme
+    from ..log_view_widget import LogViewWidget
 except ImportError:
     import theme
+    from log_view_widget import LogViewWidget
 
 
 class ConsoleTab:
@@ -117,11 +119,8 @@ class ConsoleTab:
         toolbar.addStretch()
         console_layout.addLayout(toolbar)
 
-        # Use QTextBrowser for clickable URLs
-        launcher.log_view = QTextBrowser()
-        launcher.log_view.setReadOnly(True)
-        launcher.log_view.setOpenExternalLinks(True)  # Open URLs in browser
-        launcher.log_view.setUndoRedoEnabled(False)  # Disable undo to prevent memory leak
+        # Use unified LogViewWidget for smart scrolling
+        launcher.log_view = LogViewWidget()
         launcher.log_view.setStyleSheet(theme.get_text_browser_stylesheet())
         console_layout.addWidget(launcher.log_view)
 

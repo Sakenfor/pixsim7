@@ -4,7 +4,7 @@ Queries structured logs from TimescaleDB via API.
 Uses QThread for non-blocking HTTP requests.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser,
+    QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QComboBox, QLineEdit, QLabel, QCheckBox, QFrame, QMenu
 )
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt
@@ -18,10 +18,12 @@ try:
     from .log_formatter import format_log_line_html
     from .log_styles import LOG_ROW_STYLES
     from .field_metadata import get_field_metadata, discover_fields
+    from .log_view_widget import LogViewWidget
 except ImportError:
     from log_formatter import format_log_line_html
     from log_styles import LOG_ROW_STYLES
     from field_metadata import get_field_metadata, discover_fields
+    from log_view_widget import LogViewWidget
 
 
 class LogFetchWorker(QThread):
@@ -223,11 +225,11 @@ class DatabaseLogViewer(QWidget):
         layout.addLayout(btn_row)
 
         # Log display - Use QTextBrowser for clickable links
-        self.log_display = QTextBrowser()
-        self.log_display.setReadOnly(True)
+        # Use unified LogViewWidget for smart scrolling
+        self.log_display = LogViewWidget()
+        self.log_display.set_autoscroll(self.auto_refresh_enabled)
         self.log_display.setOpenLinks(False)  # Handle clicks manually
         self.log_display.setOpenExternalLinks(False)
-        self.log_display.setUndoRedoEnabled(False)  # Disable undo to prevent memory leak
         self.log_display.anchorClicked.connect(self._on_log_link_clicked)
         self._expanded_rows = set()  # Track which rows are expanded
         self.log_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -262,6 +264,9 @@ class DatabaseLogViewer(QWidget):
     def _toggle_auto_refresh(self, state):
         """Enable/disable auto-refresh."""
         self.auto_refresh_enabled = bool(state)
+        # Update log view widget
+        if hasattr(self, 'log_display'):
+            self.log_display.set_autoscroll(self.auto_refresh_enabled)
         if self.auto_refresh_enabled:
             self.timer.start(10000)  # 10 seconds
             self.refresh_logs()  # Immediate refresh when enabled
@@ -742,21 +747,9 @@ class DatabaseLogViewer(QWidget):
 
     def _render_logs(self, data):
         """Render logs with current expansion state."""
-        scrollbar = self.log_display.verticalScrollBar()
-
-        # Check if user was at the bottom before rendering
-        if scrollbar is not None:
-            old_scroll_value = scrollbar.value()
-            old_scroll_max = scrollbar.maximum()
-            # User is "at bottom" if within 10 pixels of maximum
-            was_at_bottom = (old_scroll_value >= old_scroll_max - 10) if old_scroll_max > 0 else True
-        else:
-            old_scroll_value = 0
-            was_at_bottom = True
-
         logs = data.get('logs', [])
         if not logs:
-            self.log_display.setHtml('<div style="color: #888; padding: 20px; text-align: center;">No logs found matching your filters.<br><br>Try adjusting the time range or removing some filters.</div>')
+            self.log_display.update_content('<div style="color: #888; padding: 20px; text-align: center;">No logs found matching your filters.<br><br>Try adjusting the time range or removing some filters.</div>', force=True)
             self.status_label.setText('No results found')
             return
 
@@ -773,24 +766,8 @@ class DatabaseLogViewer(QWidget):
 
         self._expanded_rows.intersection_update(set(row_keys))
 
-        self.log_display.setHtml('\n'.join(html_parts))
-
-        # Smart scroll restoration:
-        # - If user was at bottom OR auto-refresh is enabled, scroll to bottom
-        # - Otherwise preserve their exact scroll position
-        # CRITICAL: Use QTimer.singleShot to defer scroll restoration until AFTER
-        # Qt has finished processing the setHtml() and updated scrollbar maximum
-        if scrollbar is not None:
-            def restore_scroll():
-                if was_at_bottom or self.auto_refresh_enabled:
-                    # Scroll to bottom for new content
-                    scrollbar.setValue(scrollbar.maximum())
-                else:
-                    # User was scrolled up - preserve exact position
-                    scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
-
-            # Defer scroll restoration until Qt event loop processes the document change
-            QTimer.singleShot(0, restore_scroll)
+        # Use unified LogViewWidget API - handles scroll preservation automatically
+        self.log_display.update_content('\n'.join(html_parts))
 
         # Build informative status message
         total = data.get('total', 0)

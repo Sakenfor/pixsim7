@@ -22,6 +22,7 @@ from pixsim7.backend.main.shared.jwt_utils import (
     extract_jwt_from_cookies,
 )
 from pixsim7.backend.main.domain import ProviderAccount, AccountStatus
+from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 from pixsim7.backend.main.services.provider import registry
 from pixsim7.backend.main.services.provider.pixverse_auth_service import (
@@ -632,8 +633,12 @@ async def reauth_account(
         )
 
     provider = registry.get(account.provider_id)
-    # session_data already contains jwt_token + cookies in SDK format
     extracted = await provider.extract_account_data(session_data)
+
+    provider_metadata = extracted.get("provider_metadata") or {}
+    if account.provider_id == "pixverse":
+        provider_metadata["auth_method"] = PixverseAuthMethod.PASSWORD.value
+    extracted["provider_metadata"] = provider_metadata
 
     updated_account, updated_fields = await _apply_extracted_account_data(
         account,
@@ -679,13 +684,10 @@ async def connect_pixverse_with_google(
     if account.user_id is None or (account.user_id != user.id and not user.is_admin()):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to connect this account via Google")
 
-    # For now, treat connect-google as a way to flag the
-    # account as Google-authenticated, so auto-reauth can
-    # avoid using the global password flow.
     updated_fields: list[str] = []
     meta = account.provider_metadata or {}
-    if meta.get("auth_method") != "google":
-        meta["auth_method"] = "google"
+    if meta.get("auth_method") != PixverseAuthMethod.GOOGLE.value:
+        meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
         account.provider_metadata = meta
         updated_fields.append("provider_metadata")
         await db.commit()
@@ -1031,7 +1033,11 @@ async def import_cookies(
         username = extracted.get('username')
         nickname = extracted.get('nickname')
         provider_user_id = extracted.get('account_id')
-        provider_metadata = extracted.get('provider_metadata')
+        provider_metadata = extracted.get('provider_metadata') or {}
+
+        if request.provider_id == "pixverse":
+            if "auth_method" not in provider_metadata:
+                provider_metadata["auth_method"] = PixverseAuthMethod.UNKNOWN.value
 
         if not email:
             raise HTTPException(

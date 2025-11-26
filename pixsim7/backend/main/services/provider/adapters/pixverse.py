@@ -45,6 +45,10 @@ from pixsim7.backend.main.services.provider.base import (
     JobNotFoundError,
 )
 from pixsim7.backend.main.shared.jwt_utils import extract_jwt_from_cookies, needs_refresh
+from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod, PixverseSessionData
+from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager import (
+    PixverseSessionManager,
+)
 
 # Use structured logging from pixsim_logging
 from pixsim_logging import get_logger
@@ -80,6 +84,7 @@ class PixverseProvider(Provider):
         # Cache PixverseClient instances as well so we don't create new sessions per job
         # Key format: (account_id, use_method or 'auto', jwt_prefix)
         self._client_cache: Dict[tuple, Any] = {}
+        self.session_manager = PixverseSessionManager(self)
 
     def _evict_account_cache(self, account: ProviderAccount) -> None:
         """Remove cached API/client entries for account (e.g., session invalidated)."""
@@ -98,40 +103,15 @@ class PixverseProvider(Provider):
             self._api_cache.pop(key, None)
 
     def _build_web_session(self, account: ProviderAccount) -> Dict[str, Any]:
-        """Build a unified Pixverse web session from account credentials.
-
-        Responsibilities:
-        - Choose the JWT token to use (existing account.jwt_token or fresher from cookies).
-        - Keep account.jwt_token in sync with the chosen token.
-        - Attach cookies and optional OpenAPI key.
-
-        Returns:
-            Dict with jwt_token, cookies, and optionally openapi_key
-        """
-        # Prefer fresh JWT from cookies if current token is missing/expiring.
-        jwt_token = account.jwt_token
-        if needs_refresh(jwt_token, hours_threshold=12) and account.cookies:
-            cookie_token = extract_jwt_from_cookies(account.cookies or {})
-            if cookie_token:
-                jwt_token = cookie_token
-
-        # Keep account.jwt_token in sync with what we actually use.
-        if jwt_token and jwt_token != account.jwt_token:
-            account.jwt_token = jwt_token
-
-        session: Dict[str, Any] = {
-            "jwt_token": jwt_token,
-            "cookies": account.cookies or {},
+        """Backward-compatible wrapper that delegates to PixverseSessionManager."""
+        session = self.session_manager.build_session(account)
+        result: Dict[str, Any] = {
+            "jwt_token": session.get("jwt_token"),
+            "cookies": session.get("cookies", {}),
         }
-
-        # Attach OpenAPI key from api_keys (kind="openapi"), if present.
-        api_keys = getattr(account, "api_keys", None) or []
-        for entry in api_keys:
-            if isinstance(entry, dict) and entry.get("kind") == "openapi" and entry.get("value"):
-                session["openapi_key"] = entry["value"]
-                break
-
-        return session
+        if "openapi_key" in session:
+            result["openapi_key"] = session["openapi_key"]
+        return result
 
     async def _persist_if_credentials_changed(
         self,
@@ -157,17 +137,6 @@ class PixverseProvider(Provider):
 
         self._evict_account_cache(account)
         await self._persist_account_credentials(account)
-
-    @staticmethod
-    def _is_session_invalid_error(error: Exception) -> bool:
-        msg = str(error).lower()
-        return (
-            "logged in elsewhere" in msg
-            or "session expired" in msg
-            or "error 10005" in msg
-            or "error 10003" in msg
-            or "user is not login" in msg
-        )
 
     @property
     def provider_id(self) -> str:
@@ -198,11 +167,12 @@ class PixverseProvider(Provider):
         Returns:
             Configured PixverseClient
         """
-        # Build unified web session (handles JWT refresh, cookies, and OpenAPI key)
-        session = self._build_web_session(account)
-
-        # Add api_key (for backward compatibility with existing session structure)
-        session["api_key"] = account.api_key
+        session_data = self.session_manager.build_session(account)
+        session: Dict[str, Any] = {
+            "jwt_token": session_data.get("jwt_token"),
+            "cookies": session_data.get("cookies", {}),
+            "api_key": account.api_key,
+        }
 
         # Add use_method if specified
         if use_method:
@@ -702,47 +672,44 @@ class PixverseProvider(Provider):
         Raises:
             JobNotFoundError: Video not found
         """
-        previous_jwt = account.jwt_token
-        previous_cookies = account.cookies
-        client = self._create_client(account)
-        await self._persist_if_credentials_changed(
-            account,
-            previous_jwt=previous_jwt,
-            previous_cookies=previous_cookies,
-        )
-
-        try:
-            # Get video details from pixverse-py
-            video = await asyncio.to_thread(
-                client.get_video,
-                video_id=provider_job_id
-            )
+        async def _operation(session: PixverseSessionData) -> VideoStatusResult:
+            client = self._create_client(account)
+            try:
+                video = await asyncio.to_thread(
+                    client.get_video,
+                    video_id=provider_job_id,
+                )
+            except Exception as exc:
+                logger.error(
+                    "provider:status",
+                    msg="status_check_failed",
+                    provider_id="pixverse",
+                    provider_job_id=provider_job_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                # Re-raise so the session manager can classify and handle reauth/retry.
+                raise
 
             status = self._map_pixverse_status(video)
 
             return VideoStatusResult(
                 status=status,
-                video_url=getattr(video, 'url', None),
-                thumbnail_url=getattr(video, 'thumbnail_url', None),
-                width=getattr(video, 'width', None),
-                height=getattr(video, 'height', None),
-                duration_sec=getattr(video, 'duration', None),
+                video_url=getattr(video, "url", None),
+                thumbnail_url=getattr(video, "thumbnail_url", None),
+                width=getattr(video, "width", None),
+                height=getattr(video, "height", None),
+                duration_sec=getattr(video, "duration", None),
                 provider_video_id=video.id,
-                metadata={
-                    "provider_status": getattr(video, 'status', None)
-                }
+                metadata={"provider_status": getattr(video, "status", None)},
             )
 
-        except Exception as e:
-            logger.error(
-                "provider:status",
-                msg="status_check_failed",
-                provider_id="pixverse",
-                provider_job_id=provider_job_id,
-                error=str(e),
-                error_type=e.__class__.__name__
-            )
-            self._handle_error(e)
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_status",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
 
     async def upload_asset(
         self,
@@ -1048,38 +1015,43 @@ class PixverseProvider(Provider):
             )
 
     async def _try_auto_reauth(self, account: ProviderAccount) -> bool:
-        """
-        Attempt automatic re-authentication using Playwright
+        """Attempt password-based auto-reauth for Pixverse accounts."""
+        from pixsim7.backend.main.services.provider.pixverse_auth_service import PixverseAuthService
+        from pixsim7.backend.main.api.v1.providers import _load_provider_settings
 
-        Returns True if re-auth succeeded, False otherwise
-        """
-        # Skip auto-reauth for Google-connected accounts (cookie-only)
-        meta = getattr(account, "provider_metadata", None) or {}
-        auth_method = meta.get("auth_method")
-        if auth_method == "google":
-            logger.info(f"Auto-reauth skipped for Google-based Pixverse account {account.id}")
+        auth_method = PixverseAuthMethod.from_metadata(
+            getattr(account, "provider_metadata", None) or {}
+        )
+        if not auth_method.allows_password_reauth():
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                auth_method=auth_method.value,
+                reason="incompatible_auth_method",
+            )
+            return False
+
+        settings = _load_provider_settings()
+        provider_settings = settings.get(self.provider_id) if settings else None
+        if not provider_settings or not provider_settings.auto_reauth_enabled:
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                auth_method=auth_method.value,
+                reason="disabled_in_settings",
+            )
+            return False
+
+        password = account.password or (provider_settings.global_password if provider_settings else None)
+        if not password:
+            logger.info(
+                "pixverse_auto_reauth_failed",
+                account_id=account.id,
+                reason="no_password",
+            )
             return False
 
         try:
-            # Check if auto-reauth is enabled for this provider
-            from pixsim7.backend.main.api.v1.providers import _load_provider_settings
-            settings = _load_provider_settings()
-            provider_settings = settings.get(self.provider_id)
-
-            if not provider_settings or not provider_settings.auto_reauth_enabled:
-                logger.info(f"Auto-reauth disabled for {self.provider_id}")
-                return False
-
-            # Get password (account password or global password)
-            password = account.password or (provider_settings.global_password if provider_settings else None)
-            if not password:
-                logger.warning(f"No password available for auto-reauth (account {account.id})")
-                return False
-
-            logger.info(f"Attempting auto-reauth for account {account.id} (email: {account.email})")
-
-            # Use the auth service to re-login (uses API, fast!)
-            from pixsim7.backend.main.services.provider.pixverse_auth_service import PixverseAuthService
             async with PixverseAuthService() as auth_service:
                 session_data = await auth_service.login_with_password(
                     account.email,
@@ -1087,43 +1059,38 @@ class PixverseProvider(Provider):
                     headless=True,
                 )
 
-            # Extract new session data (session_data already has jwt_token + cookies)
             extracted = await self.extract_account_data(session_data)
 
-            # Update account credentials (simplified - normally would use account service)
+            meta = extracted.get("provider_metadata") or {}
+            meta["auth_method"] = PixverseAuthMethod.PASSWORD.value
+            extracted["provider_metadata"] = meta
+
             if extracted.get("jwt_token"):
                 account.jwt_token = extracted["jwt_token"]
             if extracted.get("cookies"):
                 account.cookies = extracted["cookies"]
+            account.provider_metadata = meta
 
             await self._persist_account_credentials(account)
-
-            # Evict cache so next call uses new credentials
             self._evict_account_cache(account)
 
-            logger.info(f"Auto-reauth successful for account {account.id}")
+            logger.info(
+                "pixverse_auto_reauth_success",
+                account_id=account.id,
+                auth_method=PixverseAuthMethod.PASSWORD.value,
+            )
             return True
-
-        except Exception as e:
-            logger.error(f"Auto-reauth failed for account {account.id}: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error(
+                "pixverse_auto_reauth_error",
+                account_id=account.id,
+                error=str(exc),
+                exc_info=True,
+            )
             return False
 
     async def get_credits(self, account: ProviderAccount) -> dict:
-        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
-
-        Web and OpenAPI credits are **separate** budgets and must not be
-        combined. This method returns distinct buckets so the backend can
-        track and spend them independently.
-
-        Returns (for Pixverse only):
-            {
-                "web": int,       # total web/session credits
-                "openapi": int,   # total OpenAPI credits (all types)
-            }
-
-        Raises:
-            Exception: If SDK credit functions fail
-        """
+        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py."""
         try:
             from pixverse import Account  # type: ignore
         except ImportError:  # pragma: no cover
@@ -1136,76 +1103,73 @@ class PixverseProvider(Provider):
         if not Account or not PixverseAPI:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
-        previous_jwt = account.jwt_token
-        previous_cookies = account.cookies
-        # Build unified web session (handles JWT refresh, cookies, and OpenAPI key)
-        session = self._build_web_session(account)
-        await self._persist_if_credentials_changed(
-            account,
-            previous_jwt=previous_jwt,
-            previous_cookies=previous_cookies,
-        )
+        async def _operation(session: PixverseSessionData) -> dict:
+            temp_account = Account(
+                email=account.email,
+                session={
+                    "jwt_token": session.get("jwt_token"),
+                    "cookies": session.get("cookies", {}),
+                    **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
+                },
+            )
+            api = self._get_cached_api(account)
 
-        temp_account = Account(
-            email=account.email,
-            session=session,
-        )
-        api = self._get_cached_api(account)
-
-        # 1) Web credits via /creative_platform/user/credits
-        web_total = 0
-        session_invalid = False
-        try:
-            web_data = await asyncio.to_thread(api.get_credits, temp_account)
-            web_total = int(web_data.get("total_credits") or 0)
-        except Exception as e:
-            if self._is_session_invalid_error(e):
-                session_invalid = True
-                self._evict_account_cache(account)
-            logger.warning(f"PixverseAPI get_credits (web) failed: {e}")
-
-        # 2) OpenAPI credits via /openapi/v2/account/credits
-        openapi_total = 0
-        if "openapi_key" in session:
+            web_total = 0
             try:
-                openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
-                openapi_total = int(openapi_data.get("total_credits") or 0)
-            except Exception as e:
-                if self._is_session_invalid_error(e):
-                    session_invalid = True
-                    self._evict_account_cache(account)
-                logger.warning(f"PixverseAPI get_openapi_credits failed: {e}")
+                web_data = await asyncio.to_thread(api.get_credits, temp_account)
+                web_total = int(web_data.get("total_credits") or 0)
+            except Exception as exc:
+                logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
+                # Let the session manager classify and potentially auto-reauth
+                raise
 
-        # If session was invalid, attempt auto-reauth
-        if session_invalid:
-            logger.warning(f"Session invalid for account {account.id}, attempting auto-reauth")
+            openapi_total = 0
+            if "openapi_key" in session:
+                try:
+                    openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
+                    openapi_total = int(openapi_data.get("total_credits") or 0)
+                except Exception as exc:
+                    logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
+                    # Let the session manager classify and potentially auto-reauth
+                    raise
 
-            reauth_success = await self._try_auto_reauth(account)
+            result: Dict[str, Any] = {
+                "web": max(0, web_total),
+                "openapi": max(0, openapi_total),
+            }
 
-            if reauth_success:
-                # Retry getting credits with new session
-                logger.info("Retrying get_credits after successful auto-reauth")
-                return await self.get_credits(account)  # Recursive retry once
-
-        result: Dict[str, Any] = {
-            "web": max(0, web_total),
-            "openapi": max(0, openapi_total),
-        }
-
-        # Best-effort: fetch ad task status (watch-ad daily task)
-        try:
-            ad_task = await self._get_ad_task_status(account)
+            ad_task = await self._get_ad_task_status_best_effort(account, session)
             if ad_task is not None:
                 result["ad_watch_task"] = ad_task
-                logger.info(f"Ad task found for account {account.id}: {ad_task}")
-            else:
-                logger.warning(f"No ad task returned for account {account.id} (method returned None)")
-        except Exception as e:  # pragma: no cover - defensive
-            logger.error(f"Pixverse ad task status check failed for account {account.id}: {e}", exc_info=True)
+            return result
 
-        return result
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="get_credits",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
 
-    async def _get_ad_task_status(self, account: ProviderAccount) -> Optional[Dict[str, Any]]:
+    async def _get_ad_task_status_best_effort(
+        self,
+        account: ProviderAccount,
+        session: PixverseSessionData,
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            return await self._get_ad_task_status(account, session)
+        except Exception as exc:
+            logger.warning(
+                "Pixverse ad task status check failed for account %s: %s",
+                account.id,
+                exc,
+            )
+            return None
+
+    async def _get_ad_task_status(
+        self,
+        account: ProviderAccount,
+        session: PixverseSessionData,
+    ) -> Optional[Dict[str, Any]]:
         """Check Pixverse daily watch-ad task status via creative_platform/task/list.
 
         We are interested specifically in:
@@ -1237,15 +1201,6 @@ class PixverseProvider(Provider):
         except ImportError:  # pragma: no cover
             return None
 
-        previous_jwt = account.jwt_token
-        previous_cookies = account.cookies
-        # Build unified web session (same as credits, to avoid auth mismatches)
-        session = self._build_web_session(account)
-        await self._persist_if_credentials_changed(
-            account,
-            previous_jwt=previous_jwt,
-            previous_cookies=previous_cookies,
-        )
         cookies = dict(session.get("cookies") or {})
         jwt_token = session.get("jwt_token")
 
@@ -1263,54 +1218,38 @@ class PixverseProvider(Provider):
 
         url = "https://app-api.pixverse.ai/creative_platform/task/list"
 
-        try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
-                resp = await client.get(url, cookies=cookies)
-                logger.debug(f"Ad task API response status: {resp.status_code}")
-                resp.raise_for_status()
-                data = resp.json()
-                logger.debug(f"Ad task API response: {data}")
-        except Exception as e:
-            logger.warning(f"Pixverse task list request failed for account {account.id}: {e}", exc_info=True)
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
+            resp = await client.get(url, cookies=cookies)
+            logger.debug(f"Ad task API response status: {resp.status_code}")
+            resp.raise_for_status()
+            data = resp.json()
+            logger.debug(f"Ad task API response: {data}")
+
+        if not isinstance(data, dict):
             return None
 
-        try:
-            if not isinstance(data, dict):
-                logger.warning(f"Ad task response is not a dict: {type(data)}")
-                return None
+        outcome = self.session_manager.classify_error(data, context="ad_task_status_json")
+        if outcome.is_session_error and outcome.should_invalidate_cache:
+            self.session_manager._invalidate_cache(account, outcome)
+            raise ValueError(f"Pixverse session error {outcome.error_code}: {outcome.error_reason}")
 
-            err_code = data.get("ErrCode")
-            if err_code != 0:
-                logger.warning(
-                    f"Ad task API returned error: ErrCode={err_code}, ErrMsg={data.get('ErrMsg')}"
-                )
-                # Treat error codes 10003 (user not login) and 10005 (session expired) as session invalidation
-                if err_code in (10003, 10005):
-                    logger.warning(f"Session likely invalid (ErrCode={err_code}); evicting cache for account {account.id}")
-                    self._evict_account_cache(account)
-                return None
+        tasks = data.get("Resp") or []
+        if not isinstance(tasks, list):
+            return None
 
-            tasks = data.get("Resp") or []
-            logger.debug(f"Found {len(tasks)} tasks, looking for task_type=1, sub_type=11")
-
-            for task in tasks:
-                try:
-                    if (
-                        isinstance(task, dict)
-                        and task.get("task_type") == 1
-                        and task.get("sub_type") == 11
-                    ):
-                        return {
-                            "reward": task.get("reward"),
-                            "progress": task.get("progress"),
-                            "total_counts": task.get("total_counts"),
-                            "completed_counts": task.get("completed_counts"),
-                            "expired_time": task.get("expired_time"),
-                        }
-                except Exception:
-                    continue
-        except Exception as e:
-            logger.warning(f"Pixverse ad task parsing failed: {e}")
+        for task in tasks:
+            if (
+                isinstance(task, dict)
+                and task.get("task_type") == 1
+                and task.get("sub_type") == 11
+            ):
+                return {
+                    "reward": task.get("reward"),
+                    "progress": task.get("progress"),
+                    "total_counts": task.get("total_counts"),
+                    "completed_counts": task.get("completed_counts"),
+                    "expired_time": task.get("expired_time"),
+                }
 
         return None
 

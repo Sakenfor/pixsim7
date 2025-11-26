@@ -248,7 +248,6 @@ class LauncherWindow(QWidget):
 
         # Initialize attributes before _init_ui (load from saved state)
         self.autoscroll_enabled = self.ui_state.autoscroll_enabled
-        self.logs_paused = False  # Pause log updates
         self.console_style_enhanced = self.ui_state.console_style_enhanced
         self.log_filter = ''
         self.log_timer = QTimer(self)
@@ -382,6 +381,9 @@ class LauncherWindow(QWidget):
         # Restore console settings from saved state
         if hasattr(self, 'autoscroll_checkbox'):
             self.autoscroll_checkbox.setChecked(self.ui_state.autoscroll_enabled)
+        # Initialize log_view widget state
+        if hasattr(self, 'log_view'):
+            self.log_view.set_autoscroll(self.ui_state.autoscroll_enabled)
         if hasattr(self, 'console_style_checkbox'):
             self.console_style_checkbox.setChecked(self.ui_state.console_style_enhanced)
         if hasattr(self, 'console_level_combo') and self.ui_state.console_level_filter:
@@ -933,10 +935,16 @@ class LauncherWindow(QWidget):
         self.autoscroll_enabled = (state == Qt.Checked)
         self.ui_state.autoscroll_enabled = self.autoscroll_enabled
         save_ui_state(self.ui_state)
+        # Update log view widget
+        if hasattr(self, 'log_view'):
+            self.log_view.set_autoscroll(self.autoscroll_enabled)
 
     def _on_pause_logs_changed(self, checked):
         """Pause/resume log updates."""
-        self.logs_paused = checked
+        # Update log view widget
+        if hasattr(self, 'log_view'):
+            self.log_view.set_paused(checked)
+
         if hasattr(self, 'pause_logs_button'):
             if checked:
                 self.pause_logs_button.setText('▶ Resume')
@@ -960,11 +968,6 @@ class LauncherWindow(QWidget):
     def _refresh_console_logs(self, force: bool = False):
         """Refresh the console log display with service output (only when changed)."""
         _startup_trace("_refresh_console_logs start")
-
-        # Don't update if logs are paused (unless forced)
-        if not force and self.logs_paused:
-            _startup_trace("_refresh_console_logs paused")
-            return
 
         if not self.selected_service_key:
             _startup_trace("_refresh_console_logs skipped (no selection)")
@@ -1005,72 +1008,36 @@ class LauncherWindow(QWidget):
 
         self.last_log_hash[self.selected_service_key] = current_hash
 
-        # Block signals during update to prevent UI flickering
-        self.log_view.blockSignals(True)
-        try:
-            # Save current scroll position before updating
-            scrollbar = self.log_view.verticalScrollBar()
-            old_scroll_value = scrollbar.value()
-            old_scroll_max = scrollbar.maximum()
-            distance_from_bottom = max(0, old_scroll_max - old_scroll_value)
-            was_at_bottom = (old_scroll_value >= old_scroll_max - 10) if old_scroll_max > 0 else True
+        # Get logs from buffer and update using LogViewWidget
+        if sp.log_buffer:
+            _startup_trace("_refresh_console_logs applying filter")
+            # Apply in-memory filtering based on console filter controls
+            filtered_buffer = self._filter_console_buffer(sp.log_buffer)
+            _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
-            # Get logs from buffer
-            if sp.log_buffer:
-                _startup_trace("_refresh_console_logs applying filter")
-                # Apply in-memory filtering based on console filter controls
-                filtered_buffer = self._filter_console_buffer(sp.log_buffer)
-                _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
-
-                # Format as HTML with syntax highlighting
-                enhanced = getattr(self, "console_style_enhanced", True)
-                if enhanced:
-                    log_html = format_console_log_html_enhanced(filtered_buffer)
-                else:
-                    log_html = format_console_log_html_classic(filtered_buffer)
-                _startup_trace("_refresh_console_logs formatted html")
-                self.log_view.setHtml(log_html)
-                _startup_trace("_refresh_console_logs html applied")
-
-                # Scroll behavior based on auto-scroll setting and user's scroll position
-                # CRITICAL: Use QTimer.singleShot to defer scroll restoration until AFTER
-                # Qt has finished processing the setHtml() and updated scrollbar maximum
-                def restore_scroll():
-                    if self.autoscroll_enabled or was_at_bottom:
-                        # Auto-scroll to bottom when:
-                        # 1. Auto-scroll is explicitly enabled, OR
-                        # 2. User was already at the bottom before update
-                        cursor = self.log_view.textCursor()
-                        cursor.movePosition(QTextCursor.End)
-                        self.log_view.setTextCursor(cursor)
-                        scrollbar.setValue(scrollbar.maximum())
-                        _startup_trace("_refresh_console_logs scrolled to bottom")
-                    else:
-                        # User was scrolled up - preserve their EXACT scroll position
-                        # This prevents jumping when new logs arrive
-                        # First check if we have a saved position for this service (from tab switch)
-                        if self.selected_service_key in self.service_scroll_positions:
-                            saved_pos = self.service_scroll_positions[self.selected_service_key]
-                            scrollbar.setValue(saved_pos)
-                            _startup_trace(f"_refresh_console_logs restored saved position {saved_pos}")
-                        else:
-                            # Preserve exact scroll position (don't adjust for new content)
-                            scrollbar.setValue(min(old_scroll_value, scrollbar.maximum()))
-                            _startup_trace(f"_refresh_console_logs preserved scroll position {old_scroll_value}")
-
-                # Defer scroll restoration until Qt event loop processes the document change
-                QTimer.singleShot(0, restore_scroll)
+            # Format as HTML with syntax highlighting
+            enhanced = getattr(self, "console_style_enhanced", True)
+            if enhanced:
+                log_html = format_console_log_html_enhanced(filtered_buffer)
             else:
-                if sp.running:
-                    # Check health status to provide more context
-                    if sp.health_status == HealthStatus.HEALTHY:
-                        self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is running (detected from previous session).<br><br>Note: Console output is only captured when services are started from this launcher.<br>The service was likely started externally or in a previous session.</div>')
-                    else:
-                        self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is starting up...<br>Waiting for output...</div>')
+                log_html = format_console_log_html_classic(filtered_buffer)
+            _startup_trace("_refresh_console_logs formatted html")
+
+            # Use unified LogViewWidget API - handles scroll preservation automatically
+            self.log_view.update_content(log_html, force=force)
+            _startup_trace("_refresh_console_logs content updated")
+        else:
+            # No logs - show appropriate message
+            if sp.running:
+                # Check health status to provide more context
+                if sp.health_status == HealthStatus.HEALTHY:
+                    msg = f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is running (detected from previous session).<br><br>Note: Console output is only captured when services are started from this launcher.<br>The service was likely started externally or in a previous session.</div>'
                 else:
-                    self.log_view.setHtml(f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is not running.<br><br>Click <strong>Start</strong> to launch this service.</div>')
-        finally:
-            self.log_view.blockSignals(False)
+                    msg = f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is starting up...<br>Waiting for output...</div>'
+            else:
+                msg = f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is not running.<br><br>Click <strong>Start</strong> to launch this service.</div>'
+
+            self.log_view.update_content(msg, force=True)
 
     def _filter_console_buffer(self, buffer):
         """Filter raw console lines by level and search text.
