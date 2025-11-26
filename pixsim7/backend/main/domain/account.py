@@ -180,7 +180,25 @@ class ProviderAccount(SQLModel, table=True):
         """
         if not self.credits:  # credits relationship
             return 0
-        return sum(c.amount for c in self.credits)
+
+        # Deduplicate by credit_type to prevent double-counting
+        # In case of duplicates (should not happen due to unique constraint),
+        # take the latest value
+        credit_map = {}
+        for c in self.credits:
+            if c.credit_type not in credit_map:
+                credit_map[c.credit_type] = c.amount
+            else:
+                # Log warning if duplicates found (should never happen)
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Duplicate credit_type '{c.credit_type}' found for account {self.id}. "
+                    f"Using latest value. This should not happen due to unique constraint."
+                )
+                credit_map[c.credit_type] = c.amount
+
+        return sum(credit_map.values())
 
     def get_credit(self, credit_type: str) -> int:
         """

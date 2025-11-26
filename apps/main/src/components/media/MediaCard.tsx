@@ -13,6 +13,7 @@ import {
 } from './mediaBadgeConfig';
 
 // Glassmorphism status badge styles
+// Note: No transition classes to prevent pulsing effect
 const STATUS_STYLES: Record<'green' | 'yellow' | 'red' | 'gray', {
   base: string;
   hover: string;
@@ -262,7 +263,7 @@ export function MediaCard(props: MediaCardProps) {
 
   return (
     <div
-      className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition overflow-visible relative"
+      className="group rounded-md border border-neutral-300 bg-white shadow-sm hover:shadow-md transition overflow-visible relative z-0 hover:z-10"
       data-pixsim7="media-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -305,7 +306,7 @@ export function MediaCard(props: MediaCardProps) {
             <div
               role="img"
               aria-label={`${badges.primary} media type`}
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg transition ${
+              className={`w-9 h-9 rounded-full flex items-center justify-center text-lg shadow-lg ${
                 badgeVisibility.showStatusIcon && badges.status === 'provider_ok'
                   ? 'bg-white dark:bg-neutral-800 ring-2 ring-green-500 ring-offset-1'
                   : badgeVisibility.showStatusIcon && badges.status === 'local_only'
@@ -341,7 +342,7 @@ export function MediaCard(props: MediaCardProps) {
 
         {/* Top-right: Expandable provider status badge (hover to reveal actions) */}
         {badges.status && (
-          <div className="absolute right-2 top-2 z-20">
+          <div className="absolute right-2 top-2 z-30">
             <ExpandableButtonGroup
               trigger={
                 <button
@@ -353,7 +354,7 @@ export function MediaCard(props: MediaCardProps) {
                       handleOpen();
                     }
                   }}
-                  className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg transition ${statusBgClass}`}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center shadow-lg ${statusBgClass}`}
                   title={`${statusMeta?.label || badges.status} - Hover for actions`}
                   aria-label={`Provider status: ${statusMeta?.label || badges.status}. Click to open details, hover for more actions.`}
                   role="button"
@@ -592,7 +593,7 @@ export function MediaCard(props: MediaCardProps) {
             </span>
           )}
           {badgeVisibility.showGenerationBadge && (actions?.onImageToVideo || actions?.onVideoExtend || actions?.onAddToTransition || actions?.onAddToGenerate) && (
-            <div className="relative z-10">
+            <div className="relative z-30">
               <ExpandableButtonGroup
                 trigger={
                   <button

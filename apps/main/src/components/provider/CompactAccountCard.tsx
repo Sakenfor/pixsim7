@@ -15,7 +15,8 @@ export function CompactAccountCard({
 }: CompactAccountCardProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
-  const totalCredits = Object.values(account.credits).reduce((sum, val) => sum + val, 0);
+  // Use backend-provided total_credits instead of recalculating
+  const totalCredits = account.total_credits;
 
   const statusConfig = {
     ACTIVE: { color: 'bg-green-500', label: 'Active', textColor: 'text-green-600 dark:text-green-400' },
