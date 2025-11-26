@@ -518,9 +518,8 @@ export function ProviderSettingsPanel() {
           comparison = a.status.localeCompare(b.status);
           break;
         case 'credits': {
-          const aCredits = Object.values(a.credits).reduce((sum, v) => sum + v, 0);
-          const bCredits = Object.values(b.credits).reduce((sum, v) => sum + v, 0);
-          comparison = aCredits - bCredits;
+          // Use backend-provided total_credits instead of recalculating
+          comparison = a.total_credits - b.total_credits;
           break;
         }
         case 'lastUsed': {
