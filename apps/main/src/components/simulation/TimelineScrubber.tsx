@@ -128,7 +128,7 @@ export function TimelineScrubber({
           className="absolute top-0 bottom-0 w-2 bg-blue-600 rounded-full shadow-lg transform -translate-x-1/2 pointer-events-none"
           style={{ left: `${(currentIndex / (snapshots.length - 1)) * 100}%` }}
         >
-          <div className="absolute -top-1 -left-1 w-4 h-14 bg-blue-600 rounded-full opacity-50 animate-pulse" />
+          <div className="absolute -top-1 -left-1 w-4 h-14 bg-blue-600 rounded-full opacity-50 shadow-lg shadow-blue-600/50" />
         </div>
 
         {/* Hover Indicator */}

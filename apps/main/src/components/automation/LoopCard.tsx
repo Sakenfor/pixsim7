@@ -45,7 +45,7 @@ export function LoopCard({ loop, onEdit, onDelete, onStart, onPause, onRunNow }:
         {/* Active indicator */}
         {isActive && (
           <div className="flex-shrink-0">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
+            <div className="w-3 h-3 bg-green-500 rounded-full shadow-lg shadow-green-500/50" />
           </div>
         )}
       </div>

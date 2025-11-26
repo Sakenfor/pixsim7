@@ -28,13 +28,13 @@ const STATUS_STYLES: Record<'green' | 'yellow' | 'red' | 'gray', {
   yellow: {
     base: 'bg-amber-500/20 dark:bg-amber-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-amber-500/30 dark:hover:bg-amber-500/40',
-    ring: 'ring-2 ring-amber-500 dark:ring-amber-400 ring-offset-1 animate-pulse-subtle',
+    ring: 'ring-2 ring-amber-500 dark:ring-amber-400 ring-offset-1',
     glow: 'hover:shadow-[0_0_20px_rgba(245,158,11,0.4)]',
   },
   red: {
     base: 'bg-red-500/20 dark:bg-red-500/30 text-white backdrop-blur-md',
     hover: 'hover:bg-red-500/30 dark:hover:bg-red-500/40',
-    ring: 'ring-2 ring-red-500 dark:ring-red-400 ring-offset-1 animate-pulse-subtle',
+    ring: 'ring-2 ring-red-500 dark:ring-red-400 ring-offset-1',
     glow: 'hover:shadow-[0_0_20px_rgba(239,68,68,0.4)]',
   },
   gray: {
@@ -403,7 +403,7 @@ export function MediaCard(props: MediaCardProps) {
                             <span className="font-medium">Open details</span>
                           </button>
                         }
-                        direction="right"
+                        direction="left"
                         hoverDelay={300}
                         offset={4}
                       >
@@ -458,7 +458,7 @@ export function MediaCard(props: MediaCardProps) {
                             <span className="font-medium">Re-upload to provider</span>
                           </button>
                         }
-                        direction="right"
+                        direction="left"
                         hoverDelay={300}
                         offset={4}
                       >
@@ -516,11 +516,11 @@ export function MediaCard(props: MediaCardProps) {
                 effectiveState==='success' ? (
                   // Match extension semantics: check note/providerStatus to differentiate
                   (effectiveNote && (effectiveNote.includes('saved locally') || effectiveNote.includes('Local only'))) || providerStatus === 'local_only'
-                    ? 'bg-amber-600 text-white animate-bounce-once'  // Local-only: amber (partial success)
-                    : 'bg-blue-600 text-white animate-bounce-once'     // Provider accepted: blue (full success)
+                    ? 'bg-amber-600 text-white'  // Local-only: amber (partial success)
+                    : 'bg-blue-600 text-white'     // Provider accepted: blue (full success)
                 ) :
-                effectiveState==='error' ? 'bg-red-600 text-white animate-shake' :
-                effectiveState==='uploading' ? 'bg-neutral-400 text-white animate-pulse' : 'bg-neutral-700 text-white hover:bg-neutral-600'
+                effectiveState==='error' ? 'bg-red-600 text-white' :
+                effectiveState==='uploading' ? 'bg-neutral-400 text-white' : 'bg-neutral-700 text-white hover:bg-neutral-600'
               }`}
               title={
                 effectiveState==='success'
