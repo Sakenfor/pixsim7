@@ -13,13 +13,15 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager im
 
 
 class DummyAccount:
-    def __init__(self, *, jwt_token="token", cookies=None, provider_metadata=None, api_keys=None):
+    def __init__(self, *, jwt_token="token", cookies=None, provider_metadata=None, api_keys=None, password="secret"):
         self.id = 1
         self.email = "user@example.com"
         self.jwt_token = jwt_token
         self.cookies = cookies or {}
         self.provider_metadata = provider_metadata or {}
         self.api_keys = api_keys or []
+        # Simulate a stored password so that auto-reauth paths are allowed in tests
+        self.password = password
 
 
 class DummyProvider:
@@ -131,3 +133,45 @@ async def test_run_with_session_triggers_auto_reauth(monkeypatch):
     # Result from second call should be returned
     assert result["ok"] is True
 
+
+@pytest.mark.asyncio
+async def test_auto_reauth_skipped_when_no_password(monkeypatch):
+    """Ensure session manager does not invoke auto-reauth when no password is available."""
+    # Avoid depending on real JWT refresh logic
+    monkeypatch.setattr(pixverse_session_manager, "needs_refresh", lambda token, hours_threshold=12: False)
+    monkeypatch.setattr(pixverse_session_manager, "extract_jwt_from_cookies", lambda cookies: None)
+
+    provider = DummyProvider()
+    # Auth method allows password reauth, but password is missing
+    account = DummyAccount(
+        jwt_token="old-token",
+        cookies={"_ai_token": "old-token"},
+        provider_metadata={"auth_method": PixverseAuthMethod.PASSWORD.value},
+        password=None,
+    )
+
+    # Stub provider settings loader used inside the session manager
+    def _fake_load_settings():
+        ns = types.SimpleNamespace(auto_reauth_enabled=True, global_password=None)
+        return {provider.provider_id: ns}
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.providers._load_provider_settings",
+        _fake_load_settings,
+    )
+
+    manager = PixverseSessionManager(provider)
+
+    async def failing_op(session):
+        raise Exception("user is not login, error 10003")
+
+    with pytest.raises(Exception):
+        await manager.run_with_session(
+            account=account,
+            op_name="get_credits",
+            operation=failing_op,
+            retry_on_session_error=True,
+        )
+
+    # Auto-reauth should have been skipped entirely due to missing password
+    assert provider.reauth_calls == 0

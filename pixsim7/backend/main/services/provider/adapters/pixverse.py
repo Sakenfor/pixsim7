@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import asyncio
 import uuid
 from sqlalchemy.orm import object_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import pixverse-py SDK
 # NOTE: pixverse-py SDK imports are optional; guard for environments where
@@ -531,6 +532,17 @@ class PixverseProvider(Provider):
             )
             self._handle_error(e)
 
+    def _is_session_invalid_error(self, error: Exception) -> bool:
+        """
+        Determine whether an exception represents a Pixverse session error.
+
+        This delegates to the PixverseSessionManager classification logic so that
+        generation operations treat 10003/10005-style errors consistently with
+        credits/status calls.
+        """
+        outcome = self.session_manager.classify_error(error, context="execute")
+        return outcome.is_session_error
+
     async def _generate_text_to_video(
         self,
         client: Any,
@@ -993,18 +1005,19 @@ class PixverseProvider(Provider):
                 )
                 return
 
-            commit = session.commit
-            refresh = session.refresh
-
-            if asyncio.iscoroutinefunction(commit):
-                await commit()
-                if asyncio.iscoroutinefunction(refresh):
-                    await refresh(account)
-                else:
-                    refresh(account)
+            # For async sessions (FastAPI routes and other async contexts), we rely
+            # on the surrounding request/transaction lifecycle to manage commits.
+            # Here we simply flush and refresh so in-memory changes are visible
+            # without attempting to manage transactions from the provider layer.
+            if isinstance(session, AsyncSession):
+                await session.flush()
+                await session.refresh(account)
             else:
-                commit()
-                refresh(account)
+                # Background workers may use a sync Session; in that case we can
+                # safely flush/refresh as well, leaving commit control to the
+                # caller unless they explicitly rely on this helper.
+                session.flush()
+                session.refresh(account)
 
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(
@@ -1090,15 +1103,18 @@ class PixverseProvider(Provider):
                 if meta.get("auth_method") != PixverseAuthMethod.GOOGLE.value:
                     meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
                     account.provider_metadata = meta
-                    try:
-                        await self._persist_account_credentials(account)
-                    except Exception:
-                        # Best-effort; failure here should not mask the original error.
-                        logger.warning(
-                            "pixverse_mark_oauth_only_failed",
-                            account_id=account.id,
-                            error=str(exc),
-                        )
+                # Clear any stored password so that future auto-reauth attempts are
+                # definitively skipped even if auth_method metadata is missing.
+                account.password = None
+                try:
+                    await self._persist_account_credentials(account)
+                except Exception:
+                    # Best-effort; failure here should not mask the original error.
+                    logger.warning(
+                        "pixverse_mark_oauth_only_failed",
+                        account_id=account.id,
+                        error=str(exc),
+                    )
                 logger.info(
                     "pixverse_detected_oauth_only_account",
                     account_id=account.id,
@@ -1320,11 +1336,17 @@ class PixverseProvider(Provider):
 
         cookies = dict(session.get("cookies") or {})
         jwt_token = session.get("jwt_token")
+        jwt_source = session.get("jwt_source", "account")
 
-        # Ensure JWT is in cookies as _ai_token (required for task list endpoint)
-        # Always sync to the chosen JWT (not only when missing) to avoid stale tokens
+        # Ensure JWT is in cookies as _ai_token (required for some flows).
+        # When the JWT was sourced from cookies, we can safely align _ai_token
+        # to that value without risking clobbering a functioning browser session.
+        # Otherwise, only fill in _ai_token when it is missing.
         if jwt_token:
-            cookies["_ai_token"] = jwt_token
+            if jwt_source == "cookies":
+                cookies["_ai_token"] = jwt_token
+            elif "_ai_token" not in cookies:
+                cookies["_ai_token"] = jwt_token
 
         headers: Dict[str, str] = {
             "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)",

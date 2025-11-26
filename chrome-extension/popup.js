@@ -193,11 +193,14 @@ async function syncCreditsThrottled(reason, options = {}) {
 
 async function refreshAdStatusForVisibleAccounts() {
   try {
-    const providerIdEl = document.getElementById('detectedProvider');
-    const providerId = providerIdEl && providerIdEl.textContent ? providerIdEl.textContent.trim() : null;
+    // Prefer the currently detected provider_id (e.g. "pixverse") for backend filtering.
+    const providerFilter = currentProvider && currentProvider.provider_id
+      ? currentProvider.provider_id
+      : null;
+
     const accounts = await chrome.runtime.sendMessage({
       action: 'getAccounts',
-      providerId: providerId || undefined,
+      providerId: providerFilter || undefined,
     });
 
     if (!accounts || !accounts.success || !Array.isArray(accounts.data)) {
@@ -206,16 +209,14 @@ async function refreshAdStatusForVisibleAccounts() {
     }
 
     const pixverseAccounts = accounts.data.filter(acc => acc.provider_id === 'pixverse');
-    for (const acc of pixverseAccounts) {
-      try {
-        await chrome.runtime.sendMessage({
-          action: 'refreshPixverseStatus',
-          accountId: acc.id,
-        });
-      } catch (err) {
-        console.warn('[Popup] Failed to refresh Pixverse status for account', acc.id, err);
+
+    // Update ad-status pills for visible Pixverse account cards
+    pixverseAccounts.forEach((acc) => {
+      const pillEl = document.querySelector(`.account-ad-pill[data-account-id="${acc.id}"]`);
+      if (pillEl) {
+        attachPixverseAdStatus(acc, pillEl);
       }
-    }
+    });
   } catch (err) {
     console.warn('[Popup] Error refreshing ad status:', err);
   }
@@ -676,6 +677,7 @@ function createAccountCard(account) {
   const jwtFlag = !account.has_jwt
     ? { text: 'Needs JWT', color: '#b91c1c' }
     : (account.jwt_expired ? { text: 'JWT expired', color: '#f97316' } : null);
+  const showAdPill = account.provider_id === 'pixverse';
 
   card.innerHTML = `
     <div class="account-header" style="padding: 6px 8px;">
@@ -687,7 +689,7 @@ function createAccountCard(account) {
         </div>
         <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
           ${jwtFlag ? `<span class="account-flag" style="font-size: 9px; padding: 2px 4px; border-radius: 3px; background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
-          <span class="account-ad-pill" data-role="ad-pill"></span>
+          ${showAdPill ? `<span class="account-ad-pill" data-role="ad-pill" data-account-id="${account.id}" style="font-size: 10px; color: #6b7280;">Ads ?/?</span>` : ''}
           <span style="font-size: 16px; font-weight: 700; color: #10b981; min-width: 32px; text-align: right;">${totalCredits}</span>
         </div>
       </div>

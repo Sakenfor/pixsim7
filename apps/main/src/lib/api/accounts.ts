@@ -7,10 +7,11 @@ export interface UpdateAccountRequest {
   nickname?: string;
   status?: 'ACTIVE' | 'DISABLED' | 'EXHAUSTED' | 'ERROR' | 'RATE_LIMITED';
   is_private?: boolean;
+  is_google_account?: boolean;
   jwt_token?: string;
   api_key?: string;
-   // Generic API keys; for Pixverse, entries with kind === 'openapi'
-   // represent OpenAPI keys.
+  // Generic API keys; for Pixverse, entries with kind === 'openapi'
+  // represent OpenAPI keys.
   api_keys?: Array<{ id?: string; kind: string; value: string; priority?: number }>;
   cookies?: Record<string, any>;
 }

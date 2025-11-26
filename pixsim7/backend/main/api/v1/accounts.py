@@ -184,9 +184,20 @@ async def export_account_cookies(
         if account.user_id != user.id and not user.is_admin():
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to export this account's cookies")
 
-        cookies = account.cookies or {}
+        cookies: Dict[str, Any] = account.cookies or {}
         if not isinstance(cookies, dict):
             cookies = {}
+
+        # For Pixverse accounts, make a best-effort attempt to ensure that the
+        # exported cookie jar contains a usable `_ai_token`. We never overwrite
+        # an existing `_ai_token` (that value came from the browser), but if
+        # it is missing and we have a valid, non-expired jwt_token on the
+        # account, we mirror that into the cookie map so the opened tab has a
+        # minimal working session.
+        if account.provider_id == "pixverse" and "_ai_token" not in cookies and account.jwt_token:
+            jwt_info = parse_jwt_token(account.jwt_token)
+            if jwt_info.is_valid and not jwt_info.is_expired:
+                cookies["_ai_token"] = account.jwt_token
 
         return AccountCookiesResponse(
             provider_id=account.provider_id,
@@ -1049,10 +1060,6 @@ async def import_cookies(
         provider_user_id = extracted.get('account_id')
         provider_metadata = extracted.get('provider_metadata') or {}
 
-        if request.provider_id == "pixverse":
-            if "auth_method" not in provider_metadata:
-                provider_metadata["auth_method"] = PixverseAuthMethod.UNKNOWN.value
-
         if not email:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -1096,8 +1103,27 @@ async def import_cookies(
                 existing.provider_user_id = provider_user_id
                 updated_fields.append("provider_user_id")
 
-            if provider_metadata:
-                existing.provider_metadata = provider_metadata
+            # Merge provider metadata, preserving a stable auth_method when we
+            # already know how this account authenticates.
+            if provider_metadata is not None:
+                existing_meta: Dict[str, Any] = existing.provider_metadata or {}
+                new_meta: Dict[str, Any] = provider_metadata or {}
+
+                if request.provider_id == "pixverse":
+                    existing_auth = existing_meta.get("auth_method")
+                    new_auth = new_meta.get("auth_method")
+                    # If we've already classified this account as GOOGLE or PASSWORD,
+                    # keep that classification. Otherwise, default UNKNOWN only when
+                    # there is no explicit auth_method at all.
+                    if existing_auth in (
+                        PixverseAuthMethod.GOOGLE.value,
+                        PixverseAuthMethod.PASSWORD.value,
+                    ):
+                        new_meta["auth_method"] = existing_auth
+                    elif not new_auth:
+                        new_meta["auth_method"] = PixverseAuthMethod.UNKNOWN.value
+
+                existing.provider_metadata = new_meta
                 updated_fields.append("provider_metadata")
 
             existing.updated_at = datetime.utcnow()
@@ -1119,7 +1145,7 @@ async def import_cookies(
             try:
                 from pixsim7.backend.main.services.provider import registry
                 provider = registry.get(request.provider_id)
-                fresh_extracted = await provider.extract_account_data(raw_data)
+                fresh_extracted = await provider.extract_account_data(request.raw_data)
                 fresh_credits = fresh_extracted.get('credits')
                 if fresh_credits:
                     for credit_type, amount in fresh_credits.items():
@@ -1144,6 +1170,15 @@ async def import_cookies(
             )
         else:
             # Create new account
+            # For Pixverse, default new accounts to UNKNOWN auth_method so we can
+            # later specialize them to PASSWORD or GOOGLE without conflicting with
+            # browser-imported metadata.
+            if request.provider_id == "pixverse":
+                meta: Dict[str, Any] = provider_metadata or {}
+                if "auth_method" not in meta:
+                    meta["auth_method"] = PixverseAuthMethod.UNKNOWN.value
+                provider_metadata = meta
+
             account = await account_service.create_account(
                 user_id=user.id,
                 email=email,

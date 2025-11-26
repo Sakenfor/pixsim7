@@ -16,6 +16,7 @@ export interface ProviderAccount {
   jwt_expires_at: string | null;
   has_api_key_paid: boolean;
   has_cookies: boolean;
+  is_google_account: boolean;
 
   // Credits
   credits: Record<string, number>;

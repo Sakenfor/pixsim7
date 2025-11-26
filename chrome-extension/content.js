@@ -24,7 +24,32 @@ function getCookie(name) {
 /**
  * Get all cookies as object
  */
-async function getAllCookiesSecure() {
+async function getAllCookiesSecure(providerId) {
+  if (providerId === 'pixverse') {
+    try {
+      // For Pixverse, prefer the full host+parent-domain view so that the
+      // backend sees the same cookies the browser uses (including any
+      // host-only cookies on app.pixverse.ai). This uses the same robust
+      // merge logic as the generic path.
+      const res = await chrome.runtime.sendMessage({
+        action: 'extractCookiesForUrl',
+        url: window.location.href,
+      });
+      if (res && res.success && res.cookies) return res.cookies;
+    } catch (e) {
+      console.warn('[PixSim7 Content] Pixverse cookie extraction via URL failed, falling back to parent domain', e);
+    }
+    try {
+      // Fallback: parent-domain-only snapshot, which captures cookies with
+      // domain ".pixverse.ai" even if the host-specific merge fails.
+      const res = await chrome.runtime.sendMessage({ action: 'extractCookies', domain: 'pixverse.ai' });
+      if (res && res.success && res.cookies) return res.cookies;
+    } catch (e) {
+      console.warn('[PixSim7 Content] Pixverse cookie extraction failed, falling back to generic path', e);
+    }
+  }
+
+  // Generic path: merge host and parent domain cookies
   try {
     const res = await chrome.runtime.sendMessage({ action: 'extractCookiesForUrl', url: window.location.href });
     if (res && res.success && res.cookies) return res.cookies;
@@ -148,7 +173,7 @@ function getBearerToken() {
  */
 async function extractRawData(providerId, config) {
   const data = {
-    cookies: await getAllCookiesSecure()
+    cookies: await getAllCookiesSecure(providerId)
     // Note: No localStorage - not reliable
     // Credits will be synced via provider API calls, not browser
   };
