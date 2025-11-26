@@ -640,20 +640,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   /**
    * Inject cookies into browser
    */
-  async function injectCookies(cookies, domain) {
-    console.log(`[Background] Injecting ${Object.keys(cookies).length} cookies for ${domain}`);
-
+async function injectCookies(cookies, domain) {
     for (const [name, value] of Object.entries(cookies)) {
       try {
+        // For Pixverse, set cookies against app.pixverse.ai so the host
+        // matches what Pixverse itself uses. This mirrors pixsim6 behavior.
+        const urlForSet =
+          domain === 'pixverse.ai'
+            ? 'https://app.pixverse.ai'
+            : `https://${domain}`;
+
         await chrome.cookies.set({
-          url: `https://${domain}`,
-        name: name,
-        value: value,
-        domain: `.${domain}`,
-        path: '/',
-        secure: true,
-        sameSite: 'no_restriction',
-      });
+          url: urlForSet,
+          name: name,
+          value: value,
+          domain: domain === 'pixverse.ai' ? '.pixverse.ai' : `.${domain}`,
+          path: '/',
+          secure: true,
+          sameSite: 'no_restriction',
+        });
     } catch (error) {
       console.warn(`[Background] Failed to set cookie ${name}:`, error);
     }
