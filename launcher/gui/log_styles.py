@@ -24,6 +24,13 @@ LOG_ROW_STYLES = '''
         border-left: 3px solid #5a9fd4;
         padding-left: 5px;
     }
+    .log-row .log-message,
+    .log-row .log-error,
+    .log-details .log-detail-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
     .log-row.selected {
         background-color: rgba(100, 181, 246, 0.15);
         outline: 1px solid rgba(100, 181, 246, 0.5);
@@ -32,6 +39,9 @@ LOG_ROW_STYLES = '''
         font-family: 'Consolas', 'Courier New', monospace;
         font-size: 8pt;
         line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
     }
     .expand-icon {
         display: inline-block;
