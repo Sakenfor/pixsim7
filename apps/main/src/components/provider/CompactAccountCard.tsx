@@ -76,7 +76,7 @@ export function CompactAccountCard({
             className="p-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
             title="Edit"
           >
-            E
+            ✏️
           </button>
           <button
             onClick={onToggle}
@@ -87,14 +87,14 @@ export function CompactAccountCard({
             }`}
             title={isActive ? 'Disable' : 'Enable'}
           >
-            {isActive ? 'ƒ?,' : 'ƒ-'}
+            {isActive ? '⏸' : '▶'}
           </button>
           <button
             onClick={onDelete}
             className="p-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
             title="Delete"
           >
-            ƒo
+            🗑
           </button>
         </div>
       </div>
@@ -150,4 +150,3 @@ export function CompactAccountCard({
     </div>
   );
 }
-

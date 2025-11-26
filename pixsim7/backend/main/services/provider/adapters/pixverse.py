@@ -1117,7 +1117,18 @@ class PixverseProvider(Provider):
             web_total = 0
             try:
                 web_data = await asyncio.to_thread(api.get_credits, temp_account)
-                web_total = int(web_data.get("total_credits") or 0)
+                if isinstance(web_data, dict):
+                    # Prefer specific remaining/total fields, but be robust to SDK changes.
+                    raw_web = (
+                        web_data.get("remainingCredits")
+                        or web_data.get("remaining_credits")
+                        or web_data.get("total_credits")
+                        or web_data.get("credits")
+                    )
+                    try:
+                        web_total = int(raw_web or 0)
+                    except (TypeError, ValueError):
+                        web_total = 0
             except Exception as exc:
                 logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
                 # Let the session manager classify and potentially auto-reauth
@@ -1127,7 +1138,15 @@ class PixverseProvider(Provider):
             if "openapi_key" in session:
                 try:
                     openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
-                    openapi_total = int(openapi_data.get("total_credits") or 0)
+                    if isinstance(openapi_data, dict):
+                        raw_openapi = (
+                            openapi_data.get("credits")
+                            or openapi_data.get("total_credits")
+                        )
+                        try:
+                            openapi_total = int(raw_openapi or 0)
+                        except (TypeError, ValueError):
+                            openapi_total = 0
                 except Exception as exc:
                     logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
                     # Let the session manager classify and potentially auto-reauth
@@ -1146,6 +1165,81 @@ class PixverseProvider(Provider):
         return await self.session_manager.run_with_session(
             account=account,
             op_name="get_credits",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
+    async def get_credits_basic(self, account: ProviderAccount) -> dict:
+        """Fetch Pixverse credits (web + OpenAPI) without ad-task lookup.
+
+        Used by bulk credit sync to avoid unnecessary ad-task traffic.
+        """
+        try:
+            from pixverse import Account  # type: ignore
+        except ImportError:  # pragma: no cover
+            Account = None  # type: ignore
+        try:
+            from pixverse.api.client import PixverseAPI  # type: ignore
+        except ImportError:  # pragma: no cover
+            PixverseAPI = None  # type: ignore
+
+        if not Account or not PixverseAPI:
+            raise Exception("pixverse-py not installed; cannot fetch credits")
+
+        async def _operation(session: PixverseSessionData) -> dict:
+            temp_account = Account(
+                email=account.email,
+                session={
+                    "jwt_token": session.get("jwt_token"),
+                    "cookies": session.get("cookies", {}),
+                    **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
+                },
+            )
+            api = self._get_cached_api(account)
+
+            web_total = 0
+            try:
+                web_data = await asyncio.to_thread(api.get_credits, temp_account)
+                if isinstance(web_data, dict):
+                    raw_web = (
+                        web_data.get("remainingCredits")
+                        or web_data.get("remaining_credits")
+                        or web_data.get("total_credits")
+                        or web_data.get("credits")
+                    )
+                    try:
+                        web_total = int(raw_web or 0)
+                    except (TypeError, ValueError):
+                        web_total = 0
+            except Exception as exc:
+                logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
+                raise
+
+            openapi_total = 0
+            if "openapi_key" in session:
+                try:
+                    openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
+                    if isinstance(openapi_data, dict):
+                        raw_openapi = (
+                            openapi_data.get("credits")
+                            or openapi_data.get("total_credits")
+                        )
+                        try:
+                            openapi_total = int(raw_openapi or 0)
+                        except (TypeError, ValueError):
+                            openapi_total = 0
+                except Exception as exc:
+                    logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
+                    raise
+
+            return {
+                "web": max(0, web_total),
+                "openapi": max(0, openapi_total),
+            }
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="get_credits_basic",
             operation=_operation,
             retry_on_session_error=True,
         )
@@ -1228,10 +1322,18 @@ class PixverseProvider(Provider):
         if not isinstance(data, dict):
             return None
 
-        outcome = self.session_manager.classify_error(data, context="ad_task_status_json")
-        if outcome.is_session_error and outcome.should_invalidate_cache:
-            self.session_manager._invalidate_cache(account, outcome)
-            raise ValueError(f"Pixverse session error {outcome.error_code}: {outcome.error_reason}")
+        err_code = data.get("ErrCode")
+        if err_code in (10003, 10005):
+            logger.warning(
+                "Pixverse ad task session error",
+                account_id=account.id,
+                err_code=err_code,
+                err_msg=data.get("ErrMsg"),
+            )
+            # Evict cache so future calls can rebuild with fresh session,
+            # but do not trigger auto-reauth from here.
+            self._evict_account_cache(account)
+            return None
 
         tasks = data.get("Resp") or []
         if not isinstance(tasks, list):

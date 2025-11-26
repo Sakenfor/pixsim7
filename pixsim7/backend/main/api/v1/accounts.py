@@ -268,9 +268,12 @@ async def sync_all_account_credits(
 
             # Try provider's get_credits method first
             credits_data = None
-            if hasattr(provider, 'get_credits'):
+            if hasattr(provider, "get_credits"):
                 try:
-                    credits_data = await provider.get_credits(account)
+                    if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
+                        credits_data = await provider.get_credits_basic(account)
+                    else:
+                        credits_data = await provider.get_credits(account)
                 except Exception as e:
                     logger.debug(f"Provider get_credits failed for {account.email}: {e}")
 
@@ -403,9 +406,12 @@ async def sync_account_credits(
 
         # Use provider's get_credits method if available
         credits_data = None
-        if hasattr(provider, 'get_credits'):
+        if hasattr(provider, "get_credits"):
             try:
-                credits_data = await provider.get_credits(account)
+                if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
+                    credits_data = await provider.get_credits_basic(account)
+                else:
+                    credits_data = await provider.get_credits(account)
             except Exception as e:
                 print(f"Provider get_credits failed: {e}, falling back to extract_account_data")
         

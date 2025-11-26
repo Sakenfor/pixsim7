@@ -271,12 +271,11 @@ class ArchitectureMetricsPanel(QWidget):
     def open_app_map(self):
         """Open the App Map in browser."""
         if self.multi_discovery:
-            # Multi-service: open app-map for each discovered service
-            discovered_services = self.multi_discovery.get_discovered_services()
-            if discovered_services:
+            # Multi-service: open app-map for the first discovered service
+            discovered = self.multi_discovery.discovered_services
+            if discovered:
                 # Open the first discovered service's app-map
-                # (or could open all of them)
-                first_service = discovered_services[0]
+                first_service = list(discovered.values())[0]
                 url = f"{first_service['url']}/app-map"
                 webbrowser.open(url)
         elif self.discovery:

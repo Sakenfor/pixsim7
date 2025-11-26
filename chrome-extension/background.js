@@ -319,6 +319,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'refreshPixverseStatus') {
+    (async () => {
+      try {
+        const { accountId } = message;
+        if (!accountId) {
+          throw new Error('No accountId provided');
+        }
+
+        await backendRequest(`/api/v1/accounts/${accountId}/pixverse-status`);
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Automation: fetch devices
   if (message.action === 'getDevices') {
     backendRequest('/api/v1/automation/devices')

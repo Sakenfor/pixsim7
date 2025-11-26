@@ -24,6 +24,7 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
   const [apiKey, setApiKey] = useState('');
   const [apiKeyPaid, setApiKeyPaid] = useState('');
   const [clearOpenApiKey, setClearOpenApiKey] = useState(false);
+  const [isGoogleAccount, setIsGoogleAccount] = useState((account as any).is_google_account || false);
   const [saving, setSaving] = useState(false);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const toast = useToast();
@@ -35,6 +36,7 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
       if (email !== account.email) updates.email = email;
       if (nickname !== account.nickname) updates.nickname = nickname;
       if (apiKey) updates.api_key = apiKey;
+      if (isGoogleAccount !== (account as any).is_google_account) updates.is_google_account = isGoogleAccount;
       if (clearOpenApiKey) {
         // Clear all OpenAPI keys
         updates.api_keys = [];
@@ -133,6 +135,26 @@ function EditAccountModal({ account, onClose, onSave }: EditAccountModalProps) {
             </label>
           )}
         </FormField>
+
+        {/* Google Account Marker */}
+        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              className="rounded border-neutral-300 dark:border-neutral-600"
+              checked={isGoogleAccount}
+              onChange={(e) => setIsGoogleAccount(e.target.checked)}
+            />
+            <div>
+              <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                Google Account
+              </div>
+              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                Mark this account as authenticated via Google Sign-In
+              </div>
+            </div>
+          </label>
+        </div>
 
         {/* Account Status Info */}
         <div className="p-3 bg-neutral-100 dark:bg-neutral-700 rounded-lg">

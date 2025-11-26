@@ -83,6 +83,9 @@ function setupEventListeners() {
   // Refresh accounts
   const refreshBtn = document.getElementById('refreshBtn');
   const refreshBtnTop = document.getElementById('refreshBtnTop');
+  const refreshAdBtn = document.getElementById('refreshAdStatusBtn');
+  const refreshAdBtnTop = document.getElementById('refreshAdStatusBtnTop');
+
   const handleRefreshClick = () => {
     if (currentUser) {
       syncCreditsThrottled('manual-refresh', { force: true });
@@ -90,6 +93,14 @@ function setupEventListeners() {
   };
   if (refreshBtn) refreshBtn.addEventListener('click', handleRefreshClick);
   if (refreshBtnTop) refreshBtnTop.addEventListener('click', handleRefreshClick);
+
+  const handleRefreshAdStatusClick = () => {
+    if (currentUser) {
+      refreshAdStatusForVisibleAccounts().catch(() => {});
+    }
+  };
+  if (refreshAdBtn) refreshAdBtn.addEventListener('click', handleRefreshAdStatusClick);
+  if (refreshAdBtnTop) refreshAdBtnTop.addEventListener('click', handleRefreshAdStatusClick);
 
   // Import cookies
   document.getElementById('importBtn').addEventListener('click', handleImportCookies);
@@ -177,6 +188,36 @@ async function syncCreditsThrottled(reason, options = {}) {
     console.warn('[Popup] Credit sync error:', err);
   } finally {
     await chrome.storage.local.set({ creditSyncInProgress: false });
+  }
+}
+
+async function refreshAdStatusForVisibleAccounts() {
+  try {
+    const providerIdEl = document.getElementById('detectedProvider');
+    const providerId = providerIdEl && providerIdEl.textContent ? providerIdEl.textContent.trim() : null;
+    const accounts = await chrome.runtime.sendMessage({
+      action: 'getAccounts',
+      providerId: providerId || undefined,
+    });
+
+    if (!accounts || !accounts.success || !Array.isArray(accounts.data)) {
+      console.warn('[Popup] Failed to fetch accounts for ad status refresh');
+      return;
+    }
+
+    const pixverseAccounts = accounts.data.filter(acc => acc.provider_id === 'pixverse');
+    for (const acc of pixverseAccounts) {
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'refreshPixverseStatus',
+          accountId: acc.id,
+        });
+      } catch (err) {
+        console.warn('[Popup] Failed to refresh Pixverse status for account', acc.id, err);
+      }
+    }
+  } catch (err) {
+    console.warn('[Popup] Error refreshing ad status:', err);
   }
 }
 
@@ -630,6 +671,8 @@ function createAccountCard(account) {
   const statusClass = `status-${account.status}`;
   const totalCredits = account.total_credits || 0;
   const displayName = account.nickname || account.email;
+  const isOwnedByCurrentUser = currentUser && account.user_id === currentUser.id;
+  const canLoginWithAccount = isOwnedByCurrentUser && (account.has_cookies || account.has_jwt);
   const jwtFlag = !account.has_jwt
     ? { text: 'Needs JWT', color: '#b91c1c' }
     : (account.jwt_expired ? { text: 'JWT expired', color: '#f97316' } : null);
@@ -651,10 +694,24 @@ function createAccountCard(account) {
     </div>
 
     <div class="actions-row" style="padding: 4px 8px; gap: 4px;">
-      ${(account.has_cookies || account.has_jwt) ? `
-        <button class="account-btn btn-tiny" data-action="login" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.LOGIN}</button>
+      ${canLoginWithAccount ? `
+        <button
+          class="account-btn btn-tiny"
+          data-action="login"
+          data-account-id="${account.id}"
+          style="font-size: 10px; padding: 3px 6px;"
+        >
+          ${ACCOUNT_ACTIONS.LOGIN}
+        </button>
       ` : `
-        <button class="account-btn btn-tiny" disabled title="No credentials" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.LOGIN}</button>
+        <button
+          class="account-btn btn-tiny"
+          disabled
+          title="${!isOwnedByCurrentUser ? 'Can only open tabs for your own accounts' : 'No cookies/JWT available for this account'}"
+          style="font-size: 10px; padding: 3px 6px;"
+        >
+          ${ACCOUNT_ACTIONS.LOGIN}
+        </button>
       `}
       <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_PRESET}</button>
       <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_LOOP}</button>
