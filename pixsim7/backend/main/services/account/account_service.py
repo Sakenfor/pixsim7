@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain import ProviderAccount, ProviderCredit, AccountStatus
+from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
     AccountExhaustedError,
@@ -489,7 +490,8 @@ class AccountService:
         cookies: Optional[dict] = None,
         is_private: Optional[bool] = None,
         status: Optional[AccountStatus] = None,
-        nickname: Optional[str] = None
+        nickname: Optional[str] = None,
+        is_google_account: Optional[bool] = None
     ) -> ProviderAccount:
         """
         Update existing account
@@ -505,6 +507,7 @@ class AccountService:
             is_private: Optional new private status
             status: Optional new account status
             nickname: Optional new nickname
+            is_google_account: Optional Google authentication flag
 
         Returns:
             Updated ProviderAccount
@@ -546,6 +549,16 @@ class AccountService:
 
         if nickname is not None:
             account.nickname = nickname
+
+        if is_google_account is not None:
+            # Update provider_metadata to reflect Google authentication status
+            metadata = account.provider_metadata or {}
+            if is_google_account:
+                metadata["auth_method"] = PixverseAuthMethod.GOOGLE.value
+            else:
+                # Clear or set to unknown if unchecking
+                metadata["auth_method"] = PixverseAuthMethod.UNKNOWN.value
+            account.provider_metadata = metadata
 
         await self.db.flush()
 

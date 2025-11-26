@@ -41,6 +41,7 @@ class AccountUpdate(BaseModel):
     cookies: Optional[dict] = None
     is_private: Optional[bool] = None
     status: Optional[AccountStatus] = None
+    is_google_account: Optional[bool] = None  # Mark account as Google-authenticated
 
 
 class AccountResponse(BaseModel):
@@ -59,6 +60,7 @@ class AccountResponse(BaseModel):
     jwt_expires_at: Optional[datetime]
     has_api_key_paid: bool  # True if any API key of kind 'openapi' exists
     has_cookies: bool
+    is_google_account: bool  # True if authenticated via Google Sign-In
 
     # Credits (normalized - supports any number of credit types)
     # Example: {"webapi": 100, "openapi": 50} for Pixverse
