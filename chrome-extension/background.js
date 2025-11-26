@@ -572,14 +572,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-          // Best-effort: refresh backend session/credits for this account so that
-          // stored cookies/JWT are up to date before we open a tab.
-          try {
-            await backendRequest(`/api/v1/accounts/${accountId}/pixverse-status`);
-          } catch (e) {
-            console.warn('[Background] pixverse-status before loginWithAccount failed:', e);
-          }
-
           // Fetch cookies for this account from backend
           const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
           const providerId = data.provider_id;
@@ -645,38 +637,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ===== COOKIE MANAGEMENT =====
 
-/**
- * Inject cookies into browser
- */
-async function injectCookies(cookies, domain) {
+  /**
+   * Inject cookies into browser
+   */
+  async function injectCookies(cookies, domain) {
     console.log(`[Background] Injecting ${Object.keys(cookies).length} cookies for ${domain}`);
-
-    // Clear existing cookies for this provider first to avoid mixing accounts.
-    // For pixverse we often hit both pixverse.ai and app.pixverse.ai.
-    const domainsToClear = new Set();
-    domainsToClear.add(domain);
-    if (!domain.startsWith('app.')) {
-        domainsToClear.add(`app.${domain}`);
-    }
-
-    for (const d of domainsToClear) {
-        try {
-            const existingCookies = await chrome.cookies.getAll({ domain: d });
-            for (const c of existingCookies) {
-                try {
-                    const url = `https://${d}${c.path || '/'}`;
-                    await chrome.cookies.remove({
-                        url,
-                        name: c.name,
-                    });
-                } catch (err) {
-                    console.warn('[Background] Failed to remove cookie', c.name, 'for domain', d, err);
-                }
-            }
-        } catch (err) {
-            console.warn('[Background] Failed to enumerate cookies for domain', d, err);
-        }
-    }
 
     for (const [name, value] of Object.entries(cookies)) {
       try {

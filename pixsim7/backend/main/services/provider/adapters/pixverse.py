@@ -1081,6 +1081,29 @@ class PixverseProvider(Provider):
             )
             return True
         except Exception as exc:
+            msg = str(exc)
+            if "Please sign in via OAuth" in msg:
+                # This is an OAuth-only account (Google/Discord/Apple); password-based
+                # reauth will never work. Mark it as GOOGLE so future auto-reauth
+                # attempts are skipped and rely purely on cookie-based flows.
+                meta = getattr(account, "provider_metadata", None) or {}
+                if meta.get("auth_method") != PixverseAuthMethod.GOOGLE.value:
+                    meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
+                    account.provider_metadata = meta
+                    try:
+                        await self._persist_account_credentials(account)
+                    except Exception:
+                        # Best-effort; failure here should not mask the original error.
+                        logger.warning(
+                            "pixverse_mark_oauth_only_failed",
+                            account_id=account.id,
+                            error=str(exc),
+                        )
+                logger.info(
+                    "pixverse_detected_oauth_only_account",
+                    account_id=account.id,
+                    auth_method=PixverseAuthMethod.GOOGLE.value,
+                )
             logger.error(
                 "pixverse_auto_reauth_error",
                 account_id=account.id,
