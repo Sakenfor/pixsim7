@@ -95,14 +95,18 @@ def format_service(service):
 
 
 def format_message(msg):
-    """Format message with truncation and tooltip."""
+    """Format message text without truncation (preserve multiline content)."""
     if not msg:
         return ''
 
     clean_msg = strip_ansi(msg)
-    msg_display = clean_msg if len(clean_msg) <= 100 else clean_msg[:97] + '...'
-    msg_tooltip = f' title="{escape_html(clean_msg)}"' if len(clean_msg) > 100 else ''
-    return f' | <span style="color: {COMPONENT_COLORS["message"]};"{msg_tooltip}>{escape_html(msg_display)}</span>'
+    return (
+        ' | '
+        f'<span class="log-message" '
+        f'style="color: {COMPONENT_COLORS["message"]}; white-space: pre-wrap; word-break: break-word;">'
+        f'{escape_html(clean_msg)}'
+        '</span>'
+    )
 
 
 def format_http_request(method, path, status_code=None):
@@ -153,13 +157,19 @@ def format_clickable_id(field_name, value, label=None):
 
 
 def format_error(error_msg):
-    """Format error message with truncation and tooltip."""
+    """Format error message without truncation, keeping whitespace."""
     if not error_msg:
         return ''
 
-    error_display = error_msg[:100] if len(error_msg) > 100 else error_msg
-    error_tooltip = f' title="{escape_html(error_msg)}"' if len(error_msg) > 100 else ''
-    return f'<br/><span style="color: {COMPONENT_COLORS["error"]}; margin-left: 20px;"{error_tooltip}>ERROR: {escape_html(error_display)}</span>'
+    clean_error = strip_ansi(error_msg)
+    return (
+        '<br/>'
+        f'<span class="log-error" '
+        f'style="color: {COMPONENT_COLORS["error"]}; margin-left: 20px; '
+        'white-space: pre-wrap; word-break: break-word;">'
+        f'ERROR: {escape_html(clean_error)}'
+        '</span>'
+    )
 
 
 def format_extra_fields(extra, exclude_fields=None):
@@ -193,6 +203,28 @@ def format_extra_fields(extra, exclude_fields=None):
 def build_expandable_details(log, extra):
     """Build HTML for expandable details section."""
     details_parts = []
+
+    # Preserve the full message/error payload in the expanded view for long logs
+    primary_msg = log.get('msg') or log.get('event')
+    if not primary_msg and isinstance(extra, dict):
+        primary_msg = extra.get('event')
+    if primary_msg:
+        details_parts.append(
+            '<div style="margin-top: 6px; color: #5a9fd4; font-weight: bold;">Message</div>'
+        )
+        details_parts.append(
+            f'<div class="log-detail-text">{escape_html(strip_ansi(primary_msg))}</div>'
+        )
+
+    if log.get('error'):
+        details_parts.append(
+            '<div style="margin-top: 6px; color: #ef9a9a; font-weight: bold;">Error</div>'
+        )
+        details_parts.append(
+            '<div class="log-detail-text">{}</div>'.format(
+                escape_html(strip_ansi(log.get("error")))
+            )
+        )
 
     # Show all extra fields that weren't shown in main row
     all_fields = {**log, **(extra if isinstance(extra, dict) else {})}

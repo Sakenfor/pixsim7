@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
+from sqlalchemy.orm import object_session
 
 # Import pixverse-py SDK
 # NOTE: pixverse-py SDK imports are optional; guard for environments where
@@ -131,6 +132,31 @@ class PixverseProvider(Provider):
                 break
 
         return session
+
+    async def _persist_if_credentials_changed(
+        self,
+        account: ProviderAccount,
+        *,
+        previous_jwt: str | None,
+        previous_cookies: Dict[str, Any] | None,
+    ) -> None:
+        """Persist and clear caches when JWT/cookies mutate in-memory.
+
+        Some helper methods (like :py:meth:`_build_web_session`) update the
+        account instance opportunistically—for example, swapping in a fresher
+        JWT from cookies. Downstream callers should invoke this helper after
+        session construction to avoid leaving updated credentials only in
+        memory (which would cause cache mismatches and stale DB rows).
+        """
+
+        cookies_changed = (account.cookies or {}) != (previous_cookies or {})
+        jwt_changed = account.jwt_token != previous_jwt
+
+        if not (cookies_changed or jwt_changed):
+            return
+
+        self._evict_account_cache(account)
+        await self._persist_account_credentials(account)
 
     @staticmethod
     def _is_session_invalid_error(error: Exception) -> bool:
@@ -460,7 +486,14 @@ class PixverseProvider(Provider):
 
         # Extract use_method if provided
         use_method = params.pop("use_method", None)
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
         client = self._create_client(account, use_method=use_method)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
 
         try:
             # Route to appropriate method
@@ -669,7 +702,14 @@ class PixverseProvider(Provider):
         Raises:
             JobNotFoundError: Video not found
         """
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
         client = self._create_client(account)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
 
         try:
             # Get video details from pixverse-py
@@ -727,7 +767,14 @@ class PixverseProvider(Provider):
             for entry in (getattr(account, "api_keys", None) or [])
         )
         use_method = 'open-api' if (has_openapi_key or getattr(account, 'api_key', None)) else None
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
         client = self._create_client(account, use_method=use_method)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
 
         try:
             # Try SDK's upload_media method (available in SDK v1.0.0+)
@@ -968,6 +1015,38 @@ class PixverseProvider(Provider):
             'raw_data': user_info_data,  # Save entire response
         }
 
+    async def _persist_account_credentials(self, account: ProviderAccount) -> None:
+        """Persist refreshed credentials to the bound session if available."""
+        try:
+            session = object_session(account)
+            if not session:
+                logger.info(
+                    "Skipping credential persistence for account %s (no session bound)",
+                    account.id,
+                )
+                return
+
+            commit = session.commit
+            refresh = session.refresh
+
+            if asyncio.iscoroutinefunction(commit):
+                await commit()
+                if asyncio.iscoroutinefunction(refresh):
+                    await refresh(account)
+                else:
+                    refresh(account)
+            else:
+                commit()
+                refresh(account)
+
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(
+                "Failed to persist updated Pixverse credentials for account %s: %s",
+                account.id,
+                e,
+                exc_info=True,
+            )
+
     async def _try_auto_reauth(self, account: ProviderAccount) -> bool:
         """
         Attempt automatic re-authentication using Playwright
@@ -1010,6 +1089,8 @@ class PixverseProvider(Provider):
             if extracted.get("cookies"):
                 account.cookies = extracted["cookies"]
 
+            await self._persist_account_credentials(account)
+
             # Evict cache so next call uses new credentials
             self._evict_account_cache(account)
 
@@ -1048,8 +1129,15 @@ class PixverseProvider(Provider):
         if not Account or not PixverseAPI:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
         # Build unified web session (handles JWT refresh, cookies, and OpenAPI key)
         session = self._build_web_session(account)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
 
         temp_account = Account(
             email=account.email,
@@ -1061,7 +1149,7 @@ class PixverseProvider(Provider):
         web_total = 0
         session_invalid = False
         try:
-            web_data = api.get_credits(temp_account)
+            web_data = await asyncio.to_thread(api.get_credits, temp_account)
             web_total = int(web_data.get("total_credits") or 0)
         except Exception as e:
             if self._is_session_invalid_error(e):
@@ -1073,7 +1161,7 @@ class PixverseProvider(Provider):
         openapi_total = 0
         if "openapi_key" in session:
             try:
-                openapi_data = api.get_openapi_credits(temp_account)
+                openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
                 openapi_total = int(openapi_data.get("total_credits") or 0)
             except Exception as e:
                 if self._is_session_invalid_error(e):
@@ -1099,7 +1187,7 @@ class PixverseProvider(Provider):
 
         # Best-effort: fetch ad task status (watch-ad daily task)
         try:
-            ad_task = self._get_ad_task_status(account)
+            ad_task = await self._get_ad_task_status(account)
             if ad_task is not None:
                 result["ad_watch_task"] = ad_task
                 logger.info(f"Ad task found for account {account.id}: {ad_task}")
@@ -1110,7 +1198,7 @@ class PixverseProvider(Provider):
 
         return result
 
-    def _get_ad_task_status(self, account: ProviderAccount) -> Optional[Dict[str, Any]]:
+    async def _get_ad_task_status(self, account: ProviderAccount) -> Optional[Dict[str, Any]]:
         """Check Pixverse daily watch-ad task status via creative_platform/task/list.
 
         We are interested specifically in:
@@ -1142,8 +1230,15 @@ class PixverseProvider(Provider):
         except ImportError:  # pragma: no cover
             return None
 
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
         # Build unified web session (same as credits, to avoid auth mismatches)
         session = self._build_web_session(account)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
         cookies = dict(session.get("cookies") or {})
         jwt_token = session.get("jwt_token")
 
@@ -1162,8 +1257,8 @@ class PixverseProvider(Provider):
         url = "https://app-api.pixverse.ai/creative_platform/task/list"
 
         try:
-            with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
-                resp = client.get(url, cookies=cookies)
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=headers) as client:
+                resp = await client.get(url, cookies=cookies)
                 logger.debug(f"Ad task API response status: {resp.status_code}")
                 resp.raise_for_status()
                 data = resp.json()
