@@ -731,12 +731,6 @@ function createAccountCard(account) {
     }
   });
 
-  // For Pixverse accounts, enrich header line with live ad-task status
-  if (account.provider_id === 'pixverse') {
-    const adPillEl = card.querySelector('[data-role="ad-pill"]');
-    attachPixverseAdStatus(account, adPillEl);
-  }
-
   return card;
 }
 
