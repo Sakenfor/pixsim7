@@ -25,7 +25,11 @@ class PixverseAuthMethod(str, Enum):
 
     def allows_password_reauth(self) -> bool:
         """Return True if password-based reauth is valid for this method."""
-        return self is PixverseAuthMethod.PASSWORD
+        # Only explicit GOOGLE accounts are treated as incompatible with
+        # password-based auto-reauth. UNKNOWN is allowed so that legacy
+        # accounts and cookie-imported accounts can still use a stored
+        # account/global password if available.
+        return self is not PixverseAuthMethod.GOOGLE
 
 
 class PixverseSessionData(TypedDict, total=False):
@@ -73,4 +77,3 @@ class SessionErrorOutcome:
             is_session_error=False,
             original_error=error,
         )
-
