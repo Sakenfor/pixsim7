@@ -679,30 +679,22 @@ async def connect_pixverse_with_google(
     if account.user_id is None or (account.user_id != user.id and not user.is_admin()):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to connect this account via Google")
 
-    try:
-        async with PixverseAuthService() as auth_service:
-            session_data = await auth_service.login_with_google_id_token(request.id_token)
-    except PixverseAuthError as exc:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            f"Pixverse Google login failed: {exc}",
-        )
-
-    provider = registry.get(account.provider_id)
-    extracted = await provider.extract_account_data(session_data)
-
-    updated_account, updated_fields = await _apply_extracted_account_data(
-        account,
-        extracted,
-        account_service,
-        db,
-        user.id,
-    )
+    # For now, treat connect-google as a way to flag the
+    # account as Google-authenticated, so auto-reauth can
+    # avoid using the global password flow.
+    updated_fields: list[str] = []
+    meta = account.provider_metadata or {}
+    if meta.get("auth_method") != "google":
+        meta["auth_method"] = "google"
+        account.provider_metadata = meta
+        updated_fields.append("provider_metadata")
+        await db.commit()
+        await db.refresh(account)
 
     return AccountReauthResponse(
         success=True,
         updated_fields=updated_fields,
-        account=_to_response(updated_account, user.id),
+        account=_to_response(account, user.id),
     )
 
 

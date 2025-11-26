@@ -1053,6 +1053,13 @@ class PixverseProvider(Provider):
 
         Returns True if re-auth succeeded, False otherwise
         """
+        # Skip auto-reauth for Google-connected accounts (cookie-only)
+        meta = getattr(account, "provider_metadata", None) or {}
+        auth_method = meta.get("auth_method")
+        if auth_method == "google":
+            logger.info(f"Auto-reauth skipped for Google-based Pixverse account {account.id}")
+            return False
+
         try:
             # Check if auto-reauth is enabled for this provider
             from pixsim7.backend.main.api.v1.providers import _load_provider_settings
