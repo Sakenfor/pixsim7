@@ -1133,14 +1133,12 @@ class LauncherWindow(QWidget):
 
     def _apply_window_flags(self):
         """Apply window flags based on UI state."""
-        flags = self.windowFlags()
+        # Start with standard window flags including system buttons
+        flags = Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint | Qt.WindowMaximizeButtonHint
 
         if self.ui_state.window_always_on_top:
             # Add always on top flag
             flags |= Qt.WindowStaysOnTopHint
-        else:
-            # Remove always on top flag
-            flags &= ~Qt.WindowStaysOnTopHint
 
         self.setWindowFlags(flags)
         # Need to show again after changing flags
