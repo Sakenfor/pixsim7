@@ -57,6 +57,12 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
             has_openapi_key = True
             break
 
+    # Check if Google-authenticated
+    is_google_account = False
+    provider_metadata = getattr(account, "provider_metadata", None) or {}
+    if provider_metadata.get("auth_method") == PixverseAuthMethod.GOOGLE.value:
+        is_google_account = True
+
     return AccountResponse(
         id=account.id,
         user_id=account.user_id,
@@ -71,6 +77,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         jwt_expires_at=jwt_expires_at,
         has_api_key_paid=has_openapi_key,
         has_cookies=bool(account.cookies),
+        is_google_account=is_google_account,
         # Credits (normalized)
         credits=credits_dict,
         total_credits=account.get_total_credits(),
@@ -781,7 +788,8 @@ async def update_account(
             api_keys=request.api_keys,
             cookies=request.cookies,
             is_private=request.is_private,
-            status=request.status
+            status=request.status,
+            is_google_account=request.is_google_account
         )
         await db.commit()
         await db.refresh(account)
