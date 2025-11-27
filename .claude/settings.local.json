@@ -10,7 +10,8 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(pnpm install:*)",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

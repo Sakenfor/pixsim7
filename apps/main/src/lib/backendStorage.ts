@@ -22,27 +22,40 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
 
   return {
     getItem: async (name: string): Promise<string | null> => {
+      console.log(`[BackendStorage:${preferenceKey}] getItem called for ${name}`);
+
+      // First, try localStorage for immediate hydration (faster)
+      const localValue = localStorage.getItem(localStorageKey);
+
       try {
-        // First, try to get from backend (authoritative source)
+        // Then try to get from backend (authoritative source) in background
         const prefs = await getUserPreferences();
         const backendValue = prefs[preferenceKey];
 
         if (backendValue) {
           // Store in localStorage for offline access
           const serialized = JSON.stringify(backendValue);
-          localStorage.setItem(localStorageKey, serialized);
+          if (serialized !== localValue) {
+            console.log(`[BackendStorage:${preferenceKey}] Updating from backend (was different)`);
+            localStorage.setItem(localStorageKey, serialized);
+            return serialized;
+          }
+          console.log(`[BackendStorage:${preferenceKey}] Backend and local match`);
           return serialized;
         }
       } catch (error) {
-        console.warn(`[BackendStorage] Failed to load from backend for ${preferenceKey}:`, error);
+        console.warn(`[BackendStorage:${preferenceKey}] Failed to load from backend, using localStorage:`, error);
         // Fall through to localStorage
       }
 
       // Fallback to localStorage if backend fails or returns nothing
-      return localStorage.getItem(localStorageKey);
+      console.log(`[BackendStorage:${preferenceKey}] Returning localStorage value:`, localValue ? 'has value' : 'null');
+      return localValue;
     },
 
     setItem: async (name: string, value: string): Promise<void> => {
+      console.log(`[BackendStorage:${preferenceKey}] setItem called for ${name}, saving to localStorage`);
+
       // Always save to localStorage immediately (for offline access and fast reads)
       localStorage.setItem(localStorageKey, value);
 
@@ -52,6 +65,7 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
       }
 
       saveTimeout = setTimeout(async () => {
+        console.log(`[BackendStorage:${preferenceKey}] Syncing to backend after debounce`);
         try {
           // Persist the deserialized state into user preferences.
           // `value` is typically a JSON string from zustand/persist, but
@@ -64,8 +78,9 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
             parsed = value;
           }
           await updatePreferenceKey(preferenceKey as any, parsed as any);
+          console.log(`[BackendStorage:${preferenceKey}] Successfully synced to backend`);
         } catch (error) {
-          console.error(`[BackendStorage] Failed to sync to backend for ${preferenceKey}:`, error);
+          console.error(`[BackendStorage:${preferenceKey}] Failed to sync to backend:`, error);
           // Don't throw - localStorage save already succeeded
         }
       }, SAVE_DEBOUNCE_MS);

@@ -130,7 +130,9 @@ class GenerationCreationService:
         # Validate content rating against world/user constraints
         if is_structured and params.get("social_context"):
             # Fetch world_meta from database
-            player_context = params.get("player_context", {})
+            player_context = params.get("player_context") or {}
+            if not isinstance(player_context, dict):
+                player_context = {}
             world_id = player_context.get("world_id")
 
             world_meta = None
@@ -197,7 +199,9 @@ class GenerationCreationService:
 
         if strategy != "always":
             # Extract context for cache key
-            player_context = params.get("player_context", {})
+            player_context = params.get("player_context") or {}
+            if not isinstance(player_context, dict):
+                player_context = {}
             playthrough_id = player_context.get("playthrough_id")
             player_id = user.id  # Use user ID as player ID
 
@@ -263,7 +267,9 @@ class GenerationCreationService:
         # === PHASE 6: Cache generation if strategy permits ===
         if strategy != "always":
             # Extract context for cache key (same as lookup above)
-            player_context = params.get("player_context", {})
+            player_context = params.get("player_context") or {}
+            if not isinstance(player_context, dict):
+                player_context = {}
             playthrough_id = player_context.get("playthrough_id")
             player_id = user.id
 

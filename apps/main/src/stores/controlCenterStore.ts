@@ -38,6 +38,7 @@ export interface ControlCenterState {
   activeModule: ControlModule;
   enabledModules: Record<string, boolean>; // module preferences
   operationType: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
+  prompt: string;
   recentPrompts: string[];
   providerId?: string;      // selected provider
   presetId?: string;        // selected preset
@@ -59,6 +60,7 @@ export interface ControlCenterActions {
   setActiveModule: (m: ControlModule) => void;
   setModuleEnabled: (moduleId: string, enabled: boolean) => void;
   setOperationType: (op: ControlCenterState['operationType']) => void;
+  setPrompt: (value: string) => void;
   pushPrompt: (p: string) => void;
   setProvider: (id?: string) => void;
   setPreset: (id?: string) => void;
@@ -83,6 +85,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       activeModule: 'quickGenerate',
       enabledModules: {}, // Empty = all enabled by default
       operationType: 'text_to_video',
+      prompt: '',
       recentPrompts: [],
       providerId: undefined,
       presetId: undefined,
@@ -139,6 +142,10 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().operationType === op) return;
         set({ operationType: op });
       },
+      setPrompt: (value) => {
+        if (get().prompt === value) return;
+        set({ prompt: value });
+      },
       pushPrompt: (p) => set(s => ({ recentPrompts: [p, ...s.recentPrompts.slice(0, 19)] })),
       setProvider: (id) => {
         if (get().providerId === id) return;
@@ -154,12 +161,47 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().generating === v) return;
         set({ generating: v });
       },
-      reset: () => set({ mode: 'dock', dockPosition: 'bottom', open: false, pinned: false, height: 300, floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 }, floatingSize: { width: 700, height: 600 }, activeModule: 'quickGenerate', enabledModules: {}, operationType: 'text_to_video', recentPrompts: [], providerId: undefined, presetId: undefined, presetParams: {}, assets: [], generating: false })
+      reset: () => set({
+        mode: 'dock',
+        dockPosition: 'bottom',
+        open: false,
+        pinned: false,
+        height: 300,
+        floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
+        floatingSize: { width: 700, height: 600 },
+        activeModule: 'quickGenerate',
+        enabledModules: {},
+        operationType: 'text_to_video',
+        prompt: '',
+        recentPrompts: [],
+        providerId: undefined,
+        presetId: undefined,
+        presetParams: {},
+        assets: [],
+        generating: false,
+      })
     }),
     {
       name: STORAGE_KEY,
       storage: createBackendStorage('controlCenter'),
-      partialize: (s) => ({ mode: s.mode, dockPosition: s.dockPosition, open: s.open, pinned: s.pinned, height: s.height, floatingPosition: s.floatingPosition, floatingSize: s.floatingSize, activeModule: s.activeModule, enabledModules: s.enabledModules, operationType: s.operationType, recentPrompts: s.recentPrompts, providerId: s.providerId, presetId: s.presetId, presetParams: s.presetParams, assets: s.assets }),
+      partialize: (s) => ({
+        mode: s.mode,
+        dockPosition: s.dockPosition,
+        open: s.open,
+        pinned: s.pinned,
+        height: s.height,
+        floatingPosition: s.floatingPosition,
+        floatingSize: s.floatingSize,
+        activeModule: s.activeModule,
+        enabledModules: s.enabledModules,
+        operationType: s.operationType,
+        prompt: s.prompt,
+        recentPrompts: s.recentPrompts,
+        providerId: s.providerId,
+        presetId: s.presetId,
+        presetParams: s.presetParams,
+        assets: s.assets,
+      }),
       version: 6,
       migrate: (persistedState: any, version: number) => {
         let migrated = { ...persistedState };
@@ -194,11 +236,32 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
 
         return migrated;
       },
-      onRehydrateStorage: () => (state) => {
-        // After rehydration, ensure floating mode is visible
-        if (state?.dockPosition === 'floating' && !state?.open) {
-          state.setOpen(true);
-        }
+      onRehydrateStorage: () => {
+        console.log('[ControlCenterStore] Starting rehydration...');
+        return (state, error) => {
+          if (error) {
+            console.error('[ControlCenterStore] Rehydration error:', error);
+            return;
+          }
+          if (state) {
+            console.log('[ControlCenterStore] Rehydration complete. State:', {
+              mode: state.mode,
+              dockPosition: state.dockPosition,
+              open: state.open,
+              pinned: state.pinned,
+              prompt: state.prompt?.substring(0, 50) + (state.prompt?.length > 50 ? '...' : ''),
+              floatingPosition: state.floatingPosition,
+              floatingSize: state.floatingSize,
+            });
+            // After rehydration, ensure floating mode is visible
+            if (state.dockPosition === 'floating' && !state.open) {
+              console.log('[ControlCenterStore] Setting floating mode to open');
+              state.setOpen(true);
+            }
+          } else {
+            console.warn('[ControlCenterStore] Rehydration returned no state');
+          }
+        };
       },
     }
   )

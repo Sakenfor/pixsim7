@@ -369,7 +369,7 @@ function PanelCard({
               <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={panel.settings?.badgeConfig?.showFooterProvider ?? true}
+                  checked={panel.settings?.badgeConfig?.showFooterProvider ?? false}
                   onChange={(e) => onUpdateSettings({
                     badgeConfig: {
                       ...panel.settings?.badgeConfig,
@@ -393,6 +393,20 @@ function PanelCard({
                   className="w-3 h-3"
                 />
                 <span>Footer date</span>
+              </label>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.enableBadgePulse ?? false}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      enableBadgePulse: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                />
+                <span>Enable badge pulse</span>
               </label>
               </div>
             </div>
@@ -430,6 +444,21 @@ function PanelCard({
                   <span>Show in menu</span>
                 </label>
               </div>
+              <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={panel.settings?.badgeConfig?.showGenerationOnHoverOnly ?? true}
+                  onChange={(e) => onUpdateSettings({
+                    badgeConfig: {
+                      ...panel.settings?.badgeConfig,
+                      showGenerationOnHoverOnly: e.target.checked,
+                    }
+                  })}
+                  className="w-3 h-3"
+                  disabled={!(panel.settings?.badgeConfig?.showGenerationBadge ?? true)}
+                />
+                <span>Only show on hover</span>
+              </label>
 
               {/* Quick Action Selector */}
               <div className="flex flex-col gap-1 mt-1">

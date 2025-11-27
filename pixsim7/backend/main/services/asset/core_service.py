@@ -3,6 +3,7 @@ Asset Core Service
 
 Core CRUD operations for assets: creation, retrieval, search, listing, and deletion.
 """
+import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -526,3 +527,23 @@ class AssetCoreService:
                 raise InvalidOperationError(f"Invalid mode: {mode}")
             assets.append(asset)
         return assets
+
+    async def delete_asset(self, asset_id: int, user: User) -> None:
+        """
+        Delete an asset owned by the user (or any asset if admin).
+
+        Removes the database record and best-effort deletes the local file.
+        """
+        asset = await self.get_asset_for_user(asset_id, user)
+
+        # Attempt to remove local file if present
+        if asset.local_path:
+            try:
+                if os.path.exists(asset.local_path):
+                    os.remove(asset.local_path)
+            except Exception:
+                # Ignore file system errors; deleting DB record should still proceed
+                pass
+
+        await self.db.delete(asset)
+        await self.db.commit()

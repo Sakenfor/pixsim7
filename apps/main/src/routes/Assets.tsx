@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import type { AxiosError } from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssets, type AssetSummary } from '../hooks/useAssets';
 import { useAsset } from '../hooks/useAsset';
@@ -18,6 +19,7 @@ import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwit
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
+import { deleteAsset } from '../lib/api/assets';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
 import { BACKEND_BASE } from '../lib/api/client';
@@ -60,7 +62,7 @@ export function AssetsRoute() {
   };
   const [filters, setFilters] = useState(initialFilters);
   const { providers } = useProviders();
-  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
+  const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
   const jobsSocket = useJobsSocket({ autoConnect: true });
   const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
@@ -84,6 +86,30 @@ export function AssetsRoute() {
   const handleCancelSelection = () => {
     exitSelectionMode();
     closeFloatingPanel('gallery');
+  };
+
+  const handleDeleteAsset = async (asset: AssetSummary) => {
+    const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await deleteAsset(asset.id);
+      setSelectedAssetIds(prev => {
+        const next = new Set(prev);
+        next.delete(String(asset.id));
+        return next;
+      });
+      if (viewerAsset?.id === asset.id) {
+        setViewerAsset(null);
+        setViewerSrc(null);
+      }
+      reset();
+    } catch (err) {
+      console.error('Failed to delete asset:', err);
+      const message =
+        (err as AxiosError)?.response?.data?.detail ||
+        (err instanceof Error ? err.message : 'Failed to delete asset');
+      alert(message);
+    }
   };
 
   function updateURL(next: typeof filters) {
@@ -332,13 +358,14 @@ export function AssetsRoute() {
 	              actions={{
 	                onOpenDetails: (id) => setDetailAssetId(id),
 	                onShowMetadata: (id) => setDetailAssetId(id),
-	                onImageToVideo: () => queueImageToVideo(a),
-	                onVideoExtend: () => queueVideoExtend(a),
-	                onAddToTransition: () => queueAddToTransition(a),
-	                onAddToGenerate: () => queueAutoGenerate(a),
-	              }}
-	              badgeConfig={effectiveBadgeConfig}
-	            />
+                onImageToVideo: () => queueImageToVideo(a),
+                onVideoExtend: () => queueVideoExtend(a),
+                onAddToTransition: () => queueAddToTransition(a),
+                onAddToGenerate: () => queueAutoGenerate(a),
+                onDelete: () => handleDeleteAsset(a),
+              }}
+              badgeConfig={effectiveBadgeConfig}
+            />
 	          </div>
 	          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <Button
@@ -385,16 +412,17 @@ export function AssetsRoute() {
 	          status={a.sync_status}
 	          providerStatus={a.provider_status}
 	          onOpen={() => handleOpenInViewer(a)}
-	          actions={{
-	            onOpenDetails: (id) => setDetailAssetId(id),
-	            onShowMetadata: (id) => setDetailAssetId(id),
-	            onImageToVideo: () => queueImageToVideo(a),
-	            onVideoExtend: () => queueVideoExtend(a),
-	            onAddToTransition: () => queueAddToTransition(a),
-	            onAddToGenerate: () => queueAutoGenerate(a),
-	          }}
-	          badgeConfig={effectiveBadgeConfig}
-	        />
+            actions={{
+              onOpenDetails: (id) => setDetailAssetId(id),
+              onShowMetadata: (id) => setDetailAssetId(id),
+              onImageToVideo: () => queueImageToVideo(a),
+              onVideoExtend: () => queueVideoExtend(a),
+              onAddToTransition: () => queueAddToTransition(a),
+              onAddToGenerate: () => queueAutoGenerate(a),
+              onDelete: () => handleDeleteAsset(a),
+            }}
+            badgeConfig={effectiveBadgeConfig}
+          />
 	      </div>
 	    );
 	  });
@@ -468,6 +496,17 @@ export function AssetsRoute() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                const settingsPanel = useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
+                // TODO: Navigate to Panels tab and scroll to gallery section
+              }}
+              className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+              title="Open badge configuration settings"
+            >
+              <ThemedIcon name="settings" size={14} variant="default" />
+            </button>
           </div>
 
           <div className="flex gap-1 text-xs">
@@ -527,18 +566,34 @@ export function AssetsRoute() {
             </button>
           )}
           <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${
-              jobsSocket.connected
-                ? 'border-green-500 text-green-600 dark:text-green-300'
-                : 'border-amber-500 text-amber-600 dark:text-amber-300'
-            }`}>
+            <button
+              type="button"
+              onClick={() => {
+                if (jobsSocket.connected) {
+                  // Open generation dev panel or show info
+                  const hasDevPanel = useWorkspaceStore.getState().openFloatingPanel('generation-dev', { width: 800, height: 600 });
+                } else {
+                  alert('Jobs feed is offline.\n\nThe WebSocket connection to the backend is not available. This may be because:\n\n• Backend server is not running\n• Network connectivity issue\n• WebSocket endpoint not configured\n\nGeneration requests will still work, but you won\'t receive real-time status updates.');
+                }
+              }}
+              className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] transition-all hover:shadow-md ${
+                jobsSocket.connected
+                  ? 'border-green-500 text-green-600 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 cursor-pointer'
+                  : 'border-amber-500 text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 cursor-help'
+              }`}
+              title={
+                jobsSocket.connected
+                  ? 'Click to view generation jobs and status'
+                  : 'Jobs feed offline - Click for more info'
+              }
+            >
               <span
                 className={`w-2 h-2 rounded-full mr-1 ${
-                  jobsSocket.connected ? 'bg-green-500' : 'bg-amber-500'
+                  jobsSocket.connected ? 'bg-green-500 animate-pulse-subtle' : 'bg-amber-500'
                 }`}
               />
               Jobs feed: {jobsSocket.connected ? 'live' : 'offline'}
-            </span>
+            </button>
             {jobsSocket.error && (
               <span className="text-[10px] text-red-500 dark:text-red-400">
                 ({jobsSocket.error})

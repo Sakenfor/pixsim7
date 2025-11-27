@@ -34,6 +34,8 @@ export function QuickGenerateModule() {
   const setProvider = useControlCenterStore(s => s.setProvider);
   const setOperationType = useControlCenterStore(s => s.setOperationType);
   const setGenerating = useControlCenterStore(s => s.setGenerating);
+  const prompt = useControlCenterStore(s => s.prompt);
+  const setPrompt = useControlCenterStore(s => s.setPrompt);
   const pushPrompt = useControlCenterStore(s => s.pushPrompt);
 
   // Active asset support
@@ -48,7 +50,6 @@ export function QuickGenerateModule() {
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
 
-  const [prompt, setPrompt] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<number | null>(null);
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);

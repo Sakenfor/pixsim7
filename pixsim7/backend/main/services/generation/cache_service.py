@@ -82,10 +82,19 @@ class GenerationCacheService:
         Returns:
             Cache key string
         """
-        # Extract scene references from canonical params
-        scene_context = canonical_params.get("scene_context", {})
-        from_scene = scene_context.get("from_scene", {})
-        to_scene = scene_context.get("to_scene", {})
+        # Extract scene references from canonical params (defensive against None)
+        scene_context = canonical_params.get("scene_context") or {}
+        if not isinstance(scene_context, dict):
+            scene_context = {}
+
+        from_scene = scene_context.get("from_scene") or {}
+        if not isinstance(from_scene, dict):
+            from_scene = {}
+
+        to_scene = scene_context.get("to_scene") or {}
+        if not isinstance(to_scene, dict):
+            to_scene = {}
+
         from_scene_id = from_scene.get("id", "none")
         to_scene_id = to_scene.get("id", "none")
 

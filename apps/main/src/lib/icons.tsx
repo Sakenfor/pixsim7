@@ -71,6 +71,7 @@ import {
   User,
   Clock,
   Code,
+  ListPlus,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -110,6 +111,7 @@ export const Icons = {
   add: Plus,
   remove: Minus,
   delete: Trash,
+  trash: Trash,
   edit: Edit,
   copy: Copy,
   save: Save,
@@ -119,6 +121,7 @@ export const Icons = {
   cut: Scissors,
   clipboard: Clipboard,
   link: Link2,
+  listPlus: ListPlus,
 
   // Playback
   play: Play,

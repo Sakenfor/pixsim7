@@ -14,3 +14,6 @@ export async function getAsset(assetId: number): Promise<AssetResponse> {
   return res.data;
 }
 
+export async function deleteAsset(assetId: number): Promise<void> {
+  await apiClient.delete(`/assets/${assetId}`);
+}

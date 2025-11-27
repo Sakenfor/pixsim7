@@ -31,8 +31,13 @@ export function mergeBadgeConfig(
     showStatusIcon: true,
     showStatusTextOnHover: true,
     showTagsInOverlay: true,
-    showFooterProvider: true,
+    showFooterProvider: false,
     showFooterDate: true,
+    showGenerationBadge: true,
+    showGenerationInMenu: true,
+    showGenerationOnHoverOnly: true,
+    generationQuickAction: 'auto',
+    enableBadgePulse: false,
   };
 
   // Merge in order of priority: defaults < surface < panel < widget

@@ -30,6 +30,9 @@ export const ccSelectors = {
   /** Selected provider ID */
   providerId: (s: ControlCenterState) => s.providerId,
 
+  /** Current prompt draft */
+  prompt: (s: ControlCenterState) => s.prompt,
+
   /** Selected preset ID */
   presetId: (s: ControlCenterState) => s.presetId,
 
