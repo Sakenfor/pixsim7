@@ -127,5 +127,25 @@ export function registerDevTools(): void {
     tags: ['prompts', 'analysis', 'import', 'library'],
   });
 
+  devToolRegistry.register({
+    id: 'prompt-block-graph',
+    label: 'Prompt Block Graph',
+    description: 'Visualize parsed prompt blocks as a graph',
+    icon: '🔗',
+    category: 'prompts',
+    routePath: '/dev/prompt-lab',
+    tags: ['prompts', 'graph', 'analysis', 'blocks'],
+  });
+
+  devToolRegistry.register({
+    id: 'action-block-graph',
+    label: 'Action Block Graph',
+    description: 'Visualize ActionBlocks and their compatibility/composition',
+    icon: '🧩',
+    category: 'prompts',
+    routePath: '/dev/action-block-graph',
+    tags: ['action-blocks', 'graph', 'library', 'prompts'],
+  });
+
   console.log(`[DevToolRegistry] Registered ${devToolRegistry.getAll().length} dev tools`);
 }

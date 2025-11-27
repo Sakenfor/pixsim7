@@ -10,6 +10,7 @@ import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { DevPromptImporter } from './DevPromptImporter';
 import { PromptBlocksViewer } from '../components/prompts/PromptBlocksViewer';
+import { PromptBlockGraphSurface } from '../components/graph/PromptBlockGraphSurface';
 import { useApi } from '../hooks/useApi';
 
 // ===== Types =====
@@ -332,6 +333,9 @@ function LibraryTab() {
   const [versionLoading, setVersionLoading] = useState(false);
   const [versionError, setVersionError] = useState<string | null>(null);
 
+  // View mode for version detail
+  const [versionViewMode, setVersionViewMode] = useState<'blocks' | 'graph'>('blocks');
+
   // Load families
   const loadFamilies = async () => {
     setFamiliesLoading(true);
@@ -566,6 +570,53 @@ function LibraryTab() {
           </Panel>
         ) : (
           <>
+            {/* View Mode Toggle */}
+            <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+              <button
+                onClick={() => setVersionViewMode('blocks')}
+                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                  versionViewMode === 'blocks'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+                }`}
+              >
+                Blocks View
+              </button>
+              <button
+                onClick={() => setVersionViewMode('graph')}
+                className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
+                  versionViewMode === 'graph'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
+                }`}
+              >
+                Graph View
+              </button>
+            </div>
+
+            {versionViewMode === 'graph' ? (
+              /* Graph View */
+              selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.blocks ? (
+                <Panel className="p-0 h-[700px]">
+                  <PromptBlockGraphSurface
+                    blocks={selectedVersion.prompt_analysis.blocks}
+                    versionId={selectedVersion.version.id}
+                    promptTitle={selectedFamily?.title || 'Prompt'}
+                    includeRoleGroups={false}
+                  />
+                </Panel>
+              ) : (
+                <Panel className="p-12 text-center">
+                  <Icon name="alert-circle" className="h-12 w-12 mx-auto mb-4 text-neutral-400" />
+                  <h3 className="text-lg font-semibold mb-2">No Analysis Available</h3>
+                  <p className="text-neutral-600 dark:text-neutral-400">
+                    This version doesn't have prompt analysis data
+                  </p>
+                </Panel>
+              )
+            ) : (
+              /* Blocks View */
+              <>
             {/* Prompt Text */}
             <Panel className="p-6">
               <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
@@ -621,6 +672,8 @@ function LibraryTab() {
                   blocks={selectedVersion.prompt_analysis.blocks}
                 />
               </>
+            )}
+            </>
             )}
           </>
         )}

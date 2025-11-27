@@ -28,6 +28,7 @@ import { ModulesDev } from './routes/ModulesDev';
 import { PromptInspectorDev } from './routes/PromptInspectorDev';
 import { DevPromptImporter } from './routes/DevPromptImporter';
 import { PromptLabDev } from './routes/PromptLabDev';
+import { ActionBlockGraphDev } from './routes/ActionBlockGraphDev';
 import { ControlCenterManager } from './components/control/ControlCenterManager';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
@@ -96,6 +97,7 @@ function App() {
           <Route path="/dev/prompt-inspector" element={<ProtectedRoute><PromptInspectorDev /></ProtectedRoute>} />
           <Route path="/dev/prompt-importer" element={<ProtectedRoute><DevPromptImporter /></ProtectedRoute>} />
           <Route path="/dev/prompt-lab" element={<ProtectedRoute><PromptLabDev /></ProtectedRoute>} />
+          <Route path="/dev/action-block-graph" element={<ProtectedRoute><ActionBlockGraphDev /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

@@ -20,6 +20,7 @@ export type DevToolCategory =
   | 'generation'
   | 'world'
   | 'debug'
+  | 'prompts'
   | 'misc';
 
 export interface DevToolDefinition {
