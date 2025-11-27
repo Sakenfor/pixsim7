@@ -12,6 +12,8 @@ import { logEvent } from '../../lib/logging';
 import { GenerationPluginRenderer } from '../../lib/providers';
 import { useGenerationWebSocket } from '../../hooks/useGenerationWebSocket';
 import { useQuickGenerateController } from '../../hooks/useQuickGenerateController';
+import { CompactAssetCard } from './CompactAssetCard';
+import { ThemedIcon } from '../../lib/icons';
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
@@ -49,6 +51,10 @@ export function QuickGenerateModule() {
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
 
+  // UI state for collapsible sections
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
     if (!specs?.operation_specs) return [];
@@ -79,230 +85,337 @@ export function QuickGenerateModule() {
     ? prompt.trim().length > 0
     : true; // Other operations may not strictly require prompt
 
+  // Get the asset to display based on operation type
+  const getDisplayAssets = () => {
+    if (operationType === 'video_transition') {
+      return transitionQueue.map(q => q.asset);
+    }
+
+    // For image_to_video or video_extend, prefer queue first, then active asset
+    if (mainQueue.length > 0) {
+      return [mainQueue[0].asset];
+    }
+
+    if (lastSelectedAsset &&
+        ((operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
+         (operationType === 'video_extend' && lastSelectedAsset.type === 'video'))) {
+      // Convert SelectedAsset to AssetSummary-like shape
+      return [{
+        id: 0, // placeholder
+        provider_asset_id: lastSelectedAsset.name,
+        media_type: lastSelectedAsset.type as 'image' | 'video',
+        thumb_url: lastSelectedAsset.url,
+        remote_url: lastSelectedAsset.url,
+        provider_status: 'unknown' as const,
+        description: lastSelectedAsset.name,
+      }];
+    }
+
+    return [];
+  };
+
+  const displayAssets = getDisplayAssets();
+  const showAssets = operationType !== 'text_to_video' && operationType !== 'fusion';
+
   return (
     <div className="flex flex-col gap-3 h-full overflow-y-auto">
-      {/* Active asset indicator */}
-      {lastSelectedAsset && (
-        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded text-xs flex-shrink-0">
-          <span className="font-medium text-blue-700 dark:text-blue-300">
-            Active: {lastSelectedAsset.name} ({lastSelectedAsset.type})
-          </span>
-          <div className="flex-1" />
-          {(operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
-           (operationType === 'video_extend' && lastSelectedAsset.type === 'video') ? (
-            <button
-              onClick={useActiveAsset}
-              className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              disabled={generating}
-            >
-              Use Asset
-            </button>
-          ) : null}
-        </div>
-      )}
-
-      {/* Queued assets indicator */}
-      {(mainQueue.length > 0 || transitionQueue.length > 0) && (
-        <div className="flex flex-col gap-2 p-2 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded text-xs flex-shrink-0">
-          {mainQueue.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-purple-700 dark:text-purple-300">
-                ⚡ Queue: {mainQueue[0].asset.provider_asset_id} ({mainQueue[0].asset.media_type})
-                {mainQueue.length > 1 && ` +${mainQueue.length - 1} more`}
-              </span>
-              <div className="flex-1" />
-              <button
-                onClick={() => consumeFromQueue('main')}
-                className="px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-[10px]"
-                disabled={generating}
-              >
-                Use & Remove
-              </button>
-              <button
-                onClick={() => removeFromQueue(mainQueue[0].asset.id, 'main')}
-                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
-                disabled={generating}
-              >
-                Remove
-              </button>
-            </div>
-          )}
-          {transitionQueue.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-purple-700 dark:text-purple-300">
-                🎬 Transition Queue: {transitionQueue.length} asset{transitionQueue.length !== 1 ? 's' : ''}
-              </span>
-              <div className="flex-1" />
-              <button
-                onClick={clearTransitionQueue}
-                  className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
-                  disabled={generating}
-                >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Top controls */}
-      <div className="flex gap-3 items-start flex-shrink-0">
-        {/* Left column - Prompt and dynamic fields */}
-        <div className="flex-1 flex flex-col gap-3">
-          {/* Operation selector */}
-          <div className="flex gap-2 items-center">
-            <label className="text-xs text-neutral-500 font-medium">Operation</label>
-            <select
-              value={operationType}
-              onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
-              disabled={generating}
-              className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50"
-            >
-              <option value="text_to_video">Text to Video</option>
-              <option value="image_to_video">Image to Video</option>
-              <option value="video_extend">Video Extend</option>
-              <option value="video_transition">Video Transition</option>
-              <option value="fusion">Fusion</option>
-            </select>
-          </div>
-
-          {/* Prompt input - canonical */}
-          <PromptInput
-            value={prompt}
-            onChange={setPrompt}
-            maxChars={maxChars}
+      {/* Header: Operation selector */}
+      <div className="flex gap-2 items-center justify-between flex-shrink-0 pb-2 border-b border-neutral-200 dark:border-neutral-700">
+        <div className="flex gap-2 items-center flex-1">
+          <label className="text-xs text-neutral-500 font-medium">Mode:</label>
+          <select
+            value={operationType}
+            onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
             disabled={generating}
-            variant="compact"
-            placeholder={`Describe what you want to generate (${operationType})…`}
-          />
+            className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 flex-1"
+          >
+            <option value="text_to_video">Text to Video</option>
+            <option value="image_to_video">Image to Video</option>
+            <option value="video_extend">Video Extend</option>
+            <option value="video_transition">Video Transition</option>
+            <option value="fusion">Fusion</option>
+          </select>
+        </div>
 
-          {/* Array fields for video_transition */}
-          {needsArrayFields && (
-            <div className="grid grid-cols-2 gap-3">
-              <ArrayFieldInput
-                value={imageUrls}
-                onChange={setImageUrls}
-                placeholder="Image URL"
-                label="Image URLs"
-                disabled={generating}
-                minItems={2}
-              />
-              <ArrayFieldInput
-                value={prompts}
-                onChange={setPrompts}
-                placeholder="Prompt"
-                label="Prompts"
-                disabled={generating}
-                minItems={2}
-              />
+        {/* Settings toggle */}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+          title="Toggle settings"
+        >
+          <ThemedIcon name={showSettings ? 'chevronUp' : 'settings'} size={16} variant="default" />
+        </button>
+      </div>
+
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col gap-3">
+        {/* Visual asset display - adaptive based on operation type */}
+        {showAssets && (
+          <div className="flex-shrink-0">
+            {operationType === 'video_transition' ? (
+              // Transition mode: show images with prompts
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                  <ThemedIcon name="shuffle" size={14} variant="default" />
+                  <span className="font-medium">Transition Sequence ({transitionQueue.length} images)</span>
+                  {transitionQueue.length > 0 && (
+                    <button
+                      onClick={clearTransitionQueue}
+                      className="ml-auto px-2 py-1 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                      disabled={generating}
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                {displayAssets.length > 0 ? (
+                  <div className="space-y-2">
+                    {displayAssets.map((asset, idx) => (
+                      <div key={idx} className="flex gap-2 items-start">
+                        {/* Asset card */}
+                        <div className="w-32 flex-shrink-0">
+                          <CompactAssetCard
+                            asset={asset}
+                            label={`Image ${idx + 1}`}
+                            showRemoveButton
+                            onRemove={() => removeFromQueue(asset.id, 'transition')}
+                          />
+                        </div>
+
+                        {/* Prompt for this transition */}
+                        <div className="flex-1 flex flex-col gap-1">
+                          <label className="text-[10px] text-neutral-500 font-medium">
+                            {idx === 0 ? 'Starting prompt' : `Transition to Image ${idx + 1}`}
+                          </label>
+                          <input
+                            type="text"
+                            value={prompts[idx] || ''}
+                            onChange={(e) => {
+                              const newPrompts = [...prompts];
+                              newPrompts[idx] = e.target.value;
+                              setPrompts(newPrompts);
+                            }}
+                            placeholder={`Describe transition ${idx > 0 ? `to image ${idx + 1}` : 'from first image'}...`}
+                            disabled={generating}
+                            className="px-2 py-1.5 text-xs border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Helper text */}
+                    <div className="text-[10px] text-neutral-500 italic px-2">
+                      💡 Each image needs a prompt describing how to transition to it. The video will smoothly blend between these images following your prompts.
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-500 italic p-4 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                    No images queued for transition. Use "Add to Transition" from the gallery to add images.
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Single asset mode (image_to_video, video_extend)
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                  <ThemedIcon
+                    name={operationType === 'image_to_video' ? 'image' : 'video'}
+                    size={14}
+                    variant="default"
+                  />
+                  <span className="font-medium">
+                    {operationType === 'image_to_video' ? 'Source Image' : 'Source Video'}
+                  </span>
+                </div>
+
+                {displayAssets.length > 0 ? (
+                  <div className="flex gap-2 items-center">
+                    <div className="w-48">
+                      <CompactAssetCard
+                        asset={displayAssets[0]}
+                        showRemoveButton={mainQueue.length > 0}
+                        onRemove={() => mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')}
+                      />
+                    </div>
+
+                    {/* Queue indicator if more items */}
+                    {mainQueue.length > 1 && (
+                      <div className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-1 rounded">
+                        +{mainQueue.length - 1} more in queue
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs text-neutral-500 italic p-4 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                    No {operationType === 'image_to_video' ? 'image' : 'video'} selected.
+                    {operationType === 'image_to_video'
+                      ? ' Click "Image to Video" on a gallery image, or paste an image URL in settings below.'
+                      : ' Click "Video Extend" on a gallery video, or paste a video URL in settings below.'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Prompt input - always visible for non-transition modes */}
+        {operationType !== 'video_transition' && (
+          <div className="flex-shrink-0">
+            <PromptInput
+              value={prompt}
+              onChange={setPrompt}
+              maxChars={maxChars}
+              disabled={generating}
+              variant="compact"
+              placeholder={`Describe what you want to generate (${operationType})…`}
+            />
+          </div>
+        )}
+
+        {/* Collapsible Settings */}
+        {showSettings && (
+          <div className="flex-shrink-0 space-y-3 p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Settings</h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+              >
+                <ThemedIcon name="x" size={14} variant="default" />
+              </button>
             </div>
-          )}
 
-          {/* Dynamic parameter form based on operation_specs */}
-          {paramSpecs.length > 0 && (
-            <div className="border-t pt-3">
-              <DynamicParamForm
-                specs={paramSpecs}
+            {/* Provider selection */}
+            <div>
+              <label className="text-xs text-neutral-500 font-medium block mb-1">Provider</label>
+              <select
+                value={providerId ?? ''}
+                onChange={(e) => setProvider(e.target.value || undefined)}
+                disabled={generating}
+                className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
+              >
+                <option value="">Auto</option>
+                {providers.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Active preset display */}
+            {presetId && (
+              <div className="text-xs p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded">
+                <div className="font-medium text-blue-700 dark:text-blue-300">Preset: {presetId}</div>
+                {Object.keys(presetParams).length > 0 && (
+                  <div className="mt-1 text-neutral-600 dark:text-neutral-400">
+                    {Object.entries(presetParams).map(([k, v]) => (
+                      <div key={k}>{k}: {String(v)}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Dynamic parameters (collapsed in advanced) */}
+            {paramSpecs.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 mb-2"
+                >
+                  <ThemedIcon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size={12} variant="default" />
+                  Advanced Parameters ({paramSpecs.length})
+                </button>
+
+                {showAdvanced && (
+                  <div className="pl-3 border-l-2 border-neutral-300 dark:border-neutral-700">
+                    <DynamicParamForm
+                      specs={paramSpecs}
+                      values={dynamicParams}
+                      onChange={handleDynamicParamChange}
+                      disabled={generating}
+                      operationType={operationType}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Provider-specific plugin UI */}
+            {providerId && (
+              <GenerationPluginRenderer
+                providerId={providerId}
+                operationType={operationType}
                 values={dynamicParams}
                 onChange={handleDynamicParamChange}
                 disabled={generating}
-                operationType={operationType}
               />
-            </div>
-          )}
-
-          {/* Provider-specific plugin UI */}
-          {providerId && (
-            <GenerationPluginRenderer
-              providerId={providerId}
-              operationType={operationType}
-              values={dynamicParams}
-              onChange={handleDynamicParamChange}
-              disabled={generating}
-            />
-          )}
-
-          {/* Error display */}
-          {error && (
-            <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
-              {error}
-            </div>
-          )}
-
-          {/* Generation status indicator */}
-          {generationId && (
-            <GenerationStatusDisplay generationId={generationId} />
-          )}
-        </div>
-
-        {/* Right column - Provider and controls */}
-        <div className="w-64 flex-shrink-0 flex flex-col gap-3">
-          <div>
-            <label className="text-xs text-neutral-500 font-medium block mb-1">Provider</label>
-            <select
-              value={providerId ?? ''}
-              onChange={(e) => setProvider(e.target.value || undefined)}
-              disabled={generating}
-              className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-            >
-              <option value="">Auto</option>
-              {providers.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            )}
           </div>
+        )}
 
-          {/* Active preset display */}
-          {presetId && (
-            <div className="text-xs p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded">
-              <div className="font-medium text-blue-700 dark:text-blue-300">Preset: {presetId}</div>
-              {Object.keys(presetParams).length > 0 && (
-                <div className="mt-1 text-neutral-600 dark:text-neutral-400">
-                  {Object.entries(presetParams).map(([k, v]) => (
-                    <div key={k}>{k}: {String(v)}</div>
-                  ))}
-                </div>
-              )}
+        {/* Error display */}
+        {error && (
+          <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded flex-shrink-0 border border-red-200 dark:border-red-800">
+            <div className="flex items-start gap-2">
+              <ThemedIcon name="alertCircle" size={14} variant="default" className="flex-shrink-0 mt-0.5" />
+              <div>{error}</div>
             </div>
-          )}
+          </div>
+        )}
 
+        {/* Generation status indicator */}
+        {generationId && (
+          <GenerationStatusDisplay generationId={generationId} />
+        )}
+
+        {/* Generate button - prominent and always visible */}
+        <div className="flex-shrink-0 sticky bottom-0 bg-white dark:bg-neutral-950 pt-2 border-t border-neutral-200 dark:border-neutral-700">
           <button
             onClick={generate}
             disabled={generating || !canGenerate}
             className={clsx(
-              'py-2.5 px-4 rounded text-sm font-medium text-white transition-colors',
+              'w-full py-3 px-4 rounded-lg text-sm font-semibold text-white transition-all shadow-lg',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               generating || !canGenerate
                 ? 'bg-neutral-400'
-                : 'bg-blue-600 hover:bg-blue-700'
+                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 hover:shadow-xl'
             )}
           >
-            {generating ? 'Generating…' : 'Generate'}
+            {generating ? (
+              <span className="flex items-center justify-center gap-2">
+                <ThemedIcon name="loader" size={16} variant="default" className="animate-spin" />
+                Generating…
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <ThemedIcon name="zap" size={16} variant="default" />
+                Generate
+              </span>
+            )}
           </button>
         </div>
-      </div>
 
-      {/* Recent prompts */}
-      {recentPrompts.length > 0 && (
-        <div className="border-t pt-3 flex-shrink-0">
-          <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
-          <div className="flex gap-1 flex-wrap">
-            {recentPrompts.slice(0, 5).map((p, i) => (
-              <button
-                key={i}
-                onClick={() => restorePrompt(p)}
-                disabled={generating}
-                className="text-xs px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-xs disabled:opacity-50"
-                title={p}
-              >
-                {p.length > 50 ? `${p.slice(0, 50)}…` : p}
-              </button>
-            ))}
+        {/* Recent prompts */}
+        {recentPrompts.length > 0 && (
+          <div className="flex-shrink-0 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+            <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
+            <div className="flex gap-1 flex-wrap">
+              {recentPrompts.slice(0, 5).map((p, i) => (
+                <button
+                  key={i}
+                  onClick={() => restorePrompt(p)}
+                  disabled={generating}
+                  className="text-xs px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-xs disabled:opacity-50"
+                  title={p}
+                >
+                  {p.length > 50 ? `${p.slice(0, 50)}…` : p}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Quick shortcuts moved to Control Center header */}
+        )}
+      </div>
     </div>
   );
 }

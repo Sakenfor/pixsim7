@@ -38,9 +38,10 @@ export interface BuildGenerationResult {
  * This helper centralizes operation-specific validation and parameter
  * construction so the React component can stay mostly presentational.
  *
- * NOTE: Current behavior mirrors the existing inline logic in
- * QuickGenerateModule. Future UX changes (Task 67) should extend
- * this function rather than re-adding logic in the UI layer.
+ * Enhanced with Task 67 improvements:
+ * - Context-aware error messages that reference user actions
+ * - Better handling of queued assets and local-only states
+ * - Auto-recovery from common validation issues
  */
 export function buildGenerationRequest(context: QuickGenerateContext): BuildGenerationResult {
   const {
@@ -50,32 +51,99 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     dynamicParams,
     imageUrls,
     prompts,
+    activeAsset,
+    mainQueueFirst,
   } = context;
 
   const trimmedPrompt = prompt.trim();
 
-  // Operation-specific validation
+  // Operation-specific validation with context-aware messages
   if (operationType === 'text_to_video' && !trimmedPrompt) {
     return {
-      error: 'Prompt is required for text-to-video',
+      error: 'Please enter a prompt describing what you want to generate.',
       finalPrompt: trimmedPrompt,
     };
   }
 
-  if (operationType === 'image_to_video' && !dynamicParams.image_url) {
-    return {
-      error: 'Image URL is required for image-to-video',
-      finalPrompt: trimmedPrompt,
-    };
+  if (operationType === 'image_to_video') {
+    // Try auto-recovery: use queued asset or active asset if available
+    let imageUrl = dynamicParams.image_url;
+
+    if (!imageUrl && mainQueueFirst?.asset.media_type === 'image') {
+      imageUrl = mainQueueFirst.asset.remote_url;
+      if (imageUrl) {
+        // Auto-fill succeeded, update params
+        context.dynamicParams.image_url = imageUrl;
+      }
+    }
+
+    if (!imageUrl && activeAsset?.type === 'image') {
+      imageUrl = activeAsset.url;
+      if (imageUrl) {
+        context.dynamicParams.image_url = imageUrl;
+      }
+    }
+
+    // Still no URL? Provide context-aware error
+    if (!imageUrl) {
+      if (mainQueueFirst?.asset.media_type === 'image' && !mainQueueFirst.asset.remote_url) {
+        return {
+          error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
+      if (activeAsset?.type === 'image') {
+        return {
+          error: 'The selected image has no usable URL. Try selecting a gallery image that has been uploaded to the provider.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
+      return {
+        error: 'No image selected. Click "Image to Video" on a gallery image, or paste an image URL in Settings.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
   }
 
   if (operationType === 'video_extend') {
-    const hasVideoUrl = Boolean(dynamicParams.video_url);
+    let videoUrl = dynamicParams.video_url;
     const hasOriginalId = Boolean(dynamicParams.original_video_id);
 
-    if (!hasVideoUrl && !hasOriginalId) {
+    // Try auto-recovery: use queued asset or active asset
+    if (!videoUrl && !hasOriginalId && mainQueueFirst?.asset.media_type === 'video') {
+      videoUrl = mainQueueFirst.asset.remote_url;
+      if (videoUrl) {
+        context.dynamicParams.video_url = videoUrl;
+      }
+    }
+
+    if (!videoUrl && !hasOriginalId && activeAsset?.type === 'video') {
+      videoUrl = activeAsset.url;
+      if (videoUrl) {
+        context.dynamicParams.video_url = videoUrl;
+      }
+    }
+
+    // Still no URL or ID? Provide context-aware error
+    if (!videoUrl && !hasOriginalId) {
+      if (mainQueueFirst?.asset.media_type === 'video' && !mainQueueFirst.asset.remote_url) {
+        return {
+          error: 'The queued video is local-only and has no cloud URL. Upload it to the provider first, or select a different video.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
+      if (activeAsset?.type === 'video') {
+        return {
+          error: 'The selected video has no usable URL. Try selecting a gallery video that has been uploaded to the provider.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
       return {
-        error: 'Either video URL or provider video ID is required',
+        error: 'No video selected. Click "Video Extend" on a gallery video, or paste a video URL in Settings.',
         finalPrompt: trimmedPrompt,
       };
     }
@@ -85,16 +153,23 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     const validImages = imageUrls.map(s => s.trim()).filter(Boolean);
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
-    if (!validImages.length || !validPrompts.length) {
+    if (!validImages.length) {
       return {
-        error: 'Both image URLs and prompts are required for video transition',
+        error: 'No images in transition queue. Use "Add to Transition" from the gallery to add images.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
+
+    if (!validPrompts.length) {
+      return {
+        error: 'Transition prompts are required. Add a prompt for each image describing how to transition to it.',
         finalPrompt: trimmedPrompt,
       };
     }
 
     if (validImages.length !== validPrompts.length) {
       return {
-        error: 'Number of image URLs must match number of prompts',
+        error: `You have ${validImages.length} images but ${validPrompts.length} prompts. Each image needs exactly one prompt describing the transition to it.`,
         finalPrompt: trimmedPrompt,
       };
     }
