@@ -1,16 +1,13 @@
 /**
  * Plugin Browser Controller Hook
  *
- * Centralizes plugin browser state and logic for both legacy plugins
- * and workspace panel plugins. Separates business logic from presentation.
+ * Centralizes all plugin browsing logic for both legacy plugins and workspace panels.
+ * Provides a single source of truth for:
+ * - Plugin loading and filtering
+ * - Workspace panel activation/deactivation
+ * - Tab management
  *
- * Usage:
- * ```tsx
- * function PluginBrowser() {
- *   const controller = usePluginBrowserController();
- *   // Use controller fields/callbacks in JSX
- * }
- * ```
+ * This follows the controller + presentational component pattern used throughout the app.
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -25,26 +22,23 @@ import {
   type PluginMeta,
   type PluginKind,
 } from '../lib/plugins/catalog';
-import { pluginCatalog, pluginActivationManager } from '../lib/plugins/pluginSystem';
-import type { ExtendedPluginMetadata } from '../lib/plugins/pluginSystem';
+import {
+  pluginCatalog,
+  pluginActivationManager,
+  type ExtendedPluginMetadata,
+} from '../lib/plugins/pluginSystem';
 
-/**
- * Browser tab discriminator
- */
+// ============================================================================
+// Types
+// ============================================================================
+
 export type BrowserTab = 'legacy' | 'workspace-panels';
 
-/**
- * Category filter for workspace panels
- */
 export type PanelCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
-
-/**
- * Origin filter for workspace panels
- */
 export type PanelOrigin = 'all' | 'builtin' | 'plugin-dir' | 'ui-bundle';
 
 /**
- * Controller return type
+ * Controller state and actions for the Plugin Browser
  */
 export interface PluginBrowserController {
   // Tab management
@@ -75,30 +69,41 @@ export interface PluginBrowserController {
   setPanelCategoryFilter: (category: PanelCategory) => void;
   panelOriginFilter: PanelOrigin;
   setPanelOriginFilter: (origin: PanelOrigin) => void;
-
-  // Workspace panels actions
   handleTogglePanelActivation: (panelId: string) => Promise<void>;
 }
 
+// ============================================================================
+// Controller Hook
+// ============================================================================
+
 /**
- * Plugin Browser Controller Hook
+ * Plugin Browser Controller
+ *
+ * Manages all state and logic for the Plugin Browser component.
+ * Handles both legacy plugins and workspace panels.
  */
 export function usePluginBrowserController(): PluginBrowserController {
-  // ============================================================================
-  // Tab State
-  // ============================================================================
+  // Tab state
   const [activeTab, setActiveTab] = useState<BrowserTab>('legacy');
 
-  // ============================================================================
-  // Legacy Plugins State (Phase 70.1)
-  // ============================================================================
+  // Legacy plugins state
   const [plugins, setPlugins] = useState<PluginMeta[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [featureFilter, setFeatureFilter] = useState<string>('all');
 
-  // Load plugins
+  // Workspace panels state
+  const [panelPlugins, setPanelPlugins] = useState<ExtendedPluginMetadata<'workspace-panel'>[]>([]);
+  const [panelSearchQuery, setPanelSearchQuery] = useState('');
+  const [panelCategoryFilter, setPanelCategoryFilter] = useState<PanelCategory>('all');
+  const [panelOriginFilter, setPanelOriginFilter] = useState<PanelOrigin>('all');
+
+  // ========================================================================
+  // Legacy Plugins Logic
+  // ========================================================================
+
+  // Load legacy plugins
   useEffect(() => {
     const allPlugins = listAllPlugins();
     setPlugins(allPlugins);
@@ -108,7 +113,7 @@ export function usePluginBrowserController(): PluginBrowserController {
   const categories = useMemo(() => getUniqueCategories(plugins), [plugins]);
   const features = useMemo(() => getUniqueFeatures(plugins), [plugins]);
 
-  // Apply filters
+  // Apply filters to legacy plugins
   const filteredPlugins = useMemo(() => {
     let filtered = plugins;
 
@@ -137,17 +142,13 @@ export function usePluginBrowserController(): PluginBrowserController {
 
   // Check if there are any control center plugins
   const hasControlCenterPlugins = useMemo(
-    () => filteredPlugins.some(p => p.providesFeatures?.includes('control-center')),
+    () => filteredPlugins.some((p) => p.providesFeatures?.includes('control-center')),
     [filteredPlugins]
   );
 
-  // ============================================================================
-  // Workspace Panels State (Phase 70.2)
-  // ============================================================================
-  const [panelPlugins, setPanelPlugins] = useState<ExtendedPluginMetadata<'workspace-panel'>[]>([]);
-  const [panelSearchQuery, setPanelSearchQuery] = useState('');
-  const [panelCategoryFilter, setPanelCategoryFilter] = useState<PanelCategory>('all');
-  const [panelOriginFilter, setPanelOriginFilter] = useState<PanelOrigin>('all');
+  // ========================================================================
+  // Workspace Panels Logic
+  // ========================================================================
 
   // Load workspace panel plugins and subscribe to changes
   useEffect(() => {
@@ -196,9 +197,7 @@ export function usePluginBrowserController(): PluginBrowserController {
     return filtered;
   }, [panelPlugins, panelSearchQuery, panelCategoryFilter, panelOriginFilter]);
 
-  // ============================================================================
-  // Workspace Panels Actions
-  // ============================================================================
+  // Handle panel activation toggle
   const handleTogglePanelActivation = async (panelId: string) => {
     const panel = pluginCatalog.get(panelId);
     if (!panel) return;
@@ -211,9 +210,10 @@ export function usePluginBrowserController(): PluginBrowserController {
     // Panel list will update automatically via subscription
   };
 
-  // ============================================================================
-  // Return Controller Interface
-  // ============================================================================
+  // ========================================================================
+  // Return controller interface
+  // ========================================================================
+
   return {
     // Tab management
     activeTab,
@@ -243,8 +243,6 @@ export function usePluginBrowserController(): PluginBrowserController {
     setPanelCategoryFilter,
     panelOriginFilter,
     setPanelOriginFilter,
-
-    // Workspace panels actions
     handleTogglePanelActivation,
   };
 }

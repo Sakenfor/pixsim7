@@ -35,24 +35,27 @@ export function CompactAssetCard({
       objectUrlRef.current = null;
     }
 
-    if (!asset.thumb_url) {
+    // Try thumbnail_url first (from AssetSummary), fall back to thumb_url for compatibility
+    const thumbUrl = (asset as any).thumbnail_url || (asset as any).thumb_url;
+
+    if (!thumbUrl) {
       setThumbSrc(undefined);
       return;
     }
 
     // Public absolute URL or blob URL
     if (
-      asset.thumb_url.startsWith('http://') ||
-      asset.thumb_url.startsWith('https://') ||
-      asset.thumb_url.startsWith('blob:')
+      thumbUrl.startsWith('http://') ||
+      thumbUrl.startsWith('https://') ||
+      thumbUrl.startsWith('blob:')
     ) {
-      setThumbSrc(asset.thumb_url);
+      setThumbSrc(thumbUrl);
       return;
     }
 
-    const fullUrl = asset.thumb_url.startsWith('/')
-      ? `${BACKEND_BASE}${asset.thumb_url}`
-      : `${BACKEND_BASE}/${asset.thumb_url}`;
+    const fullUrl = thumbUrl.startsWith('/')
+      ? `${BACKEND_BASE}${thumbUrl}`
+      : `${BACKEND_BASE}/${thumbUrl}`;
 
     const token = localStorage.getItem('access_token');
 
@@ -89,7 +92,7 @@ export function CompactAssetCard({
     return () => {
       cancelled = true;
     };
-  }, [asset.thumb_url]);
+  }, [(asset as any).thumbnail_url, (asset as any).thumb_url]);
 
   const isLocalOnly = asset.provider_status === 'local_only' || !asset.remote_url;
   const statusColor = isLocalOnly

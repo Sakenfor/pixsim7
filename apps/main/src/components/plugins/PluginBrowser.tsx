@@ -19,6 +19,7 @@ const PLUGIN_KIND_LABELS: Record<PluginKind, string> = {
   'interaction': 'Interaction',
   'node-type': 'Node Type',
   'gallery-tool': 'Gallery Tool',
+  'world-tool': 'World Tool',
   'ui-plugin': 'UI Plugin',
   'generation-ui': 'Generation UI',
 };
@@ -29,6 +30,7 @@ const PLUGIN_KIND_ICONS: Record<PluginKind, string> = {
   'interaction': '💬',
   'node-type': '🔷',
   'gallery-tool': '🖼️',
+  'world-tool': '🌍',
   'ui-plugin': '🎨',
   'generation-ui': '✨',
 };
@@ -39,10 +41,10 @@ interface PluginBrowserProps {
 }
 
 export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowserProps) {
-  // Use controller for all state and logic
+  // Use controller hook for all state and logic
   const controller = usePluginBrowserController();
 
-  // Destructure for convenience
+  // Destructure controller state for easier access
   const {
     activeTab,
     setActiveTab,

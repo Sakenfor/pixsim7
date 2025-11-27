@@ -156,11 +156,11 @@ export function QuickGenerateModule() {
         id: 0, // placeholder
         provider_asset_id: lastSelectedAsset.name,
         media_type: lastSelectedAsset.type as 'image' | 'video',
-        thumb_url: lastSelectedAsset.url,
+        thumbnail_url: lastSelectedAsset.url,
         remote_url: lastSelectedAsset.url,
         provider_status: 'unknown' as const,
         description: lastSelectedAsset.name,
-      }];
+      } as any];
     }
 
     return [];
