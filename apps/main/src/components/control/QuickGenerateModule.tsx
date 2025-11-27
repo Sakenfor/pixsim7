@@ -1,123 +1,53 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import { useNavigate } from 'react-router-dom';
-import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
-import { useAssetSelectionStore } from '../../stores/assetSelectionStore';
-import { useGenerationQueueStore } from '../../stores/generationQueueStore';
+import type { ControlCenterState } from '../../stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '../../hooks/useProviders';
 import { useProviderSpecs } from '../../hooks/useProviderSpecs';
-import { generateAsset } from '../../lib/api/controlCenter';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
 import { useGenerationsStore, isGenerationTerminal } from '../../stores/generationsStore';
-import { ccSelectors } from '../../stores/selectors';
 import { logEvent } from '../../lib/logging';
 import { GenerationPluginRenderer } from '../../lib/providers';
 import { useGenerationWebSocket } from '../../hooks/useGenerationWebSocket';
+import { useQuickGenerateController } from '../../hooks/useQuickGenerateController';
 
 export function QuickGenerateModule() {
-  const navigate = useNavigate();
-
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
 
-  // Use stable selectors to reduce re-renders
-  const operationType = useControlCenterStore(ccSelectors.operationType);
-  const providerId = useControlCenterStore(ccSelectors.providerId);
-  const presetId = useControlCenterStore(ccSelectors.presetId);
-  const presetParams = useControlCenterStore(ccSelectors.presetParams);
-  const generating = useControlCenterStore(ccSelectors.generating);
-  const recentPrompts = useControlCenterStore(ccSelectors.recentPrompts);
-
-  const setProvider = useControlCenterStore(s => s.setProvider);
-  const setOperationType = useControlCenterStore(s => s.setOperationType);
-  const setGenerating = useControlCenterStore(s => s.setGenerating);
-  const prompt = useControlCenterStore(s => s.prompt);
-  const setPrompt = useControlCenterStore(s => s.setPrompt);
-  const pushPrompt = useControlCenterStore(s => s.pushPrompt);
-
-  // Active asset support
-  const lastSelectedAsset = useAssetSelectionStore(s => s.lastSelectedAsset);
-
-  // Generation queue support
-  const mainQueue = useGenerationQueueStore(s => s.mainQueue);
-  const transitionQueue = useGenerationQueueStore(s => s.transitionQueue);
-  const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
-  const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
+  const {
+    operationType,
+    providerId,
+    presetId,
+    presetParams,
+    generating,
+    recentPrompts,
+    prompt,
+    setProvider,
+    setOperationType,
+    setPrompt,
+    error,
+    generationId,
+    lastSelectedAsset,
+    mainQueue,
+    transitionQueue,
+    consumeFromQueue,
+    removeFromQueue,
+    clearTransitionQueue,
+    dynamicParams,
+    setDynamicParams,
+    imageUrls,
+    setImageUrls,
+    prompts,
+    setPrompts,
+    useActiveAsset,
+    generate,
+  } = useQuickGenerateController();
 
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
-
-  const [error, setError] = useState<string | null>(null);
-  const [generationId, setGenerationId] = useState<number | null>(null);
-  const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
-  const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
-
-  // Dynamic params from operation_specs
-  const [dynamicParams, setDynamicParams] = useState<Record<string, any>>({});
-
-  // Operation-specific array fields for video_transition
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [prompts, setPrompts] = useState<string[]>([]);
-
-  // Function to use active asset
-  const useActiveAsset = () => {
-    if (!lastSelectedAsset) return;
-
-    // Auto-fill based on operation type and asset type
-    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') {
-      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
-    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
-      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
-    }
-  };
-
-  // Auto-fill when active asset changes (if compatible with operation)
-  useEffect(() => {
-    if (!lastSelectedAsset) return;
-
-    if (operationType === 'image_to_video' && lastSelectedAsset.type === 'image' && !dynamicParams.image_url) {
-      setDynamicParams(prev => ({ ...prev, image_url: lastSelectedAsset.url }));
-    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video' && !dynamicParams.video_url) {
-      setDynamicParams(prev => ({ ...prev, video_url: lastSelectedAsset.url }));
-    }
-  }, [lastSelectedAsset, operationType]);
-
-  // Auto-fill from generation queue
-  useEffect(() => {
-    const nextInQueue = mainQueue[0];
-    if (!nextInQueue) return;
-
-    const { asset, operation } = nextInQueue;
-
-    // Set operation type if specified
-    if (operation) {
-      setOperationType(operation);
-    }
-
-    // Auto-fill based on operation and asset type
-    if ((operation === 'image_to_video' || !operation) && asset.media_type === 'image') {
-      setDynamicParams(prev => ({ ...prev, image_url: asset.remote_url }));
-      if (!operation) setOperationType('image_to_video');
-    } else if ((operation === 'video_extend' || !operation) && asset.media_type === 'video') {
-      setDynamicParams(prev => ({ ...prev, video_url: asset.remote_url }));
-      if (!operation) setOperationType('video_extend');
-    }
-  }, [mainQueue, setOperationType]);
-
-  // Auto-fill transition queue
-  useEffect(() => {
-    if (transitionQueue.length === 0) return;
-
-    // Set operation to video_transition
-    setOperationType('video_transition');
-
-    // Fill image URLs from transition queue
-    const urls = transitionQueue.map(item => item.asset.remote_url);
-    setImageUrls(urls);
-  }, [transitionQueue, setOperationType]);
 
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -138,117 +68,6 @@ export function QuickGenerateModule() {
 
   function handleDynamicParamChange(name: string, value: any) {
     setDynamicParams(prev => ({ ...prev, [name]: value }));
-  }
-
-  async function onGenerate() {
-    const p = prompt.trim();
-
-    // Validation
-    if (operationType === 'text_to_video' && !p) {
-      setError('Prompt is required for text-to-video');
-      return;
-    }
-
-    if (operationType === 'image_to_video' && !dynamicParams.image_url) {
-      setError('Image URL is required for image-to-video');
-      return;
-    }
-
-    if (operationType === 'video_extend') {
-      if (!dynamicParams.video_url && !dynamicParams.original_video_id) {
-        setError('Either video URL or provider video ID is required');
-        return;
-      }
-    }
-
-    if (operationType === 'video_transition') {
-      const validImages = imageUrls.filter(s => s.trim());
-      const validPrompts = prompts.filter(s => s.trim());
-      if (!validImages.length || !validPrompts.length) {
-        setError('Both image URLs and prompts are required for video transition');
-        return;
-      }
-      if (validImages.length !== validPrompts.length) {
-        setError('Number of image URLs must match number of prompts');
-        return;
-      }
-    }
-
-    setError(null);
-    if (p) pushPrompt(p);
-    setGenerating(true);
-    setGenerationId(null);
-
-    try {
-      // Build params - merge preset params, dynamic params, and operation-specific params
-      const params: Record<string, any> = {
-        prompt: p,
-        ...presetParams,
-        ...dynamicParams,
-      };
-
-      // Add array fields for video_transition
-      if (operationType === 'video_transition') {
-        params.image_urls = imageUrls.filter(s => s.trim());
-        params.prompts = prompts.filter(s => s.trim());
-      }
-
-      const result = await generateAsset({
-        prompt: p,
-        providerId,
-        presetId,
-        operationType,
-        extraParams: params,
-        presetParams,
-      });
-
-      // Clear prompt and show generation ID
-      setPrompt('');
-      const genId = result.job_id;
-      setGenerationId(genId);
-      setWatchingGeneration(genId);
-
-      // Seed store with initial generation status
-      addOrUpdateGeneration({
-        id: genId,
-        user_id: 0, // unknown client-side until fetched
-        workspace_id: null,
-        operation_type: operationType,
-        provider_id: providerId || 'pixverse',
-        raw_params: params,
-        canonical_params: params,
-        inputs: [],
-        reproducible_hash: null,
-        prompt_version_id: null,
-        final_prompt: p,
-        prompt_config: null,
-        prompt_source_type: 'inline',
-        status: result.status || 'pending',
-        priority: 5,
-        scheduled_at: null,
-        started_at: null,
-        completed_at: null,
-        error_message: null,
-        retry_count: 0,
-        parent_generation_id: null,
-        asset_id: null,
-        name: null,
-        description: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-      logEvent('INFO', 'generation_created', {
-        generationId: genId,
-        operationType,
-        providerId: providerId || 'pixverse',
-        status: result.status || 'pending'
-      });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
-    } finally {
-      setGenerating(false);
-    }
   }
 
   function restorePrompt(p: string) {
@@ -315,10 +134,10 @@ export function QuickGenerateModule() {
               </span>
               <div className="flex-1" />
               <button
-                onClick={() => useGenerationQueueStore.getState().clearQueue('transition')}
-                className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
-                disabled={generating}
-              >
+                onClick={clearTransitionQueue}
+                  className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-[10px]"
+                  disabled={generating}
+                >
                 Clear
               </button>
             </div>
@@ -448,7 +267,7 @@ export function QuickGenerateModule() {
           )}
 
           <button
-            onClick={onGenerate}
+            onClick={generate}
             disabled={generating || !canGenerate}
             className={clsx(
               'py-2.5 px-4 rounded text-sm font-medium text-white transition-colors',
