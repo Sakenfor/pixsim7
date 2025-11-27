@@ -263,8 +263,9 @@ async def get_version_detail(
         # If no prompt_analysis is present, analyze on the fly
         if not prompt_analysis:
             try:
+                # analyze_prompt already returns a plain dict in PixSim7 shape
                 analysis_result = await analyze_prompt(version.prompt_text)
-                prompt_analysis = analysis_result.model_dump()
+                prompt_analysis = analysis_result
             except Exception as e:
                 logger.warning(
                     f"Failed to analyze prompt on-the-fly: {e}",

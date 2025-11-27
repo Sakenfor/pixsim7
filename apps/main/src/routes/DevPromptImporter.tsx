@@ -42,12 +42,20 @@ interface PromptImportResponse {
   version: PromptVersionResponse;
 }
 
-export function DevPromptImporter() {
+export interface DevPromptImporterProps {
+  initialFamilyTitle?: string;
+  initialPromptText?: string;
+}
+
+export function DevPromptImporter({
+  initialFamilyTitle,
+  initialPromptText,
+}: DevPromptImporterProps) {
   const api = useApi();
 
   // Form fields
-  const [familyTitle, setFamilyTitle] = useState('');
-  const [promptText, setPromptText] = useState('');
+  const [familyTitle, setFamilyTitle] = useState(initialFamilyTitle ?? '');
+  const [promptText, setPromptText] = useState(initialPromptText ?? '');
   const [familySlug, setFamilySlug] = useState('');
   const [promptType, setPromptType] = useState('visual');
   const [category, setCategory] = useState('');

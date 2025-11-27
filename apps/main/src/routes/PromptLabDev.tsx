@@ -296,7 +296,10 @@ function ImportTab({ initialFamilyTitle, initialPromptText, onClearInitial }: Im
           </button>
         </div>
       )}
-      <DevPromptImporter />
+      <DevPromptImporter
+        initialFamilyTitle={initialFamilyTitle}
+        initialPromptText={initialPromptText}
+      />
     </div>
   );
 }
