@@ -58,21 +58,57 @@ class SimplePromptParser:
     # Sentence splitting pattern (similar to prompt_dsl SimpleParser)
     SENTENCE_PATTERN = re.compile(r'([^.!?]+[.!?]+)')
 
-    def __init__(self):
-        """Initialize parser with ontology keywords."""
-        self.role_keywords = ROLE_KEYWORDS
+    def __init__(self, hints: Optional[Dict[str, List[str]]] = None):
+        """
+        Initialize parser with ontology keywords.
+
+        Args:
+            hints: Optional parser hints from semantic packs to augment classification.
+                   Format: { 'role:character': ['minotaur', 'werecow'], ... }
+        """
+        self.role_keywords = ROLE_KEYWORDS.copy()
         self.action_verbs = set(ACTION_VERBS)
 
-    async def parse(self, text: str) -> ParsedPrompt:
+        # Merge hints into role keywords if provided
+        if hints:
+            self._merge_hints(hints)
+
+    def _merge_hints(self, hints: Dict[str, List[str]]) -> None:
+        """
+        Merge parser hints from semantic packs into role keywords.
+
+        Args:
+            hints: Hint map from semantic packs
+        """
+        for key, words in hints.items():
+            # Handle both 'role:X' and plain 'X' formats
+            role = key.replace("role:", "") if key.startswith("role:") else key
+
+            # If this role exists in our keywords, extend it
+            if role in self.role_keywords:
+                for word in words:
+                    if word.lower() not in [k.lower() for k in self.role_keywords[role]]:
+                        self.role_keywords[role].append(word.lower())
+            else:
+                # New role from hints - add it
+                self.role_keywords[role] = [w.lower() for w in words]
+
+    async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> ParsedPrompt:
         """
         Parse prompt text into classified blocks.
 
         Args:
             text: Raw prompt text
+            hints: Optional parser hints to use for this parse (overrides init hints)
 
         Returns:
             ParsedPrompt with classified blocks
         """
+        # If hints provided at parse time, create a temporary parser with those hints
+        if hints:
+            parser = SimplePromptParser(hints=hints)
+            return await parser.parse(text)
+
         # Split into sentences
         sentences = self._split_sentences(text)
 
