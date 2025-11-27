@@ -21,8 +21,9 @@ from sqlmodel import select
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.generation import Generation
 from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.services.prompt_dsl_adapter import parse_prompt_to_blocks
+from pixsim7.backend.main.services.prompt_dsl_adapter import parse_prompt_to_blocks, analyze_prompt
 from pixsim_logging import get_logger
+from pydantic import BaseModel
 
 logger = get_logger()
 
@@ -163,3 +164,62 @@ async def inspect_prompt(
         "prompt": prompt_text,
         "blocks": parsed["blocks"]
     }
+
+
+class AnalyzePromptRequest(BaseModel):
+    """Request model for analyzing arbitrary prompt text."""
+    prompt_text: str
+
+
+@router.post("/analyze-prompt")
+async def analyze_prompt_text(
+    user: CurrentUser,
+    request: AnalyzePromptRequest,
+) -> Dict[str, Any]:
+    """
+    Analyze arbitrary prompt text and return structured breakdown.
+
+    Dev-only endpoint for quick prompt analysis without needing an asset/job.
+    Returns the original prompt text, parsed blocks, and auto-generated tags.
+
+    Request body:
+        { "prompt_text": "..." }
+
+    Returns:
+        {
+            "prompt": "original text",
+            "blocks": [
+                {"role": "character", "text": "...", "component_type": "..."},
+                {"role": "action", "text": "...", "component_type": "..."},
+                ...
+            ],
+            "tags": ["has:character", "tone:soft", "camera:pov", ...]
+        }
+
+    Raises:
+        400: If prompt_text is empty or missing
+    """
+    if not request.prompt_text or not request.prompt_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="prompt_text is required and cannot be empty"
+        )
+
+    # Analyze prompt using adapter
+    try:
+        analysis = await analyze_prompt(request.prompt_text)
+    except Exception as e:
+        # Log error but don't fail - return minimal structure
+        logger.warning(
+            "prompt_analysis_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            user_id=user.id,
+        )
+        analysis = {
+            "prompt": request.prompt_text,
+            "blocks": [],
+            "tags": []
+        }
+
+    return analysis
