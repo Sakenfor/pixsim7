@@ -1,164 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useLocalFolders, getLocalThumbnailBlob, setLocalThumbnailBlob } from '../../stores/localFoldersStore';
+import { useMemo } from 'react';
+import { useLocalFoldersController } from '../../hooks/useLocalFoldersController';
 import { useProviders } from '../../hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
-type ViewMode = 'grid' | 'tree' | 'list';
-
 export function LocalFoldersPanel() {
-  const { supported, folders, assets, loadPersisted, addFolder, removeFolder, refreshFolder, adding, error } = useLocalFolders();
+  const controller = useLocalFoldersController();
   const { providers } = useProviders();
-  const [providerId, setProviderId] = useState<string | undefined>(undefined);
-  const [previews, setPreviews] = useState<Record<string, string>>({});
-  const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
-  const [viewMode, setViewMode] = useState<ViewMode>('tree');
-  const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
-  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
-
-  useEffect(() => { loadPersisted(); }, []);
-
-  const assetList = useMemo(() => {
-    const list = Object.values(assets);
-    return list.sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0));
-  }, [assets]);
 
   const folderNames = useMemo(() => {
-    return folders.reduce((acc, f) => {
+    return controller.folders.reduce((acc, f) => {
       acc[f.id] = f.name;
       return acc;
     }, {} as Record<string, string>);
-  }, [folders]);
-
-  // Filter assets by selected folder path in tree mode.
-  // Semantics:
-  // - Selecting a root folder node (path === folderId) shows all assets under that root.
-  // - Selecting a subfolder shows only assets whose immediate parent folder matches
-  //   that subfolder (not all nested subfolders).
-  const filteredAssets = useMemo(() => {
-    if (viewMode !== 'tree' || !selectedFolderPath) return assetList;
-
-    return assetList.filter(asset => {
-      // Root folder selected: path is just folderId
-      if (selectedFolderPath === asset.folderId) {
-        return true;
-      }
-
-      // For subfolders, ensure this asset belongs to the same root folder
-      if (!selectedFolderPath.startsWith(asset.folderId + '/')) {
-        return false;
-      }
-
-      // Compute the selected folder path relative to the root folder
-      const selectedRelPath = selectedFolderPath.slice(asset.folderId.length + 1);
-      const assetDir = asset.relativePath.includes('/')
-        ? asset.relativePath.split('/').slice(0, -1).join('/')
-        : '';
-
-      // Only include files whose immediate parent folder matches the selected folder
-      return assetDir === selectedRelPath;
-    });
-  }, [assetList, selectedFolderPath, viewMode]);
-
-  async function preview(keyOrAsset: string | LocalAsset) {
-    const asset = typeof keyOrAsset === 'string' ? assets[keyOrAsset] : keyOrAsset;
-    if (!asset) return;
-    if (previews[asset.key]) return;
-
-    // Try cached thumbnail blob first (persisted in IndexedDB)
-    let url: string | undefined;
-    try {
-      const cached = await getLocalThumbnailBlob(asset);
-      if (cached) {
-        url = URL.createObjectURL(cached);
-      }
-    } catch {
-      // ignore cache errors and fall back to direct file read
-    }
-
-    // If no cached thumbnail, create from file and store
-    if (!url) {
-      try {
-        const file = await asset.fileHandle.getFile();
-        url = URL.createObjectURL(file);
-        // Cache original file blob as thumbnail for future sessions
-        void setLocalThumbnailBlob(asset, file);
-      } catch {
-        url = undefined;
-      }
-    }
-
-    if (url) {
-      setPreviews(p => ({ ...p, [asset.key]: url }));
-    }
-  }
-
-  const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
-
-  async function uploadOne(keyOrAsset: string | LocalAsset) {
-    const asset = typeof keyOrAsset === 'string' ? assets[keyOrAsset] : keyOrAsset;
-    if (!asset) return;
-    if (!providerId) { alert('Select a provider'); return; }
-    setUploadStatus(s => ({ ...s, [asset.key]: 'uploading' }));
-    try {
-      const file = await asset.fileHandle.getFile();
-      const form = new FormData();
-      form.append('file', file, asset.name);
-      form.append('provider_id', providerId);
-      const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-
-      // Get auth token from localStorage
-      const token = localStorage.getItem('access_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/upload`, {
-        method: 'POST',
-        body: form,
-        headers
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `${res.status} ${res.statusText}`);
-      }
-      const data = await res.json().catch(() => ({}));
-      setUploadNotes(n => ({ ...n, [asset.key]: data?.note }));
-      setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
-    } catch (e: any) {
-      setUploadStatus(s => ({ ...s, [asset.key]: 'error' }));
-    }
-  }
-
-
-  const handleOpenViewer = async (asset: LocalAsset) => {
-    // Ensure preview is loaded
-    await preview(asset);
-    setViewerAsset(asset);
-  };
-
-  const handleCloseViewer = () => {
-    setViewerAsset(null);
-  };
-
-  const handleNavigateViewer = (direction: 'prev' | 'next') => {
-    if (!viewerAsset) return;
-    const sourceList =
-      viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
-
-    const currentIndex = sourceList.findIndex(a => a.key === viewerAsset.key);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex >= 0 && newIndex < sourceList.length) {
-      const newAsset = sourceList[newIndex];
-      preview(newAsset);
-      setViewerAsset(newAsset);
-    }
-  };
+  }, [controller.folders]);
 
   return (
     <div className="space-y-4">
@@ -166,20 +23,20 @@ export function LocalFoldersPanel() {
       <div className="flex items-center gap-3 flex-wrap">
         <button
           className="px-4 py-2 border rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors font-medium"
-          onClick={addFolder}
-          disabled={adding || !supported}
+          onClick={controller.addFolder}
+          disabled={controller.adding || !controller.supported}
         >
-          {adding ? '📂 Adding...' : '📂 Add Folder'}
+          {controller.adding ? '📂 Adding...' : '📂 Add Folder'}
         </button>
 
-        {!supported && (
+        {!controller.supported && (
           <div className="px-3 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
             ⚠️ Your browser does not support local folder access. Use Chrome/Edge.
           </div>
         )}
-        {error && (
+        {controller.error && (
           <div className="px-3 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
-            {error}
+            {controller.error}
           </div>
         )}
 
@@ -187,9 +44,9 @@ export function LocalFoldersPanel() {
           {/* View Mode Toggle */}
           <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg">
             <button
-              onClick={() => setViewMode('tree')}
+              onClick={() => controller.setViewMode('tree')}
               className={`px-3 py-1 text-xs rounded transition-colors ${
-                viewMode === 'tree'
+                controller.viewMode === 'tree'
                   ? 'bg-white dark:bg-neutral-700 shadow'
                   : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
@@ -198,9 +55,9 @@ export function LocalFoldersPanel() {
               🌳 Tree
             </button>
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => controller.setViewMode('grid')}
               className={`px-3 py-1 text-xs rounded transition-colors ${
-                viewMode === 'grid'
+                controller.viewMode === 'grid'
                   ? 'bg-white dark:bg-neutral-700 shadow'
                   : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
@@ -209,9 +66,9 @@ export function LocalFoldersPanel() {
               ⊞ Grid
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => controller.setViewMode('list')}
               className={`px-3 py-1 text-xs rounded transition-colors ${
-                viewMode === 'list'
+                controller.viewMode === 'list'
                   ? 'bg-white dark:bg-neutral-700 shadow'
                   : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
@@ -226,8 +83,8 @@ export function LocalFoldersPanel() {
             <label className="text-sm text-neutral-600 dark:text-neutral-400">Upload to:</label>
             <select
               className="px-3 py-1.5 border rounded-lg bg-white dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={providerId || ''}
-              onChange={(e) => setProviderId(e.target.value || undefined)}
+              value={controller.providerId || ''}
+              onChange={(e) => controller.setProviderId(e.target.value || undefined)}
             >
               <option value="">Select provider…</option>
               {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -237,28 +94,28 @@ export function LocalFoldersPanel() {
       </div>
 
       {/* Folder Management */}
-      {folders.length > 0 && (
+      {controller.folders.length > 0 && (
         <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-2 bg-white dark:bg-neutral-900">
           <div className="text-xs font-medium mb-2 text-neutral-600 dark:text-neutral-400 px-1">
-            Local Folders ({folders.length})
+            Local Folders ({controller.folders.length})
           </div>
           <div className="space-y-1">
-            {folders.map(f => {
-              const count = Object.values(assets).filter(a => a.folderId === f.id).length;
+            {controller.folders.map(f => {
+              const count = controller.assets.filter(a => a.folderId === f.id).length;
               return (
                 <div key={f.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded group">
                   <span className="text-sm">📁</span>
                   <span className="text-sm flex-1 truncate" title={f.name}>{f.name}</span>
                   <span className="text-xs text-neutral-500">{count}</span>
                   <button
-                    onClick={() => refreshFolder(f.id)}
+                    onClick={() => controller.refreshFolder(f.id)}
                     className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 text-xs hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-opacity"
                     title="Refresh"
                   >
                     🔄
                   </button>
                   <button
-                    onClick={() => removeFolder(f.id)}
+                    onClick={() => controller.removeFolder(f.id)}
                     className="opacity-0 group-hover:opacity-100 px-1.5 py-0.5 text-xs hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded transition-opacity"
                     title="Remove"
                   >
@@ -272,14 +129,14 @@ export function LocalFoldersPanel() {
       )}
 
       {/* Content Area - Different Views */}
-      {assetList.length === 0 ? (
+      {controller.assets.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
           <div className="text-6xl mb-4">📁</div>
           <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
-            {folders.length === 0 ? 'No folders added yet' : 'No files found'}
+            {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
           </p>
           <p className="text-sm text-neutral-500">
-            {folders.length === 0
+            {controller.folders.length === 0
               ? 'Click "Add Folder" to get started'
               : 'Added folders contain no media files'}
           </p>
@@ -287,36 +144,36 @@ export function LocalFoldersPanel() {
       ) : (
         <>
           {/* Tree View - Split Layout */}
-          {viewMode === 'tree' && (
+          {controller.viewMode === 'tree' && (
             <div className="flex gap-4 h-[70vh]">
               {/* Left: Compact Tree Navigation */}
               <div className="w-64 flex-shrink-0 overflow-y-auto">
                 <TreeFolderView
-                  assets={assetList}
+                  assets={controller.assets}
                   folderNames={folderNames}
-                  onFileClick={handleOpenViewer}
-                  onPreview={preview}
-                  previews={previews}
-                  uploadStatus={uploadStatus}
-                  onUpload={uploadOne}
-                  providerId={providerId}
+                  onFileClick={controller.openViewer}
+                  onPreview={controller.loadPreview}
+                  previews={controller.previews}
+                  uploadStatus={controller.uploadStatus}
+                  onUpload={controller.uploadOne}
+                  providerId={controller.providerId}
                   compactMode={true}
-                  selectedFolderPath={selectedFolderPath || undefined}
-                  onFolderSelect={setSelectedFolderPath}
+                  selectedFolderPath={controller.selectedFolderPath || undefined}
+                  onFolderSelect={controller.setSelectedFolderPath}
                 />
               </div>
 
               {/* Right: Thumbnail Grid */}
               <div className="flex-1 overflow-y-auto">
-                {selectedFolderPath && filteredAssets.length > 0 ? (
+                {controller.selectedFolderPath && controller.filteredAssets.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2">
-                    {filteredAssets.map(asset => {
-                      const previewUrl = previews[asset.key];
-                      const status = uploadStatus[asset.key] || 'idle';
+                    {controller.filteredAssets.map(asset => {
+                      const previewUrl = controller.previews[asset.key];
+                      const status = controller.uploadStatus[asset.key] || 'idle';
 
                       // Load preview if not already loaded
                       if (!previewUrl) {
-                        preview(asset);
+                        controller.loadPreview(asset);
                       }
 
                       return (
@@ -333,16 +190,16 @@ export function LocalFoldersPanel() {
                           tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
                           description={asset.name}
                           createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
-                          onOpen={() => handleOpenViewer(asset)}
+                          onOpen={() => controller.openViewer(asset)}
                           uploadState={status}
                           onUploadClick={async () => {
-                            await uploadOne(asset);
+                            await controller.uploadOne(asset);
                           }}
                         />
                       );
                     })}
                   </div>
-                ) : selectedFolderPath ? (
+                ) : controller.selectedFolderPath ? (
                   <div className="flex items-center justify-center h-full text-neutral-500">
                     <div className="text-center">
                       <div className="text-6xl mb-4">📂</div>
@@ -362,21 +219,21 @@ export function LocalFoldersPanel() {
           )}
 
           {/* Grid View */}
-          {viewMode === 'grid' && (
+          {controller.viewMode === 'grid' && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {assetList.map(a => (
+              {controller.assets.map(a => (
                 <div key={a.key} className="border rounded-lg overflow-hidden bg-white dark:bg-neutral-900 relative group hover:shadow-lg transition-shadow">
                   <div
                     className="aspect-video bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center cursor-pointer"
-                    onClick={() => handleOpenViewer(a)}
+                    onClick={() => controller.openViewer(a)}
                   >
-                    {a.kind === 'image' && previews[a.key] && (
-                      <img src={previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
+                    {a.kind === 'image' && controller.previews[a.key] && (
+                      <img src={controller.previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
                     )}
-                    {a.kind === 'video' && previews[a.key] && (
-                      <video src={previews[a.key]} className="w-full h-full object-cover" muted autoPlay loop />
+                    {a.kind === 'video' && controller.previews[a.key] && (
+                      <video src={controller.previews[a.key]} className="w-full h-full object-cover" muted autoPlay loop />
                     )}
-                    {!previews[a.key] && (
+                    {!controller.previews[a.key] && (
                       <div className="text-4xl opacity-50 group-hover:opacity-100 transition-opacity">
                         {a.kind === 'image' ? '🖼️' : '🎬'}
                       </div>
@@ -386,31 +243,31 @@ export function LocalFoldersPanel() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        uploadOne(a.key);
+                        controller.uploadOne(a.key);
                       }}
-                      disabled={!providerId || uploadStatus[a.key] === 'uploading'}
+                      disabled={!controller.providerId || controller.uploadStatus[a.key] === 'uploading'}
                       className={`px-2 py-1 text-[10px] rounded-md shadow-lg font-medium transition-all ${
-                        uploadStatus[a.key] === 'success'
+                        controller.uploadStatus[a.key] === 'success'
                           ? 'bg-green-600 text-white'
-                          : uploadStatus[a.key] === 'error'
+                          : controller.uploadStatus[a.key] === 'error'
                           ? 'bg-red-600 text-white'
-                          : uploadStatus[a.key] === 'uploading'
+                          : controller.uploadStatus[a.key] === 'uploading'
                           ? 'bg-neutral-400 text-white'
                           : 'bg-blue-600 text-white hover:bg-blue-700'
                       }`}
                       title={
-                        uploadStatus[a.key] === 'success'
-                          ? uploadNotes[a.key] || 'Uploaded successfully'
-                          : uploadStatus[a.key] === 'error'
+                        controller.uploadStatus[a.key] === 'success'
+                          ? controller.uploadNotes[a.key] || 'Uploaded successfully'
+                          : controller.uploadStatus[a.key] === 'error'
                           ? 'Upload failed'
                           : 'Upload to provider'
                       }
                     >
-                      {uploadStatus[a.key] === 'uploading'
+                      {controller.uploadStatus[a.key] === 'uploading'
                         ? '↑...'
-                        : uploadStatus[a.key] === 'success'
+                        : controller.uploadStatus[a.key] === 'success'
                         ? '✓'
-                        : uploadStatus[a.key] === 'error'
+                        : controller.uploadStatus[a.key] === 'error'
                         ? '✗'
                         : '↑'}
                     </button>
@@ -434,7 +291,7 @@ export function LocalFoldersPanel() {
           )}
 
           {/* List View */}
-          {viewMode === 'list' && (
+          {controller.viewMode === 'list' && (
             <div className="border rounded-lg overflow-hidden bg-white dark:bg-neutral-900">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -449,18 +306,18 @@ export function LocalFoldersPanel() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
-                    {assetList.map(a => (
+                    {controller.assets.map(a => (
                       <tr key={a.key} className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
                         <td className="p-3">
                           <div
                             className="w-16 h-12 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden cursor-pointer"
-                            onClick={() => handleOpenViewer(a)}
+                            onClick={() => controller.openViewer(a)}
                           >
-                            {previews[a.key] ? (
+                            {controller.previews[a.key] ? (
                               a.kind === 'image' ? (
-                                <img src={previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
+                                <img src={controller.previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
                               ) : (
-                                <video src={previews[a.key]} className="w-full h-full object-cover" muted />
+                                <video src={controller.previews[a.key]} className="w-full h-full object-cover" muted />
                               )
                             ) : (
                               <div className="text-xs">
@@ -469,7 +326,7 @@ export function LocalFoldersPanel() {
                             )}
                           </div>
                         </td>
-                        <td className="p-3 font-medium cursor-pointer hover:text-blue-600" onClick={() => handleOpenViewer(a)}>
+                        <td className="p-3 font-medium cursor-pointer hover:text-blue-600" onClick={() => controller.openViewer(a)}>
                           {a.name}
                         </td>
                         <td className="p-3 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
@@ -485,32 +342,32 @@ export function LocalFoldersPanel() {
                         </td>
                         <td className="p-3">
                           <div className="flex items-center gap-2">
-                            {!previews[a.key] && (
+                            {!controller.previews[a.key] && (
                               <button
-                                onClick={() => preview(a.key)}
+                                onClick={() => controller.loadPreview(a.key)}
                                 className="px-2 py-1 text-xs border rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
                               >
                                 Preview
                               </button>
                             )}
                             <button
-                              onClick={() => uploadOne(a.key)}
-                              disabled={!providerId || uploadStatus[a.key] === 'uploading'}
+                              onClick={() => controller.uploadOne(a.key)}
+                              disabled={!controller.providerId || controller.uploadStatus[a.key] === 'uploading'}
                               className={`px-3 py-1 text-xs rounded font-medium ${
-                                uploadStatus[a.key] === 'success'
+                                controller.uploadStatus[a.key] === 'success'
                                   ? 'bg-green-600 text-white'
-                                  : uploadStatus[a.key] === 'error'
+                                  : controller.uploadStatus[a.key] === 'error'
                                   ? 'bg-red-600 text-white'
-                                  : uploadStatus[a.key] === 'uploading'
+                                  : controller.uploadStatus[a.key] === 'uploading'
                                   ? 'bg-neutral-400 text-white'
                                   : 'bg-blue-600 text-white hover:bg-blue-700'
                               }`}
                             >
-                              {uploadStatus[a.key] === 'uploading'
+                              {controller.uploadStatus[a.key] === 'uploading'
                                 ? 'Uploading...'
-                                : uploadStatus[a.key] === 'success'
+                                : controller.uploadStatus[a.key] === 'success'
                                 ? 'Uploaded ✓'
-                                : uploadStatus[a.key] === 'error'
+                                : controller.uploadStatus[a.key] === 'error'
                                 ? 'Failed ✗'
                                 : 'Upload'}
                             </button>
@@ -527,13 +384,13 @@ export function LocalFoldersPanel() {
       )}
 
       {/* Media Viewer Cube */}
-      {viewerAsset && (
+      {controller.viewerAsset && (
         <MediaViewerCube
-          asset={viewerAsset}
-          assetUrl={previews[viewerAsset.key]}
-          allAssets={assetList}
-          onClose={handleCloseViewer}
-          onNavigate={handleNavigateViewer}
+          asset={controller.viewerAsset}
+          assetUrl={controller.previews[controller.viewerAsset.key]}
+          allAssets={controller.assets}
+          onClose={controller.closeViewer}
+          onNavigate={controller.navigateViewer}
         />
       )}
     </div>
