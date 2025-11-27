@@ -152,6 +152,23 @@ If a service shows `[Missing tool: xyz]`, ensure the tool is installed and in yo
 - Check if the health endpoint exists (backend) or if the service is serving HTTP (frontends)
 - View the service log for startup errors
 
+## Recent Fixes
+
+### Worker (ARQ) Process Management (2025-11-27)
+
+**Problem**: Worker showed as running (green icon) when actually crashed, couldn't stop or restart.
+
+**Root Causes**:
+1. Missing explicit `REDIS_URL` in worker env configuration
+2. Health check only verified Redis accessibility, not if worker process was alive
+
+**Fixes Applied**:
+- `services.py`: Added explicit `REDIS_URL` to worker's `env_overrides`
+- `health_worker.py`: Health check now verifies process PID is alive BEFORE checking Redis
+- Changed worker dependency from `backend` to `db` (correct dependency)
+
+**Result**: Worker status now accurately reflects process state, stop/restart buttons work correctly.
+
 ## Development
 
 To modify service definitions, edit `services.py` and add/update `ServiceDef` entries.

@@ -72,11 +72,14 @@ def build_services() -> List[ServiceDef]:
             env_overrides={
                 "PYTHONPATH": ROOT,
                 "PIXSIM_LOG_FORMAT": "human",  # Human-readable logs in console
+                "REDIS_URL": os.getenv("REDIS_URL", "redis://localhost:6380/0"),  # Explicit Redis URL for ARQ
+                "PYTHONUTF8": "1",
+                "PYTHONIOENCODING": "utf-8",
             },
             url=None,
             health_url=None,  # No HTTP health check for worker
             health_grace_attempts=10,
-            depends_on=["backend"],  # Worker should start with backend
+            depends_on=["db"],  # Worker requires Redis from db service
         ),
         ServiceDef(
             key="admin",

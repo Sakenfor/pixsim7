@@ -59,6 +59,13 @@ const PANEL_INFO: PanelInfo[] = [
     icon: 'settings',
     category: 'settings',
   },
+  {
+    id: 'settings',
+    title: 'Settings',
+    description: 'Configure app behavior and preferences',
+    icon: 'settings',
+    category: 'settings',
+  },
 ];
 
 export function PanelLauncherModule() {
@@ -117,8 +124,8 @@ export function PanelLauncherModule() {
         </div>
       </div>
 
-      {/* All panels in compact square grid */}
-      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-1.5">
+      {/* All panels in compact grid */}
+      <div className="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-1">
         {PANEL_INFO.map((panel) => {
           const isOpen = openPanels.has(panel.id);
           const isFloating = floatingPanelIds.has(panel.id);
@@ -127,7 +134,7 @@ export function PanelLauncherModule() {
           return (
             <div
               key={panel.id}
-              className={`border rounded p-1.5 transition-all hover:shadow-md flex flex-col items-center justify-center gap-1 aspect-square ${
+              className={`border rounded p-1 transition-all hover:shadow-sm flex flex-col items-center justify-between gap-0.5 aspect-square text-center ${
                 isOpen
                   ? 'bg-green-50/50 dark:bg-green-900/20 border-green-400 dark:border-green-600'
                   : isFloating
@@ -135,43 +142,39 @@ export function PanelLauncherModule() {
                   : 'bg-neutral-50/50 dark:bg-neutral-800/50 border-neutral-300 dark:border-neutral-700 hover:border-blue-300'
               }`}
             >
-              {/* Icon */}
-              <Icon
-                name={panel.icon}
-                size={18}
-                className={isOpen ? 'text-green-600 dark:text-green-400' : isFloating ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-400'}
-              />
-
-              {/* Title */}
-              <div className="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 text-center leading-tight line-clamp-2">
-                {panel.title}
+              {/* Icon and Status */}
+              <div className="flex flex-col items-center gap-0.5 flex-1 justify-center">
+                <Icon
+                  name={panel.icon}
+                  size={16}
+                  className={isOpen ? 'text-green-600 dark:text-green-400' : isFloating ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-400'}
+                />
+                {/* Title */}
+                <div className="text-[9px] font-medium text-neutral-800 dark:text-neutral-200 leading-tight line-clamp-2">
+                  {panel.title}
+                </div>
               </div>
 
-              {/* Status indicator - just colored dot */}
-              {(isOpen || isFloating) && (
-                <div className={`w-1 h-1 rounded-full ${isOpen ? 'bg-green-500' : 'bg-blue-500'}`} />
-              )}
-
-              {/* Action buttons - ultra compact */}
+              {/* Compact Action buttons - icon only */}
               <div className="flex gap-0.5 w-full">
                 <button
                   onClick={() => handleOpenPanel(panel.id)}
                   disabled={isOpen}
-                  className={`flex-1 text-[9px] px-1 py-0.5 rounded transition-colors ${
+                  className={`flex-1 text-[10px] h-4 flex items-center justify-center rounded transition-colors ${
                     isOpen
                       ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 cursor-not-allowed'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
                   title={isOpen ? 'Already docked' : 'Dock panel'}
                 >
-                  {isOpen ? '✓' : 'D'}
+                  {isOpen ? '✓' : '⬇'}
                 </button>
                 <button
                   onClick={() => handleOpenFloating(panel.id)}
-                  className="flex-1 text-[9px] px-1 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                  className="flex-1 text-[10px] h-4 flex items-center justify-center bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
                   title="Open as floating"
                 >
-                  F
+                  ⊡
                 </button>
               </div>
             </div>

@@ -103,14 +103,27 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       toggleMode: () => set((s) => ({ mode: s.mode === 'dock' ? 'cubes' : 'dock' })),
       setDockPosition: (position) => {
         if (get().dockPosition === position) return;
+        const currentPosition = get().dockPosition;
+        const wasFloating = currentPosition === 'floating';
+
         // Adjust default size based on position (increased defaults)
         const isVertical = position === 'left' || position === 'right';
         const newHeight = isVertical ? 450 : 300; // Increased from 320/180
-        // When switching to floating mode, ensure it's visible
+
+        // When switching modes, keep panel open for better UX
         const updates: any = { dockPosition: position, height: newHeight };
-        if (position === 'floating') {
+
+        // Keep panel open when:
+        // 1. Switching to floating mode
+        // 2. Switching from floating to docked (transitioning back)
+        if (position === 'floating' || wasFloating) {
           updates.open = true;
+          // When switching from floating to docked, also pin it so it stays visible
+          if (wasFloating && position !== 'floating') {
+            updates.pinned = true;
+          }
         }
+
         set(updates);
       },
       toggleOpen: () => set((s) => ({ open: !s.open })),

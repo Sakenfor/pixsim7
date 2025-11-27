@@ -12,7 +12,10 @@
       "Bash(pnpm install:*)",
       "Bash(netstat:*)",
       "Bash(npm run dev:*)",
-      "Bash(npx zustand:*)"
+      "Bash(npx zustand:*)",
+      "Bash(docker logs:*)",
+      "Bash(tasklist /FI \"IMAGENAME eq python.exe\" /V)",
+      "Bash(G:codeconda_envspixsim7python.exe -m arq pixsim7.backend.main.workers.arq_worker.WorkerSettings --check)"
     ],
     "deny": [],
     "ask": []

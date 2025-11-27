@@ -227,83 +227,90 @@ class HealthWorker(QThread):
                     # Check if service is actually running by checking health URL
                     # Don't skip health check just because running=False, as service might be running from previous session
 
-                    # Special-case worker: attempt Redis ping (TCP connect) if no health_url
+                    # Special-case worker: check process is alive first, then verify Redis
                     if key == 'worker':
-                        try:
-                            redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
-                            # Parse host:port
-                            host_port = redis_url.split('://', 1)[-1].split('/', 1)[0]
-                            host, port = host_port.split(':') if ':' in host_port else (host_port, '6379')
-                            port = int(port)
-                            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            sock.settimeout(0.5)  # Reduced from 1.5s to 0.5s
+                        # CRITICAL: First check if the worker PROCESS is actually alive
+                        pid = getattr(sp, "started_pid", None) or getattr(sp, "detected_pid", None)
+                        process_alive = False
+
+                        if pid:
                             try:
-                                sock.connect((host, port))
-                                # Optional PING
                                 try:
-                                    sock.sendall(b'*1\r\n$4\r\nPING\r\n')
-                                    # Read minimal response (+PONG)
-                                    sock.recv(16)
-                                except Exception:
-                                    pass
-                                # Worker is running if Redis is accessible
-                                requested_running = getattr(sp, 'requested_running', True)
-
-                                if requested_running:
-                                    sp.running = True
-                                    if hasattr(sp, 'externally_managed'):
-                                        sp.externally_managed = False
-                                else:
-                                    # User stopped but worker still accessible - externally managed
-                                    if hasattr(sp, 'externally_managed'):
-                                        sp.externally_managed = True
-
-                                # Detect PID if not started by launcher
-                                self._detect_and_store_pid(sp, port=port)
-                                self._emit_health_update(key, HealthStatus.HEALTHY)
-                                self.failure_counts[key] = 0
+                                    from .process_utils import is_process_alive
+                                except ImportError:
+                                    from process_utils import is_process_alive
+                                process_alive = is_process_alive(pid)
                             except Exception:
-                                self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                                current_status = getattr(sp, 'health_status', None)
+                                process_alive = False
 
-                                if self.failure_counts[key] < self.failure_threshold:
-                                    # Keep running flag if we're just starting
-                                    if sp.running:
-                                        self._emit_health_update(key, HealthStatus.STARTING)
-                                    else:
-                                        sp.running = False
-                                        self._emit_health_update(key, HealthStatus.STOPPED)
-                                # If service was previously healthy, mark as unhealthy
-                                elif current_status == HealthStatus.HEALTHY or sp.running:
-                                    sp.running = False
-                                    self._emit_health_update(key, HealthStatus.UNHEALTHY)
-                                # Otherwise, service is just stopped
-                                else:
-                                    sp.running = False
-                                    self._emit_health_update(key, HealthStatus.STOPPED)
-                                if _launcher_logger:
-                                    try:
-                                        _launcher_logger.warning(
-                                            "worker_redis_unreachable",
-                                            host=host,
-                                            port=port,
-                                            attempts=self.failure_counts[key]
-                                        )
-                                    except Exception:
-                                        pass
-                            finally:
-                                try:
-                                    sock.close()
-                                except Exception:
-                                    pass
-                        except Exception:
-                            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
-                            self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                        # If we think it's running but process is dead, mark as stopped
+                        if sp.running and pid and not process_alive:
+                            sp.running = False
+                            sp.detected_pid = None
+                            sp.started_pid = None
+                            self._emit_health_update(key, HealthStatus.STOPPED)
                             if _launcher_logger:
                                 try:
-                                    _launcher_logger.error("worker_redis_check_failed", attempts=self.failure_counts[key])
+                                    _launcher_logger.warning(
+                                        "worker_process_died",
+                                        pid=pid,
+                                        msg="Worker process is no longer running"
+                                    )
                                 except Exception:
                                     pass
+                            continue
+
+                        # If process is alive, verify Redis connection as additional health check
+                        if sp.running and process_alive:
+                            try:
+                                redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
+                                # Parse host:port
+                                host_port = redis_url.split('://', 1)[-1].split('/', 1)[0]
+                                host, port = host_port.split(':') if ':' in host_port else (host_port, '6379')
+                                port = int(port)
+                                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                                sock.settimeout(0.5)
+                                try:
+                                    sock.connect((host, port))
+                                    # Optional PING
+                                    try:
+                                        sock.sendall(b'*1\r\n$4\r\nPING\r\n')
+                                        sock.recv(16)
+                                    except Exception:
+                                        pass
+                                    # Process alive and Redis accessible = healthy
+                                    self._emit_health_update(key, HealthStatus.HEALTHY)
+                                    self.failure_counts[key] = 0
+                                except Exception:
+                                    # Process alive but Redis not accessible = starting/unhealthy
+                                    self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                    if self.failure_counts[key] < self.failure_threshold:
+                                        self._emit_health_update(key, HealthStatus.STARTING)
+                                    else:
+                                        self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                                    if _launcher_logger:
+                                        try:
+                                            _launcher_logger.warning(
+                                                "worker_redis_unreachable",
+                                                host=host,
+                                                port=port,
+                                                pid=pid,
+                                                attempts=self.failure_counts[key]
+                                            )
+                                        except Exception:
+                                            pass
+                                finally:
+                                    try:
+                                        sock.close()
+                                    except Exception:
+                                        pass
+                            except Exception:
+                                self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+                                self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                        else:
+                            # Not running or no PID - mark as stopped
+                            sp.running = False
+                            self._emit_health_update(key, HealthStatus.STOPPED)
                         continue
 
                     health_url = getattr(getattr(sp, 'defn', None), 'health_url', None)
