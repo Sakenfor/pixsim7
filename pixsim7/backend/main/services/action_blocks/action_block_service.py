@@ -14,6 +14,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlmodel import SQLModel
 
 from pixsim7.backend.main.domain.action_block import ActionBlockDB
+from pixsim7.backend.main.services.action_blocks.tagging import normalize_tags
 
 
 class ActionBlockService:
@@ -59,6 +60,10 @@ class ActionBlockService:
         block_data['created_at'] = datetime.utcnow()
         block_data['updated_at'] = datetime.utcnow()
 
+        # Normalize tags to use ontology IDs where possible (Task 84, Task C)
+        if 'tags' in block_data and block_data['tags']:
+            block_data['tags'] = normalize_tags(block_data['tags'])
+
         # Create block
         block = ActionBlockDB(**block_data)
         self.db.add(block)
@@ -98,6 +103,10 @@ class ActionBlockService:
         block = await self.get_block(block_id)
         if not block:
             return None
+
+        # Normalize tags if being updated (Task 84, Task C)
+        if 'tags' in updates and updates['tags']:
+            updates['tags'] = normalize_tags(updates['tags'])
 
         # Update fields
         for key, value in updates.items():

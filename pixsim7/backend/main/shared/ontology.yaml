@@ -6,236 +6,369 @@ description: >
   camera concepts, and beats. Parser, ActionBlocks, graphs, and game systems
   should normalize to these IDs rather than inventing new ad-hoc labels.
 
-entities:
-  character:
-    kinds:
-      primary:
-        id: "character.primary"
-        label: "Primary character"
-        description: "POV / focal character (she/her in most prompts)."
-        properties: ["pose", "emotional_state", "body_language", "breathing"]
-      secondary:
-        id: "character.secondary"
-        label: "Secondary / creature"
-        description: "Non-POV entities (minotaur, werewolf, partner, etc.)."
-        properties: ["species", "size", "appearance", "body_features"]
+# ===== CORE ONTOLOGY =====
+# Defines abstract entity types and relationships that are stable across all content domains.
+# Systems should rely on these categories; domain-specific content goes in the 'domain' section.
+core:
+  entities:
+    character:
+      label: "Character / Entity"
+      description: "Abstract character entity category. Domain packs define specific character types."
+      kinds:
+        primary:
+          id: "character.primary"
+          label: "Primary character"
+          description: "POV / focal character (she/her in most prompts)."
+          properties: ["pose", "emotional_state", "body_language", "breathing"]
+        secondary:
+          id: "character.secondary"
+          label: "Secondary / creature"
+          description: "Non-POV entities (minotaur, werewolf, partner, etc.)."
+          properties: ["species", "size", "appearance", "body_features"]
 
-  anatomy:
-    parts:
-      shaft:
-        id: "part:shaft"
-        label: "Shaft"
-        properties: ["size", "color", "texture", "state"]
-      head:
-        id: "part:head"
-        label: "Head"
-        properties: ["size", "color", "texture", "state"]
-      hands:
-        id: "part:hands"
-        label: "Hands"
-        properties: ["pose", "position", "contact_state"]
-      torso:
-        id: "part:torso"
-        label: "Torso"
-        properties: ["orientation", "pose", "contact_state"]
-      buttocks:
-        id: "part:buttocks"
-        label: "Buttocks"
-        properties: ["pose", "contact_state"]
+    part:
+      label: "Anatomy Part"
+      description: "Abstract anatomical part category. Domain packs define specific parts."
+      properties: ["size", "color", "texture", "state", "pose", "position", "contact_state", "orientation"]
 
-    regions:
-      groin:
-        id: "region:groin"
-        label: "Groin / crotch"
-      chest:
-        id: "region:chest"
-        label: "Chest"
-      back:
-        id: "region:back"
-        label: "Back"
-      between_legs:
-        id: "region:between_legs"
-        label: "Between legs"
+    region:
+      label: "Body Region"
+      description: "Abstract body region category. Domain packs define specific regions."
+      properties: ["location", "contact_state"]
 
-  action:
-    types:
-      movement:
-        id: "act:movement"
-        label: "Movement"
-        examples: ["enters", "walks", "leans", "adjusts"]
-      touch:
-        id: "act:touch"
-        label: "Touch / contact"
-        examples: ["presses", "strokes", "grasps", "traces"]
-      phys_response:
-        id: "act:phys_response"
-        label: "Physiological response"
-        examples: ["twitches", "hardens", "swells", "pulses"]
+    action:
+      label: "Action"
+      description: "Abstract action category. Domain packs define specific action types."
+      properties: ["target", "speed", "intensity", "duration"]
 
-  state:
-    physical:
-      erect:
-        id: "state:erect"
-      flaccid:
-        id: "state:flaccid"
-      stiffening:
-        id: "state:stiffening"
-      hardening:
-        id: "state:hardening"
-      swollen:
-        id: "state:swollen"
+    state:
+      label: "State"
+      description: "Abstract state category (physical, emotional, positional). Domain packs define specific states."
+      subcategories:
+        - physical
+        - emotional
+        - positional
 
-    emotional:
-      confident:
-        id: "mood:confident"
-      nervous:
-        id: "mood:nervous"
-      intimidated:
-        id: "mood:intimidated"
-      eager:
-        id: "mood:eager"
-      playful:
-        id: "mood:playful"
+    spatial:
+      label: "Spatial Relation"
+      description: "Abstract spatial relationship category (location, orientation, contact)."
+      subcategories:
+        - location
+        - orientation
+        - contact
 
-    positional:
-      hanging:
-        id: "state:hanging"
-      rising:
-        id: "state:rising"
-      extended:
-        id: "state:extended"
-      aligned:
-        id: "state:aligned"
+    camera:
+      label: "Camera"
+      description: "Abstract camera category (views, framing, movement)."
+      subcategories:
+        - views
+        - framing
+        - movement
 
-  spatial:
-    location:
-      between_legs:
-        id: "rel:between_legs"
-      at_crotch:
-        id: "rel:at_crotch"
-      at_groin:
-        id: "rel:at_groin"
-      against_back:
-        id: "rel:against_back"
+    beat:
+      label: "Narrative Beat"
+      description: "Abstract narrative beat category (sequence, micro-beats)."
+      subcategories:
+        - sequence_kinds
+        - micro_beats
 
-    orientation:
-      perpendicular:
-        id: "ori:perpendicular"
-      aligned:
-        id: "ori:aligned"
-      facing_forward:
-        id: "ori:facing_forward"
+  intensity:
+    label: "Intensity Scale"
+    description: "Core intensity scale (0-100)"
+    scale: "0-100"
+    labels:
+      - id: "intensity:soft"
+        range: [0, 30]
+      - id: "intensity:medium"
+        range: [30, 70]
+      - id: "intensity:high"
+        range: [70, 100]
 
-    contact:
-      pressing:
-        id: "contact:pressing"
-      touching:
-        id: "contact:touching"
-      inside:
-        id: "contact:inside"
-      against:
-        id: "contact:against"
+  speed:
+    label: "Speed Scale"
+    description: "Core speed scale"
+    labels:
+      slow:
+        id: "speed:slow"
+      medium:
+        id: "speed:medium"
+      fast:
+        id: "speed:fast"
 
-  camera:
-    views:
-      pov:
-        id: "cam:pov"
-      from_behind:
-        id: "cam:from_behind"
-      upper_body_focus:
-        id: "cam:upper_body_focus"
+  relationships:
+    - id: "character_has_part"
+      from: "character"
+      to: "part"
+      predicate: "has_part"
 
-    framing:
-      centered:
-        id: "cam:centered"
-      bottom_of_frame:
-        id: "cam:bottom_of_frame"
-      entering_frame:
-        id: "cam:entering_frame"
+    - id: "part_located_at_region"
+      from: "part"
+      to: "region"
+      predicate: "located_at"
 
-  beat:
-    sequence_kinds:
-      setup:
-        id: "beat:setup"
-      buildup:
-        id: "beat:buildup"
-      climax:
-        id: "beat:climax"
-      hold:
-        id: "beat:hold"
+    - id: "character_performs_action"
+      from: "character"
+      to: "action"
+      predicate: "performs"
 
-    micro_beats:
-      tease:
-        id: "beat:tease"
-      adjustment:
-        id: "beat:adjustment"
-      entry:
-        id: "beat:entry"
-      escalation:
-        id: "beat:escalation"
+    - id: "action_targets_entity"
+      from: "action"
+      to: "character|part"
+      predicate: "targets"
 
-intensity:
-  scale: "0-100"
-  labels:
-    - id: "intensity:soft"
-      range: [0, 30]
-    - id: "intensity:medium"
-      range: [30, 70]
-    - id: "intensity:high"
-      range: [70, 100]
+    - id: "action_has_state"
+      from: "action"
+      to: "state.physical"
+      predicate: "has_state"
 
-speed:
-  labels:
-    slow:
-      id: "speed:slow"
-    medium:
-      id: "speed:medium"
-    fast:
-      id: "speed:fast"
+    - id: "action_has_speed"
+      from: "action"
+      to: "speed"
+      predicate: "has_speed"
 
-relationships:
-  - id: "character_has_part"
-    from: "character"
-    to: "anatomy.part"
-    predicate: "has_part"
+    - id: "scene_has_beat"
+      from: "scene"
+      to: "beat"
+      predicate: "has_beat"
 
-  - id: "part_located_at_region"
-    from: "anatomy.part"
-    to: "anatomy.region"
-    predicate: "located_at"
+    - id: "beat_follows_beat"
+      from: "beat"
+      to: "beat"
+      predicate: "follows"
 
-  - id: "character_performs_action"
-    from: "character"
-    to: "action"
-    predicate: "performs"
+    - id: "camera_frames_entity"
+      from: "camera"
+      to: "character|part"
+      predicate: "frames"
 
-  - id: "action_targets_entity"
-    from: "action"
-    to: "character|anatomy.part"
-    predicate: "targets"
 
-  - id: "action_has_state"
-    from: "action"
-    to: "state.physical"
-    predicate: "has_state"
+# ===== DOMAIN ONTOLOGY =====
+# Concrete entities, parts, actions, states specific to current content.
+# These can be grouped by semantic pack / theme.
+domain:
+  packs:
+    default:
+      label: "Default Content Pack"
+      description: "Core intimate/romantic content entities"
 
-  - id: "action_has_speed"
-    from: "action"
-    to: "speed"
-    predicate: "has_speed"
+      anatomy_parts:
+        - id: "part:shaft"
+          label: "Shaft"
+          keywords: ["shaft", "member", "cock"]
+          properties: ["size", "color", "texture", "state"]
 
-  - id: "scene_has_beat"
-    from: "scene"
-    to: "beat"
-    predicate: "has_beat"
+        - id: "part:head"
+          label: "Head"
+          keywords: ["head", "tip", "glans"]
+          properties: ["size", "color", "texture", "state"]
 
-  - id: "beat_follows_beat"
-    from: "beat"
-    to: "beat"
-    predicate: "follows"
+        - id: "part:hands"
+          label: "Hands"
+          keywords: ["hands", "fingers", "palm"]
+          properties: ["pose", "position", "contact_state"]
 
-  - id: "camera_frames_entity"
-    from: "camera"
-    to: "character|anatomy.part"
-    predicate: "frames"
+        - id: "part:torso"
+          label: "Torso"
+          keywords: ["torso", "body", "chest"]
+          properties: ["orientation", "pose", "contact_state"]
 
+        - id: "part:buttocks"
+          label: "Buttocks"
+          keywords: ["buttocks", "ass", "rear", "bottom"]
+          properties: ["pose", "contact_state"]
+
+      anatomy_regions:
+        - id: "region:groin"
+          label: "Groin / crotch"
+          keywords: ["groin", "crotch", "pelvis"]
+
+        - id: "region:chest"
+          label: "Chest"
+          keywords: ["chest", "breast", "torso"]
+
+        - id: "region:back"
+          label: "Back"
+          keywords: ["back", "spine"]
+
+        - id: "region:between_legs"
+          label: "Between legs"
+          keywords: ["between legs", "thighs"]
+
+      actions:
+        - id: "act:movement"
+          label: "Movement"
+          keywords: ["enters", "walks", "leans", "adjusts", "moves", "approaches"]
+
+        - id: "act:touch"
+          label: "Touch / contact"
+          keywords: ["presses", "strokes", "grasps", "traces", "touches", "caresses"]
+
+        - id: "act:phys_response"
+          label: "Physiological response"
+          keywords: ["twitches", "hardens", "swells", "pulses", "throbs", "stiffens"]
+
+      states_physical:
+        - id: "state:erect"
+          label: "Erect"
+          keywords: ["erect", "hard", "rigid"]
+
+        - id: "state:flaccid"
+          label: "Flaccid"
+          keywords: ["flaccid", "soft", "limp"]
+
+        - id: "state:stiffening"
+          label: "Stiffening"
+          keywords: ["stiffening", "hardening", "rising"]
+
+        - id: "state:hardening"
+          label: "Hardening"
+          keywords: ["hardening", "growing", "swelling"]
+
+        - id: "state:swollen"
+          label: "Swollen"
+          keywords: ["swollen", "engorged", "throbbing"]
+
+      states_emotional:
+        - id: "mood:confident"
+          label: "Confident"
+          keywords: ["confident", "assured", "bold"]
+
+        - id: "mood:nervous"
+          label: "Nervous"
+          keywords: ["nervous", "anxious", "uncertain"]
+
+        - id: "mood:intimidated"
+          label: "Intimidated"
+          keywords: ["intimidated", "overwhelmed", "awed"]
+
+        - id: "mood:eager"
+          label: "Eager"
+          keywords: ["eager", "excited", "enthusiastic"]
+
+        - id: "mood:playful"
+          label: "Playful"
+          keywords: ["playful", "teasing", "mischievous"]
+
+      states_positional:
+        - id: "state:hanging"
+          label: "Hanging"
+          keywords: ["hanging", "dangling", "suspended"]
+
+        - id: "state:rising"
+          label: "Rising"
+          keywords: ["rising", "lifting", "elevating"]
+
+        - id: "state:extended"
+          label: "Extended"
+          keywords: ["extended", "stretched", "reaching"]
+
+        - id: "state:aligned"
+          label: "Aligned"
+          keywords: ["aligned", "positioned", "centered"]
+
+      spatial_location:
+        - id: "rel:between_legs"
+          label: "Between legs"
+          keywords: ["between legs", "between thighs"]
+
+        - id: "rel:at_crotch"
+          label: "At crotch"
+          keywords: ["at crotch", "at groin"]
+
+        - id: "rel:at_groin"
+          label: "At groin"
+          keywords: ["at groin", "groin area"]
+
+        - id: "rel:against_back"
+          label: "Against back"
+          keywords: ["against back", "pressed to back"]
+
+      spatial_orientation:
+        - id: "ori:perpendicular"
+          label: "Perpendicular"
+          keywords: ["perpendicular", "at right angle"]
+
+        - id: "ori:aligned"
+          label: "Aligned"
+          keywords: ["aligned", "parallel", "matched"]
+
+        - id: "ori:facing_forward"
+          label: "Facing forward"
+          keywords: ["facing forward", "forward-facing"]
+
+      spatial_contact:
+        - id: "contact:pressing"
+          label: "Pressing"
+          keywords: ["pressing", "pushing", "applying pressure"]
+
+        - id: "contact:touching"
+          label: "Touching"
+          keywords: ["touching", "brushing", "grazing"]
+
+        - id: "contact:inside"
+          label: "Inside"
+          keywords: ["inside", "within", "penetrating"]
+
+        - id: "contact:against"
+          label: "Against"
+          keywords: ["against", "on", "resting on"]
+
+      camera_views:
+        - id: "cam:pov"
+          label: "POV"
+          keywords: ["pov", "point of view", "first-person"]
+
+        - id: "cam:from_behind"
+          label: "From behind"
+          keywords: ["from behind", "rear view", "back view"]
+
+        - id: "cam:upper_body_focus"
+          label: "Upper body focus"
+          keywords: ["upper body", "torso focus", "chest focus"]
+
+      camera_framing:
+        - id: "cam:centered"
+          label: "Centered"
+          keywords: ["centered", "center frame", "middle"]
+
+        - id: "cam:bottom_of_frame"
+          label: "Bottom of frame"
+          keywords: ["bottom of frame", "lower frame", "bottom edge"]
+
+        - id: "cam:entering_frame"
+          label: "Entering frame"
+          keywords: ["entering frame", "coming into view", "appearing"]
+
+      beats_sequence:
+        - id: "beat:setup"
+          label: "Setup"
+          keywords: ["setup", "introduction", "establishing"]
+
+        - id: "beat:buildup"
+          label: "Buildup"
+          keywords: ["buildup", "escalation", "rising"]
+
+        - id: "beat:climax"
+          label: "Climax"
+          keywords: ["climax", "peak", "culmination"]
+
+        - id: "beat:hold"
+          label: "Hold"
+          keywords: ["hold", "sustain", "maintain"]
+
+      beats_micro:
+        - id: "beat:tease"
+          label: "Tease"
+          keywords: ["tease", "teasing", "playful"]
+
+        - id: "beat:adjustment"
+          label: "Adjustment"
+          keywords: ["adjustment", "positioning", "aligning"]
+
+        - id: "beat:entry"
+          label: "Entry"
+          keywords: ["entry", "entering", "penetration"]
+
+        - id: "beat:escalation"
+          label: "Escalation"
+          keywords: ["escalation", "intensifying", "building"]

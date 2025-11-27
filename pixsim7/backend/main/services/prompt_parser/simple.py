@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
 from .ontology import ROLE_KEYWORDS, ACTION_VERBS
+from pixsim7.backend.main.shared.ontology import load_ontology
 
 
 # ===== TYPES =====
@@ -199,6 +200,17 @@ class SimplePromptParser:
         has_verb = any(word in self.action_verbs for word in words)
         if has_verb:
             metadata["has_verb"] = True
+
+        # Match keywords to ontology IDs (Task 84, Task B)
+        try:
+            ontology = load_ontology()
+            ontology_ids = ontology.match_keywords(text_lower)
+            if ontology_ids:
+                metadata["ontology_ids"] = ontology_ids
+        except Exception:
+            # If ontology loading fails, continue without ontology IDs
+            # (This ensures backward compatibility and graceful degradation)
+            pass
 
         # Special handling for camera
         if "camera" in found_roles:
