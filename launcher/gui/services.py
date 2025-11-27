@@ -333,9 +333,10 @@ def build_services_with_fallback() -> List[ServiceDef]:
     # Try services.json first
     services = build_services_from_json()
     if services is not None:
-        print("✓ Loaded services from services.json")
+        # Avoid printing Unicode symbols that may not be supported in some terminals
+        print("Loaded services from services.json")
         return services
 
     # Fall back to hardcoded definitions
-    print("✓ Using hardcoded service definitions")
+    print("Using hardcoded service definitions")
     return build_services()

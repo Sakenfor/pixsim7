@@ -187,6 +187,8 @@ export function MediaCard(props: MediaCardProps) {
     badgeVisibility.showGenerationBadge &&
     hasGenerationActions &&
     (!badgeVisibility.showGenerationOnHoverOnly || isHovered);
+  const hoverEffectsEnabled = badgeVisibility.enableBadgePulse;
+  const applyHoverEffect = (cls: string) => (hoverEffectsEnabled ? cls : '');
 
   useEffect(() => {
     let cancelled = false;
@@ -411,7 +413,7 @@ export function MediaCard(props: MediaCardProps) {
                         trigger={
                           <button
                             type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                            className={`w-full text-left px-3 py-2 ${applyHoverEffect('hover:bg-neutral-800/60 transition-colors')} flex items-center gap-2 group/item`}
                             onClick={() => {
                               if (actions?.onOpenDetails) {
                                 actions.onOpenDetails(id);
@@ -431,7 +433,7 @@ export function MediaCard(props: MediaCardProps) {
                         <div className="flex items-center gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
                           <button
                             type="button"
-                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-blue-600 transition-colors whitespace-nowrap"
+                            className={`px-2 py-1.5 text-[10px] text-white rounded ${applyHoverEffect('hover:bg-blue-600 transition-colors')} whitespace-nowrap`}
                             onClick={() => {
                               if (actions?.onOpenDetails) {
                                 actions.onOpenDetails(id);
@@ -445,7 +447,7 @@ export function MediaCard(props: MediaCardProps) {
                           </button>
                           <button
                             type="button"
-                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-blue-600 transition-colors whitespace-nowrap"
+                            className={`px-2 py-1.5 text-[10px] text-white rounded ${applyHoverEffect('hover:bg-blue-600 transition-colors')} whitespace-nowrap`}
                             onClick={() => {
                               if (actions?.onOpenDetails) {
                                 actions.onOpenDetails(id);
@@ -470,7 +472,7 @@ export function MediaCard(props: MediaCardProps) {
                         trigger={
                           <button
                             type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                            className={`w-full text-left px-3 py-2 ${applyHoverEffect('hover:bg-neutral-800/60 transition-colors')} flex items-center gap-2 group/item`}
                             onClick={() => {
                               actions.onUploadToProvider?.(id);
                             }}
@@ -486,7 +488,7 @@ export function MediaCard(props: MediaCardProps) {
                         <div className="flex items-center gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
                           <button
                             type="button"
-                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                            className={`px-2 py-1.5 text-[10px] text-white rounded ${applyHoverEffect('hover:bg-yellow-600 transition-colors')} whitespace-nowrap`}
                             onClick={() => actions.onUploadToProvider?.(id)}
                             title="Upload immediately"
                           >
@@ -494,7 +496,7 @@ export function MediaCard(props: MediaCardProps) {
                           </button>
                           <button
                             type="button"
-                            className="px-2 py-1.5 text-[10px] text-white rounded hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                            className={`px-2 py-1.5 text-[10px] text-white rounded ${applyHoverEffect('hover:bg-yellow-600 transition-colors')} whitespace-nowrap`}
                             onClick={() => actions.onUploadToProvider?.(id)}
                             title="Retry with force"
                           >
@@ -511,7 +513,7 @@ export function MediaCard(props: MediaCardProps) {
                     >
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                        className={`w-full text-left px-3 py-2 ${applyHoverEffect('hover:bg-neutral-800/60 transition-colors')} flex items-center gap-2 group/item`}
                         onClick={() => {
                           actions.onShowMetadata(id);
                         }}
@@ -525,7 +527,7 @@ export function MediaCard(props: MediaCardProps) {
                     <ExpandableItem variants={expandableItemVariants} className="block">
                       <button
                         type="button"
-                        className="w-full text-left px-3 py-2 hover:bg-neutral-800/60 transition-colors flex items-center gap-2 group/item"
+                        className={`w-full text-left px-3 py-2 ${applyHoverEffect('hover:bg-neutral-800/60 transition-colors')} flex items-center gap-2 group/item`}
                         onClick={() => actions.onDelete?.(id)}
                       >
                         <ThemedIcon
@@ -631,7 +633,7 @@ export function MediaCard(props: MediaCardProps) {
                   trigger={
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 text-white text-xs font-medium shadow-md transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none ${applyHoverEffect('hover:from-purple-700 hover:to-purple-600')}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         const operation =
@@ -669,7 +671,7 @@ export function MediaCard(props: MediaCardProps) {
                         trigger={
                           <button
                             type="button"
-                            className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none"
+                            className={`group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none ${applyHoverEffect('hover:bg-purple-600')}`}
                             onClick={() => actions.onImageToVideo?.(id)}
                             title="Image to Video"
                           >
@@ -684,7 +686,7 @@ export function MediaCard(props: MediaCardProps) {
                         <div className="flex flex-col gap-1 p-1 rounded-md bg-neutral-800/95 backdrop-blur-sm shadow-xl border border-neutral-600">
                           <button
                             type="button"
-                            className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
+                            className={`px-2 py-1 text-[9px] text-white rounded whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60 ${applyHoverEffect('hover:bg-purple-700 transition-colors')}`}
                             onClick={() => actions.onImageToVideo?.(id)}
                             title="Standard quality"
                           >
@@ -692,7 +694,7 @@ export function MediaCard(props: MediaCardProps) {
                           </button>
                           <button
                             type="button"
-                            className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
+                            className={`px-2 py-1 text-[9px] text-white rounded whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60 ${applyHoverEffect('hover:bg-purple-700 transition-colors')}`}
                             onClick={() => actions.onImageToVideo?.(id)}
                             title="High quality"
                           >
@@ -706,7 +708,7 @@ export function MediaCard(props: MediaCardProps) {
                         trigger={
                           <button
                             type="button"
-                            className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none"
+                            className={`group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none ${applyHoverEffect('hover:bg-purple-600')}`}
                             onClick={() => actions.onVideoExtend?.(id)}
                             title="Extend Video"
                           >
@@ -723,7 +725,7 @@ export function MediaCard(props: MediaCardProps) {
                             <button
                               key={label}
                               type="button"
-                              className="px-2 py-1 text-[9px] text-white rounded hover:bg-purple-700 transition-colors whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60"
+                              className={`px-2 py-1 text-[9px] text-white rounded whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/60 ${applyHoverEffect('hover:bg-purple-700 transition-colors')}`}
                               onClick={() => actions.onVideoExtend?.(id)}
                               title={label}
                             >
@@ -736,7 +738,7 @@ export function MediaCard(props: MediaCardProps) {
                     {actions?.onAddToTransition && (
                       <button
                         type="button"
-                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none"
+                        className={`group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none ${applyHoverEffect('hover:bg-purple-600')}`}
                         onClick={() => actions.onAddToTransition?.(id)}
                         title="Add to Transition"
                       >
@@ -747,7 +749,7 @@ export function MediaCard(props: MediaCardProps) {
                     {actions?.onAddToGenerate && (
                       <button
                         type="button"
-                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none"
+                        className={`group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 transition-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:outline-none ${applyHoverEffect('hover:bg-purple-600')}`}
                         onClick={() => actions.onAddToGenerate?.(id)}
                         title="Add to Queue"
                       >

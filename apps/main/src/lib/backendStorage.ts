@@ -1,5 +1,6 @@
 import type { StateStorage } from 'zustand/middleware';
 import { getUserPreferences, updatePreferenceKey } from './api/userPreferences';
+import { debugFlags } from './debugFlags';
 
 /**
  * Backend-synced storage for Zustand persist middleware
@@ -22,48 +23,46 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
 
   return {
     getItem: async (name: string): Promise<string | null> => {
-      console.log(`[BackendStorage:${preferenceKey}] getItem called for ${name}`);
+      debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] getItem called for ${name}`);
 
       try {
         // First, try localStorage for immediate hydration (faster)
         const localValue = localStorage.getItem(localStorageKey);
-        console.log(`[BackendStorage:${preferenceKey}] LocalStorage value:`, localValue ? 'found' : 'empty');
+        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] LocalStorage value:`, localValue ? 'found' : 'empty');
 
         // For faster initial hydration, return localStorage value immediately
         // Skip backend check for now (can sync in background later)
         if (localValue) {
-          console.log(`[BackendStorage:${preferenceKey}] Returning localStorage value immediately`);
-          console.log(`[BackendStorage:${preferenceKey}] Value type:`, typeof localValue, 'Length:', localValue.length);
-          console.log(`[BackendStorage:${preferenceKey}] Value preview:`, localValue.substring(0, 100) + '...');
+          debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Returning localStorage value immediately`);
           return localValue;
         }
 
         // If no localStorage value, try backend as fallback
-        console.log(`[BackendStorage:${preferenceKey}] No localStorage, trying backend...`);
+        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] No localStorage, trying backend...`);
         try {
           const prefs = await getUserPreferences();
           const backendValue = prefs[preferenceKey];
 
           if (backendValue) {
             const serialized = JSON.stringify(backendValue);
-            console.log(`[BackendStorage:${preferenceKey}] Got value from backend, saving to localStorage`);
+            debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Got value from backend, saving to localStorage`);
             localStorage.setItem(localStorageKey, serialized);
             return serialized;
           }
         } catch (error) {
-          console.warn(`[BackendStorage:${preferenceKey}] Backend fetch failed:`, error);
+          debugFlags.warn('persistence', `[BackendStorage:${preferenceKey}] Backend fetch failed:`, error);
         }
 
-        console.log(`[BackendStorage:${preferenceKey}] No value found anywhere, returning null`);
+        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] No value found anywhere, returning null`);
         return null;
       } catch (error) {
-        console.error(`[BackendStorage:${preferenceKey}] getItem error:`, error);
+        debugFlags.error('persistence', `[BackendStorage:${preferenceKey}] getItem error:`, error);
         return null;
       }
     },
 
     setItem: async (name: string, value: string | any): Promise<void> => {
-      console.log(`[BackendStorage:${preferenceKey}] setItem called for ${name}, value type:`, typeof value);
+      debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] setItem called for ${name}`);
 
       // Zustand persist may pass either a string or object depending on configuration
       // We need to handle both cases and ensure we store a string
@@ -73,15 +72,15 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
         stringValue = value;
       } else if (typeof value === 'object') {
         // Zustand is passing the object directly, we need to stringify it
-        console.log(`[BackendStorage:${preferenceKey}] Stringifying object for storage`);
+        debugFlags.log('persistence', `[BackendStorage:${preferenceKey}] Stringifying object for storage`);
         try {
           stringValue = JSON.stringify(value);
         } catch (e) {
-          console.error(`[BackendStorage:${preferenceKey}] Failed to stringify value:`, e);
+          debugFlags.error('persistence', `[BackendStorage:${preferenceKey}] Failed to stringify value:`, e);
           return; // Don't save corrupted data
         }
       } else {
-        console.error(`[BackendStorage:${preferenceKey}] Unexpected value type:`, typeof value);
+        debugFlags.error('persistence', `[BackendStorage:${preferenceKey}] Unexpected value type:`, typeof value);
         return;
       }
 
@@ -94,7 +93,7 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
       }
 
       saveTimeout = setTimeout(async () => {
-        console.log(`[BackendStorage:${preferenceKey}] Syncing to backend after debounce`);
+        debugFlags.log('backend', `[BackendStorage:${preferenceKey}] Syncing to backend after debounce`);
         try {
           // Parse the stringValue to get the object for backend storage
           let parsed: unknown;
@@ -105,9 +104,9 @@ export function createBackendStorage(preferenceKey: string): StateStorage {
             parsed = stringValue;
           }
           await updatePreferenceKey(preferenceKey as any, parsed as any);
-          console.log(`[BackendStorage:${preferenceKey}] Successfully synced to backend`);
+          debugFlags.log('backend', `[BackendStorage:${preferenceKey}] Successfully synced to backend`);
         } catch (error) {
-          console.error(`[BackendStorage:${preferenceKey}] Failed to sync to backend:`, error);
+          debugFlags.error('backend', `[BackendStorage:${preferenceKey}] Failed to sync to backend:`, error);
           // Don't throw - localStorage save already succeeded
         }
       }, SAVE_DEBOUNCE_MS);

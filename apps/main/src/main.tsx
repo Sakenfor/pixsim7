@@ -12,6 +12,7 @@ import { registerGalleryTools } from './lib/gallery/registerGalleryTools'
 import { registerGizmoSurfaces } from './lib/gizmos'
 import { DevToolProvider } from './lib/devtools/devToolContext'
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
+import './lib/debugFlags' // Debug flags system for toggleable logging
 
 // Initialize web logging for frontend
 initWebLogger('frontend')

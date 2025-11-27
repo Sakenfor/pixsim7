@@ -144,7 +144,35 @@ def _get_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
     Keys: ProcessId, ParentProcessId, Name, CommandLine
     """
     if os.name != 'nt' or not pid:
-    return None
+        return None
+
+    try:
+        cmd = [
+            'powershell',
+            '-NoProfile',
+            '-Command',
+            (
+                "$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
+                "if($p){{ $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }}"
+            ).format(pid=pid),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
+        out = (result.stdout or '').strip()
+        if not out:
+            return None
+        try:
+            data = json.loads(out)
+            # Normalize keys
+            return {
+                'ProcessId': data.get('ProcessId'),
+                'ParentProcessId': data.get('ParentProcessId'),
+                'Name': data.get('Name') or '',
+                'CommandLine': data.get('CommandLine') or '',
+            }
+        except Exception:
+            return None
+    except Exception:
+        return None
 
 
 def is_process_alive(pid: int) -> bool:
@@ -183,28 +211,6 @@ def is_process_alive(pid: int) -> bool:
             return True
     except Exception:
         return False
-    try:
-        cmd = [
-            'powershell', '-NoProfile', '-Command',
-            f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; if($p){{ $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }}"
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
-        out = (result.stdout or '').strip()
-        if not out:
-            return None
-        try:
-            data = json.loads(out)
-            # Normalize keys
-            return {
-                'ProcessId': data.get('ProcessId'),
-                'ParentProcessId': data.get('ParentProcessId'),
-                'Name': data.get('Name') or '',
-                'CommandLine': data.get('CommandLine') or '',
-            }
-        except Exception:
-            return None
-    except Exception:
-        return None
 
 
 def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:

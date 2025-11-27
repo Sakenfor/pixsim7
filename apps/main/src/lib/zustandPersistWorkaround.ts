@@ -17,6 +17,8 @@
  *   }
  */
 
+import { debugFlags } from './debugFlags';
+
 export function manuallyRehydrateStore<T>(
   store: {
     getState: () => T;
@@ -28,18 +30,18 @@ export function manuallyRehydrateStore<T>(
   const storedValue = localStorage.getItem(localStorageKey);
 
   if (!storedValue) {
-    console.log(`[${storeName}] No persisted state found`);
+    debugFlags.log('rehydration', `[${storeName}] No persisted state found`);
     return;
   }
 
-  console.log(`[${storeName}] ⚠️ MANUAL REHYDRATION: Found persisted state, applying...`);
+  debugFlags.log('rehydration', `[${storeName}] ⚠️ MANUAL REHYDRATION: Found persisted state, applying...`);
 
   try {
     const parsed = JSON.parse(storedValue);
 
     if (parsed.state && parsed.version !== undefined) {
       const savedState = parsed.state;
-      console.log(`[${storeName}] Rehydrating ${Object.keys(savedState).length} fields`);
+      debugFlags.log('rehydration', `[${storeName}] Rehydrating ${Object.keys(savedState).length} fields`);
 
       // Dynamically merge all state fields (excluding functions)
       const stateToMerge: Partial<T> = {};
@@ -49,17 +51,17 @@ export function manuallyRehydrateStore<T>(
         }
       }
 
-      console.log(`[${storeName}] Merging fields:`, Object.keys(stateToMerge).join(', '));
+      debugFlags.log('rehydration', `[${storeName}] Merging fields:`, Object.keys(stateToMerge).join(', '));
 
       // Apply the state
       store.setState(stateToMerge);
 
-      console.log(`[${storeName}] ✅ MANUAL REHYDRATION COMPLETE!`);
+      debugFlags.log('rehydration', `[${storeName}] ✅ MANUAL REHYDRATION COMPLETE!`);
     } else {
-      console.warn(`[${storeName}] Invalid persist format:`, parsed);
+      debugFlags.warn('rehydration', `[${storeName}] Invalid persist format:`, parsed);
     }
   } catch (error) {
-    console.error(`[${storeName}] Manual rehydration failed:`, error);
+    debugFlags.error('rehydration', `[${storeName}] Manual rehydration failed:`, error);
   }
 }
 
@@ -72,6 +74,6 @@ export function exposeStoreForDebugging<T>(
 ): void {
   if (typeof window !== 'undefined') {
     (window as any)[`__${name}Store`] = store;
-    console.log(`💡 ${name} store exposed! Run: window.__${name}Store.getState()`);
+    debugFlags.log('stores', `💡 ${name} store exposed! Run: window.__${name}Store.getState()`);
   }
 }

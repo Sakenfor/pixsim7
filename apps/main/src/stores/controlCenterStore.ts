@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
+import { debugFlags } from '../lib/debugFlags';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
@@ -76,7 +77,7 @@ const STORAGE_KEY = 'control_center_v1';
 export const useControlCenterStore = create<ControlCenterState & ControlCenterActions>()(
   persist(
     (set, get) => {
-      console.log('[ControlCenterStore] Creating store with initial state');
+      debugFlags.log('stores', '[ControlCenterStore] Creating store with initial state');
       return {
         mode: 'dock',
         dockPosition: 'bottom',
@@ -242,18 +243,18 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         return migrated;
       },
       onRehydrateStorage: () => {
-        console.log('[ControlCenterStore] onRehydrateStorage outer function called');
+        debugFlags.log('rehydration', '[ControlCenterStore] onRehydrateStorage outer function called');
         return (state, error) => {
-          console.log('[ControlCenterStore] onRehydrateStorage INNER callback called!', { state: !!state, error: !!error });
+          debugFlags.log('rehydration', '[ControlCenterStore] onRehydrateStorage INNER callback called!', { state: !!state, error: !!error });
 
           try {
             if (error) {
-              console.error('[ControlCenterStore] Rehydration error:', error);
+              debugFlags.error('rehydration', '[ControlCenterStore] Rehydration error:', error);
               return;
             }
 
             if (state) {
-              console.log('[ControlCenterStore] ✅ Rehydration complete! State received:', {
+              debugFlags.log('rehydration', '[ControlCenterStore] ✅ Rehydration complete! State received:', {
                 mode: state.mode,
                 dockPosition: state.dockPosition,
                 open: state.open,
@@ -265,23 +266,20 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
 
               // After rehydration, ensure floating mode is visible
               if (state.dockPosition === 'floating' && !state.open) {
-                console.log('[ControlCenterStore] Setting floating mode to open');
+                debugFlags.log('rehydration', '[ControlCenterStore] Setting floating mode to open');
                 state.setOpen(true);
               }
             } else {
-              console.warn('[ControlCenterStore] ⚠️ Rehydration returned no state (state is null/undefined)');
+              debugFlags.warn('rehydration', '[ControlCenterStore] ⚠️ Rehydration returned no state (state is null/undefined)');
             }
           } catch (e) {
-            console.error('[ControlCenterStore] ❌ Error in rehydration callback:', e);
+            debugFlags.error('rehydration', '[ControlCenterStore] ❌ Error in rehydration callback:', e);
           }
         };
       },
     }
   )
 );
-
-// Force hydration on module load
-console.log('[ControlCenterStore] Module loaded, checking for persisted state...');
 
 // Expose store to window for debugging and MANUALLY REHYDRATE (Zustand v5 bug workaround)
 if (typeof window !== 'undefined') {
