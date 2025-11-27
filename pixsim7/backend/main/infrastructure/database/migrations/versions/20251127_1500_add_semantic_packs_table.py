@@ -1,7 +1,7 @@
 """Add semantic_packs table for shareable prompt semantics bundles
 
 Revision ID: 1127semanticpacks
-Revises: 20251125_0000_create_ai_interactions
+Revises: 20251125aiint
 Create Date: 2025-11-27 15:00:00
 
 This migration creates the semantic_packs table for Semantic Packs v1.
@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import JSON, JSONB, TEXT
 from datetime import datetime
 
 revision = '1127semanticpacks'
-down_revision = '20251125_0000_create_ai_interactions'
+down_revision = '20251125aiint'
 branch_labels = None
 depends_on = None
 
