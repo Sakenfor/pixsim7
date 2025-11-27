@@ -13,6 +13,10 @@ export function useApi() {
       const response = await apiClient.get<T>(url, config);
       return response.data;
     },
+    async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+      const response = await apiClient.post<T>(url, data, config);
+      return response.data;
+    },
   };
 }
 
