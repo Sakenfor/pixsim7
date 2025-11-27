@@ -135,14 +135,14 @@ async def test_run_with_session_triggers_auto_reauth(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_auto_reauth_skipped_when_no_password(monkeypatch):
-    """Ensure session manager does not invoke auto-reauth when no password is available."""
+async def test_auto_reauth_skipped_when_no_passwords(monkeypatch):
+    """Ensure auto-reauth is skipped when neither account nor global password is available."""
     # Avoid depending on real JWT refresh logic
     monkeypatch.setattr(pixverse_session_manager, "needs_refresh", lambda token, hours_threshold=12: False)
     monkeypatch.setattr(pixverse_session_manager, "extract_jwt_from_cookies", lambda cookies: None)
 
     provider = DummyProvider()
-    # Auth method allows password reauth, but password is missing
+    # Auth method allows password reauth, but neither account nor global password is set
     account = DummyAccount(
         jwt_token="old-token",
         cookies={"_ai_token": "old-token"},
@@ -173,5 +173,53 @@ async def test_auto_reauth_skipped_when_no_password(monkeypatch):
             retry_on_session_error=True,
         )
 
-    # Auto-reauth should have been skipped entirely due to missing password
+    # Auto-reauth should have been skipped entirely due to missing account+global password
     assert provider.reauth_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_auto_reauth_allowed_with_global_password(monkeypatch):
+    """Ensure auto-reauth is allowed when only a global password is configured."""
+    # Avoid depending on real JWT refresh logic
+    monkeypatch.setattr(pixverse_session_manager, "needs_refresh", lambda token, hours_threshold=12: False)
+    monkeypatch.setattr(pixverse_session_manager, "extract_jwt_from_cookies", lambda cookies: None)
+
+    provider = DummyProvider()
+    # No per-account password, but provider settings will supply a global password
+    account = DummyAccount(
+        jwt_token="old-token",
+        cookies={"_ai_token": "old-token"},
+        provider_metadata={"auth_method": PixverseAuthMethod.PASSWORD.value},
+        password=None,
+    )
+
+    # Stub provider settings loader to include a global password
+    def _fake_load_settings():
+        ns = types.SimpleNamespace(auto_reauth_enabled=True, global_password="global-secret")
+        return {provider.provider_id: ns}
+
+    monkeypatch.setattr(
+        "pixsim7.backend.main.api.v1.providers._load_provider_settings",
+        _fake_load_settings,
+    )
+
+    manager = PixverseSessionManager(provider)
+
+    call_counter = {"calls": 0}
+
+    async def failing_then_succeeding_op(session):
+        call_counter["calls"] += 1
+        if call_counter["calls"] == 1:
+            raise Exception("user is not login, error 10003")
+        return {"ok": True}
+
+    result = await manager.run_with_session(
+        account=account,
+        op_name="get_credits",
+        operation=failing_then_succeeding_op,
+        retry_on_session_error=True,
+    )
+
+    # Auto-reauth should have been attempted once using the global password path
+    assert provider.reauth_calls == 1
+    assert result["ok"] is True

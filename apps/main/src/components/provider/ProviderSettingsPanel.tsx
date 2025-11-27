@@ -487,7 +487,7 @@ export function ProviderSettingsPanel() {
   const [refreshKey, setRefreshKey] = useState(0);
   const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
+  const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
@@ -604,6 +604,10 @@ export function ProviderSettingsPanel() {
 
     return accounts;
   }, [providerData, sortBy, sortDesc]);
+  const editingAccount = useMemo(
+    () => (editingAccountId != null ? accounts.find(acc => acc.id === editingAccountId) ?? null : null),
+    [editingAccountId, accounts],
+  );
 
   // Load provider settings when active provider changes
   useEffect(() => {
@@ -645,7 +649,7 @@ export function ProviderSettingsPanel() {
       {editingAccount && (
         <EditAccountModal
           account={editingAccount}
-          onClose={() => setEditingAccount(null)}
+          onClose={() => setEditingAccountId(null)}
           onSave={handleSaveAccount}
         />
       )}
@@ -883,7 +887,7 @@ export function ProviderSettingsPanel() {
                 <CompactAccountCard
                   key={account.id}
                   account={account}
-                  onEdit={() => setEditingAccount(account)}
+                  onEdit={() => setEditingAccountId(account.id)}
                   onToggle={() => handleToggleStatus(account)}
                   onDelete={() => setDeletingAccount(account)}
                 />

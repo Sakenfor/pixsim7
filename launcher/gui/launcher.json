@@ -1,8 +1,8 @@
 {
-  "window_x": 472,
-  "window_y": 215,
-  "window_width": 1347,
-  "window_height": 746,
+  "window_x": 82,
+  "window_y": 69,
+  "window_width": 1590,
+  "window_height": 882,
   "window_always_on_top": false,
   "selected_service": "main-api",
   "stop_services_on_exit": false,

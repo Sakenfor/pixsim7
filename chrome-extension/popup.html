@@ -69,8 +69,9 @@
 
     .tab-btn.active {
       color: white;
-      border-bottom-color: white;
-      background: rgba(255, 255, 255, 0.15);
+      border-bottom-color: #818cf8;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
     }
 
     /* Tab Content */
@@ -111,14 +112,16 @@
     .btn-primary {
       width: 100%;
       padding: 12px;
-      background: #10b981;
+      background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
       color: white;
       margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
     }
 
     .btn-primary:hover:not(:disabled) {
-      background: #059669;
+      background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
       transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
     }
 
     .btn-secondary {
@@ -131,8 +134,9 @@
     }
 
     .btn-secondary:hover:not(:disabled) {
-      background: #374151;
-      border-color: #4b5563;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%);
+      border-color: rgba(99, 102, 241, 0.3);
+      color: #a5b4fc;
     }
 
     /* Login Form */
@@ -152,8 +156,8 @@
 
     input:focus {
       outline: none;
-      border-color: #10b981;
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     }
 
     select {
@@ -165,8 +169,8 @@
 
     select:focus {
       outline: none;
-      border-color: #10b981;
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     }
 
     .status-badge {
@@ -177,8 +181,9 @@
       border-radius: 8px;
       font-size: 12px;
       font-weight: 500;
-      background: #d1fae5;
-      color: #065f46;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
       margin-bottom: 12px;
       width: 100%;
       justify-content: center;
@@ -202,90 +207,111 @@
       border-radius: 6px;
       font-size: 12px;
       font-weight: 600;
-      background: #e0e7ff;
-      color: #3730a3;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+      color: #c7d2fe;
+      border: 1px solid rgba(99, 102, 241, 0.3);
       margin-bottom: 12px;
     }
 
     /* Accounts */
-    .accounts-list { display: flex; flex-direction: column; gap: 6px; }
-    
+    .accounts-list { display: flex; flex-direction: column; gap: 4px; }
+
     /* Sort Controls */
     .sort-controls {
       display: flex;
       align-items: center;
-      gap: 4px;
-      margin-bottom: 10px;
-      padding: 8px;
-      background: #1a1f2e;
-      border: 1px solid #2d3748;
-      border-radius: 8px;
+      gap: 3px;
+      margin-bottom: 6px;
+      padding: 4px 6px;
+      background: linear-gradient(135deg, #1a1f2e 0%, #0f1419 100%);
+      border: 1px solid #374151;
+      border-radius: 6px;
       flex-wrap: wrap;
     }
     .sort-btn {
-      padding: 5px 10px;
-      font-size: 10px;
+      padding: 3px 8px;
+      font-size: 9px;
       font-weight: 600;
-      background: #2d3748;
+      background: transparent;
       color: #9ca3af;
-      border: 1px solid #374151;
-      border-radius: 6px;
+      border: 1px solid transparent;
+      border-radius: 4px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s ease;
       white-space: nowrap;
     }
     .sort-btn:hover {
-      background: #374151;
-      border-color: #4b5563;
+      background: rgba(255, 255, 255, 0.05);
       color: #e5e7eb;
+      border-color: #4b5563;
     }
     .sort-btn.active {
-      background: #10b981;
+      background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
       color: white;
-      border-color: #10b981;
-      box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+      border-color: #6366f1;
+      box-shadow: 0 2px 4px rgba(99, 102, 241, 0.4);
     }
 
     .account-card {
-      background: #1a1f2e;
+      background: linear-gradient(135deg, #1a1f2e 0%, #151a26 100%);
       border: 1px solid #2d3748;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 6px;
-      transition: all 0.2s;
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-bottom: 3px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .account-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #818cf8, transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
     }
     .account-card:hover {
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
-      border-color: #10b981;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+      border-color: #667eea;
       transform: translateY(-1px);
+    }
+    .account-card:hover::before {
+      opacity: 1;
     }
 
     /* Account header with name and status */
     .account-header {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 6px;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
     }
     .account-title {
       flex: 1;
       min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .account-name {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: #e5e7eb;
-      margin-bottom: 1px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .account-email-sub {
-      font-size: 9px;
-      color: #9ca3af;
+      font-size: 8px;
+      color: #6b7280;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      margin-left: 4px;
     }
 
     /* Stats row */
@@ -358,41 +384,152 @@
       color: #9ca3af;
       font-style: italic;
     }
-    
-    /* Status badges - colored dots */
+
+    /* Status badges - colored dots with glow */
     .account-status {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
       border: 2px solid transparent;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.1);
+      transition: all 0.2s;
+    }
+    .account-card:hover .account-status {
+      transform: scale(1.2);
     }
     .status-active {
-      background: #10b981;
-      border-color: #d1fae5;
+      background: #6366f1;
+      border-color: #818cf8;
+      box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
     }
     .status-exhausted {
       background: #fbbf24;
-      border-color: #fef3c7;
+      border-color: #fcd34d;
+      box-shadow: 0 0 8px rgba(251, 191, 36, 0.5);
     }
     .status-disabled {
       background: #ef4444;
-      border-color: #fee2e2;
+      border-color: #f87171;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
     }
     .status-error {
       background: #f97316;
-      border-color: #fed7aa;
+      border-color: #fb923c;
+      box-shadow: 0 0 8px rgba(249, 115, 22, 0.5);
     }
-    
-    /* Actions row and buttons */
-    .actions-row { display:flex; gap:4px; }
 
-    .account-btn { flex:1; padding:6px; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:#fff; font-size:11px; border-radius:6px; }
-    .account-btn.btn-ghost { background:#eef2ff; color:#3730a3; }
-    .btn-tiny { padding:5px; font-size:10px; }
+    /* Info badges (JWT, Ads) */
+    .account-flag {
+      font-size: 8px;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* Unified stats pills (Credits & Ads) */
+    .account-stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 7px;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #818cf8;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .account-card:hover .account-stat-pill {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(118, 75, 162, 0.25) 100%);
+      border-color: rgba(102, 126, 234, 0.5);
+    }
+
+    /* Credits display - unified with stats pills */
+    .account-credits {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #a5b4fc;
+      min-width: 40px;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .account-card:hover .account-credits {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.3) 0%, rgba(124, 58, 237, 0.3) 100%);
+      border-color: rgba(99, 102, 241, 0.6);
+      color: #c7d2fe;
+    }
+
+    /* Ad pill - unified style */
+    .account-ad-pill {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 7px;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      border-radius: 10px;
+      font-size: 9px;
+      font-weight: 600;
+      color: #818cf8;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .account-card:hover .account-ad-pill {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(118, 75, 162, 0.25) 100%);
+      border-color: rgba(102, 126, 234, 0.5);
+    }
+
+    /* Actions row and buttons */
+    .actions-row {
+      display: flex;
+      gap: 3px;
+      margin-top: 4px;
+    }
+
+    .account-btn {
+      flex: 1;
+      padding: 4px 6px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    .account-btn.btn-ghost {
+      background: rgba(102, 126, 234, 0.15);
+      color: #818cf8;
+      border: 1px solid rgba(102, 126, 234, 0.3);
+      box-shadow: none;
+    }
+    .account-btn.btn-ghost:hover:not(:disabled) {
+      background: rgba(102, 126, 234, 0.25);
+      border-color: #667eea;
+    }
+    .btn-tiny {
+      padding: 3px 5px;
+      font-size: 9px;
+    }
 
     .account-btn:hover:not(:disabled) {
       transform: translateY(-1px);
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+    }
+    .account-btn:active:not(:disabled) {
+      transform: translateY(0);
     }
 
     /* Device Cards */
@@ -408,8 +545,10 @@
       transition: all 0.2s;
     }
     .device-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
       border-color: #667eea;
+      transform: translateY(-1px);
+      transition: all 0.2s;
     }
     .device-info {
       flex: 1;
@@ -440,8 +579,9 @@
       white-space: nowrap;
     }
     .device-status.online {
-      background: #d1fae5;
-      color: #065f46;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(124, 58, 237, 0.2) 100%);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.3);
     }
     .device-status.offline {
       background: #fee2e2;
@@ -485,7 +625,8 @@
     }
 
     .connection-indicator.connected .connection-dot {
-      background: #10b981;
+      background: #6366f1;
+      box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
       animation: none;
     }
 
@@ -534,7 +675,7 @@
     /* Toasts */
     #toastContainer { position: fixed; bottom: 12px; left: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
     .toast { pointer-events: auto; padding: 10px 12px; border-radius: 6px; font-size: 12px; color: #111827; background:#f3f4f6; border:1px solid #e5e7eb; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
-    .toast.success { background:#ecfdf5; border-color:#a7f3d0; color:#065f46; }
+    .toast.success { background:linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%); border:1px solid rgba(99, 102, 241, 0.3); color:#a5b4fc; }
     .toast.error { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
 
     /* Setup Wizard */
@@ -552,10 +693,10 @@
       transition: all 0.3s;
     }
     .step-indicator.active {
-      background: #667eea;
-      border-color: #667eea;
+      background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+      border-color: #6366f1;
       color: white;
-      box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
     }
     .setup-step {
       animation: fadeIn 0.3s ease-in;
@@ -646,9 +787,10 @@
 
       <!-- TAB 2: ACCOUNTS -->
       <div class="tab-pane" id="tab-accounts">
-        <div class="section-title">
+        <div class="section-title" style="font-size: 13px; margin-bottom: 8px;">
           <span>👤</span>
-          <span>Accounts <span id="accountCount" style="font-size: 11px; color: #9ca3af;">(0)</span></span>
+          <span>Accounts</span>
+          <span id="accountCount" style="font-size: 10px; color: #6b7280; font-weight: 500; margin-left: 4px;">(0)</span>
         </div>
 
         <div id="notLoggedInWarning" class="info-box">
@@ -656,20 +798,22 @@
         </div>
 
         <!-- Compact Automation Toolbar -->
-        <div id="automationToolbar" class="hidden" style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
-          <div style="display:flex; gap:6px; align-items:center;">
-            <label for="presetSelect" style="margin:0; font-size:11px;">Preset</label>
-            <select id="presetSelect" style="font-size:11px; padding:4px 6px;"></select>
-            <button id="presetRefreshBtn" class="btn-secondary" style="padding:6px 8px; font-size:11px; width:auto;">↻</button>
+        <div id="automationToolbar" class="hidden" style="display:flex; gap:6px; align-items:center; margin-bottom:6px; padding:4px 6px; background:linear-gradient(135deg,#1a1f2e 0%,#0f1419 100%); border:1px solid #374151; border-radius:6px; flex-wrap:wrap;">
+          <div style="display:flex; gap:4px; align-items:center;">
+            <label for="presetSelect" style="margin:0; font-size:9px; color:#9ca3af; font-weight:600;">Preset</label>
+            <select id="presetSelect" style="font-size:10px; padding:3px 5px; background:#1a1f2e; border:1px solid #374151; border-radius:4px; color:#e5e7eb;"></select>
+            <button id="presetRefreshBtn" class="btn-secondary" style="padding:4px 6px; font-size:10px; width:auto; background:#2d3748; border:1px solid #374151;">↻</button>
           </div>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <label for="loopSelect" style="margin:0; font-size:11px;">Loop</label>
-            <select id="loopSelect" style="font-size:11px; padding:4px 6px;"></select>
-            <button id="loopRefreshBtn" class="btn-secondary" style="padding:6px 8px; font-size:11px; width:auto;">↻</button>
+          <span style="font-size:9px; color:#4b5563;">•</span>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <label for="loopSelect" style="margin:0; font-size:9px; color:#9ca3af; font-weight:600;">Loop</label>
+            <select id="loopSelect" style="font-size:10px; padding:3px 5px; background:#1a1f2e; border:1px solid #374151; border-radius:4px; color:#e5e7eb;"></select>
+            <button id="loopRefreshBtn" class="btn-secondary" style="padding:4px 6px; font-size:10px; width:auto; background:#2d3748; border:1px solid #374151;">↻</button>
           </div>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <label for="deviceSelect" style="margin:0; font-size:11px;">Device</label>
-            <select id="deviceSelect" style="font-size:11px; padding:4px 6px;">
+          <span style="font-size:9px; color:#4b5563;">•</span>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <label for="deviceSelect" style="margin:0; font-size:9px; color:#9ca3af; font-weight:600;">Device</label>
+            <select id="deviceSelect" style="font-size:10px; padding:3px 5px; background:#1a1f2e; border:1px solid #374151; border-radius:4px; color:#e5e7eb;">
               <option value="">No Device</option>
             </select>
           </div>
@@ -680,9 +824,9 @@
           <button id="reauthBtn" class="btn-primary" style="align-self:flex-start; font-size:12px; padding:6px 12px;">Fix Sessions</button>
         </div>
 
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-          <button id="refreshBtnTop" class="btn-secondary">🔄 Refresh Accounts</button>
-          <button id="refreshAdStatusBtn" class="btn-secondary">🔄 Refresh Ad Status</button>
+        <div style="display:flex; gap:4px; align-items:center; margin-bottom:6px;">
+          <button id="refreshBtnTop" class="btn-secondary" style="font-size:10px; padding:5px 8px;">🔄 Accounts</button>
+          <button id="refreshAdStatusBtn" class="btn-secondary" style="font-size:10px; padding:5px 8px;">🔄 Ads</button>
         </div>
 
         <div id="accountsLoading" class="loading hidden">Loading accounts...</div>
@@ -709,10 +853,10 @@
         </div>
 
         <!-- Quick Token Copy -->
-        <div id="tokenCopySection" class="hidden" style="margin-bottom: 16px; padding: 12px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px;">
+        <div id="tokenCopySection" class="hidden" style="margin-bottom: 16px; padding: 12px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-              <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #10b981;">Your Auth Token</div>
+              <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px; color: #a5b4fc;">Your Auth Token</div>
               <div style="font-size: 11px; color: #9ca3af;">Use this token when running the PixSim7 device agent (for example, set <code>PIXSIM7_JWT</code> in your agent environment).</div>
             </div>
             <button id="copyTokenBtn" class="btn-primary" style="font-size: 12px; padding: 6px 12px;">
@@ -727,18 +871,18 @@
         </div>
 
         <div style="padding: 16px; background: #1a1f2e; border: 1px solid #2d3748; border-radius: 8px; font-size: 13px; line-height: 1.8; color: #e5e7eb;">
-          <div style="font-weight: 600; margin-bottom: 12px; color: #10b981;">Setup Instructions:</div>
+          <div style="font-weight: 600; margin-bottom: 12px; color: #a5b4fc;">Setup Instructions:</div>
           <ol style="opacity: 0.9;">
             <li>Install ZeroTier and join your network</li>
             <li>Install ADB (Android Debug Bridge)</li>
             <li>Click "📋 Copy Token" button above to get your auth token</li>
             <li>Run the device agent from PixSim7 root:<br>
-              <code style="background: #2d3748; color: #10b981; padding: 8px 12px; border-radius: 6px; margin-top: 6px; display: block; overflow-x: auto; white-space: nowrap; font-size: 11px; border: 1px solid #374151;">python scripts/device_agent.py --server http://your-zerotier-ip:8000 --token YOUR_JWT_TOKEN</code>
+              <code style="background: #2d3748; color: #a5b4fc; padding: 8px 12px; border-radius: 6px; margin-top: 6px; display: block; overflow-x: auto; white-space: nowrap; font-size: 11px; border: 1px solid #374151;">python scripts/device_agent.py --server http://your-zerotier-ip:8000 --token YOUR_JWT_TOKEN</code>
             </li>
           </ol>
 
-          <div style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; font-size: 12px; color: #e5e7eb;">
-            <div style="font-weight: 600; margin-bottom: 6px; color: #60a5fa;">ℹ️ How it works</div>
+          <div style="margin-top: 16px; padding: 12px; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(124, 58, 237, 0.15) 100%); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; font-size: 12px; color: #e5e7eb;">
+            <div style="font-weight: 600; margin-bottom: 6px; color: #a5b4fc;">ℹ️ How it works</div>
             <ul style="margin-left: 16px; line-height: 1.6; color: #d1d5db;">
               <li>Agent auto-discovers local ADB devices</li>
               <li>Registers with backend using your auth token</li>

@@ -243,19 +243,6 @@ class PixverseSessionManager:
             )
             return False
 
-        # Require a stored password before attempting password-based auto-reauth.
-        # For OAuth-only accounts, we expect password to be cleared when we detect
-        # an OAuth-specific login requirement.
-        if not getattr(account, "password", None):
-            logger.info(
-                "pixverse_auto_reauth_skipped",
-                account_id=account.id,
-                auth_method=auth_method.value,
-                reason="no_password_available",
-                context=context,
-            )
-            return False
-
         try:
             from pixsim7.backend.main.api.v1.providers import _load_provider_settings as load_settings
         except Exception:  # pragma: no cover - defensive
@@ -276,6 +263,22 @@ class PixverseSessionManager:
                 account_id=account.id,
                 auth_method=auth_method.value,
                 reason="disabled_in_settings",
+                context=context,
+            )
+            return False
+
+        # Require either a per-account password or a global provider password
+        # before attempting password-based auto-reauth. For OAuth-only accounts,
+        # we expect password to be cleared and auth_method set to GOOGLE, so
+        # they will have been skipped above.
+        has_account_password = bool(getattr(account, "password", None))
+        has_global_password = bool(getattr(provider_settings, "global_password", None))
+        if not (has_account_password or has_global_password):
+            logger.info(
+                "pixverse_auto_reauth_skipped",
+                account_id=account.id,
+                auth_method=auth_method.value,
+                reason="no_password_available",
                 context=context,
             )
             return False

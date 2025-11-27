@@ -277,6 +277,8 @@ async def sync_all_account_credits(
     details = []
 
     for account in accounts:
+        account_id = account.id
+        account_email = account.email
         try:
             # Get provider and sync credits
             from pixsim7.backend.main.services.provider import registry
@@ -293,7 +295,7 @@ async def sync_all_account_credits(
                     else:
                         credits_data = await provider.get_credits(account)
                 except Exception as e:
-                    logger.debug(f"Provider get_credits failed for {account.email}: {e}")
+                    logger.debug(f"Provider get_credits failed for {account_email}: {e}")
 
             # Fallback: extract from account data
             if not credits_data:
@@ -312,7 +314,7 @@ async def sync_all_account_credits(
                     # double-counting in total_credits.
                     await db.execute(
                         ProviderCredit.__table__.delete().where(
-                            ProviderCredit.account_id == account.id
+                            ProviderCredit.account_id == account_id
                         )
                     )
 
@@ -324,7 +326,7 @@ async def sync_all_account_credits(
                             web_int = int(web_total)
                         except (TypeError, ValueError):
                             web_int = 0
-                        await account_service.set_credit(account.id, "web", web_int)
+                        await account_service.set_credit(account_id, "web", web_int)
                         updated_credits["web"] = web_int
 
                     if openapi_total is not None:
@@ -332,7 +334,7 @@ async def sync_all_account_credits(
                             openapi_int = int(openapi_total)
                         except (TypeError, ValueError):
                             openapi_int = 0
-                        await account_service.set_credit(account.id, "openapi", openapi_int)
+                        await account_service.set_credit(account_id, "openapi", openapi_int)
                         updated_credits["openapi"] = openapi_int
                 else:
                     for credit_type, amount in credits_data.items():
@@ -344,10 +346,10 @@ async def sync_all_account_credits(
                             continue
 
                         try:
-                            await account_service.set_credit(account.id, clean_type, amount)
+                            await account_service.set_credit(account_id, clean_type, amount)
                             updated_credits[clean_type] = amount
                         except Exception as e:
-                            logger.warning(f"Failed to update {clean_type} for {account.email}: {e}")
+                            logger.warning(f"Failed to update {clean_type} for {account_email}: {e}")
 
                 if updated_credits:
                     await db.commit()
@@ -355,24 +357,24 @@ async def sync_all_account_credits(
 
                     synced += 1
                     details.append({
-                        "account_id": account.id,
-                        "email": account.email,
+                        "account_id": account_id,
+                        "email": account_email,
                         "credits": updated_credits,
                         "success": True
                     })
                 else:
                     failed += 1
                     details.append({
-                        "account_id": account.id,
-                        "email": account.email,
+                        "account_id": account_id,
+                        "email": account_email,
                         "success": False,
                         "error": "No usable credits data available"
                     })
             else:
                 failed += 1
                 details.append({
-                    "account_id": account.id,
-                    "email": account.email,
+                    "account_id": account_id,
+                    "email": account_email,
                     "success": False,
                     "error": "No credits data available"
                 })
@@ -380,12 +382,12 @@ async def sync_all_account_credits(
         except Exception as e:
             failed += 1
             details.append({
-                "account_id": account.id,
-                "email": account.email,
+                "account_id": account_id,
+                "email": account_email,
                 "success": False,
                 "error": str(e)
             })
-            logger.error(f"Failed to sync credits for account {account.id}: {e}")
+            logger.error(f"Failed to sync credits for account {account_id}: {e}")
 
     return BatchSyncCreditsResponse(
         success=True,
@@ -575,17 +577,47 @@ async def get_pixverse_status(
         if account.user_id != user.id and not user.is_admin():
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to query this account")
 
+        # Capture basic identifiers up front so we can safely log even if
+        # the underlying DB session encounters errors during provider calls.
+        account_email = account.email
+        account_provider_id = account.provider_id
+
         # Get provider adapter
         from pixsim7.backend.main.services.provider import registry
-        provider = registry.get(account.provider_id)
+        provider = registry.get(account_provider_id)
 
-        # Fetch credits via provider (best-effort)
+        # Fetch credits via provider (best-effort). For Pixverse, treat this as a
+        # read-only snapshot: do not trigger auto-reauth from this endpoint to
+        # avoid heavy Playwright flows and session churn when refreshing ad status.
         credits_data: Dict[str, Any] = {}
         try:
             if hasattr(provider, "get_credits"):
-                credits_data = await provider.get_credits(account) or {}
+                if getattr(provider, "provider_id", None) == "pixverse":
+                    credits_data = await provider.get_credits(  # type: ignore[arg-type]
+                        account,
+                        retry_on_session_error=False,
+                    ) or {}
+                else:
+                    credits_data = await provider.get_credits(account) or {}
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning(f"get_pixverse_status: provider.get_credits failed for {account.email}: {e}")
+            logger.warning(
+                "get_pixverse_status_provider_error",
+                extra={
+                    "account_id": account.id,
+                    "email": account_email,
+                    "provider_id": account_provider_id,
+                    "error": str(e),
+                    "error_type": e.__class__.__name__,
+                },
+            )
+            # If the provider call left the DB session in a bad state (e.g.
+            # pending rollback from an async flush), make a best-effort
+            # rollback so subsequent operations don't fail with
+            # PendingRollbackError.
+            try:
+                await db.rollback()
+            except Exception:  # pragma: no cover - defensive
+                pass
             credits_data = {}
 
         # Normalize credits dict: keep simple numeric buckets
@@ -609,8 +641,8 @@ async def get_pixverse_status(
 
         # Fallback: if provider is not pixverse, ad_watch_task will be None
         return PixverseStatusResponse(
-            provider_id=account.provider_id,
-            email=account.email,
+            provider_id=account_provider_id,
+            email=account_email,
             credits=credits,
             ad_watch_task=ad_watch_task,
         )

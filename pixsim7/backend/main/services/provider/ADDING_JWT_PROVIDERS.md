@@ -243,3 +243,30 @@ JWT_EXTRACTOR = JWTExtractor(
 ---
 
 **Bottom Line:** Adding a new JWT provider takes **5 lines of code**, not 50+ lines of copy-pasted base64 decoding!
+
+## Pixverse-Specific Notes (Auto-Reauth & Global Passwords)
+
+For Pixverse, we support **password-based auto-reauth** using either:
+
+- A per-account password stored on the `ProviderAccount` (`account.password`), or
+- A **global provider password** configured via `/api/v1/providers/{provider_id}/settings`.
+
+The flow is:
+
+- `PixverseSessionManager._maybe_auto_reauth` checks:
+  - `auth_method` (from `account.provider_metadata["auth_method"]`) allows password reauth (`!= "google"`).
+  - Provider settings have `auto_reauth_enabled=True`.
+  - Either `account.password` **or** `provider_settings.global_password` is set.
+
+- If those conditions pass, `_try_auto_reauth` will attempt login using:
+  - `account.password` if present, otherwise `provider_settings.global_password`.
+
+- For OAuth-only Pixverse accounts:
+  - When Pixverse responds with “Please sign in via OAuth (Google, Discord, Apple)…”,
+    `_try_auto_reauth` marks `auth_method="google"` and clears `account.password`.
+  - This ensures auto-reauth is fully skipped for OAuth-only accounts, even if a global password is configured.
+
+When adding similar behavior for other providers, follow the same pattern:
+
+- Keep the `SessionManager` in control of *when* to trigger auto-reauth (based on error classification + settings).
+- Keep provider-specific `_try_auto_reauth` methods in control of *how* to authenticate (per-account vs global password).

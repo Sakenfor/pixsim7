@@ -994,7 +994,12 @@ class PixverseProvider(Provider):
             'raw_data': user_info_data,  # Save entire response
         }
 
-    async def _persist_account_credentials(self, account: ProviderAccount) -> None:
+    async def _persist_account_credentials(
+        self,
+        account: ProviderAccount,
+        *,
+        force_commit: bool = False,
+    ) -> None:
         """Persist refreshed credentials to the bound session if available."""
         try:
             session = object_session(account)
@@ -1012,12 +1017,16 @@ class PixverseProvider(Provider):
             if isinstance(session, AsyncSession):
                 await session.flush()
                 await session.refresh(account)
+                if force_commit:
+                    await session.commit()
             else:
                 # Background workers may use a sync Session; in that case we can
                 # safely flush/refresh as well, leaving commit control to the
                 # caller unless they explicitly rely on this helper.
                 session.flush()
                 session.refresh(account)
+                if force_commit:
+                    session.commit()
 
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(
@@ -1107,7 +1116,7 @@ class PixverseProvider(Provider):
                 # definitively skipped even if auth_method metadata is missing.
                 account.password = None
                 try:
-                    await self._persist_account_credentials(account)
+                    await self._persist_account_credentials(account, force_commit=True)
                 except Exception:
                     # Best-effort; failure here should not mask the original error.
                     logger.warning(
@@ -1128,8 +1137,12 @@ class PixverseProvider(Provider):
             )
             return False
 
-    async def get_credits(self, account: ProviderAccount) -> dict:
-        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py."""
+    async def get_credits(self, account: ProviderAccount, *, retry_on_session_error: bool = True) -> dict:
+        """Fetch current Pixverse credits (web + OpenAPI) via pixverse-py.
+
+        The `retry_on_session_error` flag controls whether session-invalid errors
+        (10003/10005) should trigger PixverseSessionManager's auto-reauth logic.
+        """
         try:
             from pixverse import Account  # type: ignore
         except ImportError:  # pragma: no cover
@@ -1169,7 +1182,13 @@ class PixverseProvider(Provider):
                     except (TypeError, ValueError):
                         web_total = 0
             except Exception as exc:
-                logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
+                logger.warning(
+                    "PixverseAPI get_credits_web_failed",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
                 # Let the session manager classify and potentially auto-reauth
                 raise
 
@@ -1187,9 +1206,12 @@ class PixverseProvider(Provider):
                         except (TypeError, ValueError):
                             openapi_total = 0
                 except Exception as exc:
+                    # OpenAPI credits are optional for /pixverse-status and other
+                    # snapshot-style calls. Treat failures here as non-fatal so
+                    # that web credits and ad-task metadata can still be returned
+                    # even if the OpenAPI key/session is stale.
                     logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
-                    # Let the session manager classify and potentially auto-reauth
-                    raise
+                    openapi_total = 0
 
             result: Dict[str, Any] = {
                 "web": max(0, web_total),
@@ -1205,7 +1227,7 @@ class PixverseProvider(Provider):
             account=account,
             op_name="get_credits",
             operation=_operation,
-            retry_on_session_error=True,
+            retry_on_session_error=retry_on_session_error,
         )
 
     async def get_credits_basic(self, account: ProviderAccount) -> dict:
@@ -1334,26 +1356,39 @@ class PixverseProvider(Provider):
         except ImportError:  # pragma: no cover
             return None
 
+        # Build cookies from the current Pixverse session. This keeps ad-task
+        # aligned with the same session object that credits use, while
+        # preserving any browser-imported cookies already stored on the
+        # account.
         cookies = dict(session.get("cookies") or {})
         jwt_token = session.get("jwt_token")
-        jwt_source = session.get("jwt_source", "account")
 
-        # Ensure JWT is in cookies as _ai_token (required for some flows).
-        # When the JWT was sourced from cookies, we can safely align _ai_token
-        # to that value without risking clobbering a functioning browser session.
-        # Otherwise, only fill in _ai_token when it is missing.
-        if jwt_token:
-            if jwt_source == "cookies":
-                cookies["_ai_token"] = jwt_token
-            elif "_ai_token" not in cookies:
-                cookies["_ai_token"] = jwt_token
+        # Ensure JWT is reflected in the cookie jar when no _ai_token is
+        # present. This mirrors the fast-path session validation used in
+        # pixverse-py, without overwriting an existing _ai_token that may have
+        # been imported from the browser.
+        if jwt_token and "_ai_token" not in cookies:
+            cookies["_ai_token"] = jwt_token
 
+        # Build headers to closely mirror the real web client and the
+        # pixverse-py session validation strategy. Some fields (ai-trace-id,
+        # ai-anonymous-id, x-platform) appear to influence which tasks are
+        # returned by the API.
         headers: Dict[str, str] = {
-            "User-Agent": "PixSim7/1.0 (+https://github.com/Sakenfor/pixsim7)",
-            "Accept": "application/json",
+            "Accept": "application/json, text/plain, */*",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Origin": "https://app.pixverse.ai",
+            "Referer": "https://app.pixverse.ai/",
+            "x-platform": "Web",
+            "ai-trace-id": str(uuid.uuid4()),
+            "ai-anonymous-id": str(uuid.uuid4()),
         }
         if jwt_token:
-            headers["Authorization"] = f"Bearer {jwt_token}"
+            headers["token"] = jwt_token
 
         url = "https://app-api.pixverse.ai/creative_platform/task/list"
 
@@ -1382,8 +1417,18 @@ class PixverseProvider(Provider):
 
         tasks = data.get("Resp") or []
         if not isinstance(tasks, list):
+            logger.warning(
+                "Pixverse ad task payload missing Resp list",
+                account_id=account.id,
+                err_code=err_code,
+                raw=data,
+            )
             return None
 
+        # Only treat the daily watch-ad task (task_type=1, sub_type=11) as the
+        # one we expose in ad_watch_task. Other tasks (one-time rewards, etc.)
+        # are intentionally ignored so the pill reflects just the daily watch
+        # progress.
         for task in tasks:
             if (
                 isinstance(task, dict)
@@ -1398,6 +1443,14 @@ class PixverseProvider(Provider):
                     "expired_time": task.get("expired_time"),
                 }
 
+        # No matching daily watch-ad task found; log the shape so we can adjust filters.
+        logger.info(
+            "Pixverse ad task no_matching_task",
+            account_id=account.id,
+            email=account.email,
+            err_code=err_code,
+            resp=data.get("Resp"),
+        )
         return None
 
     async def extract_account_data(self, raw_data: dict) -> dict:

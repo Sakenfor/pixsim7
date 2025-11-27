@@ -94,29 +94,28 @@ class DummyAsyncClient:
 
 
 @pytest.mark.asyncio
-async def test_ad_task_uses_session_jwt_from_cookies(monkeypatch):
+async def test_ad_task_prefers_account_cookies_over_session_jwt(monkeypatch):
     """
-    When PixverseSessionManager selects jwt_source='cookies', _get_ad_task_status should
-    align _ai_token with the session jwt_token, even if the original cookies had a stale token.
+    _get_ad_task_status should treat the browser-imported cookies on the account as
+    authoritative for ad-task requests and not overwrite _ai_token with the session JWT.
     """
 
     provider = PixverseProvider()
 
-    # Account has stale cookies but no jwt_token set yet; session manager would normally
-    # upgrade jwt_token from cookies, but here we simulate the final session directly.
+    # Account has an _ai_token cookie imported from the browser.
     account = ProviderAccount(
         id=1,
         user_id=None,
         provider_id="pixverse",
         email="user@example.com",
         jwt_token=None,
-        cookies={"_ai_token": "stale-token"},
+        cookies={"_ai_token": "cookie-token"},
     )
 
-    # Session chosen by the session manager: JWT came from cookies
+    # Session chosen by the session manager (e.g., from cookies)
     session = {
         "jwt_token": "fresh-from-cookies",
-        "cookies": {"_ai_token": "stale-token"},
+        "cookies": {"_ai_token": "cookie-token"},
         "jwt_source": "cookies",
         "auth_method": PixverseAuthMethod.UNKNOWN.value,
     }
@@ -146,30 +145,20 @@ async def test_ad_task_uses_session_jwt_from_cookies(monkeypatch):
         types.SimpleNamespace(AsyncClient=lambda *args, **kwargs: DummyAsyncClient([dummy_payload])),
     )
 
-    # To inspect the cookies actually sent, we patch the provider method to capture them.
+    # Capture cookies passed into DummyAsyncClient.get()
     sent_cookies = {}
 
-    original_get_ad_task_status = provider._get_ad_task_status
+    class CapturingAsyncClient(DummyAsyncClient):
+        async def get(self, url: str, cookies: dict):
+            nonlocal sent_cookies
+            sent_cookies = dict(cookies)
+            return await super().get(url, cookies)
 
-    async def _capturing_get_ad_task_status(account_obj, session_obj):
-        nonlocal sent_cookies
-        # Reuse the real method but intercept cookies by monkeypatching httpx.AsyncClient locally
-        # The DummyAsyncClient doesn't expose cookies directly, so we re-run the key logic here.
-        cookies = dict(session_obj.get("cookies") or {})
-        jwt_token = session_obj.get("jwt_token")
-        jwt_source = session_obj.get("jwt_source", "account")
-
-        if jwt_token:
-            if jwt_source == "cookies":
-                cookies["_ai_token"] = jwt_token
-            elif "_ai_token" not in cookies:
-                cookies["_ai_token"] = jwt_token
-
-        sent_cookies = cookies
-        # Call through to the real implementation, which will use the stubbed httpx.AsyncClient
-        return await original_get_ad_task_status(account_obj, session_obj)
-
-    provider._get_ad_task_status = _capturing_get_ad_task_status  # type: ignore[assignment]
+    monkeypatch.setattr(
+        pixverse_module,
+        "httpx",
+        types.SimpleNamespace(AsyncClient=lambda *args, **kwargs: CapturingAsyncClient([dummy_payload])),
+    )
 
     ad_task = await provider._get_ad_task_status(account, session)
 
@@ -179,7 +168,6 @@ async def test_ad_task_uses_session_jwt_from_cookies(monkeypatch):
     assert ad_task["progress"] == 1
     assert ad_task["total_counts"] == 2
 
-    # Most importantly, cookies used for the request should have _ai_token
-    # aligned with the session jwt_token, not the stale cookie value.
-    assert sent_cookies["_ai_token"] == "fresh-from-cookies"
-
+    # Cookies used for the request should preserve the account's _ai_token value
+    # rather than overwriting it with the session JWT.
+    assert sent_cookies.get("_ai_token") == "cookie-token"

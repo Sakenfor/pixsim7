@@ -21,6 +21,7 @@ const ACCOUNTS_CACHE_SCOPE_ALL = '__all__';
 const ACCOUNTS_CACHE_TTL_MS = 60 * 1000;
 let accountsRequestSeq = 0;
 const PIXVERSE_STATUS_CACHE_TTL_MS = 60 * 1000;
+const PIXVERSE_STATUS_CACHE_STORAGE_KEY = 'pixsim7PixverseStatusCache';
 const pixverseStatusCache = new Map();
 let accountJwtHealth = {
   missing: [],
@@ -39,6 +40,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load settings
   await loadSettings();
+
+  // Restore cached Pixverse ad status (if any) so we can show
+  // previously-fetched values without hitting the API on every popup open.
+  await loadPixverseStatusCacheFromStorage();
 
   // Check backend connection
   await checkBackendConnection();
@@ -576,24 +581,19 @@ function displayAccounts(accounts, options = {}) {
   // Add sort and filter controls
   const sortControls = document.createElement('div');
   sortControls.className = 'sort-controls';
-  sortControls.style.cssText = 'display: flex; align-items: center; gap: 3px; padding: 3px 6px; background: #111827; border-radius: 4px; margin-bottom: 6px;';
   sortControls.innerHTML = `
-    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits"
-      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'credits' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
-      ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''} Cr
+    <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits">
+      ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''} Credits
     </button>
-    <button class="sort-btn ${accountsSortBy === 'name' ? 'active' : ''}" data-sort="name"
-      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'name' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
+    <button class="sort-btn ${accountsSortBy === 'name' ? 'active' : ''}" data-sort="name">
       ${accountsSortBy === 'name' ? (accountsSortDesc ? '↓' : '↑') : ''} Name
     </button>
-    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed"
-      style="font-size: 9px; padding: 2px 5px; background: ${accountsSortBy === 'lastUsed' ? '#374151' : 'transparent'}; border: 1px solid #374151; border-radius: 3px; color: #d1d5db; cursor: pointer;">
-      ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''} Last
+    <button class="sort-btn ${accountsSortBy === 'lastUsed' ? 'active' : ''}" data-sort="lastUsed">
+      ${accountsSortBy === 'lastUsed' ? (accountsSortDesc ? '↓' : '↑') : ''} Last Used
     </button>
-    <span style="font-size: 9px; color: #4b5563; margin: 0 2px;">|</span>
-    <button class="sort-btn ${hideZeroCredits ? 'active' : ''}" data-filter="hideZero"
-      style="font-size: 9px; padding: 2px 5px; background: ${hideZeroCredits ? '#dc2626' : 'transparent'}; border: 1px solid ${hideZeroCredits ? '#dc2626' : '#374151'}; border-radius: 3px; color: ${hideZeroCredits ? '#fff' : '#9ca3af'}; cursor: pointer;">
-      ${hideZeroCredits ? '✓ ' : ''}Hide 0
+    <span style="font-size: 9px; color: #4b5563; margin: 0 3px;">•</span>
+    <button class="sort-btn ${hideZeroCredits ? 'active' : ''}" data-filter="hideZero">
+      ${hideZeroCredits ? '✓ ' : ''}Hide Empty
     </button>
   `;
 
@@ -620,9 +620,9 @@ function displayAccounts(accounts, options = {}) {
   if (lastUpdatedAt) {
     const refreshInfo = document.createElement('div');
     const isStale = (Date.now() - lastUpdatedAt) > ACCOUNTS_CACHE_TTL_MS;
-    refreshInfo.style.cssText = 'font-size: 10px; text-align: right; padding: 2px 8px;';
-    refreshInfo.style.color = isStale ? '#fbbf24' : '#9ca3af';
-    refreshInfo.textContent = `Updated ${formatRelativeTime(lastUpdatedAt)}${isStale ? ' (stale)' : ''}`;
+    refreshInfo.style.cssText = 'font-size: 9px; text-align: right; padding: 2px 6px; opacity: 0.7;';
+    refreshInfo.style.color = isStale ? '#fbbf24' : '#6b7280';
+    refreshInfo.textContent = `${formatRelativeTime(lastUpdatedAt)}${isStale ? ' ⚠' : ''}`;
     accountsList.appendChild(refreshInfo);
   }
 
@@ -654,8 +654,8 @@ function displayAccounts(accounts, options = {}) {
   // Show filtered count if filter is active
   if (hideZeroCredits && filtered.length < accounts.length) {
     const filterInfo = document.createElement('div');
-    filterInfo.style.cssText = 'font-size: 10px; color: #9ca3af; padding: 4px 8px; text-align: center;';
-    filterInfo.textContent = `Showing ${filtered.length} of ${accounts.length} accounts`;
+    filterInfo.style.cssText = 'font-size: 9px; color: #6b7280; padding: 3px 6px; text-align: center; opacity: 0.8;';
+    filterInfo.textContent = `${filtered.length}/${accounts.length} shown`;
     accountsList.appendChild(filterInfo);
   }
 
@@ -675,48 +675,47 @@ function createAccountCard(account) {
   const isOwnedByCurrentUser = currentUser && account.user_id === currentUser.id;
   const canLoginWithAccount = isOwnedByCurrentUser && (account.has_cookies || account.has_jwt);
   const jwtFlag = !account.has_jwt
-    ? { text: 'Needs JWT', color: '#b91c1c' }
-    : (account.jwt_expired ? { text: 'JWT expired', color: '#f97316' } : null);
+    ? { text: 'No JWT', color: '#b91c1c' }
+    : (account.jwt_expired ? { text: 'Expired', color: '#f97316' } : null);
   const showAdPill = account.provider_id === 'pixverse';
 
   card.innerHTML = `
-    <div class="account-header" style="padding: 6px 8px;">
-      <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
+    <div class="account-header">
+      <div class="account-title">
         <span class="account-status ${statusClass}" title="Status: ${account.status}"></span>
-        <div class="account-title" style="flex: 1; min-width: 0;">
-          <div class="account-name" style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
-          ${account.nickname ? `<div class="account-email-sub" style="font-size: 9px;">${account.email}</div>` : ''}
+        <div style="flex: 1; min-width: 0;">
+          <span class="account-name">${displayName}</span>
+          ${account.nickname ? `<span class="account-email-sub">${account.email}</span>` : ''}
         </div>
-        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-          ${jwtFlag ? `<span class="account-flag" style="font-size: 9px; padding: 2px 4px; border-radius: 3px; background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
-          ${showAdPill ? `<span class="account-ad-pill" data-role="ad-pill" data-account-id="${account.id}" style="font-size: 10px; color: #6b7280;">Ads ?/?</span>` : ''}
-          <span style="font-size: 16px; font-weight: 700; color: #10b981; min-width: 32px; text-align: right;">${totalCredits}</span>
-        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+        ${jwtFlag ? `<span class="account-flag" style="background: ${jwtFlag.color}; color: white;">${jwtFlag.text}</span>` : ''}
+        ${showAdPill ? `<span class="account-ad-pill" data-role="ad-pill" data-account-id="${account.id}">Ads ?/?</span>` : ''}
+        <div class="account-credits">${totalCredits}</div>
       </div>
     </div>
 
-    <div class="actions-row" style="padding: 4px 8px; gap: 4px;">
+    <div class="actions-row">
       ${canLoginWithAccount ? `
         <button
           class="account-btn btn-tiny"
           data-action="login"
           data-account-id="${account.id}"
-          style="font-size: 10px; padding: 3px 6px;"
+          title="Login with this account"
         >
-          ${ACCOUNT_ACTIONS.LOGIN}
+          ${EMOJI.GLOBE}
         </button>
       ` : `
         <button
           class="account-btn btn-tiny"
           disabled
           title="${!isOwnedByCurrentUser ? 'Can only open tabs for your own accounts' : 'No cookies/JWT available for this account'}"
-          style="font-size: 10px; padding: 3px 6px;"
         >
-          ${ACCOUNT_ACTIONS.LOGIN}
+          ${EMOJI.GLOBE}
         </button>
       `}
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_PRESET}</button>
-      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}" style="font-size: 10px; padding: 3px 6px;">${ACCOUNT_ACTIONS.RUN_LOOP}</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-preset" data-account-id="${account.id}" title="Run preset">${EMOJI.PLAY} Preset</button>
+      <button class="account-btn btn-ghost btn-tiny" data-action="run-loop" data-account-id="${account.id}" title="Run loop">${EMOJI.PLAY} Loop</button>
     </div>
   `;
 
@@ -732,6 +731,17 @@ function createAccountCard(account) {
       btn.addEventListener('click', () => executeLoopForAccount(account));
     }
   });
+
+  // If we have a cached Pixverse status for this account, render it
+  // immediately so the pill persists across popup opens without having
+  // to re-hit the backend every time.
+  if (showAdPill) {
+    const pillEl = card.querySelector('.account-ad-pill');
+    const cacheEntry = pixverseStatusCache.get(account.id);
+    if (pillEl && cacheEntry && (Date.now() - cacheEntry.updatedAt) < PIXVERSE_STATUS_CACHE_TTL_MS) {
+      renderPixverseAdPill(pillEl, cacheEntry.data);
+    }
+  }
 
   return card;
 }
@@ -767,6 +777,7 @@ function attachPixverseAdStatus(account, pillEl) {
 
       console.log('[Ads] Status for account', account.id, res.data);
       pixverseStatusCache.set(account.id, { data: res.data, updatedAt: Date.now() });
+      persistPixverseStatusCache();
       if (pixverseStatusCache.size > 200) {
         const firstKey = pixverseStatusCache.keys().next().value;
         pixverseStatusCache.delete(firstKey);
@@ -994,7 +1005,15 @@ function formatRelativeTime(timestamp) {
 async function handleAccountLogin(account) {
   console.log('[Popup] Login with account:', account.email);
   try {
-    const res = await chrome.runtime.sendMessage({ action: 'loginWithAccount', accountId: account.id });
+    // Prefer reusing the current active tab if available. This avoids
+    // spawning extra tabs when switching Pixverse accounts from the
+    // extension.
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const res = await chrome.runtime.sendMessage({
+      action: 'loginWithAccount',
+      accountId: account.id,
+      tabId: activeTab && typeof activeTab.id === 'number' ? activeTab.id : undefined,
+    });
     if (!res || !res.success) {
       showError(res?.error || 'Failed to open logged-in tab');
     }
@@ -1023,6 +1042,38 @@ async function loadSettings() {
   const dup = document.getElementById('defaultUploadProvider');
   if (dup) {
     await populateProvidersInSettings(result.defaultUploadProvider || 'pixverse');
+  }
+}
+
+async function loadPixverseStatusCacheFromStorage() {
+  try {
+    const stored = await chrome.storage.local.get(PIXVERSE_STATUS_CACHE_STORAGE_KEY);
+    const raw = stored[PIXVERSE_STATUS_CACHE_STORAGE_KEY];
+    if (!raw || typeof raw !== 'object') return;
+
+    Object.entries(raw).forEach(([key, entry]) => {
+      const accountId = parseInt(key, 10);
+      if (!Number.isFinite(accountId)) return;
+      if (!entry || typeof entry !== 'object') return;
+      const data = entry.data;
+      const updatedAt = entry.updatedAt;
+      if (!data || typeof updatedAt !== 'number') return;
+      pixverseStatusCache.set(accountId, { data, updatedAt });
+    });
+  } catch (e) {
+    console.warn('[Popup] Failed to restore Pixverse status cache from storage', e);
+  }
+}
+
+function persistPixverseStatusCache() {
+  try {
+    const serialized = {};
+    pixverseStatusCache.forEach((entry, accountId) => {
+      serialized[accountId] = entry;
+    });
+    chrome.storage.local.set({ [PIXVERSE_STATUS_CACHE_STORAGE_KEY]: serialized });
+  } catch (e) {
+    console.warn('[Popup] Failed to persist Pixverse status cache', e);
   }
 }
 

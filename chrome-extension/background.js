@@ -81,6 +81,7 @@ console.log('[PixSim7 Extension] Background service worker loaded');
 // Default backend URL (configurable in settings)
 // Using ZeroTier IP for network access
 const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
+const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
 
 /**
  * Get settings from storage
@@ -568,7 +569,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'loginWithAccount') {
       (async () => {
         try {
-          const { accountId } = message;
+          const { accountId, tabId } = message;
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
 
@@ -579,13 +580,99 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
 
+          // If there is an existing remembered session for this provider,
+          // sync its credits before switching to the new account. This keeps
+          // the "previously active" account's credits in sync when switching
+          // accounts via the extension.
+          try {
+            const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
+            const sessions = stored[PROVIDER_SESSION_STORAGE_KEY] || {};
+            const prevSession = sessions[providerId];
+            const prevAccountId = prevSession && prevSession.accountId;
+            if (prevAccountId && prevAccountId !== accountId) {
+              // Fire-and-forget: don't block opening the tab on credit sync.
+              (async () => {
+                try {
+                  await backendRequest(`/api/v1/accounts/${prevAccountId}/sync-credits`, {
+                    method: 'POST',
+                  });
+                  try {
+                    chrome.runtime.sendMessage({
+                      action: 'accountsUpdated',
+                      providerId,
+                    });
+                  } catch (notifyErr) {
+                    console.warn('[Background] Failed to notify popup of credits sync:', notifyErr);
+                  }
+                } catch (syncErr) {
+                  console.warn('[Background] Failed to sync credits for previous provider session:', syncErr);
+                }
+              })();
+            }
+          } catch (e) {
+            console.warn('[Background] Failed to sync credits for previous provider session:', e);
+          }
+
           // Inject cookies
           await injectCookies(cookies, target.domain);
 
-        // Open tab
-        chrome.tabs.create({ url: target.url }, (tab) => {
-          sendResponse({ success: true, tabId: tab?.id });
+        // Open or reuse tab
+        if (tabId && typeof tabId === 'number') {
+          // Reuse existing tab (current tab in most cases)
+          chrome.tabs.update(tabId, { url: target.url }, (tab) => {
+            sendResponse({ success: true, tabId: tab?.id ?? tabId });
+          });
+        } else {
+          // Fallback: open a new tab
+          chrome.tabs.create({ url: target.url }, (tab) => {
+            sendResponse({ success: true, tabId: tab?.id });
+          });
+        }
+
+        // Fire-and-forget: also sync credits for the newly selected account
+        // so that the PixSim7 UI reflects its latest balance shortly after
+        // logging in via the extension.
+        (async () => {
+          try {
+            await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
+              method: 'POST',
+            });
+            try {
+              chrome.runtime.sendMessage({
+                action: 'accountsUpdated',
+                providerId,
+              });
+            } catch (notifyErr) {
+              console.warn('[Background] Failed to notify popup after new-account sync:', notifyErr);
+            }
+          } catch (syncErr) {
+            console.warn('[Background] Failed to sync credits for newly selected account:', syncErr);
+          }
+        })();
+        } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.action === 'syncAccountCredits') {
+    (async () => {
+      try {
+        const { accountId, providerId } = message;
+        if (!accountId) throw new Error('accountId is required');
+        await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
+          method: 'POST',
         });
+        try {
+          chrome.runtime.sendMessage({
+            action: 'accountsUpdated',
+            providerId: providerId || null,
+          });
+        } catch (notifyErr) {
+          console.warn('[Background] Failed to notify popup after syncAccountCredits:', notifyErr);
+        }
+        sendResponse({ success: true });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

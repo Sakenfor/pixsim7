@@ -236,7 +236,6 @@ async function importCookies(providerId, config) {
             accountId: importedAccountId,
             email: importResponse.data?.email || null,
           });
-          await notifyAccountStatus(importedAccountId, 'active', 'login_detected');
         } catch (statusError) {
           console.warn('[PixSim7 Content] Failed to update account status after import:', statusError);
         }
@@ -369,7 +368,18 @@ async function handleProviderLogout(providerId) {
   try {
     const session = await getRememberedProviderAccount(providerId);
     if (session?.accountId) {
-      await notifyAccountStatus(session.accountId, 'disabled', 'logout_detected');
+      const accountId = session.accountId;
+      // Best-effort: sync credits for the account that is being logged out
+      // so any changes during this browser session are reflected in PixSim7.
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'syncAccountCredits',
+          accountId,
+          providerId,
+        });
+      } catch (syncErr) {
+        console.warn('[PixSim7 Content] Failed to sync credits on logout:', syncErr);
+      }
     }
     await clearRememberedProviderAccount(providerId);
   } catch (err) {
