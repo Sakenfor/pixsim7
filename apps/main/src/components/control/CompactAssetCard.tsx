@@ -152,7 +152,7 @@ export function CompactAssetCard({
             className="absolute right-1.5 bottom-1.5 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors"
             title="Remove asset"
           >
-            <ThemedIcon name="x" size={12} variant="default" className="text-white" />
+            <ThemedIcon name="close" size={12} variant="default" className="text-white" />
           </button>
         )}
       </div>
