@@ -1,0 +1,241 @@
+version: "0.1.0"
+label: "PixSim7 Core Prompt Ontology"
+description: >
+  Core semantic vocabulary for describing visual/narrative prompts in PixSim7.
+  This defines stable IDs for entities, actions, states, spatial relations,
+  camera concepts, and beats. Parser, ActionBlocks, graphs, and game systems
+  should normalize to these IDs rather than inventing new ad-hoc labels.
+
+entities:
+  character:
+    kinds:
+      primary:
+        id: "character.primary"
+        label: "Primary character"
+        description: "POV / focal character (she/her in most prompts)."
+        properties: ["pose", "emotional_state", "body_language", "breathing"]
+      secondary:
+        id: "character.secondary"
+        label: "Secondary / creature"
+        description: "Non-POV entities (minotaur, werewolf, partner, etc.)."
+        properties: ["species", "size", "appearance", "body_features"]
+
+  anatomy:
+    parts:
+      shaft:
+        id: "part:shaft"
+        label: "Shaft"
+        properties: ["size", "color", "texture", "state"]
+      head:
+        id: "part:head"
+        label: "Head"
+        properties: ["size", "color", "texture", "state"]
+      hands:
+        id: "part:hands"
+        label: "Hands"
+        properties: ["pose", "position", "contact_state"]
+      torso:
+        id: "part:torso"
+        label: "Torso"
+        properties: ["orientation", "pose", "contact_state"]
+      buttocks:
+        id: "part:buttocks"
+        label: "Buttocks"
+        properties: ["pose", "contact_state"]
+
+    regions:
+      groin:
+        id: "region:groin"
+        label: "Groin / crotch"
+      chest:
+        id: "region:chest"
+        label: "Chest"
+      back:
+        id: "region:back"
+        label: "Back"
+      between_legs:
+        id: "region:between_legs"
+        label: "Between legs"
+
+  action:
+    types:
+      movement:
+        id: "act:movement"
+        label: "Movement"
+        examples: ["enters", "walks", "leans", "adjusts"]
+      touch:
+        id: "act:touch"
+        label: "Touch / contact"
+        examples: ["presses", "strokes", "grasps", "traces"]
+      phys_response:
+        id: "act:phys_response"
+        label: "Physiological response"
+        examples: ["twitches", "hardens", "swells", "pulses"]
+
+  state:
+    physical:
+      erect:
+        id: "state:erect"
+      flaccid:
+        id: "state:flaccid"
+      stiffening:
+        id: "state:stiffening"
+      hardening:
+        id: "state:hardening"
+      swollen:
+        id: "state:swollen"
+
+    emotional:
+      confident:
+        id: "mood:confident"
+      nervous:
+        id: "mood:nervous"
+      intimidated:
+        id: "mood:intimidated"
+      eager:
+        id: "mood:eager"
+      playful:
+        id: "mood:playful"
+
+    positional:
+      hanging:
+        id: "state:hanging"
+      rising:
+        id: "state:rising"
+      extended:
+        id: "state:extended"
+      aligned:
+        id: "state:aligned"
+
+  spatial:
+    location:
+      between_legs:
+        id: "rel:between_legs"
+      at_crotch:
+        id: "rel:at_crotch"
+      at_groin:
+        id: "rel:at_groin"
+      against_back:
+        id: "rel:against_back"
+
+    orientation:
+      perpendicular:
+        id: "ori:perpendicular"
+      aligned:
+        id: "ori:aligned"
+      facing_forward:
+        id: "ori:facing_forward"
+
+    contact:
+      pressing:
+        id: "contact:pressing"
+      touching:
+        id: "contact:touching"
+      inside:
+        id: "contact:inside"
+      against:
+        id: "contact:against"
+
+  camera:
+    views:
+      pov:
+        id: "cam:pov"
+      from_behind:
+        id: "cam:from_behind"
+      upper_body_focus:
+        id: "cam:upper_body_focus"
+
+    framing:
+      centered:
+        id: "cam:centered"
+      bottom_of_frame:
+        id: "cam:bottom_of_frame"
+      entering_frame:
+        id: "cam:entering_frame"
+
+  beat:
+    sequence_kinds:
+      setup:
+        id: "beat:setup"
+      buildup:
+        id: "beat:buildup"
+      climax:
+        id: "beat:climax"
+      hold:
+        id: "beat:hold"
+
+    micro_beats:
+      tease:
+        id: "beat:tease"
+      adjustment:
+        id: "beat:adjustment"
+      entry:
+        id: "beat:entry"
+      escalation:
+        id: "beat:escalation"
+
+intensity:
+  scale: "0-100"
+  labels:
+    - id: "intensity:soft"
+      range: [0, 30]
+    - id: "intensity:medium"
+      range: [30, 70]
+    - id: "intensity:high"
+      range: [70, 100]
+
+speed:
+  labels:
+    slow:
+      id: "speed:slow"
+    medium:
+      id: "speed:medium"
+    fast:
+      id: "speed:fast"
+
+relationships:
+  - id: "character_has_part"
+    from: "character"
+    to: "anatomy.part"
+    predicate: "has_part"
+
+  - id: "part_located_at_region"
+    from: "anatomy.part"
+    to: "anatomy.region"
+    predicate: "located_at"
+
+  - id: "character_performs_action"
+    from: "character"
+    to: "action"
+    predicate: "performs"
+
+  - id: "action_targets_entity"
+    from: "action"
+    to: "character|anatomy.part"
+    predicate: "targets"
+
+  - id: "action_has_state"
+    from: "action"
+    to: "state.physical"
+    predicate: "has_state"
+
+  - id: "action_has_speed"
+    from: "action"
+    to: "speed"
+    predicate: "has_speed"
+
+  - id: "scene_has_beat"
+    from: "scene"
+    to: "beat"
+    predicate: "has_beat"
+
+  - id: "beat_follows_beat"
+    from: "beat"
+    to: "beat"
+    predicate: "follows"
+
+  - id: "camera_frames_entity"
+    from: "camera"
+    to: "character|anatomy.part"
+    predicate: "frames"
+

@@ -15,7 +15,7 @@ Already implemented:
   - AI Hub API (`api/v1/ai.py`) and “Edit with AI” frontend hook/button.
 
 - **Prompt parsing/analysis layer:**
-  - `prompt_dsl_adapter.parse_prompt_to_blocks(text)` and `analyze_prompt(text)` using `PromptParser` from `prompt-dsl` (engine=`simple`).
+  - `prompt_dsl_adapter.parse_prompt_to_blocks(text)` and `analyze_prompt(text)` using the native `SimplePromptParser` (`prompt_parser.simple`) behind the adapter.
   - Prompt Lab (`/dev/prompt-lab`) with Analyze / Import / Library tabs, using `analyze_prompt` and the dev prompt library APIs.
 
 Missing:
@@ -36,7 +36,7 @@ This task adds an `AiModelRegistry` and a small dev UI to configure default mode
 - `AiModel` entries describe **capabilities and IDs**, not HTTP/SDK details.
 - Some models are:
   - **Remote LLM models:** e.g., `"openai:gpt-4.1-mini"`, `"anthropic:claude-3.5"`, backed by `llm_registry` providers.
-  - **Local parsing engines:** e.g., `"prompt-dsl:simple"`, `"prompt-dsl:strict"`, backed by `PromptParser` or other deterministic code.
+  - **Local parsing engines:** e.g., `"parser:native-simple"`, `"parser:native-strict"`, backed by PixSim7's native parser configuration.
 - Capabilities drive usage:
   - `prompt_edit` → AI Hub / `/api/v1/ai/prompt-edit`.
   - `prompt_parse` → Prompt Lab / `prompt_dsl_adapter` (or AI-assisted parser).
@@ -72,9 +72,9 @@ class AiModelCapability(str, Enum):
 
 
 class AiModel(BaseModel):
-    id: str                      # "openai:gpt-4.1-mini", "prompt-dsl:simple", etc.
-    label: str                   # Human-readable ("GPT-4.1 Mini", "Prompt-DSL Simple")
-    provider_id: Optional[str]   # "openai-llm", "internal-prompt-dsl", etc.
+    id: str                      # "openai:gpt-4.1-mini", "parser:native-simple", etc.
+    label: str                   # Human-readable ("GPT-4.1 Mini", "Native Simple Parser")
+    provider_id: Optional[str]   # "openai-llm", "internal-parser", etc.
     kind: AiModelKind
     capabilities: List[AiModelCapability]
     default_for: List[AiModelCapability] = []  # Which capabilities this is default for (optional hint)
@@ -116,7 +116,8 @@ ai_model_registry = AiModelRegistry()
 
 - Add a small initializer (e.g., `pixsim7/backend/main/services/ai_model/bootstrap.py`) that is called at startup (e.g. from main app init):
   - Registers at least:
-    - `AiModel(id="prompt-dsl:simple", label="Prompt-DSL Simple", provider_id="internal-prompt-dsl", kind=PARSER, capabilities=[PROMPT_PARSE], default_for=[PROMPT_PARSE])`
+    - `AiModel(id="parser:native-simple", label="Native Simple Parser", provider_id="internal-parser", kind=AiModelKind.PARSER, capabilities=[AiModelCapability.PROMPT_PARSE], default_for=[AiModelCapability.PROMPT_PARSE])`
+    - (Optional) additional parser variants if needed (e.g., `"parser:native-strict"`).
     - A couple of LLM models (for prompt editing):
       - `"openai:gpt-4.1-mini"` → provider `"openai-llm"`, capabilities `[PROMPT_EDIT, TAG_SUGGEST]`.
       - `"anthropic:claude-3.5"` → provider `"anthropic-llm"`, capabilities `[PROMPT_EDIT]`.
@@ -233,7 +234,7 @@ ai_model_registry = AiModelRegistry()
 ### Acceptance Checklist
 
 - [ ] `AiModel` schema and `AiModelRegistry` are implemented and initialized with at least:
-  - [ ] One deterministic parser model (`prompt-dsl:simple`) with `PROMPT_PARSE` capability.
+  - [ ] One deterministic parser model (`parser:native-simple`) with `PROMPT_PARSE` capability.
   - [ ] At least one LLM model (`openai:gpt-4.1-mini` or similar) with `PROMPT_EDIT` capability.
 - [ ] Dev API:
   - [ ] `GET /api/v1/dev/ai-models` lists all models.
@@ -242,7 +243,7 @@ ai_model_registry = AiModelRegistry()
 - [ ] AI Hub:
   - [ ] Uses the model catalog/defaults for choosing provider/model when none is explicitly specified (no behavior change when defaults match current behavior).
 - [ ] Prompt parsing:
-  - [ ] `prompt_dsl_adapter` reads the default `prompt_parse` model ID and uses the `prompt-dsl:simple` engine via existing logic.
+  - [ ] `prompt_dsl_adapter` reads the default `prompt_parse` model ID and uses the native `SimplePromptParser` configuration corresponding to that model (e.g. `parser:native-simple`).
   - [ ] No AI-based parsing is required yet; deterministic path still works.
 - [ ] Prompt Lab UI:
   - [ ] New Models tab shows all AI models and current defaults.

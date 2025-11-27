@@ -81,17 +81,24 @@ class SimplePromptParser:
             hints: Hint map from semantic packs
         """
         for key, words in hints.items():
-            # Handle both 'role:X' and plain 'X' formats
-            role = key.replace("role:", "") if key.startswith("role:") else key
-
-            # If this role exists in our keywords, extend it
-            if role in self.role_keywords:
-                for word in words:
-                    if word.lower() not in [k.lower() for k in self.role_keywords[role]]:
-                        self.role_keywords[role].append(word.lower())
+            # Only treat explicit role-focused hints as role keywords.
+            # Keys should be "role:character", "role:action", etc.
+            if key.startswith("role:"):
+                role = key.replace("role:", "")
             else:
-                # New role from hints - add it
-                self.role_keywords[role] = [w.lower() for w in words]
+                # Ignore non-role keys here (e.g., ontology IDs like "act:sit_closer").
+                continue
+
+            if role not in self.role_keywords:
+                # Unknown role; skip to avoid inventing new roles from hints.
+                continue
+
+            # Extend existing role keywords with new words
+            existing = [k.lower() for k in self.role_keywords[role]]
+            for word in words:
+                w = word.lower()
+                if w not in existing:
+                    self.role_keywords[role].append(w)
 
     async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> ParsedPrompt:
         """

@@ -52,10 +52,11 @@ class SemanticPackManifest(BaseModel):
     parser_hints: Dict[str, List[str]] = Field(
         default_factory=dict,
         description=(
-            "Role/attribute-specific keywords, e.g. "
-            "{ 'role:character': ['minotaur', 'werecow'], "
-            "  'phys:size:large': ['towering', 'massive'], "
-            "  'act:sit_closer': ['scoots closer'] }"
+            "Role/attribute-specific keywords keyed by ontology-aligned IDs. "
+            "Role hints must use 'role:<name>' keys (e.g. 'role:character', "
+            "'role:action') to augment classification. Other keys should be "
+            "ontology IDs or attribute IDs (e.g. 'act:sit_closer', "
+            "'phys:size:large') and are reserved for higher-level tools."
         ),
     )
 
