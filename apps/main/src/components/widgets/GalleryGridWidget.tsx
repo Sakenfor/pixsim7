@@ -6,11 +6,10 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { useAssets } from '../../hooks/useAssets';
+import { useGallerySurfaceController } from '../../hooks/useGallerySurfaceController';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import type { WidgetProps, WidgetDefinition } from '../../lib/widgets/widgetRegistry';
-import { useMediaGenerationActions } from '../../hooks/useMediaGenerationActions';
 
 export interface GalleryGridWidgetConfig {
   title?: string;
@@ -49,21 +48,17 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
   } = config;
 
   const navigate = useNavigate();
-  const { items, loading, error } = useAssets({ filters });
 
-  // Apply limit
-  const displayItems = items.slice(0, limit);
-
-  const {
-    queueImageToVideo,
-    queueVideoExtend,
-    queueAddToTransition,
-    queueAutoGenerate,
-  } = useMediaGenerationActions();
+  // Use the gallery surface controller for asset loading and generation actions
+  const controller = useGallerySurfaceController({
+    mode: 'widget',
+    filters,
+    limit,
+  });
 
   // Render media cards
   const renderCards = () => {
-    return displayItems.map((asset) => (
+    return controller.assets.map((asset) => (
       <MediaCard
         key={asset.id}
         id={asset.id}
@@ -81,12 +76,9 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
         providerStatus={asset.provider_status}
         onOpen={() => navigate(`/assets/${asset.id}`)}
         actions={{
+          ...controller.getAssetActions(asset),
           onOpenDetails: () => navigate(`/assets/${asset.id}`),
           onShowMetadata: () => navigate(`/assets/${asset.id}`),
-          onImageToVideo: () => queueImageToVideo(asset),
-          onVideoExtend: () => queueVideoExtend(asset),
-          onAddToTransition: () => queueAddToTransition(asset),
-          onAddToGenerate: () => queueAutoGenerate(asset),
         }}
         badgeConfig={badgeConfig}
       />
@@ -101,8 +93,8 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
           <div>
             <h3 className="text-sm font-semibold">{title}</h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-              {displayItems.length} {displayItems.length === 1 ? 'asset' : 'assets'}
-              {limit < items.length && ` (showing first ${limit})`}
+              {controller.assets.length} {controller.assets.length === 1 ? 'asset' : 'assets'}
+              {limit && controller.allAssets.length > limit && ` (showing first ${limit})`}
             </p>
           </div>
           <span className="text-[10px] px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded border border-neutral-300 dark:border-neutral-600">
@@ -113,25 +105,25 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
 
       {/* Grid */}
       <div className="flex-1 overflow-y-auto p-3">
-        {loading && (
+        {controller.loading && (
           <div className="flex items-center justify-center h-full text-sm text-neutral-500">
             Loading assets...
           </div>
         )}
 
-        {error && (
+        {controller.error && (
           <div className="flex items-center justify-center h-full text-sm text-red-500">
-            Error: {error}
+            Error: {controller.error}
           </div>
         )}
 
-        {!loading && !error && displayItems.length === 0 && (
+        {!controller.loading && !controller.error && controller.assets.length === 0 && (
           <div className="flex items-center justify-center h-full text-sm text-neutral-500">
             No assets found
           </div>
         )}
 
-        {!loading && !error && displayItems.length > 0 && (
+        {!controller.loading && !controller.error && controller.assets.length > 0 && (
           layout === 'masonry' ? (
             <MasonryGrid
               items={renderCards()}
