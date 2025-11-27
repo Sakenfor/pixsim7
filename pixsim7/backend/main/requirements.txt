@@ -59,7 +59,3 @@ ruff==0.1.15  # Linting
 
 # ===== System Monitoring =====
 psutil==5.9.6  # System metrics (CPU, memory, disk)
-
-# ===== Prompt DSL =====
-# Local: pip install -e G:/code/pixsim-prompt-dsl
-pixsim-prompt-dsl  # Prompt parsing and analysis
