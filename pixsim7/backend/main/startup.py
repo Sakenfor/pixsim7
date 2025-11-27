@@ -158,6 +158,24 @@ def setup_providers() -> None:
     logger.info("providers_registered")
 
 
+def setup_ai_models() -> None:
+    """
+    Initialize AI Model Registry with default models and parsers.
+
+    Registers:
+    - Deterministic parsing engines (prompt-dsl)
+    - LLM models for prompt editing and tag suggestion
+
+    Why this is a separate function:
+    - Independent of database/Redis
+    - Can be tested in isolation
+    - Clear registration point
+    """
+    from pixsim7.backend.main.services.ai_model.bootstrap import initialize_ai_models
+    initialize_ai_models()
+    logger.info("ai_models_registered")
+
+
 def setup_event_handlers() -> None:
     """
     Register event handlers and WebSocket handlers.

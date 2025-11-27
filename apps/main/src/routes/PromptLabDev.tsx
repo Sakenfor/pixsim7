@@ -5,7 +5,7 @@
  * Brings together prompt inspection, import tools, and family/version browsing.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { DevPromptImporter } from './DevPromptImporter';
@@ -58,10 +58,20 @@ interface DevPromptVersionDetail {
   };
 }
 
+interface AiModel {
+  id: string;
+  label: string;
+  provider_id?: string;
+  kind: 'llm' | 'parser' | 'both';
+  capabilities: string[];
+  default_for?: string[];
+  description?: string;
+}
+
 // ===== Main Component =====
 
 export function PromptLabDev() {
-  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library'>('analyze');
+  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library' | 'models'>('analyze');
 
   // Shared state for Analyze -> Import flow
   const [importFamilyTitle, setImportFamilyTitle] = useState<string | undefined>();
@@ -122,6 +132,16 @@ export function PromptLabDev() {
         >
           Library
         </button>
+        <button
+          onClick={() => setActiveTab('models')}
+          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'models'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+          }`}
+        >
+          Models
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -139,6 +159,7 @@ export function PromptLabDev() {
         />
       )}
       {activeTab === 'library' && <LibraryTab />}
+      {activeTab === 'models' && <ModelsTab />}
     </div>
   );
 }
@@ -677,6 +698,318 @@ function LibraryTab() {
             )}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ===== Models Tab =====
+
+function ModelsTab() {
+  const api = useApi();
+
+  // State for models list
+  const [models, setModels] = useState<AiModel[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+
+  // State for defaults
+  const [defaults, setDefaults] = useState<Record<string, string>>({});
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+  const [defaultsError, setDefaultsError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Temporary state for dropdown selections
+  const [selectedDefaults, setSelectedDefaults] = useState<Record<string, string>>({});
+
+  // Load models
+  const loadModels = async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+
+    try {
+      const result = await api.get<AiModel[]>('/dev/ai-models');
+      setModels(result);
+    } catch (err: any) {
+      console.error('Failed to load AI models:', err);
+      setModelsError(err.message || 'Failed to load AI models');
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  // Load defaults
+  const loadDefaults = async () => {
+    setDefaultsLoading(true);
+    setDefaultsError(null);
+
+    try {
+      const result = await api.get<Record<string, string>>('/dev/ai-models/defaults');
+      setDefaults(result);
+      setSelectedDefaults(result);
+    } catch (err: any) {
+      console.error('Failed to load defaults:', err);
+      setDefaultsError(err.message || 'Failed to load defaults');
+    } finally {
+      setDefaultsLoading(false);
+    }
+  };
+
+  // Save defaults
+  const saveDefaults = async () => {
+    setSaving(true);
+    setDefaultsError(null);
+
+    try {
+      const result = await api.post<Record<string, string>>(
+        '/dev/ai-models/defaults',
+        { defaults: selectedDefaults }
+      );
+      setDefaults(result);
+      alert('Defaults saved successfully!');
+    } catch (err: any) {
+      console.error('Failed to save defaults:', err);
+      setDefaultsError(err.message || 'Failed to save defaults');
+      alert(`Failed to save defaults: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Load on mount
+  useEffect(() => {
+    loadModels();
+    loadDefaults();
+  }, []);
+
+  // Get models by capability
+  const getModelsForCapability = (capability: string) => {
+    return models.filter(m => m.capabilities.includes(capability));
+  };
+
+  // Capability display names
+  const capabilityLabels: Record<string, string> = {
+    'prompt_edit': 'Prompt Editing',
+    'prompt_parse': 'Prompt Parsing',
+    'tag_suggest': 'Tag Suggestion',
+  };
+
+  const hasChanges = JSON.stringify(defaults) !== JSON.stringify(selectedDefaults);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Left: All Models */}
+      <div className="space-y-4">
+        <Panel className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">All AI Models</h2>
+            <Button onClick={loadModels} size="sm" variant="outline" disabled={modelsLoading}>
+              {modelsLoading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </div>
+
+          {modelsError && (
+            <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200 mb-4">
+              {modelsError}
+            </div>
+          )}
+
+          {modelsLoading ? (
+            <div className="text-neutral-600 dark:text-neutral-400">Loading models...</div>
+          ) : models.length === 0 ? (
+            <div className="text-neutral-600 dark:text-neutral-400">No models found</div>
+          ) : (
+            <div className="space-y-3 max-h-[600px] overflow-y-auto">
+              {models.map((model) => (
+                <div
+                  key={model.id}
+                  className="p-4 border border-neutral-200 dark:border-neutral-700 rounded-md bg-neutral-50 dark:bg-neutral-800"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{model.label}</div>
+                      <div className="text-xs text-neutral-600 dark:text-neutral-400 font-mono mt-1">
+                        {model.id}
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      model.kind === 'llm'
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                        : model.kind === 'parser'
+                        ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200'
+                        : 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
+                    }`}>
+                      {model.kind}
+                    </span>
+                  </div>
+
+                  {model.description && (
+                    <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                      {model.description}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {model.capabilities.map((cap) => (
+                      <span
+                        key={cap}
+                        className="inline-block bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 px-2 py-0.5 rounded text-xs"
+                      >
+                        {capabilityLabels[cap] || cap}
+                      </span>
+                    ))}
+                  </div>
+
+                  {model.provider_id && (
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-2">
+                      Provider: <span className="font-mono">{model.provider_id}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      {/* Right: Default Model Selection */}
+      <div className="space-y-4">
+        <Panel className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Default Model Selection</h2>
+            <Button onClick={loadDefaults} size="sm" variant="outline" disabled={defaultsLoading}>
+              {defaultsLoading ? 'Loading...' : 'Refresh'}
+            </Button>
+          </div>
+
+          {defaultsError && (
+            <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200 mb-4">
+              {defaultsError}
+            </div>
+          )}
+
+          {defaultsLoading ? (
+            <div className="text-neutral-600 dark:text-neutral-400">Loading defaults...</div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                Configure which AI models are used by default for each capability.
+              </p>
+
+              {/* Prompt Edit */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Default Prompt Editor
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-2">
+                    (prompt_edit)
+                  </span>
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedDefaults['prompt_edit'] || ''}
+                  onChange={(e) => setSelectedDefaults({
+                    ...selectedDefaults,
+                    prompt_edit: e.target.value
+                  })}
+                >
+                  <option value="">Select model...</option>
+                  {getModelsForCapability('prompt_edit').map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label} ({model.id})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                  Current: {defaults['prompt_edit'] || 'Not set'}
+                </div>
+              </div>
+
+              {/* Prompt Parse */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Default Prompt Parser
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-2">
+                    (prompt_parse)
+                  </span>
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedDefaults['prompt_parse'] || ''}
+                  onChange={(e) => setSelectedDefaults({
+                    ...selectedDefaults,
+                    prompt_parse: e.target.value
+                  })}
+                >
+                  <option value="">Select model...</option>
+                  {getModelsForCapability('prompt_parse').map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label} ({model.id})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                  Current: {defaults['prompt_parse'] || 'Not set'}
+                </div>
+              </div>
+
+              {/* Tag Suggest */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Default Tag Suggester
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-2">
+                    (tag_suggest)
+                  </span>
+                </label>
+                <select
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedDefaults['tag_suggest'] || ''}
+                  onChange={(e) => setSelectedDefaults({
+                    ...selectedDefaults,
+                    tag_suggest: e.target.value
+                  })}
+                >
+                  <option value="">Select model...</option>
+                  {getModelsForCapability('tag_suggest').map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label} ({model.id})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                  Current: {defaults['tag_suggest'] || 'Not set'}
+                </div>
+              </div>
+
+              {/* Save Button */}
+              <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
+                {hasChanges && (
+                  <div className="p-3 bg-yellow-100 dark:bg-yellow-900 border border-yellow-300 dark:border-yellow-700 rounded text-yellow-800 dark:text-yellow-200 mb-4 text-sm">
+                    You have unsaved changes
+                  </div>
+                )}
+                <Button
+                  onClick={saveDefaults}
+                  disabled={saving || !hasChanges}
+                  className="w-full"
+                >
+                  {saving ? 'Saving...' : 'Save Defaults'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        {/* Info Panel */}
+        <Panel className="p-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+            About Model Selection
+          </h3>
+          <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+            <li>• <strong>Prompt Edit</strong>: Used by AI Hub for prompt refinement</li>
+            <li>• <strong>Prompt Parse</strong>: Used by Prompt Lab Analyze tab to parse prompts into blocks</li>
+            <li>• <strong>Tag Suggest</strong>: Used for AI-powered tag suggestions (future)</li>
+          </ul>
+        </Panel>
       </div>
     </div>
   );

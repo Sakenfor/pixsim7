@@ -10,6 +10,8 @@ from sqlalchemy import select
 
 from pixsim7.backend.main.domain import User, ProviderAccount, AiInteraction
 from pixsim7.backend.main.services.llm.registry import llm_registry
+from pixsim7.backend.main.services.ai_model import ai_model_registry, get_default_model
+from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
 from pixsim7.backend.main.shared.errors import (
     ProviderNotFoundError,
     ProviderAuthenticationError,
@@ -66,9 +68,38 @@ class AiHubService:
             ProviderAuthenticationError: Authentication failed
             ProviderError: LLM API error
         """
-        # Default to OpenAI if no provider specified
+        # Resolve provider_id from AI model catalog if not specified
         if not provider_id:
-            provider_id = "openai-llm"
+            try:
+                # Get default model for prompt_edit capability
+                default_model_id = await get_default_model(
+                    self.db,
+                    AiModelCapability.PROMPT_EDIT,
+                    scope_type="global",
+                    scope_id=None
+                )
+                # Look up the model in the registry to get its provider_id
+                model = ai_model_registry.get(default_model_id)
+                if model:
+                    provider_id = model.provider_id
+                    logger.info(
+                        f"Using default model '{default_model_id}' with provider '{provider_id}' "
+                        f"for prompt editing"
+                    )
+                else:
+                    # Fallback to hardcoded default if model not found
+                    provider_id = "openai-llm"
+                    logger.warning(
+                        f"Default model '{default_model_id}' not found in registry, "
+                        f"falling back to '{provider_id}'"
+                    )
+            except Exception as e:
+                # Fallback to hardcoded default if lookup fails
+                provider_id = "openai-llm"
+                logger.warning(
+                    f"Failed to lookup default model for prompt editing: {e}, "
+                    f"falling back to '{provider_id}'"
+                )
 
         logger.info(
             f"AI Hub edit_prompt: user={user.id}, provider={provider_id}, "

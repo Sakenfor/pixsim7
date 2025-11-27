@@ -30,7 +30,10 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
 
     Args:
         text: Prompt text to parse
-        model_id: Optional parser model ID (currently only supports "native:simple" or None)
+        model_id: Optional parser model ID. Supported values:
+            - "prompt-dsl:simple" (default): Simple parser
+            - "prompt-dsl:strict": Strict parser (future)
+            - None: Uses default (simple)
 
     Returns:
         Dict with "blocks" key containing list of:
@@ -48,10 +51,23 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
             ]
         }
     """
-    # Initialize native parser
-    parser = SimplePromptParser()
+    # Default to "prompt-dsl:simple" if not specified
+    if model_id is None:
+        model_id = "prompt-dsl:simple"
 
-    # Parse the prompt using native simple parser
+    # Select parser based on model_id
+    if model_id in ("prompt-dsl:simple", "native:simple"):
+        # Use simple parser (default)
+        parser = SimplePromptParser()
+    elif model_id == "prompt-dsl:strict":
+        # Future: strict parser
+        # For now, fall back to simple parser
+        parser = SimplePromptParser()
+    else:
+        # Unknown model_id, fall back to simple parser
+        parser = SimplePromptParser()
+
+    # Parse the prompt using selected parser
     parsed = await parser.parse(text)
 
     # Convert ParsedBlocks to PixSim7 blocks
