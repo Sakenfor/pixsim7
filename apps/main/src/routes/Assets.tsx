@@ -77,7 +77,7 @@ export function AssetsRoute() {
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
-    return controller.assets.filter((a) => controller.selectedAssetIds.has(a.id));
+    return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
   }, [controller.assets, controller.selectedAssetIds]);
 
   // Gallery tool context
@@ -97,15 +97,16 @@ export function AssetsRoute() {
   );
 
   // Handle asset selection for gallery tools (with auto-show panel)
-  const toggleAssetSelection = (assetId: string) => {
-    controller.toggleAssetSelection(assetId);
+  const toggleAssetSelection = (assetId: number | string) => {
+    const idStr = String(assetId);
+    controller.toggleAssetSelection(idStr);
 
     // Auto-show tools panel when assets are selected
     const newSelection = new Set(controller.selectedAssetIds);
-    if (newSelection.has(assetId)) {
-      newSelection.add(assetId);
+    if (newSelection.has(idStr)) {
+      newSelection.add(idStr);
     } else {
-      newSelection.delete(assetId);
+      newSelection.delete(idStr);
     }
     if (newSelection.size > 0 && !showToolsPanel) {
       setShowToolsPanel(true);
@@ -114,7 +115,7 @@ export function AssetsRoute() {
 
   // Rendered cards for remote assets (shared between masonry/grid layouts)
   const cardItems = controller.assets.map((a) => {
-    const isSelected = controller.selectedAssetIds.has(a.id);
+    const isSelected = controller.selectedAssetIds.has(String(a.id));
 
     if (controller.isSelectionMode) {
 	      return (
