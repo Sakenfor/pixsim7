@@ -50,6 +50,8 @@ export function QuickGenerateModule() {
 
   const { providers } = useProviders();
   const { specs } = useProviderSpecs(providerId);
+  const setPreset = useControlCenterStore(s => s.setPreset);
+  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
 
   // UI state for collapsible sections
   const [showSettings, setShowSettings] = useState(false);
@@ -85,6 +87,53 @@ export function QuickGenerateModule() {
     ? prompt.trim().length > 0
     : true; // Other operations may not strictly require prompt
 
+  // Build dynamic presets from provider specs
+  const availablePresets = useMemo(() => {
+    if (!specs?.operation_specs) return [];
+    const opSpec = specs.operation_specs[operationType];
+    if (!opSpec?.parameters) return [];
+
+    // Quick presets: extract first few quality/aspect/model combos
+    const params = opSpec.parameters;
+    const getEnum = (name: string) =>
+      params.find((p: any) => p.name === name && Array.isArray(p.enum))?.enum as string[] | undefined;
+
+    const qualities = getEnum('quality') || [];
+    const aspects = getEnum('aspect_ratio') || [];
+
+    const presets: Array<{ id: string; name: string; params: Record<string, any> }> = [];
+
+    // Create simple combos
+    if (qualities.length && aspects.length) {
+      const topQualities = qualities.slice(0, 2);
+      const topAspects = aspects.slice(0, 2);
+      for (const q of topQualities) {
+        for (const a of topAspects) {
+          presets.push({
+            id: `${q}_${a}`,
+            name: `${q} • ${a}`,
+            params: { quality: q, aspect_ratio: a },
+          });
+        }
+      }
+    } else if (qualities.length) {
+      qualities.slice(0, 3).forEach(q => {
+        presets.push({
+          id: q,
+          name: q,
+          params: { quality: q },
+        });
+      });
+    }
+
+    return presets;
+  }, [specs, operationType]);
+
+  function applyPreset(preset: { id: string; name: string; params: Record<string, any> }) {
+    setPreset(preset.id);
+    setPresetParams(preset.params);
+  }
+
   // Get the asset to display based on operation type
   const getDisplayAssets = () => {
     if (operationType === 'video_transition') {
@@ -119,7 +168,7 @@ export function QuickGenerateModule() {
 
   return (
     <div className="flex flex-col gap-3 h-full overflow-y-auto">
-      {/* Header: Operation selector */}
+      {/* Header: Operation selector + Presets + Settings */}
       <div className="flex gap-2 items-center justify-between flex-shrink-0 pb-2 border-b border-neutral-200 dark:border-neutral-700">
         <div className="flex gap-2 items-center flex-1">
           <label className="text-xs text-neutral-500 font-medium">Mode:</label>
@@ -136,6 +185,30 @@ export function QuickGenerateModule() {
             <option value="fusion">Fusion</option>
           </select>
         </div>
+
+        {/* Presets dropdown */}
+        {availablePresets.length > 0 && (
+          <select
+            value={presetId || ''}
+            onChange={(e) => {
+              const selected = availablePresets.find(p => p.id === e.target.value);
+              if (selected) {
+                applyPreset(selected);
+              } else {
+                setPreset(undefined);
+                setPresetParams({});
+              }
+            }}
+            disabled={generating}
+            className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 max-w-[120px]"
+            title="Quick presets"
+          >
+            <option value="">No Preset</option>
+            {availablePresets.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        )}
 
         {/* Settings toggle */}
         <button
@@ -282,7 +355,7 @@ export function QuickGenerateModule() {
                 onClick={() => setShowSettings(false)}
                 className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
               >
-                <ThemedIcon name="x" size={14} variant="default" />
+                <ThemedIcon name="close" size={14} variant="default" />
               </button>
             </div>
 
