@@ -8,6 +8,7 @@ import { useProviderSpecs } from '../../hooks/useProviderSpecs';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
 import { useGenerationsStore, isGenerationTerminal } from '../../stores/generationsStore';
+import { useGenerationQueueStore } from '../../stores/generationQueueStore';
 import { logEvent } from '../../lib/logging';
 import { GenerationPluginRenderer } from '../../lib/providers';
 import { useGenerationWebSocket } from '../../hooks/useGenerationWebSocket';
@@ -52,6 +53,7 @@ export function QuickGenerateModule() {
   const { specs } = useProviderSpecs(providerId);
   const setPreset = useControlCenterStore(s => s.setPreset);
   const setPresetParams = useControlCenterStore(s => s.setPresetParams);
+  const updateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
 
   // UI state for collapsible sections
   const [showSettings, setShowSettings] = useState(false);
@@ -257,15 +259,17 @@ export function QuickGenerateModule() {
                   <div className="space-y-3">
                     {/* Horizontal asset display with transition arrows */}
                     <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                      {displayAssets.map((asset, idx) => (
+                      {transitionQueue.map((queueItem, idx) => (
                         <div key={idx} className="flex items-center gap-2">
                           {/* Asset card */}
                           <div className="flex-shrink-0 w-24">
                             <CompactAssetCard
-                              asset={asset}
+                              asset={queueItem.asset}
                               label={`${idx + 1}`}
                               showRemoveButton
-                              onRemove={() => removeFromQueue(asset.id, 'transition')}
+                              onRemove={() => removeFromQueue(queueItem.asset.id, 'transition')}
+                              lockedTimestamp={queueItem.lockedTimestamp}
+                              onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'transition')}
                             />
                           </div>
 
@@ -346,6 +350,12 @@ export function QuickGenerateModule() {
                         asset={displayAssets[0]}
                         showRemoveButton={mainQueue.length > 0}
                         onRemove={() => mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')}
+                        lockedTimestamp={mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined}
+                        onLockTimestamp={
+                          mainQueue.length > 0
+                            ? (timestamp) => updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
+                            : undefined
+                        }
                       />
                     </div>
 

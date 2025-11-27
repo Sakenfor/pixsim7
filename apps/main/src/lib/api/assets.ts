@@ -17,3 +17,19 @@ export async function getAsset(assetId: number): Promise<AssetResponse> {
 export async function deleteAsset(assetId: number): Promise<void> {
   await apiClient.delete(`/assets/${assetId}`);
 }
+
+export interface ExtractFrameRequest {
+  video_asset_id: number;
+  timestamp: number;
+  frame_number?: number;
+}
+
+/**
+ * Extract a frame from a video at a specific timestamp.
+ * Returns an image asset that can be used for image_to_video or transitions.
+ * The extracted frame is linked to the parent video via PAUSED_FRAME lineage.
+ */
+export async function extractFrame(request: ExtractFrameRequest): Promise<AssetResponse> {
+  const res = await apiClient.post<AssetResponse>('/assets/extract-frame', request);
+  return res.data;
+}

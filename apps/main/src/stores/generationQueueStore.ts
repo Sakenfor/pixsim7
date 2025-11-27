@@ -12,6 +12,7 @@ export interface QueuedAsset {
   asset: AssetSummary;
   operation?: 'image_to_video' | 'video_extend' | 'add_to_transition';
   queuedAt: string;
+  lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
 }
 
 export interface GenerationQueueState {
@@ -26,6 +27,7 @@ export interface GenerationQueueState {
   clearQueue: (queueType?: 'main' | 'transition' | 'all') => void;
   getNextInQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
   consumeFromQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
+  updateLockedTimestamp: (assetId: number, timestamp: number | undefined, queueType?: 'main' | 'transition') => void;
 }
 
 export const useGenerationQueueStore = create<GenerationQueueState>((set, get) => ({
@@ -111,5 +113,27 @@ export const useGenerationQueueStore = create<GenerationQueueState>((set, get) =
     });
 
     return item;
+  },
+
+  updateLockedTimestamp: (assetId, timestamp, queueType = 'main') => {
+    set((state) => {
+      if (queueType === 'main') {
+        return {
+          mainQueue: state.mainQueue.map((item) =>
+            item.asset.id === assetId
+              ? { ...item, lockedTimestamp: timestamp }
+              : item
+          ),
+        };
+      } else {
+        return {
+          transitionQueue: state.transitionQueue.map((item) =>
+            item.asset.id === assetId
+              ? { ...item, lockedTimestamp: timestamp }
+              : item
+          ),
+        };
+      }
+    });
   },
 }));

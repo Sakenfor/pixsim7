@@ -3,6 +3,7 @@ import { useControlCenterStore } from '../stores/controlCenterStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 import { ccSelectors } from '../stores/selectors';
 import { generateAsset } from '../lib/api/controlCenter';
+import { extractFrame } from '../lib/api/assets';
 import { logEvent } from '../lib/logging';
 import { buildGenerationRequest } from '../lib/control/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
@@ -44,32 +45,69 @@ export function useQuickGenerateController() {
   const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
 
   async function generate() {
-    const buildResult = buildGenerationRequest({
-      operationType,
-      prompt,
-      presetParams,
-      dynamicParams: bindings.dynamicParams,
-      imageUrls: bindings.imageUrls,
-      prompts: bindings.prompts,
-      activeAsset: bindings.lastSelectedAsset,
-      mainQueueFirst: bindings.mainQueue[0],
-    });
-
-    if (buildResult.error || !buildResult.params) {
-      setError(buildResult.error ?? 'Invalid generation request');
-      return;
-    }
-
-    const finalPrompt = buildResult.finalPrompt;
-
     setError(null);
-    if (finalPrompt) {
-      pushPrompt(finalPrompt);
-    }
     setGenerating(true);
     setGenerationId(null);
 
     try {
+      // Handle frame extraction for video assets with locked timestamps
+      let modifiedDynamicParams = { ...bindings.dynamicParams };
+      let modifiedImageUrls = [...bindings.imageUrls];
+
+      // For image_to_video: extract frame if video has locked timestamp
+      if (operationType === 'image_to_video' && bindings.mainQueue[0]) {
+        const queueItem = bindings.mainQueue[0];
+        if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
+          const extractedFrame = await extractFrame({
+            video_asset_id: queueItem.asset.id,
+            timestamp: queueItem.lockedTimestamp,
+          });
+          // Use extracted frame URL instead of video URL
+          modifiedDynamicParams.image_url = extractedFrame.remote_url || extractedFrame.thumbnail_url;
+        }
+      }
+
+      // For video_transition: extract frames for videos with locked timestamps
+      if (operationType === 'video_transition' && bindings.transitionQueue.length > 0) {
+        const extractedUrls: string[] = [];
+        for (const queueItem of bindings.transitionQueue) {
+          if (queueItem.lockedTimestamp !== undefined && queueItem.asset.media_type === 'video') {
+            const extractedFrame = await extractFrame({
+              video_asset_id: queueItem.asset.id,
+              timestamp: queueItem.lockedTimestamp,
+            });
+            extractedUrls.push(extractedFrame.remote_url || extractedFrame.thumbnail_url || '');
+          } else {
+            // Use original URL (for images or videos without locked timestamp)
+            extractedUrls.push(queueItem.asset.remote_url);
+          }
+        }
+        modifiedImageUrls = extractedUrls;
+      }
+
+      const buildResult = buildGenerationRequest({
+        operationType,
+        prompt,
+        presetParams,
+        dynamicParams: modifiedDynamicParams,
+        imageUrls: modifiedImageUrls,
+        prompts: bindings.prompts,
+        activeAsset: bindings.lastSelectedAsset,
+        mainQueueFirst: bindings.mainQueue[0],
+      });
+
+      if (buildResult.error || !buildResult.params) {
+        setError(buildResult.error ?? 'Invalid generation request');
+        setGenerating(false);
+        return;
+      }
+
+      const finalPrompt = buildResult.finalPrompt;
+
+      if (finalPrompt) {
+        pushPrompt(finalPrompt);
+      }
+
       const result = await generateAsset({
         prompt: finalPrompt,
         providerId,

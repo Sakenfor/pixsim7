@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { ThemedIcon } from '../../lib/icons';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
@@ -10,12 +10,15 @@ export interface CompactAssetCardProps {
   showRemoveButton?: boolean;
   className?: string;
   label?: string;
+  lockedTimestamp?: number; // Locked frame timestamp in seconds
+  onLockTimestamp?: (timestamp: number | undefined) => void; // Callback to lock/unlock frame
 }
 
 /**
  * CompactAssetCard - A smaller, simplified version of MediaCard
  * for use in QuickGenerateModule to show selected/queued assets.
  * Reuses shared hooks for thumbnail loading and video hover scrubbing.
+ * Supports frame locking for video assets used in image_to_video/transition.
  */
 export function CompactAssetCard({
   asset,
@@ -23,8 +26,11 @@ export function CompactAssetCard({
   showRemoveButton = false,
   className = '',
   label,
+  lockedTimestamp,
+  onLockTimestamp,
 }: CompactAssetCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Try thumbnail_url first (from AssetSummary), fall back to thumb_url for compatibility
   const thumbUrl = (asset as any).thumbnail_url || (asset as any).thumb_url;
@@ -33,13 +39,34 @@ export function CompactAssetCard({
   const thumbSrc = useMediaThumbnail(thumbUrl);
   const hover = useHoverScrubVideo(videoRef);
 
+  const isVideo = asset.media_type === 'video';
+  const hasLockedFrame = lockedTimestamp !== undefined;
+
+  // Handle frame lock/unlock
+  const handleToggleLock = () => {
+    if (!videoRef.current || !onLockTimestamp) return;
+
+    if (hasLockedFrame) {
+      // Unlock
+      onLockTimestamp(undefined);
+    } else {
+      // Lock current frame
+      const currentTime = videoRef.current.currentTime;
+      onLockTimestamp(currentTime);
+    }
+  };
+
   const isLocalOnly = asset.provider_status === 'local_only' || !asset.remote_url;
   const statusColor = isLocalOnly
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
 
   return (
-    <div className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${className}`}>
+    <div
+      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${className}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {label && (
         <div className="absolute top-0 left-0 right-0 bg-black/70 text-white text-[10px] px-2 py-0.5 z-10 font-medium">
           {label}
@@ -94,10 +121,37 @@ export function CompactAssetCard({
         )}
 
         {/* Video hover scrub progress bar */}
-        {asset.media_type === 'video' && hover.hasStartedPlaying && (
+        {asset.media_type === 'video' && hover.hasStartedPlaying && !hasLockedFrame && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
             <div className="h-full bg-white/80 transition-all" style={{ width: `${Math.round(hover.progress * 100)}%` }} />
           </div>
+        )}
+
+        {/* Locked frame indicator */}
+        {hasLockedFrame && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500/30">
+            <div
+              className="h-full bg-blue-500"
+              style={{
+                width: `${Math.round((lockedTimestamp / (videoRef.current?.duration || 1)) * 100)}%`
+              }}
+            />
+          </div>
+        )}
+
+        {/* Frame lock/unlock button (for videos) */}
+        {isVideo && isHovered && onLockTimestamp && (
+          <button
+            onClick={handleToggleLock}
+            className={`absolute left-1.5 bottom-1.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors z-10 ${
+              hasLockedFrame
+                ? 'bg-blue-600 hover:bg-blue-700'
+                : 'bg-neutral-700/80 hover:bg-neutral-600'
+            }`}
+            title={hasLockedFrame ? `Frame locked at ${lockedTimestamp?.toFixed(1)}s` : 'Lock current frame'}
+          >
+            <ThemedIcon name={hasLockedFrame ? 'lock' : 'unlock'} size={12} variant="default" className="text-white" />
+          </button>
         )}
 
         {/* Remove button */}
