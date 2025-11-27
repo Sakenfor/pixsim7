@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
+import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
@@ -74,24 +75,26 @@ const STORAGE_KEY = 'control_center_v1';
 
 export const useControlCenterStore = create<ControlCenterState & ControlCenterActions>()(
   persist(
-    (set, get) => ({
-      mode: 'dock',
-      dockPosition: 'bottom',
-      open: false,
-      pinned: false,
-      height: 300, // Increased from 180px
-      floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
-      floatingSize: { width: 700, height: 600 }, // Increased from 600x500
-      activeModule: 'quickGenerate',
-      enabledModules: {}, // Empty = all enabled by default
-      operationType: 'text_to_video',
-      prompt: '',
-      recentPrompts: [],
-      providerId: undefined,
-      presetId: undefined,
-      presetParams: {},
-      assets: [],
-      generating: false,
+    (set, get) => {
+      console.log('[ControlCenterStore] Creating store with initial state');
+      return {
+        mode: 'dock',
+        dockPosition: 'bottom',
+        open: false,
+        pinned: false,
+        height: 300, // Increased from 180px
+        floatingPosition: { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 },
+        floatingSize: { width: 700, height: 600 }, // Increased from 600x500
+        activeModule: 'quickGenerate',
+        enabledModules: {}, // Empty = all enabled by default
+        operationType: 'text_to_video',
+        prompt: '',
+        recentPrompts: [],
+        providerId: undefined,
+        presetId: undefined,
+        presetParams: {},
+        assets: [],
+        generating: false,
       setMode: (mode) => {
         if (get().mode === mode) return;
         set({ mode });
@@ -180,10 +183,12 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         assets: [],
         generating: false,
       })
-    }),
+    };
+  },
     {
       name: STORAGE_KEY,
       storage: createBackendStorage('controlCenter'),
+      skipHydration: false,
       partialize: (s) => ({
         mode: s.mode,
         dockPosition: s.dockPosition,
@@ -237,32 +242,57 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         return migrated;
       },
       onRehydrateStorage: () => {
-        console.log('[ControlCenterStore] Starting rehydration...');
+        console.log('[ControlCenterStore] onRehydrateStorage outer function called');
         return (state, error) => {
-          if (error) {
-            console.error('[ControlCenterStore] Rehydration error:', error);
-            return;
-          }
-          if (state) {
-            console.log('[ControlCenterStore] Rehydration complete. State:', {
-              mode: state.mode,
-              dockPosition: state.dockPosition,
-              open: state.open,
-              pinned: state.pinned,
-              prompt: state.prompt?.substring(0, 50) + (state.prompt?.length > 50 ? '...' : ''),
-              floatingPosition: state.floatingPosition,
-              floatingSize: state.floatingSize,
-            });
-            // After rehydration, ensure floating mode is visible
-            if (state.dockPosition === 'floating' && !state.open) {
-              console.log('[ControlCenterStore] Setting floating mode to open');
-              state.setOpen(true);
+          console.log('[ControlCenterStore] onRehydrateStorage INNER callback called!', { state: !!state, error: !!error });
+
+          try {
+            if (error) {
+              console.error('[ControlCenterStore] Rehydration error:', error);
+              return;
             }
-          } else {
-            console.warn('[ControlCenterStore] Rehydration returned no state');
+
+            if (state) {
+              console.log('[ControlCenterStore] ✅ Rehydration complete! State received:', {
+                mode: state.mode,
+                dockPosition: state.dockPosition,
+                open: state.open,
+                pinned: state.pinned,
+                prompt: state.prompt?.substring(0, 50) + (state.prompt?.length > 50 ? '...' : ''),
+                floatingPosition: state.floatingPosition,
+                floatingSize: state.floatingSize,
+              });
+
+              // After rehydration, ensure floating mode is visible
+              if (state.dockPosition === 'floating' && !state.open) {
+                console.log('[ControlCenterStore] Setting floating mode to open');
+                state.setOpen(true);
+              }
+            } else {
+              console.warn('[ControlCenterStore] ⚠️ Rehydration returned no state (state is null/undefined)');
+            }
+          } catch (e) {
+            console.error('[ControlCenterStore] ❌ Error in rehydration callback:', e);
           }
         };
       },
     }
   )
 );
+
+// Force hydration on module load
+console.log('[ControlCenterStore] Module loaded, checking for persisted state...');
+
+// Expose store to window for debugging and MANUALLY REHYDRATE (Zustand v5 bug workaround)
+if (typeof window !== 'undefined') {
+  exposeStoreForDebugging(useControlCenterStore, 'controlCenter');
+
+  // Run manual rehydration after a short delay to ensure store is initialized
+  setTimeout(() => {
+    manuallyRehydrateStore(
+      useControlCenterStore,
+      'controlCenter_local',
+      'ControlCenter'
+    );
+  }, 50);
+}

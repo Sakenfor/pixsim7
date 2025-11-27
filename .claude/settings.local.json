@@ -11,7 +11,8 @@
       "Bash(findstr:*)",
       "Bash(pnpm install:*)",
       "Bash(netstat:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npx zustand:*)"
     ],
     "deny": [],
     "ask": []

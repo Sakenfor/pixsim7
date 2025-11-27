@@ -370,10 +370,26 @@ class HealthWorker(QThread):
                                     self._externally_managed_warned.pop(key, None)
                                 self._emit_health_update(key, HealthStatus.STOPPED)
                     else:
-                        # No health URL, assume healthy if running flag is set
+                        # No health URL: use PID-based detection where possible.
+                        # This is especially important for detached services like
+                        # the ARQ worker, which don't expose HTTP health checks.
                         if sp.running:
-                            self._emit_health_update(key, HealthStatus.HEALTHY)
-                            self.failure_counts[key] = 0
+                            pid = getattr(sp, "started_pid", None) or getattr(sp, "detected_pid", None)
+                            try:
+                                try:
+                                    from .process_utils import is_process_alive
+                                except ImportError:
+                                    from process_utils import is_process_alive
+                                alive = bool(pid and is_process_alive(pid))
+                            except Exception:
+                                alive = True  # fall back to optimistic
+
+                            if alive:
+                                self._emit_health_update(key, HealthStatus.HEALTHY)
+                                self.failure_counts[key] = 0
+                            else:
+                                sp.running = False
+                                self._emit_health_update(key, HealthStatus.STOPPED)
                         else:
                             self._emit_health_update(key, HealthStatus.STOPPED)
                 except Exception:

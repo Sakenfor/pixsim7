@@ -144,7 +144,45 @@ def _get_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
     Keys: ProcessId, ParentProcessId, Name, CommandLine
     """
     if os.name != 'nt' or not pid:
-        return None
+    return None
+
+
+def is_process_alive(pid: int) -> bool:
+    """
+    Check if a process with given PID is still running.
+
+    Returns:
+        True if the process appears to be alive, False otherwise.
+    """
+    if not pid:
+        return False
+    try:
+        if os.name == 'nt':
+            # Windows: use tasklist to check if PID exists
+            result = subprocess.run(
+                ['tasklist', '/FI', f'PID eq {pid}'],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                shell=False,
+            )
+            if result.returncode != 0:
+                return False
+            # Output will contain the PID line if process exists
+            return str(pid) in (result.stdout or '')
+        else:
+            # Unix: use os.kill with signal 0 to check existence
+            import signal
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                # Process exists but we don't have permission to signal it
+                return True
+            return True
+    except Exception:
+        return False
     try:
         cmd = [
             'powershell', '-NoProfile', '-Command',

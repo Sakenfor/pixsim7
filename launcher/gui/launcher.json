@@ -1,10 +1,10 @@
 {
-  "window_x": 82,
-  "window_y": 69,
+  "window_x": 94,
+  "window_y": 94,
   "window_width": 1590,
   "window_height": 882,
   "window_always_on_top": false,
-  "selected_service": "main-api",
+  "selected_service": "worker",
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,
   "sql_logging_enabled": false,

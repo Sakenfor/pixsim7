@@ -567,7 +567,8 @@ class LauncherWindow(QWidget):
             # Log service start
             if _launcher_logger:
                 try:
-                    _launcher_logger.info("service_started", service_key=key, pid=sp.process.processId() if sp.process else None)
+                    pid = getattr(sp, "started_pid", None)
+                    _launcher_logger.info("service_started", service_key=key, pid=pid)
                 except Exception:
                     pass
 
