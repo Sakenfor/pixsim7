@@ -19,7 +19,7 @@ load_dotenv()
 from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
-from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops
+from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim_logging import configure_logging
@@ -43,6 +43,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
+    logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
 
     # Send initial heartbeat
@@ -82,6 +83,7 @@ class WorkerSettings:
         process_automation,
         poll_job_statuses,
         run_automation_loops,
+        queue_pending_executions,
     ]
 
     # Cron jobs (periodic tasks)
@@ -97,6 +99,12 @@ class WorkerSettings:
             run_automation_loops,
             second={0, 30},
             run_at_startup=True,
+        ),
+        # Queue pending executions every 15 seconds (picks up stuck/manual executions)
+        cron(
+            queue_pending_executions,
+            second={0, 15, 30, 45},  # Every 15 seconds
+            run_at_startup=True,  # Check immediately on startup
         ),
         # Update worker heartbeat every 30 seconds
         cron(

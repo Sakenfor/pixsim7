@@ -167,8 +167,10 @@ If a service shows `[Missing tool: xyz]`, ensure the tool is installed and in yo
 - `health_worker.py`: Health check now verifies process PID is alive BEFORE checking Redis
 - Changed worker dependency from `backend` to `db` (correct dependency)
 - `job_processor.py`, `status_poller.py`, `automation.py`: Fixed ARQ function signatures to accept `ctx` parameter
+- `automation.py`: Added `queue_pending_executions()` cron job to pick up stuck PENDING executions
+- `arq_worker.py`: Registered new cron job to run every 15 seconds
 
-**Result**: Worker connects to Redis, starts successfully, status accurately reflects process state, stop/restart buttons work correctly.
+**Result**: Worker connects to Redis, starts successfully, picks up pending automation executions, status accurately reflects process state, stop/restart buttons work correctly.
 
 ## Development
 

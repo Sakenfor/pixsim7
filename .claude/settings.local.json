@@ -15,7 +15,8 @@
       "Bash(npx zustand:*)",
       "Bash(docker logs:*)",
       "Bash(tasklist /FI \"IMAGENAME eq python.exe\" /V)",
-      "Bash(G:codeconda_envspixsim7python.exe -m arq pixsim7.backend.main.workers.arq_worker.WorkerSettings --check)"
+      "Bash(G:codeconda_envspixsim7python.exe -m arq pixsim7.backend.main.workers.arq_worker.WorkerSettings --check)",
+      "Bash(G:codeconda_envspixsim7python.exe -c \"from pixsim7.backend.main.infrastructure.database.session import SessionLocal; from pixsim7.backend.main.domain.automation import AutomationExecution, AutomationStatus; from sqlalchemy import select; db = SessionLocal(); result = db.execute(select(AutomationExecution).where(AutomationExecution.status == AutomationStatus.PENDING)).scalars().all(); print(f''Found {len(result)} PENDING executions''); [print(f''  - ID: {e.id}, Preset: {e.preset_id}, Created: {e.created_at}'') for e in result[:5]]; db.close()\")"
     ],
     "deny": [],
     "ask": []

@@ -181,3 +181,46 @@ async def run_automation_loops(ctx: dict) -> dict:
             return {"status": "ok", "loops_processed": processed, "executions_created": created}
         finally:
             await db.close()
+
+
+async def queue_pending_executions(ctx: dict) -> dict:
+    """
+    Cron task: find PENDING executions and queue them to ARQ.
+
+    This picks up any executions that are stuck in PENDING state
+    (e.g., created manually, or from a previous session before worker crashed).
+
+    Args:
+        ctx: ARQ worker context
+    """
+    queued = 0
+    async for db in get_db():
+        try:
+            from pixsim7.backend.main.infrastructure.queue import queue_task
+
+            # Find PENDING executions that aren't already queued
+            result = await db.execute(
+                select(AutomationExecution)
+                .where(AutomationExecution.status == AutomationStatus.PENDING)
+                .order_by(AutomationExecution.created_at)
+                .limit(50)  # Process max 50 per run to avoid overload
+            )
+            pending = result.scalars().all()
+
+            logger.info("queue_pending_check", found=len(pending))
+
+            for execution in pending:
+                try:
+                    # Queue the execution
+                    task_id = await queue_task("process_automation", execution.id)
+                    queued += 1
+                    logger.info("execution_queued", execution_id=execution.id, task_id=task_id)
+                except Exception as e:
+                    logger.error("queue_failed", execution_id=execution.id, error=str(e))
+
+            return {"status": "ok", "queued": queued}
+        except Exception as e:
+            logger.error("queue_pending_error", error=str(e), exc_info=True)
+            return {"status": "error", "error": str(e)}
+        finally:
+            await db.close()
