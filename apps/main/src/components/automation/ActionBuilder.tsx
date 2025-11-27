@@ -107,7 +107,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                     {action.type}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {Object.keys(action.params).length > 0
+                    {action.params && Object.keys(action.params).length > 0
                       ? JSON.stringify(action.params)
                       : 'No parameters'}
                   </div>

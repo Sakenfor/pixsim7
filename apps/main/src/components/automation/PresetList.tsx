@@ -249,6 +249,11 @@ export function PresetList() {
                     key={preset.id}
                     preset={preset}
                     onRun={handleRun}
+                    onEdit={(p) => {
+                      setSelectedPreset(p);
+                      setView('edit');
+                    }}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>

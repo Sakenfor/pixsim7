@@ -20,44 +20,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { OperationType } from '@pixsim7/shared.types';
 import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
 import { usePromptInspection } from '../../hooks/usePromptInspection';
 import { usePromptAiEdit } from '../../hooks/usePromptAiEdit';
 import { useAiProviders } from '../../hooks/useAiProviders';
-
-interface Generation {
-  id: number;
-  operation_type: OperationType;
-  provider_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  error_message?: string;
-  canonical_params: Record<string, any>;
-  reproducible_hash: string;
-  prompt_source_type?: string;
-}
-
-interface ProviderHealth {
-  provider_id: string;
-  total_generations: number;
-  completed: number;
-  failed: number;
-  success_rate: number;
-  latency_p50?: number;
-  latency_p95?: number;
-  latency_p99?: number;
-  total_tokens: number;
-  total_cost_usd: number;
-  avg_cost_per_generation: number;
-}
-
-interface CacheStats {
-  total_cached_generations: number;
-  redis_connected: boolean;
-}
+import { useGenerationDevController } from '../../hooks/useGenerationDevController';
 
 interface GenerationDevPanelProps {
   /** Optional workspace filter */
@@ -73,68 +40,25 @@ export function GenerationDevPanel({
   worldId,
   highlightGenerationId,
 }: GenerationDevPanelProps) {
-  const [generations, setGenerations] = useState<Generation[]>([]);
-  const [providerHealth, setProviderHealth] = useState<ProviderHealth[]>([]);
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedGeneration, setSelectedGeneration] = useState<Generation | null>(null);
+  const {
+    generations,
+    providerHealth,
+    cacheStats,
+    loading,
+    selectedGeneration,
+    setSelectedGeneration,
+    statusFilter,
+    setStatusFilter,
+    operationFilter,
+    setOperationFilter,
+    reloadGenerations,
+  } = useGenerationDevController({
+    workspaceId,
+    worldId,
+    highlightGenerationId,
+  });
 
-  // Filters
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [providerFilter, setProviderFilter] = useState<string>('all');
-  const [operationFilter, setOperationFilter] = useState<string>('all');
-
-  useEffect(() => {
-    loadGenerations();
-    loadProviderHealth();
-    loadCacheStats();
-  }, [workspaceId, statusFilter, operationFilter]);
-
-  const loadGenerations = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (workspaceId) params.set('workspace_id', workspaceId.toString());
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      if (operationFilter !== 'all') params.set('operation_type', operationFilter);
-      params.set('limit', '50');
-
-      const response = await fetch(`/api/v1/generations?${params}`);
-      const data = await response.json();
-      setGenerations(data.generations || []);
-
-      // Auto-select highlighted generation
-      if (highlightGenerationId) {
-        const highlighted = data.generations.find((g: Generation) => g.id === highlightGenerationId);
-        if (highlighted) setSelectedGeneration(highlighted);
-      }
-    } catch (error) {
-      console.error('Failed to load generations:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadProviderHealth = async () => {
-    try {
-      const response = await fetch('/api/v1/generations/telemetry/providers');
-      const data = await response.json();
-      setProviderHealth(data.providers || []);
-    } catch (error) {
-      console.error('Failed to load provider health:', error);
-    }
-  };
-
-  const loadCacheStats = async () => {
-    try {
-      const response = await fetch('/api/v1/generations/cache/stats');
-      const data = await response.json();
-      setCacheStats(data);
-    } catch (error) {
-      console.error('Failed to load cache stats:', error);
-    }
-  };
-
-  const formatDuration = (gen: Generation): string => {
+  const formatDuration = (gen: any): string => {
     if (!gen.started_at || !gen.completed_at) return 'N/A';
     const start = new Date(gen.started_at).getTime();
     const end = new Date(gen.completed_at).getTime();
@@ -193,7 +117,7 @@ export function GenerationDevPanel({
           </select>
 
           <button
-            onClick={loadGenerations}
+            onClick={reloadGenerations}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
             Refresh

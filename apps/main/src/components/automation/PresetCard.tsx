@@ -74,7 +74,7 @@ export function PresetCard({ preset, onEdit, onDelete, onRun }: PresetCardProps)
             ▶️ Run
           </Button>
         )}
-        {onEdit && !preset.is_system && (
+        {onEdit && (
           <Button
             size="sm"
             variant="secondary"
@@ -83,7 +83,7 @@ export function PresetCard({ preset, onEdit, onDelete, onRun }: PresetCardProps)
             ✏️ Edit
           </Button>
         )}
-        {onDelete && !preset.is_system && (
+        {onDelete && (
           <Button
             size="sm"
             variant="ghost"
