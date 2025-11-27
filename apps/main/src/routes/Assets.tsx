@@ -1,28 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
-import type { AxiosError } from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAssets, type AssetSummary } from '../hooks/useAssets';
-import { useAsset } from '../hooks/useAsset';
 import { useProviders } from '../hooks/useProviders';
+import { useAssetsController } from '../hooks/useAssetsController';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
 import { Tabs, Modal } from '@pixsim7/shared.ui';
-import { Badge, Button } from '@pixsim7/shared.ui';
+import { Button } from '@pixsim7/shared.ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
-import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
-import { useMediaGenerationActions } from '../hooks/useMediaGenerationActions';
 import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
-import { deleteAsset } from '../lib/api/assets';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
-import { BACKEND_BASE } from '../lib/api/client';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -33,137 +27,20 @@ const SCOPE_TABS = [
 
 export function AssetsRoute() {
   const navigate = useNavigate();
-  // Asset picker mode
-  const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
-  const selectAsset = useAssetPickerStore((s) => s.selectAsset);
-  const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
-  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
 
-  const {
-    queueImageToVideo,
-    queueVideoExtend,
-    queueAddToTransition,
-    queueAutoGenerate,
-  } = useMediaGenerationActions();
+  // Use the assets controller for all business logic
+  const controller = useAssetsController();
 
-  // Filters state derived from URL + sessionStorage
-  const params = new URLSearchParams(window.location.search);
-  const sessionKey = 'assets_filters';
-  const persisted = (() => {
-    try { return JSON.parse(sessionStorage.getItem(sessionKey) || '{}'); } catch { return {}; }
-  })();
-  const initialFilters = {
-    q: params.get('q') || persisted.q || '',
-    tag: params.get('tag') || persisted.tag || undefined,
-    provider_id: params.get('provider_id') || persisted.provider_id || undefined,
-    sort: (params.get('sort') as any) || persisted.sort || 'new',
-    media_type: (params.get('media_type') as any) || persisted.media_type || undefined,
-    provider_status: (params.get('provider_status') as any) || persisted.provider_status || undefined,
-  };
-  const [filters, setFilters] = useState(initialFilters);
   const { providers } = useProviders();
-  const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
   const jobsSocket = useJobsSocket({ autoConnect: true });
-  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
-  const [viewerSrc, setViewerSrc] = useState<string | null>(null);
-  const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
-  const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
-  // Handle asset selection
-  const handleSelectAsset = (asset: any) => {
-    selectAsset({
-      id: asset.id,
-      mediaType: asset.media_type,
-      providerId: asset.provider_id,
-      providerAssetId: asset.provider_asset_id,
-      remoteUrl: asset.remote_url,
-      thumbnailUrl: asset.thumbnail_url,
-    });
-    // Close floating gallery panel
-    closeFloatingPanel('gallery');
-  };
-
-  const handleCancelSelection = () => {
-    exitSelectionMode();
-    closeFloatingPanel('gallery');
-  };
-
-  const handleDeleteAsset = async (asset: AssetSummary) => {
-    const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
-    if (!confirmed) return;
-    try {
-      await deleteAsset(asset.id);
-      setSelectedAssetIds(prev => {
-        const next = new Set(prev);
-        next.delete(String(asset.id));
-        return next;
-      });
-      if (viewerAsset?.id === asset.id) {
-        setViewerAsset(null);
-        setViewerSrc(null);
-      }
-      reset();
-    } catch (err) {
-      console.error('Failed to delete asset:', err);
-      const message =
-        (err as AxiosError)?.response?.data?.detail ||
-        (err instanceof Error ? err.message : 'Failed to delete asset');
-      alert(message);
-    }
-  };
-
-  function updateURL(next: typeof filters) {
-    const p = new URLSearchParams();
-    if (next.q) p.set('q', next.q);
-    if (next.tag) p.set('tag', next.tag);
-    if (next.provider_id) p.set('provider_id', next.provider_id);
-    if (next.sort) p.set('sort', next.sort);
-    if (next.media_type) p.set('media_type', next.media_type);
-    if (next.provider_status) p.set('provider_status', next.provider_status);
-    const newUrl = `${window.location.pathname}?${p.toString()}`;
-    window.history.replaceState({}, '', newUrl);
-    sessionStorage.setItem(sessionKey, JSON.stringify(next));
-  }
-
-  function setAndPersist(partial: Partial<typeof filters>) {
-    setFilters(prev => {
-      const next = { ...prev, ...partial };
-      updateURL(next);
-      return next;
-    });
-  }
-
-  // Read scope from URL on mount
-  const [scope, setScope] = useState<string>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('scope') || 'all';
-  });
-
-  // Sync scope to URL when it changes
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (scope === 'all') {
-      params.delete('scope');
-    } else {
-      params.set('scope', scope);
-    }
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  }, [scope]);
-
-  const handleScopeChange = (newScope: string) => {
-    setScope(newScope);
-  };
-
-  const currentTab = SCOPE_TABS.find(t => t.id === scope);
-  // View toggle between remote assets and local folders panel
+  const currentTab = SCOPE_TABS.find((t) => t.id === controller.scope);
+  // UI state (not part of controller - route-specific display settings)
   const [view, setView] = useState<'remote' | 'local'>('remote');
-  // Layout toggle for remote gallery
   const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
+  const [showToolsPanel, setShowToolsPanel] = useState(false);
 
   // Get current surface ID from URL
   const location = useLocation();
@@ -198,143 +75,48 @@ export function AssetsRoute() {
     }
   };
 
-  // Gallery tools state
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
-  const [showToolsPanel, setShowToolsPanel] = useState(false);
-
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
-    return items.filter(a => selectedAssetIds.has(a.id));
-  }, [items, selectedAssetIds]);
+    return controller.assets.filter((a) => controller.selectedAssetIds.has(a.id));
+  }, [controller.assets, controller.selectedAssetIds]);
 
   // Gallery tool context
-  const galleryContext: GalleryToolContext = useMemo(() => ({
-    assets: items,
-    selectedAssets,
-    filters,
-    refresh: () => {
-      // Trigger a refresh by clearing and reloading
-      window.location.reload();
-    },
-    updateFilters: setAndPersist,
-    isSelectionMode,
-  }), [items, selectedAssets, filters, isSelectionMode]);
+  const galleryContext: GalleryToolContext = useMemo(
+    () => ({
+      assets: controller.assets,
+      selectedAssets,
+      filters: controller.filters,
+      refresh: () => {
+        // Trigger a refresh by clearing and reloading
+        window.location.reload();
+      },
+      updateFilters: controller.setFilters,
+      isSelectionMode: controller.isSelectionMode,
+    }),
+    [controller.assets, selectedAssets, controller.filters, controller.setFilters, controller.isSelectionMode]
+  );
 
-  // Handle asset selection for gallery tools
+  // Handle asset selection for gallery tools (with auto-show panel)
   const toggleAssetSelection = (assetId: string) => {
-    const newSelection = new Set(selectedAssetIds);
-    if (newSelection.has(assetId)) {
-      newSelection.delete(assetId);
-    } else {
-      newSelection.add(assetId);
-    }
-    setSelectedAssetIds(newSelection);
+    controller.toggleAssetSelection(assetId);
 
     // Auto-show tools panel when assets are selected
+    const newSelection = new Set(controller.selectedAssetIds);
+    if (newSelection.has(assetId)) {
+      newSelection.add(assetId);
+    } else {
+      newSelection.delete(assetId);
+    }
     if (newSelection.size > 0 && !showToolsPanel) {
       setShowToolsPanel(true);
     }
   };
 
-	  const clearSelection = () => {
-	    setSelectedAssetIds(new Set());
-	  };
-	
-	  const handleOpenInViewer = (asset: AssetSummary) => {
-	    setViewerAsset(asset);
-	  };
-	
-	  const handleCloseViewer = () => {
-	    setViewerAsset(null);
-	    if (viewerSrc && viewerSrc.startsWith('blob:')) {
-	      URL.revokeObjectURL(viewerSrc);
-	    }
-	    setViewerSrc(null);
-	  };
-	
-	  const handleNavigateViewer = (direction: 'prev' | 'next') => {
-	    if (!viewerAsset) return;
-	    const index = items.findIndex(a => a.id === viewerAsset.id);
-	    if (index === -1) return;
-	    const nextIndex = direction === 'prev' ? index - 1 : index + 1;
-	    if (nextIndex < 0 || nextIndex >= items.length) return;
-	    setViewerAsset(items[nextIndex]);
-	  };
-	
-	  // Load viewer media source (supports backend-relative URLs with auth)
-	  useEffect(() => {
-	    let cancelled = false;
-	
-	    const load = async () => {
-	      if (!viewerAsset) {
-	        if (viewerSrc && viewerSrc.startsWith('blob:')) {
-	          URL.revokeObjectURL(viewerSrc);
-	        }
-	        setViewerSrc(null);
-	        return;
-	      }
-	
-	      const candidate = viewerAsset.remote_url || viewerAsset.thumbnail_url;
-	      if (!candidate) {
-	        setViewerSrc(null);
-	        return;
-	      }
-	
-	      // Absolute URL or blob URL: use directly
-	      if (candidate.startsWith('http://') || candidate.startsWith('https://') || candidate.startsWith('blob:')) {
-	        setViewerSrc(candidate);
-	        return;
-	      }
-	
-	      // Backend-relative path: fetch with Authorization and create blob URL
-	      const fullUrl = candidate.startsWith('/')
-	        ? `${BACKEND_BASE}${candidate}`
-	        : `${BACKEND_BASE}/${candidate}`;
-	
-	      const token = localStorage.getItem('access_token');
-	      if (!token) {
-	        setViewerSrc(fullUrl);
-	        return;
-	      }
-	
-	      try {
-	        const res = await fetch(fullUrl, {
-	          headers: { Authorization: `Bearer ${token}` },
-	        });
-	        if (!res.ok) {
-	          setViewerSrc(fullUrl);
-	          return;
-	        }
-	        const blob = await res.blob();
-	        const url = URL.createObjectURL(blob);
-	        if (!cancelled) {
-	          if (viewerSrc && viewerSrc.startsWith('blob:')) {
-	            URL.revokeObjectURL(viewerSrc);
-	          }
-	          setViewerSrc(url);
-	        } else {
-	          URL.revokeObjectURL(url);
-	        }
-	      } catch {
-	        if (!cancelled) {
-	          setViewerSrc(fullUrl);
-	        }
-	      }
-	    };
-	
-	    load();
-	
-	    return () => {
-	      cancelled = true;
-	    };
-	    // eslint-disable-next-line react-hooks/exhaustive-deps
-	  }, [viewerAsset]);
+  // Rendered cards for remote assets (shared between masonry/grid layouts)
+  const cardItems = controller.assets.map((a) => {
+    const isSelected = controller.selectedAssetIds.has(a.id);
 
-	  // Rendered cards for remote assets (shared between masonry/grid layouts)
-	  const cardItems = items.map(a => {
-	    const isSelected = selectedAssetIds.has(a.id);
-
-	    if (isSelectionMode) {
+    if (controller.isSelectionMode) {
 	      return (
         <div key={a.id} className="relative group rounded-md">
           <div className="opacity-75 group-hover:opacity-100 transition-opacity">
@@ -355,22 +137,14 @@ export function AssetsRoute() {
 	              providerStatus={a.provider_status}
 	              // In selection mode, disable card open behavior to avoid navigation
 	              onOpen={undefined}
-	              actions={{
-	                onOpenDetails: (id) => setDetailAssetId(id),
-	                onShowMetadata: (id) => setDetailAssetId(id),
-                onImageToVideo: () => queueImageToVideo(a),
-                onVideoExtend: () => queueVideoExtend(a),
-                onAddToTransition: () => queueAddToTransition(a),
-                onAddToGenerate: () => queueAutoGenerate(a),
-                onDelete: () => handleDeleteAsset(a),
-              }}
+              actions={controller.getAssetActions(a)}
               badgeConfig={effectiveBadgeConfig}
             />
 	          </div>
 	          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <Button
               variant="primary"
-              onClick={() => handleSelectAsset(a)}
+              onClick={() => controller.selectAsset(a)}
               className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1"
             >
               <ThemedIcon name="check" size={14} variant="default" />
@@ -411,16 +185,8 @@ export function AssetsRoute() {
 	          createdAt={a.created_at}
 	          status={a.sync_status}
 	          providerStatus={a.provider_status}
-	          onOpen={() => handleOpenInViewer(a)}
-            actions={{
-              onOpenDetails: (id) => setDetailAssetId(id),
-              onShowMetadata: (id) => setDetailAssetId(id),
-              onImageToVideo: () => queueImageToVideo(a),
-              onVideoExtend: () => queueVideoExtend(a),
-              onAddToTransition: () => queueAddToTransition(a),
-              onAddToGenerate: () => queueAutoGenerate(a),
-              onDelete: () => handleDeleteAsset(a),
-            }}
+	          onOpen={() => controller.openInViewer(a)}
+          actions={controller.getAssetActions(a)}
             badgeConfig={effectiveBadgeConfig}
           />
 	      </div>
@@ -430,7 +196,7 @@ export function AssetsRoute() {
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
       {/* Selection Mode Banner */}
-      {isSelectionMode && (
+      {controller.isSelectionMode && (
         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
@@ -442,7 +208,7 @@ export function AssetsRoute() {
                 Click on an asset to select it for your scene node
               </p>
             </div>
-            <Button variant="secondary" onClick={handleCancelSelection}>
+            <Button variant="secondary" onClick={controller.cancelSelection}>
               Cancel
             </Button>
           </div>
@@ -450,19 +216,19 @@ export function AssetsRoute() {
       )}
 
       {/* Gallery Tools Selection Banner */}
-      {!isSelectionMode && selectedAssetIds.size > 0 && (
+      {!controller.isSelectionMode && controller.selectedAssetIds.size > 0 && (
         <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
                 <ThemedIcon name="wrench" size={20} variant="primary" />
-                {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
+                {controller.selectedAssetIds.size} Asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} Selected
               </h2>
               <p className="text-sm text-purple-700 dark:text-purple-300">
                 Use the tools panel below to perform actions on selected assets
               </p>
             </div>
-            <Button variant="secondary" onClick={clearSelection}>
+            <Button variant="secondary" onClick={controller.clearSelection}>
               Clear Selection
             </Button>
           </div>
@@ -551,7 +317,7 @@ export function AssetsRoute() {
               </button>
             </div>
           )}
-          {!isSelectionMode && (
+          {!controller.isSelectionMode && (
             <button
               className={`px-3 py-1 text-xs rounded border transition-colors flex items-center gap-1 ${
                 showToolsPanel
@@ -605,29 +371,33 @@ export function AssetsRoute() {
 
       {view === 'remote' && (
         <>
-          <Tabs tabs={SCOPE_TABS} value={scope} onChange={handleScopeChange} />
-          {error && <div className="text-red-600 text-sm">{error}</div>}
+          <Tabs tabs={SCOPE_TABS} value={controller.scope} onChange={controller.setScope} />
+          {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
           <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
             <div className="flex flex-wrap gap-2 items-center">
               <input
                 placeholder="Search..."
                 className="px-2 py-1 text-sm border rounded"
-                value={filters.q}
-                onChange={(e) => setAndPersist({ q: e.target.value })}
+                value={controller.filters.q}
+                onChange={(e) => controller.setFilters({ q: e.target.value })}
               />
               <select
                 className="px-2 py-1 text-sm border rounded"
-                value={filters.provider_id || ''}
-                onChange={(e) => setAndPersist({ provider_id: e.target.value || undefined })}
+                value={controller.filters.provider_id || ''}
+                onChange={(e) => controller.setFilters({ provider_id: e.target.value || undefined })}
               >
                 <option value="">All Providers</option>
-                {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
               </select>
               <select
                 className="px-2 py-1 text-sm border rounded"
-                value={filters.media_type || ''}
+                value={controller.filters.media_type || ''}
                 onChange={(e) =>
-                  setAndPersist({
+                  controller.setFilters({
                     media_type: (e.target.value || undefined) as any,
                   })
                 }
@@ -640,8 +410,8 @@ export function AssetsRoute() {
               </select>
               <select
                 className="px-2 py-1 text-sm border rounded"
-                value={filters.sort}
-                onChange={(e) => setAndPersist({ sort: e.target.value as any })}
+                value={controller.filters.sort}
+                onChange={(e) => controller.setFilters({ sort: e.target.value as any })}
               >
                 <option value="new">Newest</option>
                 <option value="old">Oldest</option>
@@ -649,8 +419,8 @@ export function AssetsRoute() {
               </select>
               <select
                 className="px-2 py-1 text-sm border rounded"
-                value={filters.provider_status || ''}
-                onChange={(e) => setAndPersist({ provider_status: e.target.value || undefined as any })}
+                value={controller.filters.provider_status || ''}
+                onChange={(e) => controller.setFilters({ provider_status: (e.target.value || undefined) as any })}
               >
                 <option value="">All Status</option>
                 <option value="ok">Provider OK</option>
@@ -662,7 +432,7 @@ export function AssetsRoute() {
           </div>
 
           {/* Gallery Tools Panel */}
-          {showToolsPanel && !isSelectionMode && (
+          {showToolsPanel && !controller.isSelectionMode && (
             <div className="mb-4">
               <GalleryToolsPanel context={galleryContext} surfaceId={currentSurfaceId} />
             </div>
@@ -686,56 +456,56 @@ export function AssetsRoute() {
 	            </div>
 	          )}
 	          <div className="pt-4">
-            {hasMore && (
-              <button disabled={loading} onClick={loadMore} className="border px-4 py-2 rounded">
-                {loading ? 'Loading...' : 'Load More'}
+            {controller.hasMore && (
+              <button disabled={controller.loading} onClick={controller.loadMore} className="border px-4 py-2 rounded">
+                {controller.loading ? 'Loading...' : 'Load More'}
               </button>
             )}
-            {!hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
+            {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
           </div>
         </>
       )}
 	      {view === 'local' && <LocalFoldersPanel />}
 
 	      {/* Fullscreen viewer for remote assets */}
-	      {viewerAsset && viewerSrc && (
+	      {controller.viewerAsset && controller.viewerSrc && (
 	        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
 	          <div className="relative max-w-6xl max-h-[90vh] w-full flex flex-col gap-4">
 	            <div className="bg-black rounded-lg overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
-	              {viewerAsset.media_type === 'video' ? (
+	              {controller.viewerAsset.media_type === 'video' ? (
 	                <video
-	                  src={viewerSrc}
+	                  src={controller.viewerSrc}
 	                  className="w-full h-full object-contain"
 	                  controls
 	                  autoPlay
 	                />
 	              ) : (
 	                <img
-	                  src={viewerSrc}
-	                  alt={viewerAsset.description || `asset-${viewerAsset.id}`}
+	                  src={controller.viewerSrc}
+	                  alt={controller.viewerAsset.description || `asset-${controller.viewerAsset.id}`}
 	                  className="w-full h-full object-contain"
 	                />
 	              )}
 	            </div>
-	
+
 	            <div className="flex items-center justify-between text-sm text-neutral-200">
 	              <div className="flex flex-col gap-1">
 	                <div className="text-lg font-semibold truncate">
-	                  {viewerAsset.description || `Asset #${viewerAsset.id}`}
+	                  {controller.viewerAsset.description || `Asset #${controller.viewerAsset.id}`}
 	                </div>
 	                <div className="flex gap-3 text-xs text-neutral-400">
-	                  <span>{viewerAsset.media_type}</span>
-	                  <span>{viewerAsset.provider_id}</span>
+	                  <span>{controller.viewerAsset.media_type}</span>
+	                  <span>{controller.viewerAsset.provider_id}</span>
 	                  <span>
-	                    {new Date(viewerAsset.created_at).toLocaleString()}
+	                    {new Date(controller.viewerAsset.created_at).toLocaleString()}
 	                  </span>
 	                </div>
 	              </div>
 	              <div className="flex items-center gap-3">
 	                <button
 	                  type="button"
-	                  onClick={() => handleNavigateViewer('prev')}
-	                  disabled={items.findIndex(a => a.id === viewerAsset.id) <= 0}
+	                  onClick={() => controller.navigateViewer('prev')}
+	                  disabled={controller.assets.findIndex((a) => a.id === controller.viewerAsset?.id) <= 0}
 	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
 	                >
 	                  <ThemedIcon name="chevronLeft" size={14} variant="default" />
@@ -743,8 +513,8 @@ export function AssetsRoute() {
 	                </button>
 	                <button
 	                  type="button"
-	                  onClick={() => handleNavigateViewer('next')}
-	                  disabled={items.findIndex(a => a.id === viewerAsset.id) >= items.length - 1}
+	                  onClick={() => controller.navigateViewer('next')}
+	                  disabled={controller.assets.findIndex((a) => a.id === controller.viewerAsset?.id) >= controller.assets.length - 1}
 	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
 	                >
 	                  Next
@@ -752,7 +522,7 @@ export function AssetsRoute() {
 	                </button>
 	                <button
 	                  type="button"
-	                  onClick={handleCloseViewer}
+	                  onClick={controller.closeViewer}
 	                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
 	                >
 	                  <ThemedIcon name="close" size={14} variant="default" />
@@ -763,23 +533,23 @@ export function AssetsRoute() {
 	          </div>
 	        </div>
 	      )}
-	
+
 	      {/* Floating asset detail window */}
-	      {detailAssetId !== null && (
+	      {controller.detailAssetId !== null && (
 	        <Modal
 	          isOpen={true}
-	          onClose={() => setDetailAssetId(null)}
-	          title={`Asset #${detailAssetId}`}
+	          onClose={() => controller.setDetailAssetId(null)}
+	          title={`Asset #${controller.detailAssetId}`}
 	          size="lg"
 	        >
 	          <div className="space-y-3 max-h-[70vh] overflow-auto text-xs">
-	            {detailLoading && <div>Loading...</div>}
-	            {detailError && (
-	              <div className="text-red-600 text-sm">{detailError}</div>
+	            {controller.detailLoading && <div>Loading...</div>}
+	            {controller.detailError && (
+	              <div className="text-red-600 text-sm">{controller.detailError}</div>
 	            )}
-	            {detailAsset && (
+	            {controller.detailAsset && (
 	              <pre className="bg-neutral-100 dark:bg-neutral-900 p-3 rounded whitespace-pre-wrap break-all">
-	                {JSON.stringify(detailAsset, null, 2)}
+	                {JSON.stringify(controller.detailAsset, null, 2)}
 	              </pre>
 	            )}
 	          </div>

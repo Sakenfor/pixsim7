@@ -9,29 +9,22 @@
  */
 
 import { useState, useMemo, useEffect } from 'react';
-import { useAssets } from '../../hooks/useAssets';
+import { useGallerySurfaceController } from '../../hooks/useGallerySurfaceController';
 import { MediaCard } from '../media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
 import { usePersistentSet } from '../../hooks/usePersistentState';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { useMediaGenerationActions } from '../../hooks/useMediaGenerationActions';
 import type { GalleryAsset } from '../../lib/gallery/types';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
   const [showHelp, setShowHelp] = useState(false);
-  const [filters, setFilters] = useState({
-    q: '',
-    sort: 'new' as const,
-  });
 
-  const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
-  const {
-    queueImageToVideo,
-    queueVideoExtend,
-    queueAddToTransition,
-    queueAutoGenerate,
-  } = useMediaGenerationActions();
+  // Use the gallery surface controller for asset loading and generation actions
+  const controller = useGallerySurfaceController({
+    mode: 'review',
+    filters: { sort: 'new' },
+  });
 
   // Persistent review state - survives page reloads
   const [reviewedAssets, setReviewedAssets] = usePersistentSet('review-session:reviewed', new Set());
@@ -76,13 +69,16 @@ export function ReviewGallerySurface() {
     });
   };
 
-  const stats = useMemo(() => ({
-    total: items.length,
-    reviewed: reviewedAssets.size,
-    accepted: acceptedAssets.size,
-    rejected: rejectedAssets.size,
-    remaining: items.length - reviewedAssets.size,
-  }), [items.length, reviewedAssets.size, acceptedAssets.size, rejectedAssets.size]);
+  const stats = useMemo(
+    () => ({
+      total: controller.assets.length,
+      reviewed: reviewedAssets.size,
+      accepted: acceptedAssets.size,
+      rejected: rejectedAssets.size,
+      remaining: controller.assets.length - reviewedAssets.size,
+    }),
+    [controller.assets.length, reviewedAssets.size, acceptedAssets.size, rejectedAssets.size]
+  );
 
   const clearSession = () => {
     if (confirm('Clear all review progress? This cannot be undone.')) {
@@ -93,7 +89,7 @@ export function ReviewGallerySurface() {
   };
 
   // Get current focused asset
-  const focusedAsset = items[focusedAssetIndex];
+  const focusedAsset = controller.assets[focusedAssetIndex];
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -103,7 +99,7 @@ export function ReviewGallerySurface() {
       callback: () => {
         if (focusedAsset) {
           handleAccept(focusedAsset.id);
-          setFocusedAssetIndex(prev => Math.min(prev + 1, items.length - 1));
+          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
         }
       },
     },
@@ -113,7 +109,7 @@ export function ReviewGallerySurface() {
       callback: () => {
         if (focusedAsset) {
           handleReject(focusedAsset.id);
-          setFocusedAssetIndex(prev => Math.min(prev + 1, items.length - 1));
+          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
         }
       },
     },
@@ -123,14 +119,14 @@ export function ReviewGallerySurface() {
       callback: () => {
         if (focusedAsset) {
           handleSkip(focusedAsset.id);
-          setFocusedAssetIndex(prev => Math.min(prev + 1, items.length - 1));
+          setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1));
         }
       },
     },
     {
       key: 'ArrowRight',
       description: 'Next asset',
-      callback: () => setFocusedAssetIndex(prev => Math.min(prev + 1, items.length - 1)),
+      callback: () => setFocusedAssetIndex((prev) => Math.min(prev + 1, controller.assets.length - 1)),
     },
     {
       key: 'ArrowLeft',
@@ -147,10 +143,10 @@ export function ReviewGallerySurface() {
 
   // Auto-focus when items change
   useEffect(() => {
-    if (focusedAssetIndex >= items.length && items.length > 0) {
-      setFocusedAssetIndex(items.length - 1);
+    if (focusedAssetIndex >= controller.assets.length && controller.assets.length > 0) {
+      setFocusedAssetIndex(controller.assets.length - 1);
     }
-  }, [items.length, focusedAssetIndex]);
+  }, [controller.assets.length, focusedAssetIndex]);
 
   return (
     <div className="p-6 space-y-4 content-with-dock min-h-screen">
@@ -208,13 +204,13 @@ export function ReviewGallerySurface() {
           <input
             placeholder="Search..."
             className="px-2 py-1 text-sm border rounded flex-1"
-            value={filters.q}
-            onChange={(e) => setFilters(prev => ({ ...prev, q: e.target.value }))}
+            value={controller.filters.q || ''}
+            onChange={(e) => controller.updateFilters({ q: e.target.value })}
           />
           <select
             className="px-2 py-1 text-sm border rounded"
-            value={filters.sort}
-            onChange={(e) => setFilters(prev => ({ ...prev, sort: e.target.value as any }))}
+            value={controller.filters.sort}
+            onChange={(e) => controller.updateFilters({ sort: e.target.value as any })}
           >
             <option value="new">Newest First</option>
             <option value="old">Oldest First</option>
@@ -222,11 +218,11 @@ export function ReviewGallerySurface() {
         </div>
       </div>
 
-      {error && <div className="text-red-600 text-sm">{error}</div>}
+      {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
 
       {/* Large Card Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {items.map((asset, index) => {
+        {controller.assets.map((asset, index) => {
           const isAccepted = acceptedAssets.has(asset.id);
           const isRejected = rejectedAssets.has(asset.id);
           const isReviewed = reviewedAssets.has(asset.id);
@@ -263,12 +259,7 @@ export function ReviewGallerySurface() {
                 createdAt={asset.created_at}
                 status={asset.sync_status}
                 providerStatus={asset.provider_status}
-                actions={{
-                  onImageToVideo: () => queueImageToVideo(asset),
-                  onVideoExtend: () => queueVideoExtend(asset),
-                  onAddToTransition: () => queueAddToTransition(asset),
-                  onAddToGenerate: () => queueAutoGenerate(asset),
-                }}
+                actions={controller.getAssetActions(asset)}
               />
 
               {/* Review Actions */}
@@ -306,16 +297,12 @@ export function ReviewGallerySurface() {
 
       {/* Load More */}
       <div className="pt-4">
-        {hasMore && (
-          <button
-            disabled={loading}
-            onClick={loadMore}
-            className="border px-4 py-2 rounded"
-          >
-            {loading ? 'Loading...' : 'Load More'}
+        {controller.hasMore && (
+          <button disabled={controller.loading} onClick={controller.loadMore} className="border px-4 py-2 rounded">
+            {controller.loading ? 'Loading...' : 'Load More'}
           </button>
         )}
-        {!hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
+        {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
       </div>
     </div>
   );
