@@ -71,16 +71,24 @@ interface AiModel {
 // ===== Main Component =====
 
 export function PromptLabDev() {
-  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library' | 'models'>('analyze');
+  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library' | 'models' | 'categories'>('analyze');
 
   // Shared state for Analyze -> Import flow
   const [importFamilyTitle, setImportFamilyTitle] = useState<string | undefined>();
   const [importPromptText, setImportPromptText] = useState<string | undefined>();
 
+  // Shared state for Analyze -> Categories flow
+  const [categoriesPromptText, setCategoriesPromptText] = useState<string | undefined>();
+
   const handleSendToImport = (familyTitle: string, promptText: string) => {
     setImportFamilyTitle(familyTitle);
     setImportPromptText(promptText);
     setActiveTab('import');
+  };
+
+  const handleSendToCategories = (promptText: string) => {
+    setCategoriesPromptText(promptText);
+    setActiveTab('categories');
   };
 
   return (
@@ -142,11 +150,21 @@ export function PromptLabDev() {
         >
           Models
         </button>
+        <button
+          onClick={() => setActiveTab('categories')}
+          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'categories'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+          }`}
+        >
+          Categories
+        </button>
       </div>
 
       {/* Tab Content */}
       {activeTab === 'analyze' && (
-        <AnalyzeTab onSendToImport={handleSendToImport} />
+        <AnalyzeTab onSendToImport={handleSendToImport} onSendToCategories={handleSendToCategories} />
       )}
       {activeTab === 'import' && (
         <ImportTab
@@ -160,6 +178,12 @@ export function PromptLabDev() {
       )}
       {activeTab === 'library' && <LibraryTab />}
       {activeTab === 'models' && <ModelsTab />}
+      {activeTab === 'categories' && (
+        <CategoriesTab
+          initialPromptText={categoriesPromptText}
+          onClearInitial={() => setCategoriesPromptText(undefined)}
+        />
+      )}
     </div>
   );
 }
@@ -168,9 +192,10 @@ export function PromptLabDev() {
 
 interface AnalyzeTabProps {
   onSendToImport: (familyTitle: string, promptText: string) => void;
+  onSendToCategories: (promptText: string) => void;
 }
 
-function AnalyzeTab({ onSendToImport }: AnalyzeTabProps) {
+function AnalyzeTab({ onSendToImport, onSendToCategories }: AnalyzeTabProps) {
   const api = useApi();
   const [promptText, setPromptText] = useState('');
   const [analysis, setAnalysis] = useState<PromptAnalysis | null>(null);
@@ -249,6 +274,13 @@ function AnalyzeTab({ onSendToImport }: AnalyzeTabProps) {
               variant="outline"
             >
               Send to Import
+            </Button>
+            <Button
+              onClick={() => onSendToCategories(promptText)}
+              disabled={!promptText.trim()}
+              variant="outline"
+            >
+              Discover Categories
             </Button>
           </div>
         </div>
@@ -1010,6 +1042,365 @@ function ModelsTab() {
             <li>• <strong>Tag Suggest</strong>: Used for AI-powered tag suggestions (future)</li>
           </ul>
         </Panel>
+      </div>
+    </div>
+  );
+}
+
+// ===== Categories Tab =====
+
+interface CategoriesTabProps {
+  initialPromptText?: string;
+  onClearInitial: () => void;
+}
+
+interface CategoryDiscoveryResponse {
+  prompt_text: string;
+  parser_roles: Array<{ role: string; text: string }>;
+  existing_ontology_ids: string[];
+  suggestions: any;
+  suggested_ontology_ids: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    kind: string;
+    confidence: number;
+  }>;
+  suggested_packs: Array<{
+    pack_id: string;
+    pack_label: string;
+    parser_hints: Record<string, string[]>;
+    notes?: string;
+  }>;
+  suggested_action_blocks: Array<{
+    block_id: string;
+    prompt: string;
+    tags: Record<string, any>;
+    notes?: string;
+  }>;
+}
+
+function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps) {
+  const api = useApi();
+  const [promptText, setPromptText] = useState(initialPromptText || '');
+  const [worldId, setWorldId] = useState('');
+  const [packIds, setPackIds] = useState('');
+  const [useCase, setUseCase] = useState('');
+  const [discovery, setDiscovery] = useState<CategoryDiscoveryResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showRawJson, setShowRawJson] = useState(false);
+
+  // Clear initial prompt after first use
+  useEffect(() => {
+    if (initialPromptText) {
+      setPromptText(initialPromptText);
+      onClearInitial();
+    }
+  }, [initialPromptText, onClearInitial]);
+
+  const handleDiscover = async () => {
+    if (!promptText.trim()) {
+      setError('Prompt text is required');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await api.post<CategoryDiscoveryResponse>(
+        '/dev/prompt-categories/discover',
+        {
+          prompt_text: promptText,
+          world_id: worldId || null,
+          pack_ids: packIds ? packIds.split(',').map((s) => s.trim()) : null,
+          use_case: useCase || null,
+        }
+      );
+      setDiscovery(result);
+    } catch (err: any) {
+      console.error('Category discovery error:', err);
+      setError(err.message || 'Failed to discover categories');
+      setDiscovery(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Left: Input */}
+      <div className="space-y-4">
+        <Panel className="p-6">
+          <h2 className="text-lg font-semibold mb-4">Category Discovery (AI)</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Prompt Text
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[200px] font-mono text-sm"
+                placeholder="Enter prompt text to analyze..."
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                World ID (optional)
+              </label>
+              <Input
+                type="text"
+                placeholder="e.g., fantasy-tavern"
+                value={worldId}
+                onChange={(e) => setWorldId(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Pack IDs (optional, comma-separated)
+              </label>
+              <Input
+                type="text"
+                placeholder="e.g., minotaur-romance, tavern-scenes"
+                value={packIds}
+                onChange={(e) => setPackIds(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Use Case (optional)
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={useCase}
+                onChange={(e) => setUseCase(e.target.value)}
+                disabled={loading}
+              >
+                <option value="">Select use case...</option>
+                <option value="family-seed">Family Seed</option>
+                <option value="one-off">One-off Prompt</option>
+                <option value="action-block">ActionBlock</option>
+              </select>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200">
+                {error}
+              </div>
+            )}
+
+            <Button
+              onClick={handleDiscover}
+              disabled={loading || !promptText.trim()}
+              className="w-full"
+            >
+              {loading ? 'Analyzing...' : 'Analyze Categories (AI)'}
+            </Button>
+          </div>
+        </Panel>
+      </div>
+
+      {/* Right: Results */}
+      <div className="space-y-4">
+        {discovery ? (
+          <>
+            {/* Parser Summary */}
+            <Panel className="p-6">
+              <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
+                Parser Summary
+              </h3>
+              <div className="space-y-2">
+                {discovery.parser_roles.map((block, idx) => (
+                  <div key={idx} className="text-sm">
+                    <span className="inline-block bg-neutral-200 dark:bg-neutral-700 px-2 py-1 rounded text-xs font-mono mr-2">
+                      {block.role}
+                    </span>
+                    <span className="text-neutral-700 dark:text-neutral-300">
+                      {block.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {discovery.existing_ontology_ids.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
+                    Existing Ontology IDs
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {discovery.existing_ontology_ids.map((id) => (
+                      <span
+                        key={id}
+                        className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded text-xs font-mono"
+                      >
+                        {id}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Panel>
+
+            {/* Suggested Ontology IDs */}
+            {discovery.suggested_ontology_ids.length > 0 && (
+              <Panel className="p-6">
+                <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
+                  Suggested Ontology IDs ({discovery.suggested_ontology_ids.length})
+                </h3>
+                <div className="space-y-3">
+                  {discovery.suggested_ontology_ids.map((suggestion) => (
+                    <div
+                      key={suggestion.id}
+                      className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded"
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <code className="text-sm font-mono text-blue-900 dark:text-blue-100">
+                          {suggestion.id}
+                        </code>
+                        <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                          {Math.round(suggestion.confidence * 100)}% confidence
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        {suggestion.label}
+                      </div>
+                      {suggestion.description && (
+                        <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                          {suggestion.description}
+                        </div>
+                      )}
+                      <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                        Kind: {suggestion.kind}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            )}
+
+            {/* Suggested Packs */}
+            {discovery.suggested_packs.length > 0 && (
+              <Panel className="p-6">
+                <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
+                  Suggested Semantic Packs ({discovery.suggested_packs.length})
+                </h3>
+                <div className="space-y-3">
+                  {discovery.suggested_packs.map((pack) => (
+                    <div
+                      key={pack.pack_id}
+                      className="p-3 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded"
+                    >
+                      <div className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">
+                        {pack.pack_label}
+                      </div>
+                      <code className="text-xs font-mono text-purple-800 dark:text-purple-200">
+                        {pack.pack_id}
+                      </code>
+                      {pack.notes && (
+                        <div className="text-xs text-purple-700 dark:text-purple-300 mt-2">
+                          {pack.notes}
+                        </div>
+                      )}
+                      <div className="mt-2 text-xs">
+                        <div className="font-semibold text-purple-800 dark:text-purple-200 mb-1">
+                          Parser Hints:
+                        </div>
+                        <div className="space-y-1">
+                          {Object.entries(pack.parser_hints).map(([key, values]) => (
+                            <div key={key}>
+                              <span className="text-purple-700 dark:text-purple-300">
+                                {key}:
+                              </span>{' '}
+                              <span className="text-purple-600 dark:text-purple-400">
+                                {values.join(', ')}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            )}
+
+            {/* Suggested ActionBlocks */}
+            {discovery.suggested_action_blocks.length > 0 && (
+              <Panel className="p-6">
+                <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
+                  Suggested ActionBlocks ({discovery.suggested_action_blocks.length})
+                </h3>
+                <div className="space-y-3">
+                  {discovery.suggested_action_blocks.map((block) => (
+                    <div
+                      key={block.block_id}
+                      className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded"
+                    >
+                      <code className="text-xs font-mono text-amber-900 dark:text-amber-100">
+                        {block.block_id}
+                      </code>
+                      <div className="text-sm text-amber-800 dark:text-amber-200 mt-2 font-mono">
+                        {block.prompt}
+                      </div>
+                      {block.notes && (
+                        <div className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                          {block.notes}
+                        </div>
+                      )}
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                          Tags:
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(block.tags).map(([key, value]) => (
+                            <span
+                              key={key}
+                              className="inline-block bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded text-xs"
+                            >
+                              {key}: {JSON.stringify(value)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            )}
+
+            {/* Raw JSON (collapsible) */}
+            <Panel className="p-6">
+              <button
+                onClick={() => setShowRawJson(!showRawJson)}
+                className="w-full flex items-center justify-between text-sm font-semibold text-neutral-600 dark:text-neutral-400"
+              >
+                <span>Raw JSON Response</span>
+                <Icon name={showRawJson ? 'chevron-up' : 'chevron-down'} className="h-4 w-4" />
+              </button>
+              {showRawJson && (
+                <pre className="mt-4 p-3 bg-neutral-100 dark:bg-neutral-900 rounded text-xs overflow-auto max-h-96">
+                  {JSON.stringify(discovery.suggestions, null, 2)}
+                </pre>
+              )}
+            </Panel>
+          </>
+        ) : (
+          <Panel className="p-12 text-center">
+            <Icon name="search" className="h-12 w-12 mx-auto mb-4 text-neutral-400" />
+            <h3 className="text-lg font-semibold mb-2">No Analysis Yet</h3>
+            <p className="text-neutral-600 dark:text-neutral-400">
+              Enter prompt text and click "Analyze Categories (AI)" to discover semantic categories and suggestions
+            </p>
+          </Panel>
+        )}
       </div>
     </div>
   );
