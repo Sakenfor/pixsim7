@@ -77,6 +77,20 @@ class AutomationService {
     return response.data;
   }
 
+  async clearExecutions(status?: string): Promise<{ status: string; deleted: number; filter: string }> {
+    const params: Record<string, any> = {};
+
+    if (status) {
+      params.status = status;
+    }
+
+    const response = await apiClient.delete<{ status: string; deleted: number; filter: string }>(
+      '/automation/executions/clear',
+      { params }
+    );
+    return response.data;
+  }
+
   async getExecution(id: number): Promise<AutomationExecution> {
     const response = await apiClient.get<AutomationExecution>(`/automation/executions/${id}`);
     return response.data;

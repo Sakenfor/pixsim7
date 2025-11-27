@@ -237,6 +237,51 @@ async def list_executions(
     return result.scalars().all()
 
 
+@router.delete("/executions/clear")
+async def clear_executions(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Clear (delete) automation executions by status.
+
+    - If status is specified: deletes executions with that status (e.g., "completed", "failed")
+    - If status is not specified: deletes all COMPLETED and FAILED executions
+
+    Common use cases:
+    - Clear all completed/failed: DELETE /automation/executions/clear
+    - Clear only failed: DELETE /automation/executions/clear?status=failed
+    - Clear only completed: DELETE /automation/executions/clear?status=completed
+
+    Returns:
+        Number of executions deleted
+    """
+    from sqlalchemy import delete
+
+    # Build delete query
+    if status:
+        # Delete specific status
+        delete_query = delete(AutomationExecution).where(
+            AutomationExecution.status == status
+        )
+    else:
+        # Default: delete completed and failed
+        delete_query = delete(AutomationExecution).where(
+            AutomationExecution.status.in_([AutomationStatus.COMPLETED, AutomationStatus.FAILED])
+        )
+
+    result = await db.execute(delete_query)
+    await db.commit()
+
+    deleted_count = result.rowcount
+
+    return {
+        "status": "ok",
+        "deleted": deleted_count,
+        "filter": status if status else "completed,failed"
+    }
+
+
 @router.get("/executions/{execution_id}", response_model=AutomationExecution)
 async def get_execution(execution_id: int, db: AsyncSession = Depends(get_db)):
     execution = await db.get(AutomationExecution, execution_id)

@@ -10,6 +10,7 @@ export function ExecutionList() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<AutomationStatus | 'ALL'>('ALL');
   const [selectedExecution, setSelectedExecution] = useState<AutomationExecution | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   const executionsRef = useRef<AutomationExecution[]>([]);
   const loadingRef = useRef(false);
@@ -73,6 +74,27 @@ export function ExecutionList() {
     setSelectedExecution(null);
   };
 
+  const handleClearExecutions = async (status?: AutomationStatus) => {
+    const statusText = status || 'completed and failed';
+    const confirmMessage = `Are you sure you want to clear all ${statusText} executions? This cannot be undone.`;
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setClearing(true);
+      const result = await automationService.clearExecutions(status);
+      alert(`Successfully cleared ${result.deleted} executions (${result.filter})`);
+      await loadExecutions(); // Reload the list
+    } catch (err) {
+      alert(`Failed to clear executions: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      console.error('Error clearing executions:', err);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   if (loading && executions.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -97,13 +119,49 @@ export function ExecutionList() {
           </p>
         </div>
 
-        <Button
-          variant="secondary"
-          onClick={loadExecutions}
-          disabled={loading}
-        >
-          {loading ? '⟳ Refreshing...' : '🔄 Refresh'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={loadExecutions}
+            disabled={loading}
+          >
+            {loading ? '⟳ Refreshing...' : '🔄 Refresh'}
+          </Button>
+
+          <div className="relative group">
+            <Button
+              variant="danger"
+              disabled={clearing || statusCounts.completed + statusCounts.failed === 0}
+            >
+              {clearing ? '⟳ Clearing...' : '🗑️ Clear'}
+            </Button>
+
+            {/* Dropdown menu */}
+            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={() => handleClearExecutions()}
+                disabled={clearing}
+                className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg text-sm"
+              >
+                Clear Completed & Failed ({statusCounts.completed + statusCounts.failed})
+              </button>
+              <button
+                onClick={() => handleClearExecutions(AutomationStatus.COMPLETED)}
+                disabled={clearing || statusCounts.completed === 0}
+                className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
+              >
+                Clear Completed Only ({statusCounts.completed})
+              </button>
+              <button
+                onClick={() => handleClearExecutions(AutomationStatus.FAILED)}
+                disabled={clearing || statusCounts.failed === 0}
+                className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg text-sm"
+              >
+                Clear Failed Only ({statusCounts.failed})
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Error message */}
