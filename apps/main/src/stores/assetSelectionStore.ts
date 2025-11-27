@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 export interface SelectedAsset {
   id: number;
@@ -29,53 +30,64 @@ interface AssetSelectionStore {
   removeAsset: (assetId: number) => void;
 }
 
-export const useAssetSelectionStore = create<AssetSelectionStore>((set, get) => ({
-  selectedAssets: [],
-  lastSelectedAsset: undefined,
+export const useAssetSelectionStore = create<AssetSelectionStore>()(
+  persist(
+    (set, get) => ({
+      selectedAssets: [],
+      lastSelectedAsset: undefined,
 
-  selectAsset: (asset) => {
-    set((state) => {
-      // Don't add duplicates
-      if (state.selectedAssets.some((a) => a.id === asset.id)) {
-        return { lastSelectedAsset: asset };
-      }
+      selectAsset: (asset) => {
+        set((state) => {
+          // Don't add duplicates
+          if (state.selectedAssets.some((a) => a.id === asset.id)) {
+            return { lastSelectedAsset: asset };
+          }
 
-      return {
-        selectedAssets: [...state.selectedAssets, asset],
-        lastSelectedAsset: asset,
-      };
-    });
-  },
+          return {
+            selectedAssets: [...state.selectedAssets, asset],
+            lastSelectedAsset: asset,
+          };
+        });
+      },
 
-  toggleAsset: (asset) => {
-    set((state) => {
-      const exists = state.selectedAssets.some((a) => a.id === asset.id);
+      toggleAsset: (asset) => {
+        set((state) => {
+          const exists = state.selectedAssets.some((a) => a.id === asset.id);
 
-      if (exists) {
-        return {
-          selectedAssets: state.selectedAssets.filter((a) => a.id !== asset.id),
-          lastSelectedAsset: asset,
-        };
-      } else {
-        return {
-          selectedAssets: [...state.selectedAssets, asset],
-          lastSelectedAsset: asset,
-        };
-      }
-    });
-  },
+          if (exists) {
+            return {
+              selectedAssets: state.selectedAssets.filter((a) => a.id !== asset.id),
+              lastSelectedAsset: asset,
+            };
+          } else {
+            return {
+              selectedAssets: [...state.selectedAssets, asset],
+              lastSelectedAsset: asset,
+            };
+          }
+        });
+      },
 
-  clearSelection: () => {
-    set({ selectedAssets: [], lastSelectedAsset: undefined });
-  },
+      clearSelection: () => {
+        set({ selectedAssets: [], lastSelectedAsset: undefined });
+      },
 
-  isSelected: (assetId) => {
-    return get().selectedAssets.some((a) => a.id === assetId);
-  },
+      isSelected: (assetId) => {
+        return get().selectedAssets.some((a) => a.id === assetId);
+      },
 
-  removeAsset: (assetId) => {
-    set((state) => ({
-      selectedAssets: state.selectedAssets.filter((a) => a.id !== assetId),
-    }));
-  },
-}));
+      removeAsset: (assetId) => {
+        set((state) => ({
+          selectedAssets: state.selectedAssets.filter((a) => a.id !== assetId),
+        }));
+      },
+    }),
+    {
+      name: 'asset_selection_v1',
+      partialize: (state) => ({
+        selectedAssets: state.selectedAssets,
+        lastSelectedAsset: state.lastSelectedAsset,
+      }),
+    },
+  ),
+);
