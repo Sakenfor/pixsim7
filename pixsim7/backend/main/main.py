@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
         setup_database_and_seed,
         setup_redis,
         setup_providers,
+        setup_ai_models,
         setup_event_handlers,
         setup_ecs_components,
         setup_plugins,
@@ -77,8 +78,9 @@ async def lifespan(app: FastAPI):
     redis_available = await setup_redis()
     app.state.redis_available = redis_available
 
-    # Setup providers, events, and ECS
+    # Setup providers, AI models, events, and ECS
     setup_providers()
+    setup_ai_models()
     setup_event_handlers()
     ecs_count = setup_ecs_components()
 
