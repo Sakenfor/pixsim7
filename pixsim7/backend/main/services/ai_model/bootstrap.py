@@ -16,34 +16,34 @@ def initialize_ai_models() -> None:
     Initialize the AI model registry with default models.
 
     This is called at application startup to register:
-    - Deterministic parsing engines (prompt-dsl)
+    - Deterministic parsing engines (native parser configurations)
     - LLM models for prompt editing and tag suggestion
     """
 
     # === Parsing Engines ===
 
-    # Prompt-DSL Simple Parser (default for parsing)
+    # Native Simple Parser (default for parsing)
     ai_model_registry.register(
         AiModel(
-            id="prompt-dsl:simple",
-            label="Prompt-DSL Simple",
-            provider_id="internal-prompt-dsl",
+            id="parser:native-simple",
+            label="Native Simple Parser",
+            provider_id="internal-parser",
             kind=AiModelKind.PARSER,
             capabilities=[AiModelCapability.PROMPT_PARSE],
             default_for=[AiModelCapability.PROMPT_PARSE],
-            description="Deterministic prompt parser using the prompt-dsl simple engine",
+            description="Deterministic prompt parser using PixSim7's native simple engine",
         )
     )
 
-    # Prompt-DSL Strict Parser (future)
+    # Native Strict Parser (future)
     ai_model_registry.register(
         AiModel(
-            id="prompt-dsl:strict",
-            label="Prompt-DSL Strict",
-            provider_id="internal-prompt-dsl",
+            id="parser:native-strict",
+            label="Native Strict Parser",
+            provider_id="internal-parser",
             kind=AiModelKind.PARSER,
             capabilities=[AiModelCapability.PROMPT_PARSE],
-            description="Strict deterministic prompt parser with enhanced validation",
+            description="Strict deterministic parser with enhanced validation (future configuration)",
         )
     )
 

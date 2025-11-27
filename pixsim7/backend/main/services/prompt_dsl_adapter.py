@@ -31,8 +31,8 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
     Args:
         text: Prompt text to parse
         model_id: Optional parser model ID. Supported values:
-            - "prompt-dsl:simple" (default): Simple parser
-            - "prompt-dsl:strict": Strict parser (future)
+            - "parser:native-simple" (default): Simple native parser
+            - "parser:native-strict": Strict native parser (future)
             - None: Uses default (simple)
 
     Returns:
@@ -51,15 +51,15 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
             ]
         }
     """
-    # Default to "prompt-dsl:simple" if not specified
+    # Default to native simple parser if not specified
     if model_id is None:
-        model_id = "prompt-dsl:simple"
+        model_id = "parser:native-simple"
 
     # Select parser based on model_id
-    if model_id in ("prompt-dsl:simple", "native:simple"):
+    if model_id in ("parser:native-simple", "native:simple", "prompt-dsl:simple"):
         # Use simple parser (default)
         parser = SimplePromptParser()
-    elif model_id == "prompt-dsl:strict":
+    elif model_id in ("parser:native-strict", "prompt-dsl:strict"):
         # Future: strict parser
         # For now, fall back to simple parser
         parser = SimplePromptParser()
