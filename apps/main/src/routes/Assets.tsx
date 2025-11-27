@@ -310,9 +310,9 @@ export function AssetsRoute() {
 
 	    if (isSelectionMode) {
 	      return (
-	        <div key={a.id} className="relative group rounded-md overflow-hidden">
-	          <div className="opacity-75 group-hover:opacity-100 transition-opacity">
-	            <MediaCard
+        <div key={a.id} className="relative group rounded-md">
+          <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+            <MediaCard
 	              id={a.id}
 	              mediaType={a.media_type}
 	              providerId={a.provider_id}
@@ -355,9 +355,9 @@ export function AssetsRoute() {
 	    }
 
 	    return (
-	      <div
-	        key={a.id}
-	        className={`relative cursor-pointer group rounded-md overflow-hidden ${
+      <div
+        key={a.id}
+        className={`relative cursor-pointer group rounded-md ${
 	          isSelected ? 'ring-4 ring-purple-500' : ''
 	        }`}
 	        onClick={(e) => {

@@ -488,6 +488,7 @@ export function ProviderSettingsPanel() {
   const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
+  const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
@@ -604,10 +605,32 @@ export function ProviderSettingsPanel() {
 
     return accounts;
   }, [providerData, sortBy, sortDesc]);
-  const editingAccount = useMemo(
-    () => (editingAccountId != null ? accounts.find(acc => acc.id === editingAccountId) ?? null : null),
-    [editingAccountId, accounts],
-  );
+
+  useEffect(() => {
+    if (editingAccountId == null) {
+      setEditingAccount(null);
+      return;
+    }
+
+    const baseAccount = accounts.find(acc => acc.id === editingAccountId) ?? null;
+    setEditingAccount(baseAccount);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get<ProviderAccount>(`/accounts/${editingAccountId}`);
+        if (!cancelled) {
+          setEditingAccount(res.data);
+        }
+      } catch (error) {
+        console.error('Failed to load account details', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingAccountId, accounts]);
 
   // Load provider settings when active provider changes
   useEffect(() => {

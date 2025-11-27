@@ -23,6 +23,7 @@ let accountsRequestSeq = 0;
 const PIXVERSE_STATUS_CACHE_TTL_MS = 60 * 1000;
 const PIXVERSE_STATUS_CACHE_STORAGE_KEY = 'pixsim7PixverseStatusCache';
 const pixverseStatusCache = new Map();
+const DEVICE_SELECTION_STORAGE_KEY = 'pixsim7SelectedDeviceId';
 let accountJwtHealth = {
   missing: [],
   expired: [],
@@ -81,6 +82,19 @@ function setupEventListeners() {
   document.getElementById('password').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleLogin();
   });
+
+  // Remember selected device globally for presets/loops
+  const globalDeviceSelect = document.getElementById('deviceSelect');
+  if (globalDeviceSelect) {
+    globalDeviceSelect.addEventListener('change', async () => {
+      try {
+        const value = globalDeviceSelect.value || '';
+        await chrome.storage.local.set({ [DEVICE_SELECTION_STORAGE_KEY]: value });
+      } catch (e) {
+        console.warn('[Popup] Failed to persist selected device:', e);
+      }
+    });
+  }
 
   // Logout
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
@@ -724,7 +738,7 @@ function createAccountCard(account) {
   actionButtons.forEach((btn) => {
     const action = btn.getAttribute('data-action');
     if (action === 'login') {
-      btn.addEventListener('click', () => handleAccountLogin(account));
+      btn.addEventListener('click', (event) => handleAccountLogin(account, event));
     } else if (action === 'run-preset') {
       btn.addEventListener('click', () => executePresetForAccount(account));
     } else if (action === 'run-loop') {
@@ -1002,17 +1016,24 @@ function formatRelativeTime(timestamp) {
   return `${days}d ago`;
 }
 
-async function handleAccountLogin(account) {
+async function handleAccountLogin(account, event) {
   console.log('[Popup] Login with account:', account.email);
   try {
-    // Prefer reusing the current active tab if available. This avoids
-    // spawning extra tabs when switching Pixverse accounts from the
-    // extension.
+    // Determine whether to reuse the current tab or open a new one.
+    // Ctrl-click (or Cmd-click on macOS, or middle-click) should open
+    // a new tab, preserving whatever state the current Pixverse tab
+    // already has.
+    const useNewTab =
+      (event && (event.ctrlKey || event.metaKey || event.button === 1)) || false;
+
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
     const res = await chrome.runtime.sendMessage({
       action: 'loginWithAccount',
       accountId: account.id,
-      tabId: activeTab && typeof activeTab.id === 'number' ? activeTab.id : undefined,
+      tabId: useNewTab
+        ? undefined
+        : (activeTab && typeof activeTab.id === 'number' ? activeTab.id : undefined),
     });
     if (!res || !res.success) {
       showError(res?.error || 'Failed to open logged-in tab');
@@ -1266,7 +1287,7 @@ async function loadDevices() {
     if (response && response.success) {
       availableDevices = response.data || [];
       displayDevices(availableDevices);
-      populateGlobalDeviceSelect();
+      await populateGlobalDeviceSelect();
     } else {
       console.error('[Devices] Failed to load devices:', response?.error);
     }
@@ -1275,7 +1296,7 @@ async function loadDevices() {
   }
 }
 
-function populateGlobalDeviceSelect() {
+async function populateGlobalDeviceSelect() {
   const selectElement = document.getElementById('deviceSelect');
   if (!selectElement) return;
 
@@ -1294,6 +1315,23 @@ function populateGlobalDeviceSelect() {
     }
     selectElement.appendChild(option);
   });
+
+  // Restore previously selected device if it still exists and is online
+  try {
+    const stored = await chrome.storage.local.get(DEVICE_SELECTION_STORAGE_KEY);
+    const savedId = stored[DEVICE_SELECTION_STORAGE_KEY] || '';
+    if (savedId) {
+      const options = Array.from(selectElement.options);
+      const match = options.find(
+        (opt) => opt.value === savedId && !opt.disabled,
+      );
+      if (match) {
+        selectElement.value = savedId;
+      }
+    }
+  } catch (e) {
+    console.warn('[Popup] Failed to restore selected device:', e);
+  }
 }
 
 function displayDevices(devices) {

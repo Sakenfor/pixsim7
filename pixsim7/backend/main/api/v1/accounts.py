@@ -433,7 +433,24 @@ async def sync_account_credits(
                 else:
                     credits_data = await provider.get_credits(account)
             except Exception as e:
-                print(f"Provider get_credits failed: {e}, falling back to extract_account_data")
+                logger.warning(
+                    "sync_account_credits_provider_error",
+                    extra={
+                        "account_id": account.id,
+                        "email": account.email,
+                        "provider_id": account.provider_id,
+                        "error": str(e),
+                        "error_type": e.__class__.__name__,
+                    },
+                )
+                # If the provider call left the DB session in a bad state (e.g.
+                # pending rollback from a failed flush/commit), make a
+                # best-effort rollback so subsequent operations don't hit
+                # PendingRollbackError when we try to update credits.
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
         
         # Fallback: extract from account data
         if not credits_data:
@@ -578,7 +595,9 @@ async def get_pixverse_status(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to query this account")
 
         # Capture basic identifiers up front so we can safely log even if
-        # the underlying DB session encounters errors during provider calls.
+        # the underlying DB session encounters errors during provider calls
+        # (e.g. leaving the SQLAlchemy Session in a pending-rollback state).
+        account_id = account.id
         account_email = account.email
         account_provider_id = account.provider_id
 
@@ -603,7 +622,7 @@ async def get_pixverse_status(
             logger.warning(
                 "get_pixverse_status_provider_error",
                 extra={
-                    "account_id": account.id,
+                    "account_id": account_id,
                     "email": account_email,
                     "provider_id": account_provider_id,
                     "error": str(e),

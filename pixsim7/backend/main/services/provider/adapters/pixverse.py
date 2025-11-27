@@ -1290,8 +1290,11 @@ class PixverseProvider(Provider):
                         except (TypeError, ValueError):
                             openapi_total = 0
                 except Exception as exc:
+                    # OpenAPI credits are optional for bulk sync; treat failures
+                    # as non-fatal so that web credits can still be updated even
+                    # if the OpenAPI key/session is stale.
                     logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
-                    raise
+                    openapi_total = 0
 
             return {
                 "web": max(0, web_total),
@@ -1302,7 +1305,11 @@ class PixverseProvider(Provider):
             account=account,
             op_name="get_credits_basic",
             operation=_operation,
-            retry_on_session_error=True,
+            # Bulk/explicit credit sync is a snapshot-style operation; avoid
+            # triggering heavy auto-reauth flows (Playwright, DB writes) from
+            # here. Session errors will bubble up and callers can decide how
+            # to handle them (e.g., fallback to extract_account_data).
+            retry_on_session_error=False,
         )
 
     async def _get_ad_task_status_best_effort(

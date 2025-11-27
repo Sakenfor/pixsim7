@@ -398,7 +398,10 @@ async function checkAndImport() {
 
   let cookies = {};
   try {
-    cookies = await getAllCookiesSecure();
+    // Use the same secure cookie aggregation path as importCookies so that
+    // login detection sees the full host+parent-domain view (especially for
+    // Pixverse where app.pixverse.ai host cookies matter).
+    cookies = await getAllCookiesSecure(auth.providerId);
   } catch (e) {
     console.warn('[PixSim7 Content] Failed to read cookies for session detection:', e);
   }

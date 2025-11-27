@@ -513,7 +513,7 @@ export function MediaCard(props: MediaCardProps) {
             <button
               onClick={handleUploadClick}
               disabled={effectiveState==='uploading'}
-              className={`px-2 py-1 text-[10px] rounded shadow transition-all ${
+            className={`px-2 py-1 text-[10px] rounded shadow ${
                 effectiveState==='success' ? (
                   // Match extension semantics: check note/providerStatus to differentiate
                   (effectiveNote && (effectiveNote.includes('saved locally') || effectiveNote.includes('Local only'))) || providerStatus === 'local_only'
@@ -598,7 +598,7 @@ export function MediaCard(props: MediaCardProps) {
                 trigger={
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md hover:shadow-lg hover:shadow-purple-500/50 transition-all hover:scale-105"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white text-xs font-medium shadow-md"
                     onClick={(e) => {
                       e.stopPropagation();
                       // Default action on click
@@ -632,7 +632,7 @@ export function MediaCard(props: MediaCardProps) {
                     trigger={
                       <button
                         type="button"
-                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600"
                         onClick={() => actions.onImageToVideo?.(id)}
                         title="Image to Video"
                       >
@@ -669,7 +669,7 @@ export function MediaCard(props: MediaCardProps) {
                     trigger={
                       <button
                         type="button"
-                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                        className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600"
                         onClick={() => actions.onVideoExtend?.(id)}
                         title="Extend Video"
                       >
@@ -712,7 +712,7 @@ export function MediaCard(props: MediaCardProps) {
                 {actions?.onAddToTransition && (
                   <button
                     type="button"
-                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600"
                     onClick={() => actions.onAddToTransition?.(id)}
                     title="Add to Transition"
                   >
@@ -723,7 +723,7 @@ export function MediaCard(props: MediaCardProps) {
                 {actions?.onAddToGenerate && (
                   <button
                     type="button"
-                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600 transition-all"
+                    className="group/gen flex flex-col items-center gap-1 px-3 py-2 rounded-md bg-neutral-800 hover:bg-purple-600"
                     onClick={() => actions.onAddToGenerate?.(id)}
                     title="Add to Generate Queue"
                   >
