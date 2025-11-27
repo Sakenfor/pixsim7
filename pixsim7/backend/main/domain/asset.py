@@ -191,8 +191,8 @@ class Asset(SQLModel, table=True):
     # Link back to creation generation (for audit trail)
     source_generation_id: Optional[int] = Field(
         default=None,
-        foreign_key="generations.id",
-        index=True
+        index=True,
+        description="ID of source generation (no DB FK to allow cross-domain separation)"
     )
 
     # ===== TIMESTAMPS =====

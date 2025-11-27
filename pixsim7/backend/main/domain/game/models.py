@@ -149,7 +149,10 @@ class NpcExpression(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
     state: str = Field(max_length=64, description="Conversation state: idle, talking, thinking, bored, reaction, etc.")
-    asset_id: int = Field(foreign_key="assets.id", index=True)
+    asset_id: int = Field(
+        index=True,
+        description="ID of portrait/talking asset (no DB FK to keep game and asset domains decoupled)",
+    )
     crop: Optional[Dict[str, Any]] = Field(
         default=None,
         sa_column=Column(JSON),
