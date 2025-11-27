@@ -17,6 +17,7 @@ import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
+import { useControlCenterStore } from '../stores/controlCenterStore';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -53,14 +54,32 @@ export function AssetsRoute() {
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
+  // Get current control center state for smart quick actions
+  const controlCenterOpen = useControlCenterStore((s) => s.isOpen);
+  const controlCenterOperation = useControlCenterStore((s) => s.operationType);
+
   // Merge badge configurations: surface < panel < widget
+  // Add smart quick action based on control center state
   const effectiveBadgeConfig = useMemo(() => {
     const surface = gallerySurfaceRegistry.get(currentSurfaceId);
     const surfaceBadgeConfig = surface?.badgeConfig;
     const panelBadgeConfig = panelConfig?.settings?.badgeConfig;
 
-    return mergeBadgeConfig(surfaceBadgeConfig, panelBadgeConfig);
-  }, [currentSurfaceId, panelConfig]);
+    const merged = mergeBadgeConfig(surfaceBadgeConfig, panelBadgeConfig);
+
+    // Smart quick action: if control center is open, use its current operation
+    if (controlCenterOpen && controlCenterOperation) {
+      const smartAction =
+        controlCenterOperation === 'video_transition' ? 'add_to_transition'
+        : controlCenterOperation === 'image_to_video' ? 'image_to_video'
+        : controlCenterOperation === 'video_extend' ? 'video_extend'
+        : merged.generationQuickAction || 'auto';
+
+      return { ...merged, generationQuickAction: smartAction };
+    }
+
+    return merged;
+  }, [currentSurfaceId, panelConfig, controlCenterOpen, controlCenterOperation]);
 
   // Find current badge preset
   const currentBadgePreset = useMemo(() => {

@@ -114,14 +114,16 @@ export function useQuickGenerateBindings(
     const urls = transitionQueue.map(item => item.asset.remote_url);
     setImageUrls(urls);
 
-    // Initialize prompts array with same length (empty strings) so UI shows one input per image
+    // Initialize prompts array with N-1 elements (one per transition between images)
+    // For N images, we have N-1 transitions
+    const numTransitions = Math.max(0, urls.length - 1);
     setPrompts(prev => {
       const newPrompts = [...prev];
-      while (newPrompts.length < urls.length) {
+      while (newPrompts.length < numTransitions) {
         newPrompts.push('');
       }
-      // Trim if we have more prompts than images
-      return newPrompts.slice(0, urls.length);
+      // Trim if we have more prompts than transitions
+      return newPrompts.slice(0, numTransitions);
     });
   }, [transitionQueue, setOperationType]);
 

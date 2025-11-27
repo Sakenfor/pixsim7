@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import type { ControlCenterState } from '../../stores/controlCenterStore';
+import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '../../hooks/useProviders';
@@ -56,6 +56,9 @@ export function QuickGenerateModule() {
   // UI state for collapsible sections
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // UI state for transition selection (which transition segment is selected)
+  const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -166,6 +169,14 @@ export function QuickGenerateModule() {
   const displayAssets = getDisplayAssets();
   const showAssets = operationType !== 'text_to_video' && operationType !== 'fusion';
 
+  // Reset selected transition when assets change to avoid out-of-bounds
+  useEffect(() => {
+    const maxIndex = Math.max(0, displayAssets.length - 2);
+    if (selectedTransitionIndex > maxIndex) {
+      setSelectedTransitionIndex(Math.max(0, maxIndex));
+    }
+  }, [displayAssets.length, selectedTransitionIndex]);
+
   return (
     <div className="flex flex-col gap-3 h-full overflow-y-auto">
       {/* Header: Operation selector + Presets + Settings */}
@@ -226,7 +237,7 @@ export function QuickGenerateModule() {
         {showAssets && (
           <div className="flex-shrink-0">
             {operationType === 'video_transition' ? (
-              // Transition mode: show images with prompts
+              // Transition mode: show images horizontally with transition prompts between them
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
                   <ThemedIcon name="shuffle" size={14} variant="default" />
@@ -243,44 +254,70 @@ export function QuickGenerateModule() {
                 </div>
 
                 {displayAssets.length > 0 ? (
-                  <div className="space-y-2">
-                    {displayAssets.map((asset, idx) => (
-                      <div key={idx} className="flex gap-2 items-start">
-                        {/* Asset card */}
-                        <div className="w-32 flex-shrink-0">
-                          <CompactAssetCard
-                            asset={asset}
-                            label={`Image ${idx + 1}`}
-                            showRemoveButton
-                            onRemove={() => removeFromQueue(asset.id, 'transition')}
-                          />
-                        </div>
+                  <div className="space-y-3">
+                    {/* Horizontal asset display with transition arrows */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                      {displayAssets.map((asset, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          {/* Asset card */}
+                          <div className="flex-shrink-0 w-24">
+                            <CompactAssetCard
+                              asset={asset}
+                              label={`${idx + 1}`}
+                              showRemoveButton
+                              onRemove={() => removeFromQueue(asset.id, 'transition')}
+                            />
+                          </div>
 
-                        {/* Prompt for this transition */}
-                        <div className="flex-1 flex flex-col gap-1">
-                          <label className="text-[10px] text-neutral-500 font-medium">
-                            {idx === 0 ? 'Starting prompt' : `Transition to Image ${idx + 1}`}
-                          </label>
-                          <input
-                            type="text"
-                            value={prompts[idx] || ''}
-                            onChange={(e) => {
-                              const newPrompts = [...prompts];
-                              newPrompts[idx] = e.target.value;
-                              setPrompts(newPrompts);
-                            }}
-                            placeholder={`Describe transition ${idx > 0 ? `to image ${idx + 1}` : 'from first image'}...`}
-                            disabled={generating}
-                            className="px-2 py-1.5 text-xs border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-                          />
+                          {/* Arrow button for transition between this image and next */}
+                          {idx < displayAssets.length - 1 && (
+                            <button
+                              onClick={() => setSelectedTransitionIndex(idx)}
+                              className={clsx(
+                                'flex-shrink-0 p-2 rounded transition-colors',
+                                selectedTransitionIndex === idx
+                                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                              )}
+                              title={`Transition ${idx + 1} → ${idx + 2}`}
+                            >
+                              <ThemedIcon name="arrowRight" size={16} variant="default" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Prompt input for selected transition segment */}
+                    {displayAssets.length > 1 && (
+                      <div className="flex flex-col gap-1 p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-neutral-200 dark:border-neutral-700">
+                        <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+                          Transition {selectedTransitionIndex + 1} → {selectedTransitionIndex + 2}
+                        </label>
+                        <input
+                          type="text"
+                          value={prompts[selectedTransitionIndex] || ''}
+                          onChange={(e) => {
+                            const newPrompts = [...prompts];
+                            newPrompts[selectedTransitionIndex] = e.target.value;
+                            setPrompts(newPrompts);
+                          }}
+                          placeholder={`Describe how to transition from image ${selectedTransitionIndex + 1} to image ${selectedTransitionIndex + 2}...`}
+                          disabled={generating}
+                          className="px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
+                        />
+                        <div className="text-[10px] text-neutral-500 italic mt-1">
+                          💡 Describe how the video should smoothly blend from one image to the next.
                         </div>
                       </div>
-                    ))}
+                    )}
 
                     {/* Helper text */}
-                    <div className="text-[10px] text-neutral-500 italic px-2">
-                      💡 Each image needs a prompt describing how to transition to it. The video will smoothly blend between these images following your prompts.
-                    </div>
+                    {displayAssets.length === 1 && (
+                      <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                        Add at least one more image to create transitions.
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="text-xs text-neutral-500 italic p-4 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">

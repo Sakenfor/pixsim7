@@ -160,16 +160,24 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (!validPrompts.length) {
+    if (validImages.length < 2) {
       return {
-        error: 'Transition prompts are required. Add a prompt for each image describing how to transition to it.',
+        error: 'Need at least 2 images to create a transition.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (validImages.length !== validPrompts.length) {
+    const expectedPrompts = validImages.length - 1;
+    if (!validPrompts.length) {
       return {
-        error: `You have ${validImages.length} images but ${validPrompts.length} prompts. Each image needs exactly one prompt describing the transition to it.`,
+        error: `Transition prompts are required. Add ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} describing the transitions between your ${validImages.length} images.`,
+        finalPrompt: trimmedPrompt,
+      };
+    }
+
+    if (validPrompts.length !== expectedPrompts) {
+      return {
+        error: `You have ${validImages.length} images but ${validPrompts.length} prompts. You need exactly ${expectedPrompts} prompt${expectedPrompts > 1 ? 's' : ''} (one for each transition between images).`,
         finalPrompt: trimmedPrompt,
       };
     }

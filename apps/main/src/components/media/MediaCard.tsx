@@ -228,6 +228,7 @@ export function MediaCard(props: MediaCardProps) {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
+          console.warn(`[MediaCard] Failed to fetch thumbnail: ${fullUrl} - Status: ${res.status}`);
           setThumbSrc(fullUrl);
           return;
         }
@@ -239,7 +240,8 @@ export function MediaCard(props: MediaCardProps) {
         } else {
           URL.revokeObjectURL(objectUrl);
         }
-      } catch {
+      } catch (err) {
+        console.error(`[MediaCard] Error fetching thumbnail: ${fullUrl}`, err);
         if (!cancelled) {
           setThumbSrc(fullUrl);
         }
