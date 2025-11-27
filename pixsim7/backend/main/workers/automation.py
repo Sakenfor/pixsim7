@@ -20,9 +20,13 @@ from pixsim7.backend.main.services.automation.action_executor import ActionExecu
 logger = configure_logging("worker")
 
 
-async def process_automation(execution_id: int) -> dict:
+async def process_automation(ctx: dict, execution_id: int) -> dict:
     """
     Process a single automation execution (stub implementation).
+
+    Args:
+        ctx: ARQ worker context
+        execution_id: ID of the automation execution to process
 
     In a full implementation, this would:
     - Connect to the device via ADB/UIA2
@@ -155,8 +159,13 @@ async def process_automation(execution_id: int) -> dict:
             await db.close()
 
 
-async def run_automation_loops() -> dict:
-    """Cron task: process all active automation loops once."""
+async def run_automation_loops(ctx: dict) -> dict:
+    """
+    Cron task: process all active automation loops once.
+
+    Args:
+        ctx: ARQ worker context
+    """
     processed = 0
     created = 0
     async for db in get_db():

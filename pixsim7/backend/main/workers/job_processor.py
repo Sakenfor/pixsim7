@@ -38,13 +38,14 @@ def _get_worker_logger():
 logger = _get_worker_logger()
 
 
-async def process_generation(generation_id: int) -> dict:
+async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
     Process a single generation
 
     This is the main ARQ task that gets queued when a generation is created.
 
     Args:
+        ctx: ARQ worker context
         generation_id: ID of the generation to process
 
     Returns:

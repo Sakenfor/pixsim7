@@ -166,8 +166,9 @@ If a service shows `[Missing tool: xyz]`, ensure the tool is installed and in yo
 - `services.py`: Added explicit `REDIS_URL` to worker's `env_overrides`
 - `health_worker.py`: Health check now verifies process PID is alive BEFORE checking Redis
 - Changed worker dependency from `backend` to `db` (correct dependency)
+- `job_processor.py`, `status_poller.py`, `automation.py`: Fixed ARQ function signatures to accept `ctx` parameter
 
-**Result**: Worker status now accurately reflects process state, stop/restart buttons work correctly.
+**Result**: Worker connects to Redis, starts successfully, status accurately reflects process state, stop/restart buttons work correctly.
 
 ## Development
 

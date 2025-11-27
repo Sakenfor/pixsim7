@@ -22,12 +22,15 @@ from pixsim7.backend.main.shared.errors import ProviderError
 logger = configure_logging("worker")
 
 
-async def poll_job_statuses() -> dict:
+async def poll_job_statuses(ctx: dict) -> dict:
     """
     Poll status of all processing generations
 
     This runs periodically (e.g., every 10 seconds) to check
     generation status with providers and update accordingly.
+
+    Args:
+        ctx: ARQ worker context
 
     Returns:
         dict with poll statistics
