@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { ThemedIcon } from '../../lib/icons';
-import { BACKEND_BASE } from '../../lib/api/client';
+import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
+import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
 import type { AssetSummary } from '../../hooks/useAssets';
 
 export interface CompactAssetCardProps {
@@ -14,6 +15,7 @@ export interface CompactAssetCardProps {
 /**
  * CompactAssetCard - A smaller, simplified version of MediaCard
  * for use in QuickGenerateModule to show selected/queued assets.
+ * Reuses shared hooks for thumbnail loading and video hover scrubbing.
  */
 export function CompactAssetCard({
   asset,
@@ -22,77 +24,14 @@ export function CompactAssetCard({
   className = '',
   label,
 }: CompactAssetCardProps) {
-  const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
-  const objectUrlRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Try thumbnail_url first (from AssetSummary), fall back to thumb_url for compatibility
+  const thumbUrl = (asset as any).thumbnail_url || (asset as any).thumb_url;
 
-    // Cleanup any previous object URL
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-
-    // Try thumbnail_url first (from AssetSummary), fall back to thumb_url for compatibility
-    const thumbUrl = (asset as any).thumbnail_url || (asset as any).thumb_url;
-
-    if (!thumbUrl) {
-      setThumbSrc(undefined);
-      return;
-    }
-
-    // Public absolute URL or blob URL
-    if (
-      thumbUrl.startsWith('http://') ||
-      thumbUrl.startsWith('https://') ||
-      thumbUrl.startsWith('blob:')
-    ) {
-      setThumbSrc(thumbUrl);
-      return;
-    }
-
-    const fullUrl = thumbUrl.startsWith('/')
-      ? `${BACKEND_BASE}${thumbUrl}`
-      : `${BACKEND_BASE}/${thumbUrl}`;
-
-    const token = localStorage.getItem('access_token');
-
-    // If no token, fall back to using the URL directly
-    if (!token) {
-      setThumbSrc(fullUrl);
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await fetch(fullUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          setThumbSrc(fullUrl);
-          return;
-        }
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objectUrl;
-        if (!cancelled) {
-          setThumbSrc(objectUrl);
-        } else {
-          URL.revokeObjectURL(objectUrl);
-        }
-      } catch {
-        if (!cancelled) {
-          setThumbSrc(fullUrl);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [(asset as any).thumbnail_url, (asset as any).thumb_url]);
+  // Shared hooks from MediaCard
+  const thumbSrc = useMediaThumbnail(thumbUrl);
+  const hover = useHoverScrubVideo(videoRef);
 
   const isLocalOnly = asset.provider_status === 'local_only' || !asset.remote_url;
   const statusColor = isLocalOnly
@@ -107,7 +46,13 @@ export function CompactAssetCard({
         </div>
       )}
 
-      <div className={`relative ${asset.media_type === 'video' ? 'aspect-video' : 'aspect-square'} bg-neutral-100 dark:bg-neutral-800`}>
+      <div
+        ref={hover.containerRef}
+        className={`relative ${asset.media_type === 'video' ? 'aspect-video' : 'aspect-square'} bg-neutral-100 dark:bg-neutral-800`}
+        onMouseEnter={asset.media_type === 'video' ? hover.onMouseEnter : undefined}
+        onMouseLeave={asset.media_type === 'video' ? hover.onMouseLeave : undefined}
+        onMouseMove={asset.media_type === 'video' ? hover.onMouseMove : undefined}
+      >
         {thumbSrc && (
           asset.media_type === 'video' ? (
             <video
@@ -148,11 +93,18 @@ export function CompactAssetCard({
           </div>
         )}
 
+        {/* Video hover scrub progress bar */}
+        {asset.media_type === 'video' && hover.hasStartedPlaying && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+            <div className="h-full bg-white/80 transition-all" style={{ width: `${Math.round(hover.progress * 100)}%` }} />
+          </div>
+        )}
+
         {/* Remove button */}
         {showRemoveButton && onRemove && (
           <button
             onClick={onRemove}
-            className="absolute right-1.5 bottom-1.5 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors"
+            className="absolute right-1.5 bottom-1.5 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-10"
             title="Remove asset"
           >
             <ThemedIcon name="close" size={12} variant="default" className="text-white" />

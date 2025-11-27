@@ -2,9 +2,9 @@ import { Badge } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { StatusBadge } from '@pixsim7/shared.ui';
 import { ExpandableButtonGroup, ExpandableItem, expandableItemVariants } from '@pixsim7/shared.ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
-import { BACKEND_BASE } from '../../lib/api/client';
+import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
 import { ThemedIcon } from '../../lib/icons';
 import {
   resolveMediaBadgeConfig,
@@ -159,11 +159,11 @@ export function MediaCard(props: MediaCardProps) {
     enableBadgePulse: badgeConfigProp?.enableBadgePulse ?? false,
   };
 
-  const [thumbSrc, setThumbSrc] = useState<string | undefined>(undefined);
-  const objectUrlRef = useRef<string | null>(null);
-
+  // Shared hooks for media loading and interaction
+  const thumbSrc = useMediaThumbnail(thumbUrl);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hover = useHoverScrubVideo(videoRef);
+
   const [internalUploadState, setInternalUploadState] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [internalUploadNote, setInternalUploadNote] = useState<string | undefined>(undefined);
   const [isHovered, setIsHovered] = useState(false);
@@ -189,69 +189,6 @@ export function MediaCard(props: MediaCardProps) {
     (!badgeVisibility.showGenerationOnHoverOnly || isHovered);
   const hoverEffectsEnabled = badgeVisibility.enableBadgePulse;
   const applyHoverEffect = (cls: string) => (hoverEffectsEnabled ? cls : '');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // Cleanup any previous object URL
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-
-    if (!thumbUrl) {
-      setThumbSrc(undefined);
-      return;
-    }
-
-    // Public absolute URL or blob URL
-    if (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://') || thumbUrl.startsWith('blob:')) {
-      setThumbSrc(thumbUrl);
-      return;
-    }
-
-    const fullUrl = thumbUrl.startsWith('/')
-      ? `${BACKEND_BASE}${thumbUrl}`
-      : `${BACKEND_BASE}/${thumbUrl}`;
-
-    const token = localStorage.getItem('access_token');
-
-    // If no token, fall back to using the URL directly (may work if endpoint is public)
-    if (!token) {
-      setThumbSrc(fullUrl);
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await fetch(fullUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          console.warn(`[MediaCard] Failed to fetch thumbnail: ${fullUrl} - Status: ${res.status}`);
-          setThumbSrc(fullUrl);
-          return;
-        }
-        const blob = await res.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        objectUrlRef.current = objectUrl;
-        if (!cancelled) {
-          setThumbSrc(objectUrl);
-        } else {
-          URL.revokeObjectURL(objectUrl);
-        }
-      } catch (err) {
-        console.error(`[MediaCard] Error fetching thumbnail: ${fullUrl}`, err);
-        if (!cancelled) {
-          setThumbSrc(fullUrl);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [thumbUrl]);
 
   async function handleUploadClick() {
     if (!props.onUploadClick) return;
