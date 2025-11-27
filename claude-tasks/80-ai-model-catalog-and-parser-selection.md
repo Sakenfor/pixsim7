@@ -249,3 +249,14 @@ ai_model_registry = AiModelRegistry()
   - [ ] Defaults can be changed via dropdowns and persisted via the dev API.
   - [ ] Analyze tab displays which parser model is currently in effect (informational).
 
+---
+
+### Note on Defaults Storage
+
+- The `AiModelRegistry` itself is in-memory and code-defined (like provider manifests); it only describes what models/engines exist and their capabilities.
+- The **chosen defaults** for each capability (e.g., default `prompt_edit` and `prompt_parse` models) should be stored in a small database table (e.g. `ai_model_defaults`), not in memory or JSON files:
+  - Minimum columns: `id`, `scope_type` (`global` | `user` | `workspace`), `scope_id` (nullable for global), `capability` (`prompt_edit`, `prompt_parse`, ...), `model_id`, timestamps.
+  - For this task, it is sufficient to implement a single global default per capability.
+- The dev defaults API in Task B should read/write this table, and callers (AI Hub, prompt parsing) should:
+  - Query the table for the relevant capability/scope.
+  - Fall back to hardcoded code defaults when no row exists.
