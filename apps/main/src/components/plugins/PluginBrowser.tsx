@@ -7,20 +7,9 @@
  * This is a simplified version focused on browsing within the Plugin Workspace.
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import {
-  listAllPlugins,
-  searchPlugins,
-  filterByKind,
-  filterByCategory,
-  filterByFeature,
-  getUniqueCategories,
-  getUniqueFeatures,
-  type PluginMeta,
-  type PluginKind,
-} from '../../lib/plugins/catalog';
+import { type PluginMeta, type PluginKind } from '../../lib/plugins/catalog';
 import { PluginDependencies } from '../capabilities/PluginDependencies';
-import { pluginCatalog, pluginActivationManager } from '../../lib/plugins/pluginSystem';
+import { usePluginBrowserController, type PanelCategory, type PanelOrigin } from '../../hooks/usePluginBrowserController';
 import type { ExtendedPluginMetadata } from '../../lib/plugins/pluginSystem';
 
 // Plugin kind labels
@@ -29,6 +18,7 @@ const PLUGIN_KIND_LABELS: Record<PluginKind, string> = {
   'interaction': 'Interaction',
   'node-type': 'Node Type',
   'gallery-tool': 'Gallery Tool',
+  'world-tool': 'World Tool',
   'ui-plugin': 'UI Plugin',
   'generation-ui': 'Generation UI',
 };
@@ -39,6 +29,7 @@ const PLUGIN_KIND_ICONS: Record<PluginKind, string> = {
   'interaction': '💬',
   'node-type': '🔷',
   'gallery-tool': '🖼️',
+  'world-tool': '🌍',
   'ui-plugin': '🎨',
   'generation-ui': '✨',
 };
@@ -48,58 +39,27 @@ interface PluginBrowserProps {
   selectedPluginId?: string;
 }
 
-type BrowserTab = 'legacy' | 'workspace-panels';
-
 export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowserProps) {
-  const [activeTab, setActiveTab] = useState<BrowserTab>('legacy');
-  const [plugins, setPlugins] = useState<PluginMeta[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [kindFilter, setKindFilter] = useState<PluginKind | 'all'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [featureFilter, setFeatureFilter] = useState<string>('all');
+  // Use controller hook for all state and logic
+  const controller = usePluginBrowserController();
 
-  // Load plugins
-  useEffect(() => {
-    const allPlugins = listAllPlugins();
-    setPlugins(allPlugins);
-  }, []);
-
-  // Get unique categories and features
-  const categories = useMemo(() => getUniqueCategories(plugins), [plugins]);
-  const features = useMemo(() => getUniqueFeatures(plugins), [plugins]);
-
-  // Apply filters
-  const filteredPlugins = useMemo(() => {
-    let filtered = plugins;
-
-    // Search
-    if (searchQuery.trim()) {
-      filtered = searchPlugins(searchQuery, filtered);
-    }
-
-    // Kind filter
-    if (kindFilter !== 'all') {
-      filtered = filterByKind(kindFilter, filtered);
-    }
-
-    // Category filter
-    if (categoryFilter !== 'all') {
-      filtered = filterByCategory(categoryFilter, filtered);
-    }
-
-    // Feature filter
-    if (featureFilter !== 'all') {
-      filtered = filterByFeature(featureFilter, filtered);
-    }
-
-    return filtered;
-  }, [plugins, searchQuery, kindFilter, categoryFilter, featureFilter]);
-
-  // Check if there are any control center plugins
-  const hasControlCenterPlugins = useMemo(
-    () => filteredPlugins.some(p => p.providesFeatures?.includes('control-center')),
-    [filteredPlugins]
-  );
+  // Destructure controller state for easier access
+  const {
+    activeTab,
+    setActiveTab,
+    filteredPlugins,
+    searchQuery,
+    setSearchQuery,
+    kindFilter,
+    setKindFilter,
+    categoryFilter,
+    setCategoryFilter,
+    featureFilter,
+    setFeatureFilter,
+    categories,
+    features,
+    hasControlCenterPlugins,
+  } = controller;
 
   return (
     <div className="space-y-4">
@@ -245,76 +205,44 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
       )}
 
       {/* Workspace Panels Tab */}
-      {activeTab === 'workspace-panels' && <WorkspacePanelsBrowser />}
+      {activeTab === 'workspace-panels' && (
+        <WorkspacePanelsBrowser
+          panelPlugins={controller.filteredPanelPlugins}
+          searchQuery={controller.panelSearchQuery}
+          setSearchQuery={controller.setPanelSearchQuery}
+          categoryFilter={controller.panelCategoryFilter}
+          setCategoryFilter={controller.setPanelCategoryFilter}
+          originFilter={controller.panelOriginFilter}
+          setOriginFilter={controller.setPanelOriginFilter}
+          onToggleActivation={controller.handleTogglePanelActivation}
+        />
+      )}
     </div>
   );
 }
 
 // Workspace Panels Browser Component
-function WorkspacePanelsBrowser() {
-  const [panelPlugins, setPanelPlugins] = useState<ExtendedPluginMetadata<'workspace-panel'>[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'core' | 'development' | 'game' | 'tools' | 'custom'>('all');
-  const [originFilter, setOriginFilter] = useState<'all' | 'builtin' | 'plugin-dir' | 'ui-bundle'>('all');
+interface WorkspacePanelsBrowserProps {
+  panelPlugins: ExtendedPluginMetadata<'workspace-panel'>[];
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  categoryFilter: PanelCategory;
+  setCategoryFilter: (category: PanelCategory) => void;
+  originFilter: PanelOrigin;
+  setOriginFilter: (origin: PanelOrigin) => void;
+  onToggleActivation: (panelId: string) => Promise<void>;
+}
 
-  // Load workspace panel plugins and subscribe to changes
-  useEffect(() => {
-    const loadPanels = () => {
-      const panels = pluginCatalog.getByFamily('workspace-panel');
-      setPanelPlugins(panels);
-    };
-
-    // Initial load
-    loadPanels();
-
-    // Subscribe to catalog changes
-    const unsubscribe = pluginCatalog.subscribe(loadPanels);
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Apply filters
-  const filteredPanels = useMemo(() => {
-    let filtered = panelPlugins;
-
-    // Search
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.id.toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query) ||
-          p.tags?.some((tag) => tag.toLowerCase().includes(query))
-      );
-    }
-
-    // Category filter
-    if (categoryFilter !== 'all') {
-      filtered = filtered.filter((p) => p.category === categoryFilter);
-    }
-
-    // Origin filter
-    if (originFilter !== 'all') {
-      filtered = filtered.filter((p) => p.origin === originFilter);
-    }
-
-    return filtered;
-  }, [panelPlugins, searchQuery, categoryFilter, originFilter]);
-
-  const handleToggleActivation = async (panelId: string) => {
-    const panel = pluginCatalog.get(panelId);
-    if (!panel) return;
-
-    if (panel.activationState === 'active') {
-      await pluginActivationManager.deactivate(panelId);
-    } else {
-      await pluginActivationManager.activate(panelId);
-    }
-    // Panel list will update automatically via subscription
-  };
+function WorkspacePanelsBrowser({
+  panelPlugins,
+  searchQuery,
+  setSearchQuery,
+  categoryFilter,
+  setCategoryFilter,
+  originFilter,
+  setOriginFilter,
+  onToggleActivation,
+}: WorkspacePanelsBrowserProps) {
 
   return (
     <>
@@ -356,22 +284,22 @@ function WorkspacePanelsBrowser() {
         </select>
 
         <div className="ml-auto text-sm text-neutral-600 dark:text-neutral-400">
-          {filteredPanels.length} panel{filteredPanels.length !== 1 ? 's' : ''}
+          {panelPlugins.length} panel{panelPlugins.length !== 1 ? 's' : ''}
         </div>
       </div>
 
       {/* Panel list */}
       <div className="space-y-2">
-        {filteredPanels.length === 0 ? (
+        {panelPlugins.length === 0 ? (
           <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
             No workspace panels found matching your filters
           </div>
         ) : (
-          filteredPanels.map((panel) => (
+          panelPlugins.map((panel) => (
             <WorkspacePanelListItem
               key={panel.id}
               panel={panel}
-              onToggleActivation={handleToggleActivation}
+              onToggleActivation={onToggleActivation}
             />
           ))
         )}
