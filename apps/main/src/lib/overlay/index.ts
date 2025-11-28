@@ -129,3 +129,15 @@ export {
   upsertWidgets,
   pickWidgets,
 } from './utils/merge';
+
+// Presets
+export {
+  mediaCardPresets,
+  getMediaCardPreset,
+  getDefaultMediaCardConfig,
+  PresetManager,
+  LocalStoragePresetStorage,
+  presetManager,
+} from './presets';
+
+export type { PresetStorage } from './presets';
