@@ -30,6 +30,7 @@ import { DevPromptImporter } from './routes/DevPromptImporter';
 import { PromptLabDev } from './routes/PromptLabDev';
 import { ActionBlockGraphDev } from './routes/ActionBlockGraphDev';
 import { BlockFitDev } from './routes/BlockFitDev';
+import { OverlayConfig } from './routes/OverlayConfig';
 import { ControlCenterManager } from './components/control/ControlCenterManager';
 import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
@@ -90,6 +91,7 @@ function App() {
           <Route path="/simulation" element={<ProtectedRoute><SimulationPlayground /></ProtectedRoute>} />
           <Route path="/plugins" element={<ProtectedRoute><PluginManagerUI /></ProtectedRoute>} />
           <Route path="/plugin-workspace" element={<ProtectedRoute><PluginWorkspaceRoute /></ProtectedRoute>} />
+          <Route path="/settings/overlays" element={<ProtectedRoute><OverlayConfig /></ProtectedRoute>} />
           <Route path="/app-map" element={<ProtectedRoute><AppMapDev /></ProtectedRoute>} />
           <Route path="/template-analytics" element={<ProtectedRoute><TemplateAnalyticsDev /></ProtectedRoute>} />
           <Route path="/interaction-studio" element={<ProtectedRoute><InteractionStudio /></ProtectedRoute>} />

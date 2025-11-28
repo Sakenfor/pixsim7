@@ -32,6 +32,7 @@ import {
   appMapModule as appMapPageModule,
   pluginWorkspaceModule,
   modulesDevModule,
+  overlayConfigModule,
 } from './pages';
 
 // Register all modules
@@ -73,6 +74,7 @@ export function registerModules() {
   moduleRegistry.register(appMapPageModule);
   moduleRegistry.register(pluginWorkspaceModule);
   moduleRegistry.register(modulesDevModule);
+  moduleRegistry.register(overlayConfigModule);
 
   // Note: sceneBuilderModule removed - now uses graphStore (Zustand) for state management
   // scene-builder module now only exports types
