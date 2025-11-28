@@ -23,15 +23,11 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { OverlayContainer } from '@/lib/overlay';
-import type { OverlayConfiguration } from '@/lib/overlay';
-import { createBadgeWidget, createButtonWidget, createPanelWidget } from '@/lib/overlay';
+import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
 import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
 import { ThemedIcon } from '../../lib/icons';
-import {
-  resolveMediaBadgeConfig,
-  MEDIA_TYPE_ICON,
-  MEDIA_STATUS_ICON,
-} from './mediaBadgeConfig';
+import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
+import { createDefaultMediaCardWidgets } from './mediaCardWidgets';
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -82,6 +78,18 @@ export interface MediaCardProps {
   uploadNote?: string;
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
+
+  /**
+   * Optional overlay configuration to customize or replace default widgets.
+   * When provided, these widgets are added to (or replace) the default set.
+   */
+  overlayConfig?: Partial<OverlayConfiguration>;
+
+  /**
+   * Optional array of custom widgets to add/replace in the overlay.
+   * These are merged with default widgets (by id).
+   */
+  customWidgets?: OverlayWidget[];
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -98,6 +106,8 @@ export function MediaCard(props: MediaCardProps) {
     providerStatus,
     actions,
     badgeConfig,
+    overlayConfig: customOverlayConfig,
+    customWidgets = [],
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
@@ -140,202 +150,32 @@ export function MediaCard(props: MediaCardProps) {
     }
   };
 
-  // Build overlay configuration dynamically based on visibility settings
+  // Build overlay configuration dynamically
   const overlayConfig: OverlayConfiguration = useMemo(() => {
-    const widgets = [];
+    // Get default widgets from factory
+    const defaultWidgets = createDefaultMediaCardWidgets(props);
 
-    // Primary media type icon (top-left)
-    if (visibility.showPrimaryIcon && badges.primary) {
-      const statusMeta = badges.status ? MEDIA_STATUS_ICON[badges.status] : null;
-      const ringColor = statusMeta?.color === 'green' ? 'ring-green-500' :
-                       statusMeta?.color === 'yellow' ? 'ring-amber-500' :
-                       statusMeta?.color === 'red' ? 'ring-red-500' :
-                       'ring-neutral-400';
+    // Merge with custom widgets (custom widgets replace default by id)
+    const widgetMap = new Map<string, OverlayWidget>();
+    
+    // Add defaults first
+    defaultWidgets.forEach(widget => widgetMap.set(widget.id, widget));
+    
+    // Override/add custom widgets
+    customWidgets.forEach(widget => widgetMap.set(widget.id, widget));
+    
+    const finalWidgets = Array.from(widgetMap.values());
 
-      widgets.push(
-        createBadgeWidget({
-          id: 'primary-icon',
-          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon',
-          icon: MEDIA_TYPE_ICON[badges.primary],
-          color: 'gray',
-          shape: 'circle',
-          tooltip: `${badges.primary} media`,
-          className: visibility.showStatusIcon && badges.status
-            ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
-            : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
-          priority: 10,
-        })
-      );
-    }
-
-    // Status badge (top-right) - simplified, TODO: add expandable menu
-    if (visibility.showStatusIcon && badges.status) {
-      const statusMeta = MEDIA_STATUS_ICON[badges.status];
-      const statusColor = statusMeta.color === 'green' ? 'green' :
-                         statusMeta.color === 'yellow' ? 'yellow' :
-                         statusMeta.color === 'red' ? 'red' : 'gray';
-
-      widgets.push(
-        createBadgeWidget({
-          id: 'status-badge',
-          position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon',
-          icon: statusMeta.icon,
-          color: statusColor,
-          shape: 'circle',
-          tooltip: statusMeta.label,
-          onClick: () => {
-            if (actions?.onOpenDetails) {
-              actions.onOpenDetails(id);
-            } else {
-              handleOpen();
-            }
-          },
-          className: '!bg-white/20 dark:!bg-white/30 backdrop-blur-md',
-          priority: 20,
-        })
-      );
-    }
-
-    // Duration badge (bottom-right) - for videos
-    if (mediaType === 'video' && durationSec) {
-      const minutes = Math.floor(durationSec / 60);
-      const seconds = Math.floor(durationSec % 60);
-      const durationText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-      widgets.push(
-        createBadgeWidget({
-          id: 'duration',
-          position: { anchor: 'bottom-right', offset: { x: -4, y: -4 } },
-          visibility: { trigger: 'always' },
-          variant: 'text',
-          label: durationText,
-          color: 'gray',
-          className: '!bg-black/60 !text-white text-[10px]',
-          priority: 5,
-        })
-      );
-    }
-
-    // Provider badge (top-right, below status) - shows on hover
-    if (visibility.showFooterProvider && providerId && !providerId.includes('_')) {
-      widgets.push(
-        createBadgeWidget({
-          id: 'provider',
-          position: { anchor: 'top-right', offset: { x: -8, y: 48 } },
-          visibility: {
-            trigger: 'hover-container',
-            transition: 'fade',
-            transitionDuration: 200,
-          },
-          variant: 'text',
-          label: providerId,
-          color: 'gray',
-          className: '!bg-white/90 dark:!bg-neutral-800/90 backdrop-blur-sm text-[10px]',
-          tooltip: `Provider: ${providerId}`,
-          priority: 15,
-        })
-      );
-    }
-
-    // Description and tags overlay (bottom) - on hover
-    if (visibility.showTagsInOverlay && (description || displayTags.length > 0)) {
-      widgets.push(
-        createPanelWidget({
-          id: 'info-overlay',
-          position: { anchor: 'bottom-left', offset: { x: 0, y: 0 } },
-          visibility: {
-            trigger: 'hover-container',
-            transition: 'slide',
-            transitionDuration: 200,
-          },
-          variant: 'dark',
-          className: '!rounded-t-none !rounded-b-md !border-0 w-full',
-          content: (
-            <div className="space-y-1.5">
-              {description && (
-                <p className="text-xs line-clamp-2 opacity-90">
-                  {description}
-                </p>
-              )}
-              {displayTags.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {displayTags.slice(0, 3).map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-1.5 py-0.5 bg-white/20 rounded text-[10px]"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                  {displayTags.length > 3 && (
-                    <span className="px-1.5 py-0.5 text-[10px] opacity-60">
-                      +{displayTags.length - 3}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          ),
-          priority: 8,
-        })
-      );
-    }
-
-    // Generation button (bottom-right) - simplified
-    const hasGenerationActions = Boolean(
-      actions?.onImageToVideo ||
-      actions?.onVideoExtend ||
-      actions?.onAddToTransition ||
-      actions?.onAddToGenerate
-    );
-
-    if (visibility.showGenerationBadge && hasGenerationActions) {
-      widgets.push(
-        createButtonWidget({
-          id: 'generate',
-          position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-          visibility: {
-            trigger: visibility.showGenerationOnHoverOnly ? 'hover-container' : 'always',
-            transition: 'fade',
-            transitionDuration: 150,
-          },
-          icon: 'zap',
-          label: 'Generate',
-          variant: 'primary',
-          size: 'sm',
-          onClick: () => {
-            // TODO: Add generation action menu
-            if (actions?.onAddToGenerate) {
-              actions.onAddToGenerate(id);
-            }
-          },
-          priority: 15,
-        })
-      );
-    }
-
-    return {
-      id: `media-card-${id}`,
-      name: `Media Card ${id}`,
-      widgets,
-      spacing: 'normal',
+    // Build final configuration
+    const baseConfig: OverlayConfiguration = {
+      id: customOverlayConfig?.id || 'media-card-overlay',
+      name: customOverlayConfig?.name || 'Media Card',
+      widgets: finalWidgets,
+      spacing: customOverlayConfig?.spacing || 'normal',
     };
-  }, [
-    id,
-    badges,
-    visibility,
-    mediaType,
-    durationSec,
-    description,
-    displayTags,
-    providerId,
-    createdAt,
-    actions,
-  ]);
+
+    return baseConfig;
+  }, [props, customWidgets, customOverlayConfig]);
 
   // Prepare data for overlay widgets
   const overlayData = {
