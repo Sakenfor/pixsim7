@@ -677,6 +677,85 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
     }
   };
 
+  // Phase 2 (Task 101): Export/Import using gameplay-ui-core converters
+  const handleExportUnified = () => {
+    try {
+      // Convert current placements to HudSurfaceConfig
+      const surfaceConfig = fromHudToolPlacements(
+        placements.map(p => {
+          const { name, description, icon, ...placement } = p;
+          return placement;
+        }),
+        {
+          id: `hud-export-${Date.now()}`,
+          name: `${worldDetail.name} HUD Layout`,
+          description: `Exported from profile: ${selectedProfile}, view mode: ${selectedViewMode}`,
+          profileId: selectedProfile,
+          viewMode: selectedViewMode as any,
+          worldId: worldDetail.id,
+        }
+      );
+
+      // Export as JSON
+      const json = JSON.stringify(surfaceConfig, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hud-layout-${worldDetail.name}-${selectedProfile}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setSuccessMessage('Layout exported successfully (HudSurfaceConfig format)');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(`Failed to export layout: ${err.message || String(err)}`);
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
+  const handleImportUnified = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = async (e: any) => {
+      try {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+
+        const text = await file.text();
+        const config: HudSurfaceConfig = JSON.parse(text);
+
+        // Validate it's a HudSurfaceConfig
+        if (!config.componentType || config.componentType !== 'hud') {
+          setError('Invalid format: Not a HUD layout configuration');
+          setTimeout(() => setError(null), 3000);
+          return;
+        }
+
+        // Convert back to HudToolPlacement[]
+        const importedPlacements = toHudToolPlacements(config);
+
+        // Enrich with tool metadata
+        const toolMap = new Map(availableTools.map(t => [t.id, t]));
+        const enrichedPlacements: ToolPlacementRow[] = importedPlacements.map(p => ({
+          ...p,
+          name: toolMap.get(p.toolId)?.name || p.toolId,
+          description: toolMap.get(p.toolId)?.description || '',
+          icon: toolMap.get(p.toolId)?.icon,
+        }));
+
+        placementsUndo.set(enrichedPlacements);
+        setSuccessMessage(`Imported layout: ${config.name || 'Unnamed'}`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err: any) {
+        setError(`Failed to import layout: ${err.message || String(err)}`);
+        setTimeout(() => setError(null), 3000);
+      }
+    };
+    input.click();
+  };
+
   return (
     <Panel className="space-y-4">
       <div className="flex items-center justify-between">
@@ -1036,10 +1115,45 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
                 size="sm"
                 variant="ghost"
                 onClick={handleImportPreset}
-                title="Import preset from JSON"
+                title="Import preset from JSON (legacy format)"
               >
-                Import
+                Import Legacy
               </Button>
+            </div>
+          </div>
+
+          {/* Phase 2 (Task 101): Unified Export/Import using HudSurfaceConfig */}
+          <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-700 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-sm font-semibold text-purple-800 dark:text-purple-200">
+                  📦 Unified Format (HudSurfaceConfig)
+                </div>
+                <div className="text-xs text-purple-600 dark:text-purple-400">
+                  New format compatible with editing-core architecture
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleExportUnified}
+                  title="Export layout as HudSurfaceConfig JSON (unified format)"
+                >
+                  📥 Export
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleImportUnified}
+                  title="Import HudSurfaceConfig JSON (unified format)"
+                >
+                  📤 Import
+                </Button>
+              </div>
+            </div>
+            <div className="text-xs text-purple-600 dark:text-purple-400">
+              Includes profile, view mode, and world context. Compatible with future overlay/HUD sharing.
             </div>
           </div>
 
