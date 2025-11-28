@@ -4,6 +4,19 @@
 
 A reusable, type-safe system for positioning UI elements (badges, controls, overlays, widgets) on container components throughout the application.
 
+### Design Goals
+
+- **Declarative first**: All overlay placement should be expressed as data so presets can be serialized, inspected, and edited visually.
+- **Predictable layout**: The same configuration should produce identical placement across pages and frameworks, without relying on incidental CSS.
+- **Accessibility-aware**: Widgets must remain focusable and discoverable when hidden behind visibility triggers.
+- **Composable**: Widgets from different sources (system presets, user presets, feature flags) should merge deterministically.
+
+### Non-Goals
+
+- **No implicit DOM manipulation**: The system should not directly query or mutate arbitrary DOM nodes. Consumers provide container refs.
+- **No layout reflow hacks**: Avoid forced synchronous layout or `requestAnimationFrame` loops to position widgets; prefer pure calculations and CSS transforms.
+- **No bespoke per-component CSS**: Styling belongs in widget styles/presets rather than ad-hoc overrides on consuming components.
+
 ## Architecture
 
 ### Core Concepts
@@ -47,6 +60,13 @@ interface CustomPosition {
 }
 
 type WidgetPosition = OverlayPosition | CustomPosition;
+
+// Implementation notes
+// - Containers MUST be `position: relative` (or any non-static value) so absolutely
+//   positioned widgets remain inside the overlay surface.
+// - Offsets default to `{ x: 0, y: 0 }` when omitted.
+// - String offsets should accept CSS units (e.g., `"10%"`, `"1.5rem"`).
+// - Validate anchors at runtime and fail fast in development to avoid silent misplacements.
 ```
 
 ### Visibility Rules
@@ -66,6 +86,7 @@ interface VisibilityConfig {
   delay?: number; // ms delay before show/hide
   transition?: 'fade' | 'slide' | 'scale' | 'none';
   transitionDuration?: number; // ms
+  reduceMotion?: boolean; // respect prefers-reduced-motion
 }
 ```
 
@@ -82,6 +103,7 @@ interface WidgetStyle {
   className?: string; // Additional Tailwind classes
   maxWidth?: number | string;
   maxHeight?: number | string;
+  pointerEvents?: 'auto' | 'none';
 }
 ```
 
@@ -102,6 +124,10 @@ interface OverlayWidget<TData = any> {
   interactive?: boolean;
   dismissible?: boolean;
   onClick?: (data: TData) => void;
+
+  // Accessibility
+  ariaLabel?: string;
+  tabIndex?: number; // Explicit tab order for focusable widgets
 
   // Grouping
   group?: string; // Stack with other widgets in same group
@@ -133,6 +159,9 @@ interface OverlayConfiguration {
   // Defaults
   defaultVisibility?: VisibilityConfig;
   defaultStyle?: WidgetStyle;
+
+  // Runtime expectations
+  allowOverflow?: boolean; // Defaults to true. If false, clamp positions to container bounds
 }
 
 // Preset system
@@ -146,6 +175,14 @@ interface OverlayPreset {
   thumbnail?: string;
 }
 ```
+
+**Spacing tokens**
+
+- `compact` → 4px gap
+- `normal` → 8px gap
+- `spacious` → 12px gap
+
+If a consumer passes a numeric spacing into lower-level utilities, normalize it back into these tokens to keep runtime and serialized presets consistent.
 
 ## 2. Component Architecture
 
@@ -278,6 +315,17 @@ function createPreset(
 ): OverlayPreset {
   // Create saveable preset
 }
+
+interface ValidationResult {
+  errors: string[];
+  warnings: string[];
+}
+
+function validateConfiguration(
+  configuration: OverlayConfiguration
+): ValidationResult {
+  // Surface actionable errors (invalid anchors, negative sizes, conflicting tabIndex)
+}
 ```
 
 ## 5. Migration Path
@@ -297,6 +345,7 @@ function createPreset(
 - [ ] Build preset management
 - [ ] Add configuration merge logic
 - [ ] Create storage/persistence layer
+- [ ] Add configuration validation + dev warnings
 
 ### Phase 4: Badge System Migration
 - [ ] Convert MediaCard badges to overlay widgets
@@ -312,6 +361,7 @@ function createPreset(
 - [ ] Drag-drop positioning
 - [ ] Live preview
 - [ ] Visual preset builder
+- [ ] Accessibility preview (keyboard + screen reader flow)
 
 ## 6. Use Case Examples
 
@@ -417,7 +467,24 @@ const hudOverlayConfig: OverlayConfiguration = {
 };
 ```
 
-## 7. Benefits
+## 7. Implementation Guardrails
+
+- **Container contract**: The immediate overlay wrapper should set `position: relative`, `overflow: visible` by default, and allow an opt-in clamp to `overflow: hidden` when `allowOverflow` is `false`.
+- **Anchor math**: Normalize calculations to container width/height first, then apply offsets. Avoid mixing percentage offsets with `translate` transforms without normalizing against anchor origin.
+- **Collision strategy**: Prefer deterministic shifting (e.g., push widgets down/right by spacing) over random jitter. Document any fallback that hides colliding widgets.
+- **Z-index discipline**: Reserve a small range (e.g., 10–20) for default widgets and allow consumers to opt into higher ranges. Avoid global z-index constants that conflict with modals/tooltips elsewhere in the app.
+- **Keyboard navigation**: Widgets that render interactive elements must support focus rings and keyboard activation. When visibility depends on hover, ensure focus still reveals the widget.
+- **SSR/CSR parity**: Keep positioning calculations pure so they can run during SSR without touching `window`. Defer DOM measurements to effects that guard for `typeof window !== 'undefined'`.
+- **Theming**: Favor tokens/classes (`className`) over inline styles, allowing light/dark theme overrides without altering widget definitions.
+- **Pointer/touch fallback**: Degrade `hover`-only triggers to `focus` or `always` on touch-only devices so widgets remain reachable without a cursor.
+
+## 8. Known Gaps & Open Questions
+
+- **Right-to-left layouts**: Should anchors auto-flip (e.g., `top-left` → `top-right`) when `dir="rtl"`? Today, configs assume LTR.
+- **Container resizing**: Do widgets reposition on resize observers, or is a manual reflow hook required? Define a contract so heavy reflows can be throttled.
+- **Persistence format**: Presets currently assume JSON. If we store in the database, do we need migrations/versioning for widget schema changes?
+
+## 9. Benefits
 
 ### For Developers
 - **Reusable**: One system for all overlay needs
@@ -440,7 +507,7 @@ const hudOverlayConfig: OverlayConfiguration = {
 - **Future-proof**: Adapt to new use cases
 - **Migration-friendly**: Gradual adoption
 
-## 8. File Structure
+## 10. File Structure
 
 ```
 apps/main/src/lib/overlay/
@@ -468,7 +535,7 @@ apps/main/src/lib/overlay/
       └── usePreset.ts      # Preset management
 ```
 
-## 9. Next Steps
+## 11. Next Steps
 
 1. Review and approve architecture
 2. Create core types and utilities
