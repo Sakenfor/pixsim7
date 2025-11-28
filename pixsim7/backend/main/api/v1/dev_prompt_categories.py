@@ -32,6 +32,11 @@ from pixsim7.backend.main.services.semantic_packs.utils import (
 from pixsim7.backend.main.services.action_blocks.utils import (
     build_draft_action_block_from_suggestion,
 )
+from pixsim7.backend.main.shared.schemas.discovery_schemas import (
+    SuggestedOntologyId,
+    SuggestedPackEntry,
+    SuggestedActionBlock,
+)
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -52,31 +57,6 @@ class PromptCategoryDiscoveryRequest(BaseModel):
         default=None,
         description="Optional hint: 'family-seed', 'one-off', etc."
     )
-
-
-class SuggestedOntologyId(BaseModel):
-    """A suggested ontology ID from AI analysis."""
-    id: str
-    label: str
-    description: Optional[str] = None
-    kind: str  # e.g. "action", "state", "part", "manner", "agency"
-    confidence: float
-
-
-class SuggestedPackEntry(BaseModel):
-    """A suggested semantic pack entry."""
-    pack_id: str
-    pack_label: str
-    parser_hints: Dict[str, List[str]]  # candidate hints for this pack
-    notes: Optional[str] = None
-
-
-class SuggestedActionBlock(BaseModel):
-    """A suggested ActionBlock for reuse."""
-    block_id: str
-    prompt: str
-    tags: Dict[str, Any]
-    notes: Optional[str] = None
 
 
 class PromptCategoryDiscoveryResponse(BaseModel):

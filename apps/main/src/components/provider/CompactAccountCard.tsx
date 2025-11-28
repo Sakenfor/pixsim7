@@ -13,20 +13,55 @@ export function CompactAccountCard({
   onToggle,
   onDelete,
 }: CompactAccountCardProps) {
-  const isActive = account.status === 'ACTIVE';
+  const isActive = account.status === 'active';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   // Use backend-provided total_credits instead of recalculating
   const totalCredits = account.total_credits;
 
   const statusConfig = {
-    ACTIVE: { color: 'bg-green-500', label: 'Active', textColor: 'text-green-600 dark:text-green-400' },
-    EXHAUSTED: { color: 'bg-red-500', label: 'Exhausted', textColor: 'text-red-600 dark:text-red-400' },
-    ERROR: { color: 'bg-orange-500', label: 'Error', textColor: 'text-orange-600 dark:text-orange-400' },
-    DISABLED: { color: 'bg-neutral-400', label: 'Disabled', textColor: 'text-neutral-600 dark:text-neutral-500' },
-    RATE_LIMITED: { color: 'bg-amber-500', label: 'Rate Limited', textColor: 'text-amber-600 dark:text-amber-400' },
+    active: {
+      color: 'bg-green-500',
+      label: 'Active',
+      textColor: 'text-green-600 dark:text-green-400',
+      badgeBg: 'bg-green-500/10',
+      badgeBorder: 'border-green-500/20',
+      badgeText: 'text-green-600 dark:text-green-400'
+    },
+    exhausted: {
+      color: 'bg-red-500',
+      label: 'Exhausted',
+      textColor: 'text-red-600 dark:text-red-400',
+      badgeBg: 'bg-red-500/10',
+      badgeBorder: 'border-red-500/20',
+      badgeText: 'text-red-600 dark:text-red-400'
+    },
+    error: {
+      color: 'bg-orange-500',
+      label: 'Error',
+      textColor: 'text-orange-600 dark:text-orange-400',
+      badgeBg: 'bg-orange-500/10',
+      badgeBorder: 'border-orange-500/20',
+      badgeText: 'text-orange-600 dark:text-orange-400'
+    },
+    disabled: {
+      color: 'bg-neutral-400',
+      label: 'Disabled',
+      textColor: 'text-neutral-600 dark:text-neutral-500',
+      badgeBg: 'bg-neutral-500/10',
+      badgeBorder: 'border-neutral-500/20',
+      badgeText: 'text-neutral-600 dark:text-neutral-400'
+    },
+    rate_limited: {
+      color: 'bg-amber-500',
+      label: 'Rate Limited',
+      textColor: 'text-amber-600 dark:text-amber-400',
+      badgeBg: 'bg-amber-500/10',
+      badgeBorder: 'border-amber-500/20',
+      badgeText: 'text-amber-600 dark:text-amber-400'
+    },
   };
 
-  const status = statusConfig[account.status as keyof typeof statusConfig] || statusConfig.DISABLED;
+  const status = statusConfig[account.status as keyof typeof statusConfig] || statusConfig.disabled;
 
   return (
     <div className="group relative bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 hover:shadow-md hover:border-neutral-300 dark:hover:border-neutral-600 transition-all">
@@ -44,6 +79,11 @@ export function CompactAccountCard({
 
             {/* Badges */}
             <div className="flex gap-1 flex-shrink-0">
+              {/* Status Badge */}
+              <span className={`px-1.5 py-0.5 text-[9px] font-bold ${status.badgeBg} ${status.badgeText} rounded border ${status.badgeBorder}`}>
+                {status.label.toUpperCase()}
+              </span>
+
               {account.has_api_key_paid && (
                 <span className="px-1.5 py-0.5 text-[9px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded border border-purple-500/20">
                   PRO

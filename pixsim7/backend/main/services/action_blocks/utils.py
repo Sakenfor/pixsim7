@@ -8,7 +8,7 @@ from typing import Optional
 from datetime import datetime
 
 from pixsim7.backend.main.domain.action_block import ActionBlockDB
-from pixsim7.backend.main.api.v1.dev_prompt_categories import SuggestedActionBlock
+from pixsim7.backend.main.shared.schemas.discovery_schemas import SuggestedActionBlock
 
 
 def build_draft_action_block_from_suggestion(

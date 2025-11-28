@@ -176,6 +176,10 @@ class PixverseProvider(Provider):
             "api_key": account.api_key,
         }
 
+        # Include OpenAPI key if available (extracted by session_manager)
+        if "openapi_key" in session_data:
+            session["openapi_key"] = session_data["openapi_key"]
+
         # Add use_method if specified
         if use_method:
             session["use_method"] = use_method

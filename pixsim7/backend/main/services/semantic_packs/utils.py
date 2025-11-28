@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
-from pixsim7.backend.main.api.v1.dev_prompt_categories import SuggestedPackEntry
+from pixsim7.backend.main.shared.schemas.discovery_schemas import SuggestedPackEntry
 
 
 def build_draft_pack_from_suggestion(

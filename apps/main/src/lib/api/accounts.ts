@@ -5,7 +5,7 @@ import { logEvent } from '../logging';
 export interface UpdateAccountRequest {
   email?: string;
   nickname?: string;
-  status?: 'ACTIVE' | 'DISABLED' | 'EXHAUSTED' | 'ERROR' | 'RATE_LIMITED';
+  status?: 'active' | 'disabled' | 'exhausted' | 'error' | 'rate_limited';
   is_private?: boolean;
   is_google_account?: boolean;
   jwt_token?: string;
@@ -52,7 +52,7 @@ export async function toggleAccountStatus(
   accountId: number,
   currentStatus: string
 ): Promise<ProviderAccount> {
-  const newStatus = currentStatus === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
+  const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
   return updateAccount(accountId, { status: newStatus });
 }
 
