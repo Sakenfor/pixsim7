@@ -4,13 +4,21 @@
  * Simplified media card implementation using the overlay positioning system.
  * Legacy complex version backed up as MediaCard.tsx.legacy
  *
+ * Current Layout:
+ * - Top-left: Primary media type icon with status ring
+ * - Top-right: Status badge (clickable) + provider badge on hover
+ * - Bottom-right: Duration badge (videos only)
+ * - Bottom: Description/tags overlay on hover
+ * - Bottom-right: Generate button (conditional, on hover)
+ *
  * TODO: Gradually add back features from legacy:
- * - [ ] Expandable status badge menu
- * - [ ] Upload button with state
+ * - [ ] Expandable status badge menu (multi-action)
+ * - [ ] Upload button with state tracking
  * - [ ] Video hover scrubbing
  * - [ ] Generation quick actions menu
- * - [ ] Progress bar for duration
+ * - [ ] Progress bar for video playback
  * - [ ] Technical tags tooltip
+ * - [ ] Multi-provider support in UI
  */
 
 import { useMemo, useRef, useState } from 'react';
@@ -212,6 +220,27 @@ export function MediaCard(props: MediaCardProps) {
       );
     }
 
+    // Provider badge (top-right, below status) - shows on hover
+    if (visibility.showFooterProvider && providerId && !providerId.includes('_')) {
+      widgets.push(
+        createBadgeWidget({
+          id: 'provider',
+          position: { anchor: 'top-right', offset: { x: -8, y: 48 } },
+          visibility: {
+            trigger: 'hover-container',
+            transition: 'fade',
+            transitionDuration: 200,
+          },
+          variant: 'text',
+          label: providerId,
+          color: 'gray',
+          className: '!bg-white/90 dark:!bg-neutral-800/90 backdrop-blur-sm text-[10px]',
+          tooltip: `Provider: ${providerId}`,
+          priority: 15,
+        })
+      );
+    }
+
     // Description and tags overlay (bottom) - on hover
     if (visibility.showTagsInOverlay && (description || displayTags.length > 0)) {
       widgets.push(
@@ -252,39 +281,6 @@ export function MediaCard(props: MediaCardProps) {
             </div>
           ),
           priority: 8,
-        })
-      );
-    }
-
-    // Provider and date footer (bottom)
-    if (visibility.showFooterProvider || visibility.showFooterDate) {
-      widgets.push(
-        createPanelWidget({
-          id: 'footer',
-          position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-          visibility: {
-            trigger: 'hover-container',
-            transition: 'fade',
-            transitionDuration: 200,
-          },
-          variant: 'glass',
-          className: 'text-[10px] pointer-events-none',
-          content: (
-            <div className="flex items-center gap-1.5">
-              {visibility.showFooterProvider && providerId && !providerId.includes('_') && (
-                <span className="font-medium">{providerId}</span>
-              )}
-              {visibility.showFooterProvider && visibility.showFooterDate && (
-                <span>·</span>
-              )}
-              {visibility.showFooterDate && (
-                <span className="opacity-80">
-                  {new Date(createdAt).toLocaleDateString()}
-                </span>
-              )}
-            </div>
-          ),
-          priority: 5,
         })
       );
     }
