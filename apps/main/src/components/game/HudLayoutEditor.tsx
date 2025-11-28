@@ -3,6 +3,12 @@
  *
  * Designer-friendly UI for configuring per-world HUD layouts.
  * Allows assigning world tools to regions and setting display order.
+ *
+ * Type Architecture (Task 99 Update):
+ * - Uses gameplay-ui-core types (HudSurfaceConfig, HudWidgetConfig)
+ * - Internally works with HudToolPlacement[] for backwards compatibility
+ * - Uses mapping helpers (fromHudToolPlacements/toHudToolPlacements) when needed
+ * - This allows HUD to interoperate with the unified editing-core layer
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -35,6 +41,13 @@ import {
   getProfileLayout,
   type HudProfile,
 } from '../../lib/worldTools/hudProfiles';
+// Gameplay UI Core - HUD-specific config layer
+import {
+  type HudSurfaceConfig,
+  type HudWidgetConfig,
+  fromHudToolPlacements,
+  toHudToolPlacements,
+} from '../../lib/gameplay-ui-core';
 
 interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;

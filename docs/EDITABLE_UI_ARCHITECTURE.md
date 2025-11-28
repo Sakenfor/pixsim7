@@ -469,6 +469,36 @@ grep -r "feature_name" apps/main/src/components/game/HudLayoutEditor.tsx
 - Undo/Redo: `HudLayoutEditor.tsx:765-788`
 - Preset System: `HudLayoutEditor.tsx:508-633`
 
+### Gameplay UI Core (HUD-specific layer)
+**Location:** `apps/main/src/lib/gameplay-ui-core/`
+
+**Purpose:** HUD/gameplay-specific configuration layer built on top of editing-core
+
+**Key Files:**
+- `hudConfig.ts` - HUD-specific config types and mapping functions
+  - `HudWidgetConfig` - Wraps `UnifiedWidgetConfig` with HUD metadata (size, groupId, viewMode, profileId)
+  - `HudSurfaceConfig` - Wraps `UnifiedSurfaceConfig` with HUD metadata (profileId, viewMode, worldId)
+  - `fromHudToolPlacements()` / `toHudToolPlacements()` - Convert legacy HudToolPlacement ↔ HudWidgetConfig
+  - `toUnifiedSurfaceConfig()` / `fromUnifiedSurfaceConfig()` - Convert HUD ↔ Unified configs
+- `hudVisibility.ts` - Advanced HUD visibility conditions
+  - `HudVisibilityCondition` - Game-specific visibility (quest/location/time/relationship-based)
+  - `evaluateHudVisibility()` - Runtime evaluation against WorldToolContext
+  - `HudVisibilityHelpers` - Builders for common conditions
+  - Maps to `UnifiedVisibility.advanced` from editing-core
+
+**Architecture:**
+```
+editing-core (generic)
+    ↓
+gameplay-ui-core (HUD-specific)
+    ↓
+HudLayoutEditor (UI)
+```
+
+**Used by:** `apps/main/src/components/game/HudLayoutEditor.tsx`
+
+---
+
 ### Data Binding (Task 99 - Aligned with Editing Core)
 - **Type contract (canonical):** `apps/main/src/lib/editing-core/dataBinding.ts`
   - `DataBinding<T>` - Simple binding model (kind: static/path/fn)
