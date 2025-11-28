@@ -2,6 +2,14 @@
 
 This guide explains how to use the Panel Builder data binding system (Task 51).
 
+> **Note on Architecture (Task 99 Update):**
+> As of Task 99, the **type contract** for simple data bindings is defined in `apps/main/src/lib/editing-core/dataBinding.ts` (`DataBinding<T>`).
+> This guide covers the **registry-based** Task 51 binding system (`DataSourceBinding`), which provides a richer, source-registry model.
+> - For simple, direct bindings (static value, property path, or function), use **editing-core's `DataBinding<T>`**
+> - For registry-based bindings with transforms and computed sources, use **Task 51's `DataSourceBinding`** (documented here)
+>
+> Future editors (Overlay/HUD) should prefer the editing-core types where appropriate.
+
 ## Table of Contents
 
 1. [Overview](#overview)

@@ -7,7 +7,7 @@
  * Integrates with Task 51 data binding system for live data.
  */
 
-import type { DataBinding, DataSourceDefinition } from '../dataBinding';
+import type { DataSourceBinding, DataSourceDefinition } from '../dataBinding';
 
 export interface GridLayout {
   type: 'grid';
@@ -26,7 +26,7 @@ export interface WidgetInstance {
     h: number; // Height in grid units
   };
   config: Record<string, any>;
-  dataBindings?: Record<string, DataBinding>; // Using Task 51 DataBinding
+  dataBindings?: Record<string, DataSourceBinding>; // Using Task 51 registry-based binding
 }
 
 export interface PanelComposition {

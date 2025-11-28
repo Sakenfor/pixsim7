@@ -9,7 +9,8 @@ import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim/shared/ui';
 import { Icon } from '@/lib/icons';
-import { createResolver } from '../utils/propertyPath';
+import type { DataBinding } from '@/lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 
 export type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -25,21 +26,19 @@ export interface UploadWidgetConfig {
 
   /**
    * Current upload state
-   * Can be:
-   * - Static value: 'uploading'
-   * - Function: (data) => data.uploadState
-   * - Property path: "uploadState"
+   * Preferred: Use stateBinding with DataBinding<UploadState>
+   * Legacy: UploadState | string | ((data: any) => UploadState)
    */
-  state: UploadState | string | ((data: any) => UploadState);
+  state?: UploadState | string | ((data: any) => UploadState);
+  stateBinding?: DataBinding<UploadState>;
 
   /**
    * Upload progress (0-100, only used when state is 'uploading')
-   * Can be:
-   * - Static number: 50
-   * - Function: (data) => data.uploadProgress
-   * - Property path: "uploadProgress"
+   * Preferred: Use progressBinding with DataBinding<number>
+   * Legacy: number | string | ((data: any) => number)
    */
   progress?: number | string | ((data: any) => number);
+  progressBinding?: DataBinding<number>;
 
   /** Button label for each state */
   labels?: {
@@ -91,7 +90,9 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     position,
     visibility,
     state: stateProp,
+    stateBinding,
     progress: progressProp,
+    progressBinding,
     labels = {
       idle: 'Upload',
       uploading: 'Uploading...',
@@ -114,9 +115,9 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     priority,
   } = config;
 
-  // Create resolvers for reactive values
-  const stateResolver = createResolver<UploadState>(stateProp);
-  const progressResolver = progressProp ? createResolver<number>(progressProp) : null;
+  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
+  const finalStateBinding = stateBinding || (stateProp !== undefined ? createBindingFromValue('state', stateProp) : undefined);
+  const finalProgressBinding = progressBinding || (progressProp !== undefined ? createBindingFromValue('progress', progressProp) : undefined);
 
   return {
     id,
@@ -126,9 +127,9 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     priority,
     interactive: true,
     render: (data: any) => {
-      // ✨ Supports: static value, function, or property path string
-      const state = stateResolver(data);
-      const progress = progressResolver ? progressResolver(data) : 0;
+      // ✨ Resolve bindings using editing-core DataBinding system
+      const state = resolveDataBinding(finalStateBinding, data) ?? 'idle';
+      const progress = resolveDataBinding(finalProgressBinding, data) ?? 0;
 
       const handleClick = async () => {
         if (state === 'uploading') return;

@@ -6,18 +6,18 @@
  */
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import type { DataBinding } from './dataSourceRegistry';
+import type { DataSourceBinding } from './dataSourceRegistry';
 import { dataSourceRegistry } from './dataSourceRegistry';
 import type { ResolvedBinding, DataContext } from './dataResolver';
 import { resolveBinding, resolveBindings } from './dataResolver';
 import { subscribeToStore, type StoreId } from './storeAccessors';
 
 /**
- * Hook to resolve a single data binding
+ * Hook to resolve a single data source binding
  * Automatically updates when the underlying data changes
  */
 export function useResolvedBinding<T = unknown>(
-  binding: DataBinding | undefined,
+  binding: DataSourceBinding | undefined,
   context?: DataContext
 ): ResolvedBinding<T> | undefined {
   const [result, setResult] = useState<ResolvedBinding<T> | undefined>(() => {
@@ -62,11 +62,11 @@ export function useResolvedBinding<T = unknown>(
 }
 
 /**
- * Hook to resolve multiple data bindings
+ * Hook to resolve multiple data source bindings
  * Automatically updates when any underlying data changes
  */
 export function useResolvedBindings<T = unknown>(
-  bindings: Record<string, DataBinding> | undefined,
+  bindings: Record<string, DataSourceBinding> | undefined,
   context?: DataContext
 ): Record<string, ResolvedBinding<T>> {
   const [result, setResult] = useState<Record<string, ResolvedBinding<T>>>(() => {
@@ -115,11 +115,11 @@ export function useResolvedBindings<T = unknown>(
 }
 
 /**
- * Hook to get the resolved value from a binding (unwrapped)
+ * Hook to get the resolved value from a data source binding (unwrapped)
  * Returns just the value, not the full ResolvedBinding object
  */
 export function useBindingValue<T = unknown>(
-  binding: DataBinding | undefined,
+  binding: DataSourceBinding | undefined,
   context?: DataContext
 ): T | undefined {
   const resolved = useResolvedBinding<T>(binding, context);
@@ -127,11 +127,11 @@ export function useBindingValue<T = unknown>(
 }
 
 /**
- * Hook to get resolved values from multiple bindings (unwrapped)
+ * Hook to get resolved values from multiple data source bindings (unwrapped)
  * Returns a map of prop names to values
  */
 export function useBindingValues<T = unknown>(
-  bindings: Record<string, DataBinding> | undefined,
+  bindings: Record<string, DataSourceBinding> | undefined,
   context?: DataContext
 ): Record<string, T | undefined> {
   const resolved = useResolvedBindings<T>(bindings, context);
@@ -171,9 +171,9 @@ export function useDataSourceRegistry() {
 }
 
 /**
- * Helper to determine which stores a binding depends on
+ * Helper to determine which stores a data source binding depends on
  */
-function getBindingDependentStores(binding: DataBinding): StoreId[] {
+function getBindingDependentStores(binding: DataSourceBinding): StoreId[] {
   const stores = new Set<StoreId>();
 
   // Get the source

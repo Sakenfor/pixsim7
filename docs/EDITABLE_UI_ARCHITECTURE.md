@@ -469,16 +469,24 @@ grep -r "feature_name" apps/main/src/components/game/HudLayoutEditor.tsx
 - Undo/Redo: `HudLayoutEditor.tsx:765-788`
 - Preset System: `HudLayoutEditor.tsx:508-633`
 
-### Data Binding (Currently Overlay-only)
-- **String property paths:** `apps/main/src/lib/overlay/utils/propertyPath.ts`
-- **Data binding system:** `apps/main/src/lib/dataBinding/`
+### Data Binding (Task 99 - Aligned with Editing Core)
+- **Type contract (canonical):** `apps/main/src/lib/editing-core/dataBinding.ts`
+  - `DataBinding<T>` - Simple binding model (kind: static/path/fn)
+  - `resolveDataBinding` - Resolution functions
+  - `createBindingFromValue` - Migration helper
+- **Registry-based Task 51 system:** `apps/main/src/lib/dataBinding/`
+  - `DataSourceBinding` - Registry-based binding model
   - Core types: `dataSourceRegistry.ts`, `dataResolver.ts`
   - React hooks: `useDataBindings.ts`
   - Store accessors: `storeAccessors.ts`, `coreDataSources.ts`
+  - Used by Panel Builder (Task 51)
+- **String property paths:** `apps/main/src/lib/overlay/utils/propertyPath.ts`
+  - Used by Overlay widgets
+  - Implements path resolution for `DataBinding<T>` with kind='path'
 - **Documentation:**
+  - `apps/main/src/lib/dataBinding/DATA_BINDING_GUIDE.md` (Task 51 system)
   - `docs/OVERLAY_DATA_BINDING.md`
   - `docs/OVERLAY_STRING_PATHS.md`
-- **Target home (future):** `apps/main/src/lib/editing-core/dataBinding.ts`
 
 ### Configuration Routes
 - Overlay Config: `apps/main/src/routes/OverlayConfig.tsx`

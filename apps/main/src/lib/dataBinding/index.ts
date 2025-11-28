@@ -1,8 +1,9 @@
 /**
  * Data Binding System - Public API
  *
- * Main entry point for the Panel Builder data binding system.
+ * Main entry point for the data binding system.
  * Part of Task 51 - Builder Data Sources & Binding System
+ * Aligned with Editing Core architecture (Task 99)
  *
  * @example
  * ```typescript
@@ -19,11 +20,14 @@
  * ```
  */
 
-// Core types
+// Canonical data binding type from editing-core
+export type { DataBinding, DataBindingKind } from '../editing-core/dataBinding';
+
+// Registry-based Task 51 types
 export type {
   DataSourceType,
   DataSourceDefinition,
-  DataBinding,
+  DataSourceBinding,
   DataTransform,
 } from './dataSourceRegistry';
 

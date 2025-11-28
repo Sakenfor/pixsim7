@@ -8,7 +8,8 @@
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Icon } from '@/lib/icons';
-import { createResolver } from '../utils/propertyPath';
+import type { DataBinding } from '@/lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 
 export interface ProgressWidgetConfig {
   /** Widget ID */
@@ -22,12 +23,11 @@ export interface ProgressWidgetConfig {
 
   /**
    * Progress value (0-100)
-   * Can be:
-   * - Static number: 50
-   * - Function: (data) => data.uploadProgress
-   * - Property path string: "uploadProgress" (for visual config)
+   * Preferred: Use valueBinding with DataBinding<number>
+   * Legacy: number | string | ((data: any) => number)
    */
-  value: number | string | ((data: any) => number);
+  value?: number | string | ((data: any) => number);
+  valueBinding?: DataBinding<number>;
 
   /** Maximum value (default 100) */
   max?: number;
@@ -47,8 +47,13 @@ export interface ProgressWidgetConfig {
   /** Show percentage label */
   showLabel?: boolean;
 
-  /** Custom label text */
+  /**
+   * Custom label text
+   * Preferred: Use labelBinding with DataBinding<string>
+   * Legacy: string | ((value: number, data: any) => string)
+   */
   label?: string | ((value: number, data: any) => string);
+  labelBinding?: DataBinding<string>;
 
   /** Show icon */
   icon?: string;
@@ -75,6 +80,7 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     position,
     visibility,
     value: valueProp,
+    valueBinding,
     max = 100,
     variant = 'bar',
     orientation = 'horizontal',
@@ -82,6 +88,7 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     color = 'blue',
     showLabel = false,
     label: labelProp,
+    labelBinding,
     icon,
     animated = false,
     state = 'normal',
@@ -105,9 +112,9 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     warning: 'bg-orange-500',
   };
 
-  // Create resolvers for reactive values
-  const valueResolver = createResolver<number>(valueProp);
-  const labelResolver = labelProp ? createResolver(labelProp) : null;
+  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
+  const finalValueBinding = valueBinding || (valueProp !== undefined ? createBindingFromValue('value', valueProp) : undefined);
+  const finalLabelBinding = labelBinding || (labelProp !== undefined ? createBindingFromValue('label', labelProp) : undefined);
 
   return {
     id,
@@ -117,12 +124,15 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     priority,
     interactive: false,
     render: (data: any) => {
-      // ✨ Supports: static number, function, or property path string
-      const value = valueResolver(data);
+      // ✨ Resolve bindings using editing-core DataBinding system
+      const value = resolveDataBinding(finalValueBinding, data) ?? 0;
       const percentage = Math.max(0, Math.min(100, (value / max) * 100));
-      const label = labelResolver
-        ? (typeof labelProp === 'function' ? labelResolver(value, data) : labelResolver(data))
-        : `${Math.round(percentage)}%`;
+
+      // Resolve label - if binding provided, use it; otherwise default to percentage
+      let label = resolveDataBinding(finalLabelBinding, data);
+      if (!label) {
+        label = `${Math.round(percentage)}%`;
+      }
 
       if (variant === 'circular') {
         const sizeClasses = { sm: 32, md: 48, lg: 64 };

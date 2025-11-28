@@ -9,6 +9,8 @@ import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Badge } from '@pixsim/shared/ui';
 import { Icon } from '@/components/common/Icon';
+import type { DataBinding } from '@/lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 
 export interface BadgeWidgetConfig {
   /** Widget ID */
@@ -26,8 +28,13 @@ export interface BadgeWidgetConfig {
   /** Icon name (if variant includes icon) */
   icon?: string;
 
-  /** Text label (if variant includes text) */
+  /**
+   * Text label (if variant includes text)
+   * Preferred: Use labelBinding with DataBinding<string>
+   * Legacy: string | ((data: any) => string)
+   */
   label?: string | ((data: any) => string);
+  labelBinding?: DataBinding<string>;
 
   /** Badge color/variant */
   color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow';
@@ -62,6 +69,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     variant,
     icon,
     label,
+    labelBinding,
     color = 'gray',
     shape = 'rounded',
     pulse = false,
@@ -70,6 +78,9 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     className = '',
     priority,
   } = config;
+
+  // Create binding (prefer new DataBinding, fall back to legacy pattern)
+  const finalLabelBinding = labelBinding || (label !== undefined ? createBindingFromValue('label', label) : undefined);
 
   return {
     id,
@@ -81,8 +92,8 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     ariaLabel: tooltip,
     onClick,
     render: (data, context) => {
-      // Resolve label if it's a function
-      const resolvedLabel = typeof label === 'function' ? label(data) : label;
+      // ✨ Resolve binding using editing-core DataBinding system
+      const resolvedLabel = resolveDataBinding(finalLabelBinding, data);
 
       // Icon-only badges use custom circular styling
       if (variant === 'icon' && !resolvedLabel) {

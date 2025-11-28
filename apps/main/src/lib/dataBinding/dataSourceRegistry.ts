@@ -41,9 +41,12 @@ export interface DataSourceDefinition {
 }
 
 /**
- * Data binding - how widgets refer to data sources
+ * Data source binding - how widgets refer to registered data sources
+ *
+ * Note: This is the Task 51 registry-based binding model.
+ * For the simpler, direct binding model, see editing-core/dataBinding.ts
  */
-export interface DataBinding {
+export interface DataSourceBinding {
   id: string; // unique per widget binding
   sourceId: string; // DataSourceDefinition.id
   targetProp: string; // Widget prop name, e.g. 'value', 'data'

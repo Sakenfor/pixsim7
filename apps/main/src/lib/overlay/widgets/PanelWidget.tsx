@@ -8,6 +8,8 @@
 import React, { ReactNode } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Panel } from '@pixsim/shared/ui';
+import type { DataBinding } from '@/lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 
 export interface PanelWidgetConfig {
   /** Widget ID */
@@ -19,11 +21,21 @@ export interface PanelWidgetConfig {
   /** Visibility configuration */
   visibility: VisibilityConfig;
 
-  /** Panel title */
+  /**
+   * Panel title
+   * Preferred: Use titleBinding with DataBinding<string>
+   * Legacy: string | ((data: any) => string)
+   */
   title?: string | ((data: any) => string);
+  titleBinding?: DataBinding<string>;
 
-  /** Panel content */
-  content: ReactNode | ((data: any) => ReactNode);
+  /**
+   * Panel content
+   * Preferred: Use contentBinding with DataBinding<ReactNode>
+   * Legacy: ReactNode | ((data: any) => ReactNode)
+   */
+  content?: ReactNode | ((data: any) => ReactNode);
+  contentBinding?: DataBinding<ReactNode>;
 
   /** Enable backdrop/background */
   backdrop?: boolean;
@@ -56,7 +68,9 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
     position,
     visibility,
     title,
+    titleBinding,
     content,
+    contentBinding,
     backdrop = false,
     maxWidth,
     maxHeight,
@@ -65,6 +79,10 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
     priority,
     onClick,
   } = config;
+
+  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
+  const finalTitleBinding = titleBinding || (title !== undefined ? createBindingFromValue('title', title) : undefined);
+  const finalContentBinding = contentBinding || (content !== undefined ? createBindingFromValue('content', content) : undefined);
 
   return {
     id,
@@ -79,9 +97,9 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
       maxHeight,
     },
     render: (data, context) => {
-      // Resolve title and content if they're functions
-      const resolvedTitle = typeof title === 'function' ? title(data) : title;
-      const resolvedContent = typeof content === 'function' ? content(data) : content;
+      // ✨ Resolve bindings using editing-core DataBinding system
+      const resolvedTitle = resolveDataBinding(finalTitleBinding, data);
+      const resolvedContent = resolveDataBinding(finalContentBinding, data);
 
       // Additional styling for variants
       const variantClasses = {

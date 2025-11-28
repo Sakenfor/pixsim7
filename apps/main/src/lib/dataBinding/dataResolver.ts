@@ -1,12 +1,12 @@
 /**
  * Data Resolver
  *
- * Resolution engine for data bindings.
- * Turns DataBinding + DataSourceDefinition into actual data for widgets.
+ * Resolution engine for data source bindings.
+ * Turns DataSourceBinding + DataSourceDefinition into actual data for widgets.
  * Part of Task 51 Phase 51.2 - Resolution Engine & Caching
  */
 
-import type { DataBinding, DataSourceDefinition } from './dataSourceRegistry';
+import type { DataSourceBinding, DataSourceDefinition } from './dataSourceRegistry';
 import { dataSourceRegistry } from './dataSourceRegistry';
 import { getStoreValue, type StoreId } from './storeAccessors';
 
@@ -23,16 +23,16 @@ export interface DataContext {
  * Resolved binding result
  */
 export interface ResolvedBinding<T = unknown> {
-  binding: DataBinding;
+  binding: DataSourceBinding;
   value: T | undefined;
   error?: Error;
 }
 
 /**
- * Resolve a single data binding to its actual value
+ * Resolve a single data source binding to its actual value
  */
 export function resolveBinding<T = unknown>(
-  binding: DataBinding,
+  binding: DataSourceBinding,
   context?: DataContext
 ): ResolvedBinding<T> {
   try {
@@ -166,7 +166,7 @@ function resolveComputedSource(source: DataSourceDefinition, context?: DataConte
  * Resolve multiple bindings at once
  */
 export function resolveBindings<T = unknown>(
-  bindings: Record<string, DataBinding>,
+  bindings: Record<string, DataSourceBinding>,
   context?: DataContext
 ): Record<string, ResolvedBinding<T>> {
   const result: Record<string, ResolvedBinding<T>> = {};
@@ -187,7 +187,7 @@ function isValidStoreId(storeId: string): storeId is StoreId {
 }
 
 /**
- * Helper to create a simple binding
+ * Helper to create a simple data source binding
  */
 export function createBinding(
   id: string,
@@ -197,7 +197,7 @@ export function createBinding(
     transformId?: string;
     fallbackValue?: unknown;
   }
-): DataBinding {
+): DataSourceBinding {
   return {
     id,
     sourceId,
@@ -212,7 +212,7 @@ export function createBinding(
  * Ensures one failed binding doesn't break others
  */
 export function batchResolveBindings<T = unknown>(
-  bindings: DataBinding[],
+  bindings: DataSourceBinding[],
   context?: DataContext
 ): ResolvedBinding<T>[] {
   return bindings.map((binding) => resolveBinding<T>(binding, context));
