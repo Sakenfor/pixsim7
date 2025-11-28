@@ -75,6 +75,7 @@ export interface MediaCardProps {
   providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
   uploadState?: 'idle' | 'uploading' | 'success' | 'error';
+  uploadProgress?: number; // 0-100 for upload progress
   uploadNote?: string;
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
@@ -178,6 +179,8 @@ export function MediaCard(props: MediaCardProps) {
   }, [props, customWidgets, customOverlayConfig]);
 
   // Prepare data for overlay widgets
+  // This object is passed to ALL widget render functions
+  // Widgets can use function-based configs to reactively access this data
   const overlayData = {
     id,
     mediaType,
@@ -186,6 +189,14 @@ export function MediaCard(props: MediaCardProps) {
     tags: displayTags,
     description,
     createdAt,
+    // Upload state (for UploadWidget)
+    uploadState: props.uploadState || 'idle',
+    uploadProgress: props.uploadProgress || 0,
+    // Video state (for VideoScrubWidget, ProgressWidget)
+    remoteUrl: props.remoteUrl,
+    durationSec: props.durationSec,
+    // Actions (for MenuWidget callbacks)
+    actions: props.actions,
   };
 
   return (

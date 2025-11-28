@@ -183,11 +183,12 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget | nul
 
 /**
  * Create video scrub widget (covers entire card on hover)
+ * Uses REACTIVE function-based values for dynamic video URL
  */
 export function createVideoScrubber(props: MediaCardProps): OverlayWidget | null {
-  const { mediaType, remoteUrl, durationSec } = props;
+  const { mediaType } = props;
 
-  if (mediaType !== 'video' || !remoteUrl) {
+  if (mediaType !== 'video') {
     return null;
   }
 
@@ -195,8 +196,9 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget | null
     id: 'video-scrubber',
     position: { anchor: 'top-left', offset: { x: 0, y: 0 } },
     visibility: { trigger: 'hover-container' },
-    videoUrl: remoteUrl,
-    duration: durationSec,
+    // ✨ REACTIVE: Function gets fresh video URL from data
+    videoUrl: (data) => data.remoteUrl,
+    duration: (data) => data.durationSec,
     showTimeline: true,
     showTimestamp: true,
     timelinePosition: 'bottom',
@@ -208,9 +210,10 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget | null
 
 /**
  * Create upload widget (bottom-left or custom position)
+ * Uses REACTIVE function-based values for state and progress
  */
 export function createUploadButton(props: MediaCardProps): OverlayWidget | null {
-  const { id, uploadState, onUploadClick } = props;
+  const { id, onUploadClick } = props;
 
   if (!onUploadClick) {
     return null;
@@ -224,7 +227,9 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget | null 
       transition: 'fade',
       transitionDuration: 200,
     },
-    state: uploadState || 'idle',
+    // ✨ REACTIVE: Function gets fresh data on every render
+    state: (data) => data.uploadState || 'idle',
+    progress: (data) => data.uploadProgress || 0,
     onUpload: () => onUploadClick(id),
     showProgress: true,
     size: 'sm',
@@ -234,23 +239,12 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget | null 
 
 /**
  * Create tags tooltip widget
+ * Uses REACTIVE function-based content for dynamic tag display
  */
 export function createTagsTooltip(props: MediaCardProps): OverlayWidget | null {
-  const { tags, badgeConfig } = props;
+  const { badgeConfig } = props;
 
-  if (!badgeConfig?.showTagsInOverlay || !tags || tags.length === 0) {
-    return null;
-  }
-
-  // Filter technical tags
-  const technicalTags = tags.filter(tag =>
-    tag.includes('_url') ||
-    tag.includes('_id') ||
-    tag.includes('from_') ||
-    tag === 'user_upload'
-  );
-
-  if (technicalTags.length === 0) {
+  if (!badgeConfig?.showTagsInOverlay) {
     return null;
   }
 
@@ -258,10 +252,21 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget | null {
     id: 'technical-tags',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
     visibility: { trigger: 'hover-container' },
-    content: {
-      title: 'Technical Tags',
-      icon: 'code',
-      description: technicalTags,
+    // ✨ REACTIVE: Function computes content from fresh data
+    content: (data) => {
+      // Filter technical tags dynamically
+      const technicalTags = (data.tags || []).filter((tag: string) =>
+        tag.includes('_url') ||
+        tag.includes('_id') ||
+        tag.includes('from_') ||
+        tag === 'user_upload'
+      );
+
+      return {
+        title: 'Technical Tags',
+        icon: 'code',
+        description: technicalTags.length > 0 ? technicalTags : ['No technical tags'],
+      };
     },
     trigger: {
       type: 'icon',
