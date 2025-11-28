@@ -7,6 +7,7 @@
 
 import type { PanelId } from '../../stores/workspaceStore';
 import type { ComponentType } from 'react';
+import { BaseRegistry } from '../core/BaseRegistry';
 
 export interface WorkspaceContext {
   currentSceneId?: string | null;
@@ -39,27 +40,13 @@ export interface PanelDefinition {
 /**
  * PanelRegistry - Centralized registry for all workspace panels
  */
-export class PanelRegistry {
-  private panels = new Map<PanelId, PanelDefinition>();
-  private listeners: Set<() => void> = new Set();
-
-  /**
-   * Register a panel definition
-   */
-  register(definition: PanelDefinition): void {
-    if (this.panels.has(definition.id)) {
-      console.warn(`Panel "${definition.id}" is already registered. Overwriting.`);
-    }
-
-    this.panels.set(definition.id, definition);
-    this.notifyListeners();
-  }
-
+export class PanelRegistry extends BaseRegistry<PanelDefinition> {
   /**
    * Unregister a panel
+   * Calls onUnmount hook before removing the panel.
    */
-  unregister(panelId: PanelId): void {
-    const definition = this.panels.get(panelId);
+  unregister(panelId: PanelId): boolean {
+    const definition = this.items.get(panelId);
     if (definition) {
       // Call cleanup hook
       if (definition.onUnmount) {
@@ -70,23 +57,9 @@ export class PanelRegistry {
         }
       }
 
-      this.panels.delete(panelId);
-      this.notifyListeners();
+      return super.unregister(panelId);
     }
-  }
-
-  /**
-   * Get a panel definition by ID
-   */
-  get(panelId: PanelId): PanelDefinition | undefined {
-    return this.panels.get(panelId);
-  }
-
-  /**
-   * Get all registered panels
-   */
-  getAll(): PanelDefinition[] {
-    return Array.from(this.panels.values());
+    return false;
   }
 
   /**
@@ -112,13 +85,6 @@ export class PanelRegistry {
   }
 
   /**
-   * Check if a panel is registered
-   */
-  has(panelId: PanelId): boolean {
-    return this.panels.has(panelId);
-  }
-
-  /**
    * Get visible panels based on context
    */
   getVisiblePanels(context: WorkspaceContext): PanelDefinition[] {
@@ -134,34 +100,12 @@ export class PanelRegistry {
   }
 
   /**
-   * Subscribe to registry changes
-   */
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
-   * Notify all listeners of changes
-   */
-  private notifyListeners(): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Error in registry listener:', error);
-      }
-    });
-  }
-
-  /**
    * Clear all panels (useful for testing)
+   * Calls onUnmount hook for each panel before clearing.
    */
   clear(): void {
     // Call onUnmount for all panels
-    this.panels.forEach((definition) => {
+    this.items.forEach((definition) => {
       if (definition.onUnmount) {
         try {
           definition.onUnmount();
@@ -171,8 +115,7 @@ export class PanelRegistry {
       }
     });
 
-    this.panels.clear();
-    this.notifyListeners();
+    super.clear();
   }
 
   /**

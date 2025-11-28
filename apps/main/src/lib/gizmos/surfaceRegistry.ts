@@ -9,6 +9,7 @@
  */
 
 import type * as React from 'react';
+import { BaseRegistry } from '../core/BaseRegistry';
 
 // ============================================================================
 // Gizmo Surface Types
@@ -107,39 +108,12 @@ export interface GizmoSurfaceDefinition {
 // Gizmo Surface Registry
 // ============================================================================
 
-export class GizmoSurfaceRegistry {
-  private surfaces = new Map<GizmoSurfaceId, GizmoSurfaceDefinition>();
-
-  /**
-   * Register a gizmo surface
-   */
-  register(definition: GizmoSurfaceDefinition): void {
-    if (this.surfaces.has(definition.id)) {
-      console.warn(`[GizmoSurfaceRegistry] Overwriting existing surface: ${definition.id}`);
-    }
-
-    this.surfaces.set(definition.id, definition);
-  }
-
+export class GizmoSurfaceRegistry extends BaseRegistry<GizmoSurfaceDefinition> {
   /**
    * Register multiple surfaces at once
    */
   registerAll(definitions: GizmoSurfaceDefinition[]): void {
     definitions.forEach(def => this.register(def));
-  }
-
-  /**
-   * Get a specific gizmo surface by ID
-   */
-  get(id: GizmoSurfaceId): GizmoSurfaceDefinition | undefined {
-    return this.surfaces.get(id);
-  }
-
-  /**
-   * Get all registered gizmo surfaces
-   */
-  getAll(): GizmoSurfaceDefinition[] {
-    return Array.from(this.surfaces.values());
   }
 
   /**
@@ -168,38 +142,32 @@ export class GizmoSurfaceRegistry {
   }
 
   /**
-   * Check if a surface is registered
+   * Search surfaces by query (searches id, label, description, tags)
    */
-  has(id: GizmoSurfaceId): boolean {
-    return this.surfaces.has(id);
-  }
+  search(query: string): GizmoSurfaceDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter(surface => {
+      const matchesId = surface.id.toLowerCase().includes(lowerQuery);
+      const matchesLabel = surface.label.toLowerCase().includes(lowerQuery);
+      const matchesDescription = surface.description?.toLowerCase().includes(lowerQuery);
+      const matchesTags = surface.tags?.some(tag => tag.toLowerCase().includes(lowerQuery));
 
-  /**
-   * Unregister a surface
-   */
-  unregister(id: GizmoSurfaceId): boolean {
-    return this.surfaces.delete(id);
-  }
-
-  /**
-   * Clear all registered surfaces
-   */
-  clear(): void {
-    this.surfaces.clear();
+      return matchesId || matchesLabel || matchesDescription || matchesTags;
+    });
   }
 
   /**
    * Get count of registered surfaces
    */
   get count(): number {
-    return this.surfaces.size;
+    return this.items.size;
   }
 
   /**
    * Get all surface IDs
    */
   getAllIds(): GizmoSurfaceId[] {
-    return Array.from(this.surfaces.keys());
+    return Array.from(this.items.keys());
   }
 
   /**

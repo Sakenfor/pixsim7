@@ -7,40 +7,9 @@
  */
 
 import type { DevToolDefinition, DevToolId } from './types';
+import { BaseRegistry } from '../core/BaseRegistry';
 
-export class DevToolRegistry {
-  private tools = new Map<DevToolId, DevToolDefinition>();
-
-  /**
-   * Register a new dev tool
-   */
-  register(def: DevToolDefinition): void {
-    if (this.tools.has(def.id)) {
-      console.warn(`[DevToolRegistry] Tool with id "${def.id}" is already registered. Overwriting.`);
-    }
-    this.tools.set(def.id, def);
-  }
-
-  /**
-   * Unregister a dev tool by id
-   */
-  unregister(id: DevToolId): void {
-    this.tools.delete(id);
-  }
-
-  /**
-   * Get a specific dev tool by id
-   */
-  get(id: DevToolId): DevToolDefinition | undefined {
-    return this.tools.get(id);
-  }
-
-  /**
-   * Get all registered dev tools
-   */
-  getAll(): DevToolDefinition[] {
-    return Array.from(this.tools.values());
-  }
+export class DevToolRegistry extends BaseRegistry<DevToolDefinition> {
 
   /**
    * Get all dev tools in a specific category
@@ -76,13 +45,6 @@ export class DevToolRegistry {
       }
     });
     return Array.from(categories).sort();
-  }
-
-  /**
-   * Clear all registered tools (mainly for testing)
-   */
-  clear(): void {
-    this.tools.clear();
   }
 }
 

@@ -141,4 +141,30 @@ describe('GizmoSurfaceRegistry', () => {
 
     consoleSpy.mockRestore();
   });
+
+  it('should search surfaces by query', () => {
+    registry.registerAll([
+      { id: 'brain-playground', label: 'Brain Playground', description: 'NPC brain simulator', tags: ['debug', 'npc'] },
+      { id: 'mood-timeline', label: 'Mood Timeline', description: 'Track NPC mood changes', tags: ['npc', 'timeline'] },
+      { id: 'relationship-graph', label: 'Relationship Graph', description: 'Visualize relationships', tags: ['social'] },
+    ]);
+
+    // Search by id
+    expect(registry.search('brain').map(s => s.id)).toContain('brain-playground');
+
+    // Search by label
+    expect(registry.search('mood').map(s => s.id)).toContain('mood-timeline');
+
+    // Search by description
+    expect(registry.search('simulator').map(s => s.id)).toContain('brain-playground');
+
+    // Search by tag
+    const npcSurfaces = registry.search('npc');
+    expect(npcSurfaces).toHaveLength(2);
+    expect(npcSurfaces.map(s => s.id)).toContain('brain-playground');
+    expect(npcSurfaces.map(s => s.id)).toContain('mood-timeline');
+
+    // Case-insensitive search
+    expect(registry.search('BRAIN').map(s => s.id)).toContain('brain-playground');
+  });
 });

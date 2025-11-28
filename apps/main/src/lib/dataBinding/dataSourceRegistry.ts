@@ -5,6 +5,8 @@
  * Part of Task 51 Phase 51.1 - Core Types & Registry
  */
 
+import { BaseRegistry } from '../core/BaseRegistry';
+
 /**
  * Core data source types
  */
@@ -61,48 +63,43 @@ export interface DataTransform {
 
 /**
  * DataSourceRegistry - Centralized registry for data sources and transforms
+ *
+ * Note: Extends BaseRegistry for data sources. Transforms are managed separately
+ * as they are a different type with different semantics.
  */
-export class DataSourceRegistry {
-  private sources = new Map<string, DataSourceDefinition>();
+export class DataSourceRegistry extends BaseRegistry<DataSourceDefinition> {
   private transforms = new Map<string, DataTransform>();
-  private listeners: Set<() => void> = new Set();
 
   /**
    * Register a data source definition
    */
   registerSource(def: DataSourceDefinition): void {
-    if (this.sources.has(def.id)) {
-      console.warn(`Data source "${def.id}" is already registered. Overwriting.`);
-    }
-
     // Validate source definition
     this.validateSource(def);
 
-    this.sources.set(def.id, def);
-    this.notifyListeners();
+    // Use inherited register method
+    this.register(def);
   }
 
   /**
    * Unregister a data source
    */
-  unregisterSource(sourceId: string): void {
-    if (this.sources.delete(sourceId)) {
-      this.notifyListeners();
-    }
+  unregisterSource(sourceId: string): boolean {
+    return this.unregister(sourceId);
   }
 
   /**
    * Get a data source definition by ID
    */
   getSource(id: string): DataSourceDefinition | undefined {
-    return this.sources.get(id);
+    return this.get(id);
   }
 
   /**
    * Get all registered data sources
    */
   getAllSources(): DataSourceDefinition[] {
-    return Array.from(this.sources.values());
+    return this.getAll();
   }
 
   /**
@@ -131,7 +128,7 @@ export class DataSourceRegistry {
    * Check if a source is registered
    */
   hasSource(id: string): boolean {
-    return this.sources.has(id);
+    return this.has(id);
   }
 
   /**
@@ -154,10 +151,12 @@ export class DataSourceRegistry {
   /**
    * Unregister a transform
    */
-  unregisterTransform(transformId: string): void {
-    if (this.transforms.delete(transformId)) {
+  unregisterTransform(transformId: string): boolean {
+    const wasDeleted = this.transforms.delete(transformId);
+    if (wasDeleted) {
       this.notifyListeners();
     }
+    return wasDeleted;
   }
 
   /**
@@ -193,29 +192,6 @@ export class DataSourceRegistry {
    */
   hasTransform(id: string): boolean {
     return this.transforms.has(id);
-  }
-
-  /**
-   * Subscribe to registry changes
-   */
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
-   * Notify all listeners of changes
-   */
-  private notifyListeners(): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Error in data source registry listener:', error);
-      }
-    });
   }
 
   /**
@@ -257,9 +233,8 @@ export class DataSourceRegistry {
    * Clear all sources and transforms (useful for testing)
    */
   clear(): void {
-    this.sources.clear();
     this.transforms.clear();
-    this.notifyListeners();
+    super.clear();
   }
 
   /**

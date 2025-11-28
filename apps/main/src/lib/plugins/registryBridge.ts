@@ -65,24 +65,85 @@ function extractCommonMetadata(plugin: { id?: string; name?: string; description
 }
 
 // ============================================================================
+// Shared Registration Helpers (Internal)
+// ============================================================================
+
+/**
+ * Registry adapter - wraps a registry's register/unregister methods
+ */
+interface RegistryAdapter<T> {
+  register: (item: T) => void;
+  unregister?: (id: string) => boolean | void;
+  has?: (id: string) => boolean;
+  get?: (id: string) => T | undefined;
+}
+
+/**
+ * Metadata builder - constructs catalog metadata from an item
+ */
+type MetadataBuilder<T, F extends string> = (
+  item: T,
+  options: RegisterWithMetadataOptions
+) => ExtendedPluginMetadata<F>;
+
+/**
+ * Default values for registration options by family
+ */
+interface RegistrationDefaults {
+  origin: PluginOrigin;
+  canDisable: boolean;
+}
+
+/**
+ * Internal helper to register an item in both its registry and the catalog
+ *
+ * This reduces duplication across family-specific register functions while
+ * preserving type safety and backwards compatibility.
+ */
+function registerWithCatalog<T, F extends string>(
+  item: T,
+  registry: RegistryAdapter<T>,
+  buildMetadata: MetadataBuilder<T, F>,
+  options: RegisterWithMetadataOptions = {},
+  defaults?: Partial<RegistrationDefaults>
+): void {
+  // Register in the legacy registry
+  registry.register(item);
+
+  // Build and register catalog metadata
+  const resolvedOptions = {
+    ...options,
+    origin: options.origin ?? defaults?.origin ?? 'plugin-dir',
+    canDisable: options.canDisable ?? defaults?.canDisable ?? true,
+  };
+
+  const metadata = buildMetadata(item, resolvedOptions);
+  pluginCatalog.register(metadata);
+}
+
+/**
+ * Internal helper to unregister an item from both its registry and the catalog
+ */
+function unregisterFromCatalog<T>(
+  id: string,
+  registry: RegistryAdapter<T>,
+  catalogId: string = id
+): boolean {
+  const removed = registry.unregister?.(id) ?? false;
+  pluginCatalog.unregister(catalogId);
+  return Boolean(removed);
+}
+
+// ============================================================================
 // Helper Registry Bridge
 // ============================================================================
 
 /**
- * Register a helper with metadata tracking
+ * Build catalog metadata for a helper
  */
-export function registerHelper(
-  helper: HelperDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with existing registry
-  sessionHelperRegistry.register(helper);
-
-  // Extract metadata
+const buildHelperMetadata: MetadataBuilder<HelperDefinition, 'helper'> = (helper, options) => {
   const metadata = extractCommonMetadata(helper);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: helper.id || helper.name,
     name: helper.name || helper.id || 'unknown',
@@ -92,7 +153,17 @@ export function registerHelper(
     canDisable: options.canDisable ?? true,
     category: helper.category,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'helper'>);
+  } as ExtendedPluginMetadata<'helper'>;
+};
+
+/**
+ * Register a helper with metadata tracking
+ */
+export function registerHelper(
+  helper: HelperDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(helper, sessionHelperRegistry, buildHelperMetadata, options);
 }
 
 /**
@@ -119,20 +190,11 @@ export function registerBuiltinHelper(helper: HelperDefinition): void {
 // ============================================================================
 
 /**
- * Register an interaction with metadata tracking
+ * Build catalog metadata for an interaction
  */
-export function registerInteraction(
-  interaction: InteractionPlugin<BaseInteractionConfig>,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with existing registry
-  interactionRegistry.register(interaction);
-
-  // Extract metadata
+const buildInteractionMetadata: MetadataBuilder<InteractionPlugin<BaseInteractionConfig>, 'interaction'> = (interaction, options) => {
   const metadata = extractCommonMetadata(interaction);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: interaction.id,
     name: interaction.name || interaction.id,
@@ -143,16 +205,24 @@ export function registerInteraction(
     category: interaction.category,
     icon: interaction.icon,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'interaction'>);
+  } as ExtendedPluginMetadata<'interaction'>;
+};
+
+/**
+ * Register an interaction with metadata tracking
+ */
+export function registerInteraction(
+  interaction: InteractionPlugin<BaseInteractionConfig>,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(interaction, interactionRegistry, buildInteractionMetadata, options);
 }
 
 /**
  * Unregister an interaction and remove it from the catalog
  */
 export function unregisterInteraction(id: string): boolean {
-  const removed = interactionRegistry.unregister(id);
-  pluginCatalog.unregister(id);
-  return removed;
+  return unregisterFromCatalog(id, interactionRegistry);
 }
 
 /**
@@ -167,20 +237,11 @@ export function registerBuiltinInteraction(interaction: InteractionPlugin<BaseIn
 // ============================================================================
 
 /**
- * Register a node type with metadata tracking
+ * Build catalog metadata for a node type
  */
-export function registerNodeType(
-  nodeType: NodeTypeDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with existing registry
-  nodeTypeRegistry.register(nodeType);
-
-  // Extract metadata
+const buildNodeTypeMetadata: MetadataBuilder<NodeTypeDefinition, 'node-type'> = (nodeType, options) => {
   const metadata = extractCommonMetadata(nodeType);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: nodeType.id,
     name: nodeType.name || nodeType.id,
@@ -193,16 +254,24 @@ export function registerNodeType(
     userCreatable: nodeType.userCreatable,
     preloadPriority: nodeType.preloadPriority,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'node-type'>);
+  } as ExtendedPluginMetadata<'node-type'>;
+};
+
+/**
+ * Register a node type with metadata tracking
+ */
+export function registerNodeType(
+  nodeType: NodeTypeDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(nodeType, nodeTypeRegistry, buildNodeTypeMetadata, options);
 }
 
 /**
  * Unregister a node type and prune its catalog entry
  */
 export function unregisterNodeType(id: string): boolean {
-  const removed = nodeTypeRegistry.unregister(id);
-  pluginCatalog.unregister(id);
-  return removed;
+  return unregisterFromCatalog(id, nodeTypeRegistry);
 }
 
 /**
@@ -217,20 +286,11 @@ export function registerBuiltinNodeType(nodeType: NodeTypeDefinition): void {
 // ============================================================================
 
 /**
- * Register a renderer with metadata tracking
+ * Build catalog metadata for a renderer
  */
-export function registerRenderer(
-  renderer: { nodeType: string; preloadPriority?: number },
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with existing registry
-  nodeRendererRegistry.register(renderer);
-
-  // Extract metadata (renderers use nodeType as ID)
+const buildRendererMetadata: MetadataBuilder<{ nodeType: string; preloadPriority?: number }, 'renderer'> = (renderer, options) => {
   const id = `renderer:${renderer.nodeType}`;
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     id,
     name: `${renderer.nodeType} Renderer`,
     family: 'renderer',
@@ -240,16 +300,24 @@ export function registerRenderer(
     nodeType: renderer.nodeType,
     preloadPriority: renderer.preloadPriority,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'renderer'>);
+  } as ExtendedPluginMetadata<'renderer'>;
+};
+
+/**
+ * Register a renderer with metadata tracking
+ */
+export function registerRenderer(
+  renderer: { nodeType: string; preloadPriority?: number },
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(renderer, nodeRendererRegistry, buildRendererMetadata, options, { canDisable: false });
 }
 
 /**
  * Unregister a renderer and clear the catalog entry
  */
 export function unregisterRenderer(nodeType: string): boolean {
-  const removed = nodeRendererRegistry.unregister(nodeType);
-  pluginCatalog.unregister(`renderer:${nodeType}`);
-  return removed;
+  return unregisterFromCatalog(nodeType, nodeRendererRegistry, `renderer:${nodeType}`);
 }
 
 /**
@@ -264,20 +332,11 @@ export function registerBuiltinRenderer(renderer: { nodeType: string; preloadPri
 // ============================================================================
 
 /**
- * Register a world tool with metadata tracking
+ * Build catalog metadata for a world tool
  */
-export function registerWorldTool(
-  tool: WorldToolPlugin,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with existing registry
-  worldToolRegistry.register(tool);
-
-  // Extract metadata
+const buildWorldToolMetadata: MetadataBuilder<WorldToolPlugin, 'world-tool'> = (tool, options) => {
   const metadata = extractCommonMetadata(tool);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: tool.id,
     name: tool.name || tool.id,
@@ -288,16 +347,24 @@ export function registerWorldTool(
     category: tool.category,
     icon: tool.icon,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'world-tool'>);
+  } as ExtendedPluginMetadata<'world-tool'>;
+};
+
+/**
+ * Register a world tool with metadata tracking
+ */
+export function registerWorldTool(
+  tool: WorldToolPlugin,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(tool, worldToolRegistry, buildWorldToolMetadata, options);
 }
 
 /**
  * Unregister a world tool and clean up catalog metadata
  */
 export function unregisterWorldTool(id: string): boolean {
-  const removed = worldToolRegistry.unregister(id);
-  pluginCatalog.unregister(id);
-  return removed;
+  return unregisterFromCatalog(id, worldToolRegistry);
 }
 
 /**
@@ -356,20 +423,11 @@ export function registerBuiltinGalleryTool(tool: GalleryToolPlugin): void {
 // ============================================================================
 
 /**
- * Register a graph editor with metadata tracking
+ * Build catalog metadata for a graph editor
  */
-export function registerGraphEditor(
-  editor: GraphEditorDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with graph editor registry
-  graphEditorRegistry.register(editor);
-
-  // Extract metadata
+const buildGraphEditorMetadata: MetadataBuilder<GraphEditorDefinition, 'graph-editor'> = (editor, options) => {
   const metadata = extractCommonMetadata(editor as any);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: editor.id,
     name: editor.label,
@@ -383,7 +441,17 @@ export function registerGraphEditor(
     supportsWorldContext: editor.supportsWorldContext,
     supportsPlayback: editor.supportsPlayback,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'graph-editor'>);
+  } as ExtendedPluginMetadata<'graph-editor'>;
+};
+
+/**
+ * Register a graph editor with metadata tracking
+ */
+export function registerGraphEditor(
+  editor: GraphEditorDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(editor, graphEditorRegistry, buildGraphEditorMetadata, options);
 }
 
 /**
@@ -408,20 +476,11 @@ export function registerBuiltinGraphEditor(editor: GraphEditorDefinition): void 
 // ============================================================================
 
 /**
- * Register a dev tool with metadata tracking
+ * Build catalog metadata for a dev tool
  */
-export function registerDevTool(
-  tool: DevToolDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with dev tool registry
-  devToolRegistry.register(tool);
-
-  // Extract metadata
+const buildDevToolMetadata: MetadataBuilder<DevToolDefinition, 'dev-tool'> = (tool, options) => {
   const metadata = extractCommonMetadata(tool as any);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: tool.id,
     name: tool.label,
@@ -432,7 +491,17 @@ export function registerDevTool(
     category: tool.category,
     icon: tool.icon,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'dev-tool'>);
+  } as ExtendedPluginMetadata<'dev-tool'>;
+};
+
+/**
+ * Register a dev tool with metadata tracking
+ */
+export function registerDevTool(
+  tool: DevToolDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(tool, devToolRegistry, buildDevToolMetadata, options);
 }
 
 /**
@@ -457,20 +526,11 @@ export function registerBuiltinDevTool(tool: DevToolDefinition): void {
 // ============================================================================
 
 /**
- * Register a workspace panel with metadata tracking
+ * Build catalog metadata for a workspace panel
  */
-export function registerPanelWithPlugin(
-  panel: PanelDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with panel registry
-  panelRegistry.register(panel);
-
-  // Extract metadata
+const buildPanelMetadata: MetadataBuilder<PanelDefinition, 'workspace-panel'> = (panel, options) => {
   const metadata = extractCommonMetadata(panel as any);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: panel.id,
     name: panel.title,
@@ -484,7 +544,17 @@ export function registerPanelWithPlugin(
     supportsMultipleInstances: panel.supportsMultipleInstances,
     tags: panel.tags,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'workspace-panel'>);
+  } as ExtendedPluginMetadata<'workspace-panel'>;
+};
+
+/**
+ * Register a workspace panel with metadata tracking
+ */
+export function registerPanelWithPlugin(
+  panel: PanelDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(panel, panelRegistry, buildPanelMetadata, options, { origin: 'builtin' });
 }
 
 /**
@@ -509,20 +579,11 @@ export function registerBuiltinPanel(panel: PanelDefinition): void {
 // ============================================================================
 
 /**
- * Register a gizmo surface with metadata tracking
+ * Build catalog metadata for a gizmo surface
  */
-export function registerGizmoSurface(
-  surface: GizmoSurfaceDefinition,
-  options: RegisterWithMetadataOptions = {}
-): void {
-  // Register with gizmo surface registry
-  gizmoSurfaceRegistry.register(surface);
-
-  // Extract metadata
+const buildGizmoSurfaceMetadata: MetadataBuilder<GizmoSurfaceDefinition, 'gizmo-surface'> = (surface, options) => {
   const metadata = extractCommonMetadata(surface as any);
-
-  // Register in catalog
-  pluginCatalog.register({
+  return {
     ...metadata,
     id: surface.id,
     name: surface.label,
@@ -536,16 +597,24 @@ export function registerGizmoSurface(
     icon: surface.icon,
     tags: surface.tags,
     ...options.metadata,
-  } as ExtendedPluginMetadata<'gizmo-surface'>);
+  } as ExtendedPluginMetadata<'gizmo-surface'>;
+};
+
+/**
+ * Register a gizmo surface with metadata tracking
+ */
+export function registerGizmoSurface(
+  surface: GizmoSurfaceDefinition,
+  options: RegisterWithMetadataOptions = {}
+): void {
+  registerWithCatalog(surface, gizmoSurfaceRegistry, buildGizmoSurfaceMetadata, options);
 }
 
 /**
  * Unregister a gizmo surface and remove from catalog
  */
 export function unregisterGizmoSurface(id: string): boolean {
-  const removed = gizmoSurfaceRegistry.unregister(id as any);
-  pluginCatalog.unregister(id);
-  return removed;
+  return unregisterFromCatalog(id, gizmoSurfaceRegistry);
 }
 
 /**
