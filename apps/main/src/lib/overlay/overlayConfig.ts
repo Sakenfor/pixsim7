@@ -25,7 +25,7 @@ import type {
   UnifiedVisibility,
   SimpleVisibilityTrigger,
   UnifiedStyle,
-} from '../editing-core';
+} from '@/lib/editing-core';
 
 // ============================================================================
 // Type Converters - Overlay → Unified
