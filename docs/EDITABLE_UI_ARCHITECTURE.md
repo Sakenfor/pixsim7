@@ -474,28 +474,206 @@ grep -r "feature_name" apps/main/src/components/game/HudLayoutEditor.tsx
 
 **Purpose:** HUD/gameplay-specific configuration layer built on top of editing-core
 
-**Key Files:**
-- `hudConfig.ts` - HUD-specific config types and mapping functions
-  - `HudWidgetConfig` - Wraps `UnifiedWidgetConfig` with HUD metadata (size, groupId, viewMode, profileId)
-  - `HudSurfaceConfig` - Wraps `UnifiedSurfaceConfig` with HUD metadata (profileId, viewMode, worldId)
-  - `fromHudToolPlacements()` / `toHudToolPlacements()` - Convert legacy HudToolPlacement ↔ HudWidgetConfig
-  - `toUnifiedSurfaceConfig()` / `fromUnifiedSurfaceConfig()` - Convert HUD ↔ Unified configs
-- `hudVisibility.ts` - Advanced HUD visibility conditions
-  - `HudVisibilityCondition` - Game-specific visibility (quest/location/time/relationship-based)
-  - `evaluateHudVisibility()` - Runtime evaluation against WorldToolContext
-  - `HudVisibilityHelpers` - Builders for common conditions
-  - Maps to `UnifiedVisibility.advanced` from editing-core
+**Implementation Status:** ✅ **COMPLETE** (Types and converters fully implemented)
+**Integration Status:** ⚠️ **PARTIAL** (HudLayoutEditor has imports but not yet refactored to use)
 
-**Architecture:**
+#### What This Layer Provides
+
+This module serves as a **bridge between legacy HudToolPlacement types and the unified Editable UI Core architecture**. It enables:
+
+1. **Gradual Migration**: HudLayoutEditor can continue using legacy types internally while gaining access to unified features
+2. **Interoperability**: HUD configs can be converted to/from unified formats for preset sharing, import/export, and cross-editor compatibility
+3. **Type Safety**: Strong typing for HUD-specific metadata (size variants, profiles, view modes) while conforming to unified schema
+4. **Game-Specific Visibility**: Advanced visibility conditions (quest/location/time-based) that map cleanly to `UnifiedVisibility.advanced`
+
+#### Key Files
+
+##### `hudConfig.ts` (274 lines) - ✅ Complete
+**HUD-specific config types:**
+- `HudWidgetConfig` - Extends `UnifiedWidgetConfig` with HUD metadata
+  - Adds `toolId`, `size`, `groupId`, `viewMode`, `profileId`, `defaultCollapsed`
+  - Position uses `mode: 'region'` with HUD regions (top/bottom/left/right/overlay)
+  - Visibility maps to `UnifiedVisibility` (simple + advanced)
+- `HudSurfaceConfig` - Extends `UnifiedSurfaceConfig` with HUD metadata
+  - Enforces `componentType: 'hud'`
+  - Adds `profileId`, `viewMode`, `worldId`, `isWorldPreset`, `inheritFrom`
+
+**Bidirectional converters (legacy ↔ unified):**
+- `fromHudToolPlacement()` - Converts single HudToolPlacement → HudWidgetConfig
+- `toHudToolPlacement()` - Converts HudWidgetConfig → HudToolPlacement (for backwards compatibility)
+- `fromHudToolPlacements()` - Converts HudToolPlacement[] → HudSurfaceConfig
+- `toHudToolPlacements()` - Converts HudSurfaceConfig → HudToolPlacement[]
+- `toUnifiedSurfaceConfig()` - Strips HUD metadata to get generic config (for cross-editor sharing)
+- `fromUnifiedSurfaceConfig()` - Enriches generic config with HUD metadata
+
+**Why these converters matter:**
+- Current HudLayoutEditor uses `HudToolPlacement[]` everywhere
+- These converters enable **incremental refactoring** without breaking existing code
+- Can convert to `HudSurfaceConfig` for export/import, then convert back for internal use
+- Eventually HudLayoutEditor should use `HudSurfaceConfig` natively (see Migration Path below)
+
+##### `hudVisibility.ts` (292 lines) - ✅ Complete
+**Advanced visibility condition types:**
+- `HudVisibilityCondition` - Game-specific visibility rules
+  - 8 condition kinds: `capability`, `flag`, `session`, `location`, `time`, `quest`, `relationship`, `composite`
+  - Time-based: day of week, hour range (24-hour)
+  - Relationship-based: minimum NPC relationship level (0-100)
+  - Composite: AND/OR logic for combining conditions
+  - Maps to `AdvancedVisibilityCondition` from editing-core
+
+**Bidirectional converters:**
+- `toAdvancedVisibilityCondition()` - HudVisibilityCondition → generic AdvancedVisibilityCondition
+- `fromAdvancedVisibilityCondition()` - AdvancedVisibilityCondition → HudVisibilityCondition
+
+**Runtime evaluation:**
+- `evaluateHudVisibility()` - Full implementation for all 8 condition kinds
+- `evaluateHudVisibilityConditions()` - Evaluates multiple conditions (AND by default)
+- Uses `WorldToolContext` for game state (session, flags, location, time, relationships)
+
+**Helper builders:**
+- `HudVisibilityHelpers.requireSession()` - Session-only visibility
+- `HudVisibilityHelpers.atLocation(id)` - Location-based
+- `HudVisibilityHelpers.duringHours(start, end, day?)` - Time-based
+- `HudVisibilityHelpers.whenQuestActive(id)` - Quest-based
+- `HudVisibilityHelpers.whenRelationship(npc, minLevel)` - Relationship-based
+- `HudVisibilityHelpers.whenFlagSet(path)` - Flag-based
+- `HudVisibilityHelpers.and(...)` / `.or(...)` - Composite conditions
+
+##### `index.ts` - Module exports
+Exports all types and functions from `hudConfig` and `hudVisibility`.
+
+#### Architecture
+
 ```
-editing-core (generic)
-    ↓
-gameplay-ui-core (HUD-specific)
-    ↓
-HudLayoutEditor (UI)
+┌─────────────────────────────────────────────────────────────┐
+│ editing-core (generic, ✅ COMPLETE)                          │
+│ - UnifiedWidgetConfig, UnifiedSurfaceConfig                 │
+│ - UnifiedPosition (mode: anchor | region | absolute)        │
+│ - UnifiedVisibility (simple + advanced)                     │
+│ - DataBinding<T> (static | path | fn)                       │
+│ - useUndoRedo<T> hook                                       │
+└─────────────────────────────────────────────────────────────┘
+                            ↓ extends/wraps
+┌─────────────────────────────────────────────────────────────┐
+│ gameplay-ui-core (HUD-specific, ✅ COMPLETE)                 │
+│ - HudWidgetConfig, HudSurfaceConfig                         │
+│ - HudVisibilityCondition (8 kinds)                          │
+│ - Converters: legacy ↔ unified                              │
+│ - Runtime: evaluateHudVisibility()                          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓ used by (imports only, not yet refactored)
+┌─────────────────────────────────────────────────────────────┐
+│ HudLayoutEditor (UI, ⚠️ PARTIAL INTEGRATION)                │
+│ - Currently: Uses HudToolPlacement[] internally             │
+│ - TODO: Refactor to use HudSurfaceConfig natively           │
+│ - TODO: Modularize into smaller components                  │
+│ - Already imports: HudSurfaceConfig, converters             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Used by:** `apps/main/src/components/game/HudLayoutEditor.tsx`
+#### Current Integration Status
+
+**What's Done:**
+- ✅ Full type definitions for HUD-specific config layer
+- ✅ Complete bidirectional converters (legacy ↔ unified)
+- ✅ Full visibility evaluation logic (all 8 condition kinds)
+- ✅ Helper builders for common visibility patterns
+- ✅ HudLayoutEditor imports the new types (added in last commit)
+
+**What's NOT Done:**
+- ❌ HudLayoutEditor still uses `HudToolPlacement[]` internally (not refactored yet)
+- ❌ No actual usage of converters in HudLayoutEditor (just imports)
+- ❌ No preset import/export using unified format yet
+- ❌ No cross-editor config sharing implemented yet
+- ❌ HudLayoutEditor not yet modularized (still 1258-line monolith)
+
+#### Migration Path for HudLayoutEditor
+
+**Current State:**
+```typescript
+// HudLayoutEditor.tsx - current internal state
+const [tools, setTools] = useState<HudToolPlacement[]>([]);
+```
+
+**Target State:**
+```typescript
+// HudLayoutEditor.tsx - after refactor
+const [hudConfig, setHudConfig] = useState<HudSurfaceConfig>({
+  id: 'hud-layout',
+  componentType: 'hud',
+  widgets: [],
+  version: 1,
+});
+```
+
+**Incremental Steps:**
+1. **Keep internal state as HudToolPlacement[]** (backwards compatible)
+2. **Add conversion layer** for export/import:
+   ```typescript
+   function exportLayout(): HudSurfaceConfig {
+     return fromHudToolPlacements(tools, { profileId, viewMode, worldId });
+   }
+
+   function importLayout(config: HudSurfaceConfig) {
+     setTools(toHudToolPlacements(config));
+   }
+   ```
+3. **Gradually migrate state** to HudSurfaceConfig (breaking change, requires migration)
+4. **Remove legacy types** once all code uses unified types
+
+**Benefits of Migration:**
+- Unified preset format (can share HUD layouts like overlay configs)
+- Access to editing-core features (undo/redo, validation, schema migrations)
+- Interoperability with other editable UI systems
+- Type-safe visibility conditions via HudVisibilityCondition
+
+#### Dependencies
+
+**Requires from editing-core** ✅ **ALL VERIFIED AND COMPLETE**:
+- ✅ `UnifiedWidgetConfig` - Base widget config type (unifiedConfig.ts:117)
+- ✅ `UnifiedSurfaceConfig` - Base surface config type (unifiedConfig.ts:152)
+- ✅ `UnifiedPosition` - Position with mode: 'region' support (unifiedConfig.ts:41)
+- ✅ `UnifiedVisibility` - Visibility with advanced conditions (unifiedConfig.ts:73)
+- ✅ `AdvancedVisibilityCondition` - Generic advanced visibility type (unifiedConfig.ts:65)
+- ✅ `useUndoRedo<T>` - Generic undo/redo hook (hooks/useUndoRedo.ts:23)
+
+**Verified files:**
+- ✅ `apps/main/src/lib/editing-core/unifiedConfig.ts` (160 lines, complete)
+- ✅ `apps/main/src/lib/editing-core/hooks/useUndoRedo.ts` (60 lines, complete)
+- ✅ `apps/main/src/lib/editing-core/dataBinding.ts` (data binding system)
+
+#### Next Steps (Recommended)
+
+1. **Modularize HudLayoutEditor** (HIGH PRIORITY) - See Task 101
+   - Extract into `components/hud-editor/` subfolder
+   - Break 1258-line monolith into focused components:
+     - `HudEditor.tsx` - Main orchestrator
+     - `RegionAssignment.tsx` - Region/order controls
+     - `VisibilityConditions.tsx` - Visibility UI
+     - `ProfileManager.tsx` - Profile management
+     - `ViewModeConfig.tsx` - View mode settings
+   - Switch to using `useUndoRedo<HudSurfaceConfig>` from editing-core
+   - Keep behavior identical (no UX changes)
+
+2. **Add export/import to HudLayoutEditor** (HIGH PRIORITY) - Part of Task 101
+   - Use `fromHudToolPlacements()` / `toHudToolPlacements()` for JSON export/import
+   - Enable preset sharing across worlds/profiles
+   - Test round-trip conversion (export → import should be lossless)
+   - Add export/import buttons to HUD editor UI
+
+3. **Document visibility condition examples** (MEDIUM PRIORITY)
+   - Add examples of common HUD visibility patterns
+   - Show how to use HudVisibilityHelpers
+   - Document WorldToolContext requirements
+   - Create tutorial/guide for designers
+
+4. **Consider full state migration to HudSurfaceConfig** (LONG-TERM)
+   - Change internal state from `HudToolPlacement[]` to `HudSurfaceConfig`
+   - Use converters only for legacy persistence layer
+   - Enables direct access to unified features
+   - Requires careful migration and testing
+
+**Used by:** `apps/main/src/components/game/HudLayoutEditor.tsx` (imports only, not yet integrated)
 
 ---
 
@@ -593,6 +771,28 @@ This approach provides:
 
 ---
 
-**Last Updated:** 2025-11-28
-**Status:** Architecture Direction Defined - Ready for Implementation
-**Recommended Approach:** Option B (Editable UI Core)
+## Recent Updates
+
+### 2025-11-28 (Commit 66c9b52 + Documentation Update)
+**Added:** gameplay-ui-core module (HUD-specific layer)
+- ✅ Complete implementation of HudWidgetConfig, HudSurfaceConfig types
+- ✅ Bidirectional converters between legacy HudToolPlacement and unified types
+- ✅ Full HudVisibilityCondition system (8 condition kinds with evaluation)
+- ⚠️ HudLayoutEditor imports added but not yet refactored to use new types
+- 📝 Documentation updated to reflect actual implementation status and migration path
+
+**Verified:** editing-core dependencies (all complete)
+- ✅ editing-core/unifiedConfig.ts - All unified types complete (160 lines)
+- ✅ editing-core/hooks/useUndoRedo.ts - Generic undo/redo ready (60 lines)
+- ✅ editing-core/dataBinding.ts - Data binding system complete
+- ✅ All dependencies required by gameplay-ui-core verified and working
+
+**Ready for:** Task 101 - HudLayoutEditor modularization and gameplay-ui-core integration
+
+**Next:** Execute Task 101 - Modularize HudLayoutEditor, add export/import, switch to useUndoRedo
+
+---
+
+**Last Updated:** 2025-11-28 (Documentation fully reflects implementation status + Task 101 updated)
+**Status:** Phase 1 Complete - editing-core ✅, gameplay-ui-core ✅, HudLayoutEditor migration ready to start (Task 101)
+**Recommended Approach:** Option B (Editable UI Core) - Infrastructure Complete, Integration Pending
