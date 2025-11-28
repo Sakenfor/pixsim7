@@ -2,10 +2,12 @@
  * Badge Widget
  *
  * Pre-built widget for displaying badges (icons, text, status indicators)
+ * Uses shared UI components for consistency where applicable
  */
 
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
+import { Badge } from '@pixsim/shared/ui';
 import { Icon } from '@/components/common/Icon';
 
 export interface BadgeWidgetConfig {
@@ -28,10 +30,10 @@ export interface BadgeWidgetConfig {
   label?: string | ((data: any) => string);
 
   /** Badge color/variant */
-  color?: 'primary' | 'success' | 'warning' | 'danger' | 'neutral';
+  color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow';
 
-  /** Badge shape */
-  shape?: 'circle' | 'square' | 'rounded' | 'pill';
+  /** Badge shape (for icon-only badges) */
+  shape?: 'circle' | 'square' | 'rounded';
 
   /** Enable pulse animation */
   pulse?: boolean;
@@ -60,7 +62,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     variant,
     icon,
     label,
-    color = 'neutral',
+    color = 'gray',
     shape = 'rounded',
     pulse = false,
     tooltip,
@@ -68,30 +70,6 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     className = '',
     priority,
   } = config;
-
-  // Color classes
-  const colorClasses = {
-    primary: 'bg-blue-500 text-white',
-    success: 'bg-green-500 text-white',
-    warning: 'bg-yellow-500 text-white',
-    danger: 'bg-red-500 text-white',
-    neutral: 'bg-gray-700 text-white',
-  };
-
-  // Shape classes
-  const shapeClasses = {
-    circle: 'rounded-full',
-    square: 'rounded-none',
-    rounded: 'rounded',
-    pill: 'rounded-full',
-  };
-
-  // Size classes based on variant
-  const sizeClasses = {
-    icon: 'w-8 h-8',
-    text: 'px-2 py-1',
-    'icon-text': 'px-2 py-1',
-  };
 
   return {
     id,
@@ -106,29 +84,62 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
       // Resolve label if it's a function
       const resolvedLabel = typeof label === 'function' ? label(data) : label;
 
+      // Icon-only badges use custom circular styling
+      if (variant === 'icon' && !resolvedLabel) {
+        const shapeClasses = {
+          circle: 'rounded-full',
+          square: 'rounded-none',
+          rounded: 'rounded',
+        };
+
+        // Color map for icon badges (darker, more prominent)
+        const iconColorClasses = {
+          blue: 'bg-blue-600 text-white',
+          green: 'bg-green-600 text-white',
+          red: 'bg-red-600 text-white',
+          gray: 'bg-gray-700 text-white',
+          purple: 'bg-purple-600 text-white',
+          pink: 'bg-pink-600 text-white',
+          orange: 'bg-orange-600 text-white',
+          yellow: 'bg-yellow-600 text-white',
+        };
+
+        return (
+          <div
+            className={`
+              inline-flex items-center justify-center
+              w-8 h-8
+              ${iconColorClasses[color]}
+              ${shapeClasses[shape]}
+              ${pulse ? 'animate-pulse' : ''}
+              shadow-md
+              ${className}
+            `.trim()}
+            title={tooltip}
+          >
+            {icon && <Icon name={icon} className="w-4 h-4" />}
+          </div>
+        );
+      }
+
+      // Text and icon-text badges use shared Badge component
       return (
-        <div
+        <Badge
+          color={color}
           className={`
-            inline-flex items-center justify-center gap-1
-            ${colorClasses[color]}
-            ${shapeClasses[shape]}
-            ${sizeClasses[variant]}
+            inline-flex items-center gap-1
             ${pulse ? 'animate-pulse' : ''}
+            shadow-sm
             ${className}
-            shadow-md
           `.trim()}
-          title={tooltip}
         >
           {(variant === 'icon' || variant === 'icon-text') && icon && (
-            <Icon name={icon} className="w-4 h-4" />
+            <Icon name={icon} className="w-3 h-3" />
           )}
-
-          {(variant === 'text' || variant === 'icon-text') && resolvedLabel && (
-            <span className="text-xs font-medium whitespace-nowrap">
-              {resolvedLabel}
-            </span>
+          {resolvedLabel && (
+            <span className="whitespace-nowrap">{resolvedLabel}</span>
           )}
-        </div>
+        </Badge>
       );
     },
   };
@@ -152,7 +163,7 @@ export const BadgePresets = {
       visibility: { trigger: 'always' },
       variant: 'icon',
       icon: mediaTypeIcon,
-      color: 'primary',
+      color: 'blue',
       shape: 'circle',
       tooltip: 'Media type',
     }),
@@ -166,9 +177,9 @@ export const BadgePresets = {
     position: WidgetPosition = { anchor: 'top-right', offset: { x: -8, y: 8 } },
   ): OverlayWidget => {
     const statusConfig = {
-      ok: { icon: 'check', color: 'success' as const, label: 'OK' },
-      warning: { icon: 'alertCircle', color: 'warning' as const, label: 'Warning' },
-      error: { icon: 'x', color: 'danger' as const, label: 'Error' },
+      ok: { icon: 'check', color: 'green' as const, label: 'OK' },
+      warning: { icon: 'alertCircle', color: 'yellow' as const, label: 'Warning' },
+      error: { icon: 'x', color: 'red' as const, label: 'Error' },
     };
 
     const config = statusConfig[status];
@@ -202,8 +213,8 @@ export const BadgePresets = {
         const value = typeof count === 'function' ? count(data) : count;
         return value > 99 ? '99+' : String(value);
       },
-      color: 'danger',
-      shape: 'pill',
-      className: 'min-w-[1.25rem] text-[10px]',
+      color: 'red',
+      shape: 'rounded',
+      className: 'min-w-[1.25rem] !text-[10px] !px-1.5 !py-0',
     }),
 };

@@ -2,10 +2,12 @@
  * Panel Widget
  *
  * Pre-built widget for information panels and overlays
+ * Uses shared Panel component as base with additional styling variants
  */
 
 import React, { ReactNode } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
+import { Panel } from '@pixsim/shared/ui';
 
 export interface PanelWidgetConfig {
   /** Widget ID */
@@ -33,7 +35,7 @@ export interface PanelWidgetConfig {
   maxHeight?: number | string;
 
   /** Panel variant */
-  variant?: 'default' | 'dark' | 'glass' | 'solid';
+  variant?: 'default' | 'dark' | 'glass';
 
   /** Custom className */
   className?: string;
@@ -64,14 +66,6 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
     onClick,
   } = config;
 
-  // Variant classes
-  const variantClasses = {
-    default: 'bg-white/90 dark:bg-gray-900/90 text-gray-900 dark:text-white',
-    dark: 'bg-black/80 text-white',
-    glass: 'bg-white/10 backdrop-blur-md text-white border border-white/20',
-    solid: 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white',
-  };
-
   return {
     id,
     type: 'panel',
@@ -89,12 +83,19 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
       const resolvedTitle = typeof title === 'function' ? title(data) : title;
       const resolvedContent = typeof content === 'function' ? content(data) : content;
 
+      // Additional styling for variants
+      const variantClasses = {
+        default: '', // Use shared Panel's default styling
+        dark: '!bg-black/80 !text-white !border-white/10',
+        glass: '!bg-white/10 backdrop-blur-md !text-white !border-white/20',
+      };
+
       return (
-        <div
+        <Panel
+          padded={backdrop}
           className={`
             ${variantClasses[variant]}
-            rounded-lg shadow-lg
-            ${backdrop ? 'p-4' : 'p-3'}
+            ${!backdrop ? 'p-3' : ''}
             ${className}
           `.trim()}
         >
@@ -107,7 +108,7 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
           <div className="text-sm">
             {resolvedContent}
           </div>
-        </div>
+        </Panel>
       );
     },
   };
