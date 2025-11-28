@@ -29,7 +29,7 @@ let accountJwtHealth = {
   expired: [],
   providers: [],
 };
-let availableDevices = [];
+  let availableDevices = [];
 
 // ===== INIT =====
 
@@ -167,28 +167,37 @@ function setupEventListeners() {
 // ===== CREDIT SYNC (THROTTLED) =====
 
 const CREDIT_SYNC_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+const CREDIT_SYNC_TIMEOUT_MS = 2 * 60 * 1000; // watchdog for stuck in-progress flag
+let creditSyncInProgress = false;
+let creditSyncStartedAt = 0;
 
 async function syncCreditsThrottled(reason, options = {}) {
   const force = options.force === true;
+  const now = Date.now();
 
-  try {
-    const now = Date.now();
-    const { lastCreditSyncAt, creditSyncInProgress } = await chrome.storage.local.get({
-      lastCreditSyncAt: null,
-      creditSyncInProgress: false,
-    });
-
-    if (creditSyncInProgress) {
+  // Guard against overlapping syncs; if the flag looks stuck, reset it.
+  if (creditSyncInProgress) {
+    if (creditSyncStartedAt && (now - creditSyncStartedAt) > CREDIT_SYNC_TIMEOUT_MS) {
+      console.warn('[Popup] Credit sync flag appears stuck; resetting and continuing:', reason);
+      creditSyncInProgress = false;
+      creditSyncStartedAt = 0;
+    } else {
       console.log('[Popup] Credit sync already in progress, skipping:', reason);
       return;
     }
+  }
+
+  try {
+    const stored = await chrome.storage.local.get({ lastCreditSyncAt: null });
+    const lastCreditSyncAt = stored.lastCreditSyncAt;
 
     if (!force && lastCreditSyncAt && now - lastCreditSyncAt < CREDIT_SYNC_THRESHOLD_MS) {
       console.log('[Popup] Skipping credit sync (throttled):', reason);
       return;
     }
 
-    await chrome.storage.local.set({ creditSyncInProgress: true });
+    creditSyncInProgress = true;
+    creditSyncStartedAt = now;
     console.log('[Popup] Syncing credits...', reason);
 
     const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
@@ -206,7 +215,8 @@ async function syncCreditsThrottled(reason, options = {}) {
   } catch (err) {
     console.warn('[Popup] Credit sync error:', err);
   } finally {
-    await chrome.storage.local.set({ creditSyncInProgress: false });
+    creditSyncInProgress = false;
+    creditSyncStartedAt = 0;
   }
 }
 
