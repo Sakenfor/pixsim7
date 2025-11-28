@@ -55,6 +55,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager im
 from pixsim_logging import get_logger
 
 logger = get_logger()
+PIXVERSE_CREDITS_TIMEOUT_SEC = 10.0
 
 # Fallback implementation if SDK doesn't have infer_video_dimensions yet
 if infer_video_dimensions is None:
@@ -1166,9 +1167,12 @@ class PixverseProvider(Provider):
             )
             api = self._get_cached_api(account)
 
-            web_total = 0
-            try:
-                web_data = await asyncio.to_thread(api.get_credits, temp_account)
+              web_total = 0
+              try:
+                  web_data = await asyncio.wait_for(
+                      asyncio.to_thread(api.get_credits, temp_account),
+                      timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                  )
                 if isinstance(web_data, dict):
                     # Prefer specific remaining/total fields, but be robust to SDK changes.
                     raw_web = (
@@ -1193,9 +1197,12 @@ class PixverseProvider(Provider):
                 raise
 
             openapi_total = 0
-            if "openapi_key" in session:
-                try:
-                    openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
+              if "openapi_key" in session:
+                  try:
+                      openapi_data = await asyncio.wait_for(
+                          asyncio.to_thread(api.get_openapi_credits, temp_account),
+                          timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                      )
                     if isinstance(openapi_data, dict):
                         raw_openapi = (
                             openapi_data.get("credits")
@@ -1258,9 +1265,12 @@ class PixverseProvider(Provider):
             )
             api = self._get_cached_api(account)
 
-            web_total = 0
-            try:
-                web_data = await asyncio.to_thread(api.get_credits, temp_account)
+              web_total = 0
+              try:
+                  web_data = await asyncio.wait_for(
+                      asyncio.to_thread(api.get_credits, temp_account),
+                      timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                  )
                 if isinstance(web_data, dict):
                     raw_web = (
                         web_data.get("remainingCredits")
@@ -1277,9 +1287,12 @@ class PixverseProvider(Provider):
                 raise
 
             openapi_total = 0
-            if "openapi_key" in session:
-                try:
-                    openapi_data = await asyncio.to_thread(api.get_openapi_credits, temp_account)
+              if "openapi_key" in session:
+                  try:
+                      openapi_data = await asyncio.wait_for(
+                          asyncio.to_thread(api.get_openapi_credits, temp_account),
+                          timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                      )
                     if isinstance(openapi_data, dict):
                         raw_openapi = (
                             openapi_data.get("credits")
