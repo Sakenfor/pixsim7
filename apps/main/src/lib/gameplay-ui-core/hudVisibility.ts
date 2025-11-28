@@ -10,7 +10,7 @@
  */
 
 import type { AdvancedVisibilityCondition } from '../editing-core';
-import type { WorldToolContext } from '../worldTools/types';
+import type { WorldToolContext } from '../worldTools/context';
 
 /**
  * HUD visibility condition kinds

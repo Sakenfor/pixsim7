@@ -21,50 +21,10 @@ import type {
 import type { NpcSlotAssignment } from '@pixsim7/game.engine';
 
 /**
- * World time representation
+ * Re-export context types from separate file to avoid circular dependencies
  */
-export interface WorldTime {
-  day: number;
-  hour: number;
-}
 
-/**
- * World tool context available to plugins
- */
-export interface WorldToolContext {
-  /** Current game session (may be null if no session created yet) */
-  session: GameSessionDTO | null;
-
-  /** Session flags for gameplay customization */
-  sessionFlags: Record<string, unknown>;
-
-  /** NPC relationships state */
-  relationships: Record<string, unknown>;
-
-  /** Current world detail */
-  worldDetail: GameWorldDetail | null;
-
-  /** Current world time */
-  worldTime: WorldTime;
-
-  /** Current location detail */
-  locationDetail: GameLocationDetail | null;
-
-  /** NPCs present at current location */
-  locationNpcs: NpcPresenceDTO[];
-
-  /** NPC slot assignments for current location */
-  npcSlotAssignments: NpcSlotAssignment[];
-
-  /** Selected world ID */
-  selectedWorldId: number | null;
-
-  /** Selected location ID */
-  selectedLocationId: number | null;
-
-  /** Active NPC ID */
-  activeNpcId: number | null;
-}
+export type { WorldTime, WorldToolContext } from './context';
 
 /**
  * World tool plugin definition
@@ -188,28 +148,10 @@ export const worldToolRegistry = new WorldToolRegistry();
 // ===================
 
 /**
- * Visibility condition for HUD tool placement
- *
- * NOTE: This is duplicated in gameplay-ui-core/hudVisibility.ts for the unified architecture.
- * Kept here to avoid circular dependency (gameplay-ui-core imports WorldToolContext from this file).
- * TODO: Refactor to break circular dependency in future task.
+ * Re-export HudVisibilityCondition from gameplay-ui-core (circular dependency now resolved)
  */
-export interface HudVisibilityCondition {
-  /** Type of condition */
-  kind: 'capability' | 'flag' | 'session' | 'location' | 'time' | 'quest' | 'relationship' | 'composite';
-  /** Identifier for the condition (e.g., capability ID, flag path, location ID) */
-  id: string;
-  /** For 'time' condition: day of week (0-6) or 'any' */
-  dayOfWeek?: number | 'any';
-  /** For 'time' condition: hour range [start, end] (24-hour format) */
-  hourRange?: [number, number];
-  /** For 'relationship' condition: minimum relationship level (0-100) */
-  minRelationship?: number;
-  /** For 'composite' condition: logical operator */
-  operator?: 'AND' | 'OR';
-  /** For 'composite' condition: nested conditions */
-  conditions?: HudVisibilityCondition[];
-}
+
+export type { HudVisibilityCondition } from '../gameplay-ui-core/hudVisibility';
 
 /**
  * Region where a tool can be placed in the HUD
