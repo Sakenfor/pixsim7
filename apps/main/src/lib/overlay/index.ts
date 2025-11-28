@@ -73,12 +73,25 @@ export {
   BadgePresets,
   createButtonWidget,
   createPanelWidget,
+  createMenuWidget,
+  createVideoScrubWidget,
+  createProgressWidget,
+  createUploadWidget,
+  createTooltipWidget,
 } from './widgets';
 
 export type {
   BadgeWidgetConfig,
   ButtonWidgetConfig,
   PanelWidgetConfig,
+  MenuWidgetConfig,
+  MenuItem,
+  VideoScrubWidgetConfig,
+  ProgressWidgetConfig,
+  UploadWidgetConfig,
+  UploadState,
+  TooltipWidgetConfig,
+  TooltipContent,
 } from './widgets';
 
 // Utilities
