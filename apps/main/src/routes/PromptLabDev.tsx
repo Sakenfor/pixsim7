@@ -417,6 +417,10 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
   // View mode for version detail
   const [versionViewMode, setVersionViewMode] = useState<'blocks' | 'graph'>('blocks');
 
+  // Test Fit state
+  const [testFitAssetId, setTestFitAssetId] = useState('');
+  const [testFitRole, setTestFitRole] = useState<string>('unspecified');
+
   // Load families
   const loadFamilies = async () => {
     setFamiliesLoading(true);
@@ -486,6 +490,22 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
   // Handle version selection
   const handleSelectVersion = (version: DevPromptVersionSummary) => {
     loadVersionDetail(version.id);
+  };
+
+  // Handle Test Fit navigation
+  const handleOpenBlockFit = () => {
+    if (!selectedVersion || !testFitAssetId) {
+      alert('Please enter an Asset ID');
+      return;
+    }
+
+    const params = new URLSearchParams({
+      prompt_version_id: selectedVersion.version.id,
+      asset_id: testFitAssetId,
+      role_in_sequence: testFitRole,
+    });
+
+    window.location.href = `/dev/block-fit?${params.toString()}`;
   };
 
   return (
@@ -718,6 +738,53 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
               </h3>
               <div className="bg-neutral-100 dark:bg-neutral-800 rounded-md p-4 font-mono text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
                 {selectedVersion.prompt_text}
+              </div>
+            </Panel>
+
+            {/* Test Fit Panel */}
+            <Panel className="p-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+              <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-3">
+                Test Fit with Image
+              </h3>
+              <p className="text-xs text-blue-800 dark:text-blue-200 mb-4">
+                Test how well blocks from this prompt fit a specific asset
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-100 mb-1">
+                    Asset ID <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Enter asset ID"
+                    value={testFitAssetId}
+                    onChange={(e) => setTestFitAssetId(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-100 mb-1">
+                    Role in Sequence
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-800"
+                    value={testFitRole}
+                    onChange={(e) => setTestFitRole(e.target.value)}
+                  >
+                    <option value="unspecified">Unspecified</option>
+                    <option value="initial">Initial</option>
+                    <option value="continuation">Continuation</option>
+                    <option value="transition">Transition</option>
+                  </select>
+                </div>
+                <Button
+                  onClick={handleOpenBlockFit}
+                  disabled={!testFitAssetId}
+                  className="w-full"
+                  size="sm"
+                >
+                  Open Block Fit with This Prompt
+                </Button>
               </div>
             </Panel>
 
