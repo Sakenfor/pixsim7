@@ -4,7 +4,12 @@
       "Bash(alembic current:*)",
       "Bash(alembic heads:*)",
       "Bash(alembic history:*)",
-      "Bash(alembic upgrade:*)"
+      "Bash(alembic upgrade:*)",
+      "Bash(git log:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git merge-base:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
