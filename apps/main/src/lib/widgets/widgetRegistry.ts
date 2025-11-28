@@ -6,6 +6,7 @@
  */
 
 import type { ComponentType } from 'react';
+import { BaseRegistry } from '../core/BaseRegistry';
 
 export type WidgetType =
   | 'text'
@@ -69,43 +70,7 @@ export interface WidgetDefinition {
 /**
  * WidgetRegistry - Centralized registry for all composable widgets
  */
-export class WidgetRegistry {
-  private widgets = new Map<string, WidgetDefinition>();
-  private listeners: Set<() => void> = new Set();
-
-  /**
-   * Register a widget definition
-   */
-  register(definition: WidgetDefinition): void {
-    if (this.widgets.has(definition.id)) {
-      console.warn(`Widget "${definition.id}" is already registered. Overwriting.`);
-    }
-
-    this.widgets.set(definition.id, definition);
-    this.notifyListeners();
-  }
-
-  /**
-   * Unregister a widget
-   */
-  unregister(widgetId: string): void {
-    this.widgets.delete(widgetId);
-    this.notifyListeners();
-  }
-
-  /**
-   * Get a widget definition by ID
-   */
-  get(widgetId: string): WidgetDefinition | undefined {
-    return this.widgets.get(widgetId);
-  }
-
-  /**
-   * Get all registered widgets
-   */
-  getAll(): WidgetDefinition[] {
-    return Array.from(this.widgets.values());
-  }
+export class WidgetRegistry extends BaseRegistry<WidgetDefinition> {
 
   /**
    * Get widgets by type
@@ -134,44 +99,6 @@ export class WidgetRegistry {
 
       return matchesId || matchesTitle || matchesDescription || matchesTags;
     });
-  }
-
-  /**
-   * Check if a widget is registered
-   */
-  has(widgetId: string): boolean {
-    return this.widgets.has(widgetId);
-  }
-
-  /**
-   * Subscribe to registry changes
-   */
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
-   * Notify all listeners of changes
-   */
-  private notifyListeners(): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Error in widget registry listener:', error);
-      }
-    });
-  }
-
-  /**
-   * Clear all widgets
-   */
-  clear(): void {
-    this.widgets.clear();
-    this.notifyListeners();
   }
 
   /**

@@ -7,47 +7,12 @@
  */
 
 import type { GraphEditorDefinition, GraphEditorId } from './types';
+import { BaseRegistry } from '../core/BaseRegistry';
 
 /**
  * GraphEditorRegistry - Centralized registry for graph editor surfaces
  */
-export class GraphEditorRegistry {
-  private editors = new Map<GraphEditorId, GraphEditorDefinition>();
-  private listeners: Set<() => void> = new Set();
-
-  /**
-   * Register a graph editor definition
-   */
-  register(def: GraphEditorDefinition): void {
-    if (this.editors.has(def.id)) {
-      console.warn(`Graph editor "${def.id}" is already registered. Overwriting.`);
-    }
-
-    this.editors.set(def.id, def);
-    this.notifyListeners();
-  }
-
-  /**
-   * Unregister a graph editor
-   */
-  unregister(id: GraphEditorId): void {
-    this.editors.delete(id);
-    this.notifyListeners();
-  }
-
-  /**
-   * Get a graph editor definition by ID
-   */
-  get(id: GraphEditorId): GraphEditorDefinition | undefined {
-    return this.editors.get(id);
-  }
-
-  /**
-   * Get all registered graph editors
-   */
-  getAll(): GraphEditorDefinition[] {
-    return Array.from(this.editors.values());
-  }
+export class GraphEditorRegistry extends BaseRegistry<GraphEditorDefinition> {
 
   /**
    * Get graph editors by category
@@ -57,41 +22,17 @@ export class GraphEditorRegistry {
   }
 
   /**
-   * Check if a graph editor is registered
+   * Search graph editors by query (searches id, label, description)
    */
-  has(id: GraphEditorId): boolean {
-    return this.editors.has(id);
-  }
+  search(query: string): GraphEditorDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter((editor) => {
+      const matchesId = editor.id.toLowerCase().includes(lowerQuery);
+      const matchesLabel = editor.label.toLowerCase().includes(lowerQuery);
+      const matchesDescription = editor.description?.toLowerCase().includes(lowerQuery);
 
-  /**
-   * Subscribe to registry changes
-   */
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
-   * Notify all listeners of changes
-   */
-  private notifyListeners(): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Error in graph editor registry listener:', error);
-      }
+      return matchesId || matchesLabel || matchesDescription;
     });
-  }
-
-  /**
-   * Clear all graph editors (useful for testing)
-   */
-  clear(): void {
-    this.editors.clear();
-    this.notifyListeners();
   }
 
   /**

@@ -8,6 +8,7 @@
  */
 
 import type { ComponentType } from 'react';
+import { BaseRegistry } from '../core/BaseRegistry';
 
 /**
  * Control Center Module Definition
@@ -61,43 +62,31 @@ export interface ControlCenterModuleProps {
 /**
  * Module Registry Class
  */
-class ControlCenterModuleRegistry {
-  private modules = new Map<string, ControlCenterModule>();
-
+class ControlCenterModuleRegistry extends BaseRegistry<ControlCenterModule> {
   /**
    * Register a module
+   * Note: Unlike other registries, this does NOT overwrite existing modules.
    */
-  register(module: ControlCenterModule) {
-    if (this.modules.has(module.id)) {
+  register(module: ControlCenterModule): void {
+    if (this.items.has(module.id)) {
       console.warn(`[CC Module Registry] Module already registered: ${module.id}`);
       return;
     }
 
-    this.modules.set(module.id, module);
+    this.items.set(module.id, module);
     console.log(`[CC Module Registry] Registered: ${module.label} (${module.id})`);
+    this.notifyListeners();
   }
 
   /**
    * Unregister a module
    */
-  unregister(id: string) {
-    if (this.modules.delete(id)) {
+  unregister(id: string): boolean {
+    const wasDeleted = super.unregister(id);
+    if (wasDeleted) {
       console.log(`[CC Module Registry] Unregistered: ${id}`);
     }
-  }
-
-  /**
-   * Get a module by ID
-   */
-  get(id: string): ControlCenterModule | undefined {
-    return this.modules.get(id);
-  }
-
-  /**
-   * Get all registered modules
-   */
-  getAll(): ControlCenterModule[] {
-    return Array.from(this.modules.values());
+    return wasDeleted;
   }
 
   /**
