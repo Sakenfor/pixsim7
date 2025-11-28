@@ -9,6 +9,7 @@ import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim/shared/ui';
 import { Icon } from '@/lib/icons';
+import { createResolver } from '../utils/propertyPath';
 
 export type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -22,11 +23,23 @@ export interface UploadWidgetConfig {
   /** Visibility configuration */
   visibility: VisibilityConfig;
 
-  /** Current upload state */
-  state: UploadState | ((data: any) => UploadState);
+  /**
+   * Current upload state
+   * Can be:
+   * - Static value: 'uploading'
+   * - Function: (data) => data.uploadState
+   * - Property path: "uploadState"
+   */
+  state: UploadState | string | ((data: any) => UploadState);
 
-  /** Upload progress (0-100, only used when state is 'uploading') */
-  progress?: number | ((data: any) => number);
+  /**
+   * Upload progress (0-100, only used when state is 'uploading')
+   * Can be:
+   * - Static number: 50
+   * - Function: (data) => data.uploadProgress
+   * - Property path: "uploadProgress"
+   */
+  progress?: number | string | ((data: any) => number);
 
   /** Button label for each state */
   labels?: {
@@ -101,6 +114,10 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     priority,
   } = config;
 
+  // Create resolvers for reactive values
+  const stateResolver = createResolver<UploadState>(stateProp);
+  const progressResolver = progressProp ? createResolver<number>(progressProp) : null;
+
   return {
     id,
     type: 'upload',
@@ -109,12 +126,9 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     priority,
     interactive: true,
     render: (data: any) => {
-      const state = typeof stateProp === 'function' ? stateProp(data) : stateProp;
-      const progress = progressProp
-        ? typeof progressProp === 'function'
-          ? progressProp(data)
-          : progressProp
-        : 0;
+      // ✨ Supports: static value, function, or property path string
+      const state = stateResolver(data);
+      const progress = progressResolver ? progressResolver(data) : 0;
 
       const handleClick = async () => {
         if (state === 'uploading') return;

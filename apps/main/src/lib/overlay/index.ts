@@ -120,6 +120,15 @@ export {
 } from './utils/visibility';
 
 export {
+  resolvePath,
+  createResolver,
+  isPropertyPath,
+  extractPropertyPaths,
+  getPathType,
+  suggestPathsForWidget,
+} from './utils/propertyPath';
+
+export {
   validateConfiguration,
   validateWidget,
   validateStyle,

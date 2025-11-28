@@ -8,6 +8,7 @@
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Icon } from '@/lib/icons';
+import { createResolver } from '../utils/propertyPath';
 
 export interface ProgressWidgetConfig {
   /** Widget ID */
@@ -19,8 +20,14 @@ export interface ProgressWidgetConfig {
   /** Visibility configuration */
   visibility: VisibilityConfig;
 
-  /** Progress value (0-100) or function to get value */
-  value: number | ((data: any) => number);
+  /**
+   * Progress value (0-100)
+   * Can be:
+   * - Static number: 50
+   * - Function: (data) => data.uploadProgress
+   * - Property path string: "uploadProgress" (for visual config)
+   */
+  value: number | string | ((data: any) => number);
 
   /** Maximum value (default 100) */
   max?: number;
@@ -98,6 +105,10 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     warning: 'bg-orange-500',
   };
 
+  // Create resolvers for reactive values
+  const valueResolver = createResolver<number>(valueProp);
+  const labelResolver = labelProp ? createResolver(labelProp) : null;
+
   return {
     id,
     type: 'progress',
@@ -106,12 +117,11 @@ export function createProgressWidget(config: ProgressWidgetConfig): OverlayWidge
     priority,
     interactive: false,
     render: (data: any) => {
-      const value = typeof valueProp === 'function' ? valueProp(data) : valueProp;
+      // ✨ Supports: static number, function, or property path string
+      const value = valueResolver(data);
       const percentage = Math.max(0, Math.min(100, (value / max) * 100));
-      const label = labelProp
-        ? typeof labelProp === 'function'
-          ? labelProp(value, data)
-          : labelProp
+      const label = labelResolver
+        ? (typeof labelProp === 'function' ? labelResolver(value, data) : labelResolver(data))
         : `${Math.round(percentage)}%`;
 
       if (variant === 'circular') {
