@@ -189,6 +189,10 @@ export const worldToolRegistry = new WorldToolRegistry();
 
 /**
  * Visibility condition for HUD tool placement
+ *
+ * NOTE: This is duplicated in gameplay-ui-core/hudVisibility.ts for the unified architecture.
+ * Kept here to avoid circular dependency (gameplay-ui-core imports WorldToolContext from this file).
+ * TODO: Refactor to break circular dependency in future task.
  */
 export interface HudVisibilityCondition {
   /** Type of condition */
