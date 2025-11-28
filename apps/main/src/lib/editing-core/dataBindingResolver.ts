@@ -7,7 +7,7 @@
  */
 
 import type { DataBinding } from './dataBinding';
-import { resolvePath } from '../overlay/utils/propertyPath';
+import { resolvePath } from './utils/propertyPath';
 
 /**
  * Resolve a DataBinding to its value given runtime data

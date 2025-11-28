@@ -316,42 +316,88 @@ async importPreset(json: string): Promise<OverlayPreset> {
 
 ---
 
-## 7. Recommendations
+## 7. Fixes Applied
 
-### Immediate (No action required)
-✅ All critical issues resolved
-✅ Codebase is clean and well-architected
-✅ Documentation is accurate and complete
+### Issue #1: Circular Dependency (editing-core ↔ overlay) ✅ RESOLVED
+**Problem:** editing-core imported `resolvePath` from overlay, creating a minor cycle
 
-### Future Enhancements (Optional)
-1. **Break editing-core → overlay cycle** - Move `resolvePath` to editing-core
-2. **Migrate Overlay to UnifiedSurfaceConfig** - Enables cross-editor preset sharing
-3. **Migrate HudEditor internal state** - Use `HudSurfaceConfig` natively instead of converters
+**Solution:**
+- Created `editing-core/utils/propertyPath.ts` with core `resolvePath` function
+- Updated `editing-core/dataBindingResolver.ts` to import locally
+- Updated `overlay/utils/propertyPath.ts` to re-export from editing-core
+- Exported from `editing-core/index.ts`
+
+**Result:** Circular dependency eliminated, cleaner architecture
+
+---
+
+### Issue #2: Overlay Not Using UnifiedSurfaceConfig ✅ RESOLVED
+**Problem:** Overlay and HUD used incompatible export formats, preventing preset sharing
+
+**Solution:**
+- Created `overlay/overlayConfig.ts` with bidirectional converters:
+  - `toUnifiedSurfaceConfig()` - OverlayConfiguration → UnifiedSurfaceConfig
+  - `fromUnifiedSurfaceConfig()` - UnifiedSurfaceConfig → OverlayConfiguration
+  - Type mappings for position, visibility, style
+- Updated `PresetManager` with new methods:
+  - `exportPresetUnified()` - Export as UnifiedSurfaceConfig
+  - `importPresetUnified()` - Import from UnifiedSurfaceConfig
+- Maintains backward compatibility with legacy format
+
+**Result:** Cross-editor preset sharing now possible
+
+---
+
+### Remaining Items (Optional Future Work)
+1. **Migrate HudEditor internal state** - Use `HudSurfaceConfig` natively instead of converters (works correctly as-is)
+2. **Widget registry for Overlay** - Enable full runtime widget restoration from imported configs
 
 ---
 
 ## 8. Files Modified in This Task
 
-### Deleted
+### Verification Phase
+**Deleted:**
 - ❌ `apps/main/src/components/health/HealthPanel.old.tsx` - Unreferenced legacy file
 
-### Created
+**Created:**
 - ✅ `claude-tasks/102-verification-report.md` - This report
+
+**Updated:**
+- ✅ `docs/EDITABLE_UI_ARCHITECTURE.md` - Added verification status section
+
+### Fixes Phase
+**Created:**
+- ✅ `apps/main/src/lib/editing-core/utils/propertyPath.ts` - Core path resolution (breaks circular dependency)
+- ✅ `apps/main/src/lib/overlay/overlayConfig.ts` - Bidirectional converters for UnifiedSurfaceConfig
+
+**Updated:**
+- ✅ `apps/main/src/lib/editing-core/index.ts` - Export propertyPath utils
+- ✅ `apps/main/src/lib/editing-core/dataBindingResolver.ts` - Use local resolvePath import
+- ✅ `apps/main/src/lib/overlay/utils/propertyPath.ts` - Re-export from editing-core
+- ✅ `apps/main/src/lib/overlay/index.ts` - Export overlayConfig converters
+- ✅ `apps/main/src/lib/overlay/presets/presetManager.ts` - Add unified export/import methods
+- ✅ `docs/EDITABLE_UI_ARCHITECTURE.md` - Document fixes applied
 
 ---
 
 ## Conclusion
 
-The Editable UI Core + HUD refactor is **production-ready** with clean architecture, no blocking issues, and comprehensive documentation. All circular dependencies are either resolved or documented with clear rationale.
+The Editable UI Core + HUD refactor has been **verified, fixed, and optimized**. All identified issues have been resolved, with cross-editor preset sharing now enabled.
 
-### Checklist Summary
+### Verification Summary
 - ✅ Type + import consistency: **PASS**
 - ✅ Dead/legacy file sweep: **PASS** (1 file removed)
-- ✅ Circular dependency audit: **PASS** (1 minor documented issue)
-- ✅ Config round-trip sanity: **PASS**
-- ✅ Documentation accuracy: **PASS**
+- ✅ Circular dependency audit: **PASS** → **FIXED**
+- ✅ Config round-trip sanity: **PASS** → **ENHANCED**
+- ✅ Documentation accuracy: **PASS** → **UPDATED**
 
-**Overall Status:** ✅ **VERIFIED AND APPROVED**
+### Fixes Applied
+- ✅ **Circular dependency resolved** - `resolvePath` moved to editing-core
+- ✅ **Cross-editor presets enabled** - UnifiedSurfaceConfig converters added
+- ✅ **Backward compatibility maintained** - Legacy formats still supported
+
+**Overall Status:** ✅ **VERIFIED, FIXED, AND PRODUCTION-READY**
 
 ---
 

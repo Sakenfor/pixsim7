@@ -809,10 +809,14 @@ All systems verified and approved:
 - ✅ Config export/import verified (both HUD and Overlay functional)
 - ✅ Documentation accuracy confirmed
 
-**Known Sharp Edges:**
-1. editing-core imports `resolvePath` from overlay (minor cycle, low priority)
-2. Overlay not using UnifiedSurfaceConfig yet (future enhancement)
-3. HudEditor uses converters for import/export (works correctly as-is)
+**Fixes Applied (Task 102):**
+1. ✅ Moved `resolvePath` to editing-core/utils (circular dependency resolved)
+2. ✅ Added Overlay ↔ UnifiedSurfaceConfig converters (cross-editor presets enabled)
+3. ✅ PresetManager now supports both legacy and unified formats
+
+**Remaining Sharp Edges:**
+1. HudEditor uses converters for import/export (works correctly as-is, future: use HudSurfaceConfig natively)
+2. Overlay widget registry needed for full preset restoration (documented limitation)
 
 ---
 
