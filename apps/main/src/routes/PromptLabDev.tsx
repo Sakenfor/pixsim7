@@ -1091,6 +1091,11 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
   const [error, setError] = useState<string | null>(null);
   const [showRawJson, setShowRawJson] = useState(false);
 
+  // Apply state
+  const [applyingPack, setApplyingPack] = useState<string | null>(null);
+  const [applyingBlock, setApplyingBlock] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   // Clear initial prompt after first use
   useEffect(() => {
     if (initialPromptText) {
@@ -1125,6 +1130,96 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
       setDiscovery(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyPack = async (pack: {
+    pack_id: string;
+    pack_label: string;
+    parser_hints: Record<string, string[]>;
+    notes?: string;
+  }) => {
+    setApplyingPack(pack.pack_id);
+    setToast(null);
+
+    try {
+      const result = await api.post<{
+        success: boolean;
+        pack_id: string;
+        message: string;
+        created: boolean;
+        pack_version: string;
+      }>(
+        '/dev/prompt-categories/apply-pack',
+        {
+          pack_id: pack.pack_id,
+          pack_label: pack.pack_label,
+          parser_hints: pack.parser_hints,
+          source_prompt: promptText.slice(0, 200), // First 200 chars
+          notes: pack.notes,
+        }
+      );
+
+      setToast({
+        message: result.message,
+        type: 'success',
+      });
+
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => setToast(null), 5000);
+    } catch (err: any) {
+      console.error('Apply pack error:', err);
+      setToast({
+        message: err.message || 'Failed to apply pack suggestion',
+        type: 'error',
+      });
+    } finally {
+      setApplyingPack(null);
+    }
+  };
+
+  const handleApplyBlock = async (block: {
+    block_id: string;
+    prompt: string;
+    tags: Record<string, any>;
+    notes?: string;
+  }) => {
+    setApplyingBlock(block.block_id);
+    setToast(null);
+
+    try {
+      const result = await api.post<{
+        success: boolean;
+        block_id: string;
+        message: string;
+        db_id: string;
+      }>(
+        '/dev/prompt-categories/apply-block',
+        {
+          block_id: block.block_id,
+          prompt: block.prompt,
+          tags: block.tags,
+          package_name: 'ai_suggested',
+          source_prompt: promptText.slice(0, 200), // First 200 chars
+          notes: block.notes,
+        }
+      );
+
+      setToast({
+        message: result.message,
+        type: 'success',
+      });
+
+      // Auto-hide toast after 5 seconds
+      setTimeout(() => setToast(null), 5000);
+    } catch (err: any) {
+      console.error('Apply block error:', err);
+      setToast({
+        message: err.message || 'Failed to apply block suggestion',
+        type: 'error',
+      });
+    } finally {
+      setApplyingBlock(null);
     }
   };
 
@@ -1210,6 +1305,27 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
 
       {/* Right: Results */}
       <div className="space-y-4">
+        {/* Toast Notification */}
+        {toast && (
+          <div
+            className={`p-4 rounded-md border ${
+              toast.type === 'success'
+                ? 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200'
+                : 'bg-red-100 dark:bg-red-900 border-red-300 dark:border-red-700 text-red-800 dark:text-red-200'
+            }`}
+          >
+            <div className="flex items-start justify-between">
+              <span className="text-sm">{toast.message}</span>
+              <button
+                onClick={() => setToast(null)}
+                className="text-sm font-medium hover:underline ml-4"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {discovery ? (
           <>
             {/* Parser Summary */}
@@ -1298,12 +1414,24 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
                       key={pack.pack_id}
                       className="p-3 bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800 rounded"
                     >
-                      <div className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">
-                        {pack.pack_label}
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">
+                            {pack.pack_label}
+                          </div>
+                          <code className="text-xs font-mono text-purple-800 dark:text-purple-200">
+                            {pack.pack_id}
+                          </code>
+                        </div>
+                        <Button
+                          onClick={() => handleApplyPack(pack)}
+                          disabled={applyingPack === pack.pack_id}
+                          size="sm"
+                          className="ml-2"
+                        >
+                          {applyingPack === pack.pack_id ? 'Applying...' : 'Apply as Draft Pack'}
+                        </Button>
                       </div>
-                      <code className="text-xs font-mono text-purple-800 dark:text-purple-200">
-                        {pack.pack_id}
-                      </code>
                       {pack.notes && (
                         <div className="text-xs text-purple-700 dark:text-purple-300 mt-2">
                           {pack.notes}
@@ -1344,9 +1472,19 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
                       key={block.block_id}
                       className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded"
                     >
-                      <code className="text-xs font-mono text-amber-900 dark:text-amber-100">
-                        {block.block_id}
-                      </code>
+                      <div className="flex items-start justify-between mb-2">
+                        <code className="text-xs font-mono text-amber-900 dark:text-amber-100">
+                          {block.block_id}
+                        </code>
+                        <Button
+                          onClick={() => handleApplyBlock(block)}
+                          disabled={applyingBlock === block.block_id}
+                          size="sm"
+                          className="ml-2"
+                        >
+                          {applyingBlock === block.block_id ? 'Applying...' : 'Apply as Draft Block'}
+                        </Button>
+                      </div>
                       <div className="text-sm text-amber-800 dark:text-amber-200 mt-2 font-mono">
                         {block.prompt}
                       </div>

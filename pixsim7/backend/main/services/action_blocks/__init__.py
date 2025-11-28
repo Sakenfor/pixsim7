@@ -17,6 +17,9 @@ from pixsim7.backend.main.services.action_blocks.extraction_config_service impor
     ExtractionConfigService,
     ExtractionConfig
 )
+from pixsim7.backend.main.services.action_blocks.utils import (
+    build_draft_action_block_from_suggestion,
+)
 
 __all__ = [
     'ActionBlockMigrationService',
@@ -26,4 +29,5 @@ __all__ = [
     'ConceptRegistry',
     'ExtractionConfigService',
     'ExtractionConfig',
+    'build_draft_action_block_from_suggestion',
 ]
