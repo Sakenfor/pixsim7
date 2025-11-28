@@ -367,9 +367,17 @@ async def upload_asset_to_provider(
 
 # ===== UPLOAD FROM URL (backend fetches the image) =====
 
-class UploadFromUrlRequest(BaseModel):
-    url: str = Field(description="Publicly accessible URL to image/video")
-    provider_id: str = Field(description="Target provider ID, e.g., pixverse")
+  class UploadFromUrlRequest(BaseModel):
+      url: str = Field(description="Publicly accessible URL to image/video")
+      provider_id: str = Field(description="Target provider ID, e.g., pixverse")
+      ensure_asset: bool = Field(
+          default=True,
+          description=(
+              "If true (default), always persist a local asset even when the "
+              "provider upload fails. If false, provider upload failures will "
+              "roll back the asset creation and return an error."
+          ),
+      )
 
 
 @router.post("/assets/upload-from-url", response_model=UploadAssetResponse)
@@ -655,7 +663,7 @@ async def upload_asset_from_url(
         )
 
     except Exception as e:
-        # Provider upload failed, but that's OK - we have local copy
+        # Provider upload failed.
         logger.warning(
             "provider_upload_failed_but_asset_saved",
             asset_id=asset.id,
@@ -664,6 +672,23 @@ async def upload_asset_from_url(
             exc_info=True,
         )
         provider_upload_note = f"Asset saved locally; provider upload failed: {str(e)}"
+
+        # If the caller does NOT want a local-only asset, roll back and
+        # propagate an error instead of keeping the asset.
+        if not request.ensure_asset:
+            try:
+                await asset_service.delete_asset(asset.id, user)
+            except Exception as delete_err:
+                logger.error(
+                    "asset_delete_after_provider_failure_failed",
+                    asset_id=asset.id,
+                    provider_id=request.provider_id,
+                    error=str(delete_err),
+                )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Provider upload failed: {str(e)}",
+            )
 
     # Clean up temp file
     try:

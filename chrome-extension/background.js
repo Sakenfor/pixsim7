@@ -478,39 +478,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // ===== ASSET UPLOADS =====
   if (message.action === 'uploadMediaFromUrl' || message.action === 'uploadImageFromUrl') {
-    (async () => {
-      try {
-        const { imageUrl, mediaUrl, providerId } = message;
-        const url = mediaUrl || imageUrl; // Support both param names
-        const settings = await getSettings();
-        if (!settings.pixsim7Token) throw new Error('Not logged in');
+      (async () => {
+        try {
+          const { imageUrl, mediaUrl, providerId, ensureAsset } = message;
+          const url = mediaUrl || imageUrl; // Support both param names
+          const settings = await getSettings();
+          if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-        const uploadUrl = `${settings.backendUrl}/api/v1/assets/upload-from-url`;
-        const resp = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.pixsim7Token}`,
-          },
-          body: JSON.stringify({ url, provider_id: providerId || settings.defaultUploadProvider || 'pixverse' }),
-        });
-        if (!resp.ok) {
-          const txt = await resp.text();
-          throw new Error(`Upload failed: ${resp.status} ${txt}`);
+          const uploadUrl = `${settings.backendUrl}/api/v1/assets/upload-from-url`;
+          const resp = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${settings.pixsim7Token}`,
+            },
+            body: JSON.stringify({
+              url,
+              provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
+              // Default to true to preserve existing semantics for callers that
+              // don't specify ensureAsset (local asset even if provider fails).
+              ensure_asset: ensureAsset === false ? false : true,
+            }),
+          });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error(`Upload failed: ${resp.status} ${txt}`);
+          }
+          const data = await resp.json();
+
+          // Derive a simple provider success flag from backend note
+          const note = typeof data.note === 'string' ? data.note : '';
+          const providerSucceeded = !note.startsWith('Asset saved locally; provider upload failed');
+
+          sendResponse({ success: true, data, providerSucceeded });
+        } catch (error) {
+          sendResponse({ success: false, error: error.message });
         }
-        const data = await resp.json();
-
-        // Derive a simple provider success flag from backend note
-        const note = typeof data.note === 'string' ? data.note : '';
-        const providerSucceeded = !note.startsWith('Asset saved locally; provider upload failed');
-
-        sendResponse({ success: true, data, providerSucceeded });
-      } catch (error) {
-        sendResponse({ success: false, error: error.message });
-      }
-    })();
-    return true;
-  }
+      })();
+      return true;
+    }
 
   // Quick generate video from image
   if (message.action === 'quickGenerate') {

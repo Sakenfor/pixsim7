@@ -76,12 +76,20 @@
     });
   }
 
-  async function upload(mediaUrl, providerId, isVideo = false) {
+  async function upload(mediaUrl, providerId, isVideo = false, options = {}) {
     try {
       const settings = await getSettings();
       if (!settings.pixsim7Token) { showToast('Login to PixSim7 first', false); return; }
       const provider = providerId || settings.defaultUploadProvider || 'pixverse';
-      const res = await chrome.runtime.sendMessage({ action: 'uploadMediaFromUrl', mediaUrl, providerId: provider });
+      const res = await chrome.runtime.sendMessage({
+        action: 'uploadMediaFromUrl',
+        mediaUrl,
+        providerId: provider,
+        // For backwards compatibility, callers that don't pass options will
+        // get the default backend behavior (ensure_asset=True). Callers can
+        // override via options.ensureAsset.
+        ensureAsset: options.ensureAsset,
+      });
       if (res && res.success) {
         const providerSucceeded = res.providerSucceeded;
         const kindLabel = isVideo ? 'Video' : 'Image';
@@ -114,7 +122,14 @@
       e.preventDefault(); e.stopPropagation();
       const isVideo = currentVideo && currentVideo.src;
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
-      if (src) await upload(src, defProvCache, isVideo);
+      if (!src) return;
+
+      // Ctrl/Cmd-click => always create asset (even if provider upload fails).
+      // Plain click => only create asset if provider upload succeeds.
+      const forceAsset = !!(e.ctrlKey || e.metaKey);
+      const ensureAsset = forceAsset;
+
+      await upload(src, defProvCache, isVideo, { ensureAsset });
     });
     // Right-click provider menu
     badgeEl.addEventListener('contextmenu', async (e) => {

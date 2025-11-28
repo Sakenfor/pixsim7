@@ -55,7 +55,7 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session_manager im
 from pixsim_logging import get_logger
 
 logger = get_logger()
-PIXVERSE_CREDITS_TIMEOUT_SEC = 10.0
+PIXVERSE_CREDITS_TIMEOUT_SEC = 3.0
 
 # Fallback implementation if SDK doesn't have infer_video_dimensions yet
 if infer_video_dimensions is None:
