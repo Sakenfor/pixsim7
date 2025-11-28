@@ -71,7 +71,7 @@ interface AiModel {
 // ===== Main Component =====
 
 export function PromptLabDev() {
-  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library' | 'models' | 'categories'>('analyze');
+  const [activeTab, setActiveTab] = useState<'analyze' | 'import' | 'library' | 'models' | 'categories' | 'timeline'>('analyze');
 
   // Shared state for Analyze -> Import flow
   const [importFamilyTitle, setImportFamilyTitle] = useState<string | undefined>();
@@ -79,6 +79,9 @@ export function PromptLabDev() {
 
   // Shared state for Analyze -> Categories flow
   const [categoriesPromptText, setCategoriesPromptText] = useState<string | undefined>();
+
+  // Shared state for Library -> Timeline flow
+  const [selectedFamilyForTimeline, setSelectedFamilyForTimeline] = useState<DevPromptFamilySummary | null>(null);
 
   const handleSendToImport = (familyTitle: string, promptText: string) => {
     setImportFamilyTitle(familyTitle);
@@ -89,6 +92,11 @@ export function PromptLabDev() {
   const handleSendToCategories = (promptText: string) => {
     setCategoriesPromptText(promptText);
     setActiveTab('categories');
+  };
+
+  const handleSendToTimeline = (family: DevPromptFamilySummary) => {
+    setSelectedFamilyForTimeline(family);
+    setActiveTab('timeline');
   };
 
   return (
@@ -160,6 +168,16 @@ export function PromptLabDev() {
         >
           Categories
         </button>
+        <button
+          onClick={() => setActiveTab('timeline')}
+          className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+            activeTab === 'timeline'
+              ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+          }`}
+        >
+          Timeline
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -176,12 +194,18 @@ export function PromptLabDev() {
           }}
         />
       )}
-      {activeTab === 'library' && <LibraryTab />}
+      {activeTab === 'library' && <LibraryTab onSendToTimeline={handleSendToTimeline} />}
       {activeTab === 'models' && <ModelsTab />}
       {activeTab === 'categories' && (
         <CategoriesTab
           initialPromptText={categoriesPromptText}
           onClearInitial={() => setCategoriesPromptText(undefined)}
+        />
+      )}
+      {activeTab === 'timeline' && (
+        <TimelineTab
+          initialFamily={selectedFamilyForTimeline}
+          onClearInitial={() => setSelectedFamilyForTimeline(null)}
         />
       )}
     </div>
@@ -360,7 +384,11 @@ function ImportTab({ initialFamilyTitle, initialPromptText, onClearInitial }: Im
 
 // ===== Library Tab =====
 
-function LibraryTab() {
+interface LibraryTabProps {
+  onSendToTimeline: (family: DevPromptFamilySummary) => void;
+}
+
+function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
   const api = useApi();
 
   // State for families list
@@ -513,7 +541,20 @@ function LibraryTab() {
         </Panel>
 
         <Panel className="p-4 max-h-[600px] overflow-y-auto">
-          <h2 className="text-lg font-semibold mb-4">Families ({families.length})</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Families ({families.length})</h2>
+            {selectedFamily && (
+              <Button
+                onClick={() => onSendToTimeline(selectedFamily)}
+                size="sm"
+                variant="outline"
+                title="View family timeline with performance metrics"
+              >
+                <Icon name="activity" className="h-4 w-4 mr-1" />
+                Timeline
+              </Button>
+            )}
+          </div>
           {familiesLoading ? (
             <div className="text-sm text-neutral-600 dark:text-neutral-400">Loading...</div>
           ) : familiesError ? (
@@ -1540,6 +1581,437 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
           </Panel>
         )}
       </div>
+    </div>
+  );
+}
+
+// ===== Timeline Tab =====
+
+interface TimelineTabProps {
+  initialFamily: DevPromptFamilySummary | null;
+  onClearInitial: () => void;
+}
+
+interface TimelineVersion {
+  version_id: string;
+  version_number: number;
+  created_at: string;
+  commit_message?: string;
+  generation_count: number;
+  successful_assets: number;
+  tags: string[];
+}
+
+interface TimelineBlockSummary {
+  block_id: string;
+  db_id: string;
+  prompt_version_id?: string;
+  usage_count: number;
+  avg_fit_score?: number;
+  last_used_at?: string;
+}
+
+interface TimelineAssetSummary {
+  asset_id: number;
+  generation_id?: number;
+  created_at: string;
+  source_version_id?: string;
+  source_block_ids: string[];
+}
+
+interface PromptFamilyTimelineResponse {
+  family_id: string;
+  family_slug: string;
+  title: string;
+  versions: TimelineVersion[];
+  blocks: TimelineBlockSummary[];
+  assets: TimelineAssetSummary[];
+}
+
+function TimelineTab({ initialFamily, onClearInitial }: TimelineTabProps) {
+  const api = useApi();
+
+  // State for family selection (if not provided via initialFamily)
+  const [families, setFamilies] = useState<DevPromptFamilySummary[]>([]);
+  const [selectedFamily, setSelectedFamily] = useState<DevPromptFamilySummary | null>(initialFamily);
+  const [familiesLoading, setFamiliesLoading] = useState(false);
+  const [familiesError, setFamiliesError] = useState<string | null>(null);
+
+  // State for timeline data
+  const [timeline, setTimeline] = useState<PromptFamilyTimelineResponse | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
+
+  // Filter state
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  // Apply initial family if provided
+  useEffect(() => {
+    if (initialFamily) {
+      setSelectedFamily(initialFamily);
+      loadTimeline(initialFamily.id);
+      onClearInitial();
+    }
+  }, [initialFamily, onClearInitial]);
+
+  // Load families for selection
+  const loadFamilies = async () => {
+    setFamiliesLoading(true);
+    setFamiliesError(null);
+
+    try {
+      const result = await api.get<DevPromptFamilySummary[]>('/dev/prompt-library/families?limit=100');
+      setFamilies(result);
+    } catch (err: any) {
+      console.error('Failed to load families:', err);
+      setFamiliesError(err.message || 'Failed to load families');
+    } finally {
+      setFamiliesLoading(false);
+    }
+  };
+
+  // Load timeline for a family
+  const loadTimeline = async (familyId: string) => {
+    setTimelineLoading(true);
+    setTimelineError(null);
+    setSelectedVersionId(null);
+
+    try {
+      const result = await api.get<PromptFamilyTimelineResponse>(
+        `/dev/prompt-families/${familyId}/timeline`
+      );
+      setTimeline(result);
+    } catch (err: any) {
+      console.error('Failed to load timeline:', err);
+      setTimelineError(err.message || 'Failed to load timeline');
+      setTimeline(null);
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+
+  // Handle family selection
+  const handleSelectFamily = (family: DevPromptFamilySummary) => {
+    setSelectedFamily(family);
+    loadTimeline(family.id);
+  };
+
+  // Filter blocks and assets by selected version
+  const filteredBlocks = selectedVersionId
+    ? timeline?.blocks.filter(b => b.prompt_version_id === selectedVersionId) || []
+    : timeline?.blocks || [];
+
+  const filteredAssets = selectedVersionId
+    ? timeline?.assets.filter(a => a.source_version_id === selectedVersionId) || []
+    : timeline?.assets || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Family Selection */}
+      {!selectedFamily && (
+        <Panel className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Select a Prompt Family</h2>
+            <Button onClick={loadFamilies} size="sm" disabled={familiesLoading}>
+              {familiesLoading ? 'Loading...' : 'Load Families'}
+            </Button>
+          </div>
+
+          {familiesError && (
+            <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200 mb-4">
+              {familiesError}
+            </div>
+          )}
+
+          {families.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {families.map((family) => (
+                <button
+                  key={family.id}
+                  onClick={() => handleSelectFamily(family)}
+                  className="p-4 border border-neutral-200 dark:border-neutral-700 rounded-md bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors text-left"
+                >
+                  <div className="font-medium text-sm">{family.title}</div>
+                  <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                    {family.prompt_type} · {family.version_count} version{family.version_count !== 1 ? 's' : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-neutral-600 dark:text-neutral-400 text-center py-8">
+              Click "Load Families" to see available prompt families
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Timeline View */}
+      {selectedFamily && (
+        <>
+          {/* Header with family info */}
+          <Panel className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">{selectedFamily.title}</h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                  Timeline & Performance View
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => loadTimeline(selectedFamily.id)}
+                  size="sm"
+                  variant="outline"
+                  disabled={timelineLoading}
+                >
+                  <Icon name="refresh-cw" className="h-4 w-4 mr-1" />
+                  Refresh
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedFamily(null);
+                    setTimeline(null);
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  Change Family
+                </Button>
+              </div>
+            </div>
+          </Panel>
+
+          {timelineError && (
+            <Panel className="p-6">
+              <div className="text-red-600 dark:text-red-400">{timelineError}</div>
+            </Panel>
+          )}
+
+          {timelineLoading ? (
+            <Panel className="p-12 text-center">
+              <div className="text-neutral-600 dark:text-neutral-400">Loading timeline...</div>
+            </Panel>
+          ) : timeline ? (
+            <div className="grid grid-cols-12 gap-6">
+              {/* Left: Versions Timeline */}
+              <div className="col-span-3">
+                <Panel className="p-4">
+                  <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-4">
+                    Versions ({timeline.versions.length})
+                  </h3>
+                  <div className="space-y-2 max-h-[700px] overflow-y-auto">
+                    <button
+                      onClick={() => setSelectedVersionId(null)}
+                      className={`w-full text-left p-3 rounded border transition-colors ${
+                        selectedVersionId === null
+                          ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700'
+                          : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      <div className="font-medium text-sm">All Versions</div>
+                      <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                        Show all data
+                      </div>
+                    </button>
+                    {timeline.versions.map((version) => (
+                      <button
+                        key={version.version_id}
+                        onClick={() => setSelectedVersionId(version.version_id)}
+                        className={`w-full text-left p-3 rounded border transition-colors ${
+                          selectedVersionId === version.version_id
+                            ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700'
+                            : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                        }`}
+                      >
+                        <div className="font-medium text-sm">Version #{version.version_number}</div>
+                        <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+                          {new Date(version.created_at).toLocaleDateString()}
+                        </div>
+                        {version.commit_message && (
+                          <div className="text-xs text-neutral-500 dark:text-neutral-500 mt-1 truncate">
+                            {version.commit_message}
+                          </div>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <span className="inline-block bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-0.5 rounded text-xs">
+                            {version.generation_count} gens
+                          </span>
+                          <span className="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs">
+                            {version.successful_assets} assets
+                          </span>
+                        </div>
+                        {version.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {version.tags.slice(0, 2).map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-block bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 px-1 py-0.5 rounded text-xs"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                            {version.tags.length > 2 && (
+                              <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                                +{version.tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </Panel>
+              </div>
+
+              {/* Middle: Block Summaries */}
+              <div className="col-span-5">
+                <Panel className="p-4">
+                  <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-4">
+                    Action Blocks ({filteredBlocks.length})
+                    {selectedVersionId && (
+                      <span className="ml-2 text-xs font-normal">
+                        (filtered by version)
+                      </span>
+                    )}
+                  </h3>
+                  {filteredBlocks.length === 0 ? (
+                    <div className="text-sm text-neutral-600 dark:text-neutral-400 py-8 text-center">
+                      No blocks found
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[700px] overflow-y-auto">
+                      {filteredBlocks.map((block) => (
+                        <div
+                          key={block.db_id}
+                          className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-md bg-neutral-50 dark:bg-neutral-800"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <code className="text-xs font-mono text-neutral-900 dark:text-neutral-100">
+                              {block.block_id}
+                            </code>
+                            <a
+                              href={`/dev/block-fit?block_id=${block.db_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                              title="Test fit in Block Fit Dev"
+                            >
+                              <Icon name="external-link" className="h-3 w-3" />
+                              Test Fit
+                            </a>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <span className="text-neutral-600 dark:text-neutral-400">Usage:</span>
+                              <span className="ml-1 font-medium">{block.usage_count}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-600 dark:text-neutral-400">Fit Score:</span>
+                              <span className="ml-1 font-medium">
+                                {block.avg_fit_score !== null && block.avg_fit_score !== undefined
+                                  ? block.avg_fit_score.toFixed(2)
+                                  : 'N/A'}
+                              </span>
+                            </div>
+                            {block.last_used_at && (
+                              <div className="col-span-3">
+                                <span className="text-neutral-600 dark:text-neutral-400">Last used:</span>
+                                <span className="ml-1 text-neutral-500 dark:text-neutral-500">
+                                  {new Date(block.last_used_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+
+              {/* Right: Asset Summaries */}
+              <div className="col-span-4">
+                <Panel className="p-4">
+                  <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-4">
+                    Assets ({filteredAssets.length})
+                    {selectedVersionId && (
+                      <span className="ml-2 text-xs font-normal">
+                        (filtered by version)
+                      </span>
+                    )}
+                  </h3>
+                  {filteredAssets.length === 0 ? (
+                    <div className="text-sm text-neutral-600 dark:text-neutral-400 py-8 text-center">
+                      No assets found
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[700px] overflow-y-auto">
+                      {filteredAssets.map((asset) => (
+                        <div
+                          key={asset.asset_id}
+                          className="p-3 border border-neutral-200 dark:border-neutral-700 rounded-md bg-neutral-50 dark:bg-neutral-800"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Icon name="image" className="h-4 w-4 text-neutral-600 dark:text-neutral-400" />
+                              <span className="text-sm font-medium">Asset #{asset.asset_id}</span>
+                            </div>
+                            <a
+                              href={`/assets/${asset.asset_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                              title="View asset details"
+                            >
+                              <Icon name="external-link" className="h-3 w-3" />
+                              View
+                            </a>
+                          </div>
+                          <div className="text-xs space-y-1">
+                            {asset.generation_id && (
+                              <div>
+                                <span className="text-neutral-600 dark:text-neutral-400">Gen:</span>
+                                <span className="ml-1 font-mono">#{asset.generation_id}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-neutral-600 dark:text-neutral-400">Created:</span>
+                              <span className="ml-1 text-neutral-500 dark:text-neutral-500">
+                                {new Date(asset.created_at).toLocaleDateString()}
+                              </span>
+                            </div>
+                            {asset.source_block_ids.length > 0 && (
+                              <div>
+                                <span className="text-neutral-600 dark:text-neutral-400">Blocks:</span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {asset.source_block_ids.slice(0, 3).map((blockId) => (
+                                    <span
+                                      key={blockId}
+                                      className="inline-block bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 px-1 py-0.5 rounded text-xs font-mono"
+                                    >
+                                      {blockId}
+                                    </span>
+                                  ))}
+                                  {asset.source_block_ids.length > 3 && (
+                                    <span className="text-xs text-neutral-600 dark:text-neutral-400">
+                                      +{asset.source_block_ids.length - 3}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
