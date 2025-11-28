@@ -2,14 +2,16 @@
  * OverlayContainer Component
  *
  * Main container that renders positioned overlay widgets on top of content.
- * Handles hover state, focus tracking, and widget visibility coordination.
+ * Handles hover state, focus tracking, widget visibility coordination, and
+ * optional collision detection.
  */
 
-import React, { useRef, useState, useCallback, useMemo } from 'react';
-import type { OverlayConfiguration, WidgetContext } from './types';
+import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
+import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
 import { OverlayWidget } from './OverlayWidget';
 import { applyDefaults } from './utils/merge';
 import { validateAndLog } from './utils/validation';
+import { handleCollisions } from './utils/collision';
 
 export interface OverlayContainerProps {
   /** Overlay configuration */
@@ -52,8 +54,12 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   validate = process.env.NODE_ENV === 'development',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const widgetRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [adjustedPositions, setAdjustedPositions] = useState<Map<string, WidgetPosition>>(
+    new Map()
+  );
 
   // Validate configuration in development
   if (validate) {
@@ -65,6 +71,37 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     () => applyDefaults(configuration),
     [configuration],
   );
+
+  // Handle collision detection
+  useEffect(() => {
+    if (!config.collisionDetection || !containerRef.current) {
+      setAdjustedPositions(new Map());
+      return;
+    }
+
+    // Run collision detection after render
+    const checkCollisions = () => {
+      const containerRect = containerRef.current!.getBoundingClientRect();
+      const result = handleCollisions(config.widgets, containerRect, widgetRefs.current);
+
+      if (result.hasCollisions) {
+        setAdjustedPositions(result.adjustedPositions);
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            `[Overlay] Detected ${result.collisions.length} collision(s), adjusted ${result.adjustedPositions.size} widget(s)`
+          );
+        }
+      } else {
+        setAdjustedPositions(new Map());
+      }
+    };
+
+    // Check collisions after a short delay to ensure widgets are rendered
+    const timeoutId = setTimeout(checkCollisions, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [config.widgets, config.collisionDetection]);
 
   // Create widget context
   const context: WidgetContext = useMemo(
@@ -123,16 +160,31 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       {children}
 
       {/* Overlay widgets */}
-      {config.widgets.map((widget) => (
-        <OverlayWidget
-          key={widget.id}
-          widget={widget}
-          context={context}
-          data={data}
-          spacing={config.spacing ?? 'normal'}
-          onWidgetClick={handleWidgetClick}
-        />
-      ))}
+      {config.widgets.map((widget) => {
+        // Use adjusted position if collision detection found one
+        const adjustedPosition = adjustedPositions.get(widget.id);
+        const effectiveWidget = adjustedPosition
+          ? { ...widget, position: adjustedPosition }
+          : widget;
+
+        return (
+          <OverlayWidget
+            key={widget.id}
+            widget={effectiveWidget}
+            context={context}
+            data={data}
+            spacing={config.spacing ?? 'normal'}
+            onWidgetClick={handleWidgetClick}
+            onRef={(el) => {
+              if (el) {
+                widgetRefs.current.set(widget.id, el);
+              } else {
+                widgetRefs.current.delete(widget.id);
+              }
+            }}
+          />
+        );
+      })}
     </div>
   );
 };

@@ -5,12 +5,14 @@
  * Allows users to visually customize badge positioning, visibility, and styling.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { OverlayEditor } from '@/components/overlay-editor';
 import { MediaCard } from '@/components/media/MediaCard';
 import type { OverlayConfiguration } from '@/lib/overlay';
-import { mediaCardPresets, presetManager } from '@/lib/overlay';
-import { Button } from '@pixsim/shared/ui';
+import { mediaCardPresets, PresetManager } from '@/lib/overlay';
+import { LocalStoragePresetStorage } from '@/lib/overlay/presets/presetManager';
+import { APIPresetStorage, IndexedDBPresetStorage } from '@/lib/overlay/presets/storage';
+import { Button, Select } from '@pixsim/shared/ui';
 
 // Sample media data for preview
 const SAMPLE_MEDIA = {
@@ -34,7 +36,52 @@ const SAMPLE_MEDIA = {
   },
 };
 
+type StorageType = 'localStorage' | 'indexedDB' | 'api';
+
 export function MediaCardConfigPage() {
+  // Storage selection
+  const [storageType, setStorageType] = useState<StorageType>(() => {
+    return (localStorage.getItem('presetStorageType') as StorageType) || 'localStorage';
+  });
+
+  const [apiConfig, setApiConfig] = useState(() => {
+    const saved = localStorage.getItem('presetApiConfig');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { baseUrl: '', authToken: '' };
+      }
+    }
+    return { baseUrl: '', authToken: '' };
+  });
+
+  // Initialize preset manager with selected storage
+  const manager = useMemo(() => {
+    let storage;
+    switch (storageType) {
+      case 'indexedDB':
+        storage = new IndexedDBPresetStorage();
+        break;
+      case 'api':
+        if (apiConfig.baseUrl) {
+          storage = new APIPresetStorage({
+            baseUrl: apiConfig.baseUrl,
+            authToken: apiConfig.authToken || undefined,
+          });
+        } else {
+          // Fallback to localStorage if API not configured
+          storage = new LocalStoragePresetStorage();
+        }
+        break;
+      case 'localStorage':
+      default:
+        storage = new LocalStoragePresetStorage();
+        break;
+    }
+    return new PresetManager(storage);
+  }, [storageType, apiConfig]);
+
   // Load configuration from localStorage or use default
   const [configuration, setConfiguration] = useState<OverlayConfiguration>(() => {
     const saved = localStorage.getItem('mediaCardOverlayConfig');
@@ -62,9 +109,22 @@ export function MediaCardConfigPage() {
     localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(newConfig));
   };
 
+  // Handle storage type change
+  const handleStorageTypeChange = (newType: StorageType) => {
+    setStorageType(newType);
+    localStorage.setItem('presetStorageType', newType);
+  };
+
+  // Handle API config change
+  const handleApiConfigChange = (baseUrl: string, authToken: string) => {
+    const newConfig = { baseUrl, authToken };
+    setApiConfig(newConfig);
+    localStorage.setItem('presetApiConfig', JSON.stringify(newConfig));
+  };
+
   // Handle preset selection
   const handlePresetSelect = async (presetId: string) => {
-    const preset = await presetManager.getPreset(presetId);
+    const preset = await manager.getPreset(presetId);
     if (preset) {
       setConfiguration(preset.configuration);
       localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(preset.configuration));
@@ -77,7 +137,7 @@ export function MediaCardConfigPage() {
     if (!name) return;
 
     try {
-      await presetManager.savePreset(configuration, {
+      await manager.savePreset(configuration, {
         name,
         category: 'media',
         icon: '⭐',
@@ -138,7 +198,7 @@ export function MediaCardConfigPage() {
     <div className="h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
       {/* Header */}
       <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold">MediaCard Badge Configuration</h1>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
@@ -160,6 +220,61 @@ export function MediaCardConfigPage() {
             <Button variant="ghost" size="sm" onClick={handleReset}>
               Reset
             </Button>
+          </div>
+        </div>
+
+        {/* Storage selector */}
+        <div className="flex items-center gap-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Storage Backend:
+            </label>
+            <Select
+              value={storageType}
+              onChange={(e) => handleStorageTypeChange(e.target.value as StorageType)}
+              className="w-40"
+            >
+              <option value="localStorage">LocalStorage</option>
+              <option value="indexedDB">IndexedDB</option>
+              <option value="api">API</option>
+            </Select>
+          </div>
+
+          {/* API configuration inputs */}
+          {storageType === 'api' && (
+            <>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-neutral-600 dark:text-neutral-400">
+                  API URL:
+                </label>
+                <input
+                  type="text"
+                  value={apiConfig.baseUrl}
+                  onChange={(e) => handleApiConfigChange(e.target.value, apiConfig.authToken)}
+                  placeholder="https://api.example.com"
+                  className="px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 w-64"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Auth Token:
+                </label>
+                <input
+                  type="password"
+                  value={apiConfig.authToken}
+                  onChange={(e) => handleApiConfigChange(apiConfig.baseUrl, e.target.value)}
+                  placeholder="Optional"
+                  className="px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 w-48"
+                />
+              </div>
+            </>
+          )}
+
+          {/* Storage info */}
+          <div className="ml-auto text-xs text-neutral-500 dark:text-neutral-400">
+            {storageType === 'localStorage' && '💾 Browser storage (5MB limit)'}
+            {storageType === 'indexedDB' && '📦 IndexedDB (50MB+ capacity, offline-first)'}
+            {storageType === 'api' && '☁️ Remote API (sync across devices)'}
           </div>
         </div>
       </div>

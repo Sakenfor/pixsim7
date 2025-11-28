@@ -6,3 +6,4 @@
 
 export * from './mediaCard';
 export * from './presetManager';
+export * from './storage';

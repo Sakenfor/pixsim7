@@ -34,6 +34,9 @@ export interface OverlayWidgetProps {
 
   /** Click handler callback */
   onWidgetClick: (widgetId: string) => void;
+
+  /** Ref callback for collision detection */
+  onRef?: (el: HTMLDivElement | null) => void;
 }
 
 /**
@@ -45,6 +48,7 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   data,
   spacing,
   onWidgetClick,
+  onRef,
 }) => {
   const widgetRef = useRef<HTMLDivElement>(null);
   const [isWidgetHovered, setIsWidgetHovered] = useState(false);
@@ -164,7 +168,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
 
   return (
     <div
-      ref={widgetRef}
+      ref={(el) => {
+        widgetRef.current = el;
+        onRef?.(el);
+      }}
       className={`${className} ${interactiveClass}`.trim()}
       style={combinedStyles}
       onMouseEnter={handleMouseEnter}

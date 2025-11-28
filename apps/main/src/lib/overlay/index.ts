@@ -130,6 +130,18 @@ export {
   pickWidgets,
 } from './utils/merge';
 
+export {
+  handleCollisions,
+  calculateWidgetBounds,
+  boundsOverlap,
+  resolveCollisions,
+} from './utils/collision';
+
+export type {
+  CollisionResult,
+  CollisionInfo,
+} from './utils/collision';
+
 // Presets
 export {
   mediaCardPresets,
@@ -138,6 +150,11 @@ export {
   PresetManager,
   LocalStoragePresetStorage,
   presetManager,
+  APIPresetStorage,
+  IndexedDBPresetStorage,
 } from './presets';
 
-export type { PresetStorage } from './presets';
+export type {
+  PresetStorage,
+  APIStorageConfig,
+} from './presets';
