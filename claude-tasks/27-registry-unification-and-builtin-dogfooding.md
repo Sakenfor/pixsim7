@@ -24,6 +24,10 @@
 
 **Goal:** Make core features "dogfood" the plugin APIs, creating uniform code paths and true extensibility.
 
+**Related frontend work:**
+- `claude-tasks/91-ui-registry-base-and-normalization.md` – shared base & normalization for frontend UI registries.
+- `claude-tasks/92-registry-bridge-simplification.md` – cleanup of the frontend plugin registry bridge to mirror these backend patterns.
+
 ---
 
 ## Phase Checklist

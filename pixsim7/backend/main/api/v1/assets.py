@@ -367,17 +367,17 @@ async def upload_asset_to_provider(
 
 # ===== UPLOAD FROM URL (backend fetches the image) =====
 
-  class UploadFromUrlRequest(BaseModel):
-      url: str = Field(description="Publicly accessible URL to image/video")
-      provider_id: str = Field(description="Target provider ID, e.g., pixverse")
-      ensure_asset: bool = Field(
-          default=True,
-          description=(
-              "If true (default), always persist a local asset even when the "
-              "provider upload fails. If false, provider upload failures will "
-              "roll back the asset creation and return an error."
-          ),
-      )
+class UploadFromUrlRequest(BaseModel):
+    url: str = Field(description="Publicly accessible URL to image/video")
+    provider_id: str = Field(description="Target provider ID, e.g., pixverse")
+    ensure_asset: bool = Field(
+        default=True,
+        description=(
+            "If true (default), always persist a local asset even when the "
+            "provider upload fails. If false, provider upload failures will "
+            "roll back the asset creation and return an error."
+        ),
+    )
 
 
 @router.post("/assets/upload-from-url", response_model=UploadAssetResponse)

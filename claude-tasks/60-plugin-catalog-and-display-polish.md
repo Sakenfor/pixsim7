@@ -13,6 +13,8 @@
 >   - `apps/main/src/lib/display/displaySpaces.ts`
 >   - `docs/UNIFIED_PLUGIN_SYSTEM.md`
 >   - `docs/GAME_WORLD_DISPLAY_MODES.md`
+>   - `claude-tasks/91-ui-registry-base-and-normalization.md` (frontend registry base & feature normalization)
+>   - `claude-tasks/92-registry-bridge-simplification.md` (shared bridge helper patterns)
 
 ---
 
@@ -205,4 +207,3 @@ Non-goals:
 - Plugin catalog UI can display and filter the new families without errors.
 - Gizmo surfaces use `defaultEnabled`, `supportsContexts`, and `tags` in a way that aligns with plugin activation semantics.
 - Display-space and display-target helpers are documented, and misconfigurations are easy to spot via logs and dev tools.
-
