@@ -5,10 +5,10 @@
  * Features: arc, circle, grid, constellation, dock, scattered formations.
  */
 
-import type { ControlCenterPluginManifest, ControlCenterPlugin } from '../../../lib/plugins/controlCenterPlugin';
-import { controlCenterRegistry } from '../../../lib/plugins/controlCenterPlugin';
-import { CubeFormationControlCenter } from '../../../components/control/CubeFormationControlCenter';
-import { useControlCenterStore } from '../../../stores/controlCenterStore';
+import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
+import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
+import { CubeFormationControlCenter } from '@/components/control/CubeFormationControlCenter';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'cube-formation-v1',

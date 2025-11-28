@@ -1,5 +1,5 @@
-import { useWorkspaceStore, type PanelId, type LayoutNode } from '../../../stores/workspaceStore';
-import { Icon } from '../../../lib/icons';
+import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
+import { Icon } from '@/lib/icons';
 
 const PANEL_NAMES: Record<PanelId, string> = {
   gallery: 'Gallery',

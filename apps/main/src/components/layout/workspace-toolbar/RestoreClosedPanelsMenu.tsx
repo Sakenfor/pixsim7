@@ -1,4 +1,4 @@
-import type { PanelId } from '../../../stores/workspaceStore';
+import type { PanelId } from '@/stores/workspaceStore';
 
 const PANEL_NAMES: Record<PanelId, string> = {
   gallery: 'Gallery',

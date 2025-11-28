@@ -10,11 +10,11 @@
 
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePanelConfigStore } from '../../../stores/panelConfigStore';
-import { useAssets } from '../../../hooks/useAssets';
-import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../../../lib/gallery/badgeConfigPresets';
-import { gallerySurfaceRegistry } from '../../../lib/gallery/surfaceRegistry';
-import type { ControlCenterModuleProps } from '../../../lib/control/controlCenterModuleRegistry';
+import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import { useAssets } from '@/hooks/useAssets';
+import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '@/lib/gallery/badgeConfigPresets';
+import { gallerySurfaceRegistry } from '@/lib/gallery/surfaceRegistry';
+import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
 
 export function GalleryModule({ }: ControlCenterModuleProps) {
   const navigate = useNavigate();

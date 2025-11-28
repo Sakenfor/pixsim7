@@ -14,7 +14,7 @@
  * - PLUGIN_SYSTEM.md documentation
  */
 
-import { sessionHelperRegistry, generateHelper } from '../../../lib/registries';
+import { sessionHelperRegistry, generateHelper } from '@/lib/registries';
 import type { GameSessionDTO } from '@pixsim7/shared.types';
 
 /**
