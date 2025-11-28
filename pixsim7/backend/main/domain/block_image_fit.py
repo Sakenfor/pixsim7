@@ -54,6 +54,12 @@ class BlockImageFit(SQLModel, table=True):
     # Heuristic fit score (0-1 or 0-100) from ontology tag comparison, for analysis
     heuristic_score: Optional[float] = Field(default=None)
 
+    # Optional timestamp for video ratings
+    timestamp_sec: Optional[float] = Field(
+        default=None,
+        description="Optional timestamp in seconds within the asset (video) where this rating applies"
+    )
+
     # Snapshots of tags at rating time (for offline analysis)
     block_tags_snapshot: Dict[str, Any] = Field(
         default_factory=dict,

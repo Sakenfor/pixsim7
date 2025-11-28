@@ -5,7 +5,7 @@
  * Computes heuristic fit scores based on ontology tag alignment.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 
@@ -51,6 +51,17 @@ export function BlockFitDev() {
   const [promptText, setPromptText] = useState<string | null>(null);
   const [promptLoading, setPromptLoading] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+
+  // Video/timestamp support
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [assetInfo, setAssetInfo] = useState<{ remote_url: string; content_type: string } | null>(null);
+  const [currentVideoTime, setCurrentVideoTime] = useState<number>(0);
+  const [timestampSec, setTimestampSec] = useState<number | null>(null);
+  const [useCurrentTime, setUseCurrentTime] = useState(false);
+
+  // Existing ratings
+  const [existingRatings, setExistingRatings] = useState<any[]>([]);
+  const [ratingsLoading, setRatingsLoading] = useState(false);
 
   const handleComputeFit = async () => {
     if (!blockId || !assetId) {
@@ -108,6 +119,7 @@ export function BlockFitDev() {
           role_in_sequence: roleInSequence,
           fit_rating: fitRating,
           notes: notes || null,
+          timestamp_sec: timestampSec,
         }),
       });
 
@@ -117,7 +129,8 @@ export function BlockFitDev() {
       }
 
       setRatingSuccess(true);
-      // Also compute fit to show the scores
+      // Refresh ratings list and compute fit to show the scores
+      await fetchExistingRatings();
       await handleComputeFit();
     } catch (err: any) {
       setError(err.message || 'An error occurred');
@@ -170,6 +183,95 @@ export function BlockFitDev() {
         });
     }
   }, []);
+
+  // Fetch asset info when assetId changes
+  useEffect(() => {
+    if (!assetId) {
+      setAssetInfo(null);
+      return;
+    }
+
+    fetch(`/api/v1/assets/${assetId}`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to fetch asset');
+        }
+        return response.json();
+      })
+      .then((data) => {
+        setAssetInfo({
+          remote_url: data.remote_url,
+          content_type: data.content_type || '',
+        });
+      })
+      .catch((err) => {
+        console.error('Error fetching asset:', err);
+        setAssetInfo(null);
+      });
+  }, [assetId]);
+
+  // Update current video time and handle auto-capture
+  useEffect(() => {
+    if (useCurrentTime && videoRef.current) {
+      setTimestampSec(Math.round(videoRef.current.currentTime * 10) / 10);
+    } else if (!useCurrentTime) {
+      setTimestampSec(null);
+    }
+  }, [useCurrentTime, currentVideoTime]);
+
+  const handleVideoTimeUpdate = () => {
+    if (videoRef.current) {
+      setCurrentVideoTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleCaptureTimestamp = () => {
+    if (videoRef.current) {
+      const time = Math.round(videoRef.current.currentTime * 10) / 10;
+      setTimestampSec(time);
+      setUseCurrentTime(true);
+    }
+  };
+
+  const isVideoAsset = assetInfo?.content_type?.startsWith('video/');
+
+  // Fetch existing ratings when blockId and assetId are set
+  const fetchExistingRatings = async () => {
+    if (!blockId || !assetId) {
+      setExistingRatings([]);
+      return;
+    }
+
+    setRatingsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        block_id: blockId,
+        asset_id: assetId,
+      });
+      const response = await fetch(`/api/v1/dev/block-fit/list?${params}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch ratings');
+      }
+      const data = await response.json();
+      setExistingRatings(data.ratings || []);
+    } catch (err) {
+      console.error('Error fetching ratings:', err);
+      setExistingRatings([]);
+    } finally {
+      setRatingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchExistingRatings();
+  }, [blockId, assetId]);
+
+  const handleSeekToTimestamp = (timestamp: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = timestamp;
+      videoRef.current.play();
+    }
+  };
 
   return (
     <div className="mx-auto max-w-7xl p-6 space-y-6 content-with-dock min-h-screen">
@@ -302,6 +404,55 @@ export function BlockFitDev() {
         </div>
       </Panel>
 
+      {/* Video Player (if asset is a video) */}
+      {isVideoAsset && assetInfo && (
+        <Panel className="p-6">
+          <h2 className="text-lg font-semibold mb-4">Video Preview</h2>
+          <div className="space-y-4">
+            <video
+              ref={videoRef}
+              src={assetInfo.remote_url}
+              controls
+              onTimeUpdate={handleVideoTimeUpdate}
+              className="w-full max-h-96 rounded bg-black"
+            />
+            <div className="flex items-center justify-between p-3 bg-neutral-100 dark:bg-neutral-800 rounded">
+              <div className="text-sm">
+                <span className="font-medium">Current Time: </span>
+                <span className="font-mono">{currentVideoTime.toFixed(1)}s</span>
+              </div>
+              <Button
+                onClick={handleCaptureTimestamp}
+                variant="primary"
+                size="sm"
+              >
+                Capture Current Time
+              </Button>
+            </div>
+            {timestampSec !== null && (
+              <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded">
+                <div className="flex items-center gap-2">
+                  <Icon name="clock" className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm text-blue-900 dark:text-blue-100">
+                    <span className="font-medium">Rating at: </span>
+                    <span className="font-mono">{timestampSec}s</span>
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setTimestampSec(null);
+                    setUseCurrentTime(false);
+                  }}
+                  className="text-xs text-blue-700 dark:text-blue-300 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+        </Panel>
+      )}
+
       {/* Error Display */}
       {error && (
         <div className="p-3 bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700 rounded text-red-800 dark:text-red-200">
@@ -428,6 +579,81 @@ export function BlockFitDev() {
               {loading ? 'Submitting...' : 'Submit Rating'}
             </Button>
           </div>
+        </Panel>
+      )}
+
+      {/* Existing Ratings */}
+      {blockId && assetId && existingRatings.length > 0 && (
+        <Panel className="p-6">
+          <h2 className="text-lg font-semibold mb-4">Existing Ratings for This Block + Asset</h2>
+          {ratingsLoading ? (
+            <div className="text-sm text-neutral-600 dark:text-neutral-400">Loading...</div>
+          ) : (
+            <div className="space-y-3">
+              {existingRatings.map((rating) => (
+                <div
+                  key={rating.id}
+                  className="p-4 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Icon
+                            key={star}
+                            name="star"
+                            className={`h-4 w-4 ${
+                              star <= rating.fit_rating
+                                ? 'text-yellow-500 fill-yellow-500'
+                                : 'text-neutral-300 dark:text-neutral-600'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm font-medium">
+                        {rating.fit_rating}/5
+                      </span>
+                      <span className="text-xs text-neutral-500">
+                        Heuristic: {(rating.heuristic_score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {new Date(rating.created_at).toLocaleString()}
+                    </div>
+                  </div>
+
+                  {rating.timestamp_sec !== null && (
+                    <div className="flex items-center gap-2 mb-2">
+                      <Icon name="clock" className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      <span className="text-sm text-blue-900 dark:text-blue-100">
+                        Timestamp: <span className="font-mono">{rating.timestamp_sec}s</span>
+                      </span>
+                      {isVideoAsset && (
+                        <button
+                          onClick={() => handleSeekToTimestamp(rating.timestamp_sec)}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline ml-2"
+                        >
+                          Jump to time
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {rating.role_in_sequence && rating.role_in_sequence !== 'unspecified' && (
+                    <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-2">
+                      Role: <span className="font-medium">{rating.role_in_sequence}</span>
+                    </div>
+                  )}
+
+                  {rating.notes && (
+                    <div className="text-sm text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 p-2 rounded mt-2">
+                      {rating.notes}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
       )}
 
