@@ -5,7 +5,7 @@
  * Computes heuristic fit scores based on ontology tag alignment.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 
@@ -45,6 +45,12 @@ export function BlockFitDev() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ratingSuccess, setRatingSuccess] = useState(false);
+
+  // Prompt Lab integration
+  const [promptVersionId, setPromptVersionId] = useState<string | null>(null);
+  const [promptText, setPromptText] = useState<string | null>(null);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
 
   const handleComputeFit = async () => {
     if (!blockId || !assetId) {
@@ -120,6 +126,51 @@ export function BlockFitDev() {
     }
   };
 
+  // Parse query params on mount and fetch prompt version if provided
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const promptVersionIdParam = params.get('prompt_version_id');
+    const assetIdParam = params.get('asset_id');
+    const blockIdParam = params.get('block_id');
+    const roleParam = params.get('role_in_sequence');
+
+    // Pre-fill form fields from query params
+    if (assetIdParam) {
+      setAssetId(assetIdParam);
+    }
+    if (blockIdParam) {
+      setBlockId(blockIdParam);
+    }
+    if (roleParam) {
+      setRoleInSequence(roleParam);
+    }
+
+    // Fetch prompt version if provided
+    if (promptVersionIdParam) {
+      setPromptVersionId(promptVersionIdParam);
+      setPromptLoading(true);
+      setPromptError(null);
+
+      fetch(`/api/v1/dev/prompt-library/versions/${promptVersionIdParam}`)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error('Failed to fetch prompt version');
+          }
+          return response.json();
+        })
+        .then((data) => {
+          setPromptText(data.prompt_text);
+        })
+        .catch((err) => {
+          console.error('Error fetching prompt version:', err);
+          setPromptError(err.message || 'Failed to load prompt version');
+        })
+        .finally(() => {
+          setPromptLoading(false);
+        });
+    }
+  }, []);
+
   return (
     <div className="mx-auto max-w-7xl p-6 space-y-6 content-with-dock min-h-screen">
       {/* Header */}
@@ -136,6 +187,47 @@ export function BlockFitDev() {
           </div>
         </div>
       </header>
+
+      {/* Prompt Lab Context */}
+      {promptVersionId && (
+        <Panel className="p-6 bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Icon name="link" className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <h2 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                Loaded from Prompt Lab
+              </h2>
+            </div>
+            <span className="text-xs text-blue-700 dark:text-blue-300 font-mono">
+              Version ID: {promptVersionId}
+            </span>
+          </div>
+
+          {promptLoading ? (
+            <div className="text-sm text-blue-800 dark:text-blue-200">
+              Loading prompt text...
+            </div>
+          ) : promptError ? (
+            <div className="text-sm text-red-800 dark:text-red-200">
+              Error: {promptError}
+            </div>
+          ) : promptText ? (
+            <>
+              <p className="text-xs text-blue-800 dark:text-blue-200 mb-3">
+                This prompt version is being tested for fit. Enter a Block ID below to test a specific block.
+              </p>
+              <div className="bg-white dark:bg-neutral-900 rounded-md p-4 border border-blue-200 dark:border-blue-700">
+                <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-2">
+                  Prompt Text (Read-Only)
+                </h3>
+                <div className="bg-neutral-100 dark:bg-neutral-800 rounded p-3 font-mono text-xs whitespace-pre-wrap max-h-[200px] overflow-y-auto text-neutral-900 dark:text-neutral-100">
+                  {promptText}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </Panel>
+      )}
 
       {/* Input Section */}
       <Panel className="p-6">
