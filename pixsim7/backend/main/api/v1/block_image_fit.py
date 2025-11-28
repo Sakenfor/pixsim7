@@ -55,6 +55,10 @@ class RateFitRequest(BaseModel):
     )
     fit_rating: int = Field(..., ge=1, le=5, description="User rating 1-5")
     notes: Optional[str] = Field(None, description="Optional notes about the fit")
+    timestamp_sec: Optional[float] = Field(
+        default=None,
+        description="Optional timestamp in seconds for this rating"
+    )
 
 
 # ===== Response Models =====
@@ -75,11 +79,17 @@ class FitRatingResponse(BaseModel):
     role_in_sequence: str
     fit_rating: int
     heuristic_score: float
+    timestamp_sec: Optional[float]
     notes: Optional[str]
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class FitRatingListResponse(BaseModel):
+    """Response for listing fit ratings."""
+    ratings: list[FitRatingResponse]
 
 
 # ===== Endpoints =====
@@ -231,6 +241,7 @@ async def rate_fit(
         user_id=user.id,
         fit_rating=request.fit_rating,
         heuristic_score=score,
+        timestamp_sec=request.timestamp_sec,
         block_tags_snapshot=block.tags,
         asset_tags_snapshot=asset_tags,
         notes=request.notes,
@@ -252,3 +263,34 @@ async def rate_fit(
     )
 
     return FitRatingResponse.model_validate(fit_record)
+
+
+@router.get("/list", response_model=FitRatingListResponse)
+async def list_fit_ratings(
+    block_id: Optional[UUID] = None,
+    asset_id: Optional[int] = None,
+    db: DatabaseSession = None,
+    user: CurrentUser = None,
+) -> FitRatingListResponse:
+    """
+    List fit ratings, optionally filtered by block_id and/or asset_id.
+
+    This endpoint returns existing BlockImageFit records, ordered by creation time
+    (newest first). Useful for viewing rating history and timestamped feedback.
+    """
+    query = select(BlockImageFit).order_by(BlockImageFit.created_at.desc())
+
+    if block_id:
+        query = query.where(BlockImageFit.block_id == block_id)
+    if asset_id:
+        query = query.where(BlockImageFit.asset_id == asset_id)
+
+    # Limit to most recent 100 records
+    query = query.limit(100)
+
+    result = await db.execute(query)
+    ratings = result.scalars().all()
+
+    return FitRatingListResponse(
+        ratings=[FitRatingResponse.model_validate(r) for r in ratings]
+    )
