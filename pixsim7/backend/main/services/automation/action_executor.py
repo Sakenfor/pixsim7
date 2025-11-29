@@ -176,7 +176,7 @@ class ActionExecutor:
                     text=params.get("text"),
                     content_desc=params.get("content_desc"),
                 )
-                if not ok:
+                if not ok and not params.get("continue_on_error", False):
                     raise RuntimeError("click_element failed: element not found")
 
             elif a_type == "if_element_exists":

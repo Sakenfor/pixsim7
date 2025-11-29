@@ -235,11 +235,19 @@ ACTION_SCHEMAS: List[ActionSchema] = [
                 required=False,
                 description="Element content description",
                 placeholder="Submit button"
+            ),
+            ActionParameter(
+                name="continue_on_error",
+                type="boolean",
+                required=False,
+                default=False,
+                description="Continue execution if element not found"
             )
         ],
         examples=[
             {"type": "click_element", "params": {"resource_id": "com.example:id/login_button"}},
-            {"type": "click_element", "params": {"text": "Login"}}
+            {"type": "click_element", "params": {"text": "Login"}},
+            {"type": "click_element", "params": {"text": "Optional Button", "continue_on_error": True}}
         ]
     ),
 
