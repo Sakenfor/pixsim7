@@ -48,7 +48,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
                     {
                         "type": "click_element",
                         "params": {
-                            "content_desc": "Mine"
+                            "content_desc": "Mine",
+                            "continue_on_error": True
                         },
                         "description": "Click Mine tab"
                     },
@@ -73,7 +74,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
                     {
                         "type": "click_element",
                         "params": {
-                            "content_desc": "Logout"
+                            "content_desc": "Logout",
+                            "continue_on_error": True
                         },
                         "description": "Click Logout"
                     },
@@ -85,7 +87,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
                     {
                         "type": "click_element",
                         "params": {
-                            "content_desc": "Confirm"
+                            "content_desc": "Confirm",
+                            "continue_on_error": True
                         },
                         "description": "Click Confirm"
                     },
@@ -109,7 +112,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
                     {
                         "type": "click_element",
                         "params": {
-                            "content_desc": "Login & Rewards"
+                            "content_desc": "Login & Rewards",
+                            "continue_on_error": True
                         },
                         "description": "Click Login & Rewards"
                     },
@@ -126,7 +130,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
             {
                 "type": "click_element",
                 "params": {
-                    "content_desc": "Login with Email"
+                    "content_desc": "Login with Email",
+                    "continue_on_error": True
                 },
                 "description": "Click Login with Email button"
             },
@@ -194,7 +199,8 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
             {
                 "type": "click_element",
                 "params": {
-                    "content_desc": "Continue"
+                    "content_desc": "Continue",
+                    "continue_on_error": True
                 },
                 "description": "Click Continue button"
             },
