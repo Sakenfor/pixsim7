@@ -85,9 +85,19 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 # Auto-inject account credentials if account exists
                 if account:
+                    # Try account password first, then fall back to provider global password
+                    password = account.password
+                    if not password:
+                        # Load provider settings for global password fallback
+                        from pixsim7.backend.main.api.v1.providers import _load_provider_settings
+                        provider_settings_map = _load_provider_settings()
+                        provider_settings = provider_settings_map.get(account.provider_id)
+                        if provider_settings:
+                            password = provider_settings.global_password
+
                     variables.update({
                         "email": account.email,
-                        "password": account.password or "",
+                        "password": password or "",
                         "provider_id": account.provider_id,
                         "account_id": str(account.id),
                     })
@@ -96,7 +106,8 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                         execution_id=execution_id,
                         account_id=account.id,
                         email=account.email,
-                        has_password=bool(account.password)
+                        has_account_password=bool(account.password),
+                        has_global_password=bool(password and not account.password)
                     )
 
                 ctx = ExecutionContext(serial=device.adb_id, variables=variables, screenshots_dir=screenshots_dir)
