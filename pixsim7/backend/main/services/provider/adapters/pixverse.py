@@ -1079,12 +1079,21 @@ class PixverseProvider(Provider):
             return False
 
         try:
+            logger.info(
+                "pixverse_auto_reauth_playwright_starting",
+                account_id=account.id,
+                email=account.email,
+            )
             async with PixverseAuthService() as auth_service:
                 session_data = await auth_service.login_with_password(
                     account.email,
                     password,
                     headless=True,
                 )
+            logger.info(
+                "pixverse_auto_reauth_playwright_completed",
+                account_id=account.id,
+            )
 
             extracted = await self.extract_account_data(session_data)
 
