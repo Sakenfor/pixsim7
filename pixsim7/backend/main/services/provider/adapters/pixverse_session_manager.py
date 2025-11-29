@@ -104,7 +104,12 @@ class PixverseSessionManager:
             if not reauth_success:
                 raise outcome.original_error or exc
 
-        # Second (and final) attempt
+        # Second (and final) attempt after successful re-auth
+        logger.info(
+            "pixverse_session_retry_after_reauth",
+            account_id=account.id,
+            context=op_name,
+        )
         session = self.build_session(account)
         previous_jwt = account.jwt_token
         previous_cookies = account.cookies
@@ -113,7 +118,13 @@ class PixverseSessionManager:
             previous_jwt=previous_jwt,
             previous_cookies=previous_cookies,
         )
-        return await operation(session)
+        result = await operation(session)
+        logger.info(
+            "pixverse_session_retry_success",
+            account_id=account.id,
+            context=op_name,
+        )
+        return result
 
     def classify_error(
         self,
