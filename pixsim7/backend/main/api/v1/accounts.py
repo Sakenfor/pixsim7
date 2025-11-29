@@ -435,6 +435,11 @@ async def sync_account_credits(
     Fetches current credits from the provider and updates the account.
     Useful after login or when credits need to be refreshed.
     """
+    logger.info(
+        "sync_credits_requested",
+        account_id=account_id,
+        user_id=user.id,
+    )
     try:
         account = await account_service.get_account(account_id)
         # Ownership or admin required
@@ -455,19 +460,28 @@ async def sync_account_credits(
             try:
                 if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
                     # Enable auto-reauth for user-triggered sync
+                    logger.info(
+                        "sync_credits_calling_provider",
+                        account_id=account.id,
+                        provider_id=account.provider_id,
+                    )
                     credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
+                    logger.info(
+                        "sync_credits_provider_success",
+                        account_id=account.id,
+                        credits=credits_data,
+                    )
                 else:
                     credits_data = await provider.get_credits(account)
             except Exception as e:
-                logger.warning(
+                logger.error(
                     "sync_account_credits_provider_error",
-                    extra={
-                        "account_id": account.id,
-                        "email": account.email,
-                        "provider_id": account.provider_id,
-                        "error": str(e),
-                        "error_type": e.__class__.__name__,
-                    },
+                    account_id=account.id,
+                    email=account.email,
+                    provider_id=account.provider_id,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    exc_info=True,
                 )
                 # If the provider call left the DB session in a bad state (e.g.
                 # pending rollback from a failed flush/commit), make a
@@ -477,6 +491,11 @@ async def sync_account_credits(
                     await db.rollback()
                 except Exception:
                     pass
+                # Re-raise for user-triggered sync so errors are visible
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to sync credits: {str(e)}"
+                )
         
         # Fallback: extract from account data
         if not credits_data:
