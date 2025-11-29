@@ -1,10 +1,37 @@
-# Pose Graph System Proposal
+# Pose Graph System Proposal - SUPERSEDED
 
 **Date:** 2025-11-29
-**Status:** 💡 PROPOSAL
+**Status:** ⚠️ SUPERSEDED - See ACTION_BLOCKS_I2I_EXTENSION.md
 **Related:** IMAGE_TO_IMAGE operation type
 
-## Problem
+## Note
+
+This proposal has been superseded by a more focused approach that extends the existing Action Blocks system rather than creating a duplicate pose graph system.
+
+**Why superseded:**
+- Action Blocks already provides ~70% of required functionality
+- Avoids reinventing the wheel (compatible_next/prev, composition, extraction, graphs)
+- Better architectural fit to extend existing system
+- Reuses existing graph visualization and data structures
+
+**See instead:** `/docs/ACTION_BLOCKS_I2I_EXTENSION.md`
+
+---
+
+## Original Problem Statement
+
+Users want to create narrative sequences by:
+1. Generating keyframe "poses" via sequential i2i generations
+2. Creating smooth transitions between poses
+3. Playing back different paths through the pose graph
+4. Reusing generic transition prompts
+
+**Solution:** Extend Action Blocks to support i2i workflows rather than creating separate pose graph system.
+
+---
+
+**Original Author:** Claude
+**Revision:** See ACTION_BLOCKS_I2I_EXTENSION.md for current approach
 
 Users want to create narrative sequences by:
 1. Generating keyframe "poses" via sequential i2i generations
