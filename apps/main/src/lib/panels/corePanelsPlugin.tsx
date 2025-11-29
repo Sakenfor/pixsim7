@@ -8,17 +8,17 @@
 import type { PanelPlugin } from './panelPlugin';
 import { registerBuiltinPanel } from '../plugins/registryBridge';
 import { AssetsRoute } from '../../routes/Assets';
-import { SceneBuilderPanel } from '../../components/legacy/SceneBuilderPanel';
+import { SceneBuilderPanel } from '@/components/scene/panels/SceneBuilderPanel';
 import { GraphEditorHost } from '../../components/graph/GraphEditorHost';
 import { InspectorPanel } from '../../components/inspector/InspectorPanel';
 import { HealthPanel } from '../../components/health/HealthPanel';
 import { ProviderSettingsPanel } from '../../components/provider/ProviderSettingsPanel';
 import { SettingsPanel } from '../../components/settings/SettingsPanel';
-import { GameThemingPanel } from '../../components/game/GameThemingPanel';
-import { SceneManagementPanel } from '../../components/scene/SceneManagementPanel';
+import { GameThemingPanel } from '@/components/game/panels/GameThemingPanel';
+import { SceneManagementPanel } from '@/components/scene/panels/SceneManagementPanel';
 import { GizmoLab } from '../../routes/GizmoLab';
 import { NpcBrainLab } from '../../routes/NpcBrainLab';
-import { DevToolsPanel } from '../../components/dev/DevToolsPanel';
+import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
 import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 
 // Game iframe panel (defined inline since it's simple)

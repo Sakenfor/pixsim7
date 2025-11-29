@@ -15,7 +15,7 @@ import {
   importComposition,
   type PanelComposition,
 } from '../../lib/widgets/panelComposer';
-import { ComposedPanel } from '../panels/ComposedPanel';
+import { ComposedPanel } from './ComposedPanel';
 import {
   demoCompositions,
   getDemoComposition,

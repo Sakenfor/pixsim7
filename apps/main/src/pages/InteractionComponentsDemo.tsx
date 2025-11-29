@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { NpcInteractionPanel } from '../components/game/NpcInteractionPanel';
+import { NpcInteractionPanel } from '@/components/game/panels/NpcInteractionPanel';
 import type {
   MoodState,
   InteractionSuggestion,

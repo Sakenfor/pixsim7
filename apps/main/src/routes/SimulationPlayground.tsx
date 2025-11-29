@@ -33,7 +33,7 @@ import {
   SECONDS_PER_HOUR,
   SECONDS_PER_DAY,
 } from '@pixsim7/game.engine';
-import { WorldToolsPanel } from '../components/game/WorldToolsPanel';
+import { WorldToolsPanel } from '@/components/game/panels/WorldToolsPanel';
 import { BrainToolsPanel } from '../components/brain/BrainToolsPanel';
 import { worldToolRegistry } from '../lib/worldTools/registry';
 import { brainToolRegistry } from '../lib/brainTools/registry';
@@ -71,7 +71,7 @@ import { WorldStateOverview } from '../components/simulation/WorldStateOverview'
 import { MultiRunComparison } from '../components/simulation/MultiRunComparison';
 import { ConstraintRunner } from '../components/simulation/ConstraintRunner';
 import { SimulationPluginsPanel } from '../components/simulation/SimulationPluginsPanel';
-import { ExportImportPanel } from '../components/simulation/ExportImportPanel';
+import { ExportImportPanel } from '@/components/panels/tools/ExportImportPanel';
 import {
   loadSavedRuns,
   saveSimulationRun,

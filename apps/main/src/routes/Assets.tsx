@@ -10,7 +10,7 @@ import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
-import { GalleryToolsPanel } from '../components/gallery/GalleryToolsPanel';
+import { GalleryToolsPanel } from '@/components/gallery/panels/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';

@@ -32,7 +32,7 @@ import { ActionBlockGraphDev } from './routes/ActionBlockGraphDev';
 import { BlockFitDev } from './routes/BlockFitDev';
 import { OverlayConfig } from './routes/OverlayConfig';
 import { ControlCenterManager } from './components/control/ControlCenterManager';
-import { FloatingPanelsManager } from './components/layout/FloatingPanelsManager';
+import { FloatingPanelsManager } from '@/components/panels/shared/FloatingPanelsManager';
 import { PluginOverlays } from './components/PluginOverlays';
 import { PluginManagerUI } from './components/PluginManager';
 import { ErrorBoundary } from './components/common/ErrorBoundary';

@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import { useHudLayoutStore } from '../../stores/hudLayoutStore';
-import { ComposedPanel } from '../panels/ComposedPanel';
+import { ComposedPanel } from '@/components/panels/shared/ComposedPanel';
 import { createComposition } from '../../lib/widgets/panelComposer';
 import type { HudRegionId, HudRegionLayout } from '../../lib/hud/types';
 

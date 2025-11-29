@@ -5,7 +5,7 @@ import { listGameLocations, getGameLocation, saveGameLocationHotspots, listGameW
 import type { HotspotActionType } from '@pixsim7/game.engine';
 import { NpcSlotEditor } from '../components/NpcSlotEditor';
 import { InteractionPresetEditor } from '../components/game/InteractionPresetEditor';
-import { InteractionPresetUsagePanel } from '../components/game/InteractionPresetUsagePanel';
+import { InteractionPresetUsagePanel } from '@/components/game/panels/InteractionPresetUsagePanel';
 
 export function GameWorld() {
   const [locations, setLocations] = useState<GameLocationSummary[]>([]);

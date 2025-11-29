@@ -8,14 +8,14 @@
 import { devToolRegistry } from './devToolRegistry';
 
 // Import dev tool components
-import { SessionStateViewer } from '../../components/legacy/SessionStateViewer';
-import { AppMapPanel } from '../../components/dev/AppMapPanel';
-import { BackendArchitecturePanel } from '../../components/dev/BackendArchitecturePanel';
-import { CapabilityTestingPanel } from '../../components/dev/CapabilityTestingPanel';
-import { DependencyGraphPanel } from '../../components/dev/DependencyGraphPanel';
-import { GenerationHealthView } from '../../components/dev/GenerationHealthView';
-import { TemplateAnalyticsPanel } from '../../components/dev/TemplateAnalyticsPanel';
-import { GizmoSurfacesPanel } from '../../components/devtools/GizmoSurfacesPanel';
+import { SessionStateViewer } from '@/components/panels/dev/SessionStateViewer';
+import { AppMapPanel } from '@/components/panels/dev/AppMapPanel';
+import { BackendArchitecturePanel } from '@/components/panels/dev/BackendArchitecturePanel';
+import { CapabilityTestingPanel } from '@/components/panels/dev/CapabilityTestingPanel';
+import { DependencyGraphPanel } from '@/components/panels/dev/DependencyGraphPanel';
+import { GenerationHealthView } from '@/components/panels/dev/GenerationHealthView';
+import { TemplateAnalyticsPanel } from '@/components/panels/dev/TemplateAnalyticsPanel';
+import { GizmoSurfacesPanel } from '@/components/panels/dev/GizmoSurfacesPanel';
 
 /**
  * Register all built-in dev tools

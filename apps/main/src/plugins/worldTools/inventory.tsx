@@ -5,7 +5,7 @@
  */
 
 import type { WorldToolPlugin } from '../../lib/worldTools/types';
-import { InventoryPanel } from '../../components/game/InventoryPanel';
+import { InventoryPanel } from '@/components/game/panels/InventoryPanel';
 
 export const inventoryTool: WorldToolPlugin = {
   id: 'inventory',

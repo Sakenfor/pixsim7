@@ -1,14 +1,15 @@
 # Legacy Components
 
-This folder contains components that were built but are not currently integrated into the UI.
+This folder contains components that are **still in use** but need to be migrated to proper locations.
 
-These components are preserved here as reference implementations that may be useful for future development, but they should not be confused with the active component tree.
+## Status: Migration Pending (2025-11-29)
 
-## Status: Archived (2025-11-22)
+**Updated during Task 102 - Panel Organization Hybrid Migration**
 
-**Reason:** Task 33 Phase 33.5 - Unused Frontend Component Sweep
+The components remaining in this folder ARE actively used and imported by the codebase. They will be migrated to appropriate locations as part of the hybrid panel organization:
 
-All components in this folder were verified to have **zero import references** in the active codebase (as of 2025-11-22).
+- Unused legacy panels have been moved to `_archive/` subfolder
+- Active panels will be migrated to their proper locations per the hybrid structure
 
 ---
 
@@ -101,8 +102,22 @@ grep -r "from.*SessionStateViewer\|import.*SessionStateViewer" . --include="*.ts
 
 ---
 
+## Currently Used Components (Still in Legacy)
+
+The following components are **actively imported** and will be migrated:
+
+- **GraphPanel.tsx** - Used in `lib/graph/registerEditors.ts`
+  - Migration target: To be determined (possibly `components/scene/panels/` or graph-specific location)
+
+- **SceneBuilderPanel.tsx** - Used in `lib/panels/corePanelsPlugin.tsx`
+  - Migration target: `components/scene/panels/SceneBuilderPanel.tsx`
+
+- **SessionStateViewer.tsx** - Used in `lib/devtools/registerDevTools.ts`
+  - Migration target: `components/panels/dev/SessionStateViewer.tsx`
+
 ## Related Documentation
 
+- **Task 102** - `claude-tasks/102-panel-organization-hybrid-migration.md` (current task)
 - **Task 33 Phase 33.5** - `claude-tasks/33-repo-pruning-and-legacy-sweep.md`
 - **Component Architecture** - `ARCHITECTURE.md` (frontend components section)
-- **Plugin System** - See `PluginBrowser` and `PluginManager` components for current plugin UI
+- **Panel Organization Audit** - `docs/PANEL_ORGANIZATION_AUDIT.md`
