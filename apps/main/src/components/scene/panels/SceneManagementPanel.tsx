@@ -10,7 +10,7 @@
 import { useState, useMemo } from 'react';
 import { SceneLibraryPanel } from './SceneLibraryPanel';
 import { SceneCollectionPanel } from './SceneCollectionPanel';
-import { ScenePlaybackPanel } from '@/components/scene-player/ScenePlaybackPanel';
+import { ScenePlaybackPanel } from './ScenePlaybackPanel';
 import { useGraphStore } from '@/stores/graphStore';
 
 type TabId = 'library' | 'collections' | 'playback';
