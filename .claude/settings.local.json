@@ -19,7 +19,10 @@
       "Bash(pnpm --filter @pixsim7/main build:*)",
       "Bash(node_modules/.bin/tsc:*)",
       "Bash(git rm:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(pnpm --filter @pixsim7/main backend:restart:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

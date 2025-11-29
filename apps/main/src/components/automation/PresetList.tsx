@@ -96,6 +96,16 @@ export function PresetList() {
     }
   };
 
+  const handleCopy = async (preset: AppActionPreset) => {
+    try {
+      const newPreset = await automationService.copyPreset(preset.id);
+      await loadPresets();
+      toast.success(`Preset copied successfully as "${newPreset.name}"`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to copy preset');
+    }
+  };
+
   const handleRun = (preset: AppActionPreset) => {
     setSelectedPresetToRun(preset);
     setSelectedAccountId(null);
@@ -249,6 +259,7 @@ export function PresetList() {
                     key={preset.id}
                     preset={preset}
                     onRun={handleRun}
+                    onCopy={handleCopy}
                     onEdit={(p) => {
                       setSelectedPreset(p);
                       setView('edit');
@@ -272,6 +283,7 @@ export function PresetList() {
                     key={preset.id}
                     preset={preset}
                     onRun={handleRun}
+                    onCopy={handleCopy}
                     onEdit={(p) => {
                       setSelectedPreset(p);
                       setView('edit');
@@ -295,6 +307,7 @@ export function PresetList() {
                     key={preset.id}
                     preset={preset}
                     onRun={handleRun}
+                    onCopy={handleCopy}
                     onEdit={(p) => {
                       setSelectedPreset(p);
                       setView('edit');

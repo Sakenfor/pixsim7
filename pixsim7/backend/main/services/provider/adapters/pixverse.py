@@ -1179,20 +1179,14 @@ class PixverseProvider(Provider):
                 account_id=account.id,
             )
 
-            try:
-                await self._persist_account_credentials(account)
-                logger.debug(
-                    "pixverse_auto_reauth_persist_completed",
-                    account_id=account.id,
-                )
-            except Exception as persist_exc:
-                logger.error(
-                    "pixverse_auto_reauth_persist_failed",
-                    account_id=account.id,
-                    error=str(persist_exc),
-                    exc_info=True,
-                )
-                raise
+            # Skip persisting here - let the caller (run_with_session) handle it
+            # to avoid double-persist which can cause session detachment issues
+            logger.debug(
+                "pixverse_auto_reauth_skip_persist_defer_to_caller",
+                account_id=account.id,
+                has_jwt=bool(account.jwt_token),
+                has_cookies=bool(account.cookies),
+            )
 
             self._evict_account_cache(account)
 

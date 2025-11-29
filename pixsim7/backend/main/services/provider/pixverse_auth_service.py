@@ -13,7 +13,7 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="pixverse-auth")
+_executor = ThreadPoolExecutor(max_workers=5, thread_name_prefix="pixverse-auth")
 
 
 class PixverseAuthError(Exception):

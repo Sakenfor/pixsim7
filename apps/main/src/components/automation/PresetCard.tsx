@@ -6,9 +6,10 @@ interface PresetCardProps {
   onEdit?: (preset: AppActionPreset) => void;
   onDelete?: (preset: AppActionPreset) => void;
   onRun?: (preset: AppActionPreset) => void;
+  onCopy?: (preset: AppActionPreset) => void;
 }
 
-export function PresetCard({ preset, onEdit, onDelete, onRun }: PresetCardProps) {
+export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCardProps) {
   const categoryColor = preset.is_system
     ? 'purple'
     : preset.is_shared
@@ -74,7 +75,17 @@ export function PresetCard({ preset, onEdit, onDelete, onRun }: PresetCardProps)
             ▶️ Run
           </Button>
         )}
-        {onEdit && (
+        {onCopy && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => onCopy(preset)}
+            title="Copy this preset to create an editable version"
+          >
+            📋 Copy
+          </Button>
+        )}
+        {onEdit && !preset.is_system && (
           <Button
             size="sm"
             variant="secondary"
@@ -83,7 +94,7 @@ export function PresetCard({ preset, onEdit, onDelete, onRun }: PresetCardProps)
             ✏️ Edit
           </Button>
         )}
-        {onDelete && (
+        {onDelete && !preset.is_system && (
           <Button
             size="sm"
             variant="ghost"

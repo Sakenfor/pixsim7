@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { type ActionDefinition, ActionType } from '@/types/automation';
 import { Button, Panel } from '@pixsim7/shared.ui';
 import { ActionTypeSelect } from './ActionTypeSelect';
@@ -8,6 +8,8 @@ interface ActionBuilderProps {
   actions: ActionDefinition[];
   onChange: (actions: ActionDefinition[]) => void;
 }
+
+const EMPTY_PARAMS = {};
 
 export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -85,15 +87,16 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
       ) : (
         <div className="space-y-2">
           {actions.map((action, index) => (
-            <Panel
+            <div
               key={index}
-              padded={false}
-              className={`cursor-pointer transition-colors ${
+              className={`border-2 rounded-lg bg-white dark:bg-gray-900 ${
                 selectedIndex === index
-                  ? 'ring-2 ring-blue-500 border-blue-500'
-                  : 'hover:border-gray-400 dark:hover:border-gray-500'
+                  ? 'border-blue-500 shadow-lg shadow-blue-500/20'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
               }`}
-              onClick={() => setSelectedIndex(index)}
+              style={{
+                transition: 'border-color 0.2s, box-shadow 0.2s',
+              }}
             >
               <div className="flex items-start gap-3 p-3">
                 {/* Index */}
@@ -116,8 +119,26 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                 {/* Actions */}
                 <div className="flex gap-1">
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
+                      setSelectedIndex(selectedIndex === index ? null : index);
+                    }}
+                    className={`p-1 ${
+                      selectedIndex === index
+                        ? 'text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200'
+                        : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                    }`}
+                    title={selectedIndex === index ? "Collapse" : "Edit"}
+                  >
+                    {selectedIndex === index ? '✏️' : '✏️'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
                       moveAction(index, 'up');
                     }}
                     disabled={index === 0}
@@ -127,8 +148,10 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                     ⬆️
                   </button>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       moveAction(index, 'down');
                     }}
                     disabled={index === actions.length - 1}
@@ -138,8 +161,10 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                     ⬇️
                   </button>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       duplicateAction(index);
                     }}
                     className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -148,8 +173,10 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                     📋
                   </button>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      e.preventDefault();
                       deleteAction(index);
                     }}
                     className="p-1 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
@@ -162,7 +189,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
 
               {/* Expanded details */}
               {selectedIndex === index && (
-                <div className="border-t border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800/50">
+                <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -185,7 +212,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                       </label>
                       <ActionParamsEditor
                         actionType={action.type}
-                        params={action.params}
+                        params={action.params ?? EMPTY_PARAMS}
                         onChange={(params) => {
                           updateAction(index, { ...action, params });
                         }}
@@ -194,7 +221,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
                   </div>
                 </div>
               )}
-            </Panel>
+            </div>
           ))}
         </div>
       )}

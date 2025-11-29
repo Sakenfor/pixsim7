@@ -52,6 +52,11 @@ class AutomationService {
     await apiClient.delete(`/automation/presets/${id}`);
   }
 
+  async copyPreset(id: number): Promise<AppActionPreset> {
+    const response = await apiClient.post<AppActionPreset>(`/automation/presets/${id}/copy`);
+    return response.data;
+  }
+
   async executePreset(presetId: number, accountId: number, priority: number = 1): Promise<{ status: string; execution_id: number; task_id: string }> {
     const response = await apiClient.post('/automation/execute-preset', {
       preset_id: presetId,

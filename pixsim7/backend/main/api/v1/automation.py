@@ -213,6 +213,97 @@ async def get_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
     return preset
 
 
+@router.put("/presets/{preset_id}", response_model=AppActionPreset)
+async def update_preset(
+    preset_id: int,
+    updated_data: AppActionPreset,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update an existing preset.
+
+    System presets cannot be modified - they must be copied first.
+    """
+    # Get existing preset
+    preset = await db.get(AppActionPreset, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    # Prevent modification of system presets
+    if preset.is_system:
+        raise HTTPException(
+            status_code=403,
+            detail="System presets cannot be modified. Please copy it first."
+        )
+
+    # Update fields
+    preset.name = updated_data.name
+    preset.description = updated_data.description
+    preset.app_package = updated_data.app_package
+    preset.category = updated_data.category
+    preset.tags = updated_data.tags
+    preset.actions = updated_data.actions
+    preset.is_shared = updated_data.is_shared
+
+    await db.commit()
+    await db.refresh(preset)
+    return preset
+
+
+@router.delete("/presets/{preset_id}")
+async def delete_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Delete a preset.
+
+    System presets cannot be deleted.
+    """
+    preset = await db.get(AppActionPreset, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    # Prevent deletion of system presets
+    if preset.is_system:
+        raise HTTPException(
+            status_code=403,
+            detail="System presets cannot be deleted."
+        )
+
+    await db.delete(preset)
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.post("/presets/{preset_id}/copy", response_model=AppActionPreset)
+async def copy_preset(preset_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Copy a preset (including system presets) to create a new user-editable preset.
+
+    The copied preset will:
+    - Have the same actions and configuration as the source
+    - Be marked as is_system=False (user preset)
+    - Have " (Copy)" appended to the name
+    """
+    # Get source preset
+    source = await db.get(AppActionPreset, preset_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    # Create new preset with copied data
+    new_preset = AppActionPreset(
+        name=f"{source.name} (Copy)",
+        description=source.description,
+        app_package=source.app_package,
+        tags=source.tags.copy() if source.tags else [],
+        actions=source.actions.copy() if source.actions else [],
+        is_system=False,  # Always make copies non-system
+    )
+
+    db.add(new_preset)
+    await db.commit()
+    await db.refresh(new_preset)
+    return new_preset
+
+
 # ----- Executions -----
 
 @router.get("/executions", response_model=List[AutomationExecution])

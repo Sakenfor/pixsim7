@@ -715,6 +715,11 @@ async def get_pixverse_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
 
 
+# In-memory locks to prevent concurrent re-auth for the same account
+_reauth_locks: Dict[int, asyncio.Lock] = {}
+_reauth_locks_lock = asyncio.Lock()
+
+
 @router.post("/accounts/{account_id}/reauth", response_model=AccountReauthResponse)
 async def reauth_account(
     account_id: int,
@@ -739,18 +744,41 @@ async def reauth_account(
     if not password:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no stored password. Provide password in request.")
 
-    try:
-        async with PixverseAuthService() as auth_service:
-            session_data = await auth_service.login_with_password(
-                account.email,
-                password,
-                headless=request.headless,
-            )
-    except PixverseAuthError as exc:
+    # Acquire lock for this account to prevent concurrent re-auth attempts
+    async with _reauth_locks_lock:
+        if account_id not in _reauth_locks:
+            _reauth_locks[account_id] = asyncio.Lock()
+        account_lock = _reauth_locks[account_id]
+
+    # Check if another re-auth is in progress
+    if account_lock.locked():
         raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            f"Pixverse login failed: {exc}",
+            status.HTTP_409_CONFLICT,
+            "Re-authentication already in progress for this account. Please wait."
         )
+
+    async with account_lock:
+        try:
+            async with PixverseAuthService() as auth_service:
+                # Add timeout to prevent indefinite hanging (60 seconds)
+                session_data = await asyncio.wait_for(
+                    auth_service.login_with_password(
+                        account.email,
+                        password,
+                        headless=request.headless,
+                    ),
+                    timeout=60.0
+                )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status.HTTP_504_GATEWAY_TIMEOUT,
+                "Re-authentication timed out after 60 seconds. Please try again."
+            )
+        except PixverseAuthError as exc:
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                f"Pixverse login failed: {exc}",
+            )
 
     provider = registry.get(account.provider_id)
     extracted = await provider.extract_account_data(session_data)
