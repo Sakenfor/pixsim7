@@ -8,7 +8,7 @@
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim7/shared.ui';
-import { Icon } from '@/components/common/Icon';
+import { Icon } from '@/lib/icons';
 
 export interface ButtonWidgetConfig {
   /** Widget ID */

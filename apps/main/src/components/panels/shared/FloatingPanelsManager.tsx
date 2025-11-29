@@ -2,7 +2,7 @@ import { Rnd } from 'react-rnd';
 import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
 import { useControlCubeStore } from '@/stores/controlCubeStore';
 import { panelRegistry } from '@/lib/panels/panelRegistry';
-import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
+import { BASE_CUBE_SIZE } from '@/config/cubeConstants';
 import { DevToolDynamicPanel } from '../dev/DevToolDynamicPanel';
 import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
 

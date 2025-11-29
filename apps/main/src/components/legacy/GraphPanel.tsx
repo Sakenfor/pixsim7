@@ -26,7 +26,7 @@ import { validateConnection, getValidationMessage } from '@/modules/scene-builde
 import { NodePalette, type NodeType } from '../nodes/NodePalette';
 import { previewBridge } from '@/lib/preview-bridge';
 import { ValidationPanel } from '../panels/tools/ValidationPanel';
-import { WorldContextSelector } from './WorldContextSelector';
+import { WorldContextSelector } from './_archive/WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
 import { GraphTemplatePalette } from '../graph/GraphTemplatePalette';
 import { TemplateWizardPalette } from '../graph/TemplateWizardPalette';

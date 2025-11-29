@@ -5,7 +5,7 @@ import { useSelectionStore } from '@/stores/selectionStore';
 import { useWorldContextStore } from '@/stores/worldContextStore';
 import { logEvent } from '@/lib/logging';
 import { previewBridge } from '@/lib/preview-bridge';
-import { InspectorPanel } from '../inspector/InspectorPanel';
+import { InspectorPanel } from '@/components/inspector/InspectorPanel';
 
 /**
  * SceneBuilderPanel - Scene-level actions and context
