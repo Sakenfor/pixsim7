@@ -121,13 +121,21 @@ export function QuickPanelSwitcher() {
                       </div>
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
-                          panel.category === 'core'
+                          panel.category === 'workspace'
                             ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                            : panel.category === 'development'
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                            : panel.category === 'scene'
+                              ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
                               : panel.category === 'game'
                                 ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
-                                : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
+                                : panel.category === 'dev'
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                  : panel.category === 'tools'
+                                    ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                                    : panel.category === 'utilities'
+                                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                                      : panel.category === 'system'
+                                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                                        : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
                         }`}
                       >
                         {panel.category}

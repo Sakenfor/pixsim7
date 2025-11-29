@@ -14,11 +14,30 @@ export interface WorkspaceContext {
   [key: string]: any;
 }
 
+export type PanelCategory =
+  // Core workspace
+  | 'workspace'      // Gallery, Graph, Inspector
+
+  // Domain-specific
+  | 'scene'          // Scene Builder, Scene Management, Scene Library, etc.
+  | 'game'           // Game Theming, Game iframe, etc.
+
+  // Development & tools
+  | 'dev'            // Dev Tools panel (launcher)
+  | 'tools'          // Gizmo Lab, NPC Brain Lab, HUD Designer
+  | 'utilities'      // Export/Import, Validation, Settings
+
+  // System
+  | 'system'         // Health, Provider Settings
+
+  // Legacy/custom
+  | 'custom';        // Custom panels from plugins
+
 export interface PanelDefinition {
   id: PanelId;
   title: string;
   component: ComponentType<any>;
-  category: 'core' | 'development' | 'game' | 'tools' | 'custom';
+  category: PanelCategory;
   tags: string[];
   icon?: string;
   description?: string;
@@ -126,10 +145,13 @@ export class PanelRegistry extends BaseRegistry<PanelDefinition> {
     return {
       total: all.length,
       byCategory: {
-        core: all.filter((p) => p.category === 'core').length,
-        development: all.filter((p) => p.category === 'development').length,
+        workspace: all.filter((p) => p.category === 'workspace').length,
+        scene: all.filter((p) => p.category === 'scene').length,
         game: all.filter((p) => p.category === 'game').length,
+        dev: all.filter((p) => p.category === 'dev').length,
         tools: all.filter((p) => p.category === 'tools').length,
+        utilities: all.filter((p) => p.category === 'utilities').length,
+        system: all.filter((p) => p.category === 'system').length,
         custom: all.filter((p) => p.category === 'custom').length,
       },
       capabilities: {
