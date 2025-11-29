@@ -6,7 +6,7 @@ export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
   presetId?: string;
-  operationType?: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
+  operationType?: 'text_to_video' | 'image_to_video' | 'image_to_image' | 'video_extend' | 'video_transition' | 'fusion';
   extraParams?: Record<string, any>;
   presetParams?: Record<string, any>;
 }

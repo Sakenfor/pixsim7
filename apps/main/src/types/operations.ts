@@ -45,6 +45,16 @@ export interface ImageToVideoParams extends QualityParams, AspectParams, MotionP
   seed?: number;
 }
 
+export interface ImageToImageParams extends QualityParams, AspectParams {
+  kind: 'image_to_image';
+  prompt: string;
+  image_url: string;
+  negative_prompt?: string;
+  strength?: number;          // How much to change the image (0-1)
+  seed?: number;
+  parent_generation_id?: number;  // Link to base image for variation tracking
+}
+
 export interface VideoExtendParams extends QualityParams, DurationParams {
   kind: 'video_extend';
   prompt?: string;
@@ -74,6 +84,7 @@ export interface FusionParams extends QualityParams, DurationParams {
 export type OperationParams =
   | TextToVideoParams
   | ImageToVideoParams
+  | ImageToImageParams
   | VideoExtendParams
   | VideoTransitionParams
   | FusionParams;
@@ -85,6 +96,7 @@ export type OperationParams =
 export const OPERATION_TYPES = [
   'text_to_video',
   'image_to_video',
+  'image_to_image',
   'video_extend',
   'video_transition',
   'fusion',
@@ -101,7 +113,11 @@ export function isTextToVideo(params: unknown): params is TextToVideoParams {
 }
 
 export function isImageToVideo(params: unknown): params is ImageToVideoParams {
-  return (params as any)?.kind === 'image_to_video' || (params as any)?.image_url !== undefined;
+  return (params as any)?.kind === 'image_to_video';
+}
+
+export function isImageToImage(params: unknown): params is ImageToImageParams {
+  return (params as any)?.kind === 'image_to_image';
 }
 
 export function isVideoExtend(params: unknown): params is VideoExtendParams {
@@ -135,14 +151,14 @@ export function getActivePresetParamKeys(presetParams: Record<string, any>): str
  * Check if operation requires a prompt
  */
 export function operationRequiresPrompt(operationType: string): boolean {
-  return operationType === 'text_to_video';
+  return operationType === 'text_to_video' || operationType === 'image_to_image';
 }
 
 /**
  * Check if operation supports optional prompt
  */
 export function operationSupportsPrompt(operationType: string): boolean {
-  return ['text_to_video', 'image_to_video', 'video_extend', 'fusion'].includes(operationType);
+  return ['text_to_video', 'image_to_video', 'image_to_image', 'video_extend', 'fusion'].includes(operationType);
 }
 
 /**
@@ -167,6 +183,18 @@ export function validateOperationParams(params: Partial<Record<string, any>>): s
     case 'image_to_video':
       if (!params.image_url || typeof params.image_url !== 'string') {
         errors.push('image_to_video requires image_url (string)');
+      }
+      break;
+
+    case 'image_to_image':
+      if (!params.prompt || typeof params.prompt !== 'string') {
+        errors.push('image_to_image requires a prompt (string)');
+      }
+      if (!params.image_url || typeof params.image_url !== 'string') {
+        errors.push('image_to_image requires image_url (string)');
+      }
+      if (params.strength !== undefined && (typeof params.strength !== 'number' || params.strength < 0 || params.strength > 1)) {
+        errors.push('image_to_image strength must be a number between 0 and 1');
       }
       break;
 

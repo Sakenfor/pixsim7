@@ -52,6 +52,49 @@ This document shows example payloads for each operation type that would be sent 
 
 ---
 
+## Image to Image
+
+**User Input:**
+- Base Image: "https://example.com/woman.jpg"
+- Prompt: "pirate captain outfit, weathered look, standing on ship deck"
+- Provider: replicate or stability-ai
+- Strength: 0.7 (how much to change - 0 to 1)
+- Parent Generation ID: 42 (optional - for variation tracking)
+
+**Payload:**
+```json
+{
+  "operation_type": "image_to_image",
+  "provider_id": "replicate",
+  "params": {
+    "prompt": "pirate captain outfit, weathered look, standing on ship deck",
+    "image_url": "https://example.com/woman.jpg",
+    "strength": 0.7,
+    "quality": "high",
+    "aspect_ratio": "1:1",
+    "negative_prompt": "blurry, low quality",
+    "seed": 12345,
+    "parent_generation_id": 42
+  }
+}
+```
+
+**Use Case: Image Variations Workflow**
+
+This operation enables creating multiple variations of a base image with different prompts:
+
+```
+Base: woman.jpg (generation_id: 100)
+├── Variation 1: "pirate captain outfit" (parent_generation_id: 100)
+├── Variation 2: "pirate with eyepatch and bandana" (parent_generation_id: 100)
+├── Variation 3: "weathered pirate on stormy seas" (parent_generation_id: 100)
+└── Variation 4: "elegant pirate in formal attire" (parent_generation_id: 100)
+```
+
+The `parent_generation_id` links all variations to the base image for easy browsing and comparison.
+
+---
+
 ## Video Extend
 
 **Scenario 1: Using video_url (external URL)**
