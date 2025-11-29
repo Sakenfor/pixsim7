@@ -47,16 +47,18 @@ class PixverseAuthService:
         email: str,
         password: str,
         *,
+        use_browser_fallback: bool = False,
         headless: bool = True,
         timeout_ms: int = 60_000,
     ) -> Dict[str, object]:
         """
-        Login to Pixverse using pixverse-py (Web API first, Playwright fallback).
+        Login to Pixverse using direct Web API (fast, lightweight).
 
         Args:
             email: Pixverse account email/username
             password: Pixverse password
-            headless: Whether to run browser headless for fallback
+            use_browser_fallback: If True, use browser automation fallback (slow, for initial login)
+            headless: Whether to run browser headless for fallback (only if use_browser_fallback=True)
             timeout_ms: Timeout in milliseconds for browser fallback
 
         Returns:
@@ -72,15 +74,26 @@ class PixverseAuthService:
 
         loop = asyncio.get_event_loop()
         try:
-            session = await loop.run_in_executor(
-                _executor,
-                lambda: PixverseAuth().login_with_browser_fallback(
-                    email,
-                    password,
-                    headless=headless,
-                    timeout_ms=timeout_ms,
-                ),
-            )
+            if use_browser_fallback:
+                # Heavy: Web API + Playwright fallback (for initial/manual login)
+                session = await loop.run_in_executor(
+                    _executor,
+                    lambda: PixverseAuth().login_with_browser_fallback(
+                        email,
+                        password,
+                        headless=headless,
+                        timeout_ms=timeout_ms,
+                    ),
+                )
+            else:
+                # Lightweight: Direct Web API only (for auto-reauth)
+                session = await loop.run_in_executor(
+                    _executor,
+                    lambda: PixverseAuth().login_with_password(
+                        email,
+                        password,
+                    ),
+                )
             return session
         except Exception as exc:
             logger.error("Pixverse login failed", exc_info=True)

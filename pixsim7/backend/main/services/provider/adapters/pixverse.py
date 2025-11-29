@@ -1085,17 +1085,13 @@ class PixverseProvider(Provider):
                 email=account.email,
             )
 
-            # Use direct API login (no Playwright fallback)
-            from pixverse.auth import PixverseAuth  # type: ignore
-            import asyncio
-            loop = asyncio.get_event_loop()
-            session_data = await loop.run_in_executor(
-                None,
-                lambda: PixverseAuth().login_with_password(
+            # Use lightweight API-only login (no browser automation)
+            async with PixverseAuthService() as auth_service:
+                session_data = await auth_service.login_with_password(
                     account.email,
                     password,
+                    use_browser_fallback=False,  # Fast: Direct API only
                 )
-            )
 
             logger.info(
                 "pixverse_auto_reauth_api_login_completed",
