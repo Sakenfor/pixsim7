@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { useControlCubeStore, type CubeType } from '../../stores/controlCubeStore';
-import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { useControlCubeStore, type CubeType } from '@/stores/controlCubeStore';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { BASE_CUBE_SIZE } from '../../config/cubeConstants';
 import { clsx } from 'clsx';
 

@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react';
 import { HudLayoutBuilder } from '../hud/HudLayoutBuilder';
-import { listGameWorlds, type GameWorldSummary } from '../../lib/api/game';
+import { listGameWorlds, type GameWorldSummary } from '@/lib/api/game';
 
 export function HudDesignerPanel() {
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);

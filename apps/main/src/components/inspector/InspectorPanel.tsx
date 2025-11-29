@@ -1,11 +1,11 @@
 import { useState, useEffect, Suspense } from 'react';
 import type { ComponentType } from 'react';
-import { type DraftSceneNode } from '../../modules/scene-builder';
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
-import { useSelectionStore } from '../../stores/selectionStore';
+import { type DraftSceneNode } from '@/modules/scene-builder';
+import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { useSelectionStore } from '@/stores/selectionStore';
 import { useToast } from '@pixsim7/shared.ui';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
-import { nodeEditorRegistry } from '../../lib/nodeEditorRegistry';
+import { nodeEditorRegistry } from '@/lib/nodeEditorRegistry';
 
 /**
  * Dynamic Editor Loader Component

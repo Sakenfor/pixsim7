@@ -1,11 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
-import { useProviderCapacity } from '../../hooks/useProviderAccounts';
-import { useProviders } from '../../hooks/useProviders';
-import type { ProviderAccount } from '../../hooks/useProviderAccounts';
-import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync, connectPixverseWithGoogle } from '../../lib/api/accounts';
-import type { UpdateAccountRequest } from '../../lib/api/accounts';
-import { apiClient } from '../../lib/api/client';
+import { useProviderCapacity } from '@/hooks/useProviderAccounts';
+import { useProviders } from '@/hooks/useProviders';
+import type { ProviderAccount } from '@/hooks/useProviderAccounts';
+import { deleteAccount, toggleAccountStatus, updateAccount, dryRunPixverseSync, connectPixverseWithGoogle } from '@/lib/api/accounts';
+import type { UpdateAccountRequest } from '@/lib/api/accounts';
+import { apiClient } from '@/lib/api/client';
 import { CompactAccountCard } from './CompactAccountCard';
 
 type EditAccountFormState = {

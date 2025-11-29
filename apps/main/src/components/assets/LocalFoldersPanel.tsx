@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { useLocalFoldersController } from '../../hooks/useLocalFoldersController';
-import { useProviders } from '../../hooks/useProviders';
+import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
+import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAsset } from '@/stores/localFoldersStore';
 
 export function LocalFoldersPanel() {
   const controller = useLocalFoldersController();

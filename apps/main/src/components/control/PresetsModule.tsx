@@ -1,8 +1,8 @@
-import { useControlCenterStore } from '../../stores/controlCenterStore';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 import clsx from 'clsx';
-import { useProviderSpecs } from '../../hooks/useProviderSpecs';
+import { useProviderSpecs } from '@/hooks/useProviderSpecs';
 import { useMemo, useState } from 'react';
-import { ccSelectors } from '../../stores/selectors';
+import { ccSelectors } from '@/stores/selectors';
 import { Settings2 } from 'lucide-react';
 import { PresetOperator, type TimelineAsset } from './PresetOperator';
 

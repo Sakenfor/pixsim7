@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Panel, Badge, Button, ProgressBar } from '@pixsim7/shared.ui';
-import { listSessionQuests, type QuestDTO, type GameSessionDTO } from '../../lib/api/game';
+import { listSessionQuests, type QuestDTO, type GameSessionDTO } from '@/lib/api/game';
 
 interface QuestLogProps {
   session: GameSessionDTO | null;

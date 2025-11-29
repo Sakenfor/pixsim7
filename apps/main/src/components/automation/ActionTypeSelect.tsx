@@ -1,4 +1,4 @@
-import { ActionType } from '../../types/automation';
+import { ActionType } from '@/types/automation';
 
 interface ActionTypeSelectProps {
   value: ActionType;

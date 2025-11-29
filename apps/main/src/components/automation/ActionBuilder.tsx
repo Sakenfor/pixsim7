@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type ActionDefinition, ActionType } from '../../types/automation';
+import { type ActionDefinition, ActionType } from '@/types/automation';
 import { Button, Panel } from '@pixsim7/shared.ui';
 import { ActionTypeSelect } from './ActionTypeSelect';
 import { ActionParamsEditor } from './ActionParamsEditor';

@@ -24,7 +24,7 @@ import {
   type WorldUiThemePreset,
 } from '@pixsim7/game.engine';
 import { Button, Select, Badge, Panel, Modal, FormField, Input } from '@pixsim7/shared.ui';
-import { getViewModeOptions } from '../../lib/theming/useViewMode';
+import { getViewModeOptions } from '@/lib/theming/useViewMode';
 
 interface WorldThemeEditorProps {
   worldDetail: GameWorldDetail;

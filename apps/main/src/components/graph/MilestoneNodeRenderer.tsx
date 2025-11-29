@@ -1,6 +1,6 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
-import type { MilestoneNodeData } from '../../modules/arc-graph';
+import type { MilestoneNodeData } from '@/modules/arc-graph';
 
 /**
  * Milestone node renderer - shows major story checkpoint information

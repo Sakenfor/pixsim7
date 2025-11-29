@@ -23,13 +23,13 @@ import ReactFlow, {
   type NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import type { ActionBlock } from '../../types/promptGraphs';
+import type { ActionBlock } from '@/types/promptGraphs';
 import {
   buildActionBlockGraph,
   getNodeColorByComplexity,
   getCompositeNodeStyle,
   getActionEdgeStyle,
-} from '../../lib/graphs/actionGraphBuilder';
+} from '@/lib/graphs/actionGraphBuilder';
 import { Handle, Position } from 'reactflow';
 
 export interface ActionBlockGraphSurfaceProps {

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
-import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
-import { controlCenterModuleRegistry } from '../../lib/control/controlCenterModuleRegistry';
+import { useControlCenterStore, type ControlModule } from '@/stores/controlCenterStore';
+import { controlCenterModuleRegistry } from '@/lib/control/controlCenterModuleRegistry';
 import { useNavigate } from 'react-router-dom';
 
 // Note: Control Center modules are now auto-registered when their parent modules

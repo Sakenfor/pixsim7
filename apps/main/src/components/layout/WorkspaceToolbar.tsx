@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { PresetsDropdown } from './workspace-toolbar/PresetsDropdown';
 import { AddPanelDropdown } from './workspace-toolbar/AddPanelDropdown';
 import { RestoreClosedPanelsMenu } from './workspace-toolbar/RestoreClosedPanelsMenu';

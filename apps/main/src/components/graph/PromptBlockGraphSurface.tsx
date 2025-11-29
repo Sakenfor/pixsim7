@@ -21,8 +21,8 @@ import ReactFlow, {
   type NodeTypes,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import type { PromptBlock } from '../../types/promptGraphs';
-import { buildPromptBlockGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/graphs/promptGraphBuilder';
+import type { PromptBlock } from '@/types/promptGraphs';
+import { buildPromptBlockGraph, getNodeColorByRole, getEdgeStyle } from '@/lib/graphs/promptGraphBuilder';
 import { Handle, Position } from 'reactflow';
 
 export interface PromptBlockGraphSurfaceProps {

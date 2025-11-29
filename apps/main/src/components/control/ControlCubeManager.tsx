@@ -3,12 +3,12 @@ import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
 import { PanelActionEditor } from './PanelActionEditor';
 import { CubeHelpOverlay } from './CubeHelpOverlay';
-import { useControlCubeStore } from '../../stores/controlCubeStore';
-import type { CubeFace } from '../../stores/controlCubeStore';
-import { usePanelRects, useCubeDocking } from '../../hooks/useCubeDocking';
-import { panelActionRegistry } from '../../lib/panelActions';
-import type { PanelActionsConfig } from '../../lib/panelActions';
-import { Icon } from '../../lib/icons';
+import { useControlCubeStore } from '@/stores/controlCubeStore';
+import type { CubeFace } from '@/stores/controlCubeStore';
+import { usePanelRects, useCubeDocking } from '@/hooks/useCubeDocking';
+import { panelActionRegistry } from '@/lib/panelActions';
+import type { PanelActionsConfig } from '@/lib/panelActions';
+import { Icon } from '@/lib/icons';
 import { useToast } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
 

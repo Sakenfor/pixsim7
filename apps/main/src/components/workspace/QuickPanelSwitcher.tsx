@@ -6,8 +6,8 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { usePanelConfigStore } from '../../stores/panelConfigStore';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 export function QuickPanelSwitcher() {
   const [isOpen, setIsOpen] = useState(false);

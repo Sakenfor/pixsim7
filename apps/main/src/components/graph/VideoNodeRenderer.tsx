@@ -1,4 +1,4 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 
 /**
  * Custom renderer for video nodes - shows media thumbnail and playback info

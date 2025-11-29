@@ -11,7 +11,7 @@ import type {
   NodeTypePluginProject,
   GalleryToolPluginProject,
   WorldToolPluginProject,
-} from '../../lib/plugins/projects';
+} from '@/lib/plugins/projects';
 
 /**
  * Dynamically load a plugin from source code without using eval.

@@ -1,4 +1,4 @@
-import { type AutomationExecution, AutomationStatus } from '../../types/automation';
+import { type AutomationExecution, AutomationStatus } from '@/types/automation';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
 
 interface ExecutionCardProps {

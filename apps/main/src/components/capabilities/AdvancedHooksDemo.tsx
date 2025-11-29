@@ -20,7 +20,7 @@ import {
   useAllowedFeatures,
   useAllowedActions,
   useRegisterCapabilities,
-} from '../../lib/capabilities';
+} from '@/lib/capabilities';
 
 /**
  * Example 1: Reactive State Value

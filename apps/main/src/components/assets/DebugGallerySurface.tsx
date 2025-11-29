@@ -5,9 +5,9 @@
  */
 
 import { useState } from 'react';
-import { gallerySurfaceRegistry } from '../../lib/gallery/surfaceRegistry';
-import { galleryToolRegistry } from '../../lib/gallery/types';
-import { useAssets } from '../../hooks/useAssets';
+import { gallerySurfaceRegistry } from '@/lib/gallery/surfaceRegistry';
+import { galleryToolRegistry } from '@/lib/gallery/types';
+import { useAssets } from '@/hooks/useAssets';
 
 export function DebugGallerySurface() {
   const [filters, setFilters] = useState({ q: '', sort: 'new' as const });

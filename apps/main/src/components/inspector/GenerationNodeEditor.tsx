@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { DraftSceneNode } from '@/modules/scene-builder';
 import type {
   GenerationNodeConfig,
   GenerationStrategy,
@@ -12,14 +12,14 @@ import type {
   GenerationValidationResult,
 } from '@pixsim7/shared.types';
 import { useToast } from '@pixsim7/shared.ui';
-import { useGraphStore } from '../../stores/graphStore';
+import { useGraphStore } from '@/stores/graphStore';
 import {
   validateGenerationNode,
   getValidationStatus,
   getValidationSummary,
   type ValidationStatus,
 } from '@pixsim7/game.engine';
-import { createGeneration, type GenerationResponse } from '../../lib/api/generations';
+import { createGeneration, type GenerationResponse } from '@/lib/api/generations';
 
 interface GenerationNodeEditorProps {
   node: DraftSceneNode;

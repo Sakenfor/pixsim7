@@ -1,20 +1,20 @@
 import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
-import { useControlCenterStore, type ControlCenterState } from '../../stores/controlCenterStore';
+import { useControlCenterStore, type ControlCenterState } from '@/stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
-import { useProviders } from '../../hooks/useProviders';
-import { useProviderSpecs } from '../../hooks/useProviderSpecs';
+import { useProviders } from '@/hooks/useProviders';
+import { useProviderSpecs } from '@/hooks/useProviderSpecs';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
-import { useGenerationsStore, isGenerationTerminal } from '../../stores/generationsStore';
-import { useGenerationQueueStore } from '../../stores/generationQueueStore';
-import { logEvent } from '../../lib/logging';
-import { GenerationPluginRenderer } from '../../lib/providers';
-import { useGenerationWebSocket } from '../../hooks/useGenerationWebSocket';
-import { useQuickGenerateController } from '../../hooks/useQuickGenerateController';
+import { useGenerationsStore, isGenerationTerminal } from '@/stores/generationsStore';
+import { useGenerationQueueStore } from '@/stores/generationQueueStore';
+import { logEvent } from '@/lib/logging';
+import { GenerationPluginRenderer } from '@/lib/providers';
+import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
+import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
 import { CompactAssetCard } from './CompactAssetCard';
-import { ThemedIcon } from '../../lib/icons';
+import { ThemedIcon } from '@/lib/icons';
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates

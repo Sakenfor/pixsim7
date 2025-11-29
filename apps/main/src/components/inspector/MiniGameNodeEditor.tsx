@@ -3,7 +3,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useNodeEditor } from './useNodeEditor';
 import type { NodeEditorProps, MiniGameConfig } from './editorTypes';
 import { validateMiniGameConfig, logValidationError } from './editorValidation';
-import { getAllGizmos } from '../../lib/gizmos/loadDefaultPacks';
+import { getAllGizmos } from '@/lib/gizmos/loadDefaultPacks';
 
 export function MiniGameNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const availableGizmos = useMemo(() => getAllGizmos(), []);

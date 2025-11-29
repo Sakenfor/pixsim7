@@ -5,8 +5,8 @@
  * Shows quest details, objectives, conditions, and rewards.
  */
 
-import type { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
-import type { QuestTriggerNodeData, QuestObjective } from '../../lib/plugins/questTriggerNode';
+import type { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
+import type { QuestTriggerNodeData, QuestObjective } from '@/lib/plugins/questTriggerNode';
 
 /**
  * Quest Trigger Node Renderer Component

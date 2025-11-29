@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button, Panel, Badge, Input, Select } from '@pixsim7/shared.ui';
-import { getAsset, type AssetResponse } from '../lib/api/assets';
-import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '../lib/api/game';
-import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '../lib/api/game';
-import { interactionRegistry } from '../lib/registries';
-import { InteractionConfigForm } from '../lib/game/interactions/InteractionConfigForm';
+import { getAsset, type AssetResponse } from '@/lib/api/assets';
+import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@/lib/api/game';
+import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@/lib/api/game';
+import { interactionRegistry } from '@/lib/registries';
+import { InteractionConfigForm } from '@/lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
   getCombinedPlaylists,
@@ -13,7 +13,7 @@ import {
   type PresetWithScope,
   type PlaylistWithScope,
   type SuggestionContext,
-} from '../lib/game/interactions/presets';
+} from '@/lib/game/interactions/presets';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;

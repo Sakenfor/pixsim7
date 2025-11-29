@@ -1,4 +1,4 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
 
 /**

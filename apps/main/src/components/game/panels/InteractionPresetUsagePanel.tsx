@@ -8,11 +8,11 @@
 
 import { useState, useMemo } from 'react';
 import { Button, Panel, Badge, Table, TableHeader, TableBody, TableRow, TableHead, TableCell, Select } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '../../lib/api/game';
+import type { GameWorldDetail } from '@/lib/api/game';
 import {
   getPresetUsageStatsWithDetails,
   clearPresetUsageStats,
-} from '../../lib/game/interactions/presets';
+} from '@/lib/game/interactions/presets';
 
 interface InteractionPresetUsagePanelProps {
   world?: GameWorldDetail | null;

@@ -6,7 +6,7 @@
  * Integrated with Task 51 data binding system.
  */
 
-import type { WidgetProps } from '../../lib/widgets/widgetRegistry';
+import type { WidgetProps } from '@/lib/widgets/widgetRegistry';
 
 export interface TextWidgetConfig {
   content: string; // Static content (used if no data binding)

@@ -29,7 +29,7 @@
 
 import { useState } from 'react';
 import { Modal, Badge, Button } from '@pixsim7/shared.ui';
-import { useDependencies } from '../../hooks/useDependencies';
+import { useDependencies } from '@/hooks/useDependencies';
 
 /**
  * Delete policy types

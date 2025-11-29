@@ -7,8 +7,8 @@
 
 import { useState, useRef } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
-import type { SimulationScenario } from '../../lib/simulation/scenarios';
-import type { SavedSimulationRun } from '../../lib/simulation/multiRunStorage';
+import type { SimulationScenario } from '@/lib/simulation/scenarios';
+import type { SavedSimulationRun } from '@/lib/simulation/multiRunStorage';
 import {
   exportScenario,
   exportRun,
@@ -19,7 +19,7 @@ import {
   downloadFile,
   sanitizeFilename,
   type ImportResult,
-} from '../../lib/simulation/exportImport';
+} from '@/lib/simulation/exportImport';
 
 interface ExportImportPanelProps {
   scenarios: SimulationScenario[];

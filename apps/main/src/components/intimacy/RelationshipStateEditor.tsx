@@ -9,8 +9,8 @@
  */
 
 import React from 'react';
-import type { SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
-import { createStateFromTier } from '../../lib/intimacy/gateChecking';
+import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
+import { createStateFromTier } from '@/lib/intimacy/gateChecking';
 
 interface RelationshipStateEditorProps {
   /** Current simulated state */

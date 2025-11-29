@@ -6,8 +6,8 @@
 
 import { useState, useMemo } from 'react';
 import { Button, Panel, Input, Select, Badge, Checkbox } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '../../lib/api/game';
-import { saveGameWorldMeta } from '../../lib/api/game';
+import type { GameWorldDetail } from '@/lib/api/game';
+import { saveGameWorldMeta } from '@/lib/api/game';
 import {
   getCombinedPlaylists,
   getCombinedPresets,
@@ -26,7 +26,7 @@ import {
   type PlaylistItem,
   type PlaylistCondition,
   type PresetWithScope,
-} from '../../lib/game/interactions/presets';
+} from '@/lib/game/interactions/presets';
 
 interface PresetPlaylistBuilderProps {
   world: GameWorldDetail;

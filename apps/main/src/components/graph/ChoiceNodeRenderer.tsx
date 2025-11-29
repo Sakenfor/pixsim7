@@ -1,4 +1,4 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 
 /**
  * Custom renderer for choice nodes - shows available choices

@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
-import type { WorldToolContext, WorldToolPlugin } from '../../lib/worldTools/types';
+import type { WorldToolContext, WorldToolPlugin } from '@/lib/worldTools/types';
 
 interface WorldToolsPanelProps {
   context: WorldToolContext;

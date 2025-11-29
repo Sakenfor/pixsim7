@@ -1,5 +1,5 @@
-import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
-import { Icon, type IconName } from '../../lib/icons';
+import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
+import { Icon, type IconName } from '@/lib/icons';
 
 interface PanelInfo {
   id: PanelId;

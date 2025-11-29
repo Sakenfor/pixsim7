@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { LocalAsset } from '../../stores/localFoldersStore';
+import type { LocalAsset } from '@/stores/localFoldersStore';
 
 type TreeNode = {
   name: string;

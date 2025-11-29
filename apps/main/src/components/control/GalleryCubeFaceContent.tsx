@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useAssets, type AssetSummary } from '../../hooks/useAssets';
-import { useControlCubeStore } from '../../stores/controlCubeStore';
+import { useAssets, type AssetSummary } from '@/hooks/useAssets';
+import { useControlCubeStore } from '@/stores/controlCubeStore';
 import type { CubeFace, CubeFaceContent } from './ControlCube';
-import { BACKEND_BASE } from '../../lib/api/client';
-import { Icon, Icons } from '../../lib/icons';
+import { BACKEND_BASE } from '@/lib/api/client';
+import { Icon, Icons } from '@/lib/icons';
 
 interface GalleryCubeFaceContentProps {
   cubeId: string;

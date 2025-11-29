@@ -8,13 +8,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useHudLayoutStore } from '../../stores/hudLayoutStore';
+import { useHudLayoutStore } from '@/stores/hudLayoutStore';
 import { HudRegionSelector } from './HudRegionSelector';
 import { HudRegionCanvas } from './HudRegionCanvas';
 import { HudWidgetLibrary } from './HudWidgetLibrary';
 import { HudLayoutManager } from './HudLayoutManager';
-import type { HudRegionId, HudRegionLayout } from '../../lib/hud/types';
-import type { WorldHudLayout } from '../../lib/hud/types';
+import type { HudRegionId, HudRegionLayout } from '@/lib/hud/types';
+import type { WorldHudLayout } from '@/lib/hud/types';
 
 export interface HudLayoutBuilderProps {
   worldId: number | string;

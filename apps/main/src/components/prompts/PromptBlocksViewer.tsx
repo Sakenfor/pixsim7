@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Panel } from '@pixsim7/shared.ui';
-import { Icon } from '../../lib/icons';
+import { Icon } from '@/lib/icons';
 
 export interface PromptBlock {
   role: 'character' | 'action' | 'setting' | 'mood' | 'romance' | 'other';

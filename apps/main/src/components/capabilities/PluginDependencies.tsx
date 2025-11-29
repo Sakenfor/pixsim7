@@ -5,8 +5,8 @@
  * Helps developers understand plugin integration points.
  */
 
-import type { PluginMeta } from '../../lib/plugins/catalog';
-import { useFeature, useAction } from '../../lib/capabilities';
+import type { PluginMeta } from '@/lib/plugins/catalog';
+import { useFeature, useAction } from '@/lib/capabilities';
 
 interface PluginDependenciesProps {
   plugin: PluginMeta;

@@ -18,16 +18,16 @@ import type {
   GenerationSocialContext,
 } from '@pixsim7/shared.types';
 import { RelationshipGateVisualizer, RelationshipGateBadge } from './RelationshipGateVisualizer';
-import { validateIntimacyScene } from '../../lib/intimacy/validation';
+import { validateIntimacyScene } from '@/lib/intimacy/validation';
 import { SocialContextPanel } from '../generation/SocialContextPanel';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { GatePreviewPanel } from './GatePreviewPanel';
 import { GenerationPreviewPanel } from './GenerationPreviewPanel';
 import { SceneSaveLoadControls, StateSaveLoadControls } from './SaveLoadControls';
 import { SceneTemplateBrowser } from './TemplateBrowser';
-import { createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
-import { saveSceneAsTemplate, type SceneTemplate } from '../../lib/intimacy/templates';
-import { validateSceneForTemplate } from '../../lib/intimacy/templateValidation';
+import { createDefaultState, type SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
+import { saveSceneAsTemplate, type SceneTemplate } from '@/lib/intimacy/templates';
+import { validateSceneForTemplate } from '@/lib/intimacy/templateValidation';
 
 interface IntimacySceneComposerProps {
   /** Current scene configuration */

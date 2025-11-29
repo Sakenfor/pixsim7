@@ -3,7 +3,7 @@
  * This file eliminates duplicate interface definitions across editor components
  */
 
-import type { DraftSceneNode } from '../../modules/scene-builder';
+import type { DraftSceneNode } from '@/modules/scene-builder';
 
 /**
  * Standard props interface for all node editors

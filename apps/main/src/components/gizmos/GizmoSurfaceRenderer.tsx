@@ -6,8 +6,8 @@
  */
 
 import { useMemo } from 'react';
-import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '../../lib/gizmos';
-import { useGizmoSurfaceStore } from '../../lib/gizmos/gizmoSurfaceStore';
+import { gizmoSurfaceRegistry, type GizmoSurfaceContext } from '@/lib/gizmos';
+import { useGizmoSurfaceStore } from '@/lib/gizmos/gizmoSurfaceStore';
 
 interface GizmoSurfaceRendererProps {
   /** The context in which to render surfaces */

@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { BrainShape } from '../shapes/BrainShape';
-import { mockCore } from '../../lib/core/mockCore';
+import { mockCore } from '@/lib/core/mockCore';
 import type { NpcBrainState } from '@pixsim7/game.engine';
 import { BrainFace } from '@pixsim7/scene.shapes';
-import { sciFiTheme } from '../../lib/theme/scifi-tokens';
+import { sciFiTheme } from '@/lib/theme/scifi-tokens';
 import './BrainShapeExample.css';
 
 /**

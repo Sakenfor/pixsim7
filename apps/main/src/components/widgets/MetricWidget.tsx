@@ -6,7 +6,7 @@
  * Integrated with Task 51 data binding system.
  */
 
-import type { WidgetProps } from '../../lib/widgets/widgetRegistry';
+import type { WidgetProps } from '@/lib/widgets/widgetRegistry';
 
 export interface MetricWidgetConfig {
   label: string;

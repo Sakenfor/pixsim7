@@ -10,9 +10,9 @@
  */
 
 import React, { useState } from 'react';
-import { useSceneCollectionStore } from '../../stores/sceneCollectionStore';
-import { validateSceneCollection } from '../../modules/scene-collection';
-import type { SceneCollection, SceneCollectionType } from '../../modules/scene-collection';
+import { useSceneCollectionStore } from '@/stores/sceneCollectionStore';
+import { validateSceneCollection } from '@/modules/scene-collection';
+import type { SceneCollection, SceneCollectionType } from '@/modules/scene-collection';
 
 interface SceneCollectionPanelProps {
   /** Available scene IDs for validation */

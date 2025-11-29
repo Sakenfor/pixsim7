@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
-import type { SimulationPlugin } from '../../lib/simulation/hooks';
+import type { SimulationPlugin } from '@/lib/simulation/hooks';
 
 interface SimulationPluginsPanelProps {
   plugins: SimulationPlugin[];

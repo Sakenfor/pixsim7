@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { gallerySurfaceRegistry, type GallerySurfaceId } from '../../lib/gallery/surfaceRegistry';
+import { gallerySurfaceRegistry, type GallerySurfaceId } from '@/lib/gallery/surfaceRegistry';
 
 interface GallerySurfaceSwitcherProps {
   /** Current active surface ID */

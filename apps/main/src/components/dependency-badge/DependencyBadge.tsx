@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { Badge } from '@pixsim7/shared.ui';
 import { Tooltip } from '@pixsim7/shared.ui';
-import { useDependencies } from '../../hooks/useDependencies';
+import { useDependencies } from '@/hooks/useDependencies';
 
 export interface DependencyBadgeProps {
   /** Entity type */

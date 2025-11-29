@@ -4,7 +4,7 @@ import {
   parseNpcKey,
   getNpcRelationshipState,
 } from '@pixsim7/game.engine';
-import type { GameSessionDTO } from '../../lib/api/game';
+import type { GameSessionDTO } from '@/lib/api/game';
 
 interface RelationshipDashboardProps {
   session: GameSessionDTO | null;

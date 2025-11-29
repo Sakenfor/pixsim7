@@ -6,10 +6,10 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { useGallerySurfaceController } from '../../hooks/useGallerySurfaceController';
+import { useGallerySurfaceController } from '@/hooks/useGallerySurfaceController';
 import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import type { WidgetProps, WidgetDefinition } from '../../lib/widgets/widgetRegistry';
+import type { WidgetProps, WidgetDefinition } from '@/lib/widgets/widgetRegistry';
 
 export interface GalleryGridWidgetConfig {
   title?: string;

@@ -5,7 +5,7 @@
  * Supports future user-configurable badge visibility.
  */
 
-import type { IconName } from '../../lib/icons';
+import type { IconName } from '@/lib/icons';
 
 export type MediaPrimaryBadge = 'video' | 'image' | 'audio' | 'model';
 

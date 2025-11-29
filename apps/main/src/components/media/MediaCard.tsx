@@ -24,8 +24,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { OverlayContainer } from '@/lib/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
-import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
-import { ThemedIcon } from '../../lib/icons';
+import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
+import { ThemedIcon } from '@/lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
 import { createDefaultMediaCardWidgets } from './mediaCardWidgets';
 

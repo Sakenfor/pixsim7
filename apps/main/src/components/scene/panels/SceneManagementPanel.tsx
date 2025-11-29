@@ -9,9 +9,9 @@
 
 import { useState, useMemo } from 'react';
 import { SceneLibraryPanel } from './SceneLibraryPanel';
-import { SceneCollectionPanel } from '../../scene-collection/SceneCollectionPanel';
-import { ScenePlaybackPanel } from '../../scene-player/ScenePlaybackPanel';
-import { useGraphStore } from '../../../stores/graphStore';
+import { SceneCollectionPanel } from '@/components/scene-collection/SceneCollectionPanel';
+import { ScenePlaybackPanel } from '@/components/scene-player/ScenePlaybackPanel';
+import { useGraphStore } from '@/stores/graphStore';
 
 type TabId = 'library' | 'collections' | 'playback';
 

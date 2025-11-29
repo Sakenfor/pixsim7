@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { type ExecutionLoop, ExecutionLoopStatus } from '../../types/automation';
-import { automationService } from '../../lib/automation/automationService';
+import { type ExecutionLoop, ExecutionLoopStatus } from '@/types/automation';
+import { automationService } from '@/lib/automation/automationService';
 import { Button, Panel, ConfirmModal, useToast } from '@pixsim7/shared.ui';
 import { LoopCard } from './LoopCard';
 import { LoopForm } from './LoopForm';
-import { useConfirmModal } from '../../hooks/useModal';
+import { useConfirmModal } from '@/hooks/useModal';
 
 type View = 'list' | 'create' | 'edit';
 

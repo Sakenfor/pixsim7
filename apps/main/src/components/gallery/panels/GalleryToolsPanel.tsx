@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { galleryToolRegistry, type GalleryToolContext, type GalleryToolPlugin } from '../../lib/gallery/types';
+import { galleryToolRegistry, type GalleryToolContext, type GalleryToolPlugin } from '@/lib/gallery/types';
 
 interface GalleryToolsPanelProps {
   context: GalleryToolContext;

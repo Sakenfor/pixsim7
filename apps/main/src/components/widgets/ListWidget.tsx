@@ -7,7 +7,7 @@
  */
 
 import { useState, useMemo } from 'react';
-import type { WidgetProps } from '../../lib/widgets/widgetRegistry';
+import type { WidgetProps } from '@/lib/widgets/widgetRegistry';
 
 export interface ListWidgetConfig {
   title?: string;

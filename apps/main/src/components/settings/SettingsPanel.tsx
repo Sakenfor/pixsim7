@@ -3,10 +3,10 @@ import { Select } from '@pixsim7/shared.ui';
 import { CubeSettingsPanel } from '../control/CubeSettingsPanel';
 import { PanelConfigurationPanel } from './PanelConfigurationPanel';
 import { WorkspaceProfileManager } from './WorkspaceProfileManager';
-import { useCubeSettingsStore, type LinkingGesture } from '../../stores/cubeSettingsStore';
-import { panelActionRegistry } from '../../lib/panelActions';
-import { controlCenterRegistry } from '../../lib/plugins/controlCenterPlugin';
-import { debugFlags } from '../../lib/debugFlags';
+import { useCubeSettingsStore, type LinkingGesture } from '@/stores/cubeSettingsStore';
+import { panelActionRegistry } from '@/lib/panelActions';
+import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
+import { debugFlags } from '@/lib/debugFlags';
 
 type SettingsTab = 'general' | 'panels' | 'profiles' | 'debug';
 

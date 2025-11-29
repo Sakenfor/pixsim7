@@ -12,7 +12,7 @@ import type {
   AnyConstraint,
   ConstraintEvaluationContext,
   ConstraintEvaluationResult,
-} from '../../lib/simulation/constraints';
+} from '@/lib/simulation/constraints';
 import {
   evaluateConstraint,
   createWorldTimeConstraint,
@@ -20,7 +20,7 @@ import {
   createNpcLocationConstraint,
   createTickCountConstraint,
   createEventConstraint,
-} from '../../lib/simulation/constraints';
+} from '@/lib/simulation/constraints';
 
 interface ConstraintRunnerProps {
   context: ConstraintEvaluationContext;

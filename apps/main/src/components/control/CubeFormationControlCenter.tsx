@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useControlCubeStore, type CubeType } from '../../stores/controlCubeStore';
-import { useControlCenterStore, type ControlModule } from '../../stores/controlCenterStore';
-import { useWorkspaceStore, type PanelId } from '../../stores/workspaceStore';
+import { useControlCubeStore, type CubeType } from '@/stores/controlCubeStore';
+import { useControlCenterStore, type ControlModule } from '@/stores/controlCenterStore';
+import { useWorkspaceStore, type PanelId } from '@/stores/workspaceStore';
 import { ControlCube } from './ControlCube';
 import { DraggableCube } from './DraggableCube';
 import { getCubeFaceContent } from './CubeFaceContent';
@@ -10,7 +10,7 @@ import {
   interpolatePosition,
   easeInOutCubic,
   type FormationPattern,
-} from '../../lib/cubeFormations';
+} from '@/lib/cubeFormations';
 import { clsx } from 'clsx';
 import { QuickGenerateModule } from './QuickGenerateModule';
 import { PresetsModule } from './PresetsModule';

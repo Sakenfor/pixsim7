@@ -1,8 +1,8 @@
-import type { CubeType } from '../../stores/controlCubeStore';
-import type { CubeFace } from '../../stores/controlCubeStore';
+import type { CubeType } from '@/stores/controlCubeStore';
+import type { CubeFace } from '@/stores/controlCubeStore';
 import type { CubeFaceContent } from './ControlCube';
-import { panelActionRegistry } from '../../lib/panelActions';
-import { Icon } from '../../lib/icons';
+import { panelActionRegistry } from '@/lib/panelActions';
+import { Icon } from '@/lib/icons';
 
 /**
  * Contextual face content based on cube type and docked panel

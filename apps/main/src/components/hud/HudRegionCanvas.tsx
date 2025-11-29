@@ -8,10 +8,10 @@
  */
 
 import { useState } from 'react';
-import { useHudLayoutStore } from '../../stores/hudLayoutStore';
+import { useHudLayoutStore } from '@/stores/hudLayoutStore';
 import { ComposedPanel } from '@/components/panels/shared/ComposedPanel';
-import { createComposition } from '../../lib/widgets/panelComposer';
-import type { HudRegionId, HudRegionLayout } from '../../lib/hud/types';
+import { createComposition } from '@/lib/widgets/panelComposer';
+import type { HudRegionId, HudRegionLayout } from '@/lib/hud/types';
 
 export interface HudRegionCanvasProps {
   layoutId: string;

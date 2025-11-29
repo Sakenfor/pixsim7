@@ -1,8 +1,8 @@
 import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
-import { logEvent } from '../../lib/logging';
-import type { NodeGroupData } from '../../modules/scene-builder';
+import { useGraphStore, type GraphState } from '@/stores/graphStore';
+import { logEvent } from '@/lib/logging';
+import type { NodeGroupData } from '@/modules/scene-builder';
 
 interface NodeGroupNodeData {
   label: string;

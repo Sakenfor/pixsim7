@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button, Select, useToast } from '@pixsim7/shared.ui';
-import { getGameSession, listGameSessions, type GameSessionDTO } from '../../lib/api/game';
+import { getGameSession, listGameSessions, type GameSessionDTO } from '@/lib/api/game';
 import { parseNpcKey, parseArcKey, parseQuestKey } from '@pixsim7/game.engine';
 
 /**

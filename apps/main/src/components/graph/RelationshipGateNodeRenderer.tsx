@@ -1,4 +1,4 @@
-import type { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import type { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 
 /**
  * Relationship Gate Node Renderer

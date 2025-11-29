@@ -7,7 +7,7 @@
 
 import { useMemo } from 'react';
 import { Panel, Badge } from '@pixsim7/shared.ui';
-import type { GameLocationSummary, NpcPresenceDTO } from '../../lib/api/game';
+import type { GameLocationSummary, NpcPresenceDTO } from '@/lib/api/game';
 
 interface LocationPresenceMapProps {
   locations: GameLocationSummary[];

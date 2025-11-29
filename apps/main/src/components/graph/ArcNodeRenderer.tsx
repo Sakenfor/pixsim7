@@ -1,6 +1,6 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
-import type { ArcNodeData } from '../../modules/arc-graph';
+import type { ArcNodeData } from '@/modules/arc-graph';
 
 /**
  * Type guard to check if a node is an ArcNodeData

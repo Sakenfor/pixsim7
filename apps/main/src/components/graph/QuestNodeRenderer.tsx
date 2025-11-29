@@ -1,6 +1,6 @@
-import { NodeRendererProps } from '../../lib/graph/nodeRendererRegistry';
+import { NodeRendererProps } from '@/lib/graph/nodeRendererRegistry';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
-import type { QuestNodeData } from '../../modules/arc-graph';
+import type { QuestNodeData } from '@/modules/arc-graph';
 
 /**
  * Quest node renderer - shows quest objective information

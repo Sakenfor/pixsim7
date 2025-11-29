@@ -17,14 +17,14 @@ import type {
   RelationshipGate,
 } from '@pixsim7/shared.types';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
-import { validateProgressionArc } from '../../lib/intimacy/validation';
+import { validateProgressionArc } from '@/lib/intimacy/validation';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
 import { ArcSaveLoadControls } from './SaveLoadControls';
 import { ArcTemplateBrowser } from './TemplateBrowser';
 import { PlaytestingPanel } from './PlaytestingPanel';
-import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
-import { saveArcAsTemplate, type ArcTemplate } from '../../lib/intimacy/templates';
-import { validateArcForTemplate } from '../../lib/intimacy/templateValidation';
+import { checkGate, createDefaultState, type SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
+import { saveArcAsTemplate, type ArcTemplate } from '@/lib/intimacy/templates';
+import { validateArcForTemplate } from '@/lib/intimacy/templateValidation';
 
 interface ProgressionArcEditorProps {
   /** Current arc configuration */

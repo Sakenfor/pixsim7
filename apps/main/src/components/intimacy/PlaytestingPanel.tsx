@@ -23,9 +23,9 @@ import {
   type PlaytestSession,
   type PlaytestConfig,
   type PlaytestPresetKey,
-} from '../../lib/intimacy/playtesting';
+} from '@/lib/intimacy/playtesting';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
-import { createDefaultState, createStateFromTier } from '../../lib/intimacy/gateChecking';
+import { createDefaultState, createStateFromTier } from '@/lib/intimacy/gateChecking';
 
 interface PlaytestingPanelProps {
   /** Arc to playtest */

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { useLocalFolders } from '../../stores/localFoldersStore';
-import { useAssetSelectionStore } from '../../stores/assetSelectionStore';
-import type { ExpansionComponentProps } from '../../lib/cubeExpansionRegistry';
+import { useLocalFolders } from '@/stores/localFoldersStore';
+import { useAssetSelectionStore } from '@/stores/assetSelectionStore';
+import type { ExpansionComponentProps } from '@/lib/cubeExpansionRegistry';
 
 /**
  * Gallery preview expansion for cube

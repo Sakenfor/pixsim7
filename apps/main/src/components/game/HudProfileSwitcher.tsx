@@ -12,7 +12,7 @@ import {
   getActiveProfileId,
   setActiveProfile,
   type HudProfile,
-} from '../../lib/worldTools/hudProfiles';
+} from '@/lib/worldTools/hudProfiles';
 
 interface HudProfileSwitcherProps {
   worldId: number;

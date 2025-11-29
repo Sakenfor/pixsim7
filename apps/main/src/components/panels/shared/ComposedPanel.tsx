@@ -8,13 +8,13 @@
  */
 
 import { useMemo, useEffect } from 'react';
-import type { PanelComposition } from '../../lib/widgets/panelComposer';
-import { widgetRegistry } from '../../lib/widgets/widgetRegistry';
+import type { PanelComposition } from '@/lib/widgets/panelComposer';
+import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
 import {
   dataSourceRegistry,
   useBindingValues,
   initializeCoreDataSources,
-} from '../../lib/dataBinding';
+} from '@/lib/dataBinding';
 
 export interface ComposedPanelProps {
   composition: PanelComposition;

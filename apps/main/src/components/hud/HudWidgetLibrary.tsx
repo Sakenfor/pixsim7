@@ -7,10 +7,10 @@
  */
 
 import { useState } from 'react';
-import { useHudLayoutStore } from '../../stores/hudLayoutStore';
-import { widgetRegistry } from '../../lib/widgets/widgetRegistry';
-import { addWidget } from '../../lib/widgets/panelComposer';
-import type { HudRegionId } from '../../lib/hud/types';
+import { useHudLayoutStore } from '@/stores/hudLayoutStore';
+import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
+import { addWidget } from '@/lib/widgets/panelComposer';
+import type { HudRegionId } from '@/lib/hud/types';
 
 export interface HudWidgetLibraryProps {
   layoutId: string;

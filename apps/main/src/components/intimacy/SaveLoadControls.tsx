@@ -10,7 +10,7 @@
 
 import React, { useState } from 'react';
 import type { IntimacySceneConfig, RelationshipProgressionArc } from '@pixsim7/shared.types';
-import type { SimulatedRelationshipState } from '../../lib/intimacy/gateChecking';
+import type { SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
 import {
   downloadScenesAsFile,
   uploadScenesFromFile,
@@ -28,7 +28,7 @@ import {
   loadSimulatedState,
   listSavedStates,
   deleteSimulatedState,
-} from '../../lib/intimacy/saveLoad';
+} from '@/lib/intimacy/saveLoad';
 
 // ============================================================================
 // Scene Save/Load Controls

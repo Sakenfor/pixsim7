@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { formatWorldTime } from '@pixsim7/game.engine';
-import type { SimulationSnapshot } from '../../lib/simulation/history';
+import type { SimulationSnapshot } from '@/lib/simulation/history';
 
 interface TimelineScrubberProps {
   snapshots: SimulationSnapshot[];

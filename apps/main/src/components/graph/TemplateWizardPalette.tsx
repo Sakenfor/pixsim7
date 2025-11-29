@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { builtinWizards, type TemplateWizard } from '../../lib/graph/templateWizards';
+import { builtinWizards, type TemplateWizard } from '@/lib/graph/templateWizards';
 import { TemplateWizardDialog } from './TemplateWizardDialog';
 
 interface TemplateWizardPaletteProps {

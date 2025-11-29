@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { ThemedIcon } from '../../lib/icons';
-import { useHoverScrubVideo } from '../../hooks/useHoverScrubVideo';
-import { useMediaThumbnail } from '../../hooks/useMediaThumbnail';
-import type { AssetSummary } from '../../hooks/useAssets';
+import { ThemedIcon } from '@/lib/icons';
+import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
+import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
+import type { AssetSummary } from '@/hooks/useAssets';
 
 export interface CompactAssetCardProps {
   asset: AssetSummary;

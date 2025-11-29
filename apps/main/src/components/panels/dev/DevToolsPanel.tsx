@@ -6,10 +6,10 @@
  */
 
 import { useState, useMemo } from 'react';
-import { devToolRegistry } from '../../lib/devtools/devToolRegistry';
-import type { DevToolDefinition, DevToolCategory } from '../../lib/devtools/types';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { useDevToolContext } from '../../lib/devtools/devToolContext';
+import { devToolRegistry } from '@/lib/devtools/devToolRegistry';
+import type { DevToolDefinition, DevToolCategory } from '@/lib/devtools/types';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useDevToolContext } from '@/lib/devtools/devToolContext';
 
 const CATEGORY_LABELS: Record<DevToolCategory, string> = {
   session: 'Session & World',

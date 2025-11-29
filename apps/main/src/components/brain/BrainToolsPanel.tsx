@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
-import type { BrainToolContext, BrainToolPlugin } from '../../lib/brainTools/types';
+import type { BrainToolContext, BrainToolPlugin } from '@/lib/brainTools/types';
 
 interface BrainToolsPanelProps {
   context: BrainToolContext;

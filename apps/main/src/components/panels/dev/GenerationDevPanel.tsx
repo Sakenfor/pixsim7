@@ -21,10 +21,10 @@
 
 import { useState, useEffect } from 'react';
 import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
-import { usePromptInspection } from '../../hooks/usePromptInspection';
-import { usePromptAiEdit } from '../../hooks/usePromptAiEdit';
-import { useAiProviders } from '../../hooks/useAiProviders';
-import { useGenerationDevController } from '../../hooks/useGenerationDevController';
+import { usePromptInspection } from '@/hooks/usePromptInspection';
+import { usePromptAiEdit } from '@/hooks/usePromptAiEdit';
+import { useAiProviders } from '@/hooks/useAiProviders';
+import { useGenerationDevController } from '@/hooks/useGenerationDevController';
 
 interface GenerationDevPanelProps {
   /** Optional workspace filter */

@@ -5,7 +5,7 @@ import {
   type RouteCapability,
   type ActionCapability,
   useCapabilityStore,
-} from '../../lib/capabilities';
+} from '@/lib/capabilities';
 
 interface CapabilityTestingPanelProps {
   features: FeatureCapability[];

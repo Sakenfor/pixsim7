@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Button, Modal, FormField, Input, useToast } from '@pixsim7/shared.ui';
-import { useWorldContextStore } from '../../stores/worldContextStore';
+import { useWorldContextStore } from '@/stores/worldContextStore';
 import {
   listGameWorlds,
   createGameWorld,
   listGameLocations,
   type GameWorldSummary,
   type GameLocationSummary,
-} from '../../lib/api/game';
+} from '@/lib/api/game';
 
 export function WorldContextSelector() {
   const toast = useToast();

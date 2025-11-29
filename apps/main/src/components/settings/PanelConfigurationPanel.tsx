@@ -6,10 +6,10 @@
  */
 
 import { useState, useMemo } from 'react';
-import { usePanelConfigStore } from '../../stores/panelConfigStore';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
-import { pluginCatalog } from '../../lib/plugins/pluginSystem';
-import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../../lib/gallery/badgeConfigPresets';
+import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '@/lib/gallery/badgeConfigPresets';
 
 type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
