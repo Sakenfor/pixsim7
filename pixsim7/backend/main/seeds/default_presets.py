@@ -333,7 +333,17 @@ async def seed_default_presets(db):
         existing = result.scalar_one_or_none()
 
         if existing:
-            print(f"Preset '{preset_data['name']}' already exists, skipping")
+            # Update existing system preset with latest actions
+            if existing.is_system:
+                print(f"Preset '{preset_data['name']}' already exists, updating actions")
+                existing.actions = preset_data["actions"]
+                existing.description = preset_data.get("description", "")
+                existing.app_package = preset_data.get("app_package", PIXVERSE_PACKAGE)
+                existing.requires_password = preset_data.get("requires_password", False)
+                existing.updated_at = datetime.utcnow()
+                print(f"[OK] Updated preset: {preset_data['name']}")
+            else:
+                print(f"Preset '{preset_data['name']}' already exists (not system), skipping")
             continue
 
         # Create preset
