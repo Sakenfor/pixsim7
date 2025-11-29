@@ -12,7 +12,13 @@
       "Bash(cat:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run build:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm --filter @pixsim7/main build:*)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []
