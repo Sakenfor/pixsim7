@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Panel, Button } from '@pixsim/shared/ui';
+import { Panel, Button } from '@pixsim7/shared.ui';
 
 export interface PresetSelectorProps {
   presets: Array<{

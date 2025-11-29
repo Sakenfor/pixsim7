@@ -7,7 +7,7 @@
 
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import { Button } from '@pixsim/shared/ui';
+import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
 import type { DataBinding } from '@/lib/editing-core';
 import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';

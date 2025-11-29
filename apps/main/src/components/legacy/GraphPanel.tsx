@@ -25,7 +25,7 @@ import type { DraftSceneNode, DraftEdge } from '../../modules/scene-builder';
 import { validateConnection, getValidationMessage } from '../../modules/scene-builder/portValidation';
 import { NodePalette, type NodeType } from '../nodes/NodePalette';
 import { previewBridge } from '../../lib/preview-bridge';
-import { ValidationPanel } from '../validation/ValidationPanel';
+import { ValidationPanel } from '../panels/tools/ValidationPanel';
 import { WorldContextSelector } from './WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
 import { GraphTemplatePalette } from '../graph/GraphTemplatePalette';

@@ -14,7 +14,7 @@ import type { OverlayConfiguration } from '@/lib/overlay';
 import { mediaCardPresets, PresetManager } from '@/lib/overlay';
 import { LocalStoragePresetStorage } from '@/lib/overlay/presets/presetManager';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@/lib/overlay/presets/storage';
-import { Button, Select, Panel } from '@pixsim/shared/ui';
+import { Button, Select, Panel } from '@pixsim7/shared.ui';
 
 // Component type configurations
 type ComponentType = 'mediaCard' | 'videoPlayer' | 'hud';

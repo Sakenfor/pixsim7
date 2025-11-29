@@ -12,7 +12,7 @@ import type { OverlayConfiguration } from '@/lib/overlay';
 import { mediaCardPresets, PresetManager } from '@/lib/overlay';
 import { LocalStoragePresetStorage } from '@/lib/overlay/presets/presetManager';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@/lib/overlay/presets/storage';
-import { Button, Select } from '@pixsim/shared/ui';
+import { Button, Select } from '@pixsim7/shared.ui';
 
 // Sample media data for preview
 const SAMPLE_MEDIA = {

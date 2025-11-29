@@ -7,7 +7,7 @@
 
 import React, { ReactNode } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
-import { Panel } from '@pixsim/shared/ui';
+import { Panel } from '@pixsim7/shared.ui';
 import type { DataBinding } from '@/lib/editing-core';
 import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 

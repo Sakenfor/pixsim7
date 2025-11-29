@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { OverlayWidget } from '@/lib/overlay';
-import { Panel } from '@pixsim/shared/ui';
+import { Panel } from '@pixsim7/shared.ui';
 import { PositionControls } from './PositionControls';
 import { VisibilityControls } from './VisibilityControls';
 import { StyleControls } from './StyleControls';

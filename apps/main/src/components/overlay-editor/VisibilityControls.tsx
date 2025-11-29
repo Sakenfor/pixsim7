@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { VisibilityConfig, VisibilityTrigger } from '@/lib/overlay';
-import { Select } from '@pixsim/shared/ui';
+import { Select } from '@pixsim7/shared.ui';
 
 export interface VisibilityControlsProps {
   visibility: VisibilityConfig;

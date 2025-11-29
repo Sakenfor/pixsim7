@@ -8,10 +8,10 @@
  */
 
 import { useState, useMemo } from 'react';
-import { SceneLibraryPanel } from '../panels/SceneLibraryPanel';
-import { SceneCollectionPanel } from '../scene-collection/SceneCollectionPanel';
-import { ScenePlaybackPanel } from '../scene-player/ScenePlaybackPanel';
-import { useGraphStore } from '../../stores/graphStore';
+import { SceneLibraryPanel } from './SceneLibraryPanel';
+import { SceneCollectionPanel } from '../../scene-collection/SceneCollectionPanel';
+import { ScenePlaybackPanel } from '../../scene-player/ScenePlaybackPanel';
+import { useGraphStore } from '../../../stores/graphStore';
 
 type TabId = 'library' | 'collections' | 'playback';
 

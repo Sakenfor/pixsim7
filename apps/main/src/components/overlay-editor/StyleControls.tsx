@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { WidgetStyle, WidgetSize } from '@/lib/overlay';
-import { Select } from '@pixsim/shared/ui';
+import { Select } from '@pixsim7/shared.ui';
 
 export interface StyleControlsProps {
   style: WidgetStyle;

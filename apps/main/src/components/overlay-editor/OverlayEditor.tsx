@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
-import { Panel, Button } from '@pixsim/shared/ui';
+import { Panel, Button } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
