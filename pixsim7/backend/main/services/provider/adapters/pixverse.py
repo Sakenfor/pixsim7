@@ -1080,18 +1080,25 @@ class PixverseProvider(Provider):
 
         try:
             logger.info(
-                "pixverse_auto_reauth_playwright_starting",
+                "pixverse_auto_reauth_api_login_starting",
                 account_id=account.id,
                 email=account.email,
             )
-            async with PixverseAuthService() as auth_service:
-                session_data = await auth_service.login_with_password(
+
+            # Use direct API login (no Playwright fallback)
+            from pixverse.auth import PixverseAuth  # type: ignore
+            import asyncio
+            loop = asyncio.get_event_loop()
+            session_data = await loop.run_in_executor(
+                None,
+                lambda: PixverseAuth().login_with_password(
                     account.email,
                     password,
-                    headless=True,
                 )
+            )
+
             logger.info(
-                "pixverse_auto_reauth_playwright_completed",
+                "pixverse_auto_reauth_api_login_completed",
                 account_id=account.id,
             )
 
