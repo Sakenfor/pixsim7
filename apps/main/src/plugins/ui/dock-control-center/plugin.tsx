@@ -5,10 +5,10 @@
  * Familiar, lightweight, and works on all edges (bottom, top, left, right, floating).
  */
 
-import type { ControlCenterPluginManifest, ControlCenterPlugin } from '../../../lib/plugins/controlCenterPlugin';
-import { controlCenterRegistry } from '../../../lib/plugins/controlCenterPlugin';
-import { ControlCenterDock } from '../../../components/control/ControlCenterDock';
-import { useControlCenterStore } from '../../../stores/controlCenterStore';
+import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
+import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
+import { ControlCenterDock } from '@/components/control/ControlCenterDock';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 
 export const manifest: ControlCenterPluginManifest = {
   id: 'dock-control-center',

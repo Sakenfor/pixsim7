@@ -8,9 +8,9 @@
  * - Recent workspaces
  */
 
-import { useWorkspaceStore } from '../../../stores/workspaceStore';
-import { usePanelConfigStore } from '../../../stores/panelConfigStore';
-import type { ControlCenterModuleProps } from '../../../lib/control/controlCenterModuleRegistry';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
 
 export function WorkspaceModule({ }: ControlCenterModuleProps) {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);

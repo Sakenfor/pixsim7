@@ -5,6 +5,8 @@
  */
 
 import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
+import type { UnifiedSurfaceConfig } from '@/lib/editing-core';
+import { toUnifiedSurfaceConfig, fromUnifiedSurfaceConfig } from '../overlayConfig';
 import { mediaCardPresets } from './mediaCard';
 
 const STORAGE_KEY = 'overlay_user_presets';
@@ -247,6 +249,67 @@ export class PresetManager {
       return preset;
     } catch (error) {
       throw new Error(`Failed to import preset: ${error}`);
+    }
+  }
+
+  /**
+   * Export a preset as UnifiedSurfaceConfig (for cross-editor compatibility)
+   * This is the new unified format compatible with HUD and other editors
+   */
+  async exportPresetUnified(id: string): Promise<string> {
+    const preset = await this.getPreset(id);
+    if (!preset) {
+      throw new Error(`Preset ${id} not found`);
+    }
+
+    const unified = toUnifiedSurfaceConfig(preset.configuration);
+    return JSON.stringify(unified, null, 2);
+  }
+
+  /**
+   * Import a preset from UnifiedSurfaceConfig JSON
+   * Supports cross-editor preset sharing
+   */
+  async importPresetUnified(json: string, category: PresetCategory = 'custom'): Promise<OverlayPreset> {
+    try {
+      const unified = JSON.parse(json) as UnifiedSurfaceConfig;
+
+      // Validate it's a unified config
+      if (!unified.componentType || !unified.widgets || !unified.version) {
+        throw new Error('Invalid UnifiedSurfaceConfig structure');
+      }
+
+      // Check if it's an overlay config
+      if (unified.componentType !== 'overlay') {
+        throw new Error(`Cannot import ${unified.componentType} config as overlay preset`);
+      }
+
+      // Convert to OverlayConfiguration (partial - needs widget render functions)
+      const partialConfig = fromUnifiedSurfaceConfig(unified);
+
+      // For now, we can't fully restore render functions from serialized config
+      // This would need to be enhanced with a widget registry lookup
+      // For this initial implementation, we'll store the config as-is
+      // and document that imported configs need manual widget setup
+
+      const preset: OverlayPreset = {
+        id: `imported-${Date.now()}`,
+        name: unified.name || 'Imported Preset',
+        category,
+        configuration: partialConfig as OverlayConfiguration, // Note: May need widget registry to complete
+        isUserCreated: true,
+      };
+
+      // Check for ID conflict
+      const exists = await this.storage.exists(preset.id);
+      if (exists) {
+        preset.id = `${preset.id}-${Math.random().toString(36).substr(2, 9)}`;
+      }
+
+      await this.storage.save(preset);
+      return preset;
+    } catch (error) {
+      throw new Error(`Failed to import unified preset: ${error}`);
     }
   }
 

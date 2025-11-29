@@ -1,5 +1,5 @@
 import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
-import type { WorkspacePreset } from '../../../stores/workspaceStore';
+import type { WorkspacePreset } from '@/stores/workspaceStore';
 
 interface PresetsDropdownProps {
   isOpen: boolean;

@@ -180,3 +180,11 @@ export type {
   PresetStorage,
   APIStorageConfig,
 } from './presets';
+
+// Config Converters (for UnifiedSurfaceConfig interoperability)
+export {
+  toUnifiedSurfaceConfig,
+  fromUnifiedSurfaceConfig,
+  fromUnifiedWidget,
+  isOverlayConfig,
+} from './overlayConfig';

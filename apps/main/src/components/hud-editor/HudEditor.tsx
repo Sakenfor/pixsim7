@@ -13,15 +13,15 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { Panel, Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
-import type { GameWorldDetail } from '../../../lib/api/game';
-import { updateGameWorldMeta } from '../../../lib/api/game';
-import { worldToolRegistry } from '../../../lib/worldTools/registry';
+import type { GameWorldDetail } from '@/lib/api/game';
+import { updateGameWorldMeta } from '@/lib/api/game';
+import { worldToolRegistry } from '@/lib/worldTools/registry';
 import type {
   HudToolPlacement,
   HudRegion,
   WorldUiConfig,
-} from '../../../lib/worldTools/types';
-import { getHudConfig } from '../../../lib/worldTools/hudLayout';
+} from '@/lib/worldTools/types';
+import { getHudConfig } from '@/lib/worldTools/hudLayout';
 import {
   loadPresets,
   createPreset,
@@ -34,22 +34,22 @@ import {
   deleteWorldPreset,
   isWorldPreset,
   type HudLayoutPreset,
-} from '../../../lib/worldTools/hudPresets';
+} from '@/lib/worldTools/hudPresets';
 import {
   getAvailableProfiles,
   saveProfileLayout,
   getProfileLayout,
   type HudProfile,
-} from '../../../lib/worldTools/hudProfiles';
+} from '@/lib/worldTools/hudProfiles';
 // Editing Core - Shared undo/redo hook
-import { useUndoRedo } from '../../../lib/editing-core';
+import { useUndoRedo } from '@/lib/editing-core';
 // Gameplay UI Core - HUD-specific config layer
 import {
   type HudSurfaceConfig,
   type HudWidgetConfig,
   fromHudToolPlacements,
   toHudToolPlacements,
-} from '../../../lib/gameplay-ui-core';
+} from '@/lib/gameplay-ui-core';
 
 export interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;

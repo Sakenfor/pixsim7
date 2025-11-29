@@ -1,8 +1,8 @@
 /**
- * Property Path Resolution
+ * Property Path Resolution - Overlay-Specific Helpers
  *
- * Allows widgets to use string-based property paths for data binding
- * instead of requiring manual function writing.
+ * Provides overlay-specific utilities for data binding.
+ * Core resolvePath function now lives in editing-core to avoid circular dependencies.
  *
  * Examples:
  *   "uploadProgress" → (data) => data.uploadProgress
@@ -10,32 +10,8 @@
  *   "items[0].title" → (data) => data.items?.[0]?.title
  */
 
-/**
- * Resolve a property path to a value
- * Supports dot notation and array indexing
- */
-export function resolvePath<T = any>(obj: any, path: string): T | undefined {
-  if (!obj || !path) return undefined;
-
-  // Handle simple paths first (most common case)
-  if (!path.includes('.') && !path.includes('[')) {
-    return obj[path];
-  }
-
-  // Parse complex paths: "user.profile.name" or "items[0].title"
-  const parts = path
-    .replace(/\[(\d+)\]/g, '.$1') // Convert array notation to dot notation
-    .split('.')
-    .filter(Boolean);
-
-  let current = obj;
-  for (const part of parts) {
-    if (current == null) return undefined;
-    current = current[part];
-  }
-
-  return current;
-}
+// Re-export core resolvePath from editing-core
+export { resolvePath } from '@/lib/editing-core';
 
 /**
  * Create a resolver function from a value or property path

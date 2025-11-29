@@ -6,9 +6,9 @@
  * control center implementation via ControlCenterManager.
  */
 
-import type { Plugin, PluginAPI } from '../../../lib/plugins/types';
-import type { ControlCenterPluginManifest, ControlCenterPlugin } from '../../../lib/plugins/controlCenterPlugin';
-import { controlCenterRegistry } from '../../../lib/plugins/controlCenterPlugin';
+import type { Plugin, PluginAPI } from '@/lib/plugins/types';
+import type { ControlCenterPluginManifest, ControlCenterPlugin } from '@/lib/plugins/controlCenterPlugin';
+import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
 import { CubeSystemV2 } from './CubeSystemV2';
 
 export const manifest: ControlCenterPluginManifest = {
