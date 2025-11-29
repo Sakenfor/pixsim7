@@ -191,16 +191,25 @@ DEFAULT_PRESETS: List[Dict[str, Any]] = [
             # Step 12: Wait for keyboard to hide
             {
                 "type": "wait",
-                "params": {"seconds": 1},
-                "description": "Wait for keyboard"
+                "params": {"seconds": 2},
+                "description": "Wait for keyboard to hide"
             },
 
-            # Step 12: Click Continue button
+            # Step 13: Wait for Continue button to be available
+            {
+                "type": "wait_for_element",
+                "params": {
+                    "content_desc": "Continue",
+                    "timeout": 5.0
+                },
+                "description": "Wait for Continue button"
+            },
+
+            # Step 14: Click Continue button
             {
                 "type": "click_element",
                 "params": {
-                    "content_desc": "Continue",
-                    "continue_on_error": True
+                    "content_desc": "Continue"
                 },
                 "description": "Click Continue button"
             },
