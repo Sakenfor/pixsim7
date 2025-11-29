@@ -89,7 +89,7 @@ class PixverseAuthService:
                 # Lightweight: Direct Web API only (for auto-reauth)
                 session = await loop.run_in_executor(
                     _executor,
-                    lambda: PixverseAuth().login_with_password(
+                    lambda: PixverseAuth().login(
                         email,
                         password,
                     ),

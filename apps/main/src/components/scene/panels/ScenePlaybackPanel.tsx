@@ -3,8 +3,8 @@ import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Panel, Tabs } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@/stores/graphStore';
 import type { SceneRuntimeState } from '@pixsim7/shared.types';
-import { PlaybackTimeline, type PlaybackEvent } from './PlaybackTimeline';
-import { MockStateEditor } from './MockStateEditor';
+import { PlaybackTimeline, type PlaybackEvent } from '../../scene-player/PlaybackTimeline';
+import { MockStateEditor } from '../../scene-player/MockStateEditor';
 
 export interface ScenePlaybackPanelProps {
   /** Optional start node ID (for "play from here" functionality) */
