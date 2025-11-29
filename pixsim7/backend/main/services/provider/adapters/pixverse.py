@@ -1009,9 +1009,34 @@ class PixverseProvider(Provider):
         try:
             session = object_session(account)
             if not session:
-                logger.info(
-                    "Skipping credential persistence for account %s (no session bound)",
-                    account.id,
+                logger.debug(
+                    "pixverse_skip_persist_no_session",
+                    account_id=account.id,
+                )
+                return
+
+            is_async = isinstance(session, AsyncSession)
+
+            # Check if session is in a valid state
+            # After a rollback, we can't flush/refresh, so just skip persistence
+            # and rely on the updated in-memory account object
+            from sqlalchemy import inspect
+            state = inspect(account)
+
+            logger.debug(
+                "pixverse_persist_starting",
+                account_id=account.id,
+                is_async=is_async,
+                is_pending=state.pending,
+                is_persistent=state.persistent,
+                is_detached=state.detached,
+            )
+
+            # If the account is detached or in a pending rollback state, skip DB operations
+            if state.detached:
+                logger.debug(
+                    "pixverse_persist_skipped_detached",
+                    account_id=account.id,
                 )
                 return
 
@@ -1019,25 +1044,44 @@ class PixverseProvider(Provider):
             # on the surrounding request/transaction lifecycle to manage commits.
             # Here we simply flush and refresh so in-memory changes are visible
             # without attempting to manage transactions from the provider layer.
-            if isinstance(session, AsyncSession):
+            if is_async:
                 await session.flush()
+                logger.debug("pixverse_persist_flushed", account_id=account.id)
                 await session.refresh(account)
+                logger.debug("pixverse_persist_refreshed", account_id=account.id)
                 if force_commit:
                     await session.commit()
+                    logger.debug("pixverse_persist_committed", account_id=account.id)
             else:
-                # Background workers may use a sync Session; in that case we can
-                # safely flush/refresh as well, leaving commit control to the
-                # caller unless they explicitly rely on this helper.
-                session.flush()
-                session.refresh(account)
-                if force_commit:
-                    session.commit()
+                # Sync session in what might be an async context - run in executor
+                # to avoid blocking the event loop
+                import asyncio
+                loop = asyncio.get_event_loop()
+
+                def _sync_persist():
+                    try:
+                        session.flush()
+                        session.refresh(account)
+                        if force_commit:
+                            session.commit()
+                    except Exception as e:
+                        logger.error(
+                            "pixverse_persist_executor_failed",
+                            account_id=account.id,
+                            error=str(e),
+                            exc_info=True,
+                        )
+                        raise
+
+                await loop.run_in_executor(None, _sync_persist)
+                logger.debug("pixverse_persist_completed_sync", account_id=account.id)
 
         except Exception as e:  # pragma: no cover - defensive
-            logger.warning(
-                "Failed to persist updated Pixverse credentials for account %s: %s",
-                account.id,
-                e,
+            logger.error(
+                "pixverse_persist_failed",
+                account_id=account.id,
+                error=str(e),
+                error_type=type(e).__name__,
                 exc_info=True,
             )
 
@@ -1098,7 +1142,27 @@ class PixverseProvider(Provider):
                 account_id=account.id,
             )
 
-            extracted = await self.extract_account_data(session_data)
+            try:
+                extracted = await self.extract_account_data(session_data)
+                logger.debug(
+                    "pixverse_auto_reauth_extract_completed",
+                    account_id=account.id,
+                    has_jwt=bool(extracted.get("jwt_token")),
+                    has_cookies=bool(extracted.get("cookies")),
+                )
+            except Exception as extract_exc:
+                logger.error(
+                    "pixverse_auto_reauth_extract_failed",
+                    account_id=account.id,
+                    error=str(extract_exc),
+                    exc_info=True,
+                )
+                raise
+
+            logger.debug(
+                "pixverse_auto_reauth_updating_credentials",
+                account_id=account.id,
+            )
 
             meta = extracted.get("provider_metadata") or {}
             meta["auth_method"] = PixverseAuthMethod.PASSWORD.value
@@ -1110,7 +1174,26 @@ class PixverseProvider(Provider):
                 account.cookies = extracted["cookies"]
             account.provider_metadata = meta
 
-            await self._persist_account_credentials(account)
+            logger.debug(
+                "pixverse_auto_reauth_credentials_updated",
+                account_id=account.id,
+            )
+
+            try:
+                await self._persist_account_credentials(account)
+                logger.debug(
+                    "pixverse_auto_reauth_persist_completed",
+                    account_id=account.id,
+                )
+            except Exception as persist_exc:
+                logger.error(
+                    "pixverse_auto_reauth_persist_failed",
+                    account_id=account.id,
+                    error=str(persist_exc),
+                    exc_info=True,
+                )
+                raise
+
             self._evict_account_cache(account)
 
             logger.info(
@@ -1526,8 +1609,10 @@ class PixverseProvider(Provider):
         provider_metadata = None
 
         try:
-            # Call getUserInfo API (synchronous, using pixverse-py library)
-            user_info = self.get_user_info(ai_token)
+            # Call getUserInfo API (run in thread pool to avoid blocking async event loop)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            user_info = await loop.run_in_executor(None, self.get_user_info, ai_token)
             email = user_info['email']
             username = user_info.get('username')
             nickname = user_info.get('nickname')

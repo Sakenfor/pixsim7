@@ -35,8 +35,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
     Returns:
         dict with poll statistics
     """
-    logger.info("poll_start", msg="Polling generation statuses")
-
     checked = 0
     completed = 0
     failed = 0
@@ -58,7 +56,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
             )
             processing_generations = list(result.scalars().all())
 
-            logger.info("poll_found_generations", count=len(processing_generations))
+            # Only log if there are generations to process
+            if processing_generations:
+                logger.info("poll_found_generations", count=len(processing_generations))
 
             # Check for timed-out generations (processing > 2 hours)
             from datetime import timedelta
@@ -183,7 +183,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            logger.info("poll_complete", checked=checked, completed=completed, failed=failed, still_processing=still_processing)
+            # Only log if there was actual activity
+            if checked > 0:
+                logger.info("poll_complete", checked=checked, completed=completed, failed=failed, still_processing=still_processing)
+            else:
+                logger.debug("poll_complete_idle", msg="No generations to process")
 
             return stats
 

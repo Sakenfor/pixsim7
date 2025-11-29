@@ -23,9 +23,9 @@ import type { MediaCardProps } from './MediaCard';
  * Create primary media type icon widget (top-left)
  */
 export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
-  const { mediaType, status, badgeConfig } = props;
+  const { mediaType, providerStatus, badgeConfig } = props;
 
-  const statusMeta = status ? MEDIA_STATUS_ICON[status] : null;
+  const statusMeta = providerStatus ? MEDIA_STATUS_ICON[providerStatus] : null;
   const ringColor = statusMeta?.color === 'green' ? 'ring-green-500' :
                    statusMeta?.color === 'yellow' ? 'ring-amber-500' :
                    statusMeta?.color === 'red' ? 'ring-red-500' :
@@ -40,7 +40,7 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
     color: 'gray',
     shape: 'circle',
     tooltip: `${mediaType} media`,
-    className: badgeConfig?.showStatusIcon && status
+    className: badgeConfig?.showStatusIcon && providerStatus
       ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
       : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
     priority: 10,
@@ -52,13 +52,17 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
  * Uses MenuWidget for expandable actions when actions are available
  */
 export function createStatusWidget(props: MediaCardProps): OverlayWidget {
-  const { id, status, actions } = props;
+  const { id, providerStatus, actions } = props;
 
-  if (!status) {
+  if (!providerStatus) {
     return null as any; // Will be filtered out
   }
 
-  const statusMeta = MEDIA_STATUS_ICON[status];
+  const statusMeta = MEDIA_STATUS_ICON[providerStatus];
+  if (!statusMeta) {
+    return null as any; // Status not in mapping, skip widget
+  }
+
   const statusColor = statusMeta.color === 'green' ? 'green' :
                      statusMeta.color === 'yellow' ? 'yellow' :
                      statusMeta.color === 'red' ? 'red' : 'gray';

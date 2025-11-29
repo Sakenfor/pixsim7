@@ -189,6 +189,13 @@ async def run_automation_loops(ctx: dict) -> dict:
                 processed += 1
                 executions = await svc.process_loop(loop)
                 created += len(executions)
+
+            # Only log if loops were processed or executions were created
+            if processed > 0 or created > 0:
+                logger.info("automation_loops_processed", loops_processed=processed, executions_created=created)
+            else:
+                logger.debug("automation_loops_idle", msg="No active loops")
+
             return {"status": "ok", "loops_processed": processed, "executions_created": created}
         finally:
             await db.close()
@@ -218,7 +225,11 @@ async def queue_pending_executions(ctx: dict) -> dict:
             )
             pending = result.scalars().all()
 
-            logger.info("queue_pending_check", found=len(pending))
+            # Only log if there are pending executions
+            if pending:
+                logger.info("queue_pending_check", found=len(pending))
+            else:
+                logger.debug("queue_pending_check_idle", msg="No pending executions")
 
             for execution in pending:
                 try:
