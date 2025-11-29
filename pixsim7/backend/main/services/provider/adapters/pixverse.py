@@ -1241,10 +1241,15 @@ class PixverseProvider(Provider):
             retry_on_session_error=retry_on_session_error,
         )
 
-    async def get_credits_basic(self, account: ProviderAccount) -> dict:
+    async def get_credits_basic(self, account: ProviderAccount, *, retry_on_session_error: bool = False) -> dict:
         """Fetch Pixverse credits (web + OpenAPI) without ad-task lookup.
 
         Used by bulk credit sync to avoid unnecessary ad-task traffic.
+
+        Args:
+            account: Provider account
+            retry_on_session_error: If True, enable auto-reauth on session errors.
+                Set to True for user-triggered syncs, False for bulk operations.
         """
         try:
             from pixverse import Account  # type: ignore
@@ -1322,11 +1327,7 @@ class PixverseProvider(Provider):
             account=account,
             op_name="get_credits_basic",
             operation=_operation,
-            # Bulk/explicit credit sync is a snapshot-style operation; avoid
-            # triggering heavy auto-reauth flows (Playwright, DB writes) from
-            # here. Session errors will bubble up and callers can decide how
-            # to handle them (e.g., fallback to extract_account_data).
-            retry_on_session_error=False,
+            retry_on_session_error=retry_on_session_error,
         )
 
     async def _get_ad_task_status_best_effort(
