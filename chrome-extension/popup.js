@@ -67,6 +67,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Preload automation options for Accounts tab
   await loadAutomationOptions();
+
+  // Load devices to populate device selector in Accounts tab
+  if (currentUser) {
+    await loadDevices();
+  }
 });
 
 // ===== EVENT LISTENERS =====
