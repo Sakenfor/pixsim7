@@ -556,8 +556,8 @@ class AccountService:
             if is_google_account:
                 metadata["auth_method"] = PixverseAuthMethod.GOOGLE.value
             else:
-                # Clear or set to unknown if unchecking
-                metadata["auth_method"] = PixverseAuthMethod.UNKNOWN.value
+                # Clear or set to PASSWORD if unchecking (default assumption)
+                metadata["auth_method"] = PixverseAuthMethod.PASSWORD.value
             account.provider_metadata = metadata
 
         await self.db.flush()

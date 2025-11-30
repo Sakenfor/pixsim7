@@ -22,7 +22,9 @@
       "Bash(pip show:*)",
       "Bash(pnpm --filter @pixsim7/main backend:restart:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

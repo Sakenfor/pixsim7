@@ -1617,7 +1617,14 @@ class PixverseProvider(Provider):
             )
 
         except Exception as e:
-            logger.warning(f"[Pixverse] getUserInfo failed, falling back to JWT parsing (no placeholders): {e}")
+            logger.warning(
+                "pixverse_get_user_info_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                has_jwt=bool(ai_token),
+                jwt_length=len(ai_token) if ai_token else 0,
+                exc_info=True,
+            )
 
             # Fallback: Parse JWT to extract username/account_id and generate pseudo-email
             try:
@@ -1642,10 +1649,20 @@ class PixverseProvider(Provider):
                     # Prefer email claim from JWT if present
                     if jwt_email:
                         email = jwt_email
-                        logger.info(f"[Pixverse] Found email in JWT: {email}")
+                        logger.info(
+                            "pixverse_jwt_email_found",
+                            email=email,
+                            has_username=bool(jwt_username),
+                            has_account_id=bool(jwt_account_id),
+                        )
                     # Do NOT fabricate placeholder emails; keep username/account_id only
                     else:
-                        logger.info("[Pixverse] JWT has no email; will not fabricate placeholder email")
+                        logger.warning(
+                            "pixverse_jwt_no_email",
+                            jwt_keys=list(payload.keys()),
+                            has_username=bool(jwt_username),
+                            has_account_id=bool(jwt_account_id),
+                        )
 
                     # Also populate username/account_id if we didn't have them from API
                     if not username:
@@ -1657,6 +1674,13 @@ class PixverseProvider(Provider):
                 logger.error(f"[Pixverse] JWT parsing also failed: {jwt_error}", exc_info=True)
 
         if not email:
+            logger.error(
+                "pixverse_email_extraction_failed",
+                has_jwt=bool(ai_token),
+                has_username=bool(username),
+                has_account_id=bool(account_id),
+                getUserInfo_attempted=True,
+            )
             raise ValueError(
                 "Pixverse: Could not extract email. Ensure pixverse-py is installed on backend for getUserInfo, or JWT includes 'Mail'/'email'."
             )

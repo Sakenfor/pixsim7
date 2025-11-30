@@ -1,8 +1,8 @@
 {
-  "window_x": 280,
+  "window_x": 162,
   "window_y": 136,
-  "window_width": 1590,
-  "window_height": 882,
+  "window_width": 1478,
+  "window_height": 873,
   "window_always_on_top": false,
   "selected_service": "worker",
   "stop_services_on_exit": false,
