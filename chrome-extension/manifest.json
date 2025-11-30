@@ -28,7 +28,10 @@
       "matches": [
         "*://*/*"
       ],
-      "js": ["emojis.js", "image-badges.js"],
+      "js": [
+        "emojis.js",
+        "image-badges.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     },
@@ -37,8 +40,13 @@
         "http://localhost:5173/*",
         "http://*:5173/*"
       ],
-      "js": ["emojis.js", "widget.js"],
-      "css": ["widget.css"],
+      "js": [
+        "emojis.js",
+        "widget.js"
+      ],
+      "css": [
+        "widget.css"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -49,8 +57,16 @@
         "*://sora.chatgpt.com/*",
         "*://chatgpt.com/*"
       ],
-      "js": ["emojis.js", "content.js"],
-      "run_at": "document_idle"
+      "js": [
+        "shared/constants.js",
+        "content/utils.js",
+        "content/url-monitor.js",
+        "content/cookie-import.js",
+        "content/auth-monitor.js",
+        "content/main.js"
+      ],
+      "run_at": "document_idle",
+      "type": "module"
     }
   ],
   "action": {
@@ -71,7 +87,9 @@
       "resources": [
         "injected-bearer-capture.js"
       ],
-      "matches": ["*://*/*"]
+      "matches": [
+        "*://*/*"
+      ]
     }
   ]
 }
