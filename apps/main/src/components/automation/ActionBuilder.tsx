@@ -73,7 +73,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
           Action Sequence ({actions.length})
         </h3>
-        <Button size="sm" variant="primary" onClick={addAction}>
+        <Button type="button" size="sm" variant="primary" onClick={addAction}>
           ➕ Add Action
         </Button>
       </div>
