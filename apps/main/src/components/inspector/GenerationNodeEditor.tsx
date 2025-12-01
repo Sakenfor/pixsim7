@@ -1,25 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@pixsim7/shared.ui';
 import type { DraftSceneNode } from '@/modules/scene-builder';
-import type {
-  GenerationNodeConfig,
-  GenerationStrategy,
-  StyleRules,
-  DurationRule,
-  ConstraintSet,
-  FallbackConfig,
-  SceneRef,
-  GenerationValidationResult,
-} from '@pixsim7/shared.types';
+import type { SceneRef } from '@pixsim7/shared.types';
 import { useToast } from '@pixsim7/shared.ui';
 import { useGraphStore } from '@/stores/graphStore';
-import {
-  validateGenerationNode,
-  getValidationStatus,
-  getValidationSummary,
-  type ValidationStatus,
-} from '@pixsim7/game.engine';
+import { getValidationSummary } from '@pixsim7/game.engine';
 import { createGeneration, type GenerationResponse } from '@/lib/api/generations';
+import { useGenerationNodeForm } from './useGenerationNodeForm';
 
 interface GenerationNodeEditorProps {
   node: DraftSceneNode;
@@ -30,186 +17,30 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
   const toast = useToast();
   const getCurrentScene = useGraphStore((s) => s.getCurrentScene);
 
-  // Default values based on GenerationNodeConfig
-  const [generationType, setGenerationType] = useState<'transition' | 'variation' | 'dialogue' | 'environment'>('transition');
-  const [purpose, setPurpose] = useState<'gap_fill' | 'variation' | 'adaptive' | 'ambient'>('gap_fill');
-  const [strategy, setStrategy] = useState<GenerationStrategy>('once');
-  const [seedSource, setSeedSource] = useState<'playthrough' | 'player' | 'timestamp' | 'fixed' | ''>('');
-  const [enabled, setEnabled] = useState(true);
-  const [templateId, setTemplateId] = useState('');
+  // Use consolidated form hook for all field state + validation
+  const {
+    values,
+    setField,
+    buildConfig,
+    validation: validationResult,
+    validationStatus,
+    hasErrors,
+  } = useGenerationNodeForm({ node });
 
-  // Style rules
-  const [moodFrom, setMoodFrom] = useState('');
-  const [moodTo, setMoodTo] = useState('');
-  const [pacing, setPacing] = useState<'slow' | 'medium' | 'fast'>('medium');
-  const [transitionType, setTransitionType] = useState<'gradual' | 'abrupt'>('gradual');
-
-  // Duration rules
-  const [durationMin, setDurationMin] = useState('');
-  const [durationMax, setDurationMax] = useState('');
-  const [durationTarget, setDurationTarget] = useState('');
-
-  // Constraints
-  const [rating, setRating] = useState<'G' | 'PG' | 'PG-13' | 'R' | ''>('');
-  const [requiredElements, setRequiredElements] = useState('');
-  const [avoidElements, setAvoidElements] = useState('');
-  const [contentRules, setContentRules] = useState('');
-
-  // Fallback config
-  const [fallbackMode, setFallbackMode] = useState<'default_content' | 'skip' | 'retry' | 'placeholder'>('placeholder');
-  const [defaultContentId, setDefaultContentId] = useState('');
-  const [maxRetries, setMaxRetries] = useState('3');
-  const [timeoutMs, setTimeoutMs] = useState('30000');
-
-  // Test generation state
+  // Test generation state (UI-only, not part of form)
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<GenerationResponse | null>(null);
-
-  // Validation state
-  const [validationResult, setValidationResult] = useState<GenerationValidationResult>({
-    errors: [],
-    warnings: [],
-    suggestions: [],
-  });
-  const [validationStatus, setValidationStatus] = useState<ValidationStatus>('ok');
   const [showValidation, setShowValidation] = useState(false);
 
-  // Load node data
+  // Auto-expand validation panel if there are errors
   useEffect(() => {
-    const config = (node.metadata as any)?.config as GenerationNodeConfig | undefined;
-    if (!config) return;
-
-    setGenerationType(config.generationType);
-    setPurpose(config.purpose);
-    setStrategy(config.strategy);
-    setSeedSource(config.seedSource || '');
-    setEnabled(config.enabled);
-    setTemplateId(config.templateId || '');
-
-    // Style
-    if (config.style) {
-      setMoodFrom(config.style.moodFrom || '');
-      setMoodTo(config.style.moodTo || '');
-      setPacing(config.style.pacing || 'medium');
-      setTransitionType(config.style.transitionType || 'gradual');
-    }
-
-    // Duration
-    if (config.duration) {
-      setDurationMin(config.duration.min?.toString() || '');
-      setDurationMax(config.duration.max?.toString() || '');
-      setDurationTarget(config.duration.target?.toString() || '');
-    }
-
-    // Constraints
-    if (config.constraints) {
-      setRating(config.constraints.rating || '');
-      setRequiredElements(config.constraints.requiredElements?.join(', ') || '');
-      setAvoidElements(config.constraints.avoidElements?.join(', ') || '');
-      setContentRules(config.constraints.contentRules?.join('\n') || '');
-    }
-
-    // Fallback
-    if (config.fallback) {
-      setFallbackMode(config.fallback.mode);
-      setDefaultContentId(config.fallback.defaultContentId || '');
-      setMaxRetries(config.fallback.maxRetries?.toString() || '3');
-      setTimeoutMs(config.fallback.timeoutMs?.toString() || '30000');
-    }
-  }, [node]);
-
-  // Run validation whenever configuration changes
-  useEffect(() => {
-    const config = buildConfig();
-    const result = validateGenerationNode(config, {
-      // TODO: Pass actual world and user prefs when available
-      world: undefined,
-      userPrefs: undefined,
-    });
-
-    setValidationResult(result);
-    setValidationStatus(getValidationStatus(result));
-
-    // Auto-expand validation panel if there are errors
-    if (result.errors.length > 0) {
+    if (hasErrors) {
       setShowValidation(true);
     }
-  }, [
-    generationType,
-    purpose,
-    strategy,
-    seedSource,
-    enabled,
-    templateId,
-    moodFrom,
-    moodTo,
-    pacing,
-    transitionType,
-    durationMin,
-    durationMax,
-    durationTarget,
-    rating,
-    requiredElements,
-    avoidElements,
-    contentRules,
-    fallbackMode,
-    defaultContentId,
-    maxRetries,
-    timeoutMs,
-  ]);
-
-  function buildConfig(): GenerationNodeConfig {
-    const style: StyleRules = {
-      moodFrom: moodFrom || undefined,
-      moodTo: moodTo || undefined,
-      pacing,
-      transitionType,
-    };
-
-    const duration: DurationRule = {
-      min: durationMin ? parseFloat(durationMin) : undefined,
-      max: durationMax ? parseFloat(durationMax) : undefined,
-      target: durationTarget ? parseFloat(durationTarget) : undefined,
-    };
-
-    const constraints: ConstraintSet = {
-      rating: rating || undefined,
-      requiredElements: requiredElements
-        ? requiredElements.split(',').map((e) => e.trim()).filter(Boolean)
-        : undefined,
-      avoidElements: avoidElements
-        ? avoidElements.split(',').map((e) => e.trim()).filter(Boolean)
-        : undefined,
-      contentRules: contentRules
-        ? contentRules.split('\n').map((r) => r.trim()).filter(Boolean)
-        : undefined,
-    };
-
-    const fallback: FallbackConfig = {
-      mode: fallbackMode,
-      defaultContentId: defaultContentId || undefined,
-      maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
-      timeoutMs: timeoutMs ? parseInt(timeoutMs) : undefined,
-    };
-
-    return {
-      generationType,
-      purpose,
-      style,
-      duration,
-      constraints,
-      strategy,
-      seedSource: seedSource || undefined,
-      fallback,
-      templateId: templateId || undefined,
-      enabled,
-      version: 1,
-    };
-  }
+  }, [hasErrors]);
 
   function handleApply() {
-    // Check validation
-    if (validationResult.errors.length > 0) {
+    if (hasErrors) {
       toast.error(`Validation failed: ${validationResult.errors[0]}`);
       setShowValidation(true);
       return;
@@ -381,8 +212,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-sm font-medium mb-1">Generation Type</label>
           <select
-            value={generationType}
-            onChange={(e) => setGenerationType(e.target.value as any)}
+            value={values.generationType}
+            onChange={(e) => setField('generationType', e.target.value as any)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="transition">Transition</option>
@@ -395,8 +226,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-sm font-medium mb-1">Purpose</label>
           <select
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value as any)}
+            value={values.purpose}
+            onChange={(e) => setField('purpose', e.target.value as any)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="gap_fill">Gap Fill</option>
@@ -409,8 +240,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-sm font-medium mb-1">Strategy</label>
           <select
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value as any)}
+            value={values.strategy}
+            onChange={(e) => setField('strategy', e.target.value as any)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="once">Once</option>
@@ -426,8 +257,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-sm font-medium mb-1">Seed Source (optional)</label>
           <select
-            value={seedSource}
-            onChange={(e) => setSeedSource(e.target.value as any)}
+            value={values.seedSource}
+            onChange={(e) => setField('seedSource', e.target.value as any)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="">None</option>
@@ -442,8 +273,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <label className="block text-sm font-medium mb-1">Template ID (optional)</label>
           <input
             type="text"
-            value={templateId}
-            onChange={(e) => setTemplateId(e.target.value)}
+            value={values.templateId}
+            onChange={(e) => setField('templateId', e.target.value)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             placeholder="template-123"
           />
@@ -453,8 +284,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <input
             type="checkbox"
             id="enabled"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
+            checked={values.enabled}
+            onChange={(e) => setField('enabled', e.target.checked)}
             className="rounded"
           />
           <label htmlFor="enabled" className="text-sm font-medium">
@@ -474,8 +305,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             <label className="block text-xs font-medium mb-1">Mood From</label>
             <input
               type="text"
-              value={moodFrom}
-              onChange={(e) => setMoodFrom(e.target.value)}
+              value={values.moodFrom}
+              onChange={(e) => setField('moodFrom', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="tense"
             />
@@ -484,8 +315,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             <label className="block text-xs font-medium mb-1">Mood To</label>
             <input
               type="text"
-              value={moodTo}
-              onChange={(e) => setMoodTo(e.target.value)}
+              value={values.moodTo}
+              onChange={(e) => setField('moodTo', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="calm"
             />
@@ -496,8 +327,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <div>
             <label className="block text-xs font-medium mb-1">Pacing</label>
             <select
-              value={pacing}
-              onChange={(e) => setPacing(e.target.value as any)}
+              value={values.pacing}
+              onChange={(e) => setField('pacing', e.target.value as any)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             >
               <option value="slow">Slow</option>
@@ -508,8 +339,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <div>
             <label className="block text-xs font-medium mb-1">Transition Type</label>
             <select
-              value={transitionType}
-              onChange={(e) => setTransitionType(e.target.value as any)}
+              value={values.transitionType}
+              onChange={(e) => setField('transitionType', e.target.value as any)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             >
               <option value="gradual">Gradual</option>
@@ -530,8 +361,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             <label className="block text-xs font-medium mb-1">Min</label>
             <input
               type="number"
-              value={durationMin}
-              onChange={(e) => setDurationMin(e.target.value)}
+              value={values.durationMin}
+              onChange={(e) => setField('durationMin', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="5"
               min="0"
@@ -542,8 +373,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             <label className="block text-xs font-medium mb-1">Max</label>
             <input
               type="number"
-              value={durationMax}
-              onChange={(e) => setDurationMax(e.target.value)}
+              value={values.durationMax}
+              onChange={(e) => setField('durationMax', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="30"
               min="0"
@@ -554,8 +385,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             <label className="block text-xs font-medium mb-1">Target</label>
             <input
               type="number"
-              value={durationTarget}
-              onChange={(e) => setDurationTarget(e.target.value)}
+              value={values.durationTarget}
+              onChange={(e) => setField('durationTarget', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="15"
               min="0"
@@ -574,8 +405,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-xs font-medium mb-1">Content Rating</label>
           <select
-            value={rating}
-            onChange={(e) => setRating(e.target.value as any)}
+            value={values.rating}
+            onChange={(e) => setField('rating', e.target.value as any)}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="">None</option>
@@ -590,8 +421,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <label className="block text-xs font-medium mb-1">Required Elements (comma-separated)</label>
           <input
             type="text"
-            value={requiredElements}
-            onChange={(e) => setRequiredElements(e.target.value)}
+            value={values.requiredElements}
+            onChange={(e) => setField('requiredElements', e.target.value)}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             placeholder="character_A, location_cafe"
           />
@@ -601,8 +432,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <label className="block text-xs font-medium mb-1">Avoid Elements (comma-separated)</label>
           <input
             type="text"
-            value={avoidElements}
-            onChange={(e) => setAvoidElements(e.target.value)}
+            value={values.avoidElements}
+            onChange={(e) => setField('avoidElements', e.target.value)}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             placeholder="violence, profanity"
           />
@@ -611,8 +442,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-xs font-medium mb-1">Content Rules (one per line)</label>
           <textarea
-            value={contentRules}
-            onChange={(e) => setContentRules(e.target.value)}
+            value={values.contentRules}
+            onChange={(e) => setField('contentRules', e.target.value)}
             rows={3}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             placeholder="No sudden scene changes&#10;Maintain consistent lighting&#10;..."
@@ -629,8 +460,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
         <div>
           <label className="block text-xs font-medium mb-1">Fallback Mode</label>
           <select
-            value={fallbackMode}
-            onChange={(e) => setFallbackMode(e.target.value as any)}
+            value={values.fallbackMode}
+            onChange={(e) => setField('fallbackMode', e.target.value as any)}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
             <option value="default_content">Default Content</option>
@@ -640,26 +471,26 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           </select>
         </div>
 
-        {fallbackMode === 'default_content' && (
+        {values.fallbackMode === 'default_content' && (
           <div>
             <label className="block text-xs font-medium mb-1">Default Content ID</label>
             <input
               type="text"
-              value={defaultContentId}
-              onChange={(e) => setDefaultContentId(e.target.value)}
+              value={values.defaultContentId}
+              onChange={(e) => setField('defaultContentId', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               placeholder="fallback-video-123"
             />
           </div>
         )}
 
-        {fallbackMode === 'retry' && (
+        {values.fallbackMode === 'retry' && (
           <div>
             <label className="block text-xs font-medium mb-1">Max Retries</label>
             <input
               type="number"
-              value={maxRetries}
-              onChange={(e) => setMaxRetries(e.target.value)}
+              value={values.maxRetries}
+              onChange={(e) => setField('maxRetries', e.target.value)}
               className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
               min="1"
             />
@@ -670,8 +501,8 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
           <label className="block text-xs font-medium mb-1">Timeout (ms)</label>
           <input
             type="number"
-            value={timeoutMs}
-            onChange={(e) => setTimeoutMs(e.target.value)}
+            value={values.timeoutMs}
+            onChange={(e) => setField('timeoutMs', e.target.value)}
             className="w-full px-2 py-1 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
             min="1000"
             step="1000"
