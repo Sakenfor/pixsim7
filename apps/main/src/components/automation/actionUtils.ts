@@ -23,6 +23,13 @@ export function hasNestedActions(type: ActionType): boolean {
 }
 
 /**
+ * Check if an action type supports else_actions (IF conditionals)
+ */
+export function hasElseActions(type: ActionType): boolean {
+  return type === ActionType.IF_ELEMENT_EXISTS || type === ActionType.IF_ELEMENT_NOT_EXISTS;
+}
+
+/**
  * Get metadata for an action type
  */
 export function getActionMeta(type: ActionType): ActionMeta {
@@ -67,11 +74,14 @@ export function getActionSummary(action: ActionDefinition): string {
         parts.push(`${params.timeout}s timeout`);
       }
       if (
-        (action.type === ActionType.IF_ELEMENT_EXISTS ||
-          action.type === ActionType.IF_ELEMENT_NOT_EXISTS) &&
-        params.actions?.length
+        action.type === ActionType.IF_ELEMENT_EXISTS ||
+        action.type === ActionType.IF_ELEMENT_NOT_EXISTS
       ) {
-        parts.push(`${params.actions.length} nested`);
+        const thenCount = params.actions?.length || 0;
+        const elseCount = params.else_actions?.length || 0;
+        if (thenCount > 0 || elseCount > 0) {
+          parts.push(`${thenCount} then, ${elseCount} else`);
+        }
       }
       return parts.length > 0 ? parts.join(' • ') : 'No selector';
     }

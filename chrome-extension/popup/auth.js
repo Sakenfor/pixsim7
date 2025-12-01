@@ -1,106 +1,104 @@
 /**
- * Authentication Module
+ * Authentication module
+ *
+ * Handles user login/logout and auth state management.
  */
 
-import { login as apiLogin, getCurrentUser } from './api.js';
-import { showToast } from './utils.js';
 
-export let currentUser = null;
-
-/**
- * Check if user is logged in
- */
-export async function checkLogin() {
+async function checkLogin() {
   const result = await chrome.storage.local.get(['pixsim7Token', 'currentUser']);
 
-  if (!result.pixsim7Token) {
-    showLogin();
-    return null;
-  }
-
-  // Try to get user from cache or fetch from backend
-  let user = result.currentUser;
-  if (!user) {
+  if (result.pixsim7Token && result.currentUser) {
+    currentUser = result.currentUser;
+    showLoggedIn();
+  } else if (result.pixsim7Token && !result.currentUser) {
+    // Token exists but user not cached (e.g., after extension restart)
     try {
-      user = await getCurrentUser();
-    } catch (error) {
-      console.warn('[Popup Auth] Failed to fetch user:', error);
+      const me = await chrome.runtime.sendMessage({ action: 'getMe' });
+      if (me && me.success) {
+        currentUser = me.data;
+        showLoggedIn();
+      } else {
+        showLogin();
+      }
+    } catch (e) {
       showLogin();
-      return null;
     }
+  } else {
+    showLogin();
   }
-
-  currentUser = user;
-  showLoggedIn();
-  return user;
 }
 
-/**
- * Show login screen
- */
-export function showLogin() {
+function showLogin() {
   document.getElementById('loginSection').classList.remove('hidden');
-  document.getElementById('mainContent').classList.add('hidden');
+  document.getElementById('loggedInSection').classList.add('hidden');
+  document.getElementById('notLoggedInWarning').classList.remove('hidden');
 }
 
-/**
- * Show logged in content
- */
-export function showLoggedIn() {
+function showLoggedIn() {
   document.getElementById('loginSection').classList.add('hidden');
-  document.getElementById('mainContent').classList.remove('hidden');
+  document.getElementById('loggedInSection').classList.remove('hidden');
+  document.getElementById('notLoggedInWarning').classList.add('hidden');
+  document.getElementById('loggedInUser').textContent = currentUser.username;
 
-  if (currentUser) {
-    const userInfo = document.getElementById('userInfo');
-    if (userInfo) {
-      userInfo.textContent = currentUser.email || currentUser.username || 'User';
-    }
+  // Load accounts when switching to Accounts tab or on login
+  if (document.getElementById('tab-accounts').classList.contains('active')) {
+    loadAccounts();
+  }
+
+  // Update devices tab if it's active
+  if (document.getElementById('tab-devices').classList.contains('active')) {
+    updateDevicesTab();
   }
 }
 
-/**
- * Handle login
- */
-export async function handleLogin() {
+async function handleLogin() {
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value;
-  const loginError = document.getElementById('loginError');
 
   if (!email || !password) {
-    loginError.textContent = 'Please enter email and password';
-    loginError.classList.remove('hidden');
+    showError('Please enter email and password');
     return;
   }
 
-  loginError.classList.add('hidden');
   const loginBtn = document.getElementById('loginBtn');
   loginBtn.disabled = true;
   loginBtn.textContent = 'Logging in...';
 
   try {
-    const data = await apiLogin(email, password);
-    currentUser = data.user;
-    showLoggedIn();
-    showToast('success', 'Logged in successfully');
+    const response = await chrome.runtime.sendMessage({
+      action: 'login',
+      email,
+      password,
+    });
 
-    // Load accounts after login
-    const accountsModule = await import('./accounts.js');
-    accountsModule.loadAccounts();
+    if (response.success) {
+      currentUser = response.data.user;
+      showLoggedIn();
+    } else {
+      showError(response.error || 'Login failed');
+    }
   } catch (error) {
-    loginError.textContent = error.message;
-    loginError.classList.remove('hidden');
+    showError(`Login error: ${error.message}`);
   } finally {
     loginBtn.disabled = false;
-    loginBtn.textContent = 'Login';
+    loginBtn.textContent = 'Login to PixSim7';
   }
 }
 
-/**
- * Handle logout
- */
-export async function handleLogout() {
+async function handleLogout() {
   await chrome.storage.local.remove(['pixsim7Token', 'currentUser']);
   currentUser = null;
+  currentProvider = null;
   showLogin();
-  showToast('info', 'Logged out');
+
+  // Update devices tab if it's active
+  if (document.getElementById('tab-devices').classList.contains('active')) {
+    updateDevicesTab();
+  }
+}
+
+// Export main functions
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { checkLogin, showLogin, showLoggedIn, handleLogin, handleLogout };
 }

@@ -569,6 +569,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // List assets from backend
+  if (message.action === 'getAssets') {
+    (async () => {
+      try {
+        const { providerId, limit, offset } = message;
+        let endpoint = '/api/v1/assets?';
+        const params = [];
+        if (providerId) params.push(`provider_id=${encodeURIComponent(providerId)}`);
+        if (limit) params.push(`limit=${limit}`);
+        if (offset) params.push(`offset=${offset}`);
+        endpoint += params.join('&');
+
+        const data = await backendRequest(endpoint);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.action === 'syncAccountCredits') {
     (async () => {
       try {

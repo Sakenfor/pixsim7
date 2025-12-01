@@ -159,8 +159,55 @@ async function handleCopyToken() {
 
 // ===== CONNECTION CHECK =====
 
+async function checkBackendConnection() {
+  const indicator = document.getElementById('connectionIndicator');
+  indicator.className = 'connection-indicator checking';
+  indicator.title = 'Checking connection...';
+
+  try {
+    const settings = await chrome.storage.local.get({ backendUrl: 'http://10.243.48.125:8001' });
+
+    // Try to fetch health endpoint
+    const response = await fetch(`${settings.backendUrl}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(3000) // 3 second timeout
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      indicator.className = 'connection-indicator connected';
+      indicator.title = `Connected to ${settings.backendUrl}\nStatus: ${data.status}\nProviders: ${data.providers?.join(', ') || 'none'}`;
+
+      // Hide backend offline warning if visible
+      const backendWarning = document.getElementById('backendOfflineWarning');
+      if (backendWarning) {
+        backendWarning.classList.add('hidden');
+      }
+
+      return true;
+    } else {
+      throw new Error(`Server returned ${response.status}`);
+    }
+  } catch (error) {
+    const settings = await chrome.storage.local.get({ backendUrl: 'http://10.243.48.125:8001' });
+    indicator.className = 'connection-indicator disconnected';
+    indicator.title = `Cannot connect to ${settings.backendUrl}\nError: ${error.message}\nClick to retry`;
+
+    // Show error message
+    console.error('[Popup] Backend connection failed:', error);
+
+    // Show warning in login section if visible
+    const loginSection = document.getElementById('loginSection');
+    const backendWarning = document.getElementById('backendOfflineWarning');
+    if (loginSection && !loginSection.classList.contains('hidden') && backendWarning) {
+      backendWarning.classList.remove('hidden');
+    }
+
+    return false;
+  }
+}
 
 // Export main functions
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { loadDevices, handleScanDevices };
+  module.exports = { loadDevices, handleScanDevices, checkBackendConnection };
 }

@@ -42,12 +42,15 @@ async function populateAutomationSelects() {
   presetSelect.innerHTML = '';
   loopSelect.innerHTML = '';
 
-  automationOptions.presets.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = String(p.id);
-    opt.textContent = p.name || `Preset #${p.id}`;
-    presetSelect.appendChild(opt);
-  });
+  // Filter out "snippets" type presets - those are for prompt building, not execution
+  automationOptions.presets
+    .filter(p => !p.type?.toLowerCase().includes('snippet'))
+    .forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = String(p.id);
+      opt.textContent = p.name || `Preset #${p.id}`;
+      presetSelect.appendChild(opt);
+    });
 
   automationOptions.loops.forEach(l => {
     const opt = document.createElement('option');

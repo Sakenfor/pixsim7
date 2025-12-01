@@ -363,7 +363,7 @@ class ActionExecutor:
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     )
                 except Exception as check_err:
-                    logger.warning("if_element_check_error", error=str(check_err), action_type=a_type)
+                    logger.warning("if_element_check_error error=%s action_type=%s", str(check_err), a_type)
                     exists = False  # On error, treat as "not found"
 
                 # Record condition result for UI feedback
@@ -374,6 +374,15 @@ class ActionExecutor:
                     nested_actions = params.get("actions", []) or []
                     for nested_idx, nested_action in enumerate(nested_actions):
                         ctx.action_path.append(nested_idx)
+                        try:
+                            await self.execute_action(nested_action, ctx, preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
+                else:
+                    # Execute else_actions if condition not met
+                    else_actions = params.get("else_actions", []) or []
+                    for nested_idx, nested_action in enumerate(else_actions):
+                        ctx.action_path.append(f"else:{nested_idx}")
                         try:
                             await self.execute_action(nested_action, ctx, preset, action_index)
                         finally:
@@ -392,7 +401,7 @@ class ActionExecutor:
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     )
                 except Exception as check_err:
-                    logger.warning("if_element_check_error", error=str(check_err), action_type=a_type)
+                    logger.warning("if_element_check_error error=%s action_type=%s", str(check_err), a_type)
                     exists = False  # On error, treat as "not found"
 
                 not_exists = not exists
@@ -404,6 +413,15 @@ class ActionExecutor:
                     nested_actions = params.get("actions", []) or []
                     for nested_idx, nested_action in enumerate(nested_actions):
                         ctx.action_path.append(nested_idx)
+                        try:
+                            await self.execute_action(nested_action, ctx, preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
+                else:
+                    # Execute else_actions if condition not met (element exists)
+                    else_actions = params.get("else_actions", []) or []
+                    for nested_idx, nested_action in enumerate(else_actions):
+                        ctx.action_path.append(f"else:{nested_idx}")
                         try:
                             await self.execute_action(nested_action, ctx, preset, action_index)
                         finally:
@@ -431,11 +449,13 @@ class ActionExecutor:
                 called_preset_id = int(params.get("preset_id", 0))
                 inherit_variables = params.get("inherit_variables", True)
 
+                logger.info("call_preset_start preset_id=%s inherit_variables=%s", called_preset_id, inherit_variables)
+
                 if not called_preset_id:
-                    raise RuntimeError("call_preset: preset_id is required")
+                    raise RuntimeError("call_preset: preset_id is required (got 0 or empty)")
 
                 if not self._preset_loader:
-                    raise RuntimeError("call_preset: no preset loader configured")
+                    raise RuntimeError("call_preset: no preset loader configured - this may happen in test mode")
 
                 # Check for circular reference
                 if called_preset_id in ctx.preset_call_stack:
@@ -443,17 +463,23 @@ class ActionExecutor:
                     raise RuntimeError(f"call_preset: circular reference detected: {call_chain}")
 
                 # Load the called preset
-                called_preset = await self._preset_loader(called_preset_id)
+                try:
+                    called_preset = await self._preset_loader(called_preset_id)
+                except Exception as load_err:
+                    logger.error("call_preset_load_error preset_id=%s error=%s", called_preset_id, str(load_err))
+                    raise RuntimeError(f"call_preset: failed to load preset {called_preset_id}: {load_err}")
+
                 if not called_preset:
-                    raise RuntimeError(f"call_preset: preset {called_preset_id} not found")
+                    raise RuntimeError(f"call_preset: preset {called_preset_id} not found in database")
 
                 # Push to call stack
                 ctx.preset_call_stack.append(called_preset_id)
                 try:
                     # Merge variables if inherit_variables is True
-                    # Called preset's variables override caller's variables
-                    if inherit_variables and called_preset.variables:
-                        for var in called_preset.variables:
+                    # Called preset's variables override caller's variables (if the field exists)
+                    called_variables = getattr(called_preset, 'variables', None)
+                    if inherit_variables and called_variables:
+                        for var in called_variables:
                             var_name = var.get("name")
                             var_type = var.get("type")
                             if var_name and var_type == "text" and var.get("text"):
@@ -463,12 +489,16 @@ class ActionExecutor:
 
                     # Execute called preset's actions
                     called_actions = called_preset.actions or []
+                    logger.info("call_preset_executing preset_id=%s preset_name=%s action_count=%s", called_preset_id, getattr(called_preset, 'name', 'unknown'), len(called_actions))
+
                     for nested_idx, nested_action in enumerate(called_actions):
                         ctx.action_path.append(f"preset:{called_preset_id}:{nested_idx}")
                         try:
                             await self.execute_action(nested_action, ctx, called_preset, action_index)
                         finally:
                             ctx.action_path.pop()
+
+                    logger.info("call_preset_completed preset_id=%s", called_preset_id)
                 finally:
                     # Pop from call stack
                     ctx.preset_call_stack.pop()
@@ -481,12 +511,8 @@ class ActionExecutor:
             # Check if we should continue on error (default is True now)
             continue_on_error = action.get("continue_on_error", True)
             if continue_on_error:
-                logger.warning("action_error_continuing",
-                    action_index=action_index,
-                    action_type=a_type,
-                    error=str(e),
-                    action_path=e.action_path
-                )
+                logger.warning("action_error_continuing action_index=%s action_type=%s error=%s action_path=%s",
+                    action_index, a_type, str(e), e.action_path)
                 return  # Continue to next action
             # Re-raise ExecutionError as-is
             raise
@@ -494,11 +520,8 @@ class ActionExecutor:
             # Check if we should continue on error (default is True now)
             continue_on_error = action.get("continue_on_error", True)
             if continue_on_error:
-                logger.warning("action_error_continuing",
-                    action_index=action_index,
-                    action_type=a_type,
-                    error=str(e)
-                )
+                logger.warning("action_error_continuing action_index=%s action_type=%s error=%s",
+                    action_index, a_type, str(e))
                 return  # Continue to next action
             # Wrap exception with action context
             # Build full path: [top_level_index, nested_idx, nested_idx, ...]
@@ -516,6 +539,12 @@ class ActionExecutor:
         actions = preset.actions or []
         ctx.total_actions = len(actions)
 
+        logger.info("execute_start action_count=%s actions_types=%s", len(actions), [a.get("type") if isinstance(a, dict) else getattr(a, "type", "unknown") for a in actions])
+
         for index, action in enumerate(actions):
             ctx.current_action_index = index
+            action_type = action.get("type") if isinstance(action, dict) else getattr(action, "type", "unknown")
+            logger.info("execute_action index=%s action_type=%s", index, action_type)
             await self.execute_action(action, ctx, preset, action_index=index)
+
+        logger.info("execute_complete actions_executed=%s", len(actions))

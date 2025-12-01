@@ -1,15 +1,16 @@
 /**
  * Content Script - Main Entry Point
  *
+ * Loaded as a plain script - uses globals from other content scripts.
+ * Requires: initUrlMonitor, getCurrentProvider, forceDetection (from url-monitor.js)
+ * Requires: authMonitor (from auth-monitor.js)
+ * Requires: importCookies (from cookie-import.js)
+ * Requires: injectBearerTokenCapture, getAllCookiesSecure, isProviderSessionAuthenticated (from utils.js)
+ * Requires: TIMING (from shared/constants.js)
+ *
  * Coordinates URL monitoring, provider detection, and auth state monitoring.
  * Only detects provider on URL changes (not on every poll).
  */
-
-import { init as initUrlMonitor, getCurrentProvider, forceDetection } from './url-monitor.js';
-import { authMonitor } from './auth-monitor.js';
-import { importCookies } from './cookie-import.js';
-import { injectBearerTokenCapture, getAllCookiesSecure, isProviderSessionAuthenticated } from './utils.js';
-import { TIMING } from '../shared/constants.js';
 
 console.log('[PixSim7 Content] Loaded on:', window.location.href);
 

@@ -1,24 +1,23 @@
 /**
  * Auth Monitor - Monitors authentication state and cookie changes
  *
+ * Loaded as a plain script - exposes globals.
+ * Requires: getAllCookiesSecure, isProviderSessionAuthenticated, hashCookies (from utils.js)
+ * Requires: importCookies, getRememberedProviderAccount, clearRememberedProviderAccount (from cookie-import.js)
+ * Requires: TIMING (from shared/constants.js)
+ *
  * Polls for auth state changes (login/logout/cookie changes) but does NOT
  * detect provider (that's handled by url-monitor.js).
  */
 
-import { getAllCookiesSecure, isProviderSessionAuthenticated, hashCookies } from './utils.js';
-import { importCookies, getRememberedProviderAccount, clearRememberedProviderAccount } from './cookie-import.js';
-import { TIMING } from '../shared/constants.js';
-
-class AuthMonitor {
-  constructor() {
-    this.currentProvider = null;
-    this.wasLoggedIn = false;
-    this.hasImportedThisSession = false;
-    this.lastCookieSnapshot = null;
-    this.lastImportTimestamp = 0;
-    this.pendingLogoutStartedAt = null;
-    this.pollInterval = null;
-  }
+const authMonitor = {
+  currentProvider: null,
+  wasLoggedIn: false,
+  hasImportedThisSession: false,
+  lastCookieSnapshot: null,
+  lastImportTimestamp: 0,
+  pendingLogoutStartedAt: null,
+  pollInterval: null,
 
   /**
    * Called when URL monitor detects a provider
@@ -39,7 +38,7 @@ class AuthMonitor {
 
     this.currentProvider = provider;
     this.start();
-  }
+  },
 
   /**
    * Start monitoring auth state
@@ -56,7 +55,7 @@ class AuthMonitor {
     this.pollInterval = setInterval(() => {
       this.checkAuthState();
     }, TIMING.AUTH_CHECK_INTERVAL_MS);
-  }
+  },
 
   /**
    * Stop monitoring
@@ -67,7 +66,7 @@ class AuthMonitor {
       this.pollInterval = null;
       console.log('[PixSim7 Auth Monitor] Stopped monitoring');
     }
-  }
+  },
 
   /**
    * Schedule a cookie import (with debouncing)
@@ -84,7 +83,7 @@ class AuthMonitor {
     setTimeout(() => {
       importCookies(providerId, {});
     }, TIMING.BEARER_CAPTURE_DELAY_MS);
-  }
+  },
 
   /**
    * Handle provider logout
@@ -109,7 +108,7 @@ class AuthMonitor {
     } catch (err) {
       console.warn('[PixSim7 Auth Monitor] Failed to handle logout status update:', err);
     }
-  }
+  },
 
   /**
    * Check current auth state
@@ -177,7 +176,4 @@ class AuthMonitor {
 
     this.wasLoggedIn = true;
   }
-}
-
-// Export singleton instance
-export const authMonitor = new AuthMonitor();
+};

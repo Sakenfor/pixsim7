@@ -5,6 +5,215 @@
  */
 
 
+// ===== CREDIT SYNC (THROTTLED) =====
+
+const CREDIT_SYNC_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+const CREDIT_SYNC_TIMEOUT_MS = 2 * 60 * 1000; // watchdog for stuck in-progress flag
+let creditSyncInProgress = false;
+let creditSyncStartedAt = 0;
+
+async function syncCreditsThrottled(reason, options = {}) {
+  const force = options.force === true;
+  const now = Date.now();
+
+  // Guard against overlapping syncs; if the flag looks stuck, reset it.
+  if (creditSyncInProgress) {
+    if (creditSyncStartedAt && (now - creditSyncStartedAt) > CREDIT_SYNC_TIMEOUT_MS) {
+      console.warn('[Popup] Credit sync flag appears stuck; resetting and continuing:', reason);
+      creditSyncInProgress = false;
+      creditSyncStartedAt = 0;
+    } else {
+      console.log('[Popup] Credit sync already in progress, skipping:', reason);
+      return;
+    }
+  }
+
+  try {
+    const stored = await chrome.storage.local.get({ lastCreditSyncAt: null });
+    const lastCreditSyncAt = stored.lastCreditSyncAt;
+
+    if (!force && lastCreditSyncAt && now - lastCreditSyncAt < CREDIT_SYNC_THRESHOLD_MS) {
+      console.log('[Popup] Skipping credit sync (throttled):', reason);
+      return;
+    }
+
+    creditSyncInProgress = true;
+    creditSyncStartedAt = now;
+    console.log('[Popup] Syncing credits...', reason);
+
+    const syncResult = await chrome.runtime.sendMessage({ action: 'syncAllCredits' });
+    if (syncResult && syncResult.success) {
+      console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
+      await chrome.storage.local.set({ lastCreditSyncAt: now });
+
+      // Clear ad status cache so it gets refreshed on next view
+      pixverseStatusCache.clear();
+      persistPixverseStatusCache();
+
+      // Refresh accounts to show updated credits if Accounts tab is active
+      if (currentUser && document.getElementById('tab-accounts').classList.contains('active')) {
+        await loadAccounts();
+      }
+    } else if (syncResult && syncResult.error) {
+      console.warn('[Popup] Credit sync failed:', syncResult.error);
+    }
+  } catch (err) {
+    console.warn('[Popup] Credit sync error:', err);
+  } finally {
+    creditSyncInProgress = false;
+    creditSyncStartedAt = 0;
+  }
+}
+
+async function refreshAdStatusForVisibleAccounts() {
+  try {
+    // Prefer the currently detected provider_id (e.g. "pixverse") for backend filtering.
+    const providerFilter = currentProvider && currentProvider.provider_id
+      ? currentProvider.provider_id
+      : null;
+
+    const accounts = await chrome.runtime.sendMessage({
+      action: 'getAccounts',
+      providerId: providerFilter || undefined,
+    });
+
+    if (!accounts || !accounts.success || !Array.isArray(accounts.data)) {
+      console.warn('[Popup] Failed to fetch accounts for ad status refresh');
+      return;
+    }
+
+    const pixverseAccounts = accounts.data.filter(acc => acc.provider_id === 'pixverse');
+
+    // Update ad-status pills for visible Pixverse account cards
+    pixverseAccounts.forEach((acc) => {
+      const pillEl = document.querySelector(`.account-ad-pill[data-account-id="${acc.id}"]`);
+      if (pillEl) {
+        attachPixverseAdStatus(acc, pillEl);
+      }
+    });
+  } catch (err) {
+    console.warn('[Popup] Error refreshing ad status:', err);
+  }
+}
+
+// ===== HELPERS =====
+
+function formatCredits(credits, totalCredits) {
+  if (!credits || Object.keys(credits).length === 0) {
+    return '<span class="credits-none">No credits</span>';
+  }
+
+  // Order: show web/openapi first (Pixverse), then other known buckets.
+  const order = ['web', 'openapi', 'daily', 'monthly', 'package'];
+  const ordered = [];
+
+  order.forEach(type => {
+    if (credits[type] !== undefined) {
+      ordered.push({ type, amount: credits[type] });
+    }
+  });
+
+  // Add any remaining types not in order
+  Object.entries(credits).forEach(([type, amount]) => {
+    if (!order.includes(type)) {
+      ordered.push({ type, amount });
+    }
+  });
+
+  const parts = ordered.map(({ type, amount }) => {
+    // Simple display mapping; keep keys readable
+    const label =
+      type === 'web' ? 'web' :
+      type === 'openapi' ? 'openapi' :
+      type;
+
+    return `<span class="credit-item"><span class="credit-type">${label}</span>: <span class="credit-amount">${amount}</span></span>`;
+  });
+
+  // Show total if available and different from single credit
+  if (totalCredits !== undefined && ordered.length > 1) {
+    parts.push(`<span class="credit-item credit-total"><span class="credit-type">total</span>: <span class="credit-amount">${totalCredits}</span></span>`);
+  }
+
+  return parts.join('');
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return '';
+  const diff = Date.now() - timestamp;
+  if (diff < 5000) return 'just now';
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+async function handleAccountLogin(account, event) {
+  console.log('[Popup] Login with account:', account.email);
+  try {
+    // Determine whether to reuse the current tab or open a new one.
+    // Ctrl-click (or Cmd-click on macOS, or middle-click) should open
+    // a new tab, preserving whatever state the current Pixverse tab
+    // already has.
+    const useNewTab =
+      (event && (event.ctrlKey || event.metaKey || event.button === 1)) || false;
+
+    // For Pixverse password-based accounts, attempt an automated re-auth
+    // on Login only when the backend reports clearly broken auth state
+    // (expired JWT or no JWT/cookies). Healthy sessions skip re-auth so
+    // consecutive Logins stay fast.
+    const shouldAttemptReauth =
+      account.provider_id === 'pixverse' &&
+      !account.is_google_account &&
+      (
+        account.jwt_expired === true ||
+        !account.has_jwt ||
+        !account.has_cookies
+      );
+
+    if (shouldAttemptReauth) {
+      try {
+        showToast('info', 'Re-authenticating Pixverse session...');
+        const reauthRes = await chrome.runtime.sendMessage({
+          action: 'reauthAccounts',
+          accountIds: [account.id],
+        });
+        if (!reauthRes || !reauthRes.success) {
+          console.warn('[Popup] Auto re-auth on Login failed:', reauthRes?.error);
+          showError(reauthRes?.error || 'Re-auth failed; opening with existing session');
+        } else {
+          showToast('success', 'Pixverse session refreshed');
+        }
+      } catch (reauthErr) {
+        console.warn('[Popup] Auto re-auth on Login threw:', reauthErr);
+        // Continue to attempt login with whatever credentials we have.
+      }
+    }
+
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    const res = await chrome.runtime.sendMessage({
+      action: 'loginWithAccount',
+      accountId: account.id,
+      accountEmail: account.email,
+      tabId: useNewTab
+        ? undefined
+        : (activeTab && typeof activeTab.id === 'number' ? activeTab.id : undefined),
+    });
+    if (!res || !res.success) {
+      showError(res?.error || 'Failed to open logged-in tab');
+    }
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// ===== ACCOUNTS CACHE =====
+
 function getAccountsCacheKey(providerId) {
   return providerId || ACCOUNTS_CACHE_SCOPE_ALL;
 }

@@ -1,30 +1,31 @@
 /**
  * Cookie Import - Handles importing cookies to backend
+ *
+ * Loaded as a plain script - exposes globals.
+ * Requires: getAllCookiesSecure, getBearerToken, showNotification (from utils.js)
+ * Requires: STORAGE_KEYS (from shared/constants.js)
  */
-
-import { getAllCookiesSecure, getBearerToken, showNotification } from './utils.js';
-import { STORAGE_KEYS } from '../shared/constants.js';
 
 /**
  * Provider session storage management
  */
-export async function readProviderSessionStore() {
+async function readProviderSessionStore() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.PROVIDER_SESSIONS);
   return stored[STORAGE_KEYS.PROVIDER_SESSIONS] || {};
 }
 
-export async function rememberProviderAccount(providerId, info) {
+async function rememberProviderAccount(providerId, info) {
   const store = await readProviderSessionStore();
   store[providerId] = { providerId, ...info, updatedAt: Date.now() };
   await chrome.storage.local.set({ [STORAGE_KEYS.PROVIDER_SESSIONS]: store });
 }
 
-export async function getRememberedProviderAccount(providerId) {
+async function getRememberedProviderAccount(providerId) {
   const store = await readProviderSessionStore();
   return store[providerId] || null;
 }
 
-export async function clearRememberedProviderAccount(providerId) {
+async function clearRememberedProviderAccount(providerId) {
   const store = await readProviderSessionStore();
   if (store[providerId]) {
     delete store[providerId];
@@ -35,7 +36,7 @@ export async function clearRememberedProviderAccount(providerId) {
 /**
  * Notify backend of account status change
  */
-export async function notifyAccountStatus(accountId, status, reason) {
+async function notifyAccountStatus(accountId, status, reason) {
   if (!accountId || !status) return;
   try {
     const res = await chrome.runtime.sendMessage({
@@ -55,7 +56,7 @@ export async function notifyAccountStatus(accountId, status, reason) {
 /**
  * Extract all raw data from page (provider-agnostic)
  */
-async function extractRawData(providerId, config) {
+async function _cookieImport_extractRawData(providerId, config) {
   const data = {
     cookies: await getAllCookiesSecure(providerId)
   };
@@ -75,7 +76,7 @@ async function extractRawData(providerId, config) {
 /**
  * Import cookies to backend
  */
-export async function importCookies(providerId, config = {}) {
+async function importCookies(providerId, config = {}) {
   console.log(`[PixSim7 Cookie Import] Importing raw data for ${providerId}...`);
 
   try {
@@ -93,7 +94,7 @@ export async function importCookies(providerId, config = {}) {
     }
 
     // Extract RAW data (no parsing, backend will handle it)
-    const rawData = await extractRawData(providerId, config);
+    const rawData = await _cookieImport_extractRawData(providerId, config);
 
     console.log('[PixSim7 Cookie Import] Extracted raw data:', {
       cookies: Object.keys(rawData.cookies).length,

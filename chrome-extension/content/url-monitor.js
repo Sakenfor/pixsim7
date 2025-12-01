@@ -1,18 +1,19 @@
 /**
  * URL Monitor - Detects URL changes and provider
  *
+ * Loaded as a plain script - exposes globals.
  * Only calls backend provider detection when URL actually changes.
  * Caches provider per URL to avoid unnecessary API calls.
  */
 
-let currentUrl = '';
-let cachedProvider = null;
-let onProviderChangeCallback = null;
+let _urlMonitor_currentUrl = '';
+let _urlMonitor_cachedProvider = null;
+let _urlMonitor_onProviderChangeCallback = null;
 
 /**
  * Detect provider from backend
  */
-async function detectProviderFromBackend(url) {
+async function _urlMonitor_detectProviderFromBackend(url) {
   try {
     const res = await chrome.runtime.sendMessage({
       action: 'detectProvider',
@@ -30,37 +31,37 @@ async function detectProviderFromBackend(url) {
 /**
  * Check if URL has changed and re-detect provider if needed
  */
-async function checkUrlChange() {
+async function _urlMonitor_checkUrlChange() {
   const url = window.location.href;
 
   // URL hasn't changed - use cached provider
-  if (url === currentUrl && cachedProvider !== null) {
-    return cachedProvider;
+  if (url === _urlMonitor_currentUrl && _urlMonitor_cachedProvider !== null) {
+    return _urlMonitor_cachedProvider;
   }
 
   // URL changed - invalidate cache and re-detect
   console.log('[PixSim7 URL Monitor] URL changed, detecting provider...', url);
-  currentUrl = url;
-  cachedProvider = await detectProviderFromBackend(url);
+  _urlMonitor_currentUrl = url;
+  _urlMonitor_cachedProvider = await _urlMonitor_detectProviderFromBackend(url);
 
-  if (cachedProvider) {
-    console.log(`[PixSim7 URL Monitor] Provider detected: ${cachedProvider.providerId}`);
+  if (_urlMonitor_cachedProvider) {
+    console.log(`[PixSim7 URL Monitor] Provider detected: ${_urlMonitor_cachedProvider.providerId}`);
   } else {
     console.log('[PixSim7 URL Monitor] No provider detected for this URL');
   }
 
   // Notify callback of provider change
-  if (onProviderChangeCallback) {
-    onProviderChangeCallback(cachedProvider);
+  if (_urlMonitor_onProviderChangeCallback) {
+    _urlMonitor_onProviderChangeCallback(_urlMonitor_cachedProvider);
   }
 
-  return cachedProvider;
+  return _urlMonitor_cachedProvider;
 }
 
 /**
  * Watch for URL changes (SPA navigation)
  */
-function watchUrlChanges() {
+function _urlMonitor_watchUrlChanges() {
   let lastUrl = location.href;
 
   // Use MutationObserver to detect SPA navigation
@@ -68,13 +69,13 @@ function watchUrlChanges() {
     const url = location.href;
     if (url !== lastUrl) {
       lastUrl = url;
-      checkUrlChange();
+      _urlMonitor_checkUrlChange();
     }
   }).observe(document, { subtree: true, childList: true });
 
   // Also listen for popstate (back/forward)
   window.addEventListener('popstate', () => {
-    checkUrlChange();
+    _urlMonitor_checkUrlChange();
   });
 
   // And pushState/replaceState
@@ -83,41 +84,41 @@ function watchUrlChanges() {
 
   history.pushState = function(...args) {
     originalPushState.apply(this, args);
-    checkUrlChange();
+    _urlMonitor_checkUrlChange();
   };
 
   history.replaceState = function(...args) {
     originalReplaceState.apply(this, args);
-    checkUrlChange();
+    _urlMonitor_checkUrlChange();
   };
 }
 
 /**
  * Initialize URL monitoring
  */
-export function init(onProviderChange) {
-  onProviderChangeCallback = onProviderChange;
+function initUrlMonitor(onProviderChange) {
+  _urlMonitor_onProviderChangeCallback = onProviderChange;
 
   console.log('[PixSim7 URL Monitor] Initializing on:', window.location.href);
 
   // Start watching for URL changes
-  watchUrlChanges();
+  _urlMonitor_watchUrlChanges();
 
   // Do initial detection
-  checkUrlChange();
+  _urlMonitor_checkUrlChange();
 }
 
 /**
  * Get current cached provider (without re-detection)
  */
-export function getCurrentProvider() {
-  return cachedProvider;
+function getCurrentProvider() {
+  return _urlMonitor_cachedProvider;
 }
 
 /**
  * Force re-detection (useful for manual refresh)
  */
-export async function forceDetection() {
-  currentUrl = ''; // Invalidate cache
-  return await checkUrlChange();
+async function forceDetection() {
+  _urlMonitor_currentUrl = ''; // Invalidate cache
+  return await _urlMonitor_checkUrlChange();
 }

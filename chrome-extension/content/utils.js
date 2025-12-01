@@ -1,13 +1,14 @@
 /**
  * Content Script Utilities
+ *
+ * Loaded as a plain script - exposes globals.
+ * Requires: PROVIDER_AUTH_COOKIE_HINTS (from shared/constants.js)
  */
-
-import { PROVIDER_AUTH_COOKIE_HINTS } from '../shared/constants.js';
 
 /**
  * Get cookie by name
  */
-export function getCookie(name) {
+function getCookie(name) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
   if (parts.length === 2) {
@@ -19,7 +20,7 @@ export function getCookie(name) {
 /**
  * Get all cookies as object (secure, using background script)
  */
-export async function getAllCookiesSecure(providerId) {
+async function getAllCookiesSecure(providerId) {
   if (providerId === 'pixverse') {
     try {
       // For Pixverse, prefer the full host+parent-domain view so that the
@@ -66,7 +67,7 @@ export async function getAllCookiesSecure(providerId) {
 /**
  * Check if provider session is authenticated based on cookies
  */
-export function isProviderSessionAuthenticated(providerId, cookies) {
+function isProviderSessionAuthenticated(providerId, cookies) {
   const hints = PROVIDER_AUTH_COOKIE_HINTS[providerId];
   if (!hints || hints.length === 0) {
     return Object.keys(cookies || {}).length > 0;
@@ -77,7 +78,7 @@ export function isProviderSessionAuthenticated(providerId, cookies) {
 /**
  * Hash cookies for change detection
  */
-export function hashCookies(cookies) {
+function hashCookies(cookies) {
   try {
     const entries = Object.entries(cookies || {}).sort(([a], [b]) => a.localeCompare(b));
     const json = JSON.stringify(entries);
@@ -95,14 +96,14 @@ export function hashCookies(cookies) {
 /**
  * Get captured bearer token from injected script
  */
-export function getBearerToken() {
+function getBearerToken() {
   return window.__pixsim7_bearer_token || null;
 }
 
 /**
  * Inject script to capture bearer token from network requests
  */
-export function injectBearerTokenCapture() {
+function injectBearerTokenCapture() {
   const script = document.createElement('script');
   script.src = chrome.runtime.getURL('injected-bearer-capture.js');
   script.onload = function() {
@@ -114,7 +115,7 @@ export function injectBearerTokenCapture() {
 /**
  * Show notification to user
  */
-export function showNotification(title, message) {
+function showNotification(title, message) {
   const notification = document.createElement('div');
   notification.style.cssText = `
     position: fixed;

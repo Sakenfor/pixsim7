@@ -65,8 +65,7 @@
         "content/auth-monitor.js",
         "content/main.js"
       ],
-      "run_at": "document_idle",
-      "type": "module"
+      "run_at": "document_idle"
     },
     {
       "matches": [

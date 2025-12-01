@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType, type AppActionPreset } from '@/types/automation';
 import { Button } from '@pixsim7/shared.ui';
 import { ActionParamsEditor } from './ActionParamsEditor';
 import { EMPTY_PARAMS } from './actionConstants';
 import {
   hasNestedActions,
+  hasElseActions,
   getActionMeta,
   getCategoryColors,
   getActionSummary,
@@ -34,6 +35,58 @@ function CallPresetSummary({ action }: { action: ActionDefinition }) {
       </span>
       {showPreview && presetId && <CallPresetPreview presetId={presetId} />}
     </div>
+  );
+}
+
+// Recursive action preview renderer
+function ActionPreviewItem({ action, depth = 0 }: { action: ActionDefinition; depth?: number }) {
+  const meta = getActionMeta(action.type);
+  const hasNested = action.params?.actions?.length > 0;
+  const hasElse = action.params?.else_actions?.length > 0;
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-1 text-gray-300"
+        style={{ paddingLeft: `${depth * 12}px` }}
+      >
+        <span>{meta.icon}</span>
+        <span className="truncate">{meta.label}</span>
+        {!hasNested && !hasElse && (
+          <span className="text-gray-500 truncate">{getActionSummary(action)}</span>
+        )}
+      </div>
+      {hasNested && (
+        <>
+          <div className="text-green-400 text-[10px]" style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
+            ↳ then:
+          </div>
+          {action.params.actions.slice(0, 3).map((nested: ActionDefinition, i: number) => (
+            <ActionPreviewItem key={`then-${i}`} action={nested} depth={depth + 1} />
+          ))}
+          {action.params.actions.length > 3 && (
+            <div className="text-gray-500" style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
+              +{action.params.actions.length - 3} more...
+            </div>
+          )}
+        </>
+      )}
+      {hasElse && (
+        <>
+          <div className="text-orange-400 text-[10px]" style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
+            ↳ else:
+          </div>
+          {action.params.else_actions.slice(0, 3).map((nested: ActionDefinition, i: number) => (
+            <ActionPreviewItem key={`else-${i}`} action={nested} depth={depth + 1} />
+          ))}
+          {action.params.else_actions.length > 3 && (
+            <div className="text-gray-500" style={{ paddingLeft: `${(depth + 1) * 12}px` }}>
+              +{action.params.else_actions.length - 3} more...
+            </div>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
@@ -78,25 +131,18 @@ function CallPresetPreview({ presetId }: { presetId: number }) {
   }
 
   return (
-    <div className="absolute z-50 left-0 top-full mt-1 p-2 bg-gray-900 text-white text-xs rounded shadow-lg min-w-56 max-w-72">
+    <div className="absolute z-50 left-0 top-full mt-1 p-2 bg-gray-900 text-white text-xs rounded shadow-lg min-w-64 max-w-80">
       <div className="font-medium text-sm mb-1">{preset.name}</div>
       {preset.description && (
         <div className="text-gray-400 mb-2">{preset.description}</div>
       )}
       <div className="text-gray-400 mb-1">{preset.actions.length} action(s):</div>
-      <div className="space-y-0.5 max-h-40 overflow-y-auto">
-        {preset.actions.slice(0, 8).map((action, i) => {
-          const meta = getActionMeta(action.type);
-          return (
-            <div key={i} className="flex items-center gap-1 text-gray-300">
-              <span>{meta.icon}</span>
-              <span className="truncate">{meta.label}</span>
-              <span className="text-gray-500 truncate">{getActionSummary(action)}</span>
-            </div>
-          );
-        })}
-        {preset.actions.length > 8 && (
-          <div className="text-gray-500">+{preset.actions.length - 8} more...</div>
+      <div className="space-y-0.5 max-h-60 overflow-y-auto">
+        {preset.actions.slice(0, 10).map((action, i) => (
+          <ActionPreviewItem key={i} action={action} />
+        ))}
+        {preset.actions.length > 10 && (
+          <div className="text-gray-500">+{preset.actions.length - 10} more...</div>
         )}
       </div>
     </div>
@@ -116,6 +162,8 @@ interface ActionBuilderProps {
   testExecution?: AutomationExecution | null;
   // Batch operations (only at top level)
   onCreatePresetFromSelection?: (actions: ActionDefinition[]) => void;
+  // Cross-level drag support
+  onActionDroppedOut?: (index: number) => void; // Called when action is dragged out to another level
 }
 
 export function ActionBuilder({
@@ -129,10 +177,13 @@ export function ActionBuilder({
   testing = false,
   testExecution,
   onCreatePresetFromSelection,
+  onActionDroppedOut,
 }: ActionBuilderProps) {
+  const instanceId = useId(); // Unique ID for this ActionBuilder instance
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragOverNested, setDragOverNested] = useState(false); // For drop zone at end
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const isNested = depth > 0;
   const canTest = testAccountId && onTestAction;
@@ -143,6 +194,14 @@ export function ActionBuilder({
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
+    // Store action data and source info for cross-level drops
+    const dragData = {
+      action: actions[index],
+      sourceDepth: depth,
+      sourceIndex: index,
+      sourceInstanceId: instanceId,
+    };
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
     e.dataTransfer.setData('text/plain', String(index));
     // Add a slight delay to allow the drag image to be captured
     setTimeout(() => {
@@ -154,12 +213,16 @@ export function ActionBuilder({
     (e.target as HTMLElement).style.opacity = '1';
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDragOverNested(false);
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    } else if (draggedIndex === null) {
+      // External drag (from different level)
       setDragOverIndex(index);
     }
   };
@@ -170,8 +233,29 @@ export function ActionBuilder({
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
+    e.stopPropagation();
+    setDragOverIndex(null);
+
+    // Check if this is a cross-instance drop (different ActionBuilder)
+    try {
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (jsonData) {
+        const dragData = JSON.parse(jsonData);
+        // Cross-instance drop: different instance ID OR different depth
+        if (dragData.sourceInstanceId !== instanceId || dragData.sourceDepth !== depth) {
+          // Cross-instance drop - add the action here (copy operation)
+          const updated = [...actions];
+          updated.splice(targetIndex, 0, dragData.action);
+          onChange(updated);
+          return;
+        }
+      }
+    } catch {
+      // Not JSON data, fall through to normal handling
+    }
+
+    // Same-instance drop (reorder within this ActionBuilder)
     if (draggedIndex === null || draggedIndex === targetIndex) {
-      setDragOverIndex(null);
       return;
     }
 
@@ -192,7 +276,34 @@ export function ActionBuilder({
     }
 
     setDraggedIndex(null);
-    setDragOverIndex(null);
+  };
+
+  // Handle drop at the end of the list (drop zone)
+  const handleDropZoneDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverNested(true);
+  };
+
+  const handleDropZoneDragLeave = () => {
+    setDragOverNested(false);
+  };
+
+  const handleDropZoneDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverNested(false);
+
+    try {
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (jsonData) {
+        const dragData = JSON.parse(jsonData);
+        // Add action at the end
+        onChange([...actions, dragData.action]);
+      }
+    } catch {
+      // Ignore parse errors
+    }
   };
 
   const addAction = () => {
@@ -363,8 +474,17 @@ export function ActionBuilder({
       )}
 
       {actions.length === 0 ? (
-        <div className={`text-center ${isNested ? "py-3 text-xs" : "py-8"} text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg`}>
-          {isNested ? "No nested actions" : "No actions yet. Click \"Add Action\" to start building your automation."}
+        <div
+          onDragOver={isNested ? handleDropZoneDragOver : undefined}
+          onDragLeave={isNested ? handleDropZoneDragLeave : undefined}
+          onDrop={isNested ? handleDropZoneDrop : undefined}
+          className={`text-center ${isNested ? "py-3 text-xs" : "py-8"} text-gray-500 dark:text-gray-400 border-2 border-dashed rounded-lg transition-colors ${
+            dragOverNested
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+              : 'border-gray-300 dark:border-gray-600'
+          }`}
+        >
+          {dragOverNested ? '+ Drop action here' : (isNested ? "No nested actions - drag here to add" : "No actions yet. Click \"Add Action\" to start building your automation.")}
         </div>
       ) : (
         <div className="space-y-2">
@@ -650,6 +770,30 @@ export function ActionBuilder({
                   >
                     🗑️
                   </button>
+
+                  {/* Enable/Disable Toggle */}
+                  <div className="ml-2 pl-2 border-l border-gray-300 dark:border-gray-600">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        toggleEnabled(index);
+                      }}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                        isEnabled
+                          ? 'bg-green-500'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      }`}
+                      title={isEnabled ? 'Enabled - click to disable' : 'Disabled - click to enable'}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                          isEnabled ? 'translate-x-5' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -711,7 +855,10 @@ export function ActionBuilder({
                     {/* Nested Actions for conditional/loop types */}
                     {hasNestedActions(action.type) && (
                       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <div className="pl-4 border-l-2 border-blue-400 dark:border-blue-500">
+                        <div className="text-xs font-medium text-green-700 dark:text-green-400 mb-2">
+                          ✓ Then (condition met):
+                        </div>
+                        <div className="pl-4 border-l-2 border-green-400 dark:border-green-500">
                           <ActionBuilder
                             actions={action.params?.actions ?? []}
                             onChange={(nestedActions) => {
@@ -731,12 +878,55 @@ export function ActionBuilder({
                         </div>
                       </div>
                     )}
+
+                    {/* Else Actions for IF conditionals */}
+                    {hasElseActions(action.type) && (
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="text-xs font-medium text-orange-700 dark:text-orange-400 mb-2">
+                          ✗ Else (condition not met):
+                        </div>
+                        <div className="pl-4 border-l-2 border-orange-400 dark:border-orange-500">
+                          <ActionBuilder
+                            actions={action.params?.else_actions ?? []}
+                            onChange={(elseActions) => {
+                              updateAction(index, {
+                                ...action,
+                                params: { ...action.params, else_actions: elseActions },
+                              });
+                            }}
+                            variables={variables}
+                            depth={depth + 1}
+                            testAccountId={testAccountId}
+                            onTestAction={onTestAction}
+                            testing={testing}
+                            testExecution={testExecution}
+                            onCreatePresetFromSelection={onCreatePresetFromSelection}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
           );
           })}
+
+          {/* Drop zone at the end for cross-level drops */}
+          {isNested && (
+            <div
+              onDragOver={handleDropZoneDragOver}
+              onDragLeave={handleDropZoneDragLeave}
+              onDrop={handleDropZoneDrop}
+              className={`border-2 border-dashed rounded p-2 text-center text-xs transition-colors ${
+                dragOverNested
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 opacity-50 hover:opacity-100'
+              }`}
+            >
+              {dragOverNested ? '+ Drop here' : 'Drop action to add'}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -762,7 +952,7 @@ function getDefaultParams(type: ActionType): Record<string, any> {
       return {};
     case ActionType.IF_ELEMENT_EXISTS:
     case ActionType.IF_ELEMENT_NOT_EXISTS:
-      return { actions: [] };
+      return { actions: [], else_actions: [] };
     case ActionType.REPEAT:
       return { count: 1, actions: [] };
     case ActionType.CALL_PRESET:

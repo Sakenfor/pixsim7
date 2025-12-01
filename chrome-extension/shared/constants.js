@@ -1,9 +1,11 @@
 /**
  * Shared constants used across extension modules
+ *
+ * Loaded as a plain script - exposes globals.
  */
 
 // Storage keys
-export const STORAGE_KEYS = {
+const STORAGE_KEYS = {
   PROVIDER_SESSIONS: 'pixsim7ProviderSessions',
   SETTINGS: 'pixsim7Settings',
   AUTH_TOKEN: 'pixsim7Token',
@@ -11,7 +13,7 @@ export const STORAGE_KEYS = {
 
 // Provider authentication cookie hints
 // Used to detect if user is logged into a provider
-export const PROVIDER_AUTH_COOKIE_HINTS = {
+const PROVIDER_AUTH_COOKIE_HINTS = {
   pixverse: ['_ai_token'],
   sora: ['__Secure-next-auth.session-token'],
   runway: ['session'],
@@ -19,7 +21,7 @@ export const PROVIDER_AUTH_COOKIE_HINTS = {
 };
 
 // Timing constants
-export const TIMING = {
+const TIMING = {
   IMPORT_DEBOUNCE_MS: 10000,      // Debounce cookie imports
   LOGOUT_DEBOUNCE_MS: 4000,       // Debounce logout detection
   AUTH_CHECK_INTERVAL_MS: 5000,   // Auth state polling interval

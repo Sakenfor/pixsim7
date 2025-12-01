@@ -284,6 +284,7 @@
   let styleInjected = false;
   let presetsCache = [];
   let accountsCache = [];
+  let assetsCache = [];
   let selectedAccountId = null;
   let currentSessionAccountId = null; // Account matching browser session
 
@@ -399,12 +400,444 @@
     }
   }
 
+  /**
+   * Find all available upload inputs on the page
+   * Returns array of { input, container, hasImage } objects
+   */
+  function findUploadInputs() {
+    const results = [];
+
+    // Find all file inputs that accept images
+    const inputs = document.querySelectorAll('input[type="file"][accept*="image"]');
+
+    inputs.forEach(input => {
+      // Find the containing upload area
+      // Could be .ant-upload, .ant-upload-btn, or parent with ant-upload-drag-container
+      let container = input.closest('.ant-upload') ||
+                      input.closest('.ant-upload-btn') ||
+                      input.closest('[class*="ant-upload"]');
+
+      // Check if this upload area already has an image
+      // Look for img tags or background-image styles with media URLs
+      let hasImage = false;
+      if (container) {
+        const parentArea = container.closest('.ant-upload-wrapper') || container.parentElement?.parentElement;
+        if (parentArea) {
+          // Check for existing images
+          const existingImg = parentArea.querySelector('img[src*="media.pixverse.ai"], img[src*="blob:"]');
+          const bgWithImage = parentArea.querySelector('[style*="background-image"][style*="media.pixverse.ai"]');
+          hasImage = !!(existingImg || bgWithImage);
+        }
+      }
+
+      results.push({ input, container, hasImage });
+    });
+
+    return results;
+  }
+
+  /**
+   * Intercept next upload and return our URL instead
+   * This makes Pixverse think the upload succeeded with our existing URL
+   */
+  let pendingImageUrl = null;
+
+  function setupUploadInterceptor() {
+    if (window.__pxs7UploadInterceptorInstalled) return;
+    window.__pxs7UploadInterceptorInstalled = true;
+
+    // Intercept XMLHttpRequest
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+      this._pxs7Url = url;
+      this._pxs7Method = method;
+      return originalXHROpen.call(this, method, url, ...args);
+    };
+
+    XMLHttpRequest.prototype.send = function(body) {
+      // Check if this is a Pixverse upload and we have a pending URL to inject
+      if (pendingImageUrl && this._pxs7Method === 'POST' &&
+          (this._pxs7Url.includes('/upload') || this._pxs7Url.includes('/oss'))) {
+        console.log('[PixSim7] Intercepting upload, returning cached URL:', pendingImageUrl);
+
+        const urlToReturn = pendingImageUrl;
+        pendingImageUrl = null; // Clear for next time
+
+        // Simulate successful response
+        setTimeout(() => {
+          Object.defineProperty(this, 'readyState', { value: 4 });
+          Object.defineProperty(this, 'status', { value: 200 });
+          Object.defineProperty(this, 'responseText', {
+            value: JSON.stringify({ url: urlToReturn, code: 0 })
+          });
+          Object.defineProperty(this, 'response', {
+            value: JSON.stringify({ url: urlToReturn, code: 0 })
+          });
+          this.dispatchEvent(new Event('load'));
+          this.onload?.();
+          this.onreadystatechange?.();
+        }, 100);
+        return;
+      }
+
+      return originalXHRSend.call(this, body);
+    };
+
+    console.log('[PixSim7] Upload interceptor installed');
+  }
+
+  /**
+   * Try to set image directly on Pixverse upload component without re-uploading
+   * Works for images already on media.pixverse.ai
+   */
+  function trySetPixverseImageDirectly(imageUrl, container) {
+    try {
+      // Find the upload wrapper/container
+      const wrapper = container?.closest('.ant-upload-wrapper') ||
+                      container?.closest('[class*="ant-upload"]')?.parentElement;
+      if (!wrapper) return false;
+
+      // Look for the preview container (the div that shows the uploaded image)
+      // Pixverse uses a div with background-image style
+      const previewDiv = wrapper.querySelector('.ant-upload-drag-container > div[style*="background"]') ||
+                         wrapper.querySelector('[style*="background-size: cover"]') ||
+                         wrapper.querySelector('.ant-upload-drag-container > div');
+
+      if (previewDiv) {
+        // Set the background image directly
+        previewDiv.style.backgroundImage = `url("${imageUrl}")`;
+        previewDiv.style.backgroundSize = 'cover';
+        previewDiv.style.backgroundPosition = 'center';
+
+        // Hide the upload icon/placeholder if present
+        const placeholder = previewDiv.querySelector('div, svg');
+        if (placeholder) {
+          placeholder.style.display = 'none';
+        }
+
+        console.log('[PixSim7] Set image preview directly:', imageUrl);
+      }
+
+      // Try to find and update React component state
+      // Look for __reactFiber or __reactProps on elements
+      const reactKey = Object.keys(wrapper).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactProps$'));
+      if (reactKey) {
+        console.log('[PixSim7] Found React internals, but direct state update not implemented');
+        // Direct React state manipulation would go here, but it's fragile
+      }
+
+      // Try to find a hidden input or data attribute that stores the URL
+      const hiddenInput = wrapper.querySelector('input[type="hidden"]');
+      if (hiddenInput) {
+        hiddenInput.value = imageUrl;
+        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      // Dispatch a custom event in case the component listens for it
+      wrapper.dispatchEvent(new CustomEvent('imageSet', {
+        detail: { url: imageUrl },
+        bubbles: true
+      }));
+
+      return true;
+    } catch (e) {
+      console.warn('[PixSim7] Direct image set failed:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Clear existing image from an upload container
+   */
+  function clearUploadContainer(container) {
+    try {
+      const wrapper = container?.closest('.ant-upload-wrapper') ||
+                      container?.closest('[class*="ant-upload"]')?.parentElement;
+      if (!wrapper) return;
+
+      // Find and click delete/remove button if present
+      const deleteBtn = wrapper.querySelector('[class*="delete"], [class*="remove"], .anticon-delete, .anticon-close');
+      if (deleteBtn) {
+        deleteBtn.click();
+        console.log('[PixSim7] Clicked delete button to clear upload');
+        return;
+      }
+
+      // Reset the preview div's background
+      const previewDiv = wrapper.querySelector('[style*="background-image"]');
+      if (previewDiv) {
+        previewDiv.style.backgroundImage = '';
+        // Show placeholder again
+        const placeholder = previewDiv.querySelector('div[style*="display: none"], svg[style*="display: none"]');
+        if (placeholder) {
+          placeholder.style.display = '';
+        }
+      }
+
+      // Clear file input
+      const fileInput = wrapper.querySelector('input[type="file"]');
+      if (fileInput) {
+        fileInput.value = '';
+      }
+
+      console.log('[PixSim7] Cleared upload container');
+    } catch (e) {
+      console.warn('[PixSim7] Failed to clear container:', e);
+    }
+  }
+
+  /**
+   * Get correct MIME type from URL or default to jpeg
+   */
+  function getMimeTypeFromUrl(url) {
+    const ext = url.split('?')[0].split('.').pop()?.toLowerCase();
+    const mimeMap = {
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'webp': 'image/webp',
+      'gif': 'image/gif'
+    };
+    return mimeMap[ext] || 'image/jpeg';
+  }
+
+  /**
+   * Inject an image into Pixverse's upload input
+   * For Pixverse URLs: tries to set preview directly first
+   * For other URLs: fetches and uploads via file input
+   * @param {string} imageUrl - URL of image to inject
+   * @param {HTMLInputElement} targetInput - Optional specific input to use
+   */
+  async function injectImageToUpload(imageUrl, targetInput = null) {
+    try {
+      // Find available upload inputs
+      const uploads = findUploadInputs();
+
+      if (uploads.length === 0) {
+        showToast('No upload area found', false);
+        return false;
+      }
+
+      // Prefer an empty upload area, otherwise use the first one
+      const targetUpload = targetInput
+        ? uploads.find(u => u.input === targetInput) || uploads[0]
+        : uploads.find(u => !u.hasImage) || uploads[0];
+
+      const fileInput = targetUpload.input;
+      const container = targetUpload.container;
+
+      if (!fileInput) {
+        showToast('Upload area not found', false);
+        return false;
+      }
+
+      // Clear existing image first
+      if (targetUpload.hasImage) {
+        clearUploadContainer(container);
+        // Small delay to let the clear take effect
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // NOTE: Direct image setting (trySetPixverseImageDirectly) only sets the visual
+      // but doesn't update React state - missing delete button and won't submit properly.
+      // Always use file upload method for now until we find a way to update React state.
+      // TODO: Investigate intercepting Pixverse's upload response to inject URL directly
+
+      // Fetch and upload via file input
+      showToast('Fetching image...', true);
+
+      // Fetch with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+      let response;
+      try {
+        response = await fetch(imageUrl, {
+          signal: controller.signal,
+          mode: 'cors',
+          credentials: 'omit'
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === 'AbortError') {
+          throw new Error('Fetch timeout - image took too long');
+        }
+        // Try without CORS mode as fallback
+        console.log('[PixSim7] CORS fetch failed, trying no-cors...');
+        try {
+          response = await fetch(imageUrl, { mode: 'no-cors' });
+        } catch (e) {
+          throw new Error('Failed to fetch image: ' + fetchErr.message);
+        }
+      }
+
+      if (!response.ok && response.type !== 'opaque') {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+
+      showToast('Processing image...', true);
+      const blob = await response.blob();
+
+      // Check if we got actual data
+      if (blob.size === 0) {
+        throw new Error('Empty image data received');
+      }
+
+      console.log('[PixSim7] Fetched blob:', blob.size, 'bytes, type:', blob.type);
+
+      // Determine filename and MIME type from URL
+      let urlPath = imageUrl.split('/').pop().split('?')[0];
+      let filename = decodeURIComponent(urlPath) || '';
+
+      // If filename doesn't look like an image file, generate one
+      if (!filename || !filename.match(/\.(png|jpg|jpeg|webp|gif)$/i)) {
+        // Generate unique filename based on timestamp
+        const ext = getMimeTypeFromUrl(imageUrl).split('/')[1] || 'jpg';
+        filename = `image_${Date.now()}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        console.log('[PixSim7] Generated filename:', filename);
+      }
+
+      // Ensure correct MIME type - Pixverse only accepts png, jpeg, webp
+      let mimeType = getMimeTypeFromUrl(imageUrl);
+
+      // If blob has a type, validate it; otherwise use URL-derived type
+      if (blob.type && ['image/png', 'image/jpeg', 'image/webp'].includes(blob.type)) {
+        mimeType = blob.type;
+      }
+
+      // Ensure filename has correct extension matching MIME type
+      const extMap = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };
+      const expectedExt = extMap[mimeType] || '.jpg';
+      if (!filename.match(/\.(png|jpg|jpeg|webp)$/i)) {
+        filename = filename.replace(/\.[^.]+$/, '') + expectedExt;
+        if (!filename.includes('.')) {
+          filename += expectedExt;
+        }
+      }
+
+      console.log('[PixSim7] Creating file:', filename, 'type:', mimeType, 'size:', blob.size);
+
+      // Create a File from the blob with correct MIME type
+      const file = new File([blob], filename, { type: mimeType });
+
+      // Use DataTransfer to set the file input's files
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      fileInput.files = dataTransfer.files;
+
+      showToast('Uploading to Pixverse...', true);
+
+      console.log('[PixSim7] File input accept:', fileInput.accept);
+      console.log('[PixSim7] File object:', file.name, file.type, file.size);
+      console.log('[PixSim7] DataTransfer files:', dataTransfer.files.length);
+
+      // Dispatch change event to trigger the upload
+      const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+      fileInput.dispatchEvent(changeEvent);
+
+      // Also try input event
+      fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Note: The actual upload happens asynchronously by Pixverse's code
+      // We can't easily detect when it completes, so we just report success
+      // after triggering. User will see Pixverse's own loading indicator.
+      setTimeout(() => showToast('Upload triggered!', true), 500);
+      return true;
+    } catch (e) {
+      console.error('[PixSim7] Failed to inject image:', e);
+      showToast('Failed to add image', false);
+      return false;
+    }
+  }
+
+  /**
+   * Restore all images automatically
+   * Distributes images across available empty upload inputs
+   */
+  async function restoreAllImages(images, panel) {
+    let success = 0;
+
+    // Get all available upload inputs
+    const uploads = findUploadInputs();
+    const emptyUploads = uploads.filter(u => !u.hasImage);
+
+    for (let i = 0; i < images.length; i++) {
+      const url = images[i];
+
+      // Try to use a specific empty upload slot if available
+      // Otherwise fall back to auto-detection
+      const targetInput = emptyUploads[i]?.input || null;
+
+      const result = await injectImageToUpload(url, targetInput);
+      if (result) {
+        success++;
+        // Mark this upload as used for subsequent iterations
+        if (emptyUploads[i]) {
+          emptyUploads[i].hasImage = true;
+        }
+      }
+      // Small delay between uploads
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    if (success === images.length) {
+      panel?.remove();
+    }
+    return success;
+  }
+
+  // Track recent images from the site for the unified picker
+  let recentSiteImages = [];
+
+  /**
+   * Scan the page for currently uploaded images in upload areas
+   */
+  function scanPageForImages() {
+    const images = new Set();
+
+    // Check for img tags with pixverse media URLs
+    document.querySelectorAll('img[src*="media.pixverse.ai"]').forEach(img => {
+      const src = img.src.split('?')[0];
+      if (src) images.add(src);
+    });
+
+    // Check for background images with pixverse media URLs
+    document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
+      const style = el.getAttribute('style') || '';
+      const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
+      if (match) {
+        images.add(match[1].split('?')[0]);
+      }
+    });
+
+    return Array.from(images);
+  }
+
   function showImageRestorePanel(images) {
-    // Remove existing panel
-    document.querySelectorAll('.pxs7-restore-panel').forEach(p => p.remove());
+    // Store images for the unified picker
+    recentSiteImages = images;
+    // Show unified picker with Recent tab active
+    showUnifiedImagePicker('recent');
+  }
+
+  /**
+   * Unified Image Picker with tabs for Recent (site images) and Assets (backend)
+   */
+  function showUnifiedImagePicker(activeTab = 'assets') {
+    // Remove existing panels/menus
+    document.querySelectorAll('.pxs7-restore-panel, .pxs7-image-picker').forEach(p => p.remove());
+    closeMenus();
+
+    // Scan page for current images and merge with stored recent images
+    const pageImages = scanPageForImages();
+    const allRecent = new Set([...recentSiteImages, ...pageImages]);
+    recentSiteImages = Array.from(allRecent);
 
     const panel = document.createElement('div');
-    panel.className = 'pxs7-restore-panel';
+    panel.className = 'pxs7-image-picker';
     panel.style.cssText = `
       position: fixed;
       top: 80px;
@@ -413,22 +846,25 @@
       background: ${COLORS.bg};
       border: 1px solid ${COLORS.border};
       border-radius: 8px;
-      padding: 12px;
-      max-width: 280px;
+      width: 320px;
+      max-height: 480px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
     `;
 
+    // Header with close button
     const header = document.createElement('div');
     header.style.cssText = `
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 10px;
+      padding: 10px 12px 0;
     `;
     header.innerHTML = `
-      <span style="font-size: 11px; font-weight: 600; color: ${COLORS.text};">
-        Previous Images (${images.length})
+      <span style="font-size: 12px; font-weight: 600; color: ${COLORS.text};">
+        🖼 Image Picker
       </span>
     `;
 
@@ -447,71 +883,282 @@
     header.appendChild(closeBtn);
     panel.appendChild(header);
 
-    const grid = document.createElement('div');
-    grid.style.cssText = `
+    // Tab bar
+    const tabBar = document.createElement('div');
+    tabBar.style.cssText = `
       display: flex;
-      flex-wrap: wrap;
+      border-bottom: 1px solid ${COLORS.border};
+      margin: 8px 12px 0;
+    `;
+
+    const tabs = [
+      { id: 'recent', label: 'Recent', count: recentSiteImages.length },
+      { id: 'assets', label: 'Assets', count: assetsCache.length }
+    ];
+
+    const contentContainer = document.createElement('div');
+    contentContainer.style.cssText = `
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+    `;
+
+    tabs.forEach(tab => {
+      const tabBtn = document.createElement('button');
+      tabBtn.dataset.tab = tab.id;
+      const hasItems = tab.count > 0;
+      tabBtn.style.cssText = `
+        flex: 1;
+        padding: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: ${COLORS.textMuted};
+        cursor: pointer;
+        transition: all 0.15s;
+      `;
+      tabBtn.innerHTML = `${tab.label} ${hasItems ? `<span style="opacity:0.6">(${tab.count})</span>` : ''}`;
+
+      if (tab.id === activeTab) {
+        tabBtn.style.color = COLORS.accent;
+        tabBtn.style.borderBottomColor = COLORS.accent;
+      }
+
+      tabBtn.addEventListener('click', () => {
+        // Update tab styles
+        tabBar.querySelectorAll('button').forEach(b => {
+          b.style.color = COLORS.textMuted;
+          b.style.borderBottomColor = 'transparent';
+        });
+        tabBtn.style.color = COLORS.accent;
+        tabBtn.style.borderBottomColor = COLORS.accent;
+
+        // Render content
+        renderTabContent(tab.id, contentContainer, panel);
+      });
+
+      tabBar.appendChild(tabBtn);
+    });
+
+    panel.appendChild(tabBar);
+    panel.appendChild(contentContainer);
+
+    // Render initial tab content
+    renderTabContent(activeTab, contentContainer, panel);
+
+    document.body.appendChild(panel);
+  }
+
+  function renderTabContent(tabId, container, panel) {
+    container.innerHTML = '';
+
+    if (tabId === 'recent') {
+      renderRecentTab(container, panel);
+    } else {
+      renderAssetsTab(container, panel);
+    }
+  }
+
+  function renderRecentTab(container, panel) {
+    if (recentSiteImages.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 30px 10px; color: ${COLORS.textMuted};">
+          <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">📷</div>
+          <div style="font-size: 11px;">No recent images</div>
+          <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">
+            Images you upload will appear here
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // Actions row
+    const actionsRow = document.createElement('div');
+    actionsRow.style.cssText = `
+      display: flex;
       gap: 6px;
       margin-bottom: 10px;
     `;
 
-    images.forEach(url => {
-      const thumb = document.createElement('img');
-      thumb.src = url + '?x-oss-process=style/cover-webp-small';
-      thumb.style.cssText = `
-        width: 50px;
-        height: 50px;
-        object-fit: cover;
-        border-radius: 4px;
-        cursor: pointer;
-        border: 1px solid ${COLORS.border};
-      `;
-      thumb.title = 'Click to copy URL';
-      thumb.addEventListener('click', () => {
-        navigator.clipboard.writeText(url).then(() => {
-          showToast('Image URL copied!', true);
-        });
-      });
-      grid.appendChild(thumb);
-    });
-    panel.appendChild(grid);
-
-    const hint = document.createElement('div');
-    hint.style.cssText = `
+    const restoreAllBtn = document.createElement('button');
+    restoreAllBtn.textContent = '↻ Restore All';
+    restoreAllBtn.style.cssText = `
+      flex: 1;
+      padding: 6px;
       font-size: 10px;
-      color: ${COLORS.textMuted};
-      text-align: center;
+      font-weight: 600;
+      background: ${COLORS.accent};
+      border: none;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
     `;
-    hint.textContent = 'Click image to copy URL, then paste to re-upload';
-    panel.appendChild(hint);
+    restoreAllBtn.addEventListener('click', async () => {
+      restoreAllBtn.disabled = true;
+      restoreAllBtn.textContent = 'Restoring...';
+      await restoreAllImages(recentSiteImages, panel);
+      restoreAllBtn.textContent = 'Done!';
+    });
 
-    // Copy all button
-    if (images.length > 1) {
-      const copyAllBtn = document.createElement('button');
-      copyAllBtn.textContent = 'Copy All URLs';
-      copyAllBtn.style.cssText = `
-        width: 100%;
-        margin-top: 8px;
-        padding: 6px;
-        font-size: 11px;
-        background: ${COLORS.bgHover};
-        border: 1px solid ${COLORS.border};
-        border-radius: 4px;
-        color: ${COLORS.text};
-        cursor: pointer;
-      `;
-      copyAllBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(images.join('\n')).then(() => {
-          showToast(`Copied ${images.length} URLs!`, true);
-        });
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = '📋 Copy URLs';
+    copyBtn.style.cssText = `
+      padding: 6px 10px;
+      font-size: 10px;
+      background: transparent;
+      border: 1px solid ${COLORS.border};
+      border-radius: 4px;
+      color: ${COLORS.textMuted};
+      cursor: pointer;
+    `;
+    copyBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText(recentSiteImages.join('\n')).then(() => {
+        showToast(`Copied ${recentSiteImages.length} URL(s)!`, true);
       });
-      panel.appendChild(copyAllBtn);
+    });
+
+    actionsRow.appendChild(restoreAllBtn);
+    actionsRow.appendChild(copyBtn);
+    container.appendChild(actionsRow);
+
+    // Image grid
+    const grid = createImageGrid(recentSiteImages, (url) => {
+      return url + '?x-oss-process=style/cover-webp-small';
+    });
+    container.appendChild(grid);
+  }
+
+  function renderAssetsTab(container, panel) {
+    // Prepare asset URLs first to get accurate count
+    const urls = assetsCache.map(a => ({
+      thumb: a.thumbnail_url || a.file_url || a.external_url || a.url || a.src,
+      full: a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
+      name: a.name || a.original_filename || a.filename || a.title || ''
+    })).filter(u => u.thumb); // Only include assets with a valid URL
+
+    // Refresh button row
+    const headerRow = document.createElement('div');
+    headerRow.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    `;
+
+    const countLabel = document.createElement('span');
+    countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
+    countLabel.textContent = urls.length > 0 ? `${urls.length} image${urls.length !== 1 ? 's' : ''}` : '';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.textContent = '↻ Refresh';
+    refreshBtn.style.cssText = `
+      padding: 4px 8px;
+      font-size: 10px;
+      background: transparent;
+      border: 1px solid ${COLORS.border};
+      border-radius: 4px;
+      color: ${COLORS.textMuted};
+      cursor: pointer;
+    `;
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.textContent = '...';
+      await loadAssets(true);
+      renderTabContent('assets', container, panel);
+    });
+
+    headerRow.appendChild(countLabel);
+    headerRow.appendChild(refreshBtn);
+    container.appendChild(headerRow);
+
+    if (urls.length === 0) {
+      const emptyDiv = document.createElement('div');
+      emptyDiv.style.cssText = `text-align: center; padding: 30px 10px; color: ${COLORS.textMuted};`;
+      emptyDiv.innerHTML = `
+        <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">📁</div>
+        <div style="font-size: 11px;">No assets found</div>
+        <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">
+          Upload images via the main app
+        </div>
+      `;
+      container.appendChild(emptyDiv);
+      return;
     }
 
-    document.body.appendChild(panel);
+    const grid = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
+    container.appendChild(grid);
+  }
 
-    // Auto-dismiss after 30 seconds
-    setTimeout(() => panel.remove(), 30000);
+  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
+    const grid = document.createElement('div');
+    grid.style.cssText = `
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    `;
+
+    items.forEach((item, idx) => {
+      const thumbUrl = typeof getThumbUrl === 'function' ? getThumbUrl(item) : item;
+      const fullUrl = getFullUrl ? getFullUrl(item) : (typeof item === 'string' ? item : item);
+      const name = getName ? getName(item) : null;
+
+      const thumb = document.createElement('div');
+      thumb.style.cssText = `
+        position: relative;
+        aspect-ratio: 1;
+        border-radius: 4px;
+        overflow: hidden;
+        cursor: pointer;
+        border: 2px solid ${COLORS.border};
+        transition: border-color 0.2s, transform 0.15s;
+      `;
+
+      const img = document.createElement('img');
+      img.src = thumbUrl;
+      img.style.cssText = `
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      `;
+      img.loading = 'lazy';
+      thumb.appendChild(img);
+
+      if (name) {
+        thumb.title = name;
+      }
+
+      thumb.addEventListener('mouseenter', () => {
+        thumb.style.borderColor = COLORS.accent;
+        thumb.style.transform = 'scale(1.05)';
+      });
+      thumb.addEventListener('mouseleave', () => {
+        thumb.style.borderColor = COLORS.border;
+        thumb.style.transform = 'scale(1)';
+      });
+
+      thumb.addEventListener('click', async () => {
+        thumb.style.opacity = '0.5';
+        thumb.style.pointerEvents = 'none';
+        const success = await injectImageToUpload(fullUrl);
+        if (success) {
+          thumb.style.borderColor = COLORS.success;
+          thumb.style.opacity = '1';
+          thumb.style.pointerEvents = 'auto';
+        } else {
+          // Fallback: copy URL
+          await navigator.clipboard.writeText(fullUrl);
+          showToast('URL copied - paste manually', true);
+          thumb.style.opacity = '1';
+          thumb.style.pointerEvents = 'auto';
+        }
+      });
+
+      grid.appendChild(thumb);
+    });
+
+    return grid;
   }
 
   // ===== Storage =====
@@ -589,10 +1236,67 @@
         providerId: 'pixverse'
       });
       if (res?.success && Array.isArray(res.data)) {
-        presetsCache = res.data;
-        return res.data;
+        // Filter out "snippet(s)" type - those are for prompt building, not execution
+        presetsCache = res.data.filter(p => !p.type?.toLowerCase().includes('snippet'));
+        return presetsCache;
       }
     } catch (e) {}
+    return [];
+  }
+
+  async function loadAssets(forceRefresh = false) {
+    if (assetsCache.length > 0 && !forceRefresh) {
+      return assetsCache;
+    }
+    try {
+      const res = await chrome.runtime.sendMessage({
+        action: 'getAssets',
+        limit: 50
+      });
+      console.log('[PixSim7] Assets response:', res);
+
+      if (!res?.success) {
+        console.warn('[PixSim7] Assets request failed:', res?.error);
+        return [];
+      }
+
+      // Handle different response formats:
+      // - Direct array: res.data = [...]
+      // - Paginated: res.data = { items: [...], total: X }
+      // - Nested: res.data = { assets: [...] }
+      let items = res.data;
+      if (items && !Array.isArray(items)) {
+        items = items.items || items.assets || items.data || [];
+      }
+
+      if (!Array.isArray(items)) {
+        console.warn('[PixSim7] Unexpected assets format:', res.data);
+        return [];
+      }
+
+      console.log('[PixSim7] Found', items.length, 'assets');
+
+      // Filter to only images - check multiple possible fields
+      assetsCache = items.filter(a => {
+        // Check media_type field
+        if (a.media_type === 'image') return true;
+        // Check type field
+        if (a.type === 'image') return true;
+        // Check file extension
+        const path = a.file_path || a.file_url || a.external_url || a.url || '';
+        if (path.match(/\.(jpg|jpeg|png|webp|gif)$/i)) return true;
+        // Check mime type
+        if (a.mime_type?.startsWith('image/')) return true;
+        // If no type info, include it (assume it's an image)
+        if (a.file_url || a.external_url || a.thumbnail_url) return true;
+        return false;
+      });
+
+      console.log('[PixSim7] Filtered to', assetsCache.length, 'image assets');
+      return assetsCache;
+    } catch (e) {
+      console.warn('[PixSim7] Failed to load assets:', e);
+    }
     return [];
   }
 
@@ -875,7 +1579,6 @@
     positionMenu(menu, btn);
     setupOutsideClick(menu, btn);
   }
-
   // ===== Button Group =====
 
   function updateAccountButton(btn) {
@@ -946,6 +1649,31 @@
       updateAccountButton(accountBtn);
     });
 
+    // Assets button
+    const assetsBtn = document.createElement('button');
+    assetsBtn.className = `${BTN_CLASS} ${BTN_CLASS}--assets`;
+    assetsBtn.textContent = '🖼';
+    assetsBtn.title = 'Image picker (assets & recent)';
+    assetsBtn.style.cssText += `color: ${COLORS.success};`;
+
+    assetsBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (assetsCache.length === 0) {
+        assetsBtn.classList.add('loading');
+        const origText = assetsBtn.textContent;
+        assetsBtn.textContent = '...';
+        await loadAssets();
+        assetsBtn.classList.remove('loading');
+        assetsBtn.textContent = origText;
+      }
+
+      // Show unified picker - default to Assets tab, but Recent if there are recent images
+      const defaultTab = recentSiteImages.length > 0 ? 'recent' : 'assets';
+      showUnifiedImagePicker(defaultTab);
+    });
+
     // Run button
     const runBtn = document.createElement('button');
     runBtn.className = `${BTN_CLASS} ${BTN_CLASS}--run`;
@@ -983,6 +1711,7 @@
 
     group.appendChild(accountBtn);
     group.appendChild(loginBtn);
+    group.appendChild(assetsBtn);
     group.appendChild(runBtn);
 
     return { group, accountBtn };
@@ -1029,7 +1758,8 @@
 
     await Promise.all([
       loadPresets(),
-      loadAccounts()
+      loadAccounts(),
+      loadAssets()
     ]);
 
     processTaskElements();
