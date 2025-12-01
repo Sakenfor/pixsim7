@@ -67,6 +67,15 @@
       ],
       "run_at": "document_idle",
       "type": "module"
+    },
+    {
+      "matches": [
+        "*://*.pixverse.ai/*"
+      ],
+      "js": [
+        "content/pixverse-preset-buttons.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "action": {

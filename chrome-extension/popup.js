@@ -539,11 +539,16 @@ async function handleAccountLogin(account, event) {
       (event && (event.ctrlKey || event.metaKey || event.button === 1)) || false;
 
     // For Pixverse password-based accounts, attempt an automated re-auth
-    // on Login. This gives the user an explicit "fix it now" action
-    // even if our cached JWT metadata is out of date.
+    // on Login only when the backend reports clearly broken auth state
+    // (expired JWT or no JWT/cookies). Healthy sessions skip re-auth so
+    // consecutive Logins stay fast.
     const shouldAttemptReauth =
       account.provider_id === 'pixverse' &&
-      !account.is_google_account;
+      !account.is_google_account &&
+      (
+        account.jwt_expired === true ||
+        (!account.has_jwt && !account.has_cookies)
+      );
 
     if (shouldAttemptReauth) {
       try {
