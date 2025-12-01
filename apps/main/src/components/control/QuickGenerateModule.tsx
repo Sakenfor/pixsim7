@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore, type ControlCenterState } from '@/stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
@@ -7,14 +7,13 @@ import { useProviders } from '@/hooks/useProviders';
 import { useProviderSpecs } from '@/hooks/useProviderSpecs';
 import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
-import { useGenerationsStore, isGenerationTerminal } from '@/stores/generationsStore';
 import { useGenerationQueueStore } from '@/stores/generationQueueStore';
-import { logEvent } from '@/lib/logging';
 import { GenerationPluginRenderer } from '@/lib/providers';
 import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
 import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
 import { CompactAssetCard } from './CompactAssetCard';
 import { ThemedIcon } from '@/lib/icons';
+import { GenerationStatusDisplay } from './GenerationStatusDisplay';
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
@@ -540,118 +539,3 @@ export function QuickGenerateModule() {
   );
 }
 
-/**
- * Simple inline generation status display with WebSocket updates and retry support
- * Replaces the deleted JobStatusIndicator
- */
-function GenerationStatusDisplay({ generationId }: { generationId: number }) {
-  const generation = useGenerationsStore(s => s.generations.get(generationId));
-  const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
-  const [retrying, setRetrying] = useState(false);
-
-  // Fallback polling if WebSocket disconnects (backup only)
-  useEffect(() => {
-    if (!generationId) return;
-
-    // Check if generation is in terminal state
-    if (generation && isGenerationTerminal(generation.status)) {
-      return;
-    }
-
-    // Poll every 5 seconds as backup (WebSocket is primary)
-    const interval = setInterval(async () => {
-      try {
-        const { getGeneration } = await import('../../lib/api/generations');
-        const updated = await getGeneration(generationId);
-        addOrUpdateGeneration(updated);
-
-        if (isGenerationTerminal(updated.status)) {
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error(`Failed to poll generation ${generationId}:`, err);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [generationId, generation?.status, addOrUpdateGeneration]);
-
-  async function handleRetry() {
-    if (!generation || retrying) return;
-
-    setRetrying(true);
-    try {
-      const { retryGeneration } = await import('../../lib/api/generations');
-      const newGeneration = await retryGeneration(generationId);
-
-      // Update store with new generation
-      addOrUpdateGeneration(newGeneration);
-
-      // Switch display to new generation after 1 second
-      setTimeout(() => {
-        // The parent component should ideally track the new generation ID
-        // For now, just show success message
-        logEvent('INFO', 'generation_retried', {
-          originalId: generationId,
-          newId: newGeneration.id,
-        });
-      }, 1000);
-    } catch (err: any) {
-      console.error(`Failed to retry generation ${generationId}:`, err);
-      alert(err.response?.data?.detail || 'Failed to retry generation');
-    } finally {
-      setRetrying(false);
-    }
-  }
-
-  if (!generation) {
-    return (
-      <div className="text-xs p-2 bg-neutral-100 dark:bg-neutral-800 rounded">
-        Generation #{generationId} (loading...)
-      </div>
-    );
-  }
-
-  const statusColors: Record<string, string> = {
-    pending: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300',
-    processing: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300',
-    completed: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300',
-    failed: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
-    cancelled: 'bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300',
-  };
-
-  const statusColor = statusColors[generation.status] || statusColors.pending;
-  const canRetry = generation.status === 'failed' && generation.retry_count < 10;
-
-  return (
-    <div className={`text-xs p-2 border rounded ${statusColor}`}>
-      <div className="flex items-center justify-between">
-        <div className="font-medium">Generation #{generationId}</div>
-        {canRetry && (
-          <button
-            onClick={handleRetry}
-            disabled={retrying}
-            className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Retry this generation (useful for content filter rejections)"
-          >
-            {retrying ? 'Retrying...' : 'Retry'}
-          </button>
-        )}
-      </div>
-      <div className="mt-1">Status: {generation.status}</div>
-      {generation.retry_count > 0 && (
-        <div className="mt-1 text-xs opacity-75">
-          Retry attempt: {generation.retry_count}/10
-        </div>
-      )}
-      {generation.error_message && (
-        <div className="mt-1 text-red-600 dark:text-red-400">
-          Error: {generation.error_message}
-        </div>
-      )}
-      {generation.asset_id && (
-        <div className="mt-1">Asset ID: {generation.asset_id}</div>
-      )}
-    </div>
-  );
-}
