@@ -84,7 +84,7 @@ async def sync_all_account_credits(
             if hasattr(provider, "get_credits"):
                 try:
                     if account.provider_id == "pixverse" and hasattr(provider, "get_credits_basic"):
-                        credits_data = await provider.get_credits_basic(account)
+                        credits_data = await provider.get_credits_basic(account, retry_on_session_error=True)
                     else:
                         credits_data = await provider.get_credits(account)
                 except Exception as e:

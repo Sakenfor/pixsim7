@@ -579,7 +579,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-          // Fetch cookies for this account from backend
+          // First sync credits to trigger auto re-auth if session is invalid
+          // This ensures we get fresh cookies instead of stale ones
+          try {
+            await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
+              method: 'POST',
+            });
+          } catch (syncErr) {
+            console.warn('[Background] Pre-login credit sync failed (account may need manual re-auth):', syncErr);
+            // Continue anyway - user might have valid cookies despite sync failure
+          }
+
+          // Fetch cookies for this account from backend (now fresh after auto re-auth)
           const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
           const providerId = data.provider_id;
           const cookies = data.cookies || {};
@@ -635,26 +646,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
 
-        // Fire-and-forget: also sync credits for the newly selected account
-        // so that the PixSim7 UI reflects its latest balance shortly after
-        // logging in via the extension.
-        (async () => {
-          try {
-            await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
-              method: 'POST',
-            });
-            try {
-              chrome.runtime.sendMessage({
-                action: 'accountsUpdated',
-                providerId,
-              });
-            } catch (notifyErr) {
-              console.warn('[Background] Failed to notify popup after new-account sync:', notifyErr);
-            }
-          } catch (syncErr) {
-            console.warn('[Background] Failed to sync credits for newly selected account:', syncErr);
-          }
-        })();
+        // Notify popup to refresh accounts list (already synced above before fetching cookies)
+        try {
+          chrome.runtime.sendMessage({
+            action: 'accountsUpdated',
+            providerId,
+          });
+        } catch (notifyErr) {
+          console.warn('[Background] Failed to notify popup after login:', notifyErr);
+        }
         } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

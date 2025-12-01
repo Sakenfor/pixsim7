@@ -17,7 +17,7 @@ logger = get_logger()
 class PixverseAuthMixin:
     """Mixin for Pixverse authentication operations"""
 
-    def get_user_info(self, jwt_token: str) -> dict:
+    def get_user_info(self, jwt_token: str, cookies: dict = None) -> dict:
         """
         Get user info from Pixverse API (like pixsim6)
 
@@ -49,9 +49,12 @@ class PixverseAuthMixin:
             PixverseAPI = None  # type: ignore
 
         # Create temporary account to call getUserInfo (like pixsim6)
+        session_data = {"jwt_token": jwt_token}
+        if cookies:
+            session_data["cookies"] = cookies
         temp_account = Account(
             email="temp@pixverse.ai",  # Doesn't matter, just for API call
-            session={"jwt_token": jwt_token}
+            session=session_data
         )
 
         user_info_data = {}
@@ -71,8 +74,13 @@ class PixverseAuthMixin:
         nickname = user_info_data.get("Nickname") or username
         acc_id = user_info_data.get("AccId") or user_info_data.get("AccountId")
 
-        if not email:
-            raise Exception("Email not found in getUserInfo response (Mail field missing)")
+        # Allow username as fallback if email is missing
+        if not email and not username:
+            raise Exception("Email and Username not found in getUserInfo response")
+
+        # Use username as email if email is missing
+        if not email and username:
+            email = username
 
         return {
             'email': email,
@@ -274,8 +282,9 @@ class PixverseAuthMixin:
         try:
             # Call getUserInfo API (run in thread pool to avoid blocking async event loop)
             import asyncio
+            from functools import partial
             loop = asyncio.get_event_loop()
-            user_info = await loop.run_in_executor(None, self.get_user_info, ai_token)
+            user_info = await loop.run_in_executor(None, partial(self.get_user_info, ai_token, cookies))
             email = user_info['email']
             username = user_info.get('username')
             nickname = user_info.get('nickname')
