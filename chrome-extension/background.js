@@ -624,27 +624,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Inject cookies
         await injectCookies(cookies, target.domain);
 
+        const handleTabReady = (tab) => {
+          const resolvedTabId = tab?.id ?? tabId;
+          sendResponse({ success: true, tabId: resolvedTabId });
+
+          // Best-effort: ask the content script in this tab
+          // whether the provider session looks authenticated after
+          // cookie injection, and forward that status to the popup.
+          if (resolvedTabId && typeof resolvedTabId === 'number' && chrome.tabs?.sendMessage) {
+            chrome.tabs.sendMessage(
+              resolvedTabId,
+              { action: 'checkSessionStatus' },
+              (res) => {
+                if (chrome.runtime.lastError) {
+                  console.warn('[Background] Session status check failed:', chrome.runtime.lastError.message);
+                  return;
+                }
+                if (!res || !res.success) {
+                  console.warn('[Background] Session status check returned error:', res?.error);
+                  return;
+                }
+                try {
+                  chrome.runtime.sendMessage({
+                    action: 'sessionStatus',
+                    tabId: resolvedTabId,
+                    providerId: res.providerId || providerId,
+                    isAuthenticated: res.isAuthenticated,
+                  });
+                } catch (notifyErr) {
+                  console.warn('[Background] Failed to notify popup of session status:', notifyErr);
+                }
+              }
+            );
+          }
+
+          // Notify popup to refresh accounts list
+          try {
+            chrome.runtime.sendMessage({
+              action: 'accountsUpdated',
+              providerId,
+            });
+          } catch (notifyErr) {
+            console.warn('[Background] Failed to notify popup after login:', notifyErr);
+          }
+        };
+
         // Open or reuse tab
         if (tabId && typeof tabId === 'number') {
           // Reuse existing tab (current tab in most cases)
           chrome.tabs.update(tabId, { url: target.url }, (tab) => {
-            sendResponse({ success: true, tabId: tab?.id ?? tabId });
+            handleTabReady(tab);
           });
         } else {
           // Fallback: open a new tab
           chrome.tabs.create({ url: target.url }, (tab) => {
-            sendResponse({ success: true, tabId: tab?.id });
+            handleTabReady(tab);
           });
-        }
-
-        // Notify popup to refresh accounts list
-        try {
-          chrome.runtime.sendMessage({
-            action: 'accountsUpdated',
-            providerId,
-          });
-        } catch (notifyErr) {
-          console.warn('[Background] Failed to notify popup after login:', notifyErr);
         }
       } catch (error) {
         sendResponse({ success: false, error: error.message });

@@ -8,7 +8,7 @@
 import { init as initUrlMonitor, getCurrentProvider, forceDetection } from './url-monitor.js';
 import { authMonitor } from './auth-monitor.js';
 import { importCookies } from './cookie-import.js';
-import { injectBearerTokenCapture } from './utils.js';
+import { injectBearerTokenCapture, getAllCookiesSecure, isProviderSessionAuthenticated } from './utils.js';
 import { TIMING } from '../shared/constants.js';
 
 console.log('[PixSim7 Content] Loaded on:', window.location.href);
@@ -30,7 +30,7 @@ setTimeout(() => {
   });
 }, TIMING.INITIAL_CHECK_DELAY_MS);
 
-// Listen for manual import requests from popup
+// Listen for manual import requests and session checks from popup/background
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'manualImport') {
     (async () => {
@@ -43,6 +43,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } else {
           sendResponse({ success: false, error: 'Not logged into provider' });
         }
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // Async response
+  }
+
+  if (message.action === 'checkSessionStatus') {
+    (async () => {
+      try {
+        // Use cached provider if available; otherwise force detection
+        let provider = getCurrentProvider();
+        if (!provider) {
+          provider = await forceDetection();
+        }
+
+        if (!provider || !provider.providerId) {
+          sendResponse({ success: true, providerId: null, isAuthenticated: false });
+          return;
+        }
+
+        const cookies = await getAllCookiesSecure(provider.providerId);
+        const isAuthenticated = isProviderSessionAuthenticated(provider.providerId, cookies);
+
+        sendResponse({
+          success: true,
+          providerId: provider.providerId,
+          isAuthenticated,
+        });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

@@ -168,13 +168,23 @@ function setupEventListeners() {
 
   // Listen for updates from content/background to refresh accounts/credits
   chrome.runtime.onMessage.addListener((message) => {
-    if (message && message.action === 'accountsUpdated') {
+    if (!message || !message.action) return;
+
+    if (message.action === 'accountsUpdated') {
       if (currentUser) {
         clearAccountsCache(message.providerId || null).catch(() => {});
         loadAccounts();
         if (message.email) {
           showLastImport(`Updated ${message.email}`);
         }
+      }
+    } else if (message.action === 'sessionStatus') {
+      // Best-effort feedback after Login to indicate whether the
+      // provider tab appears authenticated from the browser's POV.
+      if (message.isAuthenticated) {
+        showToast('success', 'Browser session looks authenticated');
+      } else {
+        showToast('error', 'Browser session not authenticated yet; you may need to log in manually');
       }
     }
   });
