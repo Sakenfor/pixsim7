@@ -72,6 +72,7 @@ function toUnifiedPosition(position: WidgetPosition, order?: number): UnifiedPos
 
 /**
  * Convert VisibilityConfig to UnifiedVisibility
+ * Preserves overlay-specific triggers via advanced conditions
  */
 function toUnifiedVisibility(visibility: VisibilityConfig): UnifiedVisibility {
   const trigger = visibility.trigger;
@@ -80,6 +81,25 @@ function toUnifiedVisibility(visibility: VisibilityConfig): UnifiedVisibility {
   if (trigger === 'always' || trigger === 'hover' || trigger === 'focus') {
     return {
       simple: trigger as SimpleVisibilityTrigger,
+    };
+  }
+
+  // Overlay-specific triggers: hover-container, hover-sibling, active
+  if (trigger === 'hover-container' || trigger === 'hover-sibling' || trigger === 'active') {
+    return {
+      advanced: [
+        {
+          id: `overlay-${trigger}`,
+          type: 'overlayTrigger',
+          params: {
+            trigger,
+            delay: visibility.delay,
+            transition: visibility.transition,
+            transitionDuration: visibility.transitionDuration,
+            reduceMotion: visibility.reduceMotion,
+          },
+        },
+      ],
     };
   }
 
@@ -94,6 +114,7 @@ function toUnifiedVisibility(visibility: VisibilityConfig): UnifiedVisibility {
             delay: visibility.delay,
             transition: visibility.transition,
             transitionDuration: visibility.transitionDuration,
+            reduceMotion: visibility.reduceMotion,
           },
         },
       ],
@@ -122,24 +143,102 @@ function toUnifiedStyle(style?: WidgetStyle): UnifiedStyle | undefined {
 }
 
 /**
+ * Helper to extract DataBinding from a widget property
+ */
+function extractDataBindingFromWidget(widget: any, propName: string): any[] {
+  const bindings: any[] = [];
+  const bindingProp = `${propName}Binding`;
+
+  if (widget[bindingProp]) {
+    const binding = widget[bindingProp];
+    if (binding.kind === 'static') {
+      bindings.push({
+        kind: 'static',
+        target: propName,
+        staticValue: binding.value,
+      });
+    } else if (binding.kind === 'path') {
+      bindings.push({
+        kind: 'path',
+        target: propName,
+        path: binding.path,
+      });
+    } else if (binding.kind === 'fn') {
+      // Function bindings can't be serialized, skip them
+      console.warn(`Skipping non-serializable function binding for ${propName} on widget ${widget.id}`);
+    }
+  }
+
+  return bindings;
+}
+
+/**
  * Convert OverlayWidget to UnifiedWidgetConfig
- * Note: Drops runtime properties (render, onClick) as they're not serializable
+ * Extracts widget-specific props and bindings for supported widget types
  */
 function toUnifiedWidget(widget: OverlayWidget): UnifiedWidgetConfig {
+  const bindings: any[] = [];
+  const props: Record<string, unknown> = {
+    interactive: widget.interactive,
+    dismissible: widget.dismissible,
+    ariaLabel: widget.ariaLabel,
+    tabIndex: widget.tabIndex,
+    group: widget.group,
+  };
+
+  // Extract type-specific props and bindings
+  const widgetAny = widget as any;
+
+  switch (widget.type) {
+    case 'badge':
+      props.variant = widgetAny.variant;
+      props.icon = widgetAny.icon;
+      props.color = widgetAny.color;
+      props.shape = widgetAny.shape;
+      props.pulse = widgetAny.pulse;
+      props.tooltip = widgetAny.tooltip;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'label'));
+      break;
+
+    case 'panel':
+      props.variant = widgetAny.variant;
+      props.backdrop = widgetAny.backdrop;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'title'));
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'content'));
+      break;
+
+    case 'upload':
+      props.variant = widgetAny.variant;
+      props.size = widgetAny.size;
+      props.showProgress = widgetAny.showProgress;
+      props.successDuration = widgetAny.successDuration;
+      props.labels = widgetAny.labels;
+      props.icons = widgetAny.icons;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'state'));
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'progress'));
+      break;
+
+    case 'button':
+      props.variant = widgetAny.variant;
+      props.size = widgetAny.size;
+      props.icon = widgetAny.icon;
+      props.disabled = widgetAny.disabled;
+      props.tooltip = widgetAny.tooltip;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'label'));
+      break;
+
+    // Add more widget types as needed
+  }
+
   return {
     id: widget.id,
     type: widget.type,
-    componentType: 'overlay', // Mark as overlay widget
+    componentType: 'overlay',
     position: toUnifiedPosition(widget.position, widget.priority),
     visibility: toUnifiedVisibility(widget.visibility),
     style: toUnifiedStyle(widget.style),
-    props: {
-      interactive: widget.interactive,
-      dismissible: widget.dismissible,
-      ariaLabel: widget.ariaLabel,
-      tabIndex: widget.tabIndex,
-      group: widget.group,
-    },
+    props,
+    bindings: bindings.length > 0 ? bindings : undefined,
     version: 1,
   };
 }
@@ -199,6 +298,7 @@ function fromUnifiedPosition(position: UnifiedPosition): WidgetPosition {
 
 /**
  * Convert UnifiedVisibility to VisibilityConfig
+ * Restores overlay-specific triggers from advanced conditions
  */
 function fromUnifiedVisibility(visibility?: UnifiedVisibility): VisibilityConfig {
   if (!visibility) {
@@ -213,11 +313,26 @@ function fromUnifiedVisibility(visibility?: UnifiedVisibility): VisibilityConfig
 
   if (visibility.advanced && visibility.advanced.length > 0) {
     const first = visibility.advanced[0];
+
+    // Restore overlay-specific triggers
+    if (first.type === 'overlayTrigger' && first.params?.trigger) {
+      const trigger = first.params.trigger as string;
+      return {
+        trigger: trigger as VisibilityTrigger,
+        delay: first.params?.delay as number | undefined,
+        transition: first.params?.transition as any,
+        transitionDuration: first.params?.transitionDuration as number | undefined,
+        reduceMotion: first.params?.reduceMotion as boolean | undefined,
+      };
+    }
+
+    // Custom conditions
     return {
       trigger: { condition: first.id },
       delay: first.params?.delay as number | undefined,
       transition: first.params?.transition as any,
       transitionDuration: first.params?.transitionDuration as number | undefined,
+      reduceMotion: first.params?.reduceMotion as boolean | undefined,
     };
   }
 
@@ -281,4 +396,44 @@ export function fromUnifiedSurfaceConfig(config: UnifiedSurfaceConfig): Partial<
  */
 export function isOverlayConfig(config: UnifiedSurfaceConfig): boolean {
   return config.componentType === 'overlay';
+}
+
+// ============================================================================
+// Registry-Based Reconstruction (Task 94.1)
+// ============================================================================
+
+import { createWidget, type WidgetRuntimeOptions } from '@/lib/editing-core/registry/widgetRegistry';
+
+/**
+ * Build fully functional OverlayWidget instances from a UnifiedSurfaceConfig
+ * using the widget registry. This enables reconstruction of real widgets with
+ * render functions, bindings, and click handlers.
+ *
+ * @param surfaceConfig - The unified surface configuration
+ * @param runtimeOptions - Optional runtime options (onClick callbacks, etc.)
+ * @returns A complete OverlayConfiguration with renderable widgets
+ */
+export function buildOverlayConfigFromUnified(
+  surfaceConfig: UnifiedSurfaceConfig,
+  runtimeOptions?: Record<string, WidgetRuntimeOptions>
+): OverlayConfiguration {
+  const widgets: OverlayWidget[] = [];
+
+  for (const widgetConfig of surfaceConfig.widgets) {
+    const options = runtimeOptions?.[widgetConfig.id];
+    const widget = createWidget<OverlayWidget>(widgetConfig.type, widgetConfig, options);
+
+    if (widget) {
+      widgets.push(widget);
+    } else {
+      console.warn(`Failed to create widget: ${widgetConfig.id} (type: ${widgetConfig.type})`);
+    }
+  }
+
+  return {
+    id: surfaceConfig.id,
+    name: surfaceConfig.name,
+    description: surfaceConfig.description,
+    widgets,
+  };
 }

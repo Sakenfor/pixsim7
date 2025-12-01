@@ -10,6 +10,7 @@ import { Panel } from '@pixsim7/shared.ui';
 import { PositionControls } from './PositionControls';
 import { VisibilityControls } from './VisibilityControls';
 import { StyleControls } from './StyleControls';
+import { TypeSpecificProperties } from './TypeSpecificProperties';
 
 export interface WidgetPropertyEditorProps {
   widget: OverlayWidget;
@@ -53,6 +54,12 @@ export function WidgetPropertyEditor({ widget, onUpdate }: WidgetPropertyEditorP
           />
         </div>
       )}
+
+      {/* Type-specific properties */}
+      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3">
+        <h4 className="text-sm font-medium mb-2">Type-Specific Properties</h4>
+        <TypeSpecificProperties widget={widget} onUpdate={onUpdate} />
+      </div>
 
       {/* Additional properties */}
       <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3 space-y-2">

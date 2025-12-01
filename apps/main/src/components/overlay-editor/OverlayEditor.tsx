@@ -11,6 +11,8 @@ import { Panel, Button } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
+import { getWidget, createWidget } from '@/lib/editing-core/registry/widgetRegistry';
+import type { UnifiedWidgetConfig } from '@/lib/editing-core';
 
 export interface OverlayEditorProps {
   /** Current overlay configuration */
@@ -80,13 +82,43 @@ export function OverlayEditor({
 
   // Handle widget addition
   const handleAddWidget = (widgetType: string) => {
-    const defaultWidget: OverlayWidget = {
-      id: `widget-${Date.now()}`,
-      type: widgetType,
-      position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-      visibility: { trigger: 'always' },
-      render: () => <div>New Widget</div>,
-    };
+    // Try to get default config from widget registry
+    const widgetDef = getWidget(widgetType);
+    let defaultWidget: OverlayWidget;
+
+    if (widgetDef?.defaultConfig) {
+      // Use registry default config and create widget via factory
+      const unifiedConfig: UnifiedWidgetConfig = {
+        ...widgetDef.defaultConfig,
+        id: `widget-${Date.now()}`,
+        type: widgetType,
+        componentType: 'overlay',
+      } as UnifiedWidgetConfig;
+
+      const widget = createWidget<OverlayWidget>(widgetType, unifiedConfig);
+      if (widget) {
+        defaultWidget = widget;
+      } else {
+        // Fallback to basic widget
+        defaultWidget = {
+          id: unifiedConfig.id,
+          type: widgetType,
+          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+          visibility: { trigger: 'always' },
+          render: () => <div>New Widget</div>,
+        };
+      }
+    } else {
+      // Fallback to basic widget when no registry entry
+      defaultWidget = {
+        id: `widget-${Date.now()}`,
+        type: widgetType,
+        position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+        visibility: { trigger: 'always' },
+        style: {}, // Ensure style object exists for style controls
+        render: () => <div>New Widget</div>,
+      };
+    }
 
     onChange({
       ...configuration,

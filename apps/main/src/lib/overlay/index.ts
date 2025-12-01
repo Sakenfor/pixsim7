@@ -187,4 +187,8 @@ export {
   fromUnifiedSurfaceConfig,
   fromUnifiedWidget,
   isOverlayConfig,
+  buildOverlayConfigFromUnified,
 } from './overlayConfig';
+
+// Widget Registry (Task 94.1)
+export { registerOverlayWidgets } from './overlayWidgetRegistry';
