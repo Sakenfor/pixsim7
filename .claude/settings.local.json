@@ -34,7 +34,8 @@
       "Bash(pnpm --filter @pixsim7/scene.shapes build:*)",
       "Bash(pnpm --filter @pixsim7/scene.gizmos build:*)",
       "Bash(pnpm --filter @pixsim7/main exec vite build)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(pnpm --filter @pixsim7/main exec tsc:*)"
     ],
     "deny": [],
     "ask": []
