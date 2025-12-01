@@ -552,7 +552,38 @@
   }
 
   /**
-   * Create button group with account selector and run button
+   * Login with selected account (inject cookies and refresh page)
+   */
+  async function loginWithAccount() {
+    const account = getCurrentAccount();
+    if (!account) {
+      showToast('Select an account first', false);
+      return false;
+    }
+
+    try {
+      const res = await chrome.runtime.sendMessage({
+        action: 'loginWithAccount',
+        accountId: account.id,
+        accountEmail: account.email
+      });
+
+      if (res?.success) {
+        showToast(`Logged in as ${account.nickname || account.email}`, true);
+        // Page will reload from background script
+        return true;
+      } else {
+        showToast(res?.error || 'Login failed', false);
+        return false;
+      }
+    } catch (e) {
+      showToast(e.message || 'Login error', false);
+      return false;
+    }
+  }
+
+  /**
+   * Create button group with account selector, login, and run button
    */
   function createButtonGroup() {
     const group = document.createElement('div');
@@ -576,6 +607,24 @@
       showAccountMenu(accountBtn, (account) => {
         updateAccountButton(accountBtn);
       });
+    });
+
+    // Login button
+    const loginBtn = document.createElement('button');
+    loginBtn.className = BUTTON_CLASS;
+    loginBtn.style.cssText = 'color: #60a5fa; border-color: #60a5fa;';
+    loginBtn.innerHTML = '↪ Login';
+    loginBtn.title = 'Login with selected account';
+
+    loginBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      loginBtn.classList.add('loading');
+      loginBtn.textContent = '...';
+      await loginWithAccount();
+      loginBtn.classList.remove('loading');
+      loginBtn.innerHTML = '↪ Login';
     });
 
     // Run button
@@ -614,6 +663,7 @@
     });
 
     group.appendChild(accountBtn);
+    group.appendChild(loginBtn);
     group.appendChild(runBtn);
 
     return group;
