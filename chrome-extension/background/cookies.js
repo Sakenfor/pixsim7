@@ -1,13 +1,15 @@
 /**
  * Cookie Management
+ *
+ * Loaded via importScripts in background.js.
+ * Requires: backendRequest (from api-client.js)
+ * Exposes: injectCookies, extractCookies, extractCookiesForUrl, importCookiesToBackend
  */
-
-import { backendRequest } from './api-client.js';
 
 /**
  * Inject cookies into browser
  */
-export async function injectCookies(cookies, domain) {
+async function injectCookies(cookies, domain) {
   for (const [name, value] of Object.entries(cookies)) {
     try {
       // For Pixverse, set cookies against app.pixverse.ai so the host
@@ -37,7 +39,7 @@ export async function injectCookies(cookies, domain) {
 /**
  * Extract cookies from domain
  */
-export async function extractCookies(domain) {
+async function extractCookies(domain) {
   console.log(`[Background Cookies] Extracting cookies for ${domain}`);
 
   const cookies = await chrome.cookies.getAll({ domain });
@@ -54,7 +56,7 @@ export async function extractCookies(domain) {
 /**
  * Extract cookies for a specific URL (merges host + parent domain)
  */
-export async function extractCookiesForUrl(url) {
+async function extractCookiesForUrl(url) {
   const urlObj = new URL(url);
   const host = urlObj.hostname;
   const parts = host.split('.');
@@ -72,7 +74,7 @@ export async function extractCookiesForUrl(url) {
 /**
  * Import cookies to backend
  */
-export async function importCookiesToBackend(providerId, url, rawData) {
+async function importCookiesToBackend(providerId, url, rawData) {
   console.log(`[Background Cookies] Importing raw data for ${providerId} to backend...`);
 
   try {

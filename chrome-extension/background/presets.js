@@ -1,8 +1,11 @@
 /**
  * Quick Generate Presets
+ *
+ * Loaded via importScripts in background.js.
+ * Exposes: QUICK_GENERATE_PRESET_LIBRARY, getQuickGeneratePresets, PROVIDER_TARGETS
  */
 
-export const QUICK_GENERATE_PRESET_LIBRARY = {
+const QUICK_GENERATE_PRESET_LIBRARY = {
   __global: [
     {
       id: 'cinematic_orbit',
@@ -48,7 +51,7 @@ export const QUICK_GENERATE_PRESET_LIBRARY = {
   ]
 };
 
-export function getQuickGeneratePresets(providerId) {
+function getQuickGeneratePresets(providerId) {
   const scoped = QUICK_GENERATE_PRESET_LIBRARY[providerId] || [];
   const global = QUICK_GENERATE_PRESET_LIBRARY.__global || [];
   const combined = [...scoped, ...global];
@@ -61,7 +64,7 @@ export function getQuickGeneratePresets(providerId) {
   });
 }
 
-export const PROVIDER_TARGETS = {
+const PROVIDER_TARGETS = {
   pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' },
   runway: { domain: 'runwayml.com', url: 'https://app.runwayml.com' },
   pika: { domain: 'pika.art', url: 'https://app.pika.art' },

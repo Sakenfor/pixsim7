@@ -1,14 +1,18 @@
 /**
  * API Client - Backend communication
+ *
+ * Loaded via importScripts in background.js.
+ * Exposes: DEFAULT_BACKEND_URL, getSettings, backendRequest
  */
 
 // Default backend URL (configurable in settings)
+// Using ZeroTier IP for network access
 const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
 
 /**
  * Get settings from storage
  */
-export async function getSettings() {
+async function getSettings() {
   const result = await chrome.storage.local.get({
     backendUrl: DEFAULT_BACKEND_URL,
     pixsim7Token: null,
@@ -21,7 +25,7 @@ export async function getSettings() {
 /**
  * Make authenticated request to backend
  */
-export async function backendRequest(endpoint, options = {}) {
+async function backendRequest(endpoint, options = {}) {
   const settings = await getSettings();
   const url = `${settings.backendUrl}${endpoint}`;
 

@@ -7,125 +7,21 @@
  * - Message passing between extension components
  */
 
-// Load emoji constants (service workers use self, not window)
-importScripts('emojis.js');
-
-const QUICK_GENERATE_PRESET_LIBRARY = {
-  __global: [
-    {
-      id: 'cinematic_orbit',
-      name: 'Cinematic Orbit',
-      prompt: [
-        'Cinematic camera slowly orbits around the character maintaining the exact starting pose,',
-        'lighting staying consistent and grounded in a moody neon alley.',
-        'The subject keeps eye contact with the lens as fabrics ripple gently,',
-        'emphasizing confident body language, subtle breathing detail, and atmospheric depth of field.'
-      ].join(' ')
-    },
-    {
-      id: 'creature_maintain_pose',
-      name: 'Creature Maintains Pose',
-      prompt: [
-        'Character maintains original pose while a towering creature looms behind them,',
-        'hands hovering just above their waist without actually touching.',
-        'Camera glides in a slow 180° arc, capturing tension, shallow depth of field, and cinematic rim lighting.',
-        'Consistent wardrobe & lighting, emphasize anticipation and unstoppable chemistry.'
-      ].join(' ')
-    },
-    {
-      id: 'silk_drift',
-      name: 'Silk Drift Portrait',
-      prompt: [
-        'Soft portrait of character wrapped in translucent fabrics drifting in zero gravity,',
-        'camera locked on their face as fabrics swirl around, creating delicate trails of light.',
-        'Subject floats but maintains subtle motion in hands and eyes.',
-        'Color palette is warm gold + deep teal with volumetric lighting and bokeh.'
-      ].join(' ')
-    }
-  ],
-  pixverse: [
-    {
-      id: 'pixverse_mantle',
-      name: 'Pixverse Mantle',
-      prompt: [
-        'She holds a powerful stance at center frame, city-scale holograms pulsing behind her.',
-        'Camera performs a gentle push-in as energy ribbons orbit around, syncing with her breathing.',
-        'Maintain pose and silhouette consistency; emphasize bold contrasty lighting and reflective surfaces.'
-      ].join(' ')
-    }
-  ]
-};
-
-function getQuickGeneratePresets(providerId) {
-  const scoped = QUICK_GENERATE_PRESET_LIBRARY[providerId] || [];
-  const global = QUICK_GENERATE_PRESET_LIBRARY.__global || [];
-  const combined = [...scoped, ...global];
-  const seen = new Set();
-  return combined.filter((preset) => {
-    const key = preset.id || preset.name || preset.prompt;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-const PROVIDER_TARGETS = {
-  pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' },
-  runway: { domain: 'runwayml.com', url: 'https://app.runwayml.com' },
-  pika: { domain: 'pika.art', url: 'https://app.pika.art' },
-  sora: { domain: 'chatgpt.com', url: 'https://chatgpt.com' },
-};
+// Load emoji constants and helper modules (service workers use self, not window)
+// Note: api-client.js must be loaded before cookies.js (cookies.js uses backendRequest)
+importScripts(
+  'emojis.js',
+  'background/api-client.js',
+  'background/cookies.js',
+  'background/presets.js'
+);
 
 console.log('[PixSim7 Extension] Background service worker loaded');
 
-// Default backend URL (configurable in settings)
-// Using ZeroTier IP for network access
-const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
+// Constants for provider session tracking (used by ensureAccountSessionHealth and loginWithAccount)
 const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
 const ACCOUNT_HEALTH_CHECK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const lastAccountHealthCheck = {};
-
-/**
- * Get settings from storage
- */
-async function getSettings() {
-  const result = await chrome.storage.local.get({
-    backendUrl: DEFAULT_BACKEND_URL,
-    pixsim7Token: null,
-    autoImport: false,
-    defaultUploadProvider: 'pixverse',
-  });
-  return result;
-}
-
-/**
- * Make authenticated request to backend
- */
-async function backendRequest(endpoint, options = {}) {
-  const settings = await getSettings();
-  const url = `${settings.backendUrl}${endpoint}`;
-
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
-
-  if (settings.pixsim7Token) {
-    headers['Authorization'] = `Bearer ${settings.pixsim7Token}`;
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Backend error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
 
 /**
  * Best-effort per-account session health check.
@@ -471,16 +367,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'extractCookiesForUrl') {
     (async () => {
       try {
-        const url = new URL(message.url);
-        const host = url.hostname;
-        const parts = host.split('.')
-        const parent = parts.length >= 2 ? parts.slice(-2).join('.') : host;
-        const [hostCookies, parentCookies] = await Promise.all([
-          extractCookies(host),
-          parent !== host ? extractCookies(parent) : Promise.resolve({})
-        ]);
-        // Merge, parent first then host overrides
-        const merged = { ...(parentCookies || {}) , ...(hostCookies || {}) };
+        const merged = await extractCookiesForUrl(message.url);
         sendResponse({ success: true, cookies: merged });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
@@ -604,7 +491,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'loginWithAccount') {
     (async () => {
       try {
-        const { accountId, tabId } = message;
+        const { accountId, tabId, accountEmail } = message;
         const settings = await getSettings();
         if (!settings.pixsim7Token) throw new Error('Not logged in');
 
@@ -624,7 +511,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Inject cookies
         await injectCookies(cookies, target.domain);
 
-        const handleTabReady = (tab) => {
+        const handleTabReady = async (tab) => {
           const resolvedTabId = tab?.id ?? tabId;
           sendResponse({ success: true, tabId: resolvedTabId });
 
@@ -656,6 +543,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
               }
             );
+          }
+
+          // Persist the "current account" for this provider so that other
+          // features (e.g. pixverse-preset-buttons) can infer which Pixverse
+          // account is active when running presets from the site UI.
+          try {
+            const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
+            const sessions = stored[PROVIDER_SESSION_STORAGE_KEY] || {};
+            sessions[providerId] = {
+              providerId,
+              accountId,
+              email: accountEmail || data.email || null,
+              updatedAt: Date.now(),
+            };
+            await chrome.storage.local.set({ [PROVIDER_SESSION_STORAGE_KEY]: sessions });
+          } catch (e) {
+            console.warn('[Background] Failed to update provider session store after login:', e);
           }
 
           // Notify popup to refresh accounts list
@@ -753,79 +657,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
-
-// ===== COOKIE MANAGEMENT =====
-
-  /**
-   * Inject cookies into browser
-   */
-async function injectCookies(cookies, domain) {
-    for (const [name, value] of Object.entries(cookies)) {
-      try {
-        // For Pixverse, set cookies against app.pixverse.ai so the host
-        // matches what Pixverse itself uses. This mirrors pixsim6 behavior.
-        const urlForSet =
-          domain === 'pixverse.ai'
-            ? 'https://app.pixverse.ai'
-            : `https://${domain}`;
-
-        await chrome.cookies.set({
-          url: urlForSet,
-          name: name,
-          value: value,
-          domain: domain === 'pixverse.ai' ? '.pixverse.ai' : `.${domain}`,
-          path: '/',
-          secure: true,
-          sameSite: 'no_restriction',
-        });
-    } catch (error) {
-      console.warn(`[Background] Failed to set cookie ${name}:`, error);
-    }
-  }
-
-  console.log('[Background] Cookies injected successfully');
-}
-
-/**
- * Extract cookies from domain
- */
-async function extractCookies(domain) {
-  console.log(`[Background] Extracting cookies for ${domain}`);
-
-  const cookies = await chrome.cookies.getAll({ domain });
-  const cookieMap = {};
-
-  for (const cookie of cookies) {
-    cookieMap[cookie.name] = cookie.value;
-  }
-
-  console.log(`[Background] Extracted ${Object.keys(cookieMap).length} cookies`);
-  return cookieMap;
-}
-
-/**
- * Import cookies to backend
- */
-async function importCookiesToBackend(providerId, url, rawData) {
-  console.log(`[Background] Importing raw data for ${providerId} to backend...`);
-
-  try {
-    const data = await backendRequest('/api/v1/accounts/import-cookies', {
-      method: 'POST',
-      body: JSON.stringify({
-        provider_id: providerId,
-        url: url,
-        raw_data: rawData
-      })
-    });
-
-    console.log(`[Background] ✓ Data imported successfully:`, data);
-    return data;
-  } catch (error) {
-    console.error(`[Background] Failed to import:`, error);
-    throw error;
-  }
-}
 
 // ===== INSTALLATION =====
 

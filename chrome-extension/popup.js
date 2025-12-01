@@ -585,6 +585,7 @@ async function handleAccountLogin(account, event) {
     const res = await chrome.runtime.sendMessage({
       action: 'loginWithAccount',
       accountId: account.id,
+      accountEmail: account.email,
       tabId: useNewTab
         ? undefined
         : (activeTab && typeof activeTab.id === 'number' ? activeTab.id : undefined),
