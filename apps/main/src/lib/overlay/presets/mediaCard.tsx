@@ -39,72 +39,9 @@ export const defaultPreset: OverlayPreset = {
         priority: 10,
       }),
 
-      // Status badge - top-right
-      createBadgeWidget({
-        id: 'status-badge',
-        position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-        visibility: { trigger: 'hover-container', delay: 100 },
-        variant: 'icon',
-        icon: 'check',
-        color: 'success',
-        shape: 'circle',
-        tooltip: 'Status',
-        priority: 20,
-      }),
-
-      // Provider info panel - bottom-left
-      createPanelWidget({
-        id: 'provider-info',
-        position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-        visibility: { trigger: 'hover-container', transition: 'fade' },
-        variant: 'glass',
-        content: (data) => (
-          <>
-            <div className="text-xs opacity-80">{data.provider}</div>
-            <div className="text-xs opacity-60">{data.mediaType}</div>
-          </>
-        ),
-        priority: 5,
-      }),
-
-      // Generate button - bottom-right
-      createButtonWidget({
-        id: 'generate-button',
-        position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-        visibility: { trigger: 'hover-container', transition: 'fade', delay: 150 },
-        icon: 'zap',
-        label: 'Generate',
-        variant: 'primary',
-        size: 'sm',
-        onClick: (data) => console.log('Generate', data),
-        priority: 15,
-      }),
-
-      // Tags overlay - bottom center
-      createPanelWidget({
-        id: 'tags-overlay',
-        position: { anchor: 'bottom-center', offset: { x: 0, y: -40 } },
-        visibility: { trigger: 'hover-container', transition: 'slide' },
-        variant: 'dark',
-        content: (data) => (
-          <div className="flex flex-wrap gap-1">
-            {data.tags?.slice(0, 3).map((tag: string) => (
-              <span
-                key={tag}
-                className="px-1.5 py-0.5 bg-white/20 rounded text-[10px]"
-              >
-                {tag}
-              </span>
-            ))}
-            {data.tags?.length > 3 && (
-              <span className="px-1.5 py-0.5 text-[10px] opacity-60">
-                +{data.tags.length - 3}
-              </span>
-            )}
-          </div>
-        ),
-        priority: 8,
-      }),
+      // Note: tag display for the default preset is handled by
+      // runtime widgets (e.g., technical tags tooltip) to keep the
+      // always-visible card surface lean. No dedicated tags panel here.
     ],
   },
 };
@@ -166,18 +103,6 @@ export const compactPreset: OverlayPreset = {
         shape: 'circle',
         priority: 10,
       }),
-
-      createBadgeWidget({
-        id: 'status-badge',
-        position: { anchor: 'top-right', offset: { x: -6, y: 6 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon',
-        icon: 'check',
-        color: 'success',
-        shape: 'circle',
-        className: 'w-6 h-6',
-        priority: 10,
-      }),
     ],
   },
 };
@@ -237,18 +162,6 @@ export const detailedPreset: OverlayPreset = {
           </div>
         ),
         priority: 5,
-      }),
-
-      createButtonWidget({
-        id: 'generate-button',
-        position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-        visibility: { trigger: 'always' },
-        icon: 'zap',
-        label: 'Generate',
-        variant: 'primary',
-        size: 'md',
-        onClick: (data) => console.log('Generate', data),
-        priority: 10,
       }),
     ],
   },

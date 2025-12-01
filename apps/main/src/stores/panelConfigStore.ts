@@ -81,8 +81,8 @@ const defaultGalleryBadgeConfig = {
   showPrimaryIcon: true,
   showStatusIcon: true,
   showStatusTextOnHover: true,
-  showTagsInOverlay: true,
-  showFooterProvider: true,
+  showTagsInOverlay: false,
+  showFooterProvider: false,
   showFooterDate: true,
 };
 

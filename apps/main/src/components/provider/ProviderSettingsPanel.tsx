@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button, FormField, Input, useToast } from '@pixsim7/shared.ui';
 import { useProviderCapacity } from '@/hooks/useProviderAccounts';
 import { useProviders } from '@/hooks/useProviders';
@@ -8,6 +8,7 @@ import type { UpdateAccountRequest } from '@/lib/api/accounts';
 import { apiClient } from '@/lib/api/client';
 import { EditAccountModal } from './EditAccountModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { CompactAccountCard } from './CompactAccountCard';
 
 interface ProviderSettings {
   provider_id: string;

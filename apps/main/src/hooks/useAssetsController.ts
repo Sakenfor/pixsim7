@@ -5,7 +5,7 @@ import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useMediaGenerationActions } from './useMediaGenerationActions';
-import { deleteAsset } from '../lib/api/assets';
+import { deleteAsset, uploadAssetToProvider } from '../lib/api/assets';
 import { BACKEND_BASE } from '../lib/api/client';
 
 const SESSION_KEY = 'assets_filters';
@@ -162,6 +162,27 @@ export function useAssetsController() {
       alert(message);
     }
   }, [viewerAsset, reset]);
+
+  // Handle re-upload for local or multi-provider assets (provider chosen by caller)
+  const reuploadAsset = useCallback(
+    async (asset: AssetSummary, providerId: string) => {
+      if (!providerId) {
+        alert('No provider selected for re-upload.');
+        return;
+      }
+      try {
+        await uploadAssetToProvider(asset.id, providerId);
+        reset();
+      } catch (err) {
+        console.error('Failed to re-upload asset:', err);
+        const message =
+          (err as any)?.response?.data?.detail ||
+          (err instanceof Error ? err.message : 'Failed to re-upload asset');
+        alert(message);
+      }
+    },
+    [reset],
+  );
 
   // Viewer management
   const openInViewer = useCallback((asset: AssetSummary) => {
@@ -335,5 +356,6 @@ export function useAssetsController() {
 
     // Per-asset actions
     getAssetActions,
+    reuploadAsset,
   };
 }

@@ -7,9 +7,11 @@
 
 import { useState, useMemo } from 'react';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';
 import { mediaCardPresets } from '@/lib/overlay';
+import { deriveOverlayPresetIdFromBadgeConfig } from '@/lib/gallery/badgeConfigMerge';
 
 type ViewMode = 'grid' | 'list';
 type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
@@ -285,7 +287,11 @@ function PanelCard({
               <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Overlay Presets:</span>
               <div className="grid grid-cols-2 gap-1">
                 {mediaCardPresets.map(preset => {
-                  const isActive = (panel.settings?.overlayPresetId || 'media-card-default') === preset.id;
+                  const gallerySettings = panel.settings as GalleryPanelSettings;
+                  const derivedOverlayId =
+                    gallerySettings?.overlayPresetId ||
+                    deriveOverlayPresetIdFromBadgeConfig(gallerySettings?.badgeConfig);
+                  const isActive = (derivedOverlayId || 'media-card-default') === preset.id;
                   return (
                     <button
                       key={preset.id}

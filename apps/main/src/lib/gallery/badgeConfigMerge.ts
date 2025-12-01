@@ -48,3 +48,60 @@ export function mergeBadgeConfig(
     ...widgetConfig,
   };
 }
+
+/**
+ * Best-effort migration helper: derive an overlay preset ID
+ * from a legacy badgeConfig shape.
+ *
+ * This is used to map existing saved gallery settings (which only
+ * knew about badgeConfig) onto the new MediaCard overlay presets
+ * without losing the user's intent.
+ */
+export function deriveOverlayPresetIdFromBadgeConfig(
+  config?: Partial<MediaCardBadgeConfig>
+): string {
+  if (!config) {
+    return 'media-card-default';
+  }
+
+  const {
+    showPrimaryIcon = true,
+    showStatusIcon = true,
+    showStatusTextOnHover = true,
+    showTagsInOverlay = true,
+    showFooterProvider = true,
+    showFooterDate = true,
+  } = config;
+
+  // Legacy "Minimal" preset:
+  // - primary icon only
+  // - no status, no tags, no footer
+  if (
+    showPrimaryIcon === true &&
+    showStatusIcon === false &&
+    showStatusTextOnHover === false &&
+    showTagsInOverlay === false &&
+    showFooterProvider === false &&
+    showFooterDate === false
+  ) {
+    return 'media-card-minimal';
+  }
+
+  // Legacy "Compact" preset (approximation):
+  // - primary + status
+  // - no tags, no provider footer
+  // - keep date
+  if (
+    showPrimaryIcon === true &&
+    showStatusIcon === true &&
+    showStatusTextOnHover === false &&
+    showTagsInOverlay === false &&
+    showFooterProvider === false &&
+    showFooterDate === true
+  ) {
+    return 'media-card-compact';
+  }
+
+  // Fallback: treat everything else as the default overlay.
+  return 'media-card-default';
+}

@@ -13,11 +13,12 @@ import { usePanelConfigStore } from '../stores/panelConfigStore';
 import { GalleryToolsPanel } from '@/components/gallery/panels/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
-import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
+import { mergeBadgeConfig, deriveOverlayPresetIdFromBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { mediaCardPresets } from '@/lib/overlay';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
 import { useControlCenterStore } from '../stores/controlCenterStore';
+import type { GalleryPanelSettings } from '../stores/panelConfigStore';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -81,9 +82,16 @@ export function AssetsRoute() {
     return merged;
   }, [currentSurfaceId, panelConfig, controlCenterOpen, controlCenterOperation]);
 
-  // Get current overlay preset ID
+  // Get current overlay preset ID, with best-effort migration from legacy badgeConfig
   const currentOverlayPresetId = useMemo(() => {
-    return panelConfig?.settings?.overlayPresetId || 'media-card-default';
+    const settings = (panelConfig?.settings || {}) as GalleryPanelSettings;
+    if (settings.overlayPresetId) {
+      return settings.overlayPresetId;
+    }
+    if (settings.badgeConfig) {
+      return deriveOverlayPresetIdFromBadgeConfig(settings.badgeConfig);
+    }
+    return 'media-card-default';
   }, [panelConfig]);
 
   // Handle overlay preset change
@@ -176,7 +184,7 @@ export function AssetsRoute() {
 	      );
 	    }
 
-	    return (
+ 	    return (
       <div
         key={a.id}
         className={`relative cursor-pointer group rounded-md ${
@@ -191,28 +199,64 @@ export function AssetsRoute() {
 	          }
 	        }}
 	      >
-	        <MediaCard
-	          id={a.id}
-	          mediaType={a.media_type}
-	          providerId={a.provider_id}
-	          providerAssetId={a.provider_asset_id}
-	          thumbUrl={a.thumbnail_url}
-	          remoteUrl={a.remote_url}
-	          width={a.width}
-	          height={a.height}
-	          durationSec={a.duration_sec}
-	          tags={a.tags}
-	          description={a.description}
-	          createdAt={a.created_at}
-	          status={a.sync_status}
-	          providerStatus={a.provider_status}
-	          onOpen={() => controller.openInViewer(a)}
-          actions={controller.getAssetActions(a)}
-            badgeConfig={effectiveBadgeConfig}
-            overlayPresetId={currentOverlayPresetId}
-          />
-	      </div>
-	    );
+          {(() => {
+            const baseActions = controller.getAssetActions(a);
+            const filterProviderId = controller.filters.provider_id || undefined;
+
+            const actions = {
+              ...baseActions,
+              // Upload to provider choice:
+              // - If a provider is selected in filters, use that directly.
+              // - Otherwise, prompt user to choose a provider ID.
+              onReupload: async () => {
+                let targetProviderId = filterProviderId;
+
+                if (!targetProviderId) {
+                  if (!providers.length) {
+                    alert('No providers configured.');
+                    return;
+                  }
+                  const options = providers
+                    .map((p) => `${p.id} (${p.name})`)
+                    .join('\n');
+                  const defaultId = a.provider_id || providers[0].id;
+                  const input = window.prompt(
+                    `Upload to which provider?\n${options}`,
+                    defaultId,
+                  );
+                  if (!input) return;
+                  targetProviderId = input.trim();
+                }
+
+                await controller.reuploadAsset(a, targetProviderId);
+              },
+            };
+
+            return (
+              <MediaCard
+                id={a.id}
+                mediaType={a.media_type}
+                providerId={a.provider_id}
+                providerAssetId={a.provider_asset_id}
+                thumbUrl={a.thumbnail_url}
+                remoteUrl={a.remote_url}
+                width={a.width}
+                height={a.height}
+                durationSec={a.duration_sec}
+                tags={a.tags}
+                description={a.description}
+                createdAt={a.created_at}
+                status={a.sync_status}
+                providerStatus={a.provider_status}
+                onOpen={() => controller.openInViewer(a)}
+                actions={actions}
+                badgeConfig={effectiveBadgeConfig}
+                overlayPresetId={currentOverlayPresetId}
+              />
+            );
+          })()}
+        </div>
+      );
 	  });
 
   return (

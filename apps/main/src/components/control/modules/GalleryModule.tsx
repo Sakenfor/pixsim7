@@ -11,8 +11,10 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
+import type { GalleryPanelSettings } from '@/stores/panelConfigStore';
 import { useAssets } from '@/hooks/useAssets';
 import { mediaCardPresets } from '@/lib/overlay';
+import { deriveOverlayPresetIdFromBadgeConfig } from '@/lib/gallery/badgeConfigMerge';
 import { gallerySurfaceRegistry } from '@/lib/gallery/surfaceRegistry';
 import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
 
@@ -24,9 +26,16 @@ export function GalleryModule({ }: ControlCenterModuleProps) {
   // Get asset stats
   const { items, loading } = useAssets({ filters: {} });
 
-  // Get current overlay preset ID
+  // Get current overlay preset ID, with best-effort migration from legacy badgeConfig
   const currentOverlayPresetId = useMemo(() => {
-    return panelConfig?.settings?.overlayPresetId || 'media-card-default';
+    const settings = (panelConfig?.settings || {}) as GalleryPanelSettings;
+    if (settings.overlayPresetId) {
+      return settings.overlayPresetId;
+    }
+    if (settings.badgeConfig) {
+      return deriveOverlayPresetIdFromBadgeConfig(settings.badgeConfig);
+    }
+    return 'media-card-default';
   }, [panelConfig]);
 
   // Get all surfaces

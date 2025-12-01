@@ -25,7 +25,10 @@ import type { MediaCardProps } from './MediaCard';
 export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
   const { mediaType, providerStatus, badgeConfig } = props;
 
-  const statusMeta = providerStatus ? MEDIA_STATUS_ICON[providerStatus] : null;
+  // Map providerStatus ("ok", "local_only", etc.) to the internal
+  // MediaStatusBadge keys used by MEDIA_STATUS_ICON.
+  const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
+  const statusMeta = statusKey ? MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON] : null;
   const ringColor = statusMeta?.color === 'green' ? 'ring-green-500' :
                    statusMeta?.color === 'yellow' ? 'ring-amber-500' :
                    statusMeta?.color === 'red' ? 'ring-red-500' :
@@ -58,7 +61,9 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
     return null as any; // Will be filtered out
   }
 
-  const statusMeta = MEDIA_STATUS_ICON[providerStatus];
+  // Map external providerStatus ("ok", "local_only", etc.) to internal keys
+  const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
+  const statusMeta = MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON];
   if (!statusMeta) {
     return null as any; // Status not in mapping, skip widget
   }
@@ -68,7 +73,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
                      statusMeta.color === 'red' ? 'red' : 'gray';
 
   // If we have actions, create a menu widget
-  if (actions && (actions.onOpenDetails || actions.onShowMetadata || actions.onDelete)) {
+  if (actions && (actions.onOpenDetails || actions.onShowMetadata || actions.onDelete || actions.onReupload)) {
     const menuItems: MenuItem[] = [];
 
     if (actions.onOpenDetails) {
@@ -86,6 +91,15 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
         label: 'Show Metadata',
         icon: 'fileText',
         onClick: () => actions.onShowMetadata!(id),
+      });
+    }
+
+    if (actions.onReupload) {
+      menuItems.push({
+        id: 'reupload',
+        label: 'Upload to provider…',
+        icon: 'upload',
+        onClick: () => actions.onReupload!(id),
       });
     }
 
@@ -287,7 +301,13 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget | null {
  * Create generation actions menu widget
  */
 export function createGenerationMenu(props: MediaCardProps): OverlayWidget | null {
-  const { id, mediaType, actions, badgeConfig } = props;
+  const { id, mediaType, actions, badgeConfig, overlayPresetId } = props;
+
+  // For specialized presets that provide their own generation/review buttons,
+  // skip the generic generation menu to avoid duplicate controls.
+  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+    return null;
+  }
 
   if (!badgeConfig?.showGenerationBadge || !actions) {
     return null;

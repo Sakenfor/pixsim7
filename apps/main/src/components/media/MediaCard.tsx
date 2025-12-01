@@ -39,6 +39,7 @@ export interface MediaCardActions {
   onShowMetadata?: (id: number) => void;
   onUploadToProvider?: (id: number) => void;
   onDelete?: (id: number) => void;
+  onReupload?: (id: number) => void;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onImageToVideo?: (id: number) => void;
