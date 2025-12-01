@@ -5,13 +5,14 @@
  * Handles edge detection, auto-hide on mouse leave, and keyboard resize.
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import type { DockPosition } from '@/stores/controlCenterStore';
 import {
   REVEAL_STRIP_THRESHOLD,
   LEAVE_BUFFER_THRESHOLD,
   KEYBOARD_RESIZE_STEP,
   THROTTLE,
+  DOCK_HEIGHTS,
 } from '../constants';
 
 interface UseDockBehaviorOptions {
@@ -78,8 +79,8 @@ export function useDockBehavior({
   setHeight,
   dockRef,
 }: UseDockBehaviorOptions): UseDockBehaviorReturn {
-  // Track dragging state
-  const draggingRef = useRef(false);
+  // Track dragging state (used for visual feedback on resize handle)
+  const [dragging, setDragging] = useState(false);
 
   // Use refs to avoid re-creating event listeners on every state change
   const openRef = useRef(open);
@@ -89,6 +90,23 @@ export function useDockBehavior({
     openRef.current = open;
     heightRef.current = height;
   }, [open, height]);
+
+  // Clamp dock size to configured min/max bounds
+  const clampSize = useCallback(
+    (value: number) => {
+      if (dockPosition === 'floating') {
+        return value;
+      }
+
+      const orientation = dockPosition === 'left' || dockPosition === 'right'
+        ? 'vertical'
+        : 'horizontal';
+
+      const { min, max } = DOCK_HEIGHTS[orientation];
+      return Math.max(min, Math.min(max, value));
+    },
+    [dockPosition],
+  );
 
   // Auto-hide when mouse leaves (disabled for floating mode)
   useEffect(() => {
@@ -149,7 +167,7 @@ export function useDockBehavior({
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
         e.preventDefault();
         const delta = e.key === 'ArrowUp' ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
-        setHeight(heightRef.current + delta);
+        setHeight(clampSize(heightRef.current + delta));
       }
     }
 
@@ -161,37 +179,32 @@ export function useDockBehavior({
   const startResize = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      draggingRef.current = true;
+      setDragging(true);
 
       const startY = e.clientY;
       const startX = e.clientX;
       const startH = height;
       const pos = dockPosition;
 
-      // Force re-render to update dragging state
-      const forceUpdate = () => {
-        // Trigger a state update in parent if needed
-      };
-
       function onMove(ev: MouseEvent) {
         if (pos === 'left') {
           const dx = ev.clientX - startX;
-          setHeight(startH + dx);
+          setHeight(clampSize(startH + dx));
         } else if (pos === 'right') {
           const dx = startX - ev.clientX;
-          setHeight(startH + dx);
+          setHeight(clampSize(startH + dx));
         } else if (pos === 'top') {
           const dy = ev.clientY - startY;
-          setHeight(startH + dy);
+          setHeight(clampSize(startH + dy));
         } else {
           // bottom
           const dy = startY - ev.clientY;
-          setHeight(startH + dy);
+          setHeight(clampSize(startH + dy));
         }
       }
 
       function onUp() {
-        draggingRef.current = false;
+        setDragging(false);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
       }
@@ -199,11 +212,11 @@ export function useDockBehavior({
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [height, dockPosition, setHeight]
+    [height, dockPosition, setHeight, clampSize]
   );
 
   return {
-    dragging: draggingRef.current,
+    dragging,
     startResize,
   };
 }
