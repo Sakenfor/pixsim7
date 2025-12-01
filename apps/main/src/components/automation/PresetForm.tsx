@@ -135,11 +135,11 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         is_shared: false,
       });
 
-      toast.success(`Created preset "${created.name}" (ID: ${created.id})`);
+      let replaced = false;
 
-      // If replaceWithCall is true, replace the selected actions with a call_preset action
+      // If replaceWithCall is true, try to replace the selected actions with a call_preset action
       if (replaceWithCall && created.id) {
-        // Find indices of extracted actions in current actions array
+        // Find indices of extracted actions in current top-level actions array
         const indicesToRemove = new Set<number>();
         extractedActions.forEach((extAction) => {
           const idx = actions.findIndex(
@@ -162,7 +162,14 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
           };
           newActions.splice(insertIdx, 0, callAction);
           setActions(newActions);
+          replaced = true;
         }
+      }
+
+      if (replaced) {
+        toast.success(`Created "${created.name}" and replaced with Call Preset`);
+      } else {
+        toast.success(`Created snippet "${created.name}" (ID: ${created.id}). Add a Call Preset action to use it.`);
       }
 
       setShowCreatePresetModal(false);

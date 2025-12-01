@@ -1,4 +1,6 @@
-import { ActionType, MatchMode, VariableType, type PresetVariable } from '@/types/automation';
+import { useState, useEffect } from 'react';
+import { ActionType, MatchMode, VariableType, type PresetVariable, type AppActionPreset } from '@/types/automation';
+import { automationService } from '@/lib/automation/automationService';
 
 interface ActionParamsEditorProps {
   actionType: ActionType;
@@ -112,6 +114,86 @@ function ElementVariableSelector({
           Using <code className="font-mono">${selectedVar}</code> - manual fields below are ignored
         </div>
       )}
+    </div>
+  );
+}
+
+// Separate component for Call Preset to handle async preset loading
+function CallPresetParams({
+  params,
+  onChange,
+  inputClass,
+}: {
+  params: Record<string, any>;
+  onChange: (params: Record<string, any>) => void;
+  inputClass: string;
+}) {
+  const [presets, setPresets] = useState<AppActionPreset[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    automationService.getPresets()
+      .then(setPresets)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const updateParam = (key: string, value: any) => {
+    onChange({ ...(params || {}), [key]: value });
+  };
+
+  // Filter to show snippets first, then other presets
+  const sortedPresets = [...presets].sort((a, b) => {
+    const aSnippet = a.category?.toLowerCase() === 'snippet' ? 0 : 1;
+    const bSnippet = b.category?.toLowerCase() === 'snippet' ? 0 : 1;
+    if (aSnippet !== bSnippet) return aSnippet - bSnippet;
+    return a.name.localeCompare(b.name);
+  });
+
+  const selectedPreset = presets.find(p => p.id === params.preset_id);
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+          Preset to Call
+        </label>
+        <select
+          value={params.preset_id ?? ''}
+          onChange={(e) => updateParam('preset_id', e.target.value ? parseInt(e.target.value) : 0)}
+          className={inputClass}
+          disabled={loading}
+        >
+          <option value="">Select a preset...</option>
+          {sortedPresets.map((preset) => (
+            <option key={preset.id} value={preset.id}>
+              {preset.category?.toLowerCase() === 'snippet' ? '📦 ' : ''}
+              {preset.name} (#{preset.id})
+              {preset.category ? ` [${preset.category}]` : ''}
+            </option>
+          ))}
+        </select>
+        {selectedPreset && (
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {selectedPreset.actions.length} action(s)
+            {selectedPreset.description && ` — ${selectedPreset.description}`}
+          </p>
+        )}
+      </div>
+      <div>
+        <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <input
+            type="checkbox"
+            checked={params.inherit_variables !== false}
+            onChange={(e) => updateParam('inherit_variables', e.target.checked)}
+            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+          />
+          Inherit variables
+        </label>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
+          Pass current variables (email, password, etc.) to the called preset
+        </p>
+      </div>
     </div>
   );
 }
@@ -435,40 +517,7 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
       );
 
     case ActionType.CALL_PRESET:
-      return (
-        <div className="space-y-2">
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Preset ID
-            </label>
-            <input
-              type="number"
-              value={params.preset_id ?? 0}
-              onChange={(e) => updateParam('preset_id', parseInt(e.target.value) || 0)}
-              min="1"
-              placeholder="Enter preset ID to call"
-              className={inputClass}
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              The ID of the preset whose actions will be executed inline
-            </p>
-          </div>
-          <div>
-            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-              <input
-                type="checkbox"
-                checked={params.inherit_variables !== false}
-                onChange={(e) => updateParam('inherit_variables', e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-              />
-              Inherit variables
-            </label>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
-              Pass current variables (email, password, etc.) to the called preset
-            </p>
-          </div>
-        </div>
-      );
+      return <CallPresetParams params={params} onChange={onChange} inputClass={inputClass} />;
 
     case ActionType.PRESS_BACK:
     case ActionType.PRESS_HOME:
