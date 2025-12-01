@@ -9,20 +9,62 @@ interface PresetCardProps {
   onCopy?: (preset: AppActionPreset) => void;
 }
 
+// Get preset type info (icon, label, colors)
+function getPresetTypeInfo(preset: AppActionPreset) {
+  const isSnippet = preset.category?.toLowerCase() === 'snippet';
+
+  if (isSnippet) {
+    return {
+      icon: '📦',
+      label: 'Snippet',
+      bgColor: 'bg-green-100 dark:bg-green-900/30',
+      textColor: 'text-green-700 dark:text-green-300',
+      borderColor: 'border-green-200 dark:border-green-800',
+    };
+  }
+  if (preset.is_system) {
+    return {
+      icon: '⚙️',
+      label: 'System',
+      bgColor: 'bg-purple-100 dark:bg-purple-900/30',
+      textColor: 'text-purple-700 dark:text-purple-300',
+      borderColor: 'border-purple-200 dark:border-purple-800',
+    };
+  }
+  if (preset.is_shared) {
+    return {
+      icon: '👥',
+      label: 'Shared',
+      bgColor: 'bg-blue-100 dark:bg-blue-900/30',
+      textColor: 'text-blue-700 dark:text-blue-300',
+      borderColor: 'border-blue-200 dark:border-blue-800',
+    };
+  }
+  return {
+    icon: '👤',
+    label: 'My Preset',
+    bgColor: 'bg-gray-100 dark:bg-gray-800',
+    textColor: 'text-gray-700 dark:text-gray-300',
+    borderColor: 'border-gray-200 dark:border-gray-700',
+  };
+}
+
 export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCardProps) {
   const isSnippet = preset.category?.toLowerCase() === 'snippet';
-  const categoryColor = preset.is_system
-    ? 'purple'
-    : preset.is_shared
-    ? 'blue'
-    : isSnippet
-    ? 'green'
-    : 'gray';
+  const typeInfo = getPresetTypeInfo(preset);
 
   return (
-    <Panel className="space-y-3">
+    <Panel className="space-y-3 relative">
+      {/* Type Icon - Top Left */}
+      <div
+        className={`absolute -top-2 -left-2 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-sm border ${typeInfo.bgColor} ${typeInfo.borderColor}`}
+        title={typeInfo.label}
+      >
+        {typeInfo.icon}
+      </div>
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 pl-6">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
             {preset.name}
@@ -34,14 +76,10 @@ export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCa
           )}
         </div>
 
-        {/* Badges */}
-        <div className="flex flex-col gap-1 items-end">
-          {preset.is_system && <Badge color="purple">System</Badge>}
-          {preset.is_shared && !preset.is_system && <Badge color="blue">Shared</Badge>}
-          {preset.category && (
-            <Badge color={categoryColor}>{preset.category}</Badge>
-          )}
-        </div>
+        {/* Category Badge */}
+        {preset.category && !isSnippet && (
+          <Badge color="gray">{preset.category}</Badge>
+        )}
       </div>
 
       {/* Stats */}
@@ -77,11 +115,6 @@ export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCa
           >
             ▶️ Run
           </Button>
-        )}
-        {isSnippet && (
-          <span className="flex-1 text-xs text-gray-500 dark:text-gray-400 flex items-center">
-            📦 Snippet - use via Call Preset
-          </span>
         )}
         {onCopy && (
           <Button
