@@ -9,6 +9,8 @@ import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
+import type { DataBinding } from '@/lib/editing-core';
+import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
 
 export interface ButtonWidgetConfig {
   /** Widget ID */
@@ -23,8 +25,13 @@ export interface ButtonWidgetConfig {
   /** Icon name */
   icon?: string;
 
-  /** Button label */
-  label?: string;
+  /**
+   * Button label
+   * Preferred: Use labelBinding with DataBinding<string>
+   * Legacy: string | ((data: any) => string)
+   */
+  label?: string | ((data: any) => string);
+  labelBinding?: DataBinding<string>;
 
   /** Button variant */
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -32,8 +39,11 @@ export interface ButtonWidgetConfig {
   /** Button size */
   size?: 'sm' | 'md' | 'lg';
 
+  /** Disabled state */
+  disabled?: boolean;
+
   /** Click handler */
-  onClick: (data: any) => void;
+  onClick?: (data: any) => void;
 
   /** Tooltip */
   tooltip?: string;
@@ -64,13 +74,18 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     visibility,
     icon,
     label,
+    labelBinding,
     variant = 'primary',
     size = 'md',
+    disabled = false,
     onClick,
     tooltip,
     className = '',
     priority,
   } = config;
+
+  // Create binding (prefer new DataBinding, fall back to legacy pattern)
+  const finalLabelBinding = labelBinding || (label !== undefined ? createBindingFromValue('label', label) : undefined);
 
   return {
     id,
@@ -79,10 +94,13 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     visibility,
     priority,
     interactive: true,
-    ariaLabel: tooltip ?? label,
+    handlesOwnInteraction: true, // Button handles its own click
+    ariaLabel: tooltip,
     tabIndex: 0,
-    onClick,
     render: (data, context) => {
+      // ✨ Resolve binding using editing-core DataBinding system
+      const resolvedLabel = resolveDataBinding(finalLabelBinding, data);
+
       // Shared Button component doesn't have 'danger' variant, so we handle it with className
       const buttonVariant = variant === 'danger' ? 'primary' : variant;
       const dangerClass = variant === 'danger'
@@ -96,9 +114,11 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
           className={`${dangerClass} ${className}`.trim()}
           title={tooltip}
           type="button"
+          disabled={disabled}
+          onClick={() => onClick?.(data)}
         >
           {icon && <Icon name={icon} className={iconSizeClasses[size]} />}
-          {label && <span>{label}</span>}
+          {resolvedLabel && <span>{resolvedLabel}</span>}
         </Button>
       );
     },
