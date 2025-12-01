@@ -14,7 +14,6 @@ export const NESTED_ACTION_TYPES = [
   ActionType.IF_ELEMENT_EXISTS,
   ActionType.IF_ELEMENT_NOT_EXISTS,
   ActionType.REPEAT,
-  ActionType.CALL_PRESET,
 ] as const;
 
 /** Action category for styling purposes */

@@ -512,7 +512,7 @@ ACTION_SCHEMAS: List[ActionSchema] = [
         description="Execute another preset's actions inline. Useful for reusing common action sequences across multiple presets.",
         category="control_flow",
         icon="external-link",
-        supports_nesting=True,
+        supports_nesting=False,
         parameters=[
             ActionParameter(
                 name="preset_id",
