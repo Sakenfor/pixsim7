@@ -59,3 +59,6 @@ ruff==0.1.15  # Linting
 
 # ===== System Monitoring =====
 psutil==5.9.6  # System metrics (CPU, memory, disk)
+
+# ===== Android Automation =====
+uiautomator2==3.2.5  # UIAutomator2 for reliable Android UI automation

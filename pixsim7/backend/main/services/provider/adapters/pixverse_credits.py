@@ -4,6 +4,7 @@ Pixverse credits and ad status management
 Handles fetching credits and ad watch task status.
 """
 import asyncio
+import uuid
 from typing import Dict, Any, Optional
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import ProviderAccount

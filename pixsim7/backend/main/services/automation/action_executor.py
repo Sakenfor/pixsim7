@@ -1,5 +1,5 @@
 """
-Action executor for automation presets (ADB-based)
+Action executor for automation presets.
 
 Supports a minimal subset of actions:
 - wait
@@ -10,19 +10,24 @@ Supports a minimal subset of actions:
 - swipe
 - screenshot
 
-This can be extended to UIAutomator2 for robust UI element interactions.
+Uses UIAutomator2 for element-based interactions (more reliable than raw ADB).
+Falls back to ADB for basic commands (tap, swipe, keyevent).
 """
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 from datetime import datetime
+import logging
 
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.domain.automation import AppActionPreset
 from .adb import ADB
+from .uia2 import UIA2
 import re
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,20 +38,60 @@ class ExecutionContext:
     # Track execution progress for error reporting
     current_action_index: int = 0
     total_actions: int = 0
+    # Track nested action path for detailed error reporting (e.g., [2, 0, 1] = action 2 > nested 0 > nested 1)
+    action_path: list = None
+    # Track condition results for IF actions: {path_key: bool} e.g. {"0": true, "2.1": false}
+    condition_results: Dict[str, bool] = None
+
+    def __post_init__(self):
+        if self.action_path is None:
+            self.action_path = []
+        if self.condition_results is None:
+            self.condition_results = {}
+
+    def get_current_path_key(self, action_index: int) -> str:
+        """Get a string key for current action path, e.g. '2.0.1'"""
+        full_path = [action_index] + list(self.action_path)
+        return '.'.join(str(i) for i in full_path)
 
 
 class ExecutionError(Exception):
     """Exception with detailed context about which action failed"""
-    def __init__(self, message: str, action_index: int, action_type: str, action_params: Dict[str, Any]):
+    def __init__(self, message: str, action_index: int, action_type: str, action_params: Dict[str, Any], action_path: list = None):
         super().__init__(message)
         self.action_index = action_index
         self.action_type = action_type
         self.action_params = action_params
+        self.action_path = action_path or [action_index]  # Full path for nested actions
 
 
 class ActionExecutor:
     def __init__(self, adb: Optional[ADB] = None):
         self.adb = adb or ADB()
+        self._screen_size_cache: Dict[str, tuple[int, int]] = {}
+
+    async def _get_screen_size(self, serial: str) -> tuple[int, int]:
+        """Get cached screen size for a device."""
+        if serial not in self._screen_size_cache:
+            self._screen_size_cache[serial] = await self.adb.get_screen_size(serial)
+        return self._screen_size_cache[serial]
+
+    async def _resolve_coord(self, value: float, dimension: int) -> int:
+        """
+        Resolve coordinate value to pixels.
+        - If 0 < value <= 1: treat as percentage of dimension
+        - Otherwise: treat as absolute pixels
+        """
+        if 0 < value <= 1:
+            return int(value * dimension)
+        return int(value)
+
+    async def _resolve_coords(self, serial: str, x: float, y: float) -> tuple[int, int]:
+        """Resolve x,y coordinates (supports both percentage 0-1 and absolute pixels)."""
+        width, height = await self._get_screen_size(serial)
+        px = await self._resolve_coord(x, width)
+        py = await self._resolve_coord(y, height)
+        return px, py
 
     def _resolve_element_variable(self, params: Dict[str, Any], preset: AppActionPreset) -> Dict[str, Any]:
         """
@@ -164,18 +209,16 @@ class ActionExecutor:
         timeout: float = 10.0,
         interval: float = 0.5,
     ) -> bool:
-        import time
-        end = time.time() + timeout
-        while time.time() < end:
-            root = await self._load_ui(serial)
-            if root is not None:
-                node = self._find_element(
-                    root, resource_id, text, text_match_mode, content_desc, content_desc_match_mode
-                )
-                if node is not None:
-                    return True
-            await asyncio.sleep(interval)
-        return False
+        """Wait for element using UIAutomator2 (more reliable than ADB dump)."""
+        return await UIA2.wait_for_element(
+            serial,
+            resource_id=resource_id,
+            text=text,
+            text_match_mode=text_match_mode,
+            content_desc=content_desc,
+            content_desc_match_mode=content_desc_match_mode,
+            timeout=timeout,
+        )
 
     async def click_element(
         self,
@@ -186,22 +229,36 @@ class ActionExecutor:
         content_desc: str | None = None,
         content_desc_match_mode: str = "exact",
     ) -> bool:
-        root = await self._load_ui(serial)
-        if root is None:
-            return False
-        node = self._find_element(
-            root, resource_id, text, text_match_mode, content_desc, content_desc_match_mode
+        """Click element using UIAutomator2 (more reliable than ADB dump)."""
+        return await UIA2.click_element(
+            serial,
+            resource_id=resource_id,
+            text=text,
+            text_match_mode=text_match_mode,
+            content_desc=content_desc,
+            content_desc_match_mode=content_desc_match_mode,
         )
-        if node is None:
-            return False
-        bounds = node.attrib.get("bounds")
-        rect = self._parse_bounds(bounds) if bounds else None
-        if not rect:
-            return False
-        x1, y1, x2, y2 = rect
-        cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-        await self.adb.input_tap(serial, cx, cy)
-        return True
+
+    async def element_exists(
+        self,
+        serial: str,
+        resource_id: str | None = None,
+        text: str | None = None,
+        text_match_mode: str = "exact",
+        content_desc: str | None = None,
+        content_desc_match_mode: str = "exact",
+    ) -> bool:
+        """Check if element exists using UIAutomator2."""
+        el = await UIA2.find_element(
+            serial,
+            resource_id=resource_id,
+            text=text,
+            text_match_mode=text_match_mode,
+            content_desc=content_desc,
+            content_desc_match_mode=content_desc_match_mode,
+            timeout=0,  # No wait, just check
+        )
+        return el is not None
 
     async def execute_action(self, action: Dict[str, Any], ctx: ExecutionContext, preset: AppActionPreset, action_index: int = 0) -> None:
         """Execute a single action (supports nesting)"""
@@ -223,8 +280,16 @@ class ActionExecutor:
             elif a_type == "launch_app":
                 await self.adb.launch_app(ctx.serial, params.get("package") or preset.app_package)
 
+            elif a_type == "open_deeplink":
+                await self.adb.open_deeplink(ctx.serial, params.get("uri", ""))
+
+            elif a_type == "start_activity":
+                await self.adb.start_activity(ctx.serial, params.get("component", ""))
+
             elif a_type == "click_coords":
-                await self.adb.input_tap(ctx.serial, int(params["x"]), int(params["y"]))
+                # Support both percentage (0-1) and absolute pixel coordinates
+                x, y = await self._resolve_coords(ctx.serial, float(params["x"]), float(params["y"]))
+                await self.adb.input_tap(ctx.serial, x, y)
 
             elif a_type == "type_text":
                 await self.adb.input_text(ctx.serial, str(params.get("text", "")))
@@ -240,14 +305,10 @@ class ActionExecutor:
                 await self.adb.keyevent(ctx.serial, 3)
 
             elif a_type == "swipe":
-                await self.adb.swipe(
-                    ctx.serial,
-                    int(params.get("x1", 100)),
-                    int(params.get("y1", 100)),
-                    int(params.get("x2", 100)),
-                    int(params.get("y2", 100)),
-                    int(params.get("duration_ms", 300)),
-                )
+                # Support both percentage (0-1) and absolute pixel coordinates
+                x1, y1 = await self._resolve_coords(ctx.serial, float(params.get("x1", 0.5)), float(params.get("y1", 0.5)))
+                x2, y2 = await self._resolve_coords(ctx.serial, float(params.get("x2", 0.5)), float(params.get("y2", 0.5)))
+                await self.adb.swipe(ctx.serial, x1, y1, x2, y2, int(params.get("duration_ms", 300)))
 
             elif a_type == "screenshot":
                 ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
@@ -281,40 +342,63 @@ class ActionExecutor:
                     raise RuntimeError("click_element failed: element not found")
 
             elif a_type == "if_element_exists":
-                root = await self._load_ui(ctx.serial)
-                exists = False
-                if root is not None:
-                    exists = self._find_element(
-                        root,
+                # IF checks should NEVER fail - they're conditions, not assertions
+                # Even if element check errors out, treat it as "condition not met"
+                try:
+                    exists = await self.element_exists(
+                        ctx.serial,
                         resource_id=params.get("resource_id"),
                         text=params.get("text"),
                         text_match_mode=params.get("text_match_mode", "exact"),
                         content_desc=params.get("content_desc"),
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
-                    ) is not None
+                    )
+                except Exception as check_err:
+                    logger.warning("if_element_check_error", error=str(check_err), action_type=a_type)
+                    exists = False  # On error, treat as "not found"
+
+                # Record condition result for UI feedback
+                path_key = ctx.get_current_path_key(action_index)
+                ctx.condition_results[path_key] = exists
                 if exists:
                     # Execute nested actions recursively (fully nested support)
                     nested_actions = params.get("actions", []) or []
-                    for nested_action in nested_actions:
-                        await self.execute_action(nested_action, ctx, preset, action_index)
+                    for nested_idx, nested_action in enumerate(nested_actions):
+                        ctx.action_path.append(nested_idx)
+                        try:
+                            await self.execute_action(nested_action, ctx, preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
 
             elif a_type == "if_element_not_exists":
-                root = await self._load_ui(ctx.serial)
-                not_exists = True
-                if root is not None:
-                    not_exists = self._find_element(
-                        root,
+                # IF checks should NEVER fail - they're conditions, not assertions
+                # Even if element check errors out, treat it as "element not found" = condition met
+                try:
+                    exists = await self.element_exists(
+                        ctx.serial,
                         resource_id=params.get("resource_id"),
                         text=params.get("text"),
                         text_match_mode=params.get("text_match_mode", "exact"),
                         content_desc=params.get("content_desc"),
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
-                    ) is None
+                    )
+                except Exception as check_err:
+                    logger.warning("if_element_check_error", error=str(check_err), action_type=a_type)
+                    exists = False  # On error, treat as "not found"
+
+                not_exists = not exists
+                # Record condition result for UI feedback (true = element not found = condition met)
+                path_key = ctx.get_current_path_key(action_index)
+                ctx.condition_results[path_key] = not_exists
                 if not_exists:
                     # Execute nested actions recursively
                     nested_actions = params.get("actions", []) or []
-                    for nested_action in nested_actions:
-                        await self.execute_action(nested_action, ctx, preset, action_index)
+                    for nested_idx, nested_action in enumerate(nested_actions):
+                        ctx.action_path.append(nested_idx)
+                        try:
+                            await self.execute_action(nested_action, ctx, preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
 
             elif a_type == "repeat":
                 # Repeat nested actions N times or while condition is met
@@ -322,11 +406,13 @@ class ActionExecutor:
                 max_iterations = int(params.get("max_iterations", 100))  # Safety limit
                 nested_actions = params.get("actions", []) or []
 
-                iterations = 0
                 for i in range(min(count, max_iterations)):
-                    iterations += 1
-                    for nested_action in nested_actions:
-                        await self.execute_action(nested_action, ctx, preset, action_index)
+                    for nested_idx, nested_action in enumerate(nested_actions):
+                        ctx.action_path.append(nested_idx)
+                        try:
+                            await self.execute_action(nested_action, ctx, preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
                     # Optional: add delay between iterations
                     if "delay_between" in params:
                         await asyncio.sleep(float(params["delay_between"]))
@@ -335,13 +421,38 @@ class ActionExecutor:
                 # Unsupported action types are best-effort no-ops for now
                 pass
 
+        except ExecutionError as e:
+            # Check if we should continue on error (default is True now)
+            continue_on_error = action.get("continue_on_error", True)
+            if continue_on_error:
+                logger.warning("action_error_continuing",
+                    action_index=action_index,
+                    action_type=a_type,
+                    error=str(e),
+                    action_path=e.action_path
+                )
+                return  # Continue to next action
+            # Re-raise ExecutionError as-is
+            raise
         except Exception as e:
-            # Wrap any exception with action context
+            # Check if we should continue on error (default is True now)
+            continue_on_error = action.get("continue_on_error", True)
+            if continue_on_error:
+                logger.warning("action_error_continuing",
+                    action_index=action_index,
+                    action_type=a_type,
+                    error=str(e)
+                )
+                return  # Continue to next action
+            # Wrap exception with action context
+            # Build full path: [top_level_index, nested_idx, nested_idx, ...]
+            full_path = [action_index] + list(ctx.action_path)
             raise ExecutionError(
                 str(e),
                 action_index=action_index,
                 action_type=a_type or "unknown",
-                action_params=params
+                action_params=params,
+                action_path=full_path
             ) from e
 
     async def execute(self, preset: AppActionPreset, ctx: ExecutionContext) -> None:  # type: ignore[override]

@@ -66,6 +66,27 @@ class AutomationService {
     return response.data;
   }
 
+  async testActions(
+    accountId: number,
+    actions: any[],
+    options?: {
+      deviceId?: number;
+      variables?: any[];
+      startIndex?: number;
+      endIndex?: number;
+    }
+  ): Promise<{ status: string; execution_id: number; task_id: string; actions_count: number }> {
+    const response = await apiClient.post('/automation/test-actions', {
+      account_id: accountId,
+      device_id: options?.deviceId,
+      actions,
+      variables: options?.variables,
+      start_index: options?.startIndex ?? 0,
+      end_index: options?.endIndex,
+    });
+    return response.data;
+  }
+
   // ===== Execution Management =====
 
   async getExecutions(limit: number = 100, status?: string): Promise<AutomationExecution[]> {

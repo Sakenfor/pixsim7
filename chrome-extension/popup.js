@@ -24,6 +24,8 @@ const PIXVERSE_STATUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours (ad watch 
 const PIXVERSE_STATUS_CACHE_STORAGE_KEY = 'pixsim7PixverseStatusCache';
 const pixverseStatusCache = new Map();
 const DEVICE_SELECTION_STORAGE_KEY = 'pixsim7SelectedDeviceId';
+const PRESET_SELECTION_STORAGE_KEY = 'pixsim7SelectedPresetId';
+const LOOP_SELECTION_STORAGE_KEY = 'pixsim7SelectedLoopId';
 let accountJwtHealth = {
   missing: [],
   expired: [],
@@ -97,6 +99,32 @@ function setupEventListeners() {
         await chrome.storage.local.set({ [DEVICE_SELECTION_STORAGE_KEY]: value });
       } catch (e) {
         console.warn('[Popup] Failed to persist selected device:', e);
+      }
+    });
+  }
+
+  // Remember selected preset
+  const presetSelect = document.getElementById('presetSelect');
+  if (presetSelect) {
+    presetSelect.addEventListener('change', async () => {
+      try {
+        const value = presetSelect.value || '';
+        await chrome.storage.local.set({ [PRESET_SELECTION_STORAGE_KEY]: value });
+      } catch (e) {
+        console.warn('[Popup] Failed to persist selected preset:', e);
+      }
+    });
+  }
+
+  // Remember selected loop
+  const loopSelect = document.getElementById('loopSelect');
+  if (loopSelect) {
+    loopSelect.addEventListener('change', async () => {
+      try {
+        const value = loopSelect.value || '';
+        await chrome.storage.local.set({ [LOOP_SELECTION_STORAGE_KEY]: value });
+      } catch (e) {
+        console.warn('[Popup] Failed to persist selected loop:', e);
       }
     });
   }
@@ -870,18 +898,18 @@ async function loadAutomationOptions() {
     if (presetsRes.success) automationOptions.presets = presetsRes.data || [];
     if (loopsRes.success) automationOptions.loops = loopsRes.data || [];
 
-    populateAutomationSelects();
+    await populateAutomationSelects();
   } catch (e) {
     console.error('[Popup] Failed to load automation options', e);
   }
 }
 
-function populateAutomationSelects() {
+async function populateAutomationSelects() {
   const presetSelect = document.getElementById('presetSelect');
   const loopSelect = document.getElementById('loopSelect');
   if (!presetSelect || !loopSelect) return;
 
-  // Preserve selection
+  // Preserve current selection (for within-session changes)
   const prevPreset = presetSelect.value;
   const prevLoop = loopSelect.value;
 
@@ -902,8 +930,33 @@ function populateAutomationSelects() {
     loopSelect.appendChild(opt);
   });
 
-  if (prevPreset) presetSelect.value = prevPreset;
-  if (prevLoop) loopSelect.value = prevLoop;
+  // Try to restore from storage first, then fall back to session value
+  try {
+    const stored = await chrome.storage.local.get([PRESET_SELECTION_STORAGE_KEY, LOOP_SELECTION_STORAGE_KEY]);
+
+    // Restore preset selection
+    const savedPreset = stored[PRESET_SELECTION_STORAGE_KEY] || prevPreset;
+    if (savedPreset) {
+      const presetExists = Array.from(presetSelect.options).some(opt => opt.value === savedPreset);
+      if (presetExists) {
+        presetSelect.value = savedPreset;
+      }
+    }
+
+    // Restore loop selection
+    const savedLoop = stored[LOOP_SELECTION_STORAGE_KEY] || prevLoop;
+    if (savedLoop) {
+      const loopExists = Array.from(loopSelect.options).some(opt => opt.value === savedLoop);
+      if (loopExists) {
+        loopSelect.value = savedLoop;
+      }
+    }
+  } catch (e) {
+    console.warn('[Popup] Failed to restore automation selections:', e);
+    // Fall back to session values
+    if (prevPreset) presetSelect.value = prevPreset;
+    if (prevLoop) loopSelect.value = prevLoop;
+  }
 }
 
 async function executePresetForAccount(account) {

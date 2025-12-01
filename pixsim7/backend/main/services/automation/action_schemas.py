@@ -83,6 +83,48 @@ ACTION_SCHEMAS: List[ActionSchema] = [
     ),
 
     ActionSchema(
+        type="open_deeplink",
+        display_name="Open Deep Link",
+        description="Open a deep link URI to navigate directly to a specific screen in an app",
+        category="basic",
+        icon="link",
+        parameters=[
+            ActionParameter(
+                name="uri",
+                type="string",
+                required=True,
+                description="Deep link URI (e.g., myapp://login, https://app.com/screen)",
+                placeholder="myapp://settings/account"
+            )
+        ],
+        examples=[
+            {"type": "open_deeplink", "params": {"uri": "myapp://login"}},
+            {"type": "open_deeplink", "params": {"uri": "https://example.com/app/settings"}}
+        ]
+    ),
+
+    ActionSchema(
+        type="start_activity",
+        display_name="Start Activity",
+        description="Start a specific Android activity by component name",
+        category="basic",
+        icon="play",
+        parameters=[
+            ActionParameter(
+                name="component",
+                type="string",
+                required=True,
+                description="Component name: package/.ActivityName or package/package.ActivityName",
+                placeholder="com.example.app/.LoginActivity"
+            )
+        ],
+        examples=[
+            {"type": "start_activity", "params": {"component": "com.example.app/.LoginActivity"}},
+            {"type": "start_activity", "params": {"component": "com.example.app/com.example.app.SettingsActivity"}}
+        ]
+    ),
+
+    ActionSchema(
         type="screenshot",
         display_name="Take Screenshot",
         description="Capture a screenshot of the current screen",
@@ -98,28 +140,29 @@ ACTION_SCHEMAS: List[ActionSchema] = [
     ActionSchema(
         type="click_coords",
         display_name="Click Coordinates",
-        description="Click at specific screen coordinates",
+        description="Click at specific screen coordinates. Use decimals 0-1 for percentage (0.5 = 50% of screen), or integers for pixels.",
         category="interaction",
         icon="cursor-click",
         parameters=[
             ActionParameter(
                 name="x",
-                type="integer",
+                type="float",
                 required=True,
-                description="X coordinate (pixels from left)",
+                description="X coordinate: 0-1 for percentage, or pixels (e.g., 0.5 = center, 540 = 540px)",
                 min=0,
-                placeholder="540"
+                placeholder="0.5"
             ),
             ActionParameter(
                 name="y",
-                type="integer",
+                type="float",
                 required=True,
-                description="Y coordinate (pixels from top)",
+                description="Y coordinate: 0-1 for percentage, or pixels (e.g., 0.5 = center, 960 = 960px)",
                 min=0,
-                placeholder="960"
+                placeholder="0.5"
             )
         ],
         examples=[
+            {"type": "click_coords", "params": {"x": 0.5, "y": 0.5}},
             {"type": "click_coords", "params": {"x": 540, "y": 960}}
         ]
     ),
@@ -147,14 +190,14 @@ ACTION_SCHEMAS: List[ActionSchema] = [
     ActionSchema(
         type="swipe",
         display_name="Swipe",
-        description="Perform a swipe gesture from one point to another",
+        description="Perform a swipe gesture. Use decimals 0-1 for percentage, or integers for pixels.",
         category="interaction",
         icon="arrows-expand",
         parameters=[
-            ActionParameter(name="x1", type="integer", required=True, description="Start X coordinate", min=0),
-            ActionParameter(name="y1", type="integer", required=True, description="Start Y coordinate", min=0),
-            ActionParameter(name="x2", type="integer", required=True, description="End X coordinate", min=0),
-            ActionParameter(name="y2", type="integer", required=True, description="End Y coordinate", min=0),
+            ActionParameter(name="x1", type="float", required=True, description="Start X (0-1 for %, or pixels)", min=0, placeholder="0.5"),
+            ActionParameter(name="y1", type="float", required=True, description="Start Y (0-1 for %, or pixels)", min=0, placeholder="0.7"),
+            ActionParameter(name="x2", type="float", required=True, description="End X (0-1 for %, or pixels)", min=0, placeholder="0.5"),
+            ActionParameter(name="y2", type="float", required=True, description="End Y (0-1 for %, or pixels)", min=0, placeholder="0.3"),
             ActionParameter(
                 name="duration_ms",
                 type="integer",

@@ -1,13 +1,23 @@
-import { useState } from 'react';
-import { type AppActionPreset, type ActionDefinition, type PresetVariable } from '@/types/automation';
+import { useState, useEffect, useCallback } from 'react';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus } from '@/types/automation';
 import { Button, Panel, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
+import { getAccounts } from '@/lib/api/accounts';
+import type { ProviderAccount } from '@/hooks/useProviderAccounts';
+import { automationService } from '@/lib/automation/automationService';
+import { API_BASE_URL } from '@/lib/api/client';
 
 interface PresetFormProps {
   preset?: AppActionPreset;
   onSave: (data: Partial<AppActionPreset>) => void;
   onCancel: () => void;
+}
+
+// Format action path for display: [2, 0, 1] -> "3 > 1 > 2" (1-indexed for users)
+function formatActionPath(path?: number[]): string {
+  if (!path || path.length === 0) return '?';
+  return path.map(i => i + 1).join(' > ');
 }
 
 export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
@@ -19,6 +29,111 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [actions, setActions] = useState<ActionDefinition[]>(preset?.actions ?? []);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+
+  // Test execution state
+  const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
+  const [testAccountId, setTestAccountId] = useState<number | null>(null);
+  const [testExecution, setTestExecution] = useState<AutomationExecution | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  // UI Inspector state
+  const [uiElements, setUiElements] = useState<any[]>([]);
+  const [uiFilter, setUiFilter] = useState('');
+  const [loadingUi, setLoadingUi] = useState(false);
+  const [showUiInspector, setShowUiInspector] = useState(false);
+
+  // Load accounts for testing
+  useEffect(() => {
+    getAccounts().then(setAccounts).catch(console.error);
+  }, []);
+
+  // Poll for test execution status
+  useEffect(() => {
+    if (!testExecution || testExecution.status === AutomationStatus.COMPLETED || testExecution.status === AutomationStatus.FAILED) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await automationService.getExecution(testExecution.id);
+        setTestExecution(updated);
+        if (updated.status === AutomationStatus.COMPLETED) {
+          toast.success(`Test completed: ${updated.total_actions} actions executed`);
+          setTesting(false);
+        } else if (updated.status === AutomationStatus.FAILED) {
+          toast.error(`Test failed at action ${(updated.error_action_index ?? 0) + 1}: ${updated.error_message}`);
+          setTesting(false);
+        }
+      } catch (err) {
+        console.error('Error polling execution:', err);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [testExecution, toast]);
+
+  // Test actions handler - accepts actions array directly (for nested support)
+  const handleTestActions = useCallback(async (actionsToTest: ActionDefinition[]) => {
+    if (!testAccountId) {
+      toast.error('Please select a test account first');
+      return;
+    }
+
+    if (actionsToTest.length === 0) {
+      toast.error('No actions to test');
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const result = await automationService.testActions(testAccountId, actionsToTest, {
+        variables: variables.length > 0 ? variables : undefined,
+      });
+
+      if (result.status === 'queued') {
+        // Fetch the execution to start polling
+        const execution = await automationService.getExecution(result.execution_id);
+        setTestExecution(execution);
+        toast.info(`Testing ${result.actions_count} action(s)...`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to start test');
+      setTesting(false);
+    }
+  }, [testAccountId, variables, toast]);
+
+  // Fetch UI elements from device for debugging
+  const handleInspectUi = useCallback(async () => {
+    const account = accounts.find(a => a.id === testAccountId);
+    if (!account) {
+      toast.error('Please select a test account first');
+      return;
+    }
+
+    setLoadingUi(true);
+    try {
+      // Get first available device (or we could add device selection)
+      const devices = await automationService.getDevices();
+      const device = devices.find(d => d.status === 'online') || devices[0];
+      if (!device) {
+        toast.error('No device available');
+        return;
+      }
+
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`${API_BASE_URL}/automation/devices/${device.id}/ui-dump`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await response.json();
+      setUiElements(data.elements || []);
+      setShowUiInspector(true);
+      toast.success(`Found ${data.count} elements`);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to inspect UI');
+    } finally {
+      setLoadingUi(false);
+    }
+  }, [testAccountId, accounts, uiFilter, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +237,150 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
 
       {/* Actions */}
       <Panel>
-        <ActionBuilder actions={actions} onChange={setActions} variables={variables} />
+        {/* Test Controls */}
+        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Test:</span>
+            <select
+              value={testAccountId?.toString() ?? ''}
+              onChange={(e) => setTestAccountId(e.target.value ? Number(e.target.value) : null)}
+              className="px-2 py-1 text-sm border border-yellow-300 dark:border-yellow-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              disabled={testing}
+            >
+              <option value="">Select account...</option>
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.email} ({acc.provider_id})
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => handleTestActions(actions)}
+              disabled={!testAccountId || testing || actions.length === 0}
+              loading={testing}
+            >
+              ▶️ Run All
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={handleInspectUi}
+              disabled={loadingUi}
+              loading={loadingUi}
+              title="Inspect device UI elements"
+            >
+              🔍 UI
+            </Button>
+            {testExecution && (
+              <>
+                <span className={`text-xs px-2 py-1 rounded ${
+                  testExecution.status === AutomationStatus.RUNNING ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
+                  testExecution.status === AutomationStatus.COMPLETED ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
+                  testExecution.status === AutomationStatus.FAILED ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
+                  'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                }`}>
+                  {testExecution.status === AutomationStatus.RUNNING
+                    ? `Running: ${(testExecution.current_action_index ?? 0) + 1}/${testExecution.total_actions}`
+                    : testExecution.status === AutomationStatus.COMPLETED
+                      ? `✓ Completed (${testExecution.total_actions} actions)`
+                      : testExecution.status === AutomationStatus.FAILED
+                        ? `✕ Failed at #${(testExecution.error_action_index ?? 0) + 1}`
+                        : testExecution.status}
+                </span>
+                {(testExecution.status === AutomationStatus.COMPLETED || testExecution.status === AutomationStatus.FAILED) && (
+                  <button
+                    type="button"
+                    onClick={() => setTestExecution(null)}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    title="Clear results"
+                  >
+                    ✕ Clear
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {/* Error message display */}
+          {testExecution?.status === AutomationStatus.FAILED && testExecution.error_message && (
+            <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300">
+              <strong>Error at action {formatActionPath(testExecution.error_details?.action_path)}:</strong> {testExecution.error_message}
+            </div>
+          )}
+
+          {/* UI Inspector Panel */}
+          {showUiInspector && (
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  UI Elements ({uiElements.length})
+                </span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={uiFilter}
+                    onChange={(e) => setUiFilter(e.target.value)}
+                    placeholder="Filter..."
+                    className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 w-32"
+                  />
+                  <Button size="sm" variant="secondary" onClick={handleInspectUi} loading={loadingUi}>
+                    Refresh
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUiInspector(false)}
+                    className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-1">
+                {(() => {
+                  const filtered = uiFilter
+                    ? uiElements.filter(el => {
+                        const f = uiFilter.toLowerCase();
+                        return (el.content_desc?.toLowerCase().includes(f) ||
+                                el.text?.toLowerCase().includes(f) ||
+                                el.resource_id?.toLowerCase().includes(f));
+                      })
+                    : uiElements;
+
+                  if (filtered.length === 0) {
+                    return <div className="text-xs text-gray-500 dark:text-gray-400 py-2">No elements found</div>;
+                  }
+
+                  return filtered.map((el, i) => (
+                    <div key={i} className="text-xs p-2 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                      {el.content_desc && (
+                        <div><span className="text-purple-600 dark:text-purple-400 font-medium">desc:</span> {el.content_desc}</div>
+                      )}
+                      {el.text && (
+                        <div><span className="text-blue-600 dark:text-blue-400 font-medium">text:</span> {el.text}</div>
+                      )}
+                      {el.resource_id && (
+                        <div><span className="text-green-600 dark:text-green-400 font-medium">id:</span> {el.resource_id}</div>
+                      )}
+                      <div className="text-gray-400 text-[10px]">{el.class} {el.bounds}</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+        <ActionBuilder
+          actions={actions}
+          onChange={setActions}
+          variables={variables}
+          testAccountId={testAccountId}
+          onTestAction={handleTestActions}
+          testing={testing}
+          testExecution={testExecution}
+        />
       </Panel>
 
       {/* Form Actions */}

@@ -79,7 +79,100 @@ class ADB:
         return dest_path
 
     async def dump_ui_xml(self, serial: str) -> str:
-        # Dump the current UI hierarchy to a known path and read it
-        await self.shell(serial, "uiautomator", "dump", "--compressed", "/sdcard/uidump.xml")
+        # Dump the current UI hierarchy (no delete - just overwrite)
+        code, out, err = await self.shell(serial, "uiautomator", "dump", "/sdcard/uidump.xml")
+        # Wait for dump to complete
+        import asyncio
+        await asyncio.sleep(0.3)
         data = await self.exec_out(serial, "cat", "/sdcard/uidump.xml")
         return data.decode("utf-8", errors="ignore")
+
+    async def get_screen_size(self, serial: str) -> Tuple[int, int]:
+        """Get screen width and height in pixels."""
+        code, out, _ = await self.shell(serial, "wm", "size")
+        # Output like: "Physical size: 1080x1920"
+        import re
+        match = re.search(r"(\d+)x(\d+)", out)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return 1080, 1920  # Default fallback
+
+    async def open_deeplink(self, serial: str, uri: str) -> None:
+        """Open a deep link URI (e.g., myapp://login, https://app.com/page)."""
+        await self.shell(serial, "am", "start", "-a", "android.intent.action.VIEW", "-d", uri)
+
+    async def start_activity(self, serial: str, component: str, extras: Optional[dict] = None) -> None:
+        """
+        Start a specific activity by component name.
+
+        Args:
+            component: Full component name like "com.package/.LoginActivity"
+                       or "com.package/com.package.LoginActivity"
+            extras: Optional dict of intent extras {"key": "value"}
+        """
+        args = ["am", "start", "-n", component]
+        if extras:
+            for key, value in extras.items():
+                if isinstance(value, bool):
+                    args.extend(["--ez", key, str(value).lower()])
+                elif isinstance(value, int):
+                    args.extend(["--ei", key, str(value)])
+                else:
+                    args.extend(["--es", key, str(value)])
+        await self.shell(serial, *args)
+
+    async def broadcast(self, serial: str, action: str, extras: Optional[dict] = None) -> None:
+        """Send a broadcast intent."""
+        args = ["am", "broadcast", "-a", action]
+        if extras:
+            for key, value in extras.items():
+                if isinstance(value, bool):
+                    args.extend(["--ez", key, str(value).lower()])
+                elif isinstance(value, int):
+                    args.extend(["--ei", key, str(value)])
+                else:
+                    args.extend(["--es", key, str(value)])
+        await self.shell(serial, *args)
+
+    async def dump_ui_elements(self, serial: str, filter_text: Optional[str] = None) -> List[dict]:
+        """
+        Dump all UI elements with their attributes for debugging.
+        Optionally filter by text/description containing a string.
+        """
+        import re
+        xml_text = await self.dump_ui_xml(serial)
+        import xml.etree.ElementTree as ET
+
+        results = []
+        try:
+            root = ET.fromstring(xml_text)
+            for node in root.iter():
+                text = node.attrib.get("text", "")
+                desc = node.attrib.get("content-desc", "")
+                rid = node.attrib.get("resource-id", "")
+                bounds = node.attrib.get("bounds", "")
+                cls = node.attrib.get("class", "")
+
+                # Skip empty nodes
+                if not text and not desc and not rid:
+                    continue
+
+                # Apply filter if specified
+                if filter_text:
+                    filter_lower = filter_text.lower()
+                    if (filter_lower not in text.lower() and
+                        filter_lower not in desc.lower() and
+                        filter_lower not in rid.lower()):
+                        continue
+
+                results.append({
+                    "text": text,
+                    "content_desc": desc,
+                    "resource_id": rid,
+                    "class": cls,
+                    "bounds": bounds,
+                })
+        except Exception as e:
+            results.append({"error": str(e)})
+
+        return results

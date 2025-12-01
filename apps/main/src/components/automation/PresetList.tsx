@@ -67,11 +67,11 @@ export function PresetList() {
   const handleEdit = async (data: Partial<AppActionPreset>) => {
     if (!selectedPreset) return;
     try {
-      await automationService.updatePreset(selectedPreset.id, data);
+      const updated = await automationService.updatePreset(selectedPreset.id, data);
       await loadPresets();
-      setView('list');
-      setSelectedPreset(null);
-      toast.success('Preset updated successfully');
+      // Update selectedPreset with new data so we stay on edit view with fresh data
+      setSelectedPreset(updated);
+      toast.success('Preset saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update preset');
     }

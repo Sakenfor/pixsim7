@@ -49,8 +49,26 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             execution.started_at = datetime.utcnow()
             await db.commit()
 
-            # Fetch preset, account, and device
-            preset = await db.get(AppActionPreset, execution.preset_id)
+            # Check if this is a test execution with inline actions
+            is_test = execution.source == "test" and execution.execution_context
+            test_actions = execution.execution_context.get("test_actions") if is_test else None
+            test_variables = execution.execution_context.get("test_variables") if is_test else None
+
+            # Fetch preset (or create a mock one for tests)
+            if test_actions:
+                # Create a minimal preset-like object for test execution
+                class TestPreset:
+                    def __init__(self, actions, variables):
+                        self.actions = actions
+                        self.variables = variables
+                        self.app_package = None
+                preset = TestPreset(test_actions, test_variables)
+            elif execution.preset_id:
+                preset = await db.get(AppActionPreset, execution.preset_id)
+                if not preset:
+                    raise RuntimeError(f"Preset {execution.preset_id} not found")
+            else:
+                raise RuntimeError("No preset or test actions provided")
 
             # Fetch account for credential injection
             from pixsim7.backend.main.domain import ProviderAccount
@@ -121,6 +139,9 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 execution.completed_at = datetime.utcnow()
                 execution.current_action_index = ctx.current_action_index
                 execution.total_actions = ctx.total_actions
+                # Store condition results for IF actions
+                if ctx.condition_results:
+                    execution.error_details = {"condition_results": ctx.condition_results}
                 await db.commit()
 
                 return {"status": "completed"}
@@ -134,7 +155,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 except Exception as e:
                     logger.error("automation_restore_status_failed", error=str(e), exc_info=True)
         except ExecutionError as e:
-            logger.error("automation_action_failed", error=str(e), action_index=e.action_index, action_type=e.action_type, exc_info=True)
+            logger.error("automation_action_failed", error=str(e), action_index=e.action_index, action_type=e.action_type, action_path=e.action_path, exc_info=True)
             try:
                 execution = await db.get(AutomationExecution, execution_id)
                 if execution:
@@ -144,8 +165,10 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                     execution.error_details = {
                         "action_type": e.action_type,
                         "action_params": e.action_params,
+                        "action_path": e.action_path,  # Full path for nested actions [top, nested, nested...]
                         "error": str(e),
                         "action_index": e.action_index,
+                        "condition_results": ctx.condition_results if 'ctx' in locals() else {},
                     }
                     execution.completed_at = datetime.utcnow()
                     execution.current_action_index = e.action_index

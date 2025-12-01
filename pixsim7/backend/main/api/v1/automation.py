@@ -486,6 +486,85 @@ async def execute_preset_for_account(
     }
 
 
+class TestActionsRequest(BaseModel):
+    """Request to test actions (reuses existing execution infrastructure)"""
+    account_id: int
+    device_id: Optional[int] = None
+    actions: List[Dict[str, Any]]
+    variables: Optional[List[Dict[str, Any]]] = None
+    start_index: int = 0
+    end_index: Optional[int] = None  # None = run to end
+
+
+@router.post("/test-actions")
+async def test_actions(
+    request: TestActionsRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Test actions by creating a queued execution (reuses existing infrastructure).
+
+    Stores actions in execution_context and queues via normal worker.
+    Frontend can poll execution status for progress.
+    """
+    # Validate account
+    account = await db.get(ProviderAccount, request.account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Validate device if specified
+    if request.device_id:
+        device = await db.get(AndroidDevice, request.device_id)
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+
+    # Determine action range
+    actions = request.actions or []
+    start = max(0, request.start_index)
+    end = request.end_index if request.end_index is not None else len(actions)
+    end = min(end, len(actions))
+    actions_to_run = actions[start:end]
+
+    if not actions_to_run:
+        return {
+            "status": "skipped",
+            "message": "No actions to test"
+        }
+
+    # Create execution with test actions stored in execution_context
+    execution = AutomationExecution(
+        user_id=account.user_id,
+        preset_id=None,  # No preset - using inline actions
+        account_id=request.account_id,
+        device_id=request.device_id,
+        status=AutomationStatus.PENDING,
+        priority=10,  # High priority for tests
+        total_actions=len(actions_to_run),
+        created_at=datetime.utcnow(),
+        source="test",
+        execution_context={
+            "test_actions": actions_to_run,
+            "test_variables": request.variables,
+            "original_start_index": start,  # For error reporting
+        }
+    )
+    db.add(execution)
+    await db.commit()
+    await db.refresh(execution)
+
+    # Queue task (reuses existing worker)
+    task_id = await queue_task("process_automation", execution.id)
+    execution.task_id = task_id
+    await db.commit()
+
+    return {
+        "status": "queued",
+        "execution_id": execution.id,
+        "task_id": task_id,
+        "actions_count": len(actions_to_run)
+    }
+
+
 class ExecuteLoopForAccountRequest(BaseModel):
     """Request to execute a loop's next preset for a specific account"""
     loop_id: int
@@ -562,3 +641,80 @@ async def execute_loop_for_account(
         "preset_name": preset.name,
         "loop_mode": loop.preset_execution_mode
     }
+
+
+@router.get("/devices/{device_id}/ui-dump")
+async def dump_device_ui(
+    device_id: int,
+    filter: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Dump UI elements from a device for debugging element selectors.
+    Uses uiautomator2 for reliable UI hierarchy.
+
+    Args:
+        device_id: Device to inspect
+        filter: Optional text to filter elements (searches text, content_desc, resource_id)
+    """
+    device = await db.get(AndroidDevice, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    from pixsim7.backend.main.services.automation.uia2 import UIA2
+    import asyncio
+
+    # Get UI hierarchy via uiautomator2
+    loop = asyncio.get_event_loop()
+    elements = await loop.run_in_executor(None, _dump_ui_elements_sync, device.adb_id, filter)
+
+    return {
+        "device_id": device_id,
+        "device_name": device.name,
+        "filter": filter,
+        "count": len(elements),
+        "elements": elements
+    }
+
+
+def _dump_ui_elements_sync(serial: str, filter_text: Optional[str] = None) -> list:
+    """Sync function to dump UI elements via uiautomator2."""
+    import uiautomator2 as u2
+
+    results = []
+    try:
+        d = u2.connect(serial)
+
+        # Get all elements with any selector
+        for el in d.xpath('//*').all():
+            info = el.info
+            text = info.get('text', '') or ''
+            desc = info.get('contentDescription', '') or ''
+            rid = info.get('resourceName', '') or ''
+            cls = info.get('className', '') or ''
+            bounds = info.get('bounds', {})
+
+            # Skip empty nodes
+            if not text and not desc and not rid:
+                continue
+
+            # Apply filter if specified
+            if filter_text:
+                filter_lower = filter_text.lower()
+                if (filter_lower not in text.lower() and
+                    filter_lower not in desc.lower() and
+                    filter_lower not in rid.lower()):
+                    continue
+
+            bounds_str = f"[{bounds.get('left',0)},{bounds.get('top',0)}][{bounds.get('right',0)},{bounds.get('bottom',0)}]"
+            results.append({
+                "text": text,
+                "content_desc": desc,
+                "resource_id": rid,
+                "class": cls,
+                "bounds": bounds_str,
+            })
+    except Exception as e:
+        results.append({"error": str(e)})
+
+    return results

@@ -49,6 +49,8 @@ export enum ActionType {
   // Basic actions
   WAIT = 'wait',
   LAUNCH_APP = 'launch_app',
+  OPEN_DEEPLINK = 'open_deeplink',
+  START_ACTIVITY = 'start_activity',
   EXIT_APP = 'exit_app',
   CLICK_COORDS = 'click_coords',
   TYPE_TEXT = 'type_text',
@@ -112,6 +114,8 @@ export interface ActionDefinition {
   type: ActionType;
   params: Record<string, any>;
   enabled?: boolean; // Default true - allows temporarily disabling actions
+  continue_on_error?: boolean; // Default true - continue automation even if this action fails
+  comment?: string; // Optional comment/note to describe what this action does
 }
 
 export interface AppActionPreset {

@@ -34,6 +34,7 @@ import {
   Square,
   Shuffle,
   AlertCircle,
+  AlertTriangle,
   Info,
   CheckCircle,
   XCircle,
@@ -169,6 +170,7 @@ export const Icons = {
   success: CheckCircle,
   error: XCircle,
   warning: AlertCircle,
+  alertTriangle: AlertTriangle,
   info: Info,
 
   // Directional

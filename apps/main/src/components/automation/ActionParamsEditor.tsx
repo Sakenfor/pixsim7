@@ -176,24 +176,58 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
         </div>
       );
 
+    case ActionType.OPEN_DEEPLINK:
+      return (
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+            Deep Link URI
+          </label>
+          <input
+            type="text"
+            value={params.uri ?? ''}
+            onChange={(e) => updateParam('uri', e.target.value)}
+            placeholder="myapp://login or https://app.com/screen"
+            className={inputClass}
+          />
+        </div>
+      );
+
+    case ActionType.START_ACTIVITY:
+      return (
+        <div>
+          <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+            Activity Component
+          </label>
+          <input
+            type="text"
+            value={params.component ?? ''}
+            onChange={(e) => updateParam('component', e.target.value)}
+            placeholder="com.example.app/.LoginActivity"
+            className={inputClass}
+          />
+        </div>
+      );
+
     case ActionType.CLICK_COORDS:
       return (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X (0-1 or px)</label>
             <input
               type="number"
-              value={params.x ?? 0}
-              onChange={(e) => updateParam('x', parseInt(e.target.value))}
+              step="any"
+              value={params.x ?? 0.5}
+              onChange={(e) => updateParam('x', parseFloat(e.target.value) || 0)}
               className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y</label>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y (0-1 or px)</label>
             <input
               type="number"
-              value={params.y ?? 0}
-              onChange={(e) => updateParam('y', parseInt(e.target.value))}
+              step="any"
+              value={params.y ?? 0.5}
+              onChange={(e) => updateParam('y', parseFloat(e.target.value) || 0)}
               className={inputClass}
             />
           </div>
@@ -221,40 +255,44 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X1</label>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X1 (0-1 or px)</label>
               <input
                 type="number"
-                value={params.x1 ?? 0}
-                onChange={(e) => updateParam('x1', parseInt(e.target.value))}
+                step="any"
+                value={params.x1 ?? 0.5}
+                onChange={(e) => updateParam('x1', parseFloat(e.target.value) || 0)}
                 className={inputClass}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y1</label>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y1 (0-1 or px)</label>
               <input
                 type="number"
-                value={params.y1 ?? 0}
-                onChange={(e) => updateParam('y1', parseInt(e.target.value))}
+                step="any"
+                value={params.y1 ?? 0.7}
+                onChange={(e) => updateParam('y1', parseFloat(e.target.value) || 0)}
                 className={inputClass}
               />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X2</label>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">X2 (0-1 or px)</label>
               <input
                 type="number"
-                value={params.x2 ?? 0}
-                onChange={(e) => updateParam('x2', parseInt(e.target.value))}
+                step="any"
+                value={params.x2 ?? 0.5}
+                onChange={(e) => updateParam('x2', parseFloat(e.target.value) || 0)}
                 className={inputClass}
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y2</label>
+              <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Y2 (0-1 or px)</label>
               <input
                 type="number"
-                value={params.y2 ?? 0}
-                onChange={(e) => updateParam('y2', parseInt(e.target.value))}
+                step="any"
+                value={params.y2 ?? 0.3}
+                onChange={(e) => updateParam('y2', parseFloat(e.target.value) || 0)}
                 className={inputClass}
               />
             </div>

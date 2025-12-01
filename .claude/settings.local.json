@@ -33,7 +33,8 @@
       "Bash(pnpm --filter @pixsim7/game.components build)",
       "Bash(pnpm --filter @pixsim7/scene.shapes build:*)",
       "Bash(pnpm --filter @pixsim7/scene.gizmos build:*)",
-      "Bash(pnpm --filter @pixsim7/main exec vite build)"
+      "Bash(pnpm --filter @pixsim7/main exec vite build)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
