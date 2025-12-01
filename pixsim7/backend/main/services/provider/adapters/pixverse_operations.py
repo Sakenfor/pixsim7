@@ -1,0 +1,535 @@
+"""
+Pixverse video generation operations
+
+Handles video generation, status checking, and uploads.
+"""
+import asyncio
+import uuid
+from datetime import datetime
+from typing import Dict, Any
+from pixsim_logging import get_logger
+from pixsim7.backend.main.domain import OperationType, VideoStatus, ProviderAccount
+from pixsim7.backend.main.services.provider.base import (
+    GenerationResult,
+    VideoStatusResult,
+    ProviderError,
+    ContentFilteredError,
+    JobNotFoundError,
+)
+from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
+
+logger = get_logger()
+
+
+class PixverseOperationsMixin:
+    """Mixin for Pixverse video operations"""
+
+    async def execute(
+        self,
+        operation_type: OperationType,
+        account: ProviderAccount,
+        params: Dict[str, Any]
+    ) -> GenerationResult:
+        """
+        Execute video generation operation
+
+        Args:
+            operation_type: Operation type
+            account: Provider account
+            params: Mapped parameters (from map_parameters)
+
+        Returns:
+            GenerationResult with job ID and status
+
+        Raises:
+            ProviderError: On API errors
+        """
+        # Validate operation is supported
+        self.validate_operation(operation_type)
+
+        # Extract use_method if provided
+        use_method = params.pop("use_method", None)
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
+        client = self._create_client(account, use_method=use_method)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
+
+        try:
+            # Route to appropriate method
+            if operation_type == OperationType.TEXT_TO_VIDEO:
+                video = await self._generate_text_to_video(client, params)
+
+            elif operation_type == OperationType.IMAGE_TO_VIDEO:
+                video = await self._generate_image_to_video(client, params)
+
+            elif operation_type == OperationType.VIDEO_EXTEND:
+                video = await self._extend_video(client, params)
+
+            elif operation_type == OperationType.VIDEO_TRANSITION:
+                video = await self._generate_transition(client, params)
+
+            elif operation_type == OperationType.FUSION:
+                video = await self._generate_fusion(client, params)
+
+            else:
+                raise ProviderError(f"Operation {operation_type} not implemented")
+
+            # Map status
+            status = self._map_pixverse_status(video)
+
+            # Infer dimensions if not in response
+            width, height = None, None
+            if hasattr(video, 'width') and hasattr(video, 'height'):
+                width, height = video.width, video.height
+            else:
+                # Infer from quality and aspect_ratio
+                quality = params.get("quality", "720p")
+                aspect_ratio = params.get("aspect_ratio")
+                width, height = infer_video_dimensions(quality, aspect_ratio)
+            
+            # Use adaptive ETA from account if available
+            estimated_seconds = account.get_estimated_completion_time()
+            estimated_completion = datetime.utcnow() + timedelta(seconds=estimated_seconds)
+
+            return GenerationResult(
+                provider_job_id=video.id,
+                provider_video_id=video.id,
+                status=status,
+                video_url=getattr(video, 'url', None),
+                thumbnail_url=getattr(video, 'thumbnail_url', None),
+                estimated_completion=estimated_completion,
+                metadata={
+                    "operation_type": operation_type.value,
+                    "width": width,
+                    "height": height,
+                    "duration_sec": params.get("duration", 5),
+                }
+            )
+
+        except Exception as e:
+            if self._is_session_invalid_error(e):
+                self._evict_account_cache(account)
+            logger.error(
+                "provider:error",
+                msg="pixverse_api_error",
+                provider_id="pixverse",
+                operation_type=operation_type.value,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True
+            )
+            self._handle_error(e)
+
+
+    async def _generate_text_to_video(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate text-to-video"""
+        # Build GenerationOptions
+        gen_options = GenerationOptions(
+            model=params.get("model", "v5"),
+            quality=params.get("quality", "360p"),
+            duration=params.get("duration", 5),
+            seed=params.get("seed", 0),
+            aspect_ratio=params.get("aspect_ratio"),
+        )
+
+        # Build kwargs
+        kwargs = {k: v for k, v in gen_options.__dict__.items() if v is not None}
+
+        # Add optional parameters
+        for field in ['motion_mode', 'negative_prompt', 'style', 'template_id']:
+            if params.get(field):
+                kwargs[field] = params[field]
+
+        # Call pixverse-py (synchronous) in thread
+        video = await asyncio.to_thread(
+            client.create,
+            prompt=params.get("prompt", ""),
+            **kwargs
+        )
+
+        return video
+
+
+    async def _generate_image_to_video(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate image-to-video"""
+        # Build GenerationOptions
+        gen_options = GenerationOptions(
+            model=params.get("model", "v5"),
+            quality=params.get("quality", "360p"),
+            duration=params.get("duration", 5),
+            seed=params.get("seed", 0),
+            aspect_ratio=params.get("aspect_ratio"),
+        )
+
+        # Build kwargs
+        kwargs = {k: v for k, v in gen_options.__dict__.items() if v is not None}
+        kwargs["image_url"] = params["image_url"]  # Required
+
+        # Add optional parameters
+        for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
+            if params.get(field):
+                kwargs[field] = params[field]
+
+        # Call pixverse-py
+        video = await asyncio.to_thread(
+            client.create,
+            prompt=params.get("prompt", ""),
+            **kwargs
+        )
+
+        return video
+
+
+    async def _extend_video(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Extend video"""
+        # Call pixverse-py extend method
+        video = await asyncio.to_thread(
+            client.extend,
+            prompt=params.get("prompt", ""),
+            video_url=params.get("video_url"),
+            original_video_id=params.get("original_video_id"),
+            quality=params.get("quality", "360p"),
+            seed=params.get("seed", 0),
+        )
+
+        return video
+
+
+    async def _generate_transition(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate transition between images"""
+        # Build TransitionOptions
+        transition_options = TransitionOptions(
+            prompts=params["prompts"],  # Required
+            image_urls=params["image_urls"],  # Required
+            quality=params.get("quality", "360p"),
+            duration=params.get("duration", 5),
+        )
+
+        # Call pixverse-py
+        video = await asyncio.to_thread(
+            client.transition,
+            **transition_options.__dict__
+        )
+
+        return video
+
+
+    async def _generate_fusion(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate fusion (character consistency)"""
+        # Call pixverse-py fusion method
+        video = await asyncio.to_thread(
+            client.fusion,
+            prompt=params.get("prompt", ""),
+            fusion_assets=params["fusion_assets"],  # Required
+            quality=params.get("quality", "360p"),
+            duration=params.get("duration", 5),
+            seed=params.get("seed", 0),
+        )
+
+        return video
+
+
+    async def check_status(
+        self,
+        account: ProviderAccount,
+        provider_job_id: str
+    ) -> VideoStatusResult:
+        """
+        Check video status
+
+        Args:
+            account: Provider account
+            provider_job_id: Pixverse video ID
+
+        Returns:
+            VideoStatusResult with current status
+
+        Raises:
+            JobNotFoundError: Video not found
+        """
+        async def _operation(session: PixverseSessionData) -> VideoStatusResult:
+            client = self._create_client(account)
+            try:
+                video = await asyncio.to_thread(
+                    client.get_video,
+                    video_id=provider_job_id,
+                )
+            except Exception as exc:
+                logger.error(
+                    "provider:status",
+                    msg="status_check_failed",
+                    provider_id="pixverse",
+                    provider_job_id=provider_job_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                # Re-raise so the session manager can classify and handle reauth/retry.
+                raise
+
+            status = self._map_pixverse_status(video)
+
+            return VideoStatusResult(
+                status=status,
+                video_url=getattr(video, "url", None),
+                thumbnail_url=getattr(video, "thumbnail_url", None),
+                width=getattr(video, "width", None),
+                height=getattr(video, "height", None),
+                duration_sec=getattr(video, "duration", None),
+                provider_video_id=video.id,
+                metadata={"provider_status": getattr(video, "status", None)},
+            )
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_status",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
+
+    async def upload_asset(
+        self,
+        account: ProviderAccount,
+        file_path: str
+    ) -> str:
+        """
+        Upload asset (image/video) to Pixverse using SDK's upload_media method.
+
+        Strategy:
+        - Use pixverse-py SDK's upload_media() (available as of SDK v1.0.0+)
+        - Requires OpenAPI key (any account can get from Pixverse dashboard)
+        - Returns media ID or URL
+
+        Note: Falls back to legacy direct API call for older SDK versions.
+        """
+        # Choose 'open-api' if any OpenAPI-style key present; else default method
+        has_openapi_key = any(
+            isinstance(entry, dict)
+            and entry.get("kind") == "openapi"
+            and entry.get("value")
+            for entry in (getattr(account, "api_keys", None) or [])
+        )
+        use_method = 'open-api' if (has_openapi_key or getattr(account, 'api_key', None)) else None
+        previous_jwt = account.jwt_token
+        previous_cookies = account.cookies
+        client = self._create_client(account, use_method=use_method)
+        await self._persist_if_credentials_changed(
+            account,
+            previous_jwt=previous_jwt,
+            previous_cookies=previous_cookies,
+        )
+
+        try:
+            # Try SDK's upload_media method (available in SDK v1.0.0+)
+            response = None
+            if hasattr(client, 'upload_media'):
+                # Use official SDK method
+                response = await asyncio.to_thread(client.upload_media, file_path)
+            elif hasattr(client, 'api') and hasattr(client.api, 'upload_media'):
+                # Direct API access (alternative)
+                response = await asyncio.to_thread(client.api.upload_media, file_path, client.pool.get_next())
+            else:
+                # Legacy fallback for older SDK versions
+                if self._has_openapi_credentials(account):
+                    response = await asyncio.to_thread(
+                        self._upload_via_openapi,
+                        client,
+                        account,
+                        file_path
+                    )
+                else:
+                    raise ProviderError(
+                        "Pixverse upload requires OpenAPI key (get from dashboard). "
+                        "Ensure pixverse-py SDK v1.0.0+ is installed."
+                    )
+
+            # Normalize response to either a URL or media ID
+            if isinstance(response, dict):
+                url = response.get('url') or response.get('media_url') or response.get('download_url')
+                if url:
+                    return url
+                media_id = response.get('id') or response.get('media_id')
+                if media_id:
+                    return str(media_id)
+                # Unknown shape
+                raise ProviderError(f"Unexpected Pixverse upload response shape: {response}")
+            elif isinstance(response, str):
+                # Could be URL or ID; return as-is
+                return response
+            else:
+                raise ProviderError(f"Unexpected Pixverse upload response type: {type(response)}")
+
+        except ProviderError:
+            raise
+        except Exception as e:
+            logger.error(
+                "upload_asset_failed",
+                provider_id="pixverse",
+                file_path=file_path,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                exc_info=True
+            )
+            raise ProviderError(f"Pixverse upload failed: {e}")
+
+
+    def _upload_via_openapi(
+        self,
+        client: Any,
+        account: ProviderAccount,
+        file_path: str
+    ) -> dict[str, str]:
+        """
+        Upload an asset via the Pixverse OpenAPI image upload endpoint.
+
+        Returns:
+            Dict containing at least an "id" (img_id) and optionally a URL.
+        """
+        openapi_key = self._get_openapi_key(account)
+        if not openapi_key:
+            raise ProviderError("Pixverse OpenAPI key is missing.")
+
+        # Debug which account is used (avoid logging secrets)
+        logger.info(
+            "pixverse_openapi_upload_start",
+            account_id=account.id,
+            email=account.email,
+        )
+
+        pix_api = getattr(client, "api", None)
+        if not pix_api or not hasattr(pix_api, "session"):
+            raise ProviderError("Pixverse SDK API client missing HTTP session.")
+
+        base_url = getattr(pix_api, "base_url", "https://app-api.pixverse.ai").rstrip("/")
+        upload_url = f"{base_url}/openapi/v2/image/upload"
+        headers = {
+            "API-KEY": openapi_key,
+            "Ai-trace-id": str(uuid.uuid4()),
+        }
+
+        try:
+            with open(file_path, "rb") as file_obj:
+                resp = pix_api.session.post(
+                    upload_url,
+                    headers=headers,
+                    files={"image": file_obj},
+                    timeout=60
+                )
+        except Exception as exc:
+            raise ProviderError(f"Pixverse OpenAPI upload request failed: {exc}")
+
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise ProviderError(f"Pixverse OpenAPI upload returned invalid JSON: {exc}")
+
+        if resp.status_code != 200 or payload.get("ErrCode", 0) != 0:
+            err_msg = payload.get("ErrMsg") or resp.text
+            raise ProviderError(f"Pixverse OpenAPI upload failed: {err_msg}")
+
+        resp_data = payload.get("Resp", {})
+        media_id = resp_data.get("img_id") or resp_data.get("id")
+        if not media_id:
+            raise ProviderError(f"Pixverse OpenAPI upload missing media ID: {payload}")
+
+        result: dict[str, str] = {"id": str(media_id)}
+        # Pixverse OpenAPI currently returns `img_url`; also check generic keys for forward-compat.
+        if url := (
+            resp_data.get("img_url")
+            or resp_data.get("url")
+            or resp_data.get("media_url")
+            or resp_data.get("download_url")
+        ):
+            result["url"] = url
+
+        return result
+
+
+    async def extract_embedded_assets(self, provider_video_id: str) -> list[Dict[str, Any]]:
+        """Extract embedded/source assets for a Pixverse video.
+
+        Uses lightweight metadata normalization logic adapted from pixsim6.
+        If full video detail retrieval becomes available in pixverse-py, we
+        should call that here and feed its extra metadata through the
+        extractor. For now, we attempt a best-effort minimal fetch.
+        """
+        try:
+            # Future: use PixverseClient to fetch video details.
+            extra_metadata = None
+            from pixsim7.backend.main.services.asset.embedded_extractors.pixverse_extractor import (
+                build_embedded_from_pixverse_metadata,
+            )
+            return build_embedded_from_pixverse_metadata(provider_video_id, extra_metadata)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(
+                "extract_embedded_assets_failed",
+                provider_id="pixverse",
+                provider_video_id=provider_video_id,
+                error=str(e),
+                error_type=e.__class__.__name__
+            )
+            return []
+
+
+    def _map_pixverse_status(self, pv_video) -> VideoStatus:
+        """
+        Map Pixverse video status to universal VideoStatus
+
+        Args:
+            pv_video: Pixverse video object from pixverse-py
+
+        Returns:
+            Universal VideoStatus
+        """
+        if hasattr(pv_video, 'status'):
+            status = pv_video.status.lower()
+            if status in ['completed', 'success']:
+                return VideoStatus.COMPLETED
+            elif status in ['processing', 'pending', 'queued']:
+                return VideoStatus.PROCESSING
+            elif status == 'failed':
+                return VideoStatus.FAILED
+            elif status in ['filtered', 'rejected']:
+                return VideoStatus.FILTERED
+            elif status == 'cancelled':
+                return VideoStatus.CANCELLED
+
+        # Default to processing until terminal state
+        return VideoStatus.PROCESSING
+
+
+    def _is_session_invalid_error(self, error: Exception) -> bool:
+        """
+        Determine whether an exception represents a Pixverse session error.
+
+        This delegates to the PixverseSessionManager classification logic so that
+        generation operations treat 10003/10005-style errors consistently with
+        credits/status calls.
+        """
+        outcome = self.session_manager.classify_error(error, context="execute")
+        return outcome.is_session_error
+

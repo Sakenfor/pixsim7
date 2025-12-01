@@ -1,9 +1,65 @@
-import { ActionType } from '@/types/automation';
+import { ActionType, MatchMode } from '@/types/automation';
 
 interface ActionParamsEditorProps {
   actionType: ActionType;
   params: Record<string, any>;
   onChange: (params: Record<string, any>) => void;
+}
+
+const MATCH_MODE_OPTIONS = [
+  { value: MatchMode.EXACT, label: 'Exact match' },
+  { value: MatchMode.CONTAINS, label: 'Contains' },
+  { value: MatchMode.STARTS_WITH, label: 'Starts with' },
+  { value: MatchMode.ENDS_WITH, label: 'Ends with' },
+  { value: MatchMode.REGEX, label: 'Regex' },
+];
+
+// Reusable component for text field with match mode
+function TextMatchField({
+  label,
+  value,
+  matchMode,
+  onValueChange,
+  onMatchModeChange,
+  placeholder,
+  inputClass,
+}: {
+  label: string;
+  value: string;
+  matchMode: MatchMode;
+  onValueChange: (value: string) => void;
+  onMatchModeChange: (mode: MatchMode) => void;
+  placeholder?: string;
+  inputClass: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-xs text-gray-600 dark:text-gray-400">
+        {label}
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onValueChange(e.target.value)}
+          placeholder={placeholder}
+          className={`${inputClass} flex-1`}
+        />
+        <select
+          value={matchMode}
+          onChange={(e) => onMatchModeChange(e.target.value as MatchMode)}
+          className="px-2 py-1 text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          title="Match mode"
+        >
+          {MATCH_MODE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
 }
 
 export function ActionParamsEditor({ actionType, params, onChange }: ActionParamsEditorProps) {
@@ -159,28 +215,22 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               className={inputClass}
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Text (optional)
-            </label>
-            <input
-              type="text"
-              value={params.text ?? ''}
-              onChange={(e) => updateParam('text', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Content Description (optional)
-            </label>
-            <input
-              type="text"
-              value={params.content_desc ?? ''}
-              onChange={(e) => updateParam('content_desc', e.target.value)}
-              className={inputClass}
-            />
-          </div>
+          <TextMatchField
+            label="Text (optional)"
+            value={params.text ?? ''}
+            matchMode={params.text_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('text', v)}
+            onMatchModeChange={(m) => updateParam('text_match_mode', m)}
+            inputClass={inputClass}
+          />
+          <TextMatchField
+            label="Content Description (optional)"
+            value={params.content_desc ?? ''}
+            matchMode={params.content_desc_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('content_desc', v)}
+            onMatchModeChange={(m) => updateParam('content_desc_match_mode', m)}
+            inputClass={inputClass}
+          />
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
@@ -224,28 +274,22 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               className={inputClass}
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Text (optional)
-            </label>
-            <input
-              type="text"
-              value={params.text ?? ''}
-              onChange={(e) => updateParam('text', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Content Description (optional)
-            </label>
-            <input
-              type="text"
-              value={params.content_desc ?? ''}
-              onChange={(e) => updateParam('content_desc', e.target.value)}
-              className={inputClass}
-            />
-          </div>
+          <TextMatchField
+            label="Text (optional)"
+            value={params.text ?? ''}
+            matchMode={params.text_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('text', v)}
+            onMatchModeChange={(m) => updateParam('text_match_mode', m)}
+            inputClass={inputClass}
+          />
+          <TextMatchField
+            label="Content Description (optional)"
+            value={params.content_desc ?? ''}
+            matchMode={params.content_desc_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('content_desc', v)}
+            onMatchModeChange={(m) => updateParam('content_desc_match_mode', m)}
+            inputClass={inputClass}
+          />
         </div>
       );
 
@@ -262,9 +306,6 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
             min="1"
             className={inputClass}
           />
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Note: Nested actions not editable in this view
-          </p>
         </div>
       );
 
@@ -294,31 +335,22 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               className={inputClass}
             />
           </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Text (optional)
-            </label>
-            <input
-              type="text"
-              value={params.text ?? ''}
-              onChange={(e) => updateParam('text', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
-              Content Description (optional)
-            </label>
-            <input
-              type="text"
-              value={params.content_desc ?? ''}
-              onChange={(e) => updateParam('content_desc', e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            Note: Nested actions not editable in this view
-          </p>
+          <TextMatchField
+            label="Text (optional)"
+            value={params.text ?? ''}
+            matchMode={params.text_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('text', v)}
+            onMatchModeChange={(m) => updateParam('text_match_mode', m)}
+            inputClass={inputClass}
+          />
+          <TextMatchField
+            label="Content Description (optional)"
+            value={params.content_desc ?? ''}
+            matchMode={params.content_desc_match_mode ?? MatchMode.EXACT}
+            onValueChange={(v) => updateParam('content_desc', v)}
+            onMatchModeChange={(m) => updateParam('content_desc_match_mode', m)}
+            inputClass={inputClass}
+          />
         </div>
       );
 

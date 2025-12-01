@@ -20,7 +20,7 @@ const ACCOUNTS_CACHE_KEY = 'pixsim7AccountCache';
 const ACCOUNTS_CACHE_SCOPE_ALL = '__all__';
 const ACCOUNTS_CACHE_TTL_MS = 60 * 1000;
 let accountsRequestSeq = 0;
-const PIXVERSE_STATUS_CACHE_TTL_MS = 60 * 1000;
+const PIXVERSE_STATUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours (ad watch tasks reset daily)
 const PIXVERSE_STATUS_CACHE_STORAGE_KEY = 'pixsim7PixverseStatusCache';
 const pixverseStatusCache = new Map();
 const DEVICE_SELECTION_STORAGE_KEY = 'pixsim7SelectedDeviceId';
@@ -209,6 +209,10 @@ async function syncCreditsThrottled(reason, options = {}) {
     if (syncResult && syncResult.success) {
       console.log(`[Popup] Synced credits for ${syncResult.synced}/${syncResult.total} accounts`);
       await chrome.storage.local.set({ lastCreditSyncAt: now });
+
+      // Clear ad status cache so it gets refreshed on next view
+      pixverseStatusCache.clear();
+      persistPixverseStatusCache();
 
       // Refresh accounts to show updated credits if Accounts tab is active
       if (currentUser && document.getElementById('tab-accounts').classList.contains('active')) {

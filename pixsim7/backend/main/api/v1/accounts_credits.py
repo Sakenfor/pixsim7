@@ -93,7 +93,7 @@ async def sync_all_account_credits(
             # Fallback: extract from account data
             if not credits_data:
                 raw_data = {'cookies': account.cookies or {}}
-                extracted = await provider.extract_account_data(raw_data)
+                extracted = await provider.extract_account_data(raw_data, fallback_email=account.email)
                 credits_data = extracted.get('credits')
 
             # Update credits if available
@@ -291,7 +291,7 @@ async def sync_account_credits(
         # Fallback: extract from account data
         if not credits_data:
             raw_data = {'cookies': account.cookies or {}}
-            extracted = await provider.extract_account_data(raw_data)
+            extracted = await provider.extract_account_data(raw_data, fallback_email=account.email)
             credits_data = extracted.get('credits')
 
         # Update credits if available

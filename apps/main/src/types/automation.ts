@@ -70,9 +70,19 @@ export enum ActionType {
   REPEAT = 'repeat',
 }
 
+// Match modes for string comparison in element selectors
+export enum MatchMode {
+  EXACT = 'exact',
+  CONTAINS = 'contains',
+  STARTS_WITH = 'starts_with',
+  ENDS_WITH = 'ends_with',
+  REGEX = 'regex',
+}
+
 export interface ActionDefinition {
   type: ActionType;
   params: Record<string, any>;
+  enabled?: boolean; // Default true - allows temporarily disabling actions
 }
 
 export interface AppActionPreset {

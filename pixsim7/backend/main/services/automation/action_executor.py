@@ -72,37 +72,89 @@ class ActionExecutor:
         x1, y1, x2, y2 = map(int, m.groups())
         return x1, y1, x2, y2
 
-    def _find_element(self, root: ET.Element, resource_id: str | None = None, text: str | None = None, content_desc: str | None = None) -> ET.Element | None:
+    def _match_text(self, actual: str | None, pattern: str, mode: str = "exact") -> bool:
+        """Match text based on match mode"""
+        if actual is None:
+            return False
+        if mode == "exact":
+            return actual == pattern
+        elif mode == "contains":
+            return pattern in actual
+        elif mode == "starts_with":
+            return actual.startswith(pattern)
+        elif mode == "ends_with":
+            return actual.endswith(pattern)
+        elif mode == "regex":
+            try:
+                return re.search(pattern, actual) is not None
+            except re.error:
+                return False
+        return actual == pattern  # Default to exact
+
+    def _find_element(
+        self,
+        root: ET.Element,
+        resource_id: str | None = None,
+        text: str | None = None,
+        text_match_mode: str = "exact",
+        content_desc: str | None = None,
+        content_desc_match_mode: str = "exact",
+    ) -> ET.Element | None:
         # Iterate nodes; UI dump uses nodes named 'node' with attributes: resource-id, text, content-desc, bounds
         for node in root.iter():
             rid = node.attrib.get("resource-id")
             txt = node.attrib.get("text")
             desc = node.attrib.get("content-desc")
+            # Resource ID is always exact match
             if resource_id and rid == resource_id:
                 return node
-            if text and txt == text:
+            # Text with match mode
+            if text and self._match_text(txt, text, text_match_mode):
                 return node
-            if content_desc and desc == content_desc:
+            # Content desc with match mode
+            if content_desc and self._match_text(desc, content_desc, content_desc_match_mode):
                 return node
         return None
 
-    async def wait_for_element(self, serial: str, resource_id: str | None = None, text: str | None = None, content_desc: str | None = None, timeout: float = 10.0, interval: float = 0.5) -> bool:
+    async def wait_for_element(
+        self,
+        serial: str,
+        resource_id: str | None = None,
+        text: str | None = None,
+        text_match_mode: str = "exact",
+        content_desc: str | None = None,
+        content_desc_match_mode: str = "exact",
+        timeout: float = 10.0,
+        interval: float = 0.5,
+    ) -> bool:
         import time
         end = time.time() + timeout
         while time.time() < end:
             root = await self._load_ui(serial)
             if root is not None:
-                node = self._find_element(root, resource_id, text, content_desc)
+                node = self._find_element(
+                    root, resource_id, text, text_match_mode, content_desc, content_desc_match_mode
+                )
                 if node is not None:
                     return True
             await asyncio.sleep(interval)
         return False
 
-    async def click_element(self, serial: str, resource_id: str | None = None, text: str | None = None, content_desc: str | None = None) -> bool:
+    async def click_element(
+        self,
+        serial: str,
+        resource_id: str | None = None,
+        text: str | None = None,
+        text_match_mode: str = "exact",
+        content_desc: str | None = None,
+        content_desc_match_mode: str = "exact",
+    ) -> bool:
         root = await self._load_ui(serial)
         if root is None:
             return False
-        node = self._find_element(root, resource_id, text, content_desc)
+        node = self._find_element(
+            root, resource_id, text, text_match_mode, content_desc, content_desc_match_mode
+        )
         if node is None:
             return False
         bounds = node.attrib.get("bounds")
@@ -116,6 +168,10 @@ class ActionExecutor:
 
     async def execute_action(self, action: Dict[str, Any], ctx: ExecutionContext, preset: AppActionPreset, action_index: int = 0) -> None:
         """Execute a single action (supports nesting)"""
+        # Skip disabled actions
+        if action.get("enabled") is False:
+            return
+
         a_type = action.get("type") or action.get("action")
         params = {k: self._subst(v, ctx) for k, v in (action.get("params", {}) or {}).items()}
 
@@ -162,7 +218,9 @@ class ActionExecutor:
                     ctx.serial,
                     resource_id=params.get("resource_id"),
                     text=params.get("text"),
+                    text_match_mode=params.get("text_match_mode", "exact"),
                     content_desc=params.get("content_desc"),
+                    content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     timeout=float(params.get("timeout", 10.0)),
                     interval=float(params.get("interval", 0.5)),
                 )
@@ -174,7 +232,9 @@ class ActionExecutor:
                     ctx.serial,
                     resource_id=params.get("resource_id"),
                     text=params.get("text"),
+                    text_match_mode=params.get("text_match_mode", "exact"),
                     content_desc=params.get("content_desc"),
+                    content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                 )
                 if not ok and not params.get("continue_on_error", False):
                     raise RuntimeError("click_element failed: element not found")
@@ -187,7 +247,9 @@ class ActionExecutor:
                         root,
                         resource_id=params.get("resource_id"),
                         text=params.get("text"),
+                        text_match_mode=params.get("text_match_mode", "exact"),
                         content_desc=params.get("content_desc"),
+                        content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     ) is not None
                 if exists:
                     # Execute nested actions recursively (fully nested support)
@@ -203,7 +265,9 @@ class ActionExecutor:
                         root,
                         resource_id=params.get("resource_id"),
                         text=params.get("text"),
+                        text_match_mode=params.get("text_match_mode", "exact"),
                         content_desc=params.get("content_desc"),
+                        content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     ) is None
                 if not_exists:
                     # Execute nested actions recursively

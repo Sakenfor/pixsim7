@@ -3,7 +3,7 @@ import clsx from 'clsx'
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: 'primary' | 'secondary' | 'ghost'
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'xs' | 'sm' | 'md' | 'lg'
   loading?: boolean
 }
 
@@ -14,6 +14,7 @@ const variants: Record<NonNullable<ButtonProps['variant']>, string> = {
   ghost: 'bg-transparent hover:bg-neutral-100 dark:hover:bg-neutral-800',
 }
 const sizes: Record<NonNullable<ButtonProps['size']>, string> = {
+  xs: 'h-6 px-2 text-xs',
   sm: 'h-8 px-3 text-sm',
   md: 'h-10 px-4 text-sm',
   lg: 'h-12 px-6 text-base',

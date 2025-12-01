@@ -305,18 +305,19 @@ class Provider(ABC):
                 f"Supported: {[op.value for op in self.supported_operations]}"
             )
 
-    async def extract_account_data(self, raw_data: dict) -> dict:
+    async def extract_account_data(self, raw_data: dict, *, fallback_email: str = None) -> dict:
         """
         Extract account data from raw cookies/localStorage (provider-specific)
 
         This method parses provider-specific formats to extract:
-        - email: User email (required)
+        - email: User email (required, unless fallback_email provided)
         - jwt_token: JWT authentication token (optional)
         - cookies: Cleaned cookies dict (optional)
         - credits: Credits info {credit_type: amount} (optional)
 
         Args:
             raw_data: Dict with 'cookies' and 'localStorage' from content script
+            fallback_email: Optional email to use if extraction fails (e.g., during auto re-auth)
                      Example: {
                          'cookies': {'_ai_token': 'eyJ...', 'session': '...'},
                          'localStorage': {'user': '{"email": "..."}', 'credits': '100'}
