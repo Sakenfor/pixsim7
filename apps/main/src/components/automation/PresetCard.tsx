@@ -10,10 +10,13 @@ interface PresetCardProps {
 }
 
 export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCardProps) {
+  const isSnippet = preset.category?.toLowerCase() === 'snippet';
   const categoryColor = preset.is_system
     ? 'purple'
     : preset.is_shared
     ? 'blue'
+    : isSnippet
+    ? 'green'
     : 'gray';
 
   return (
@@ -65,7 +68,7 @@ export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCa
 
       {/* Actions */}
       <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-        {onRun && (
+        {onRun && !isSnippet && (
           <Button
             size="sm"
             variant="primary"
@@ -74,6 +77,11 @@ export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCa
           >
             ▶️ Run
           </Button>
+        )}
+        {isSnippet && (
+          <span className="flex-1 text-xs text-gray-500 dark:text-gray-400 flex items-center">
+            📦 Snippet - use via Call Preset
+          </span>
         )}
         {onCopy && (
           <Button

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus } from '@/types/automation';
-import { Button, Panel, useToast } from '@pixsim7/shared.ui';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable, type AutomationExecution, AutomationStatus, ActionType } from '@/types/automation';
+import { Button, Panel, Modal, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
 import { VariablesEditor } from './VariablesEditor';
 import { getAccounts } from '@/lib/api/accounts';
@@ -41,6 +41,14 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [uiFilter, setUiFilter] = useState('');
   const [loadingUi, setLoadingUi] = useState(false);
   const [showUiInspector, setShowUiInspector] = useState(false);
+
+  // Create Preset from Selection state
+  const [showCreatePresetModal, setShowCreatePresetModal] = useState(false);
+  const [extractedActions, setExtractedActions] = useState<ActionDefinition[]>([]);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetCategory, setNewPresetCategory] = useState('Snippet');
+  const [replaceWithCall, setReplaceWithCall] = useState(true);
+  const [creatingPreset, setCreatingPreset] = useState(false);
 
   // Load accounts for testing
   useEffect(() => {
@@ -101,6 +109,69 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
       setTesting(false);
     }
   }, [testAccountId, variables, toast]);
+
+  // Handle creating a new preset from selected actions
+  const handleCreatePresetFromSelection = useCallback((selectedActions: ActionDefinition[]) => {
+    setExtractedActions(selectedActions);
+    setNewPresetName('');
+    setNewPresetCategory('Snippet');
+    setReplaceWithCall(true);
+    setShowCreatePresetModal(true);
+  }, []);
+
+  const handleConfirmCreatePreset = useCallback(async () => {
+    if (!newPresetName.trim()) {
+      toast.error('Please enter a preset name');
+      return;
+    }
+
+    setCreatingPreset(true);
+    try {
+      // Create the new preset with extracted actions
+      const created = await automationService.createPreset({
+        name: newPresetName.trim(),
+        category: newPresetCategory.trim() || 'Snippet',
+        actions: extractedActions,
+        is_shared: false,
+      });
+
+      toast.success(`Created preset "${created.name}" (ID: ${created.id})`);
+
+      // If replaceWithCall is true, replace the selected actions with a call_preset action
+      if (replaceWithCall && created.id) {
+        // Find indices of extracted actions in current actions array
+        const indicesToRemove = new Set<number>();
+        extractedActions.forEach((extAction) => {
+          const idx = actions.findIndex(
+            (a) => a.type === extAction.type && JSON.stringify(a.params) === JSON.stringify(extAction.params)
+          );
+          if (idx !== -1 && !indicesToRemove.has(idx)) {
+            indicesToRemove.add(idx);
+          }
+        });
+
+        // Remove the actions and insert call_preset at the first removed index
+        const sortedIndices = Array.from(indicesToRemove).sort((a, b) => a - b);
+        if (sortedIndices.length > 0) {
+          const insertIdx = sortedIndices[0];
+          const newActions = actions.filter((_, i) => !indicesToRemove.has(i));
+          const callAction: ActionDefinition = {
+            type: ActionType.CALL_PRESET,
+            params: { preset_id: created.id, inherit_variables: true },
+            comment: `Calls: ${created.name}`,
+          };
+          newActions.splice(insertIdx, 0, callAction);
+          setActions(newActions);
+        }
+      }
+
+      setShowCreatePresetModal(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create preset');
+    } finally {
+      setCreatingPreset(false);
+    }
+  }, [newPresetName, newPresetCategory, extractedActions, replaceWithCall, actions, toast]);
 
   // Fetch UI elements from device for debugging
   const handleInspectUi = useCallback(async () => {
@@ -380,6 +451,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
           onTestAction={handleTestActions}
           testing={testing}
           testExecution={testExecution}
+          onCreatePresetFromSelection={handleCreatePresetFromSelection}
         />
       </Panel>
 
@@ -402,6 +474,84 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
           {preset ? 'Save Changes' : 'Create Preset'}
         </Button>
       </div>
+
+      {/* Create Preset from Selection Modal */}
+      <Modal
+        isOpen={showCreatePresetModal}
+        onClose={() => setShowCreatePresetModal(false)}
+        title="Create Preset from Selection"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Create a new reusable preset from {extractedActions.length} selected action(s).
+          </p>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Preset Name *
+            </label>
+            <input
+              type="text"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              placeholder="e.g., Login Sequence"
+              className={inputClass}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Category
+            </label>
+            <input
+              type="text"
+              value={newPresetCategory}
+              onChange={(e) => setNewPresetCategory(e.target.value)}
+              placeholder="Snippet"
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Use "Snippet" for reusable action sequences
+            </p>
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+              <input
+                type="checkbox"
+                checked={replaceWithCall}
+                onChange={(e) => setReplaceWithCall(e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              Replace selected actions with Call Preset
+            </label>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
+              Removes selected actions and inserts a call_preset action pointing to the new preset
+            </p>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowCreatePresetModal(false)}
+              disabled={creatingPreset}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={handleConfirmCreatePreset}
+              loading={creatingPreset}
+              disabled={!newPresetName.trim() || creatingPreset}
+            >
+              Create Preset
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </form>
   );
 }

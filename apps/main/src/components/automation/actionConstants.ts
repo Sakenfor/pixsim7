@@ -14,6 +14,7 @@ export const NESTED_ACTION_TYPES = [
   ActionType.IF_ELEMENT_EXISTS,
   ActionType.IF_ELEMENT_NOT_EXISTS,
   ActionType.REPEAT,
+  ActionType.CALL_PRESET,
 ] as const;
 
 /** Action category for styling purposes */
@@ -43,6 +44,7 @@ export const ACTION_META: Record<ActionType, ActionMeta> = {
   [ActionType.IF_ELEMENT_EXISTS]: { icon: '❓', label: 'If Element Exists', category: 'control' },
   [ActionType.IF_ELEMENT_NOT_EXISTS]: { icon: '❓', label: 'If Element Not Exists', category: 'control' },
   [ActionType.REPEAT]: { icon: '🔁', label: 'Repeat', category: 'control' },
+  [ActionType.CALL_PRESET]: { icon: '📦', label: 'Call Preset', category: 'control' },
 };
 
 /** Category color styling */

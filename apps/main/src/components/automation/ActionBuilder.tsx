@@ -23,6 +23,8 @@ interface ActionBuilderProps {
   onTestAction?: (actionsToTest: ActionDefinition[]) => void;
   testing?: boolean;
   testExecution?: AutomationExecution | null;
+  // Batch operations (only at top level)
+  onCreatePresetFromSelection?: (actions: ActionDefinition[]) => void;
 }
 
 export function ActionBuilder({
@@ -35,12 +37,16 @@ export function ActionBuilder({
   onTestAction,
   testing = false,
   testExecution,
+  onCreatePresetFromSelection,
 }: ActionBuilderProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const isNested = depth > 0;
   const canTest = testAccountId && onTestAction;
+  const canBatchSelect = !isNested && onCreatePresetFromSelection;
+  const hasBatchSelection = batchSelected.size > 0;
 
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -157,6 +163,50 @@ export function ActionBuilder({
     updateAction(index, { ...action, enabled: !isCurrentlyEnabled });
   };
 
+  // Batch selection handlers
+  const toggleBatchSelect = (index: number, e?: React.MouseEvent) => {
+    const newSelected = new Set(batchSelected);
+    if (e?.shiftKey && batchSelected.size > 0) {
+      // Shift-click: select range from last selected to current
+      const lastSelected = Math.max(...Array.from(batchSelected));
+      const start = Math.min(lastSelected, index);
+      const end = Math.max(lastSelected, index);
+      for (let i = start; i <= end; i++) {
+        newSelected.add(i);
+      }
+    } else if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setBatchSelected(newSelected);
+  };
+
+  const selectAllForBatch = () => {
+    setBatchSelected(new Set(actions.map((_, i) => i)));
+  };
+
+  const clearBatchSelection = () => {
+    setBatchSelected(new Set());
+  };
+
+  const deleteSelectedActions = () => {
+    const indicesToDelete = Array.from(batchSelected).sort((a, b) => b - a);
+    let updated = [...actions];
+    for (const idx of indicesToDelete) {
+      updated = updated.filter((_, i) => i !== idx);
+    }
+    onChange(updated);
+    setBatchSelected(new Set());
+    setSelectedIndex(null);
+  };
+
+  const getSelectedActions = (): ActionDefinition[] => {
+    return Array.from(batchSelected)
+      .sort((a, b) => a - b)
+      .map(i => actions[i]);
+  };
+
   return (
     <div className={isNested ? "space-y-2" : "space-y-4"}>
       <div className="flex items-center justify-between">
@@ -165,14 +215,61 @@ export function ActionBuilder({
             Nested Actions ({actions.length})
           </span>
         ) : (
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Action Sequence ({actions.length})
-          </h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Action Sequence ({actions.length})
+            </h3>
+            {canBatchSelect && actions.length > 0 && (
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={hasBatchSelection ? clearBatchSelection : selectAllForBatch}
+                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                >
+                  {hasBatchSelection ? `Clear (${batchSelected.size})` : 'Select All'}
+                </button>
+              </div>
+            )}
+          </div>
         )}
         <Button type="button" size={isNested ? "xs" : "sm"} variant={isNested ? "secondary" : "primary"} onClick={addAction}>
           {isNested ? "+ Add" : "➕ Add Action"}
         </Button>
       </div>
+
+      {/* Batch Selection Toolbar */}
+      {canBatchSelect && hasBatchSelection && (
+        <div className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+            {batchSelected.size} selected
+          </span>
+          <div className="flex-1" />
+          <Button
+            type="button"
+            size="xs"
+            variant="primary"
+            onClick={() => onCreatePresetFromSelection?.(getSelectedActions())}
+          >
+            📦 Create Preset
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            onClick={deleteSelectedActions}
+          >
+            🗑️ Delete
+          </Button>
+          <button
+            type="button"
+            onClick={clearBatchSelection}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-1"
+            title="Clear selection"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {actions.length === 0 ? (
         <div className={`text-center ${isNested ? "py-3 text-xs" : "py-8"} text-gray-500 dark:text-gray-400 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg`}>
@@ -188,6 +285,7 @@ export function ActionBuilder({
             const testStatus = getActionTestStatus(index, testExecution, depth, errorPath);
             const isConditional = action.type === ActionType.IF_ELEMENT_EXISTS || action.type === ActionType.IF_ELEMENT_NOT_EXISTS;
             const conditionResult = isConditional ? getConditionResult(index, depth, testExecution) : null;
+            const isBatchSelected = batchSelected.has(index);
 
             // Determine border/background based on test status
             const getTestStatusStyles = () => {
@@ -204,6 +302,7 @@ export function ActionBuilder({
             };
 
             const testStyles = testStatus !== 'idle' && testStatus !== 'pending' ? getTestStatusStyles() : '';
+            const batchSelectedStyles = isBatchSelected ? 'ring-2 ring-blue-400 ring-offset-1' : '';
 
             return (
             <div
@@ -214,7 +313,7 @@ export function ActionBuilder({
               onDragOver={(e) => handleDragOver(e, index)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, index)}
-              className={`border-2 rounded-lg ${
+              className={`border-2 rounded-lg ${batchSelectedStyles} ${
                 dragOverIndex === index
                   ? 'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30'
                   : testStyles ? testStyles : (
@@ -231,8 +330,22 @@ export function ActionBuilder({
               onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
             >
               <div className="flex items-start gap-3 p-3">
-                {/* Drag handle + Index + Enable Toggle + Test Status */}
+                {/* Batch Selection Checkbox + Drag handle + Index + Enable Toggle + Test Status */}
                 <div className="flex-shrink-0 flex items-center gap-1">
+                  {/* Batch selection checkbox */}
+                  {canBatchSelect && (
+                    <input
+                      type="checkbox"
+                      checked={isBatchSelected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleBatchSelect(index, e.nativeEvent as unknown as React.MouseEvent);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      title="Select for batch operation (Shift+click for range)"
+                    />
+                  )}
                   {/* Drag handle */}
                   <span className="text-gray-400 dark:text-gray-500 cursor-grab active:cursor-grabbing select-none" title="Drag to reorder">
                     ⋮⋮
@@ -540,6 +653,8 @@ function getDefaultParams(type: ActionType): Record<string, any> {
       return { actions: [] };
     case ActionType.REPEAT:
       return { count: 1, actions: [] };
+    case ActionType.CALL_PRESET:
+      return { preset_id: 0, inherit_variables: true };
     case ActionType.PRESS_BACK:
     case ActionType.PRESS_HOME:
     case ActionType.EXIT_APP:

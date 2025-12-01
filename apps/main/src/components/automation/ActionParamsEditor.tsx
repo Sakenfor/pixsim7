@@ -434,6 +434,42 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
         </div>
       );
 
+    case ActionType.CALL_PRESET:
+      return (
+        <div className="space-y-2">
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+              Preset ID
+            </label>
+            <input
+              type="number"
+              value={params.preset_id ?? 0}
+              onChange={(e) => updateParam('preset_id', parseInt(e.target.value) || 0)}
+              min="1"
+              placeholder="Enter preset ID to call"
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              The ID of the preset whose actions will be executed inline
+            </p>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={params.inherit_variables !== false}
+                onChange={(e) => updateParam('inherit_variables', e.target.checked)}
+                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              Inherit variables
+            </label>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 ml-6">
+              Pass current variables (email, password, etc.) to the called preset
+            </p>
+          </div>
+        </div>
+      );
+
     case ActionType.PRESS_BACK:
     case ActionType.PRESS_HOME:
     case ActionType.EXIT_APP:
