@@ -442,18 +442,20 @@
    * Must run in PAGE context to intercept Pixverse's XHR calls
    */
   function setupUploadInterceptor() {
-    try {
-      // Inject external script to avoid CSP issues
-      if (document.querySelector('#pxs7-upload-interceptor')) return;
+    // Defer to next tick to avoid blocking init
+    setTimeout(() => {
+      try {
+        if (document.querySelector('#pxs7-upload-interceptor')) return;
 
-      const script = document.createElement('script');
-      script.id = 'pxs7-upload-interceptor';
-      script.src = chrome.runtime.getURL('injected-upload-interceptor.js');
-      script.onerror = (e) => console.warn('[PixSim7] Failed to load upload interceptor:', e);
-      (document.head || document.documentElement).appendChild(script);
-    } catch (e) {
-      console.warn('[PixSim7] Error setting up upload interceptor:', e);
-    }
+        const script = document.createElement('script');
+        script.id = 'pxs7-upload-interceptor';
+        script.src = chrome.runtime.getURL('injected-upload-interceptor.js');
+        script.onerror = (e) => console.warn('[PixSim7] Failed to load upload interceptor:', e);
+        (document.head || document.documentElement).appendChild(script);
+      } catch (e) {
+        console.warn('[PixSim7] Error setting up upload interceptor:', e);
+      }
+    }, 0);
   }
 
   function setPendingImageUrl(url) {
@@ -1033,9 +1035,10 @@
 
   function renderAssetsTab(container, panel) {
     // Prepare asset URLs first to get accurate count
+    // Note: remote_url is used for Pixverse openapi uploads
     const urls = assetsCache.map(a => ({
-      thumb: a.thumbnail_url || a.file_url || a.external_url || a.url || a.src,
-      full: a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
+      thumb: a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src,
+      full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
       name: a.name || a.original_filename || a.filename || a.title || ''
     })).filter(u => u.thumb); // Only include assets with a valid URL
 
@@ -1212,9 +1215,19 @@
     return null;
   }
 
+  // Helper to add timeout to sendMessage
+  function sendMessageWithTimeout(msg, timeoutMs = 3000) {
+    return Promise.race([
+      chrome.runtime.sendMessage(msg),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('sendMessage timeout')), timeoutMs)
+      )
+    ]);
+  }
+
   async function loadAccounts() {
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await sendMessageWithTimeout({
         action: 'getAccounts',
         providerId: 'pixverse'
       });
@@ -1225,13 +1238,15 @@
         accountsCache.sort((a, b) => (b.total_credits || 0) - (a.total_credits || 0));
         return accountsCache;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Timeout or error - continue with empty cache
+    }
     return [];
   }
 
   async function loadPresets() {
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await sendMessageWithTimeout({
         action: 'getPresets',
         providerId: 'pixverse'
       });
@@ -1240,7 +1255,9 @@
         presetsCache = res.data.filter(p => !p.type?.toLowerCase().includes('snippet'));
         return presetsCache;
       }
-    } catch (e) {}
+    } catch (e) {
+      // Timeout or error - continue with empty cache
+    }
     return [];
   }
 
@@ -1249,50 +1266,36 @@
       return assetsCache;
     }
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await sendMessageWithTimeout({
         action: 'getAssets',
         limit: 50
       });
-      console.log('[PixSim7] Assets response:', res);
 
       if (!res?.success) {
-        console.warn('[PixSim7] Assets request failed:', res?.error);
         return [];
       }
 
-      // Handle different response formats:
-      // - Direct array: res.data = [...]
-      // - Paginated: res.data = { items: [...], total: X }
-      // - Nested: res.data = { assets: [...] }
+      // Handle different response formats
       let items = res.data;
       if (items && !Array.isArray(items)) {
         items = items.items || items.assets || items.data || [];
       }
 
       if (!Array.isArray(items)) {
-        console.warn('[PixSim7] Unexpected assets format:', res.data);
         return [];
       }
 
-      console.log('[PixSim7] Found', items.length, 'assets');
-
-      // Filter to only images - check multiple possible fields
+      // Filter to only images
       assetsCache = items.filter(a => {
-        // Check media_type field
         if (a.media_type === 'image') return true;
-        // Check type field
         if (a.type === 'image') return true;
-        // Check file extension
-        const path = a.file_path || a.file_url || a.external_url || a.url || '';
+        const path = a.file_path || a.file_url || a.external_url || a.remote_url || a.url || '';
         if (path.match(/\.(jpg|jpeg|png|webp|gif)$/i)) return true;
-        // Check mime type
         if (a.mime_type?.startsWith('image/')) return true;
-        // If no type info, include it (assume it's an image)
-        if (a.file_url || a.external_url || a.thumbnail_url) return true;
+        if (a.file_url || a.external_url || a.remote_url || a.thumbnail_url) return true;
         return false;
       });
 
-      console.log('[PixSim7] Filtered to', assetsCache.length, 'image assets');
       return assetsCache;
     } catch (e) {
       console.warn('[PixSim7] Failed to load assets:', e);
@@ -1491,6 +1494,9 @@
     setupOutsideClick(menu, btn);
   }
 
+  // Cache for Pixverse ad status
+  const adStatusCache = new Map();
+
   function createAccountMenuItem(account, { isCurrent, isSelected }) {
     const item = document.createElement('button');
     item.className = `${MENU_CLASS}__item ${MENU_CLASS}__account`;
@@ -1509,12 +1515,30 @@
     name.title = account.email;
     info.appendChild(name);
 
+    // Meta row with email (if nickname) and ads
+    const meta = document.createElement('div');
+    meta.className = `${MENU_CLASS}__account-meta`;
+    meta.style.cssText = 'display: flex; gap: 8px; align-items: center;';
+
     if (account.nickname) {
-      const meta = document.createElement('div');
-      meta.className = `${MENU_CLASS}__account-meta`;
-      meta.textContent = account.email;
-      info.appendChild(meta);
+      const emailSpan = document.createElement('span');
+      emailSpan.textContent = account.email;
+      meta.appendChild(emailSpan);
     }
+
+    // Ads pill - always show
+    const adsPill = document.createElement('span');
+    adsPill.style.cssText = `
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(0,0,0,0.2);
+      color: ${COLORS.textMuted};
+    `;
+    adsPill.textContent = 'Ads …';
+    meta.appendChild(adsPill);
+
+    info.appendChild(meta);
 
     item.appendChild(dot);
     item.appendChild(info);
@@ -1537,7 +1561,50 @@
     credits.textContent = account.total_credits || 0;
     item.appendChild(credits);
 
+    // Fetch ad status asynchronously
+    fetchAdStatus(account.id, adsPill);
+
     return item;
+  }
+
+  async function fetchAdStatus(accountId, pillEl) {
+    // Check cache first (30 second TTL)
+    const cached = adStatusCache.get(accountId);
+    if (cached && (Date.now() - cached.time) < 30000) {
+      renderAdsPill(pillEl, cached.data);
+      return;
+    }
+
+    try {
+      const res = await sendMessageWithTimeout({
+        action: 'getPixverseStatus',
+        accountId
+      }, 5000);
+
+      if (res?.success && res.data) {
+        adStatusCache.set(accountId, { data: res.data, time: Date.now() });
+        renderAdsPill(pillEl, res.data);
+      } else {
+        pillEl.textContent = 'Ads N/A';
+      }
+    } catch (e) {
+      pillEl.textContent = 'Ads N/A';
+    }
+  }
+
+  function renderAdsPill(pillEl, payload) {
+    const task = payload?.ad_watch_task;
+    if (task && typeof task === 'object') {
+      const progress = task.progress ?? 0;
+      const total = task.total_counts ?? 0;
+      pillEl.textContent = `Ads ${progress}/${total}`;
+      pillEl.title = `Watch-ad task: ${progress}/${total}`;
+      if (progress >= total && total > 0) {
+        pillEl.style.color = COLORS.success;
+      }
+    } else {
+      pillEl.textContent = 'Ads 0/0';
+    }
   }
 
   // ===== Preset Menu =====
@@ -1763,13 +1830,19 @@
       loadCurrentSessionAccount()
     ]);
 
-    await Promise.all([
+    // Show buttons immediately, load data in background
+    processTaskElements();
+
+    // Load data in background (don't block)
+    Promise.all([
       loadPresets(),
       loadAccounts(),
       loadAssets()
-    ]);
-
-    processTaskElements();
+    ]).then(() => {
+      updateAllAccountButtons();
+    }).catch(e => {
+      console.warn('[PixSim7] init: failed to load some data:', e);
+    });
 
     // Restore any saved input state after a delay (wait for page to fully render)
     setTimeout(restoreInputState, 1000);
