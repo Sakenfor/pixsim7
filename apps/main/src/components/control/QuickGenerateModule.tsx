@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
 import { useControlCenterStore, type ControlCenterState } from '@/stores/controlCenterStore';
 import { PromptInput } from '@pixsim7/shared.ui';
