@@ -1,5 +1,7 @@
 ## Task 63: Overlay Validation & Widget Accessibility Cleanup
 
+**Status:** Complete (merged in `b56fa8c4`)
+
 ### Problem Statement
 
 The new overlay positioning system (used by `MediaCard` and other surfaces) includes a validation layer in `apps/main/src/lib/overlay/utils/validation.ts`. This layer is currently:
@@ -291,4 +293,3 @@ If this task lands cleanly, follow-ups could include:
   - Built-in widget types.
   - Their expected interaction pattern.
   - Any per-type validation or accessibility conventions.
-

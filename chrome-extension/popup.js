@@ -539,22 +539,24 @@ async function handleAccountLogin(account, event) {
       (event && (event.ctrlKey || event.metaKey || event.button === 1)) || false;
 
     // For Pixverse password-based accounts, attempt an automated re-auth
-    // when we know the JWT/cookies are missing or expired. This keeps the
-    // Login button fast for healthy sessions while still repairing broken
-    // ones without requiring a separate "Fix Sessions" click.
+    // on Login. This gives the user an explicit "fix it now" action
+    // even if our cached JWT metadata is out of date.
     const shouldAttemptReauth =
       account.provider_id === 'pixverse' &&
-      !account.is_google_account &&
-      (account.jwt_expired || (!account.has_jwt && !account.has_cookies));
+      !account.is_google_account;
 
     if (shouldAttemptReauth) {
       try {
+        showToast('info', 'Re-authenticating Pixverse session...');
         const reauthRes = await chrome.runtime.sendMessage({
           action: 'reauthAccounts',
           accountIds: [account.id],
         });
         if (!reauthRes || !reauthRes.success) {
           console.warn('[Popup] Auto re-auth on Login failed:', reauthRes?.error);
+          showError(reauthRes?.error || 'Re-auth failed; opening with existing session');
+        } else {
+          showToast('success', 'Pixverse session refreshed');
         }
       } catch (reauthErr) {
         console.warn('[Popup] Auto re-auth on Login threw:', reauthErr);

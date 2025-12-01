@@ -323,11 +323,32 @@ async def reauth_account(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to re-auth this account")
 
     if account.provider_id != "pixverse":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Automated re-auth currently supported for Pixverse only")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Automated re-auth currently supported for Pixverse only",
+        )
 
+    # Prefer explicit password from request, then per-account password,
+    # then fall back to provider-level global password (if configured).
     password = request.password or account.password
     if not password:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Account has no stored password. Provide password in request.")
+        try:
+            from pixsim7.backend.main.api.v1.providers import _load_provider_settings
+
+            settings_map = _load_provider_settings()
+            provider_settings = settings_map.get(account.provider_id)
+            if provider_settings and provider_settings.global_password:
+                password = provider_settings.global_password
+        except Exception:
+            # Best-effort: if provider settings cannot be loaded, we'll fall
+            # through to the standard "no password" error below.
+            password = None
+
+    if not password:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Account has no stored password or provider global password. Provide password in request.",
+        )
 
     # Acquire lock for this account to prevent concurrent re-auth attempts
     async with _reauth_locks_lock:

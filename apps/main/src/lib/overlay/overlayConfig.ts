@@ -272,7 +272,7 @@ function fromUnifiedAnchor(anchor: UnifiedAnchor): string {
 /**
  * Convert UnifiedPosition to WidgetPosition
  */
-function fromUnifiedPosition(position: UnifiedPosition): WidgetPosition {
+export function fromUnifiedPosition(position: UnifiedPosition): WidgetPosition {
   if (position.mode === 'anchor' && position.anchor) {
     return {
       anchor: fromUnifiedAnchor(position.anchor) as any,
@@ -300,7 +300,7 @@ function fromUnifiedPosition(position: UnifiedPosition): WidgetPosition {
  * Convert UnifiedVisibility to VisibilityConfig
  * Restores overlay-specific triggers from advanced conditions
  */
-function fromUnifiedVisibility(visibility?: UnifiedVisibility): VisibilityConfig {
+export function fromUnifiedVisibility(visibility?: UnifiedVisibility): VisibilityConfig {
   if (!visibility) {
     return { trigger: 'always' };
   }
@@ -342,7 +342,7 @@ function fromUnifiedVisibility(visibility?: UnifiedVisibility): VisibilityConfig
 /**
  * Convert UnifiedStyle to WidgetStyle
  */
-function fromUnifiedStyle(style?: UnifiedStyle): WidgetStyle | undefined {
+export function fromUnifiedStyle(style?: UnifiedStyle): WidgetStyle | undefined {
   if (!style) return undefined;
 
   return {
