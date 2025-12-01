@@ -45,7 +45,7 @@ export function ActionBuilder({
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const isNested = depth > 0;
   const canTest = testAccountId && onTestAction;
-  const canBatchSelect = !isNested && onCreatePresetFromSelection;
+  const canBatchSelect = !!onCreatePresetFromSelection;
   const hasBatchSelection = batchSelected.size > 0;
 
   // Drag and drop handlers
@@ -302,7 +302,6 @@ export function ActionBuilder({
             };
 
             const testStyles = testStatus !== 'idle' && testStatus !== 'pending' ? getTestStatusStyles() : '';
-            const batchSelectedStyles = isBatchSelected ? 'ring-2 ring-blue-400 ring-offset-1' : '';
 
             return (
             <div
@@ -313,21 +312,37 @@ export function ActionBuilder({
               onDragOver={(e) => handleDragOver(e, index)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, index)}
-              className={`border-2 rounded-lg ${batchSelectedStyles} ${
-                dragOverIndex === index
-                  ? 'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30'
-                  : testStyles ? testStyles : (
-                    !isEnabled
-                      ? 'bg-gray-100 dark:bg-gray-800/50 opacity-60 border-gray-300 dark:border-gray-600'
-                      : selectedIndex === index
-                        ? `${colors.bg} border-blue-500 shadow-lg shadow-blue-500/20`
-                        : `${colors.bg} ${colors.border} hover:border-gray-400 dark:hover:border-gray-500`
-                  )
+              className={`border-2 rounded-lg ${
+                isBatchSelected
+                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                  : dragOverIndex === index
+                    ? 'border-blue-500 border-dashed bg-blue-50 dark:bg-blue-900/30'
+                    : testStyles ? testStyles : (
+                      !isEnabled
+                        ? 'bg-gray-100 dark:bg-gray-800/50 opacity-60 border-gray-300 dark:border-gray-600'
+                        : selectedIndex === index
+                          ? `${colors.bg} border-blue-500 shadow-lg shadow-blue-500/20`
+                          : `${colors.bg} ${colors.border} hover:border-gray-400 dark:hover:border-gray-500`
+                    )
               } ${draggedIndex === index ? 'opacity-50' : ''} cursor-pointer`}
               style={{
-                transition: 'border-color 0.2s, box-shadow 0.2s, opacity 0.2s, transform 0.1s',
+                transition: 'border-color 0.15s ease-out, background-color 0.15s ease-out, opacity 0.15s ease-out',
               }}
-              onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
+              onClick={(e) => {
+                // Ctrl+click or Cmd+click for batch selection
+                if ((e.ctrlKey || e.metaKey) && canBatchSelect) {
+                  e.preventDefault();
+                  toggleBatchSelect(index, e);
+                  return;
+                }
+                // Shift+click for range selection
+                if (e.shiftKey && canBatchSelect && batchSelected.size > 0) {
+                  e.preventDefault();
+                  toggleBatchSelect(index, e);
+                  return;
+                }
+                setSelectedIndex(selectedIndex === index ? null : index);
+              }}
             >
               <div className="flex items-start gap-3 p-3">
                 {/* Batch Selection Checkbox + Drag handle + Index + Enable Toggle + Test Status */}
@@ -615,6 +630,7 @@ export function ActionBuilder({
                             onTestAction={onTestAction}
                             testing={testing}
                             testExecution={testExecution}
+                            onCreatePresetFromSelection={onCreatePresetFromSelection}
                           />
                         </div>
                       </div>
