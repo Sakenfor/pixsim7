@@ -79,6 +79,35 @@ export enum MatchMode {
   REGEX = 'regex',
 }
 
+// Variable types for reusable values in presets
+export enum VariableType {
+  ELEMENT = 'element',   // Element selector (resource_id, text, content_desc)
+  TEXT = 'text',         // Text value (for type_text, etc.)
+  NUMBER = 'number',     // Numeric value (for wait times, coords, etc.)
+  COORDS = 'coords',     // X,Y coordinates
+}
+
+// Element selector definition
+export interface ElementSelector {
+  resource_id?: string;
+  text?: string;
+  text_match_mode?: MatchMode;
+  content_desc?: string;
+  content_desc_match_mode?: MatchMode;
+}
+
+// Variable definition
+export interface PresetVariable {
+  name: string;          // Variable name (used as $name in actions)
+  type: VariableType;
+  description?: string;  // Optional description
+  // Value depends on type:
+  element?: ElementSelector;  // For ELEMENT type
+  text?: string;              // For TEXT type
+  number?: number;            // For NUMBER type
+  coords?: { x: number; y: number };  // For COORDS type
+}
+
 export interface ActionDefinition {
   type: ActionType;
   params: Record<string, any>;
@@ -90,6 +119,7 @@ export interface AppActionPreset {
   name: string;
   description?: string;
   category?: string;
+  variables?: PresetVariable[];  // Reusable variables for this preset
   actions: ActionDefinition[];
   owner_id: number;
   is_shared: boolean;

@@ -1,9 +1,10 @@
-import { ActionType, MatchMode } from '@/types/automation';
+import { ActionType, MatchMode, VariableType, type PresetVariable } from '@/types/automation';
 
 interface ActionParamsEditorProps {
   actionType: ActionType;
   params: Record<string, any>;
   onChange: (params: Record<string, any>) => void;
+  variables?: PresetVariable[];
 }
 
 const MATCH_MODE_OPTIONS = [
@@ -62,9 +63,81 @@ function TextMatchField({
   );
 }
 
-export function ActionParamsEditor({ actionType, params, onChange }: ActionParamsEditorProps) {
+// Variable selector for element-based actions
+function ElementVariableSelector({
+  variables,
+  selectedVar,
+  onSelect,
+  onClear,
+}: {
+  variables: PresetVariable[];
+  selectedVar?: string;
+  onSelect: (variable: PresetVariable) => void;
+  onClear: () => void;
+}) {
+  const elementVars = variables.filter((v) => v.type === VariableType.ELEMENT);
+
+  if (elementVars.length === 0) return null;
+
+  return (
+    <div className="mb-3 p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-purple-700 dark:text-purple-300">Use variable:</span>
+        {elementVars.map((v) => (
+          <button
+            key={v.name}
+            type="button"
+            onClick={() => onSelect(v)}
+            className={`px-2 py-0.5 text-xs rounded font-mono transition-colors ${
+              selectedVar === v.name
+                ? 'bg-purple-600 text-white'
+                : 'bg-purple-100 dark:bg-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-700'
+            }`}
+          >
+            ${v.name}
+          </button>
+        ))}
+        {selectedVar && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="px-2 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {selectedVar && (
+        <div className="mt-1 text-xs text-purple-600 dark:text-purple-400">
+          Using <code className="font-mono">${selectedVar}</code> - manual fields below are ignored
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ActionParamsEditor({ actionType, params, onChange, variables = [] }: ActionParamsEditorProps) {
   const updateParam = (key: string, value: any) => {
     onChange({ ...(params || {}), [key]: value });
+  };
+
+  // Apply element variable to params
+  const applyElementVariable = (variable: PresetVariable) => {
+    const el = variable.element || {};
+    onChange({
+      ...params,
+      _variable: variable.name,
+      resource_id: el.resource_id || '',
+      text: el.text || '',
+      text_match_mode: el.text_match_mode || MatchMode.EXACT,
+      content_desc: el.content_desc || '',
+      content_desc_match_mode: el.content_desc_match_mode || MatchMode.EXACT,
+    });
+  };
+
+  const clearVariable = () => {
+    const { _variable, ...rest } = params;
+    onChange(rest);
   };
 
   const inputClass = "w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent";
@@ -203,6 +276,12 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
     case ActionType.WAIT_FOR_ELEMENT:
       return (
         <div className="space-y-2">
+          <ElementVariableSelector
+            variables={variables}
+            selectedVar={params._variable}
+            onSelect={applyElementVariable}
+            onClear={clearVariable}
+          />
           <div>
             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
               Resource ID (optional)
@@ -213,6 +292,7 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               onChange={(e) => updateParam('resource_id', e.target.value)}
               placeholder="com.example:id/button"
               className={inputClass}
+              disabled={!!params._variable}
             />
           </div>
           <TextMatchField
@@ -262,6 +342,12 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
     case ActionType.CLICK_ELEMENT:
       return (
         <div className="space-y-2">
+          <ElementVariableSelector
+            variables={variables}
+            selectedVar={params._variable}
+            onSelect={applyElementVariable}
+            onClear={clearVariable}
+          />
           <div>
             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
               Resource ID (optional)
@@ -272,6 +358,7 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               onChange={(e) => updateParam('resource_id', e.target.value)}
               placeholder="com.example:id/button"
               className={inputClass}
+              disabled={!!params._variable}
             />
           </div>
           <TextMatchField
@@ -323,6 +410,12 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
     case ActionType.IF_ELEMENT_NOT_EXISTS:
       return (
         <div className="space-y-2">
+          <ElementVariableSelector
+            variables={variables}
+            selectedVar={params._variable}
+            onSelect={applyElementVariable}
+            onClear={clearVariable}
+          />
           <div>
             <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
               Resource ID (optional)
@@ -333,6 +426,7 @@ export function ActionParamsEditor({ actionType, params, onChange }: ActionParam
               onChange={(e) => updateParam('resource_id', e.target.value)}
               placeholder="com.example:id/button"
               className={inputClass}
+              disabled={!!params._variable}
             />
           </div>
           <TextMatchField

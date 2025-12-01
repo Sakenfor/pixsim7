@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { type AppActionPreset, type ActionDefinition } from '@/types/automation';
+import { type AppActionPreset, type ActionDefinition, type PresetVariable } from '@/types/automation';
 import { Button, Panel, useToast } from '@pixsim7/shared.ui';
 import { ActionBuilder } from './ActionBuilder';
+import { VariablesEditor } from './VariablesEditor';
 
 interface PresetFormProps {
   preset?: AppActionPreset;
@@ -14,6 +15,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
   const [description, setDescription] = useState(preset?.description ?? '');
   const [category, setCategory] = useState(preset?.category ?? '');
   const [isShared, setIsShared] = useState(preset?.is_shared ?? false);
+  const [variables, setVariables] = useState<PresetVariable[]>(preset?.variables ?? []);
   const [actions, setActions] = useState<ActionDefinition[]>(preset?.actions ?? []);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
@@ -38,6 +40,7 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         description: description.trim() || undefined,
         category: category.trim() || undefined,
         is_shared: isShared,
+        variables: variables.length > 0 ? variables : undefined,
         actions,
       });
     } finally {
@@ -112,9 +115,14 @@ export function PresetForm({ preset, onSave, onCancel }: PresetFormProps) {
         </div>
       </Panel>
 
+      {/* Variables */}
+      <Panel>
+        <VariablesEditor variables={variables} onChange={setVariables} />
+      </Panel>
+
       {/* Actions */}
       <Panel>
-        <ActionBuilder actions={actions} onChange={setActions} />
+        <ActionBuilder actions={actions} onChange={setActions} variables={variables} />
       </Panel>
 
       {/* Form Actions */}

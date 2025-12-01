@@ -99,6 +99,7 @@ class PixverseProvider(
         self._client_cache: Dict[tuple, Any] = {}
         self.session_manager = PixverseSessionManager(self)
 
+    @property
     def provider_id(self) -> str:
         return "pixverse"
 

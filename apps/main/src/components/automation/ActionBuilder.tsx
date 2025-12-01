@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { type ActionDefinition, ActionType } from '@/types/automation';
+import { type ActionDefinition, type PresetVariable, ActionType } from '@/types/automation';
 import { Button } from '@pixsim7/shared.ui';
 import { ActionParamsEditor } from './ActionParamsEditor';
 
 interface ActionBuilderProps {
   actions: ActionDefinition[];
   onChange: (actions: ActionDefinition[]) => void;
+  variables?: PresetVariable[];
   depth?: number;
   compact?: boolean;
 }
@@ -139,7 +140,7 @@ function getActionSummary(action: ActionDefinition): string {
   }
 }
 
-export function ActionBuilder({ actions, onChange, depth = 0, compact = false }: ActionBuilderProps) {
+export function ActionBuilder({ actions, onChange, variables = [], depth = 0, compact = false }: ActionBuilderProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const isNested = depth > 0;
 
@@ -391,6 +392,7 @@ export function ActionBuilder({ actions, onChange, depth = 0, compact = false }:
                         onChange={(params) => {
                           updateAction(index, { ...action, params });
                         }}
+                        variables={variables}
                       />
                     </div>
 
@@ -406,6 +408,7 @@ export function ActionBuilder({ actions, onChange, depth = 0, compact = false }:
                                 params: { ...action.params, actions: nestedActions },
                               });
                             }}
+                            variables={variables}
                             depth={depth + 1}
                           />
                         </div>

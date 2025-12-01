@@ -48,6 +48,43 @@ class ActionExecutor:
     def __init__(self, adb: Optional[ADB] = None):
         self.adb = adb or ADB()
 
+    def _resolve_element_variable(self, params: Dict[str, Any], preset: AppActionPreset) -> Dict[str, Any]:
+        """
+        If params contains a _variable reference, resolve it from preset.variables
+        and return the merged element selector params.
+        """
+        var_name = params.get("_variable")
+        if not var_name or not preset.variables:
+            return params
+
+        # Find the variable by name
+        variable = next((v for v in preset.variables if v.get("name") == var_name), None)
+        if not variable or variable.get("type") != "element":
+            return params
+
+        # Get element selector from variable
+        element = variable.get("element", {})
+        if not element:
+            return params
+
+        # Merge variable's element selector with remaining params (like timeout, interval)
+        resolved = {**params}
+        # Remove the _variable marker
+        resolved.pop("_variable", None)
+        # Apply element selector from variable
+        if element.get("resource_id"):
+            resolved["resource_id"] = element["resource_id"]
+        if element.get("text"):
+            resolved["text"] = element["text"]
+        if element.get("text_match_mode"):
+            resolved["text_match_mode"] = element["text_match_mode"]
+        if element.get("content_desc"):
+            resolved["content_desc"] = element["content_desc"]
+        if element.get("content_desc_match_mode"):
+            resolved["content_desc_match_mode"] = element["content_desc_match_mode"]
+
+        return resolved
+
     def _subst(self, value: Any, ctx: ExecutionContext) -> Any:
         if isinstance(value, str):
             try:
@@ -174,6 +211,10 @@ class ActionExecutor:
 
         a_type = action.get("type") or action.get("action")
         params = {k: self._subst(v, ctx) for k, v in (action.get("params", {}) or {}).items()}
+
+        # Resolve element variables for element-based actions
+        if a_type in ("wait_for_element", "click_element", "if_element_exists", "if_element_not_exists"):
+            params = self._resolve_element_variable(params, preset)
 
         try:
             if a_type == "wait":
