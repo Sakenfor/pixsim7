@@ -66,6 +66,22 @@ const overlayConfig = buildOverlayConfigFromUnified(unifiedConfig, {
 - `variant`, `size`, `icon`, `disabled`, `tooltip`
 - Bindings: `label`
 
+**Menu:**
+- `trigger`, `triggerType`, `placement`, `closeOnClick`
+- Props: `items` (array of menu items - note: function items and onClick handlers cannot be serialized)
+
+**Tooltip:**
+- `trigger`, `placement`, `showArrow`, `delay`, `maxWidth`, `rich`
+- Props: `content` (note: custom React content cannot be serialized, only basic properties)
+
+**Video Scrub:**
+- `showTimeline`, `showTimestamp`, `timelinePosition`, `throttle`, `frameAccurate`, `muted`
+- Bindings: `videoUrl`, `duration`
+
+**Progress:**
+- `max`, `variant`, `orientation`, `size`, `color`, `showLabel`, `icon`, `animated`, `state`
+- Bindings: `value`, `label`
+
 **Usage:**
 
 ```typescript
@@ -91,6 +107,88 @@ const unified = toUnifiedSurfaceConfig({
 
 // unified.widgets[0].bindings contains the label binding
 // unified.widgets[0].props contains variant, icon, color
+```
+
+**Example: Menu Widget**
+
+```typescript
+import { createMenuWidget, toUnifiedSurfaceConfig } from '@/lib/overlay';
+
+const menu = createMenuWidget({
+  id: 'actions-menu',
+  position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+  visibility: { trigger: 'always' },
+  trigger: { icon: 'moreVertical', variant: 'icon' },
+  triggerType: 'click',
+  placement: 'bottom-right',
+  items: [
+    { id: 'edit', label: 'Edit', icon: 'edit' },
+    { id: 'delete', label: 'Delete', icon: 'trash', variant: 'danger' },
+  ],
+});
+
+// Export to unified config (preserves items array)
+const unified = toUnifiedSurfaceConfig({
+  id: 'menu-overlay',
+  name: 'Actions Menu',
+  widgets: [menu],
+});
+```
+
+**Example: Tooltip Widget**
+
+```typescript
+import { createTooltipWidget } from '@/lib/overlay';
+
+const tooltip = createTooltipWidget({
+  id: 'info-tooltip',
+  position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+  visibility: { trigger: 'always' },
+  trigger: { type: 'icon', icon: 'info' },
+  placement: 'auto',
+  content: {
+    title: 'Important Info',
+    description: 'This is a helpful tooltip',
+    icon: 'info',
+    iconColor: 'text-blue-500',
+  },
+});
+```
+
+**Example: Video Scrub Widget**
+
+```typescript
+import { createVideoScrubWidget } from '@/lib/overlay';
+
+const videoScrub = createVideoScrubWidget({
+  id: 'video-preview',
+  position: { anchor: 'center' },
+  visibility: { trigger: 'hover' },
+  videoUrlBinding: { kind: 'path', path: 'video.url' },
+  durationBinding: { kind: 'path', path: 'video.duration' },
+  showTimeline: true,
+  showTimestamp: true,
+  timelinePosition: 'bottom',
+});
+```
+
+**Example: Progress Widget**
+
+```typescript
+import { createProgressWidget } from '@/lib/overlay';
+
+const progress = createProgressWidget({
+  id: 'upload-progress',
+  position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
+  visibility: { trigger: 'always' },
+  valueBinding: { kind: 'path', path: 'upload.progress' },
+  labelBinding: { kind: 'path', path: 'upload.statusText' },
+  variant: 'bar',
+  orientation: 'horizontal',
+  color: 'blue',
+  showLabel: true,
+  animated: true,
+});
 ```
 
 ---
@@ -218,6 +316,10 @@ registerOverlayWidgets();
 | `panel` | Panel | ✅ | ✅ | variant, backdrop |
 | `upload` | Upload Button | ✅ | ✅ | variant, size, showProgress, labels, icons |
 | `button` | Button | ✅ | ✅ | variant, size, icon, disabled, tooltip |
+| `menu` | Menu | ✅ | ✅ | trigger, triggerType, placement, closeOnClick, items |
+| `tooltip` | Tooltip | ✅ | ✅ | trigger, placement, showArrow, delay, maxWidth, rich, content |
+| `video-scrub` | Video Scrubber | ✅ | ✅ | showTimeline, showTimestamp, timelinePosition, throttle, frameAccurate, muted |
+| `progress` | Progress Bar | ✅ | ✅ | max, variant, orientation, size, color, showLabel, icon, animated, state |
 
 ---
 
@@ -231,7 +333,7 @@ registerOverlayWidgets();
 
 ## Future Enhancements
 
-1. Add more widget types (menu, tooltip, video-scrub, progress)
-2. Support for more complex binding scenarios (computed bindings, conditional bindings)
-3. Visual editor for data bindings
-4. Export/import overlay presets as JSON files
+1. Support for more complex binding scenarios (computed bindings, conditional bindings)
+2. Visual editor for data bindings
+3. Export/import overlay presets as JSON files
+4. Improved serialization for complex menu items and tooltip content

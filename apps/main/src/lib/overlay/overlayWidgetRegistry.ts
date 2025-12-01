@@ -18,6 +18,10 @@ import { createBadgeWidget, type BadgeWidgetConfig } from './widgets/BadgeWidget
 import { createPanelWidget, type PanelWidgetConfig } from './widgets/PanelWidget';
 import { createUploadWidget, type UploadWidgetConfig } from './widgets/UploadWidget';
 import { createButtonWidget, type ButtonWidgetConfig } from './widgets/ButtonWidget';
+import { createMenuWidget, type MenuWidgetConfig } from './widgets/MenuWidget';
+import { createTooltipWidget, type TooltipWidgetConfig } from './widgets/TooltipWidget';
+import { createVideoScrubWidget, type VideoScrubWidgetConfig } from './widgets/VideoScrubWidget';
+import { createProgressWidget, type ProgressWidgetConfig } from './widgets/ProgressWidget';
 import { createBindingFromValue, type DataBinding } from '@/lib/editing-core';
 
 /**
@@ -136,6 +140,98 @@ const buttonFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => 
 };
 
 /**
+ * Menu widget factory
+ */
+const menuFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const menuConfig: MenuWidgetConfig = {
+    id: config.id,
+    position: fromUnifiedPosition(config.position),
+    visibility: fromUnifiedVisibility(config.visibility),
+    items: config.props?.items as any || [],
+    trigger: config.props?.trigger as any,
+    triggerType: (config.props?.triggerType as any) || 'click',
+    placement: (config.props?.placement as any) || 'bottom-right',
+    closeOnClick: config.props?.closeOnClick !== false,
+    className: config.style?.className,
+    priority: config.position.order,
+  };
+
+  return createMenuWidget(menuConfig);
+};
+
+/**
+ * Tooltip widget factory
+ */
+const tooltipFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const tooltipConfig: TooltipWidgetConfig = {
+    id: config.id,
+    position: fromUnifiedPosition(config.position),
+    visibility: fromUnifiedVisibility(config.visibility),
+    content: config.props?.content as any || {},
+    trigger: config.props?.trigger as any,
+    placement: (config.props?.placement as any) || 'auto',
+    showArrow: config.props?.showArrow !== false,
+    delay: config.props?.delay as number | undefined,
+    maxWidth: config.props?.maxWidth as number | undefined,
+    rich: config.props?.rich !== false,
+    className: config.style?.className,
+    priority: config.position.order,
+  };
+
+  return createTooltipWidget(tooltipConfig);
+};
+
+/**
+ * Video scrub widget factory
+ */
+const videoScrubFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const videoScrubConfig: VideoScrubWidgetConfig = {
+    id: config.id,
+    position: fromUnifiedPosition(config.position),
+    visibility: fromUnifiedVisibility(config.visibility),
+    videoUrlBinding: extractBinding(config.bindings, 'videoUrl'),
+    durationBinding: extractBinding(config.bindings, 'duration'),
+    showTimeline: config.props?.showTimeline !== false,
+    showTimestamp: config.props?.showTimestamp !== false,
+    timelinePosition: (config.props?.timelinePosition as any) || 'bottom',
+    throttle: config.props?.throttle as number | undefined,
+    frameAccurate: config.props?.frameAccurate as boolean | undefined,
+    muted: config.props?.muted !== false,
+    className: config.style?.className,
+    priority: config.position.order,
+    onScrub: runtimeOptions?.onScrub,
+  };
+
+  return createVideoScrubWidget(videoScrubConfig);
+};
+
+/**
+ * Progress widget factory
+ */
+const progressFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const progressConfig: ProgressWidgetConfig = {
+    id: config.id,
+    position: fromUnifiedPosition(config.position),
+    visibility: fromUnifiedVisibility(config.visibility),
+    valueBinding: extractBinding(config.bindings, 'value'),
+    labelBinding: extractBinding(config.bindings, 'label'),
+    max: config.props?.max as number | undefined,
+    variant: (config.props?.variant as any) || 'bar',
+    orientation: (config.props?.orientation as any) || 'horizontal',
+    size: (config.props?.size as any) || 'md',
+    color: (config.props?.color as any) || 'blue',
+    showLabel: config.props?.showLabel as boolean | undefined,
+    icon: config.props?.icon as string | undefined,
+    animated: config.props?.animated as boolean | undefined,
+    state: (config.props?.state as any) || 'normal',
+    className: config.style?.className,
+    priority: config.position.order,
+  };
+
+  return createProgressWidget(progressConfig);
+};
+
+/**
  * Register all overlay widget types
  */
 export function registerOverlayWidgets(): void {
@@ -212,6 +308,102 @@ export function registerOverlayWidgets(): void {
         variant: 'secondary',
         size: 'sm',
       },
+      version: 1,
+    },
+  });
+
+  registerWidget({
+    type: 'menu',
+    displayName: 'Menu',
+    icon: 'moreVertical',
+    factory: menuFactory,
+    defaultConfig: {
+      type: 'menu',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'top-right', offset: { x: -8, y: 8 } },
+      visibility: { simple: 'always' },
+      props: {
+        items: [],
+        trigger: { icon: 'moreVertical', variant: 'icon' },
+        triggerType: 'click',
+        placement: 'bottom-right',
+        closeOnClick: true,
+      },
+      version: 1,
+    },
+  });
+
+  registerWidget({
+    type: 'tooltip',
+    displayName: 'Tooltip',
+    icon: 'info',
+    factory: tooltipFactory,
+    defaultConfig: {
+      type: 'tooltip',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'top-left', offset: { x: 8, y: 8 } },
+      visibility: { simple: 'always' },
+      props: {
+        content: { title: 'Tooltip', description: 'Hover for info' },
+        trigger: { type: 'icon', icon: 'info' },
+        placement: 'auto',
+        showArrow: true,
+        delay: 300,
+        maxWidth: 280,
+        rich: true,
+      },
+      version: 1,
+    },
+  });
+
+  registerWidget({
+    type: 'video-scrub',
+    displayName: 'Video Scrubber',
+    icon: 'video',
+    factory: videoScrubFactory,
+    defaultConfig: {
+      type: 'video-scrub',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'center' },
+      visibility: { simple: 'hover' },
+      props: {
+        showTimeline: true,
+        showTimestamp: true,
+        timelinePosition: 'bottom',
+        throttle: 50,
+        frameAccurate: false,
+        muted: true,
+      },
+      bindings: [
+        { kind: 'static', target: 'videoUrl', staticValue: '' },
+      ],
+      version: 1,
+    },
+  });
+
+  registerWidget({
+    type: 'progress',
+    displayName: 'Progress Bar',
+    icon: 'barChart',
+    factory: progressFactory,
+    defaultConfig: {
+      type: 'progress',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'bottom-center', offset: { x: 0, y: -8 } },
+      visibility: { simple: 'always' },
+      props: {
+        max: 100,
+        variant: 'bar',
+        orientation: 'horizontal',
+        size: 'md',
+        color: 'blue',
+        showLabel: false,
+        animated: false,
+        state: 'normal',
+      },
+      bindings: [
+        { kind: 'static', target: 'value', staticValue: 0 },
+      ],
       version: 1,
     },
   });
