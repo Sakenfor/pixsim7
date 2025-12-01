@@ -102,6 +102,7 @@ export function createTooltipWidget(config: TooltipWidgetConfig): OverlayWidget 
     visibility,
     priority,
     interactive: true,
+    handlesOwnInteraction: true, // Tooltip manages its own hover/focus interaction internally
     render: (data: any) => {
       const [isVisible, setIsVisible] = useState(false);
       const [actualPlacement, setActualPlacement] = useState(placement);

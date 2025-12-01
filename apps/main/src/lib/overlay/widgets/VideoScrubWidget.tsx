@@ -116,6 +116,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     visibility,
     priority,
     interactive: true,
+    handlesOwnInteraction: true, // Video scrub manages its own mouse/hover interaction internally
     render: (data: any) => {
       // ✨ Resolve bindings using editing-core DataBinding system
       const resolvedVideoUrl = resolveDataBinding(finalVideoUrlBinding, data);

@@ -181,11 +181,12 @@ export function validateWidget(widget: OverlayWidget): ValidationError[] {
   }
 
   // Validate accessibility
-  if (widget.interactive && !widget.ariaLabel) {
+  // Only warn about missing ariaLabel for wrapper-driven interactive widgets
+  if (widget.interactive && !widget.ariaLabel && !widget.handlesOwnInteraction) {
     errors.push({
       widgetId: widget.id,
       code: 'MISSING_ARIA_LABEL',
-      message: `Interactive widget ${widget.id} should have an ariaLabel`,
+      message: `Interactive widget ${widget.id} should have an ariaLabel (or set handlesOwnInteraction: true if accessibility is handled internally)`,
       severity: 'warning',
     });
   }
@@ -329,12 +330,13 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
   }
 
   // Check for interactive widgets without onClick
+  // (skip widgets that handle their own interaction internally)
   for (const widget of config.widgets) {
-    if (widget.interactive && !widget.onClick) {
+    if (widget.interactive && !widget.onClick && !widget.handlesOwnInteraction) {
       warnings.push({
         widgetId: widget.id,
         code: 'INTERACTIVE_WITHOUT_CLICK',
-        message: `Interactive widget ${widget.id} has no onClick handler`,
+        message: `Interactive widget ${widget.id} has no onClick handler and handlesOwnInteraction is not set`,
         severity: 'info',
       });
     }

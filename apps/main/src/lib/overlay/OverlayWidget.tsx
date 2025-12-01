@@ -144,16 +144,16 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
     setIsWidgetFocused(false);
   };
 
-  // Handle click
+  // Handle click (only for wrapper-driven interaction)
   const handleClick = () => {
-    if (widget.interactive) {
+    if (widget.interactive && !widget.handlesOwnInteraction) {
       onWidgetClick(widget.id);
     }
   };
 
-  // Keyboard handler
+  // Keyboard handler (only for wrapper-driven interaction)
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (widget.interactive && (e.key === 'Enter' || e.key === ' ')) {
+    if (widget.interactive && !widget.handlesOwnInteraction && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       onWidgetClick(widget.id);
     }
@@ -164,7 +164,13 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
 
   // Additional classes
   const className = widget.style?.className ?? '';
-  const interactiveClass = widget.interactive ? 'cursor-pointer' : '';
+  // Only apply cursor-pointer for wrapper-driven interactive widgets
+  const interactiveClass = widget.interactive && !widget.handlesOwnInteraction ? 'cursor-pointer' : '';
+
+  // Determine if wrapper should be focusable and have button role
+  const isWrapperInteractive = widget.interactive && !widget.handlesOwnInteraction;
+  const role = isWrapperInteractive ? 'button' : undefined;
+  const tabIndex = isWrapperInteractive ? (widget.tabIndex ?? 0) : widget.tabIndex;
 
   return (
     <div
@@ -180,9 +186,9 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
       onBlur={handleBlur}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      role={widget.interactive ? 'button' : undefined}
+      role={role}
       aria-label={widget.ariaLabel}
-      tabIndex={widget.tabIndex}
+      tabIndex={tabIndex}
       data-widget-id={widget.id}
       data-widget-type={widget.type}
     >

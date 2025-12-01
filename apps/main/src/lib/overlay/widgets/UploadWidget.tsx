@@ -126,6 +126,7 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     visibility,
     priority,
     interactive: true,
+    handlesOwnInteraction: true, // Upload button manages its own click handling internally
     render: (data: any) => {
       // ✨ Resolve bindings using editing-core DataBinding system
       const state = resolveDataBinding(finalStateBinding, data) ?? 'idle';

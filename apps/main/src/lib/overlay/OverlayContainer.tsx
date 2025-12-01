@@ -61,16 +61,18 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
     new Map()
   );
 
-  // Validate configuration in development
-  if (validate) {
-    validateAndLog(configuration);
-  }
-
   // Apply defaults to widgets
   const config = useMemo(
     () => applyDefaults(configuration),
     [configuration],
   );
+
+  // Validate configuration in development (runs when configuration changes)
+  useEffect(() => {
+    if (validate) {
+      validateAndLog(configuration);
+    }
+  }, [validate, configuration]);
 
   // Handle collision detection
   useEffect(() => {
