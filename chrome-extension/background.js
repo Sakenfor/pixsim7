@@ -82,6 +82,8 @@ console.log('[PixSim7 Extension] Background service worker loaded');
 // Using ZeroTier IP for network access
 const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
 const PROVIDER_SESSION_STORAGE_KEY = 'pixsim7ProviderSessions';
+const ACCOUNT_HEALTH_CHECK_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const lastAccountHealthCheck = {};
 
 /**
  * Get settings from storage
@@ -123,6 +125,33 @@ async function backendRequest(endpoint, options = {}) {
   }
 
   return response.json();
+}
+
+/**
+ * Best-effort per-account session health check.
+ *
+ * Uses the sync-credits endpoint so that Pixverse session errors
+ * (e.g. "logged in elsewhere") flow through the backend's session
+ * manager and auto-reauth logic before we export cookies.
+ */
+async function ensureAccountSessionHealth(accountId) {
+  if (!accountId) return;
+
+  const now = Date.now();
+  const last = lastAccountHealthCheck[accountId];
+  if (last && (now - last) < ACCOUNT_HEALTH_CHECK_TTL_MS) {
+    return;
+  }
+
+  lastAccountHealthCheck[accountId] = now;
+
+  try {
+    await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
+      method: 'POST',
+    });
+  } catch (err) {
+    console.warn('[Background] Account health check (sync-credits) failed:', err);
+  }
 }
 
 // ===== MESSAGE HANDLERS =====
@@ -571,59 +600,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-    // Login to provider site by injecting stored cookies and opening a tab
-    if (message.action === 'loginWithAccount') {
-        (async () => {
-          try {
-            const { accountId, tabId } = message;
-            const settings = await getSettings();
-            if (!settings.pixsim7Token) throw new Error('Not logged in');
+  // Login to provider site by injecting stored cookies and opening a tab
+  if (message.action === 'loginWithAccount') {
+    (async () => {
+      try {
+        const { accountId, tabId } = message;
+        const settings = await getSettings();
+        if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-            // Fetch cookies for this account from backend and open a tab using
-            // the stored session. This avoids triggering heavy credit sync +
-            // auto-reauth flows on every Login click; users can explicitly fix
-            // broken sessions via the "Fix Sessions" / reauth flow instead.
-            const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
-            const providerId = data.provider_id;
-            const cookies = data.cookies || {};
+        // Best-effort: refresh this account's session/credits so that any
+        // Pixverse "logged in elsewhere" errors are handled via backend
+        // auto-reauth before we export cookies.
+        await ensureAccountSessionHealth(accountId);
 
-          const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
+        // Fetch cookies for this account from backend and open a tab using
+        // the stored session.
+        const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
+        const providerId = data.provider_id;
+        const cookies = data.cookies || {};
 
-          // If there is an existing remembered session for this provider,
-          // sync its credits before switching to the new account. This keeps
-          // the "previously active" account's credits in sync when switching
-          // accounts via the extension.
-          try {
-            const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
-            const sessions = stored[PROVIDER_SESSION_STORAGE_KEY] || {};
-            const prevSession = sessions[providerId];
-            const prevAccountId = prevSession && prevSession.accountId;
-            if (prevAccountId && prevAccountId !== accountId) {
-              // Fire-and-forget: don't block opening the tab on credit sync.
-              (async () => {
-                try {
-                  await backendRequest(`/api/v1/accounts/${prevAccountId}/sync-credits`, {
-                    method: 'POST',
-                  });
-                  try {
-                    chrome.runtime.sendMessage({
-                      action: 'accountsUpdated',
-                      providerId,
-                    });
-                  } catch (notifyErr) {
-                    console.warn('[Background] Failed to notify popup of credits sync:', notifyErr);
-                  }
-                } catch (syncErr) {
-                  console.warn('[Background] Failed to sync credits for previous provider session:', syncErr);
-                }
-              })();
-            }
-          } catch (e) {
-            console.warn('[Background] Failed to sync credits for previous provider session:', e);
-          }
+        const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
 
-          // Inject cookies
-          await injectCookies(cookies, target.domain);
+        // Inject cookies
+        await injectCookies(cookies, target.domain);
 
         // Open or reuse tab
         if (tabId && typeof tabId === 'number') {
@@ -638,7 +637,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
 
-        // Notify popup to refresh accounts list (already synced above before fetching cookies)
+        // Notify popup to refresh accounts list
         try {
           chrome.runtime.sendMessage({
             action: 'accountsUpdated',
@@ -647,7 +646,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch (notifyErr) {
           console.warn('[Background] Failed to notify popup after login:', notifyErr);
         }
-        } catch (error) {
+      } catch (error) {
         sendResponse({ success: false, error: error.message });
       }
     })();
