@@ -200,4 +200,7 @@
   });
 
   console.log('[PixSim7] Upload interceptor (fetch + XHR) installed');
+  } catch (e) {
+    console.error('[PixSim7] Upload interceptor failed to install:', e);
+  }
 })();
