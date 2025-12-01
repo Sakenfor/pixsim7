@@ -13,3 +13,6 @@ export * from './registerGallerySurfaces';
 
 // Gallery tools registration
 export * from './registerGalleryTools';
+
+// Asset roles and tag utilities (Task 99.1)
+export * from './assetRoles';
