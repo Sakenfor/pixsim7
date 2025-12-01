@@ -439,53 +439,26 @@
   /**
    * Intercept next upload and return our URL instead
    * This makes Pixverse think the upload succeeded with our existing URL
+   * Must run in PAGE context to intercept Pixverse's XHR calls
    */
-  let pendingImageUrl = null;
-
   function setupUploadInterceptor() {
-    if (window.__pxs7UploadInterceptorInstalled) return;
-    window.__pxs7UploadInterceptorInstalled = true;
+    try {
+      // Inject external script to avoid CSP issues
+      if (document.querySelector('#pxs7-upload-interceptor')) return;
 
-    // Intercept XMLHttpRequest
-    const originalXHROpen = XMLHttpRequest.prototype.open;
-    const originalXHRSend = XMLHttpRequest.prototype.send;
+      const script = document.createElement('script');
+      script.id = 'pxs7-upload-interceptor';
+      script.src = chrome.runtime.getURL('injected-upload-interceptor.js');
+      script.onerror = (e) => console.warn('[PixSim7] Failed to load upload interceptor:', e);
+      (document.head || document.documentElement).appendChild(script);
+    } catch (e) {
+      console.warn('[PixSim7] Error setting up upload interceptor:', e);
+    }
+  }
 
-    XMLHttpRequest.prototype.open = function(method, url, ...args) {
-      this._pxs7Url = url;
-      this._pxs7Method = method;
-      return originalXHROpen.call(this, method, url, ...args);
-    };
-
-    XMLHttpRequest.prototype.send = function(body) {
-      // Check if this is a Pixverse upload and we have a pending URL to inject
-      if (pendingImageUrl && this._pxs7Method === 'POST' &&
-          (this._pxs7Url.includes('/upload') || this._pxs7Url.includes('/oss'))) {
-        console.log('[PixSim7] Intercepting upload, returning cached URL:', pendingImageUrl);
-
-        const urlToReturn = pendingImageUrl;
-        pendingImageUrl = null; // Clear for next time
-
-        // Simulate successful response
-        setTimeout(() => {
-          Object.defineProperty(this, 'readyState', { value: 4 });
-          Object.defineProperty(this, 'status', { value: 200 });
-          Object.defineProperty(this, 'responseText', {
-            value: JSON.stringify({ url: urlToReturn, code: 0 })
-          });
-          Object.defineProperty(this, 'response', {
-            value: JSON.stringify({ url: urlToReturn, code: 0 })
-          });
-          this.dispatchEvent(new Event('load'));
-          this.onload?.();
-          this.onreadystatechange?.();
-        }, 100);
-        return;
-      }
-
-      return originalXHRSend.call(this, body);
-    };
-
-    console.log('[PixSim7] Upload interceptor installed');
+  function setPendingImageUrl(url) {
+    // Send to page context via custom event
+    window.dispatchEvent(new CustomEvent('__pxs7SetPendingUrl', { detail: url }));
   }
 
   /**
@@ -640,12 +613,39 @@
         await new Promise(r => setTimeout(r, 200));
       }
 
-      // NOTE: Direct image setting (trySetPixverseImageDirectly) only sets the visual
-      // but doesn't update React state - missing delete button and won't submit properly.
-      // Always use file upload method for now until we find a way to update React state.
-      // TODO: Investigate intercepting Pixverse's upload response to inject URL directly
+      // For images already on Pixverse CDN, use upload interception
+      // This triggers a fake upload that returns our existing URL
+      const isPixverseUrl = imageUrl.includes('media.pixverse.ai');
+      if (isPixverseUrl) {
+        console.log('[PixSim7] Using upload interception for Pixverse URL');
+        showToast('Setting image...', true);
 
-      // Fetch and upload via file input
+        // Set pending URL for interceptor (in page context)
+        setPendingImageUrl(imageUrl);
+
+        // Create a tiny valid image to trigger the upload flow
+        // Using a 1x1 transparent PNG
+        const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+        const pngData = atob(pngBase64);
+        const pngArray = new Uint8Array(pngData.length);
+        for (let i = 0; i < pngData.length; i++) {
+          pngArray[i] = pngData.charCodeAt(i);
+        }
+        const placeholderBlob = new Blob([pngArray], { type: 'image/png' });
+        const placeholderFile = new File([placeholderBlob], 'image.png', { type: 'image/png' });
+
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(placeholderFile);
+        fileInput.files = dataTransfer.files;
+
+        // Trigger upload - interceptor will return our URL
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+        setTimeout(() => showToast('Image set!', true), 300);
+        return true;
+      }
+
+      // For other URLs, fetch and upload normally
       showToast('Fetching image...', true);
 
       // Fetch with timeout
@@ -1750,6 +1750,13 @@
 
   async function init() {
     injectStyle();
+
+    // Setup interceptor in background - don't block init
+    try {
+      setupUploadInterceptor();
+    } catch (e) {
+      console.warn('[PixSim7] Interceptor setup failed:', e);
+    }
 
     await Promise.all([
       loadSelectedAccount(),

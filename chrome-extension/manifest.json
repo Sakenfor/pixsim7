@@ -93,7 +93,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "injected-bearer-capture.js"
+        "injected-bearer-capture.js",
+        "injected-upload-interceptor.js"
       ],
       "matches": [
         "*://*/*"
