@@ -16,7 +16,7 @@ Falls back to ADB for basic commands (tap, swipe, keyevent).
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, Awaitable
 from datetime import datetime
 import logging
 
@@ -42,12 +42,16 @@ class ExecutionContext:
     action_path: list = None
     # Track condition results for IF actions: {path_key: bool} e.g. {"0": true, "2.1": false}
     condition_results: Dict[str, bool] = None
+    # Track preset call stack for circular reference detection in call_preset
+    preset_call_stack: list = None
 
     def __post_init__(self):
         if self.action_path is None:
             self.action_path = []
         if self.condition_results is None:
             self.condition_results = {}
+        if self.preset_call_stack is None:
+            self.preset_call_stack = []
 
     def get_current_path_key(self, action_index: int) -> str:
         """Get a string key for current action path, e.g. '2.0.1'"""
@@ -66,9 +70,14 @@ class ExecutionError(Exception):
 
 
 class ActionExecutor:
-    def __init__(self, adb: Optional[ADB] = None):
+    def __init__(
+        self,
+        adb: Optional[ADB] = None,
+        preset_loader: Optional[Callable[[int], Awaitable[Optional[AppActionPreset]]]] = None
+    ):
         self.adb = adb or ADB()
         self._screen_size_cache: Dict[str, tuple[int, int]] = {}
+        self._preset_loader = preset_loader
 
     async def _get_screen_size(self, serial: str) -> tuple[int, int]:
         """Get cached screen size for a device."""
@@ -416,6 +425,53 @@ class ActionExecutor:
                     # Optional: add delay between iterations
                     if "delay_between" in params:
                         await asyncio.sleep(float(params["delay_between"]))
+
+            elif a_type == "call_preset":
+                # Execute another preset's actions inline
+                called_preset_id = int(params.get("preset_id", 0))
+                inherit_variables = params.get("inherit_variables", True)
+
+                if not called_preset_id:
+                    raise RuntimeError("call_preset: preset_id is required")
+
+                if not self._preset_loader:
+                    raise RuntimeError("call_preset: no preset loader configured")
+
+                # Check for circular reference
+                if called_preset_id in ctx.preset_call_stack:
+                    call_chain = " -> ".join(str(pid) for pid in ctx.preset_call_stack + [called_preset_id])
+                    raise RuntimeError(f"call_preset: circular reference detected: {call_chain}")
+
+                # Load the called preset
+                called_preset = await self._preset_loader(called_preset_id)
+                if not called_preset:
+                    raise RuntimeError(f"call_preset: preset {called_preset_id} not found")
+
+                # Push to call stack
+                ctx.preset_call_stack.append(called_preset_id)
+                try:
+                    # Merge variables if inherit_variables is True
+                    # Called preset's variables override caller's variables
+                    if inherit_variables and called_preset.variables:
+                        for var in called_preset.variables:
+                            var_name = var.get("name")
+                            var_type = var.get("type")
+                            if var_name and var_type == "text" and var.get("text"):
+                                ctx.variables[var_name] = var["text"]
+                            elif var_name and var_type == "number" and var.get("number") is not None:
+                                ctx.variables[var_name] = var["number"]
+
+                    # Execute called preset's actions
+                    called_actions = called_preset.actions or []
+                    for nested_idx, nested_action in enumerate(called_actions):
+                        ctx.action_path.append(f"preset:{called_preset_id}:{nested_idx}")
+                        try:
+                            await self.execute_action(nested_action, ctx, called_preset, action_index)
+                        finally:
+                            ctx.action_path.pop()
+                finally:
+                    # Pop from call stack
+                    ctx.preset_call_stack.pop()
 
             else:
                 # Unsupported action types are best-effort no-ops for now

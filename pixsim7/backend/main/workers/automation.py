@@ -130,8 +130,16 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 ctx = ExecutionContext(serial=device.adb_id, variables=variables, screenshots_dir=screenshots_dir)
 
+                # Add root preset to call stack to detect self-referential calls
+                if hasattr(preset, 'id') and preset.id:
+                    ctx.preset_call_stack.append(preset.id)
+
+                # Create preset loader for call_preset action
+                async def load_preset(preset_id: int) -> AppActionPreset | None:
+                    return await db.get(AppActionPreset, preset_id)
+
                 # Execute actions
-                executor = ActionExecutor()
+                executor = ActionExecutor(preset_loader=load_preset)
                 await executor.execute(preset, ctx)
 
                 # Mark completed

@@ -505,6 +505,40 @@ ACTION_SCHEMAS: List[ActionSchema] = [
             }
         ]
     ),
+
+    ActionSchema(
+        type="call_preset",
+        display_name="Call Preset",
+        description="Execute another preset's actions inline. Useful for reusing common action sequences across multiple presets.",
+        category="control_flow",
+        icon="external-link",
+        supports_nesting=True,
+        parameters=[
+            ActionParameter(
+                name="preset_id",
+                type="integer",
+                required=True,
+                description="ID of the preset to execute",
+                placeholder="123"
+            ),
+            ActionParameter(
+                name="inherit_variables",
+                type="boolean",
+                required=False,
+                default=True,
+                description="Pass current variables to the called preset"
+            )
+        ],
+        examples=[
+            {
+                "type": "call_preset",
+                "params": {
+                    "preset_id": 123,
+                    "inherit_variables": True
+                }
+            }
+        ]
+    ),
 ]
 
 

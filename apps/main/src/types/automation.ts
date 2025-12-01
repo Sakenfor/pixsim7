@@ -70,6 +70,7 @@ export enum ActionType {
 
   // Control flow
   REPEAT = 'repeat',
+  CALL_PRESET = 'call_preset',
 }
 
 // Match modes for string comparison in element selectors
