@@ -2,7 +2,7 @@
  * Gallery Module for Control Center
  *
  * Quick access to gallery controls:
- * - Badge style presets
+ * - MediaCard overlay presets
  * - Surface switcher
  * - Asset stats
  * - Quick filters
@@ -12,7 +12,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePanelConfigStore } from '@/stores/panelConfigStore';
 import { useAssets } from '@/hooks/useAssets';
-import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '@/lib/gallery/badgeConfigPresets';
+import { mediaCardPresets } from '@/lib/overlay';
 import { gallerySurfaceRegistry } from '@/lib/gallery/surfaceRegistry';
 import type { ControlCenterModuleProps } from '@/lib/control/controlCenterModuleRegistry';
 
@@ -24,9 +24,9 @@ export function GalleryModule({ }: ControlCenterModuleProps) {
   // Get asset stats
   const { items, loading } = useAssets({ filters: {} });
 
-  // Find current badge preset
-  const currentBadgePreset = useMemo(() => {
-    return findMatchingPreset(panelConfig?.settings?.badgeConfig || {}) || 'default';
+  // Get current overlay preset ID
+  const currentOverlayPresetId = useMemo(() => {
+    return panelConfig?.settings?.overlayPresetId || 'media-card-default';
   }, [panelConfig]);
 
   // Get all surfaces
@@ -46,10 +46,10 @@ export function GalleryModule({ }: ControlCenterModuleProps) {
     };
   }, [items, loading]);
 
-  const handleBadgePresetChange = (presetId: string) => {
-    const preset = BADGE_CONFIG_PRESETS.find(p => p.id === presetId);
+  const handleOverlayPresetChange = (presetId: string) => {
+    const preset = mediaCardPresets.find(p => p.id === presetId);
     if (preset) {
-      updatePanelSettings('gallery', { badgeConfig: preset.config });
+      updatePanelSettings('gallery', { overlayPresetId: preset.id });
     }
   };
 
@@ -93,22 +93,22 @@ export function GalleryModule({ }: ControlCenterModuleProps) {
         ) : null}
       </div>
 
-      {/* Badge Style Presets */}
+      {/* MediaCard Preset */}
       <div>
-        <h3 className="text-sm font-semibold mb-2">Badge Style</h3>
+        <h3 className="text-sm font-semibold mb-2">MediaCard Preset</h3>
         <select
-          value={currentBadgePreset}
-          onChange={(e) => handleBadgePresetChange(e.target.value)}
+          value={currentOverlayPresetId}
+          onChange={(e) => handleOverlayPresetChange(e.target.value)}
           className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {BADGE_CONFIG_PRESETS.map(preset => (
+          {mediaCardPresets.map(preset => (
             <option key={preset.id} value={preset.id}>
               {preset.icon} {preset.name}
             </option>
           ))}
         </select>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-          {BADGE_CONFIG_PRESETS.find(p => p.id === currentBadgePreset)?.description}
+          {mediaCardPresets.find(p => p.id === currentOverlayPresetId)?.configuration.description}
         </p>
       </div>
 

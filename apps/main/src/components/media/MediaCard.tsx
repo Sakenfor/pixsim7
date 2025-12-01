@@ -22,7 +22,12 @@
  */
 
 import { useMemo, useRef, useState } from 'react';
-import { OverlayContainer } from '@/lib/overlay';
+import {
+  OverlayContainer,
+  getMediaCardPreset,
+  getDefaultMediaCardConfig,
+  mergeConfigurations,
+} from '@/lib/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import { ThemedIcon } from '@/lib/icons';
@@ -91,6 +96,12 @@ export interface MediaCardProps {
    * These are merged with default widgets (by id).
    */
   customWidgets?: OverlayWidget[];
+
+  /**
+   * Optional overlay preset ID to apply (e.g., 'media-card-default', 'media-card-minimal').
+   * When provided, the preset's configuration is merged with runtime widgets.
+   */
+  overlayPresetId?: string;
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -109,6 +120,7 @@ export function MediaCard(props: MediaCardProps) {
     badgeConfig,
     overlayConfig: customOverlayConfig,
     customWidgets = [],
+    overlayPresetId,
   } = props;
 
   const [isHovered, setIsHovered] = useState(false);
@@ -158,25 +170,45 @@ export function MediaCard(props: MediaCardProps) {
 
     // Merge with custom widgets (custom widgets replace default by id)
     const widgetMap = new Map<string, OverlayWidget>();
-    
+
     // Add defaults first
     defaultWidgets.forEach(widget => widgetMap.set(widget.id, widget));
-    
+
     // Override/add custom widgets
     customWidgets.forEach(widget => widgetMap.set(widget.id, widget));
-    
+
     const finalWidgets = Array.from(widgetMap.values());
 
-    // Build final configuration
+    // Build runtime configuration from widgets
     const baseConfig: OverlayConfiguration = {
-      id: customOverlayConfig?.id || 'media-card-overlay',
-      name: customOverlayConfig?.name || 'Media Card',
+      id: 'media-card-default-runtime',
+      name: 'Media Card',
       widgets: finalWidgets,
       spacing: customOverlayConfig?.spacing || 'normal',
     };
 
-    return baseConfig;
-  }, [props, customWidgets, customOverlayConfig]);
+    // Resolve overlay preset ID
+    const presetId =
+      overlayPresetId ||
+      customOverlayConfig?.id ||
+      'media-card-default';
+
+    // Get preset configuration
+    const preset =
+      getMediaCardPreset(presetId) ??
+      { configuration: getDefaultMediaCardConfig() };
+
+    // Merge preset configuration with runtime widgets
+    const merged = mergeConfigurations(preset.configuration, baseConfig);
+
+    // Apply custom overlay config overrides
+    return {
+      ...merged,
+      id: customOverlayConfig?.id || merged.id,
+      name: customOverlayConfig?.name || merged.name,
+      spacing: customOverlayConfig?.spacing || merged.spacing,
+    };
+  }, [props, customWidgets, customOverlayConfig, overlayPresetId]);
 
   // Prepare data for overlay widgets
   // This object is passed to ALL widget render functions
