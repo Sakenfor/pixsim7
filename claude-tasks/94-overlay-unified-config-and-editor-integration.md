@@ -19,6 +19,26 @@ This task wires those layers together in a logical sequence so overlay presets b
 
 ---
 
+### Task Checklist
+
+- [x] 94.1 – Registry-Based Reconstruction Path ✅ (2025-12-01)
+- [x] 94.2 – Bindings & Widget Props Round-Trip ✅ (2025-12-01)
+- [x] 94.3 – OverlayEditor Type-Aware Creation & Editing ✅ (2025-12-01)
+- [x] 94.4 – Visibility Trigger Fidelity ✅ (2025-12-01)
+
+**Completion Summary:**
+- ✅ Widget registry extended with factory support
+- ✅ `overlayWidgetRegistry.ts` created with badge, panel, upload, button factories
+- ✅ `buildOverlayConfigFromUnified()` implemented for full reconstruction
+- ✅ Widget-specific props and bindings preserved in round-trip conversion
+- ✅ `TypeSpecificProperties` component created for type-aware editing
+- ✅ Overlay-specific visibility triggers preserved via advanced conditions
+- ✅ Comprehensive integration guide created (`INTEGRATION_GUIDE.md`)
+- **Commit:** `a85d863` - "Implement overlay unified config and editor integration (Task 94)"
+- **Branch:** `claude/review-implement-changes-01B264iQH1emnSDDhoNxPz4u`
+
+---
+
 ### Recommended Order of Work
 
 1. **Registry-based reconstruction path**
