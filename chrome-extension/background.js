@@ -549,10 +549,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         };
 
-        // Open or reuse tab
-        if (tabId && typeof tabId === 'number') {
+        // Open or reuse tab - prefer sender's tab, then explicit tabId, then new tab
+        const useTabId = sender?.tab?.id || tabId;
+        if (useTabId && typeof useTabId === 'number') {
           // Reuse existing tab (current tab in most cases)
-          chrome.tabs.update(tabId, { url: target.url }, (tab) => {
+          chrome.tabs.update(useTabId, { url: target.url }, (tab) => {
             handleTabReady(tab);
           });
         } else {

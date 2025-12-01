@@ -10,6 +10,7 @@
 
   const STORAGE_KEY_PROVIDER_SESSIONS = 'pixsim7ProviderSessions';
   const STORAGE_KEY_SELECTED_ACCOUNT = 'pixsim7SelectedPresetAccount';
+  const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
 
   const BTN_GROUP_CLASS = 'pxs7-group';
   const BTN_CLASS = 'pxs7-btn';
@@ -297,6 +298,222 @@
     styleInjected = true;
   }
 
+  // ===== Input Preservation =====
+
+  function saveInputState() {
+    try {
+      const state = { inputs: {}, images: [] };
+
+      // Save all textareas with content
+      document.querySelectorAll('textarea').forEach((el, i) => {
+        if (el.value && el.value.trim()) {
+          const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+          state.inputs[key] = el.value;
+        }
+      });
+
+      // Save contenteditable divs (some editors use these)
+      document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
+        if (el.textContent && el.textContent.trim()) {
+          const key = el.id || el.dataset.placeholder || `editable_${i}`;
+          state.inputs[`ce_${key}`] = el.innerHTML;
+        }
+      });
+
+      // Save uploaded image URLs from Ant Design upload containers
+      document.querySelectorAll('.ant-upload-drag-container img').forEach(img => {
+        const src = img.src;
+        if (src && src.includes('media.pixverse.ai')) {
+          // Get the original URL without query params for cleaner display
+          const cleanUrl = src.split('?')[0];
+          if (!state.images.includes(cleanUrl)) {
+            state.images.push(cleanUrl);
+          }
+        }
+      });
+
+      // Also check for background images in upload previews
+      document.querySelectorAll('[style*="media.pixverse.ai"]').forEach(el => {
+        const style = el.getAttribute('style') || '';
+        const match = style.match(/url\(["']?(https:\/\/media\.pixverse\.ai[^"')\s]+)/);
+        if (match && !state.images.includes(match[1])) {
+          state.images.push(match[1].split('?')[0]);
+        }
+      });
+
+      if (Object.keys(state.inputs).length > 0 || state.images.length > 0) {
+        sessionStorage.setItem(SESSION_KEY_PRESERVED_INPUT, JSON.stringify(state));
+        console.log('[PixSim7] Saved state:', Object.keys(state.inputs).length, 'inputs,', state.images.length, 'images');
+      }
+    } catch (e) {
+      console.warn('[PixSim7] Failed to save input state:', e);
+    }
+  }
+
+  function restoreInputState() {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY_PRESERVED_INPUT);
+      if (!saved) return;
+
+      const state = JSON.parse(saved);
+      // Handle old format (just inputs object)
+      const inputs = state.inputs || state;
+      const images = state.images || [];
+
+      let restored = 0;
+
+      // Restore textareas
+      document.querySelectorAll('textarea').forEach((el, i) => {
+        const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+        if (inputs[key]) {
+          el.value = inputs[key];
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          restored++;
+        }
+      });
+
+      // Restore contenteditable
+      document.querySelectorAll('[contenteditable="true"]').forEach((el, i) => {
+        const key = el.id || el.dataset.placeholder || `editable_${i}`;
+        if (inputs[`ce_${key}`]) {
+          el.innerHTML = inputs[`ce_${key}`];
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          restored++;
+        }
+      });
+
+      // Show image restoration panel if there are images
+      if (images.length > 0) {
+        showImageRestorePanel(images);
+      }
+
+      if (restored > 0) {
+        console.log('[PixSim7] Restored', restored, 'input(s)');
+        showToast(`Restored ${restored} input(s)`, true);
+      }
+
+      // Clear after restore
+      sessionStorage.removeItem(SESSION_KEY_PRESERVED_INPUT);
+    } catch (e) {
+      console.warn('[PixSim7] Failed to restore input state:', e);
+    }
+  }
+
+  function showImageRestorePanel(images) {
+    // Remove existing panel
+    document.querySelectorAll('.pxs7-restore-panel').forEach(p => p.remove());
+
+    const panel = document.createElement('div');
+    panel.className = 'pxs7-restore-panel';
+    panel.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 2147483647;
+      background: ${COLORS.bg};
+      border: 1px solid ${COLORS.border};
+      border-radius: 8px;
+      padding: 12px;
+      max-width: 280px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    `;
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    `;
+    header.innerHTML = `
+      <span style="font-size: 11px; font-weight: 600; color: ${COLORS.text};">
+        Previous Images (${images.length})
+      </span>
+    `;
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '×';
+    closeBtn.style.cssText = `
+      background: none;
+      border: none;
+      color: ${COLORS.textMuted};
+      font-size: 18px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+    `;
+    closeBtn.addEventListener('click', () => panel.remove());
+    header.appendChild(closeBtn);
+    panel.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.style.cssText = `
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    `;
+
+    images.forEach(url => {
+      const thumb = document.createElement('img');
+      thumb.src = url + '?x-oss-process=style/cover-webp-small';
+      thumb.style.cssText = `
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid ${COLORS.border};
+      `;
+      thumb.title = 'Click to copy URL';
+      thumb.addEventListener('click', () => {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('Image URL copied!', true);
+        });
+      });
+      grid.appendChild(thumb);
+    });
+    panel.appendChild(grid);
+
+    const hint = document.createElement('div');
+    hint.style.cssText = `
+      font-size: 10px;
+      color: ${COLORS.textMuted};
+      text-align: center;
+    `;
+    hint.textContent = 'Click image to copy URL, then paste to re-upload';
+    panel.appendChild(hint);
+
+    // Copy all button
+    if (images.length > 1) {
+      const copyAllBtn = document.createElement('button');
+      copyAllBtn.textContent = 'Copy All URLs';
+      copyAllBtn.style.cssText = `
+        width: 100%;
+        margin-top: 8px;
+        padding: 6px;
+        font-size: 11px;
+        background: ${COLORS.bgHover};
+        border: 1px solid ${COLORS.border};
+        border-radius: 4px;
+        color: ${COLORS.text};
+        cursor: pointer;
+      `;
+      copyAllBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(images.join('\n')).then(() => {
+          showToast(`Copied ${images.length} URLs!`, true);
+        });
+      });
+      panel.appendChild(copyAllBtn);
+    }
+
+    document.body.appendChild(panel);
+
+    // Auto-dismiss after 30 seconds
+    setTimeout(() => panel.remove(), 30000);
+  }
+
   // ===== Storage =====
 
   async function loadSelectedAccount() {
@@ -415,11 +632,15 @@
       return false;
     }
 
+    // Save current input state before page reloads
+    saveInputState();
+
     try {
       const res = await chrome.runtime.sendMessage({
         action: 'loginWithAccount',
         accountId: account.id,
         accountEmail: account.email
+        // No tabId needed - background uses sender.tab.id
       });
 
       if (res?.success) {
@@ -812,6 +1033,9 @@
     ]);
 
     processTaskElements();
+
+    // Restore any saved input state after a delay (wait for page to fully render)
+    setTimeout(restoreInputState, 1000);
 
     // Watch for DOM changes
     const observer = new MutationObserver((mutations) => {
