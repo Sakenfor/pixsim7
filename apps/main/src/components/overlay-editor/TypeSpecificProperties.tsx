@@ -426,6 +426,44 @@ function VideoScrubProperties({ widget, onUpdate }: TypeSpecificPropertiesProps)
 }
 
 /**
+ * Comic panel widget specific properties
+ */
+function ComicPanelProperties({ widget, onUpdate }: TypeSpecificPropertiesProps) {
+  const widgetAny = widget as any;
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm">
+        <span className="text-neutral-600 dark:text-neutral-400 text-xs">Layout</span>
+        <select
+          value={widgetAny.layout || 'single'}
+          onChange={(e) => onUpdate({ ...widget, layout: e.target.value })}
+          className="mt-1 block w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800"
+        >
+          <option value="single">Single Panel</option>
+          <option value="strip">Horizontal Strip</option>
+          <option value="grid2">2x Grid</option>
+        </select>
+      </label>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={widgetAny.showCaption !== false}
+          onChange={(e) => onUpdate({ ...widget, showCaption: e.target.checked })}
+          className="rounded"
+        />
+        Show Captions
+      </label>
+
+      <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
+        Panel content configured via scene metadata or data bindings
+      </p>
+    </div>
+  );
+}
+
+/**
  * Progress widget specific properties
  */
 function ProgressProperties({ widget, onUpdate }: TypeSpecificPropertiesProps) {
@@ -560,6 +598,8 @@ export function TypeSpecificProperties({ widget, onUpdate }: TypeSpecificPropert
       return <VideoScrubProperties widget={widget} onUpdate={onUpdate} />;
     case 'progress':
       return <ProgressProperties widget={widget} onUpdate={onUpdate} />;
+    case 'comic-panel':
+      return <ComicPanelProperties widget={widget} onUpdate={onUpdate} />;
     default:
       return (
         <p className="text-xs text-neutral-500 dark:text-neutral-400">
