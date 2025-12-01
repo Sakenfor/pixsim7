@@ -164,9 +164,44 @@ export interface DraftScene {
   version?: number // for migration
   metadata?: Record<string, any>
 
+  // Comic panels (optional)
+  comicPanels?: SceneMetaComicPanel[];
+
   // Timestamps
   createdAt?: string
   updatedAt?: string
+}
+
+// ===== Comic Panel Support =====
+
+/**
+ * Represents a single comic panel within a scene
+ * Panels are displayed as a sequence of images with optional captions
+ */
+export interface SceneMetaComicPanel {
+  /** Unique identifier for the panel within this scene */
+  id: string;
+
+  /** Gallery asset ID or provider asset ID for the panel image */
+  assetId: string;
+
+  /** Optional text caption displayed under the panel */
+  caption?: string;
+
+  /** Optional tags for categorization (mood, location, etc.) */
+  tags?: string[];
+}
+
+/**
+ * Session flags for comic panel state
+ * Used at runtime to track which panel is currently displayed
+ */
+export interface ComicSessionFlags {
+  /** ID of the currently displayed panel */
+  current_panel?: string;
+
+  /** Optional chapter/issue identifier */
+  chapter?: string;
 }
 
 // ===== Scene Library Metadata =====
@@ -190,4 +225,7 @@ export interface SceneMetadata {
 
   createdAt: string
   updatedAt: string
+
+  // Comic panels (optional)
+  comicPanels?: SceneMetaComicPanel[];
 }

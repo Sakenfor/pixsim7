@@ -22,6 +22,7 @@ import { createMenuWidget, type MenuWidgetConfig } from './widgets/MenuWidget';
 import { createTooltipWidget, type TooltipWidgetConfig } from './widgets/TooltipWidget';
 import { createVideoScrubWidget, type VideoScrubWidgetConfig } from './widgets/VideoScrubWidget';
 import { createProgressWidget, type ProgressWidgetConfig } from './widgets/ProgressWidget';
+import { createComicPanelWidget, type ComicPanelWidgetConfig } from './widgets/ComicPanelWidget';
 import { createBindingFromValue, type DataBinding } from '@/lib/editing-core';
 
 /**
@@ -232,6 +233,27 @@ const progressFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) =
 };
 
 /**
+ * Comic panel widget factory
+ */
+const comicPanelFactory: WidgetFactory<OverlayWidget> = (config, runtimeOptions) => {
+  const comicPanelConfig: ComicPanelWidgetConfig = {
+    id: config.id,
+    position: fromUnifiedPosition(config.position),
+    visibility: fromUnifiedVisibility(config.visibility),
+    panelIdsBinding: extractBinding(config.bindings, 'panelIds'),
+    assetIdsBinding: extractBinding(config.bindings, 'assetIds'),
+    panelsBinding: extractBinding(config.bindings, 'panels'),
+    layout: (config.props?.layout as any) || 'single',
+    showCaption: config.props?.showCaption !== false,
+    className: config.style?.className,
+    priority: config.position.order,
+    onClick: runtimeOptions?.onClick,
+  };
+
+  return createComicPanelWidget(comicPanelConfig);
+};
+
+/**
  * Register all overlay widget types
  */
 export function registerOverlayWidgets(): void {
@@ -404,6 +426,25 @@ export function registerOverlayWidgets(): void {
       bindings: [
         { kind: 'static', target: 'value', staticValue: 0 },
       ],
+      version: 1,
+    },
+  });
+
+  registerWidget({
+    type: 'comic-panel',
+    displayName: 'Comic Panel',
+    icon: 'image',
+    factory: comicPanelFactory,
+    defaultConfig: {
+      type: 'comic-panel',
+      componentType: 'overlay',
+      position: { mode: 'anchor', anchor: 'center' },
+      visibility: { simple: 'always' },
+      props: {
+        layout: 'single',
+        showCaption: true,
+      },
+      bindings: [],
       version: 1,
     },
   });
