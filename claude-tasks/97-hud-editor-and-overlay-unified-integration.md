@@ -1,6 +1,6 @@
 ## Task 97: HUD Editor & Overlay Unified Integration
 
-**Status:** Planned
+**Status:** Complete (HUD plumbing & guide in `bfad883`, extended docs in `865ddf0`)
 
 ### Summary
 
@@ -87,4 +87,3 @@ Out of scope:
 
 - HUD’s gameplay-specific visibility conditions may not map 1:1 to overlay’s simpler triggers; use `UnifiedVisibility.advanced` carefully and document any lossy mappings.
 - Keep an eye on circular dependencies between HUD, overlay, and editing-core; converters and registries should live in lib layers, not components, to avoid tight coupling.
-

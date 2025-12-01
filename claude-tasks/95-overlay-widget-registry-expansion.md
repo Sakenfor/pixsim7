@@ -1,6 +1,6 @@
 ## Task 95: Overlay Widget Registry Expansion
 
-**Status:** Planned
+**Status:** Complete (merged via `865ddf0`)
 
 ### Summary
 
@@ -91,4 +91,3 @@ Out of scope:
 
 - Some widget props (e.g. complex tooltip `content.custom`, menu item arrays) may be difficult or impossible to serialize cleanly; start with a minimal supported subset and clearly document limitations.
 - Keep runtime behavior unchanged; the registry path should only affect how widgets are configured/constructed, not how they behave once rendered.
-

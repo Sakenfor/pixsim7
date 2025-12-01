@@ -1,6 +1,6 @@
 ## Task 96: Overlay Editor UX & Validation
 
-**Status:** Planned
+**Status:** Complete (merged via `865ddf0`)
 
 ### Summary
 
@@ -90,4 +90,3 @@ Out of scope:
 
 - Validation should be throttled/debounced in the editor to avoid running on every keystroke in large configs; using a small debounce or running on blur/save is acceptable.
 - Keep the editor’s UI focused; avoid turning it into a full-blown form-builder in this task.
-
