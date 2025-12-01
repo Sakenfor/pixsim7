@@ -23,30 +23,27 @@
     .${BUTTON_CLASS} {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      margin-left: 8px;
-      padding: 4px 8px;
+      gap: 3px;
+      margin-left: 6px;
+      padding: 0;
       font-size: 11px;
       font-weight: 500;
       color: #a78bfa;
-      background: rgba(139, 92, 246, 0.15);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      border-radius: 4px;
+      background: transparent;
+      border: none;
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: color 0.15s ease;
       vertical-align: middle;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: inherit;
     }
     .${BUTTON_CLASS}:hover {
-      background: rgba(139, 92, 246, 0.25);
-      border-color: rgba(139, 92, 246, 0.5);
       color: #c4b5fd;
     }
     .${BUTTON_CLASS}:active {
-      transform: scale(0.97);
+      opacity: 0.8;
     }
     .${BUTTON_CLASS}.loading {
-      opacity: 0.6;
+      opacity: 0.5;
       pointer-events: none;
     }
 

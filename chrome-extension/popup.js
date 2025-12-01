@@ -547,7 +547,8 @@ async function handleAccountLogin(account, event) {
       !account.is_google_account &&
       (
         account.jwt_expired === true ||
-        (!account.has_jwt && !account.has_cookies)
+        !account.has_jwt ||
+        !account.has_cookies
       );
 
     if (shouldAttemptReauth) {

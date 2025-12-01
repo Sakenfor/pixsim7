@@ -1,5 +1,7 @@
 ## Task 94: Overlay Unified Config & Editor Integration
 
+**Status:** Complete (implemented in `a85d863c`)
+
 ### Summary
 
 The overlay system (Media Card overlays, HUD-style overlays, etc.) now has:
@@ -168,4 +170,3 @@ Working in this order ensures that:
 - Full HUD editor integration (that’s covered by Task 101+).
 - Backward migration of older, legacy overlay configs not using unified formats.
 - Adding brand-new widget types; the focus here is on making existing ones portable and editable.
-
