@@ -16,6 +16,7 @@ export interface WidgetListProps {
   onRemoveWidget: (widgetId: string) => void;
   onReorderWidgets: (newOrder: OverlayWidget[]) => void;
   onAddWidget: (widgetType: string) => void;
+  onDuplicateWidget?: (widget: OverlayWidget) => void;
   availableWidgetTypes: Array<{
     type: string;
     name: string;
@@ -30,6 +31,7 @@ export function WidgetList({
   onRemoveWidget,
   onReorderWidgets,
   onAddWidget,
+  onDuplicateWidget,
   availableWidgetTypes,
 }: WidgetListProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -118,7 +120,7 @@ export function WidgetList({
                 </div>
               </div>
 
-              {/* Reorder buttons */}
+              {/* Reorder and action buttons */}
               <div className="flex gap-1">
                 <button
                   className="p-1 hover:bg-white/50 dark:hover:bg-black/20 rounded disabled:opacity-30"
@@ -142,6 +144,18 @@ export function WidgetList({
                 >
                   <Icon name="chevronDown" className="w-3 h-3" />
                 </button>
+                {onDuplicateWidget && (
+                  <button
+                    className="p-1 hover:bg-blue-500 hover:text-white rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDuplicateWidget(widget);
+                    }}
+                    title="Duplicate"
+                  >
+                    <Icon name="copy" className="w-3 h-3" />
+                  </button>
+                )}
                 <button
                   className="p-1 hover:bg-red-500 hover:text-white rounded"
                   onClick={(e) => {

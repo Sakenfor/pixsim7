@@ -75,6 +75,19 @@ export function WidgetPropertyEditor({ widget, onUpdate }: WidgetPropertyEditorP
 
         {widget.interactive && (
           <div className="pl-6 space-y-2">
+            {/* Inline validation hint for missing aria label */}
+            {!widget.ariaLabel && !widget.handlesOwnInteraction && (
+              <div className="p-2 rounded bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                <div className="flex gap-2">
+                  <span className="text-orange-600 dark:text-orange-400 text-xs">⚠️</span>
+                  <p className="text-xs text-orange-700 dark:text-orange-300">
+                    Interactive widgets should have an ARIA label for accessibility,
+                    or set <code className="text-xs bg-orange-100 dark:bg-orange-900/40 px-1 rounded">handlesOwnInteraction</code> if managed internally.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <label className="block text-sm">
               <span className="text-neutral-600 dark:text-neutral-400 text-xs">ARIA Label</span>
               <input
