@@ -1,7 +1,16 @@
 import { useState } from 'react';
-import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType, AutomationStatus } from '@/types/automation';
+import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType } from '@/types/automation';
 import { Button } from '@pixsim7/shared.ui';
 import { ActionParamsEditor } from './ActionParamsEditor';
+import { EMPTY_PARAMS } from './actionConstants';
+import {
+  hasNestedActions,
+  getActionMeta,
+  getCategoryColors,
+  getActionSummary,
+  getConditionResult,
+  getActionTestStatus,
+} from './actionUtils';
 
 interface ActionBuilderProps {
   actions: ActionDefinition[];
@@ -14,205 +23,6 @@ interface ActionBuilderProps {
   onTestAction?: (actionsToTest: ActionDefinition[]) => void;
   testing?: boolean;
   testExecution?: AutomationExecution | null;
-}
-
-const EMPTY_PARAMS = {};
-
-// Action types that support nested actions
-const NESTED_ACTION_TYPES = [
-  ActionType.IF_ELEMENT_EXISTS,
-  ActionType.IF_ELEMENT_NOT_EXISTS,
-  ActionType.REPEAT,
-];
-
-function hasNestedActions(type: ActionType): boolean {
-  return NESTED_ACTION_TYPES.includes(type);
-}
-
-// Action category styling
-type ActionCategory = 'timing' | 'app' | 'input' | 'navigation' | 'element' | 'control' | 'utility';
-
-interface ActionMeta {
-  icon: string;
-  label: string;
-  category: ActionCategory;
-}
-
-const ACTION_META: Record<ActionType, ActionMeta> = {
-  [ActionType.WAIT]: { icon: '⏱️', label: 'Wait', category: 'timing' },
-  [ActionType.LAUNCH_APP]: { icon: '🚀', label: 'Launch App', category: 'app' },
-  [ActionType.EXIT_APP]: { icon: '🚪', label: 'Exit App', category: 'app' },
-  [ActionType.CLICK_COORDS]: { icon: '👆', label: 'Click Coords', category: 'input' },
-  [ActionType.TYPE_TEXT]: { icon: '⌨️', label: 'Type Text', category: 'input' },
-  [ActionType.PRESS_BACK]: { icon: '◀️', label: 'Press Back', category: 'navigation' },
-  [ActionType.EMULATOR_BACK]: { icon: '◀️', label: 'Emulator Back', category: 'navigation' },
-  [ActionType.PRESS_HOME]: { icon: '🏠', label: 'Press Home', category: 'navigation' },
-  [ActionType.SWIPE]: { icon: '👋', label: 'Swipe', category: 'input' },
-  [ActionType.SCREENSHOT]: { icon: '📸', label: 'Screenshot', category: 'utility' },
-  [ActionType.WAIT_FOR_ELEMENT]: { icon: '👁️', label: 'Wait for Element', category: 'element' },
-  [ActionType.CLICK_ELEMENT]: { icon: '🎯', label: 'Click Element', category: 'element' },
-  [ActionType.IF_ELEMENT_EXISTS]: { icon: '❓', label: 'If Element Exists', category: 'control' },
-  [ActionType.IF_ELEMENT_NOT_EXISTS]: { icon: '❓', label: 'If Element Not Exists', category: 'control' },
-  [ActionType.REPEAT]: { icon: '🔁', label: 'Repeat', category: 'control' },
-};
-
-const CATEGORY_COLORS: Record<ActionCategory, { bg: string; border: string; text: string }> = {
-  timing: {
-    bg: 'bg-blue-50 dark:bg-blue-900/20',
-    border: 'border-blue-300 dark:border-blue-700',
-    text: 'text-blue-700 dark:text-blue-300',
-  },
-  app: {
-    bg: 'bg-purple-50 dark:bg-purple-900/20',
-    border: 'border-purple-300 dark:border-purple-700',
-    text: 'text-purple-700 dark:text-purple-300',
-  },
-  input: {
-    bg: 'bg-green-50 dark:bg-green-900/20',
-    border: 'border-green-300 dark:border-green-700',
-    text: 'text-green-700 dark:text-green-300',
-  },
-  navigation: {
-    bg: 'bg-orange-50 dark:bg-orange-900/20',
-    border: 'border-orange-300 dark:border-orange-700',
-    text: 'text-orange-700 dark:text-orange-300',
-  },
-  element: {
-    bg: 'bg-cyan-50 dark:bg-cyan-900/20',
-    border: 'border-cyan-300 dark:border-cyan-700',
-    text: 'text-cyan-700 dark:text-cyan-300',
-  },
-  control: {
-    bg: 'bg-indigo-50 dark:bg-indigo-900/20',
-    border: 'border-indigo-300 dark:border-indigo-700',
-    text: 'text-indigo-700 dark:text-indigo-300',
-  },
-  utility: {
-    bg: 'bg-gray-50 dark:bg-gray-800/50',
-    border: 'border-gray-300 dark:border-gray-600',
-    text: 'text-gray-700 dark:text-gray-300',
-  },
-};
-
-function getActionMeta(type: ActionType): ActionMeta {
-  return ACTION_META[type] || { icon: '❔', label: type, category: 'utility' };
-}
-
-function getCategoryColors(category: ActionCategory) {
-  return CATEGORY_COLORS[category] || CATEGORY_COLORS.utility;
-}
-
-function getActionSummary(action: ActionDefinition): string {
-  const params = action.params || {};
-
-  switch (action.type) {
-    case ActionType.WAIT:
-      return `${params.seconds || 1}s`;
-    case ActionType.LAUNCH_APP:
-      return params.package || 'Default app';
-    case ActionType.CLICK_COORDS:
-      return `(${params.x || 0}, ${params.y || 0})`;
-    case ActionType.TYPE_TEXT:
-      return params.text ? `"${params.text.slice(0, 30)}${params.text.length > 30 ? '...' : ''}"` : 'No text';
-    case ActionType.SWIPE:
-      return `(${params.x1},${params.y1}) → (${params.x2},${params.y2})`;
-    case ActionType.WAIT_FOR_ELEMENT:
-    case ActionType.CLICK_ELEMENT:
-    case ActionType.IF_ELEMENT_EXISTS:
-    case ActionType.IF_ELEMENT_NOT_EXISTS: {
-      const parts: string[] = [];
-      if (params.resource_id) parts.push(`id: ${params.resource_id.split('/').pop()}`);
-      if (params.text) parts.push(`text: "${params.text.slice(0, 20)}"`);
-      if (params.content_desc) parts.push(`desc: "${params.content_desc.slice(0, 20)}"`);
-      if (action.type === ActionType.WAIT_FOR_ELEMENT && params.timeout) {
-        parts.push(`${params.timeout}s timeout`);
-      }
-      if ((action.type === ActionType.IF_ELEMENT_EXISTS || action.type === ActionType.IF_ELEMENT_NOT_EXISTS) && params.actions?.length) {
-        parts.push(`${params.actions.length} nested`);
-      }
-      return parts.length > 0 ? parts.join(' • ') : 'No selector';
-    }
-    case ActionType.REPEAT:
-      return `${params.count || 1}× • ${params.actions?.length || 0} nested`;
-    case ActionType.PRESS_BACK:
-    case ActionType.EMULATOR_BACK:
-    case ActionType.PRESS_HOME:
-    case ActionType.EXIT_APP:
-    case ActionType.SCREENSHOT:
-      return '';
-    default:
-      return Object.keys(params).length > 0 ? JSON.stringify(params) : '';
-  }
-}
-
-// Helper to get condition result for IF actions
-function getConditionResult(
-  index: number,
-  depth: number,
-  execution: AutomationExecution | null | undefined
-): boolean | null {
-  if (!execution) return null;
-  const conditionResults = execution.error_details?.condition_results as Record<string, boolean> | undefined;
-  if (!conditionResults) return null;
-
-  // Build path key like "2" or "2.0.1"
-  // Note: We don't have access to the full path here, so we use index for top-level
-  // For nested, this is trickier - we'd need to pass the path down
-  const pathKey = String(index);
-  if (pathKey in conditionResults) {
-    return conditionResults[pathKey];
-  }
-  return null;
-}
-
-// Helper to get test status for an action (supports nested path matching)
-function getActionTestStatus(
-  index: number,
-  execution: AutomationExecution | null | undefined,
-  depth: number = 0,
-  errorPath?: number[]
-): 'idle' | 'pending' | 'running' | 'completed' | 'failed' {
-  if (!execution) return 'idle';
-
-  // For FAILED status, check if this action matches the error path
-  if (execution.status === AutomationStatus.FAILED) {
-    if (errorPath && errorPath.length > depth) {
-      // Check if this action is in the error path
-      if (errorPath[depth] === index) {
-        return 'failed';
-      }
-    }
-    // Not in error path - for top level, mark earlier actions as completed
-    if (depth === 0) {
-      const errorTopIndex = errorPath?.[0] ?? execution.error_action_index ?? 0;
-      if (index < errorTopIndex) return 'completed';
-    }
-    return 'idle';
-  }
-
-  // For COMPLETED status
-  if (execution.status === AutomationStatus.COMPLETED) {
-    // All actions (including nested) are completed
-    return 'completed';
-  }
-
-  // For RUNNING status - only track at top level since we don't have nested progress
-  if (execution.status === AutomationStatus.RUNNING) {
-    if (depth === 0) {
-      const currentIndex = execution.current_action_index ?? 0;
-      if (index < currentIndex) return 'completed';
-      if (index === currentIndex) return 'running';
-      return 'pending';
-    }
-    // For nested: if parent is running, nested are part of it
-    return 'idle';
-  }
-
-  if (execution.status === AutomationStatus.PENDING) {
-    return depth === 0 ? 'pending' : 'idle';
-  }
-
-  return 'idle';
 }
 
 export function ActionBuilder({
