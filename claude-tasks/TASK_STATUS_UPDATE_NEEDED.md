@@ -1,12 +1,53 @@
 # Task Status - Updates Complete
 
 Generated: 2025-11-19
-**Updated: 2025-11-19 - All fixes applied!**
+**Updated: 2025-12-01 - Task 94 completed!**
 
 ## Summary
 
 ~~Several tasks are **functionally complete** but their phase checklists at the top haven't been updated.~~
 ✅ **All checklists have been updated and the interaction timing fix has been applied!**
+✅ **Task 94 (Overlay Unified Config & Editor Integration) completed on 2025-12-01**
+
+---
+
+## ✅ Latest Update: Task 94 (2025-12-01)
+
+### Task 94 - Overlay Unified Config & Editor Integration
+
+**Status**: ✅ Complete
+
+All 4 sub-tasks implemented:
+- ✅ **94.1** - Registry-Based Reconstruction Path
+  - Extended widget registry with factory support
+  - Created `overlayWidgetRegistry.ts` with badge, panel, upload, button factories
+  - Implemented `buildOverlayConfigFromUnified()` for full reconstruction
+
+- ✅ **94.2** - Bindings & Widget Props Round-Trip
+  - Updated `toUnifiedWidget()` to extract widget-specific props and bindings
+  - ButtonWidget enhanced with DataBinding support
+  - All supported widget types preserve their configuration in round-trip
+
+- ✅ **94.3** - OverlayEditor Type-Aware Creation & Editing
+  - OverlayEditor now uses widget registry defaults
+  - Created `TypeSpecificProperties` component for type-aware editing
+  - Integrated into `WidgetPropertyEditor` for better UX
+
+- ✅ **94.4** - Visibility Trigger Fidelity
+  - Overlay-specific triggers (hover-container, hover-sibling, active) preserved via advanced conditions
+  - Both conversion directions maintain semantics
+
+**Documentation**:
+- ✅ Created `INTEGRATION_GUIDE.md` with comprehensive usage examples
+- ✅ Added task checklist to `94-overlay-unified-config-and-editor-integration.md`
+
+**Commits**:
+- `a85d863` - Implementation
+- `3cff6cd` - Checklist update
+
+**Branch**: `claude/review-implement-changes-01B264iQH1emnSDDhoNxPz4u`
+
+---
 
 ## ✅ Completed Actions (2025-11-19)
 
