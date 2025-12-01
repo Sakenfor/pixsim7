@@ -14,7 +14,7 @@ import { GalleryToolsPanel } from '@/components/gallery/panels/GalleryToolsPanel
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig } from '../lib/gallery/badgeConfigMerge';
-import { BADGE_CONFIG_PRESETS, findMatchingPreset } from '../lib/gallery/badgeConfigPresets';
+import { mediaCardPresets } from '@/lib/overlay';
 import type { GalleryToolContext, GalleryAsset } from '../lib/gallery/types';
 import { ThemedIcon } from '../lib/icons';
 import { useControlCenterStore } from '../stores/controlCenterStore';
@@ -81,16 +81,16 @@ export function AssetsRoute() {
     return merged;
   }, [currentSurfaceId, panelConfig, controlCenterOpen, controlCenterOperation]);
 
-  // Find current badge preset
-  const currentBadgePreset = useMemo(() => {
-    return findMatchingPreset(panelConfig?.settings?.badgeConfig || {}) || 'default';
+  // Get current overlay preset ID
+  const currentOverlayPresetId = useMemo(() => {
+    return panelConfig?.settings?.overlayPresetId || 'media-card-default';
   }, [panelConfig]);
 
-  // Handle badge preset change
-  const handleBadgePresetChange = (presetId: string) => {
-    const preset = BADGE_CONFIG_PRESETS.find(p => p.id === presetId);
+  // Handle overlay preset change
+  const handleOverlayPresetChange = (presetId: string) => {
+    const preset = mediaCardPresets.find(p => p.id === presetId);
     if (preset) {
-      updatePanelSettings('gallery', { badgeConfig: preset.config });
+      updatePanelSettings('gallery', { overlayPresetId: preset.id });
     }
   };
 
@@ -159,6 +159,7 @@ export function AssetsRoute() {
 	              onOpen={undefined}
               actions={controller.getAssetActions(a)}
               badgeConfig={effectiveBadgeConfig}
+              overlayPresetId={currentOverlayPresetId}
             />
 	          </div>
 	          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -208,6 +209,7 @@ export function AssetsRoute() {
 	          onOpen={() => controller.openInViewer(a)}
           actions={controller.getAssetActions(a)}
             badgeConfig={effectiveBadgeConfig}
+            overlayPresetId={currentOverlayPresetId}
           />
 	      </div>
 	    );
@@ -267,16 +269,16 @@ export function AssetsRoute() {
           {/* Surface Switcher */}
           <GallerySurfaceSwitcher mode="dropdown" />
 
-          {/* Badge Style Preset Switcher */}
+          {/* MediaCard Preset Switcher */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">Badge Style:</span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">MediaCard Preset:</span>
             <select
-              value={currentBadgePreset}
-              onChange={(e) => handleBadgePresetChange(e.target.value)}
+              value={currentOverlayPresetId}
+              onChange={(e) => handleOverlayPresetChange(e.target.value)}
               className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-              title="Quick badge style presets"
+              title="Quick MediaCard overlay presets"
             >
-              {BADGE_CONFIG_PRESETS.map(preset => (
+              {mediaCardPresets.map(preset => (
                 <option key={preset.id} value={preset.id}>
                   {preset.icon} {preset.name}
                 </option>
@@ -289,7 +291,7 @@ export function AssetsRoute() {
                 // TODO: Navigate to Panels tab and scroll to gallery section
               }}
               className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-              title="Open badge configuration settings"
+              title="Open panel configuration settings"
             >
               <ThemedIcon name="settings" size={14} variant="default" />
             </button>

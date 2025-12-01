@@ -66,6 +66,7 @@ export interface PanelConfigActions {
 
 // Gallery panel badge configuration
 export interface GalleryPanelSettings {
+  overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
   badgeConfig?: {
     showPrimaryIcon?: boolean;
     showStatusIcon?: boolean;
@@ -91,6 +92,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: 'gallery',
     enabled: true,
     settings: {
+      overlayPresetId: 'media-card-default',
       badgeConfig: defaultGalleryBadgeConfig,
     } as GalleryPanelSettings,
     category: 'core',
