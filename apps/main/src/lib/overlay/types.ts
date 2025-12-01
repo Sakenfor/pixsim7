@@ -196,6 +196,13 @@ export interface OverlayWidget<TData = any> {
   /** Whether the widget accepts user interaction */
   interactive?: boolean;
 
+  /**
+   * Whether the widget handles its own interaction internally
+   * (e.g., MenuWidget, TooltipWidget with internal state/keyboard handling).
+   * When true, OverlayWidget wrapper will not apply role="button" or keyboard handlers.
+   */
+  handlesOwnInteraction?: boolean;
+
   /** Whether the widget can be dismissed */
   dismissible?: boolean;
 

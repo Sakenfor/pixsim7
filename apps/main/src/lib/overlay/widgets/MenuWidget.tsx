@@ -102,6 +102,7 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
     visibility,
     priority,
     interactive: true,
+    handlesOwnInteraction: true, // Menu manages its own click/keyboard interaction internally
     render: (data: any) => {
       const [isOpen, setIsOpen] = useState(false);
       const [openSubMenus, setOpenSubMenus] = useState<Set<string>>(new Set());
