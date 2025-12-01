@@ -571,31 +571,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Login to provider site by injecting stored cookies and opening a tab
-  if (message.action === 'loginWithAccount') {
-      (async () => {
-        try {
-          const { accountId, tabId } = message;
-          const settings = await getSettings();
-          if (!settings.pixsim7Token) throw new Error('Not logged in');
-
-          // First sync credits to trigger auto re-auth if session is invalid
-          // This ensures we get fresh cookies instead of stale ones
+    // Login to provider site by injecting stored cookies and opening a tab
+    if (message.action === 'loginWithAccount') {
+        (async () => {
           try {
-            await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
-              method: 'POST',
-            });
-          } catch (syncErr) {
-            console.warn('[Background] Pre-login credit sync failed (account may need manual re-auth):', syncErr);
-            // Continue anyway - user might have valid cookies despite sync failure
-          }
+            const { accountId, tabId } = message;
+            const settings = await getSettings();
+            if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-          // Fetch cookies for this account from backend (now fresh after auto re-auth)
-          const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
-          const providerId = data.provider_id;
-          const cookies = data.cookies || {};
+            // Fetch cookies for this account from backend and open a tab using
+            // the stored session. This avoids triggering heavy credit sync +
+            // auto-reauth flows on every Login click; users can explicitly fix
+            // broken sessions via the "Fix Sessions" / reauth flow instead.
+            const data = await backendRequest(`/api/v1/accounts/${accountId}/cookies`);
+            const providerId = data.provider_id;
+            const cookies = data.cookies || {};
 
-        const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
+          const target = PROVIDER_TARGETS[providerId] || PROVIDER_TARGETS.pixverse;
 
           // If there is an existing remembered session for this provider,
           // sync its credits before switching to the new account. This keeps

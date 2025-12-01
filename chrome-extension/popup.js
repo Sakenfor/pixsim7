@@ -538,6 +538,30 @@ async function handleAccountLogin(account, event) {
     const useNewTab =
       (event && (event.ctrlKey || event.metaKey || event.button === 1)) || false;
 
+    // For Pixverse password-based accounts, attempt an automated re-auth
+    // when we know the JWT/cookies are missing or expired. This keeps the
+    // Login button fast for healthy sessions while still repairing broken
+    // ones without requiring a separate "Fix Sessions" click.
+    const shouldAttemptReauth =
+      account.provider_id === 'pixverse' &&
+      !account.is_google_account &&
+      (account.jwt_expired || (!account.has_jwt && !account.has_cookies));
+
+    if (shouldAttemptReauth) {
+      try {
+        const reauthRes = await chrome.runtime.sendMessage({
+          action: 'reauthAccounts',
+          accountIds: [account.id],
+        });
+        if (!reauthRes || !reauthRes.success) {
+          console.warn('[Popup] Auto re-auth on Login failed:', reauthRes?.error);
+        }
+      } catch (reauthErr) {
+        console.warn('[Popup] Auto re-auth on Login threw:', reauthErr);
+        // Continue to attempt login with whatever credentials we have.
+      }
+    }
+
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     const res = await chrome.runtime.sendMessage({
