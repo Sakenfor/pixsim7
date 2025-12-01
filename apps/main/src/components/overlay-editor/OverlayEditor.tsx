@@ -11,6 +11,7 @@ import { Panel, Button } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
+import { ValidationPanel } from './ValidationPanel';
 import { getWidget, createWidget } from '@/lib/editing-core/registry/widgetRegistry';
 import type { UnifiedWidgetConfig } from '@/lib/editing-core';
 
@@ -150,6 +151,34 @@ export function OverlayEditor({
     });
   };
 
+  // Handle widget duplication
+  const handleDuplicateWidget = (widget: OverlayWidget) => {
+    // Create a copy of the widget with a new ID and slightly offset position
+    const duplicatedWidget: OverlayWidget = {
+      ...widget,
+      id: `${widget.id}-copy-${Date.now()}`,
+      position: 'anchor' in widget.position
+        ? {
+            ...widget.position,
+            offset: {
+              x: (widget.position.offset?.x ?? 0) + 16,
+              y: (widget.position.offset?.y ?? 0) + 16,
+            },
+          }
+        : {
+            x: (widget.position as any).x + 16,
+            y: (widget.position as any).y + 16,
+          },
+    };
+
+    onChange({
+      ...configuration,
+      widgets: [...configuration.widgets, duplicatedWidget],
+    });
+
+    setSelectedWidgetId(duplicatedWidget.id);
+  };
+
   return (
     <div className="flex gap-4 h-full">
       {/* Left sidebar: Widget list and presets */}
@@ -171,7 +200,14 @@ export function OverlayEditor({
           onRemoveWidget={handleRemoveWidget}
           onReorderWidgets={handleReorderWidgets}
           onAddWidget={handleAddWidget}
+          onDuplicateWidget={handleDuplicateWidget}
           availableWidgetTypes={availableWidgetTypes}
+        />
+
+        {/* Validation panel */}
+        <ValidationPanel
+          configuration={configuration}
+          onSelectWidget={handleSelectWidget}
         />
       </div>
 

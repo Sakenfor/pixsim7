@@ -227,6 +227,58 @@ function toUnifiedWidget(widget: OverlayWidget): UnifiedWidgetConfig {
       bindings.push(...extractDataBindingFromWidget(widgetAny, 'label'));
       break;
 
+    case 'menu':
+      props.trigger = widgetAny.trigger;
+      props.triggerType = widgetAny.triggerType;
+      props.placement = widgetAny.placement;
+      props.closeOnClick = widgetAny.closeOnClick;
+      // Note: items array may contain functions (onClick handlers) that can't be serialized
+      // We only serialize static items for now
+      if (widgetAny.items && typeof widgetAny.items !== 'function') {
+        props.items = widgetAny.items;
+      }
+      break;
+
+    case 'tooltip':
+      props.trigger = widgetAny.trigger;
+      props.placement = widgetAny.placement;
+      props.showArrow = widgetAny.showArrow;
+      props.delay = widgetAny.delay;
+      props.maxWidth = widgetAny.maxWidth;
+      props.rich = widgetAny.rich;
+      // Note: content.custom (React nodes) can't be serialized
+      // We only serialize basic content properties
+      if (widgetAny.content && typeof widgetAny.content !== 'function') {
+        const { custom, ...serializableContent } = widgetAny.content;
+        props.content = serializableContent;
+      }
+      break;
+
+    case 'video-scrub':
+      props.showTimeline = widgetAny.showTimeline;
+      props.showTimestamp = widgetAny.showTimestamp;
+      props.timelinePosition = widgetAny.timelinePosition;
+      props.throttle = widgetAny.throttle;
+      props.frameAccurate = widgetAny.frameAccurate;
+      props.muted = widgetAny.muted;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'videoUrl'));
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'duration'));
+      break;
+
+    case 'progress':
+      props.max = widgetAny.max;
+      props.variant = widgetAny.variant;
+      props.orientation = widgetAny.orientation;
+      props.size = widgetAny.size;
+      props.color = widgetAny.color;
+      props.showLabel = widgetAny.showLabel;
+      props.icon = widgetAny.icon;
+      props.animated = widgetAny.animated;
+      props.state = widgetAny.state;
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'value'));
+      bindings.push(...extractDataBindingFromWidget(widgetAny, 'label'));
+      break;
+
     // Add more widget types as needed
   }
 
