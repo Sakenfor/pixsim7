@@ -781,6 +781,31 @@ async def update_scheduler_config(
     for key, value in updates.items():
         current_config[key] = value
 
+    # Business logic validation
+    if "timeScale" in updates and updates["timeScale"] <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="timeScale must be positive"
+        )
+
+    if "maxNpcTicksPerStep" in updates and updates["maxNpcTicksPerStep"] < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="maxNpcTicksPerStep cannot be negative"
+        )
+
+    if "maxJobOpsPerStep" in updates and updates["maxJobOpsPerStep"] < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="maxJobOpsPerStep cannot be negative"
+        )
+
+    if "tickIntervalSeconds" in updates and updates["tickIntervalSeconds"] <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="tickIntervalSeconds must be positive"
+        )
+
     # Validate updated config
     try:
         WorldSchedulerConfigSchema(**current_config)

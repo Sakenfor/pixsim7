@@ -175,6 +175,8 @@ async def create_session(
 
 ### Issue #4: Relationship Tier Overlap Handling
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/domain/narrative/relationships.py`
 **Lines**: 32-40
 
@@ -306,6 +308,8 @@ Do not send wrapped values to backend.
 
 ### Issue #7: No Safety Validation for Scheduler Config Values
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/api/v1/game_worlds.py`
 **Lines**: 746-802
 
@@ -371,6 +375,8 @@ async def update_scheduler_config(
 ---
 
 ### Issue #8: Unnecessary Relationship Normalization
+
+**Status**: ✅ **FIXED**
 
 **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 **Lines**: 171, 215, 271

@@ -185,8 +185,9 @@ class GameSessionService:
         self.db.add(event)
         await self.db.commit()
 
-        # Normalize relationships before returning
-        await self._normalize_session_relationships(session)
+        # Only normalize if relationships exist (optimization)
+        if session.relationships:
+            await self._normalize_session_relationships(session)
 
         return session
 
@@ -226,11 +227,10 @@ class GameSessionService:
         await self.db.commit()
         await self.db.refresh(session)
 
-        # Invalidate cache before normalization to ensure fresh computation
-        await self._invalidate_cached_relationships(session.id)
-
-        # Normalize relationships before returning
-        await self._normalize_session_relationships(session)
+        # Only normalize if relationships exist (optimization)
+        if session.relationships:
+            await self._invalidate_cached_relationships(session.id)
+            await self._normalize_session_relationships(session)
 
         return session
 
@@ -281,11 +281,9 @@ class GameSessionService:
         await self.db.commit()
         await self.db.refresh(session)
 
-        # Invalidate cache before normalization to ensure fresh computation
-        await self._invalidate_cached_relationships(session.id)
-
-        # Normalize relationships before returning (especially important after relationship updates)
-        # This will recompute and re-cache the normalized relationships
-        await self._normalize_session_relationships(session)
+        # Only normalize if relationships were updated (optimization)
+        if relationships is not None:
+            await self._invalidate_cached_relationships(session.id)
+            await self._normalize_session_relationships(session)
 
         return session

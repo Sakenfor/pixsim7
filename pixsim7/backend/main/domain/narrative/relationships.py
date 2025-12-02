@@ -29,8 +29,12 @@ def compute_relationship_tier(
     if not isinstance(tiers, list):
         return _default_relationship_tier(affinity)
 
-    # Find the matching tier
-    for tier in tiers:
+    # Sort tiers by min value for deterministic matching
+    # This ensures overlapping ranges always match the same tier
+    sorted_tiers = sorted(tiers, key=lambda t: t.get("min", 0))
+
+    # Find the matching tier (first match wins)
+    for tier in sorted_tiers:
         if "min" in tier and "max" in tier:
             if tier["min"] <= affinity <= tier["max"]:
                 return tier.get("id")
