@@ -9,6 +9,7 @@ import type {
   GameNpcDetail,
   NpcExpressionDTO,
   NpcPresenceDTO,
+  NpcSurfacePackage,
   GameWorldSummary,
   GameWorldDetail,
   GameSessionDTO,
@@ -33,6 +34,7 @@ export type {
   GameNpcDetail,
   NpcExpressionDTO,
   NpcPresenceDTO,
+  NpcSurfacePackage,
   GameWorldSummary,
   GameWorldDetail,
   GameSessionDTO,
@@ -284,6 +286,11 @@ export async function saveNpcMeta(
   meta: Record<string, unknown>
 ): Promise<GameNpcDetail> {
   const res = await apiClient.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
+  return res.data;
+}
+
+export async function listNpcSurfacePackages(): Promise<NpcSurfacePackage[]> {
+  const res = await apiClient.get<NpcSurfacePackage[]>('/game/npcs/surface-packages');
   return res.data;
 }
 
