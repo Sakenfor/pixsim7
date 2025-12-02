@@ -1,23 +1,41 @@
 """
 Relationship Preview API
 
-DEPRECATED: This API uses the legacy hardcoded relationship system.
+⚠️ DEPRECATED: This API is disabled and will be removed in a future version.
 
-Provides read-only preview endpoints for computing relationship tiers
-and intimacy levels based on world-specific schemas.
+Use /api/v1/stats/preview-entity-stats instead.
 
-These endpoints are stateless and do not mutate game sessions.
+MIGRATION:
+    Old endpoint: POST /api/v1/game/relationships/preview-tier
+    New endpoint: POST /api/v1/stats/preview-entity-stats
 
-MIGRATION NOTE:
-    This API will be replaced with a generic stat preview API that works
-    with any stat type (relationships, skills, reputation, etc.).
+    Example migration:
+        # Old request
+        {
+            "world_id": 1,
+            "affinity": 75.0,
+            "schema_key": "default"
+        }
 
-    For new code, use the StatService directly:
-        from pixsim7.backend.main.services.game.stat_service import StatService
-        stat_service = StatService(db, redis)
-        await stat_service.normalize_session_stats(session, "relationships")
+        # New request
+        {
+            "world_id": 1,
+            "stat_definition_id": "relationships",
+            "values": {
+                "affinity": 75.0,
+                "trust": 50.0,
+                "chemistry": 50.0,
+                "tension": 0.0
+            }
+        }
 
-    See RELATIONSHIP_MIGRATION_GUIDE.md for complete migration instructions.
+The new API:
+- Works with any stat type (relationships, skills, reputation, etc.)
+- Uses StatEngine and WorldStatsConfig
+- Returns all computed tiers and levels in one call
+- Supports automatic migration from legacy schemas
+
+See pixsim7/backend/main/api/v1/stat_preview.py for the new implementation.
 """
 
 from __future__ import annotations

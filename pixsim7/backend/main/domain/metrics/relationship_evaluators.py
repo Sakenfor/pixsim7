@@ -1,8 +1,16 @@
 """
 Relationship metric evaluators for preview API.
 
-These evaluators provide read-only relationship tier and intimacy level
-computation using world-specific schemas.
+⚠️ DEPRECATED: This module is no longer used and will be removed in a future version.
+
+These evaluators were used by the legacy game_relationship_preview API,
+which has been replaced by the generic stat_preview API.
+
+The new stat preview API uses StatEngine directly instead of these legacy evaluators.
+
+See:
+- pixsim7/backend/main/api/v1/stat_preview.py (new API)
+- pixsim7/backend/main/domain/stats/engine.py (StatEngine)
 """
 
 from typing import Any
