@@ -9,7 +9,7 @@
 import React from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { resolveDataBinding } from '@/lib/editing-core';
 import type { SceneMetaComicPanel } from '@/modules/scene-builder';
 
 export type ComicPanelLayout = 'single' | 'strip' | 'grid2';
@@ -25,26 +25,21 @@ export interface ComicPanelWidgetConfig {
   visibility: VisibilityConfig;
 
   /**
-   * Panel IDs to display from Scene.meta.comicPanels
-   * Preferred: Use panelIdsBinding with DataBinding<string[]>
-   * Legacy: string[] | ((data: any) => string[])
+   * Panel IDs binding to display from Scene.meta.comicPanels.
+   * Use createBindingFromValue() for static values or functions.
    */
-  panelIds?: string[] | ((data: any) => string[]);
   panelIdsBinding?: DataBinding<string[]>;
 
   /**
-   * Direct gallery asset IDs (fallback when not using scene panels)
-   * Preferred: Use assetIdsBinding with DataBinding<string[]>
-   * Legacy: string[] | ((data: any) => string[])
+   * Direct gallery asset IDs binding (fallback when not using scene panels).
+   * Use createBindingFromValue() for static values or functions.
    */
-  assetIds?: string[] | ((data: any) => string[]);
   assetIdsBinding?: DataBinding<string[]>;
 
   /**
-   * Full panel data (for advanced usage)
-   * Preferred: Use panelsBinding with DataBinding<SceneMetaComicPanel[]>
+   * Full panel data binding (for advanced usage).
+   * Use createBindingFromValue() for static values or functions.
    */
-  panels?: SceneMetaComicPanel[];
   panelsBinding?: DataBinding<SceneMetaComicPanel[]>;
 
   /** Layout mode for displaying panels */
@@ -71,11 +66,8 @@ export function createComicPanelWidget(config: ComicPanelWidgetConfig): OverlayW
     id,
     position,
     visibility,
-    panelIds,
     panelIdsBinding,
-    assetIds,
     assetIdsBinding,
-    panels,
     panelsBinding,
     layout = 'single',
     showCaption = true,
@@ -83,11 +75,6 @@ export function createComicPanelWidget(config: ComicPanelWidgetConfig): OverlayW
     priority,
     onClick,
   } = config;
-
-  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
-  const finalPanelIdsBinding = panelIdsBinding || (panelIds !== undefined ? createBindingFromValue('panelIds', panelIds) : undefined);
-  const finalAssetIdsBinding = assetIdsBinding || (assetIds !== undefined ? createBindingFromValue('assetIds', assetIds) : undefined);
-  const finalPanelsBinding = panelsBinding || (panels !== undefined ? createBindingFromValue('panels', panels) : undefined);
 
   return {
     id,
@@ -98,19 +85,19 @@ export function createComicPanelWidget(config: ComicPanelWidgetConfig): OverlayW
     interactive: Boolean(onClick),
     onClick: onClick ? (data) => {
       // Call onClick with first panel id if available
-      const resolvedPanels = resolveDataBinding(finalPanelsBinding, data);
+      const resolvedPanels = resolveDataBinding(panelsBinding, data);
       if (resolvedPanels && resolvedPanels.length > 0) {
         onClick(resolvedPanels[0].id, data);
       }
     } : undefined,
     render: (data, context) => {
       // Resolve bindings
-      let resolvedPanels: SceneMetaComicPanel[] | undefined = resolveDataBinding(finalPanelsBinding, data);
+      let resolvedPanels: SceneMetaComicPanel[] | undefined = resolveDataBinding(panelsBinding, data);
 
       // If no full panels provided, construct from panelIds or assetIds
       if (!resolvedPanels || resolvedPanels.length === 0) {
-        const resolvedPanelIds = resolveDataBinding(finalPanelIdsBinding, data);
-        const resolvedAssetIds = resolveDataBinding(finalAssetIdsBinding, data);
+        const resolvedPanelIds = resolveDataBinding(panelIdsBinding, data);
+        const resolvedAssetIds = resolveDataBinding(assetIdsBinding, data);
 
         if (resolvedPanelIds && resolvedPanelIds.length > 0) {
           // Try to get panels from scene meta if available

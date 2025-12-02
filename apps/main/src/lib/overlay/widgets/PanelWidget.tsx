@@ -9,7 +9,7 @@ import React, { ReactNode } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Panel } from '@pixsim7/shared.ui';
 import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { resolveDataBinding } from '@/lib/editing-core';
 
 export interface PanelWidgetConfig {
   /** Widget ID */
@@ -22,19 +22,15 @@ export interface PanelWidgetConfig {
   visibility: VisibilityConfig;
 
   /**
-   * Panel title
-   * Preferred: Use titleBinding with DataBinding<string>
-   * Legacy: string | ((data: any) => string)
+   * Panel title binding.
+   * Use createBindingFromValue() for static values or functions.
    */
-  title?: string | ((data: any) => string);
   titleBinding?: DataBinding<string>;
 
   /**
-   * Panel content
-   * Preferred: Use contentBinding with DataBinding<ReactNode>
-   * Legacy: ReactNode | ((data: any) => ReactNode)
+   * Panel content binding.
+   * Use createBindingFromValue() for static values or functions.
    */
-  content?: ReactNode | ((data: any) => ReactNode);
   contentBinding?: DataBinding<ReactNode>;
 
   /** Enable backdrop/background */
@@ -67,9 +63,7 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
     id,
     position,
     visibility,
-    title,
     titleBinding,
-    content,
     contentBinding,
     backdrop = false,
     maxWidth,
@@ -79,10 +73,6 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
     priority,
     onClick,
   } = config;
-
-  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
-  const finalTitleBinding = titleBinding || (title !== undefined ? createBindingFromValue('title', title) : undefined);
-  const finalContentBinding = contentBinding || (content !== undefined ? createBindingFromValue('content', content) : undefined);
 
   return {
     id,
@@ -97,9 +87,8 @@ export function createPanelWidget(config: PanelWidgetConfig): OverlayWidget {
       maxHeight,
     },
     render: (data, context) => {
-      // ✨ Resolve bindings using editing-core DataBinding system
-      const resolvedTitle = resolveDataBinding(finalTitleBinding, data);
-      const resolvedContent = resolveDataBinding(finalContentBinding, data);
+      const resolvedTitle = resolveDataBinding(titleBinding, data);
+      const resolvedContent = resolveDataBinding(contentBinding, data);
 
       // Additional styling for variants
       const variantClasses = {

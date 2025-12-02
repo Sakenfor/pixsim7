@@ -1,4 +1,4 @@
-## Task 104: Editing-Core Hardening & Adoption Guidelines
+## Task 105: Editing-Core Hardening & Adoption Guidelines
 
 **Status:** Planned
 
@@ -82,7 +82,7 @@ Out of scope:
 
 ---
 
-### 104.1: Add Editing-Core README & API Overview
+### 105.1: Add Editing-Core README & API Overview
 
 **Goal:** A human-readable entry point for `editing-core` that other devs (and agents) can follow.
 
@@ -107,7 +107,7 @@ Out of scope:
 
 ---
 
-### 104.2: Clarify & Harden Widget Registry Contracts
+### 105.2: Clarify & Harden Widget Registry Contracts
 
 **Goal:** Ensure `widgetRegistry` is clearly generic and safe to use for multiple component types (overlay, hud, etc.).
 
@@ -138,7 +138,7 @@ No behavior change needed; this is documentation + comments, unless a small type
 
 ---
 
-### 104.3: Adoption Guidelines for New UI Surfaces
+### 105.3: Adoption Guidelines for New UI Surfaces
 
 **Goal:** Create a short, opinionated guide for when and how a new UI surface should use `editing-core`.
 
@@ -166,7 +166,7 @@ This should explicitly mention overlay and HUD as first-class examples.
 
 ---
 
-### 104.4: Light Tests / Invariants (Optional but Recommended)
+### 105.4: Light Tests / Invariants (Optional but Recommended)
 
 **Goal:** Add a small set of tests or assertions that catch obvious misuses early.
 

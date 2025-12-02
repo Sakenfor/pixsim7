@@ -10,7 +10,7 @@ import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
 import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { resolveDataBinding } from '@/lib/editing-core';
 
 export interface ButtonWidgetConfig {
   /** Widget ID */
@@ -26,11 +26,9 @@ export interface ButtonWidgetConfig {
   icon?: string;
 
   /**
-   * Button label
-   * Preferred: Use labelBinding with DataBinding<string>
-   * Legacy: string | ((data: any) => string)
+   * Button label binding.
+   * Use createBindingFromValue() for static values or functions.
    */
-  label?: string | ((data: any) => string);
   labelBinding?: DataBinding<string>;
 
   /** Button variant */
@@ -73,7 +71,6 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     position,
     visibility,
     icon,
-    label,
     labelBinding,
     variant = 'primary',
     size = 'md',
@@ -83,9 +80,6 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     className = '',
     priority,
   } = config;
-
-  // Create binding (prefer new DataBinding, fall back to legacy pattern)
-  const finalLabelBinding = labelBinding || (label !== undefined ? createBindingFromValue('label', label) : undefined);
 
   return {
     id,
@@ -98,8 +92,7 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     ariaLabel: tooltip,
     tabIndex: 0,
     render: (data, context) => {
-      // ✨ Resolve binding using editing-core DataBinding system
-      const resolvedLabel = resolveDataBinding(finalLabelBinding, data);
+      const resolvedLabel = resolveDataBinding(labelBinding, data);
 
       // Shared Button component doesn't have 'danger' variant, so we handle it with className
       const buttonVariant = variant === 'danger' ? 'primary' : variant;

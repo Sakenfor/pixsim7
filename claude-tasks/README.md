@@ -88,9 +88,61 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
   World‑aware session normalization and schema validation for relationship schemas.  
   **Status:** Phase 4 and 9 partially implemented (schema validation + metric registry wiring); others are greenfield.
 
-- `12-intimacy-scene-composer-and-progression-editor.md`  
-  Intimacy Scene Composer and Relationship Progression Editor.  
+- `12-intimacy-scene-composer-and-progression-editor.md`
+  Intimacy Scene Composer and Relationship Progression Editor.
   **Status:** All phases `[ ]` (greenfield future editor tooling).
+
+- `104-rejected-upload-tracking-and-asset-metadata.md`
+  Upload attempt tracking (success & failure) across all sources using metadata.
+  **Status:** Phases 1–4 implemented (backend, API, Local Folders); Phase 5 (UX) documented as future work.
+
+- `105-editing-core-hardening-and-adoption-guidelines.md`
+  Hardening and documentation for the editing-core layer.
+  **Status:** Phases 1–3 implemented (README, widget registry docs, adoption guide); Phase 4 (tests) skipped.
+
+---
+
+## Tasks 85-106 Status Summary (Audit: 2025-12-02)
+
+**Completion Rate:** 93% (14 of 15 tasks completed)
+
+### ✅ Completed Tasks (85-90, 93-99, 106)
+
+**Prompt Lab & Block Fit System (85-90)** – **FULLY IMPLEMENTED**
+- 85: Category Discovery Agent – AI-assisted category/pack/block suggestions
+- 86: Block ↔ Image Fit Scoring – Heuristic fit scores + user ratings
+- 87: Apply Category Suggestions – Create draft packs/blocks from AI suggestions
+- 88: Prompt Lab ↔ Block Fit Integration – Navigation between tools via query params
+- 89: Prompt Family Timeline – Version history with performance metrics
+- 90: Timestamped Video Feedback – Video player with frame-specific ratings
+
+**Implementation:** `PromptLabDev.tsx` (2,085 lines, 6 tabs), `BlockFitDev.tsx` (673 lines), 5 backend API modules, ~4,291 total lines of code.
+
+**Overlay System (93-97)** – **FULLY IMPLEMENTED**
+- 93: Overlay Validation & Widget Accessibility (merged b56fa8c4)
+- 94: Overlay Unified Config & Editor Integration (a85d863c)
+- 95: Overlay Widget Registry Expansion (865ddf0)
+- 96: Overlay Editor UX & Validation (865ddf0)
+- 97: HUD Editor & Overlay Unified Integration (bfad883)
+
+**Asset/Scene System (98-99)** – **FULLY IMPLEMENTED**
+- 98: Comic Panel Widget & Scene Integration – Sequential image presentation for story beats
+  **Implementation:** `ComicPanelWidget.tsx` (171 lines), `COMIC_PANELS.md` (312 lines), scene-builder types
+- 99: Asset Roles & Action Block Resolver – Tag-based asset resolution system
+  **Implementation:** `assetRoles.ts`, `assetResolver.ts`, comprehensive docs
+
+**Architecture (106)** – **FULLY IMPLEMENTED**
+- 106: Editing Core Data Binding Migration – Unified DataBinding types across all systems
+  **Implementation:** All 5 deliverables complete (type alignment, adapters, consumer migration, overlay widgets, docs)
+  **Evidence:** `bindingAdapters.ts`, 7 overlay widgets using core types, `DATA_BINDING_GUIDE.md` updated
+
+### ❌ Not Started (91-92)
+
+**Registry Refactoring (91-92)** – Design documents only
+- 91: UI Registry Base & Feature Normalization
+- 92: Registry Bridge Simplification
+
+---
 
 ## How to Evolve Tasks
 
