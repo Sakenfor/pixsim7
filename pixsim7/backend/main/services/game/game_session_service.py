@@ -218,7 +218,7 @@ class GameSessionService:
         await self._cleanup_old_events(session.id)
 
         # Only normalize if relationships exist (optimization)
-        if session.relationships:
+        if session.stats.get("relationships"):
             await self._normalize_session_relationships(session)
 
         return session
@@ -278,7 +278,7 @@ class GameSessionService:
         await self._cleanup_old_events(session.id)
 
         # Only normalize if relationships exist (optimization)
-        if session.relationships:
+        if session.stats.get("relationships"):
             await self._invalidate_cached_relationships(session.id)
             await self._normalize_session_relationships(session)
 
@@ -291,6 +291,7 @@ class GameSessionService:
         world_time: Optional[float] = None,
         flags: Optional[Dict[str, Any]] = None,
         relationships: Optional[Dict[str, Any]] = None,
+        stats: Optional[Dict[str, Any]] = None,
         expected_version: Optional[int] = None,
     ) -> GameSession:
         session = await self.db.get(GameSession, session_id)
@@ -322,6 +323,7 @@ class GameSessionService:
 
         # Track if any changes were made
         changed = False
+        relationship_updated = False
 
         if world_time is not None and world_time != session.world_time:
             session.world_time = float(world_time)
@@ -329,9 +331,24 @@ class GameSessionService:
         if flags is not None and flags != session.flags:
             session.flags = flags
             changed = True
-        if relationships is not None and relationships != session.relationships:
-            session.relationships = relationships
+
+        # Handle legacy relationships parameter (for backward compatibility)
+        # Convert to stats["relationships"] format
+        if relationships is not None:
+            if "relationships" not in session.stats:
+                session.stats["relationships"] = {}
+            if relationships != session.stats.get("relationships"):
+                session.stats["relationships"] = relationships
+                changed = True
+                relationship_updated = True
+
+        # Handle new stats parameter (preferred)
+        if stats is not None and stats != session.stats:
+            session.stats = stats
             changed = True
+            # Check if relationships were updated
+            if "relationships" in stats:
+                relationship_updated = True
 
         # Only increment version if changes were made
         if changed:
@@ -342,7 +359,7 @@ class GameSessionService:
         await self.db.refresh(session)
 
         # Only normalize if relationships were updated (optimization)
-        if relationships is not None:
+        if relationship_updated:
             await self._invalidate_cached_relationships(session.id)
             await self._normalize_session_relationships(session)
 

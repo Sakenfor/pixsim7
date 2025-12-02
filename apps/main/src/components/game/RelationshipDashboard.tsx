@@ -26,14 +26,22 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
   const [relationships, setRelationships] = useState<NpcRelationship[]>([]);
 
   useEffect(() => {
-    if (!session || !session.relationships) {
+    if (!session) {
+      setRelationships([]);
+      return;
+    }
+
+    // Support both new stats.relationships and legacy relationships field
+    const relationshipData = session.stats?.relationships || session.relationships;
+
+    if (!relationshipData || typeof relationshipData !== 'object') {
       setRelationships([]);
       return;
     }
 
     const npcRelationships: NpcRelationship[] = [];
 
-    for (const [key] of Object.entries(session.relationships)) {
+    for (const [key] of Object.entries(relationshipData)) {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
         // Use game-core helper instead of manual extraction

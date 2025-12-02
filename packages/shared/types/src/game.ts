@@ -480,7 +480,31 @@ export interface GameSessionDTO {
   scene_id: number;
   current_node_id: number;
   flags: Record<string, unknown>;
+
+  /**
+   * @deprecated Use stats.relationships instead.
+   * This field is maintained for backward compatibility during migration.
+   * Backend automatically syncs stats.relationships → relationships for legacy clients.
+   */
   relationships: Record<string, unknown>;
+
+  /**
+   * Generic stats storage using the abstract stat system.
+   * Structure: { [statDefId: string]: { [entityKey: string]: statValues } }
+   *
+   * Example:
+   *   stats: {
+   *     "relationships": {
+   *       "npc:1": { affinity: 75, trust: 60, ... },
+   *       "npc:2": { affinity: 40, ... }
+   *     },
+   *     "skills": {
+   *       "player": { strength: 50, dexterity: 60, ... }
+   *     }
+   *   }
+   */
+  stats: Record<string, Record<string, unknown>>;
+
   world_time: number;
   version: number; // Optimistic locking version, incremented on each update
 }
@@ -492,7 +516,19 @@ export interface GameSessionDTO {
 export interface SessionUpdatePayload {
   world_time?: number;
   flags?: Record<string, unknown>;
+
+  /**
+   * @deprecated Use stats instead.
+   * Maintained for backward compatibility. Backend converts to stats.relationships.
+   */
   relationships?: Record<string, unknown>;
+
+  /**
+   * Generic stats storage. Preferred over relationships field.
+   * Use stats.relationships for relationship data.
+   */
+  stats?: Record<string, Record<string, unknown>>;
+
   expected_version?: number; // For optimistic locking
 }
 

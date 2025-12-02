@@ -344,7 +344,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
                 "launched_scene_id": result.launchedSceneId,
                 "generation_request_id": result.generationRequestId,
                 "updated_session": {
-                    "relationships": orm_session.relationships,
+                    "relationships": orm_session.stats.get("relationships", {}),
                     "flags": orm_session.flags,
                 },
                 "timestamp": result.timestamp,

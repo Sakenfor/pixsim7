@@ -293,7 +293,7 @@ async def generate_next_line(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.relationships if session else {}
+        "relationships": session.stats.get("relationships", {}) if session else {}
     }
 
     # Build context using the engine
@@ -442,7 +442,7 @@ async def generate_next_line_debug(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.relationships if session else {}
+        "relationships": session.stats.get("relationships", {}) if session else {}
     }
 
     # Build context
@@ -585,24 +585,48 @@ async def _run_action_selection(
                 world = await db.get(GameWorld, req.world_id)
 
             if world:
-                from pixsim7.backend.main.domain.narrative.relationships import (
-                    compute_intimacy_level,
-                    extract_relationship_values
+                from pixsim7.backend.main.domain.stats import StatEngine
+                from pixsim7.backend.main.domain.stats.migration import (
+                    migrate_world_meta_to_stats_config,
+                    needs_migration as needs_world_migration,
+                    get_default_relationship_definition,
                 )
 
-                affinity, trust, chemistry, tension, _ = extract_relationship_values(
-                    session.relationships,
-                    req.lead_npc_id
-                )
+                # Get relationship data directly from stats
+                relationships = session.stats.get("relationships", {})
+                npc_key = f"npc:{req.lead_npc_id}"
+                rel_data = relationships.get(npc_key, {})
 
-                intimacy_level = compute_intimacy_level(
-                    {
-                        "affinity": affinity,
-                        "trust": trust,
-                        "chemistry": chemistry,
-                        "tension": tension
-                    },
-                    world.meta.get("intimacy_schema") if world.meta else None
+                relationship_values = {
+                    "affinity": rel_data.get("affinity", 0),
+                    "trust": rel_data.get("trust", 0),
+                    "chemistry": rel_data.get("chemistry", 0),
+                    "tension": rel_data.get("tension", 0),
+                }
+
+                # Get or migrate stats config
+                world_meta = world.meta or {}
+                if needs_world_migration(world_meta):
+                    stats_config = migrate_world_meta_to_stats_config(world_meta)
+                elif 'stats_config' in world_meta:
+                    from pixsim7.backend.main.domain.stats import WorldStatsConfig
+                    stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
+                else:
+                    from pixsim7.backend.main.domain.stats import WorldStatsConfig
+                    stats_config = WorldStatsConfig(
+                        version=1,
+                        definitions={"relationships": get_default_relationship_definition()}
+                    )
+
+                # Get relationship definition
+                relationship_definition = stats_config.definitions.get("relationships")
+                if not relationship_definition:
+                    relationship_definition = get_default_relationship_definition()
+
+                # Compute intimacy level using StatEngine
+                intimacy_level = StatEngine.compute_level(
+                    relationship_values,
+                    relationship_definition.levels
                 )
 
                 if intimacy_level:

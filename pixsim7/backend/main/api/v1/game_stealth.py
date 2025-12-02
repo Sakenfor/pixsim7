@@ -96,8 +96,11 @@ def attempt_pickpocket(
         stealth_flags[flag_key] = True
         message += " You were detected!"
 
-        # Also update relationship flags if relationships exist
-        relationships = session.relationships or {}
+        # Also update relationship flags in stat-based system
+        if "relationships" not in session.stats:
+            session.stats["relationships"] = {}
+        relationships = session.stats["relationships"]
+
         npc_key = f"npc:{req.npc_id}"
         if npc_key not in relationships:
             relationships[npc_key] = {}
@@ -108,11 +111,9 @@ def attempt_pickpocket(
 
         npc_rel["flags"]["caught_pickpocketing"] = True
 
-        # Optionally decrease relationship score
+        # Optionally decrease relationship score (if using score field)
         if "score" in npc_rel:
             npc_rel["score"] = max(0, npc_rel.get("score", 50) - 10)
-
-        session.relationships = relationships
 
     # Save updated flags
     session.flags = flags

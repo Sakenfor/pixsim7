@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.game.models import GameWorld, GameSession
-from pixsim7.backend.main.domain.narrative.relationships import (
-    compute_relationship_tier,
-    compute_intimacy_level,
+from pixsim7.backend.main.domain.stats import StatEngine, WorldStatsConfig
+from pixsim7.backend.main.domain.stats.migration import (
+    migrate_world_meta_to_stats_config,
+    needs_migration as needs_world_migration,
+    get_default_relationship_definition,
 )
 
 logger = logging.getLogger(__name__)
@@ -157,8 +159,25 @@ async def build_generation_social_context(
     generation_config = world_meta.get('generation', {})
     world_max_rating = generation_config.get('maxContentRating', 'romantic')
 
-    relationship_schemas = world_meta.get('relationship_schemas', {})
-    intimacy_schema = world_meta.get('intimacy_schema', {})
+    # Get or migrate stats config
+    stats_config: Optional[WorldStatsConfig] = None
+    if needs_world_migration(world_meta):
+        # Auto-migrate legacy schemas
+        stats_config = migrate_world_meta_to_stats_config(world_meta)
+    elif 'stats_config' in world_meta:
+        stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
+    else:
+        # No config found, use default
+        stats_config = WorldStatsConfig(
+            version=1,
+            definitions={"relationships": get_default_relationship_definition()}
+        )
+
+    # Get relationship stat definition
+    relationship_definition = stats_config.definitions.get("relationships")
+    if not relationship_definition:
+        # Fallback to default if not configured
+        relationship_definition = get_default_relationship_definition()
 
     # Get relationship values
     relationship_values = override_values or {}
@@ -170,10 +189,12 @@ async def build_generation_social_context(
         )
         session = session_result.scalar_one_or_none()
 
-        if session and session.relationships:
+        if session:
+            # Use stat-based relationships
+            relationships = session.stats.get("relationships", {})
             npc_key = f"npc:{npc_id}"
-            if npc_key in session.relationships:
-                rel_data = session.relationships[npc_key]
+            if npc_key in relationships:
+                rel_data = relationships[npc_key]
                 relationship_values = {
                     'affinity': rel_data.get('affinity', 0),
                     'trust': rel_data.get('trust', 0),
@@ -184,17 +205,16 @@ async def build_generation_social_context(
     # Default values if not provided
     affinity = relationship_values.get('affinity', 0)
 
-    # Compute relationship tier
-    tier_id = compute_relationship_tier(
+    # Compute relationship tier and intimacy level using StatEngine
+    tier_id = StatEngine.compute_tier(
+        "affinity",
         affinity,
-        relationship_schemas,
-        schema_key='default'
+        relationship_definition.tiers
     )
 
-    # Compute intimacy level
-    intimacy_level_id = compute_intimacy_level(
+    intimacy_level_id = StatEngine.compute_level(
         relationship_values,
-        intimacy_schema
+        relationship_definition.levels
     )
 
     # Map to intimacy band
