@@ -184,6 +184,11 @@ class PluginManager:
                     f"Skipping on_load for disabled plugin: {manifest.id}"
                 )
 
+            # Allow plugins to register stat packages or other extensions
+            # during load. Handlers receive the plugin ID so they can tag
+            # ownership metadata if needed.
+            plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=manifest.id)
+
             # Emit event (sync context)
             plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)
 

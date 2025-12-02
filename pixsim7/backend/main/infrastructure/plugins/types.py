@@ -197,6 +197,9 @@ class PluginEvents:
     NPC_SPAWNED = "npc:spawned"
     LOCATION_CHANGED = "location:changed"
 
+    # Stat system
+    STAT_PACKAGES_REGISTER = "stat:packages_register"
+
     # System events
     APP_STARTUP = "app:startup"
     APP_SHUTDOWN = "app:shutdown"
