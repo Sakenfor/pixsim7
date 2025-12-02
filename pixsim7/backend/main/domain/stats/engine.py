@@ -233,3 +233,149 @@ class StatEngine:
             axis.name: axis.default_value
             for axis in stat_definition.axes
         }
+
+    @staticmethod
+    def merge_entity_stats(
+        base_stats: Dict[str, Any],
+        override_stats: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Merge base stats with session/context-specific overrides.
+
+        This implements the hybrid approach where:
+        - Entities (NPCs, items) have BASE stats
+        - Sessions can OVERRIDE specific values
+        - Overrides take precedence over base
+
+        Args:
+            base_stats: Base stat values from entity definition
+            override_stats: Session-specific overrides (optional)
+
+        Returns:
+            Merged stats (overrides take precedence)
+
+        Example:
+            Base (NPC template):
+                {"strength": 90, "agility": 60}
+
+            Override (session-specific - NPC took damage):
+                {"health": 80}
+
+            Result:
+                {"strength": 90, "agility": 60, "health": 80}
+
+            Override with conflict:
+                Base: {"strength": 90}
+                Override: {"strength": 95}  # Buffed
+                Result: {"strength": 95}  # Override wins
+        """
+        if not override_stats:
+            return dict(base_stats)
+
+        # Deep merge - override takes precedence
+        merged = dict(base_stats)
+        merged.update(override_stats)
+        return merged
+
+    @staticmethod
+    def apply_stat_modifiers(
+        base_value: float,
+        modifiers: List[Dict[str, Any]]
+    ) -> float:
+        """
+        Apply stat modifiers (equipment, buffs, debuffs) to a base value.
+
+        Supports:
+        - Additive modifiers (base + modifier)
+        - Multiplicative modifiers (base * modifier)
+        - Absolute modifiers (override to specific value)
+
+        Application order:
+        1. Absolute (if any)
+        2. Additive (sum all)
+        3. Multiplicative (multiply all)
+
+        Args:
+            base_value: The base stat value
+            modifiers: List of modifier dicts with {type, value}
+
+        Returns:
+            Modified value
+
+        Example:
+            base_value = 100
+            modifiers = [
+                {"type": "additive", "value": 10},      # +10
+                {"type": "multiplicative", "value": 1.5}  # *1.5
+            ]
+            Result: (100 + 10) * 1.5 = 165
+        """
+        # Check for absolute override first
+        for mod in modifiers:
+            if mod.get("type") == "absolute":
+                return float(mod.get("value", base_value))
+
+        # Apply additive modifiers
+        additive_sum = sum(
+            float(mod.get("value", 0))
+            for mod in modifiers
+            if mod.get("type") == "additive"
+        )
+
+        # Apply multiplicative modifiers
+        multiplicative_product = 1.0
+        for mod in modifiers:
+            if mod.get("type") == "multiplicative":
+                multiplicative_product *= float(mod.get("value", 1.0))
+
+        return (base_value + additive_sum) * multiplicative_product
+
+    @staticmethod
+    def resolve_entity_stats_with_modifiers(
+        entity_base_stats: Dict[str, Any],
+        stat_definition: StatDefinition,
+        modifiers_by_axis: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Resolve final entity stats by applying modifiers and computing tiers/levels.
+
+        This is the complete workflow for entity-owned stats with equipment/buffs:
+        1. Start with base stats
+        2. Apply modifiers (equipment, buffs, debuffs)
+        3. Compute tiers and levels
+        4. Return normalized result
+
+        Args:
+            entity_base_stats: Base stat values from entity
+            stat_definition: The stat definition
+            modifiers_by_axis: Map of axis_name -> list of modifiers
+
+        Returns:
+            Fully resolved and normalized stats
+
+        Example:
+            NPC with equipment:
+            Base: {"strength": 90, "agility": 60}
+            Modifiers: {"strength": [{"type": "additive", "value": 10}]}
+            Result: {"strength": 100, "strengthTierId": "expert", "agility": 60, "agilityTierId": "advanced"}
+        """
+        modifiers_by_axis = modifiers_by_axis or {}
+
+        # Apply modifiers to each axis
+        modified_stats = {}
+        axis_names = {axis.name for axis in stat_definition.axes}
+
+        for axis_name in axis_names:
+            base_value = float(entity_base_stats.get(axis_name, 0))
+            modifiers = modifiers_by_axis.get(axis_name, [])
+
+            if modifiers:
+                modified_stats[axis_name] = StatEngine.apply_stat_modifiers(
+                    base_value,
+                    modifiers
+                )
+            else:
+                modified_stats[axis_name] = base_value
+
+        # Normalize (compute tiers/levels)
+        return StatEngine.normalize_entity_stats(modified_stats, stat_definition)
