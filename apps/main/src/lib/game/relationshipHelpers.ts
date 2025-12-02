@@ -5,14 +5,16 @@
  * arcs, quests, inventory, and events. Follows conventions from
  * docs/RELATIONSHIPS_AND_ARCS.md.
  *
- * All data is stored in GameSession.flags and GameSession.relationships as JSON,
+ * Relationships are stored in GameSession.stats.relationships as part of the
+ * abstract stat system. All other data is stored in GameSession.flags as JSON,
  * avoiding new backend tables while maintaining clean semantics.
  */
 
 // ===== Key Builders =====
 
 /**
- * Relationship key builders for namespaced keys in GameSession.relationships
+ * Relationship key builders for namespaced keys in GameSession.stats.relationships
+ * (previously stored in GameSession.relationships, now using abstract stat system)
  */
 export const relationshipKeys = {
   /** NPC ↔ Player relationship key */

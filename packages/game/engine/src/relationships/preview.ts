@@ -2,7 +2,10 @@
  * Relationship preview API client
  *
  * Provides async functions for previewing relationship tiers and intimacy levels
- * using backend preview endpoints with world-specific schemas.
+ * using the generic stat preview API with world-specific stat configurations.
+ *
+ * UPDATED: Now uses the generic /api/v1/stats/preview-entity-stats endpoint
+ * which works with StatEngine and WorldStatsConfig for all stat types.
  *
  * @backend_authoritative These functions call backend preview APIs
  * @use_cases Editor tools, what-if previews, offline tools with backend connection
@@ -76,7 +79,7 @@ export function getPreviewApiConfig(): Readonly<Required<PreviewApiConfig>> {
 /**
  * Preview what relationship tier would result from a given affinity value.
  *
- * Calls the backend preview API to compute tier using world-specific schemas.
+ * Calls the generic stat preview API to compute tier using world-specific StatEngine.
  * This is the recommended way to preview relationship tiers in editor tools.
  *
  * @param args - Preview arguments
@@ -99,8 +102,9 @@ export async function previewRelationshipTier(
 ): Promise<RelationshipTierPreviewResponse> {
   const { worldId, affinity, schemaKey = 'default' } = args;
 
+  // Use the generic stat preview API with relationship stat definition
   const response = await currentConfig.fetch(
-    `${currentConfig.baseUrl}/game/relationships/preview-tier`,
+    `${currentConfig.baseUrl}/stats/preview-entity-stats`,
     {
       method: 'POST',
       headers: {
@@ -108,8 +112,13 @@ export async function previewRelationshipTier(
       },
       body: JSON.stringify({
         world_id: worldId,
-        affinity,
-        schema_key: schemaKey,
+        stat_definition_id: 'relationships',
+        values: {
+          affinity: affinity,
+          trust: 50.0,  // Defaults for tier computation
+          chemistry: 50.0,
+          tension: 0.0,
+        },
       }),
     }
   );
@@ -123,17 +132,20 @@ export async function previewRelationshipTier(
 
   const data = await response.json();
 
+  // Extract the affinity tier from normalized stats
+  const normalized = data.normalized_stats;
+
   return {
-    tierId: data.tier_id,
-    schemaKey: data.schema_key,
-    affinity: data.affinity,
+    tierId: normalized.affinityTierId || null,
+    schemaKey: schemaKey,  // Echo back for compatibility
+    affinity: normalized.affinity,
   };
 }
 
 /**
  * Preview what intimacy level would result from given relationship values.
  *
- * Calls the backend preview API to compute intimacy level using world-specific schemas.
+ * Calls the generic stat preview API to compute intimacy level using world-specific StatEngine.
  * This is the recommended way to preview intimacy levels in editor tools.
  *
  * @param args - Preview arguments
@@ -160,8 +172,9 @@ export async function previewIntimacyLevel(
 ): Promise<RelationshipIntimacyPreviewResponse> {
   const { worldId, relationshipValues } = args;
 
+  // Use the generic stat preview API with relationship stat definition
   const response = await currentConfig.fetch(
-    `${currentConfig.baseUrl}/game/relationships/preview-intimacy`,
+    `${currentConfig.baseUrl}/stats/preview-entity-stats`,
     {
       method: 'POST',
       headers: {
@@ -169,7 +182,8 @@ export async function previewIntimacyLevel(
       },
       body: JSON.stringify({
         world_id: worldId,
-        relationship_values: {
+        stat_definition_id: 'relationships',
+        values: {
           affinity: relationshipValues.affinity,
           trust: relationshipValues.trust,
           chemistry: relationshipValues.chemistry,
@@ -188,13 +202,16 @@ export async function previewIntimacyLevel(
 
   const data = await response.json();
 
+  // Extract the level from normalized stats
+  const normalized = data.normalized_stats;
+
   return {
-    intimacyLevelId: data.intimacy_level_id,
+    intimacyLevelId: normalized.levelId || null,
     relationshipValues: {
-      affinity: data.relationship_values.affinity,
-      trust: data.relationship_values.trust,
-      chemistry: data.relationship_values.chemistry,
-      tension: data.relationship_values.tension,
+      affinity: normalized.affinity,
+      trust: normalized.trust,
+      chemistry: normalized.chemistry,
+      tension: normalized.tension,
     },
   };
 }
