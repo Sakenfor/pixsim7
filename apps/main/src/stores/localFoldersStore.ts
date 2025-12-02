@@ -13,7 +13,7 @@ export type LocalAsset = {
   kind: 'image' | 'video' | 'other';
   size?: number;
   lastModified?: number;
-  fileHandle: FileHandle;
+  fileHandle?: FileHandle;
   folderId: string;
 };
 
@@ -33,6 +33,7 @@ type LocalFoldersState = {
   removeFolder: (id: string) => Promise<void>;
   refreshFolder: (id: string) => Promise<void>;
   loadPersisted: () => Promise<void>;
+  getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
 };
 
 // --- minimal IndexedDB helpers ---
@@ -148,19 +149,18 @@ async function getFileHandle(root: DirHandle, relativePath: string): Promise<Fil
 }
 
 // Load assets from cache and reconstruct file handles
-async function loadCachedAssets(id: string, handle: DirHandle): Promise<LocalAsset[]> {
+async function loadCachedAssets(id: string, _handle: DirHandle): Promise<LocalAsset[]> {
   try {
     const cached = await idbGet<AssetMeta[]>(`assets_${id}`);
     if (!cached) return [];
 
-    const assets: LocalAsset[] = [];
-    for (const meta of cached) {
-      const fileHandle = await getFileHandle(handle, meta.relativePath);
-      if (fileHandle) {
-        assets.push({ ...meta, fileHandle });
-      }
-    }
-    return assets;
+    // For large folders, reconstructing FileSystemFileHandle for every asset on
+    // startup is very expensive. Instead, return lightweight assets without
+    // fileHandle and let callers resolve handles lazily when needed.
+    return cached.map((meta) => ({
+      ...meta,
+      fileHandle: undefined,
+    }));
   } catch (e) {
     console.warn('loadCachedAssets error', e);
     return [];
@@ -210,15 +210,28 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
         set({ folders: ok });
-        // Load from cache first for instant display
+        // Load from cache first for instant display, then always kick off a fresh
+        // scan in the background so newly added files appear without manual refresh.
         for (const f of ok) {
           const cachedItems = await loadCachedAssets(f.id, f.handle);
           if (cachedItems.length > 0) {
-            set(s => ({ assets: { ...s.assets, ...Object.fromEntries(cachedItems.map(a => [a.key, a])) } }));
+            set(s => ({
+              assets: {
+                ...s.assets,
+                ...Object.fromEntries(cachedItems.map(a => [a.key, a])),
+              },
+            }));
+            // Background refresh to pick up any changes since last cache write
+            void get().refreshFolder(f.id);
           } else {
-            // No cache, do full scan
+            // No cache, do full scan now (also writes cache)
             const items = await scanFolder(f.id, f.handle, 5);
-            set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
+            set(s => ({
+              assets: {
+                ...s.assets,
+                ...Object.fromEntries(items.map(a => [a.key, a])),
+              },
+            }));
             await cacheAssets(f.id, items);
           }
         }
@@ -275,6 +288,28 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const others = Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'));
     set({ assets: { ...Object.fromEntries(others), ...Object.fromEntries(items.map(a => [a.key, a])) } });
     await cacheAssets(f.id, items);
+  },
+
+  getFileForAsset: async (asset: LocalAsset) => {
+    try {
+      if (asset.fileHandle) {
+        return await asset.fileHandle.getFile();
+      }
+      const folder = get().folders.find(f => f.id === asset.folderId);
+      if (!folder) return undefined;
+      const handle = await getFileHandle(folder.handle, asset.relativePath);
+      if (!handle) return undefined;
+      const updated: LocalAsset = { ...asset, fileHandle: handle };
+      set(s => ({
+        assets: {
+          ...s.assets,
+          [updated.key]: updated,
+        },
+      }));
+      return await handle.getFile();
+    } catch {
+      return undefined;
+    }
   },
 }));
 

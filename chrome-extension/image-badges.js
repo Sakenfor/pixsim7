@@ -200,46 +200,63 @@
   }
 
   let hoverTimeout = null;
+  let isOverBadge = false;
+  let isOverMedia = false;
+
+  function cancelHideTimer() {
+    clearTimeout(hoverTimeout);
+    hoverTimeout = null;
+  }
+
+  function scheduleHide() {
+    cancelHideTimer();
+    hoverTimeout = setTimeout(() => {
+      if (!isOverBadge && !isOverMedia) {
+        hideBadge();
+        currentImg = null;
+        currentVideo = null;
+      }
+    }, 150);
+  }
+
   function onImgEnter(e) {
     const img = e.target;
     if (!img || !img.src) return;
     if (shouldSkipImage(img)) return;
     const rect = img.getBoundingClientRect();
-    if (rect.width < 32 || rect.height < 32) return; // allow smaller than before
+    if (rect.width < 32 || rect.height < 32) return;
+
+    isOverMedia = true;
+    cancelHideTimer();
     currentImg = img;
     currentVideo = null;
     positionBadgeFor(img);
     updateBadgeLabel(false);
   }
+
   function onVideoEnter(e) {
     const video = e.target;
     if (!video || !video.src) return;
-    if (shouldSkipImage(video)) return; // Reuse same skip logic for videos
+    if (shouldSkipImage(video)) return;
     const rect = video.getBoundingClientRect();
     if (rect.width < 32 || rect.height < 32) return;
 
-    // Check duration (5-30 seconds)
     const duration = video.duration;
-    if (duration && (duration < 5 || duration > 30)) {
-      // Don't show badge for videos outside range
-      return;
-    }
+    if (duration && (duration < 5 || duration > 30)) return;
 
+    isOverMedia = true;
+    cancelHideTimer();
     currentVideo = video;
     currentImg = null;
     positionBadgeFor(video);
     updateBadgeLabel(true);
   }
+
   function onImgLeave(e) {
-    clearTimeout(hoverTimeout);
-    hoverTimeout = setTimeout(() => {
-      // If pointer not over badge, hide
-      const { clientX, clientY } = (e || {});
-      const el = document.elementFromPoint(clientX || -1, clientY || -1);
-      if (!el || (badgeEl && !badgeEl.contains(el))) hideBadge();
-    }, 180);
+    isOverMedia = false;
+    scheduleHide();
   }
-  
+
   function updateBadgeLabel(isVideo) {
     if (!badgeEl) return;
     if (isVideo) {
@@ -250,16 +267,17 @@
   }
 
   if (!document.__pixsim7_badgeBound) {
+    // Badge hover - keep visible while over badge
     document.addEventListener('mouseover', (e) => {
-      if (e.target && e.target.classList && e.target.classList.contains(BADGE_CLASS)) {
-        // keep visible
-        if (currentImg) positionBadgeFor(currentImg);
+      if (badgeEl && (e.target === badgeEl || badgeEl.contains(e.target))) {
+        isOverBadge = true;
+        cancelHideTimer();
       }
     });
     document.addEventListener('mouseout', (e) => {
-      if (e.target && e.target.classList && e.target.classList.contains(BADGE_CLASS)) {
-        // delay hide similar to image leave
-        onImgLeave(e);
+      if (badgeEl && (e.target === badgeEl || badgeEl.contains(e.target))) {
+        isOverBadge = false;
+        scheduleHide();
       }
     });
     document.__pixsim7_badgeBound = true;

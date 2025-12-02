@@ -11,7 +11,11 @@ type TreeNode = {
 };
 
 // Build tree grouped by folder ID first
-function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): TreeNode {
+function buildTree(
+  assets: LocalAsset[],
+  folderNames: Record<string, string>,
+  folderOrder?: string[]
+): TreeNode {
   const root: TreeNode = { name: 'root', path: '', type: 'folder', children: [] };
 
   // Group assets by folderId
@@ -21,8 +25,28 @@ function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): T
     return acc;
   }, {} as Record<string, LocalAsset[]>);
 
+  // Helper to sort: folders first, then alphabetically by name
+  function sortNodes(nodes?: TreeNode[]): void {
+    if (!nodes) return;
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const node of nodes) {
+      if (node.children) sortNodes(node.children);
+    }
+  }
+
+  // Determine folder root order: prefer explicit folderOrder from store, fall back to map keys
+  const folderIds = folderOrder && folderOrder.length
+    ? folderOrder
+    : Object.keys(assetsByFolder);
+
   // Create folder root nodes
-  for (const [folderId, folderAssets] of Object.entries(assetsByFolder)) {
+  for (const folderId of folderIds) {
+    const folderAssets = assetsByFolder[folderId];
+    if (!folderAssets) continue;
+
     const folderRoot: TreeNode = {
       name: folderNames[folderId] || folderId,
       path: folderId,
@@ -50,9 +74,9 @@ function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): T
             name: folderName,
             path: folderPath,
             type: 'folder',
-            children: [],
-            count: 0
-          };
+          children: [],
+          count: 0
+        };
           current.children?.push(folder);
         }
 
@@ -69,6 +93,8 @@ function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): T
       });
     }
 
+    // Sort within this folder subtree (folders first, then alphabetically)
+    sortNodes(folderRoot.children);
     root.children?.push(folderRoot);
   }
 
@@ -87,20 +113,6 @@ function buildTree(assets: LocalAsset[], folderNames: Record<string, string>): T
   }
 
   countFiles(root);
-
-  // Sort: folders first, then alphabetically
-  function sortNodes(nodes?: TreeNode[]): void {
-    if (!nodes) return;
-    nodes.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-    for (const node of nodes) {
-      if (node.children) sortNodes(node.children);
-    }
-  }
-
-  sortNodes(root.children);
 
   return root;
 }
@@ -283,6 +295,8 @@ type TreeFolderViewProps = {
   compactMode?: boolean; // If true, show compact tree without file previews
   selectedFolderPath?: string; // Currently selected folder path
   onFolderSelect?: (path: string) => void; // Callback when folder is clicked
+  // Optional explicit folder order (folderId list) to keep roots aligned with LocalFolders store
+  folderOrder?: string[];
 };
 
 export function TreeFolderView({
@@ -296,9 +310,13 @@ export function TreeFolderView({
   providerId,
   compactMode,
   selectedFolderPath,
-  onFolderSelect
+  onFolderSelect,
+  folderOrder
 }: TreeFolderViewProps) {
-  const tree = useMemo(() => buildTree(assets, folderNames), [assets, folderNames]);
+  const tree = useMemo(
+    () => buildTree(assets, folderNames, folderOrder),
+    [assets, folderNames, folderOrder]
+  );
 
   if (!tree.children || tree.children.length === 0) {
     return (

@@ -32,6 +32,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     refreshFolder,
     adding,
     error,
+  getFileForAsset,
   } = useLocalFolders();
 
   // View state
@@ -67,7 +68,10 @@ export function useLocalFoldersController(): LocalFoldersController {
     return assetList.filter(asset => {
       // Root folder selected: path is just folderId
       if (selectedFolderPath === asset.folderId) {
-        return true;
+        // Only show files directly under the root folder here.
+        // Files inside subfolders are shown when those subfolders are selected
+        // in the tree, to avoid rendering thousands of items at once.
+        return !asset.relativePath.includes('/');
       }
 
       // For subfolders, ensure this asset belongs to the same root folder
@@ -106,7 +110,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     // If no cached thumbnail, create from file and store
     if (!url) {
       try {
-        const file = await asset.fileHandle.getFile();
+        const file = await getFileForAsset(asset);
+        if (!file) return;
         url = URL.createObjectURL(file);
         // Cache original file blob as thumbnail for future sessions
         void setLocalThumbnailBlob(asset, file);
@@ -160,7 +165,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     setUploadStatus(s => ({ ...s, [asset.key]: 'uploading' }));
 
     try {
-      const file = await asset.fileHandle.getFile();
+      const file = await getFileForAsset(asset);
+      if (!file) throw new Error('Unable to read local file');
       const form = new FormData();
       form.append('file', file, asset.name);
       form.append('provider_id', providerId);

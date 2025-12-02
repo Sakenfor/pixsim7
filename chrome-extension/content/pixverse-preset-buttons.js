@@ -10,6 +10,7 @@
 
   const STORAGE_KEY_PROVIDER_SESSIONS = 'pixsim7ProviderSessions';
   const STORAGE_KEY_SELECTED_ACCOUNT = 'pixsim7SelectedPresetAccount';
+  const STORAGE_KEY_SELECTED_PRESET = 'pixsim7SelectedPreset';
   const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
 
   const BTN_GROUP_CLASS = 'pxs7-group';
@@ -286,6 +287,7 @@
   let accountsCache = [];
   let assetsCache = [];
   let selectedAccountId = null;
+  let selectedPresetId = null;
   let currentSessionAccountId = null; // Account matching browser session
 
   function injectStyle() {
@@ -895,24 +897,61 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       display: flex;
       flex-direction: column;
+      resize: both;
+      overflow: hidden;
     `;
 
-    // Header with close button
+    let isMinimized = false;
+
+    // Header - draggable
     const header = document.createElement('div');
     header.style.cssText = `
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 12px 0;
-    `;
-    header.innerHTML = `
-      <span style="font-size: 12px; font-weight: 600; color: ${COLORS.text};">
-        🖼 Image Picker
-      </span>
+      padding: 8px 12px;
+      cursor: move;
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px 8px 0 0;
+      user-select: none;
     `;
 
+    const title = document.createElement('span');
+    title.style.cssText = `font-size: 12px; font-weight: 600; color: ${COLORS.text};`;
+    title.textContent = '🖼 Image Picker';
+    header.appendChild(title);
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display: flex; gap: 8px;';
+
+    // Minimize button
+    const minBtn = document.createElement('button');
+    minBtn.textContent = '−';
+    minBtn.title = 'Minimize';
+    minBtn.style.cssText = `
+      background: none;
+      border: none;
+      color: ${COLORS.textMuted};
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      width: 20px;
+    `;
+    minBtn.addEventListener('click', () => {
+      isMinimized = !isMinimized;
+      panelBody.style.display = isMinimized ? 'none' : 'flex';
+      panel.style.maxHeight = isMinimized ? 'auto' : '480px';
+      panel.style.width = isMinimized ? 'auto' : '320px';
+      minBtn.textContent = isMinimized ? '+' : '−';
+      minBtn.title = isMinimized ? 'Expand' : 'Minimize';
+    });
+    btnGroup.appendChild(minBtn);
+
+    // Close button
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
+    closeBtn.title = 'Close';
     closeBtn.style.cssText = `
       background: none;
       border: none;
@@ -921,10 +960,42 @@
       cursor: pointer;
       padding: 0;
       line-height: 1;
+      width: 20px;
     `;
     closeBtn.addEventListener('click', () => panel.remove());
-    header.appendChild(closeBtn);
+    btnGroup.appendChild(closeBtn);
+
+    header.appendChild(btnGroup);
     panel.appendChild(header);
+
+    // Make draggable
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if (e.target === minBtn || e.target === closeBtn) return;
+      isDragging = true;
+      dragOffsetX = e.clientX - panel.offsetLeft;
+      dragOffsetY = e.clientY - panel.offsetTop;
+      panel.style.transition = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      panel.style.left = (e.clientX - dragOffsetX) + 'px';
+      panel.style.top = (e.clientY - dragOffsetY) + 'px';
+      panel.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+      panel.style.transition = '';
+    });
+
+    // Panel body (collapsible)
+    const panelBody = document.createElement('div');
+    panelBody.style.cssText = 'display: flex; flex-direction: column; flex: 1; overflow: hidden;';
 
     // Tab bar
     const tabBar = document.createElement('div');
@@ -985,8 +1056,9 @@
       tabBar.appendChild(tabBtn);
     });
 
-    panel.appendChild(tabBar);
-    panel.appendChild(contentContainer);
+    panelBody.appendChild(tabBar);
+    panelBody.appendChild(contentContainer);
+    panel.appendChild(panelBody);
 
     // Render initial tab content
     renderTabContent(activeTab, contentContainer, panel);
@@ -1223,6 +1295,30 @@
     } catch (e) {}
   }
 
+  async function loadSelectedPreset() {
+    try {
+      const stored = await chrome.storage.local.get(STORAGE_KEY_SELECTED_PRESET);
+      if (stored[STORAGE_KEY_SELECTED_PRESET]) {
+        selectedPresetId = stored[STORAGE_KEY_SELECTED_PRESET];
+      }
+    } catch (e) {}
+  }
+
+  async function saveSelectedPreset(presetId) {
+    try {
+      selectedPresetId = presetId;
+      await chrome.storage.local.set({ [STORAGE_KEY_SELECTED_PRESET]: presetId });
+    } catch (e) {}
+  }
+
+  function getCurrentPreset() {
+    if (selectedPresetId && presetsCache.length > 0) {
+      const preset = presetsCache.find(p => p.id === selectedPresetId);
+      if (preset) return preset;
+    }
+    return presetsCache[0] || null;
+  }
+
   async function loadCurrentSessionAccount() {
     try {
       const stored = await chrome.storage.local.get(STORAGE_KEY_PROVIDER_SESSIONS);
@@ -1314,22 +1410,12 @@
         providerId: 'pixverse'
       });
       if (res?.success && Array.isArray(res.data)) {
-        // Log preset fields to debug filtering
-        console.log('[PixSim7] Raw presets:', res.data.map(p => ({
-          name: p.name,
-          type: p.type,
-          category: p.category
-        })));
-
         // Filter out "snippet(s)" - check both type and category fields
         presetsCache = res.data.filter(p => {
           const typeStr = (p.type || '').toLowerCase();
           const catStr = (p.category || '').toLowerCase();
-          const isSnippet = typeStr.includes('snippet') || catStr.includes('snippet');
-          return !isSnippet;
+          return !typeStr.includes('snippet') && !catStr.includes('snippet');
         });
-
-        console.log('[PixSim7] Filtered presets:', presetsCache.length);
         return presetsCache;
       }
     } catch (e) {
@@ -1661,7 +1747,7 @@
 
   // ===== Preset Menu =====
 
-  function showPresetMenu(btn) {
+  function showPresetMenu(btn, onSelect) {
     closeMenus();
 
     const menu = document.createElement('div');
@@ -1669,7 +1755,7 @@
 
     const section = document.createElement('div');
     section.className = `${MENU_CLASS}__section`;
-    section.textContent = 'Select Preset';
+    section.textContent = 'Select Default Preset';
     menu.appendChild(section);
 
     if (presetsCache.length === 0) {
@@ -1678,17 +1764,22 @@
       empty.textContent = 'No presets available';
       menu.appendChild(empty);
     } else {
+      const currentPreset = getCurrentPreset();
       presetsCache.forEach(preset => {
+        const isSelected = currentPreset?.id === preset.id;
         const item = document.createElement('button');
         item.className = `${MENU_CLASS}__item`;
-        item.innerHTML = `<span style="opacity:0.5">▶</span> ${preset.name || `Preset #${preset.id}`}`;
+        if (isSelected) item.classList.add('selected');
+        item.innerHTML = `
+          <span style="opacity:0.5">${isSelected ? '✓' : '▶'}</span>
+          <span style="flex:1">${preset.name || `Preset #${preset.id}`}</span>
+          ${isSelected ? `<span style="font-size:9px;color:${COLORS.accent}">default</span>` : ''}
+        `;
+        item.style.cssText += 'display: flex; align-items: center; gap: 6px;';
         item.addEventListener('click', async () => {
+          await saveSelectedPreset(preset.id);
           menu.remove();
-          btn.classList.add('loading');
-          btn.textContent = '...';
-          await executePreset(preset.id);
-          btn.classList.remove('loading');
-          btn.textContent = '▶ Run';
+          if (onSelect) onSelect(preset);
         });
         menu.appendChild(item);
       });
@@ -1729,6 +1820,19 @@
     } else {
       btn.innerHTML = `<span class="name">Account</span><span class="arrow">▼</span>`;
       btn.title = 'Select account';
+    }
+  }
+
+  function updateRunButton(btn) {
+    const preset = getCurrentPreset();
+    if (preset) {
+      const name = preset.name || `Preset #${preset.id}`;
+      const truncated = name.length > 16 ? name.slice(0, 15) + '…' : name;
+      btn.innerHTML = `<span style="opacity:0.6">▶</span> <span class="name">${truncated}</span>`;
+      btn.title = `Run: ${preset.name}\nRight-click to change preset`;
+    } else {
+      btn.innerHTML = '<span style="opacity:0.6">▶</span> <span class="name">Run</span>';
+      btn.title = 'No preset selected\nClick dropdown to select';
     }
   }
 
@@ -1801,11 +1905,10 @@
       showUnifiedImagePicker(defaultTab);
     });
 
-    // Run button
+    // Run button - shows selected preset, click to run
     const runBtn = document.createElement('button');
     runBtn.className = `${BTN_CLASS} ${BTN_CLASS}--run`;
-    runBtn.textContent = '▶ Run';
-    runBtn.title = 'Run preset';
+    updateRunButton(runBtn);
 
     runBtn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -1817,36 +1920,51 @@
         return;
       }
 
-      if (presetsCache.length === 0) {
-        runBtn.classList.add('loading');
-        runBtn.textContent = '...';
-        await loadPresets();
-        runBtn.classList.remove('loading');
-        runBtn.textContent = '▶ Run';
+      const preset = getCurrentPreset();
+      if (!preset) {
+        showToast('No preset selected', false);
+        return;
       }
 
-      if (presetsCache.length === 1) {
-        runBtn.classList.add('loading');
-        runBtn.textContent = '...';
-        await executePreset(presetsCache[0].id);
-        runBtn.classList.remove('loading');
-        runBtn.textContent = '▶ Run';
-      } else {
-        showPresetMenu(runBtn);
-      }
+      runBtn.classList.add('loading');
+      const origHtml = runBtn.innerHTML;
+      runBtn.innerHTML = '<span class="name">Running...</span>';
+      await executePreset(preset.id);
+      runBtn.classList.remove('loading');
+      updateRunButton(runBtn);
+    });
+
+    // Right-click or long-press to change preset
+    runBtn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showPresetMenu(runBtn, () => updateRunButton(runBtn));
+    });
+
+    // Preset selector dropdown button
+    const presetArrow = document.createElement('button');
+    presetArrow.className = `${BTN_CLASS}`;
+    presetArrow.innerHTML = '▼';
+    presetArrow.title = 'Select preset';
+    presetArrow.style.cssText += 'padding: 4px 6px; font-size: 8px;';
+    presetArrow.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showPresetMenu(presetArrow, () => updateRunButton(runBtn));
     });
 
     group.appendChild(accountBtn);
     group.appendChild(loginBtn);
     group.appendChild(assetsBtn);
     group.appendChild(runBtn);
+    group.appendChild(presetArrow);
 
-    return { group, accountBtn };
+    return { group, accountBtn, runBtn };
   }
 
   // ===== DOM Processing =====
 
-  const buttonRefs = [];
+  const accountBtnRefs = [];
+  const runBtnRefs = [];
 
   function processTaskElements() {
     const tasks = document.querySelectorAll(TASK_SELECTOR);
@@ -1855,8 +1973,9 @@
       if (task.hasAttribute(PROCESSED_ATTR)) return;
       task.setAttribute(PROCESSED_ATTR, 'true');
 
-      const { group, accountBtn } = createButtonGroup();
-      buttonRefs.push(accountBtn);
+      const { group, accountBtn, runBtn } = createButtonGroup();
+      accountBtnRefs.push(accountBtn);
+      runBtnRefs.push(runBtn);
 
       if (task.nextSibling) {
         task.parentNode.insertBefore(group, task.nextSibling);
@@ -1868,8 +1987,15 @@
 
   // Update all account buttons when session changes
   function updateAllAccountButtons() {
-    buttonRefs.forEach(btn => {
+    accountBtnRefs.forEach(btn => {
       if (btn.isConnected) updateAccountButton(btn);
+    });
+  }
+
+  // Update all run buttons when presets load
+  function updateAllRunButtons() {
+    runBtnRefs.forEach(btn => {
+      if (btn.isConnected) updateRunButton(btn);
     });
   }
 
@@ -1887,6 +2013,7 @@
 
     await Promise.all([
       loadSelectedAccount(),
+      loadSelectedPreset(),
       loadCurrentSessionAccount()
     ]);
 
@@ -1900,6 +2027,7 @@
       loadAssets()
     ]).then(() => {
       updateAllAccountButtons();
+      updateAllRunButtons();
     }).catch(e => {
       console.warn('[PixSim7] init: failed to load some data:', e);
     });

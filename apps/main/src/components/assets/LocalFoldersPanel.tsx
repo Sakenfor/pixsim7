@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
@@ -16,6 +16,39 @@ export function LocalFoldersPanel() {
       return acc;
     }, {} as Record<string, string>);
   }, [controller.folders]);
+
+  // Lightweight auto-preview: when viewing a folder in tree or grid mode,
+  // lazily load thumbnails for the first batch of assets instead of every file.
+  useEffect(() => {
+    const MAX_AUTO_PREVIEWS = 32;
+
+    // Tree mode: use filtered assets for the selected folder
+    if (controller.viewMode === 'tree' && controller.selectedFolderPath) {
+      const batch = controller.filteredAssets.slice(0, MAX_AUTO_PREVIEWS);
+      batch.forEach((asset) => {
+        if (!controller.previews[asset.key]) {
+          void controller.loadPreview(asset);
+        }
+      });
+    }
+
+    // Grid mode: show a small batch from all assets
+    if (controller.viewMode === 'grid') {
+      const batch = controller.assets.slice(0, MAX_AUTO_PREVIEWS);
+      batch.forEach((asset) => {
+        if (!controller.previews[asset.key]) {
+          void controller.loadPreview(asset);
+        }
+      });
+    }
+  }, [
+    controller.viewMode,
+    controller.selectedFolderPath,
+    controller.filteredAssets,
+    controller.assets,
+    controller.previews,
+    controller.loadPreview,
+  ]);
 
   return (
     <div className="space-y-4">
@@ -151,6 +184,7 @@ export function LocalFoldersPanel() {
                 <TreeFolderView
                   assets={controller.assets}
                   folderNames={folderNames}
+                  folderOrder={controller.folders.map(f => f.id)}
                   onFileClick={controller.openViewer}
                   onPreview={controller.loadPreview}
                   previews={controller.previews}
@@ -168,13 +202,7 @@ export function LocalFoldersPanel() {
                 {controller.selectedFolderPath && controller.filteredAssets.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2">
                     {controller.filteredAssets.map(asset => {
-                      const previewUrl = controller.previews[asset.key];
                       const status = controller.uploadStatus[asset.key] || 'idle';
-
-                      // Load preview if not already loaded
-                      if (!previewUrl) {
-                        controller.loadPreview(asset);
-                      }
 
                       return (
                         <MediaCard
@@ -183,8 +211,8 @@ export function LocalFoldersPanel() {
                           mediaType={asset.kind === 'video' ? 'video' : 'image'}
                           providerId="local"
                           providerAssetId={asset.key}
-                          thumbUrl={previewUrl || ''}
-                          remoteUrl={previewUrl || ''}
+                          thumbUrl={controller.previews[asset.key] || ''}
+                          remoteUrl={controller.previews[asset.key] || ''}
                           width={0}
                           height={0}
                           tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
