@@ -100,6 +100,50 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
   Hardening and documentation for the editing-core layer.
   **Status:** Phases 1–3 implemented (README, widget registry docs, adoption guide); Phase 4 (tests) skipped.
 
+---
+
+## Tasks 85-99 Status Summary (Audit: 2025-12-02)
+
+**Completion Rate:** 80% (12 of 15 tasks completed)
+
+### ✅ Completed Tasks (85-90, 93-97, 99)
+
+**Prompt Lab & Block Fit System (85-90)** – **FULLY IMPLEMENTED**
+- 85: Category Discovery Agent – AI-assisted category/pack/block suggestions
+- 86: Block ↔ Image Fit Scoring – Heuristic fit scores + user ratings
+- 87: Apply Category Suggestions – Create draft packs/blocks from AI suggestions
+- 88: Prompt Lab ↔ Block Fit Integration – Navigation between tools via query params
+- 89: Prompt Family Timeline – Version history with performance metrics
+- 90: Timestamped Video Feedback – Video player with frame-specific ratings
+
+**Implementation:** `PromptLabDev.tsx` (2,085 lines, 6 tabs), `BlockFitDev.tsx` (673 lines), 5 backend API modules, ~4,291 total lines of code.
+
+**Overlay System (93-97)** – **FULLY IMPLEMENTED**
+- 93: Overlay Validation & Widget Accessibility (merged b56fa8c4)
+- 94: Overlay Unified Config & Editor Integration (a85d863c)
+- 95: Overlay Widget Registry Expansion (865ddf0)
+- 96: Overlay Editor UX & Validation (865ddf0)
+- 97: HUD Editor & Overlay Unified Integration (bfad883)
+
+**Asset System (99)** – **FULLY IMPLEMENTED**
+- 99: Asset Roles & Action Block Resolver – Tag-based asset resolution system
+  **Implementation:** `assetRoles.ts`, `assetResolver.ts`, comprehensive docs
+
+### ❌ Not Started (91-92, 98)
+
+**Registry Refactoring (91-92)** – Design documents only
+- 91: UI Registry Base & Feature Normalization
+- 92: Registry Bridge Simplification
+
+**Asset/Generation (98)** – Planned but not started
+- 98: Comic Panel Widget & Scene Integration
+
+### ⚠️ Unclear Status (106)
+
+- 106: Editing Core Data Binding Migration (renumbered from 99) – Implementation evidence exists but status unclear
+
+---
+
 ## How to Evolve Tasks
 
 - Prefer **adding Phase 6–10** sections over rewriting 1–5 once something is shipped.
