@@ -482,13 +482,6 @@ export interface GameSessionDTO {
   flags: Record<string, unknown>;
 
   /**
-   * @deprecated Use stats.relationships instead.
-   * This field is maintained for backward compatibility during migration.
-   * Backend automatically syncs stats.relationships → relationships for legacy clients.
-   */
-  relationships: Record<string, unknown>;
-
-  /**
    * Generic stats storage using the abstract stat system.
    * Structure: { [statDefId: string]: { [entityKey: string]: statValues } }
    *
@@ -518,13 +511,7 @@ export interface SessionUpdatePayload {
   flags?: Record<string, unknown>;
 
   /**
-   * @deprecated Use stats instead.
-   * Maintained for backward compatibility. Backend converts to stats.relationships.
-   */
-  relationships?: Record<string, unknown>;
-
-  /**
-   * Generic stats storage. Preferred over relationships field.
+   * Generic stats storage.
    * Use stats.relationships for relationship data.
    */
   stats?: Record<string, Record<string, unknown>>;

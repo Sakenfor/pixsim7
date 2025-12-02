@@ -31,8 +31,8 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
       return;
     }
 
-    // Support both new stats.relationships and legacy relationships field
-    const relationshipData = session.stats?.relationships || session.relationships;
+    // Use stats.relationships as the canonical source
+    const relationshipData = session.stats?.relationships;
 
     if (!relationshipData || typeof relationshipData !== 'object') {
       setRelationships([]);

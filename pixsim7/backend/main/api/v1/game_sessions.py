@@ -32,7 +32,7 @@ class SessionAdvanceRequest(BaseModel):
 class SessionUpdateRequest(BaseModel):
     world_time: Optional[float] = None
     flags: Optional[Dict[str, Any]] = None
-    relationships: Optional[Dict[str, Any]] = None
+    stats: Optional[Dict[str, Any]] = None
     expected_version: Optional[int] = None  # For optimistic locking
 
 
@@ -43,7 +43,7 @@ class GameSessionResponse(BaseModel):
     current_node_id: int
     world_id: Optional[int] = None
     flags: Dict[str, Any]
-    relationships: Dict[str, Any]
+    stats: Dict[str, Any]
     world_time: float
     version: int  # Optimistic locking version
 
@@ -56,7 +56,7 @@ class GameSessionResponse(BaseModel):
             current_node_id=gs.current_node_id,
             world_id=gs.world_id,
             flags=gs.flags,
-            relationships=gs.relationships,
+            stats=gs.stats,
             world_time=gs.world_time,
             version=gs.version,
         )
@@ -144,7 +144,7 @@ async def update_session(
             session_id=session_id,
             world_time=req.world_time,
             flags=req.flags,
-            relationships=req.relationships,
+            stats=req.stats,
             expected_version=req.expected_version,
         )
     except ValueError as e:
