@@ -230,8 +230,6 @@ class StatDefinition(BaseModel):
     @model_validator(mode='after')
     def validate_tier_overlaps(self):
         """Check for tier overlaps within each axis."""
-        from pixsim7.backend.main.domain.game.schemas.relationship import detect_tier_overlaps
-
         # Group tiers by axis
         tiers_by_axis: Dict[str, List[StatTier]] = {}
         for tier in self.tiers:
@@ -239,14 +237,25 @@ class StatDefinition(BaseModel):
                 tiers_by_axis[tier.axis_name] = []
             tiers_by_axis[tier.axis_name].append(tier)
 
-        # Check each axis for overlaps (convert to format expected by helper)
+        # Check each axis for overlaps
         for axis_name, axis_tiers in tiers_by_axis.items():
-            # Convert StatTier to dict format for compatibility
-            tier_dicts = [
-                {"id": t.id, "min": t.min, "max": t.max}
-                for t in axis_tiers
-            ]
-            overlaps = detect_tier_overlaps(tier_dicts)
+            # Sort tiers by min for deterministic comparisons
+            sorted_tiers = sorted(axis_tiers, key=lambda t: t.min)
+
+            overlaps: List[str] = []
+            for i, tier1 in enumerate(sorted_tiers):
+                tier1_max = tier1.max if tier1.max is not None else float("inf")
+
+                for tier2 in sorted_tiers[i + 1 :]:
+                    tier2_max = tier2.max if tier2.max is not None else float("inf")
+
+                    # Ranges overlap if tier1's max is greater than tier2's min
+                    if tier1_max > tier2.min:
+                        overlaps.append(
+                            f'Tiers "{tier1.id}" ({tier1.min}-{tier1_max}) '
+                            f'and "{tier2.id}" ({tier2.min}-{tier2_max}) overlap'
+                        )
+
             if overlaps:
                 raise ValueError(
                     f'Overlapping tiers in axis "{axis_name}": {"; ".join(overlaps)}'

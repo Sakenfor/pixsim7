@@ -189,11 +189,23 @@ class StatService:
 
         stats_config = await self._get_world_stats_config(session.world_id)
         if not stats_config or stat_definition_id not in stats_config.definitions:
-            logger.warning(
-                f"No stat definition '{stat_definition_id}' found for world {session.world_id}",
-                extra={"session_id": session.id, "world_id": session.world_id, "stat_definition_id": stat_definition_id}
+            # At this point, code is explicitly trying to use a stat type that
+            # is not configured for this world. Treat this as a configuration
+            # error rather than silently doing nothing.
+            message = (
+                f"Stat definition '{stat_definition_id}' is not configured for world "
+                f"{session.world_id}. Either add it to GameWorld.meta.stats_config "
+                f"or stop using this stat type in this world."
             )
-            return
+            logger.error(
+                message,
+                extra={
+                    "session_id": session.id,
+                    "world_id": session.world_id,
+                    "stat_definition_id": stat_definition_id,
+                },
+            )
+            raise ValueError("stat_definition_not_configured")
 
         stat_definition = stats_config.definitions[stat_definition_id]
 

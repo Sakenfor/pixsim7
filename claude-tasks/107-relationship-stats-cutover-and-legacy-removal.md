@@ -1,0 +1,222 @@
+**Task: Relationship → Abstract Stat System Cutover (Forward-Only)**
+
+> **For Agents (How to use this file)**
+> - This task is a **forward-only migration**: stop using legacy relationship code and move everything to the abstract stat system.
+> - **Do not preserve backward compatibility** beyond what the new stat system already provides (auto-migration is allowed to be one-way).
+> - Treat this as the canonical plan for **removing `GameSession.relationships` and relationship-specific helpers** in favor of `GameSession.stats["relationships"]` and `WorldStatsConfig`.
+> - Keep changes tightly scoped to relationships and related metrics; do not redesign the stat engine itself.
+
+---
+
+## Context
+
+Current state after the stats rework:
+
+- Abstract stat system is implemented and in use:
+  - `pixsim7/backend/main/domain/stats/schemas.py` (axes/tiers/levels + `WorldStatsConfig`)
+  - `pixsim7/backend/main/domain/stats/engine.py` (`StatEngine` for clamping, tiers, levels, normalization)
+  - `pixsim7/backend/main/services/game/stat_service.py` (`StatService` for world-aware session stats + caching)
+  - `pixsim7/backend/main/domain/stats/mixins.py` (`HasStats` / `HasStatsWithMetadata` for entity-owned stats)
+  - `pixsim7/backend/main/services/game/npc_stat_service.py` (`NPCStatService` using base+override+modifiers)
+- Relationship stat definition is already modeled as a first-class `StatDefinition`:
+  - `get_default_relationship_definition()` in `pixsim7/backend/main/domain/stats/migration.py`
+  - `migrate_world_meta_to_stats_config()` converts `relationship_schemas`/`intimacy_schema` → `WorldStatsConfig`
+  - `migrate_session_relationships_to_stats()` converts `GameSession.relationships` → `GameSession.stats["relationships"]`
+- `GameSession.stats` is live, but legacy relationship paths are still heavily used:
+  - `GameSession.relationships` field (deprecated but still present) in `pixsim7/backend/main/domain/game/models.py`
+  - Legacy helpers in `pixsim7/backend/main/domain/narrative/relationships.py`
+  - Relationship preview API + metrics wired to legacy schemas:
+    - `pixsim7/backend/main/api/v1/game_relationship_preview.py`
+    - `pixsim7/backend/main/domain/metrics/relationship_evaluators.py`
+  - Session/gameplay logic that reads/writes `session.relationships`:
+    - `pixsim7/backend/main/domain/game/interaction_execution.py` (`apply_relationship_deltas`)
+    - Narrative runtime, generation/social context, dialogue APIs, stealth API
+  - Frontend/editor code that expects `session.relationships`:
+    - `apps/main/src/components/game/RelationshipDashboard.tsx`
+    - `apps/main/src/components/intimacy/*` (gate visualizer, state editor)
+    - `apps/main/src/lib/game/relationshipHelpers.ts` / `relationshipComputation.ts`
+    - `apps/main/src/lib/core/mockCore.ts`, `SessionStateViewer.tsx`, plugins that surface `session.relationships`
+
+The goal of this task: **finish the transition** so that relationships are just another stat definition (`"relationships"`) living under `GameSession.stats`, with no remaining dependency on legacy relationship code or fields.
+
+---
+
+## Goals
+
+- Make `GameSession.stats["relationships"]` the **only** authoritative storage for relationship axes/tiers/levels.
+- Remove or replace all usage of:
+  - `GameSession.relationships`
+  - `pixsim7.backend.main.domain.narrative.relationships.*`
+  - Relationship-specific preview API and metrics that rely on legacy schemas.
+- Ensure worlds use `meta.stats_config.definitions["relationships"]` (or `get_default_relationship_definition`) instead of `relationship_schemas` / `intimacy_schema`.
+- Update frontend/editor tooling to read/write relationship data through the **stat-based shape** (axes + computed tier/level IDs), not legacy fields (`tierId`, `intimacyLevelId`).
+- Keep the **abstract stat system generic**: relationships are a preset/config, not special-case logic.
+
+Out of scope:
+
+- Redesigning stat computation or schemas.
+- New relationship mechanics; this is a migration/cleanup, not a feature expansion.
+
+---
+
+## Phase Checklist (High-Level)
+
+- [ ] **Phase 1 – Make Relationship Stats Canonical in Session/World Models**
+- [ ] **Phase 2 – Replace Legacy Relationship Logic in Backend Services**
+- [ ] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview**
+- [ ] **Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships**
+- [ ] **Phase 5 – Remove Legacy Relationship Fields, Helpers, and Docs**
+
+Each phase should be implemented via small, reviewable PRs and validated with existing tests + targeted new tests where needed.
+
+---
+
+## Phase 1 – Make Relationship Stats Canonical in Session/World Models
+
+**Goal:** Treat `stats["relationships"]` and `meta.stats_config.definitions["relationships"]` as the only supported storage for relationship data.
+
+**Steps:**
+
+- Update `GameSession` usage so that:
+  - All new relationship writes go to `session.stats["relationships"]` in code (not `session.relationships`).
+  - `session.relationships` is only present for the duration of the migration, then removed (Phase 5).
+- Ensure world configuration always has a relationship stat definition:
+  - For worlds missing `meta.stats_config.definitions["relationships"]`, either:
+    - Auto-initialize via `get_default_relationship_definition()`; or
+    - Fail clearly with a validation error when relationship operations are attempted.
+- Confirm `StatService` covers the canonical flow:
+  - `StatService.normalize_session_stats(session, "relationships")` normalizes all relationship data.
+  - `StatService.normalize_all_session_stats` includes `"relationships"` when present.
+
+**Key files:**
+
+- `pixsim7/backend/main/domain/game/models.py` (`GameSession`, `GameWorld`)
+- `pixsim7/backend/main/domain/stats/migration.py`
+- `pixsim7/backend/main/services/game/stat_service.py`
+
+---
+
+## Phase 2 – Replace Legacy Relationship Logic in Backend Services
+
+**Goal:** Stop using legacy relationship helpers and JSON paths in gameplay/session services; instead use stat definitions + `StatEngine`/`StatService`.
+
+**Steps:**
+
+- Refactor `apply_relationship_deltas` in `pixsim7/backend/main/domain/game/interaction_execution.py` to:
+  - Read/modify the canonical stat structure under `session.stats["relationships"][npc_key]` (using `StatEngine.initialize_entity_stats` when needed).
+  - Use world relationship stat definition from `WorldStatsConfig` if needed for clamping/validation.
+- Update all services that currently read/write `session.relationships` to operate on `session.stats["relationships"]`:
+  - `pixsim7/backend/main/services/game/game_session_service.py`
+  - `pixsim7/backend/main/services/generation/social_context_builder.py`
+  - Dialogue APIs (`pixsim7/backend/main/api/v1/dialogue.py`, dialogue plugin manifest)
+  - Stealth/romance/simulation services that consume relationship data.
+- Remove direct calls to:
+  - `compute_relationship_tier`, `compute_intimacy_level`, `extract_relationship_values` in `domain/narrative/relationships.py`
+  - Replace with `StatEngine`-based normalization + stat lookup on the `"relationships"` definition.
+
+**Key files:**
+
+- `pixsim7/backend/main/domain/game/interaction_execution.py`
+- `pixsim7/backend/main/services/game/game_session_service.py`
+- `pixsim7/backend/main/domain/narrative/relationships.py` (to be deleted in Phase 5)
+- `pixsim7/backend/main/services/generation/social_context_builder.py`
+- `pixsim7/backend/main/api/v1/dialogue.py`
+- `pixsim7/backend/main/plugins/game_dialogue/manifest.py`
+- Any other callers found via `rg "session.relationships"`
+
+---
+
+## Phase 3 – Replace Relationship Preview API with Stat-Based Preview
+
+**Goal:** Expose a generic stat preview API that works for relationships (and other stat types) using `WorldStatsConfig` + `StatEngine`, then remove the relationship-specific preview API.
+
+**Steps:**
+
+- Add a stat preview endpoint (e.g. `POST /stats/{stat_definition_id}/preview-entity`) that:
+  - Loads `GameWorld.meta.stats_config` via `StatService._get_world_stats_config()`.
+  - Accepts `{ "values": { axis_name: number } }` payload.
+  - Returns normalized output using `StatEngine.normalize_entity_stats` (clamped axes + `*TierId` + `levelId`).
+- Provide a convenience wrapper for relationships in game-core/types if needed (e.g. `previewRelationshipStats` that calls the generic stat preview with `"relationships"`).
+- Remove legacy preview machinery:
+  - `pixsim7/backend/main/api/v1/game_relationship_preview.py`
+  - `pixsim7/backend/main/domain/metrics/relationship_evaluators.py`
+  - Any relationship-specific metric types that only exist to support that API.
+- Update or replace tests in `tests/test_relationship_preview_api.py` to cover the new stat preview endpoint.
+
+**Key files:**
+
+- `pixsim7/backend/main/services/game/stat_service.py`
+- `pixsim7/backend/main/domain/stats/engine.py`
+- `pixsim7/backend/main/api/v1/*` (new stat preview route)
+- `tests/test_relationship_preview_api.py` (rewrite or replace)
+
+---
+
+## Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships
+
+**Goal:** Frontend and tooling no longer depend on `session.relationships` or legacy fields (`tierId`, `intimacyLevelId`); they operate on the stat-based structure and/or the new stat preview API.
+
+**Steps:**
+
+- Update session DTOs and adapters so that relationship UIs receive data from `session.stats["relationships"]`:
+  - Keep the shape close to the backend stat format (axes + `*TierId` + `levelId`).
+- Refactor relationship-focused components and helpers to work with the stat-based structure:
+  - `apps/main/src/components/game/RelationshipDashboard.tsx`
+  - `apps/main/src/components/intimacy/*` (gate visualizer, state editor)
+  - `apps/main/src/lib/game/relationshipHelpers.ts`
+  - `apps/main/src/lib/game/relationshipComputation.ts`
+  - `apps/main/src/components/panels/dev/SessionStateViewer.tsx`
+  - `apps/main/src/lib/core/mockCore.ts` and any plugins that inspect `session.relationships`.
+- Update any frontend preview flows to call the new stat preview API rather than relationship-specific endpoints.
+
+**Key files:**
+
+- `apps/main/src/components/game/RelationshipDashboard.tsx`
+- `apps/main/src/components/intimacy/*`
+- `apps/main/src/lib/game/relationshipHelpers.ts`
+- `apps/main/src/lib/game/relationshipComputation.ts`
+- `apps/main/src/lib/core/mockCore.ts`
+- `apps/main/src/components/panels/dev/SessionStateViewer.tsx`
+- Game-core wrappers for preview APIs (if present)
+
+---
+
+## Phase 5 – Remove Legacy Relationship Fields, Helpers, and Docs
+
+**Goal:** Delete leftover relationship-specific fields and modules now that all call sites use the abstract stat system.
+
+**Steps:**
+
+- Remove `GameSession.relationships` from the model and DB migrations once:
+  - All runtime code reads/writes `stats["relationships"]`.
+  - Any historical data has been migrated (one-time script or on-demand migration via `StatService`).
+- Remove legacy relationship helpers and schemas that are no longer used:
+  - `pixsim7/backend/main/domain/narrative/relationships.py`
+  - Relationship-specific bits of `pixsim7/backend/main/domain/game/schemas/relationship.py` if now redundant.
+  - Any remaining imports of `compute_relationship_tier` / `compute_intimacy_level`.
+- Clean up documentation:
+  - Update `docs/RELATIONSHIPS_AND_ARCS.md` to describe the stat-based relationship model (axes/tiers/levels, `"relationships"` stat definition).
+  - Update `RELATIONSHIP_MIGRATION_GUIDE.md` and `ABSTRACT_STAT_SYSTEM.md` to reflect that the migration is **complete** and legacy fields are gone.
+  - Link this task from `claude-tasks/TASK_STATUS_UPDATE_NEEDED.md` with a short progress note.
+
+**Key files:**
+
+- `pixsim7/backend/main/domain/game/models.py`
+- `pixsim7/backend/main/domain/narrative/relationships.py`
+- `pixsim7/backend/main/domain/game/schemas/relationship.py`
+- `docs/RELATIONSHIPS_AND_ARCS.md`
+- `RELATIONSHIP_MIGRATION_GUIDE.md`
+- `ABSTRACT_STAT_SYSTEM.md`
+
+---
+
+## Validation & Notes
+
+- Add/extend tests around:
+  - Relationship stat normalization via `StatService` and `StatEngine` (tiers + levels).
+  - Interaction execution applying deltas into `stats["relationships"]` with correct clamping and derived fields.
+  - New stat preview API behavior for `"relationships"` (matches expected legacy behavior where applicable).
+- When updating call sites, prefer **small, mechanical changes** (replace `session.relationships[...]` with helpers operating on `stats["relationships"]`) to keep the migration easy to review.
+
+Once all phases are done, the codebase should treat relationships as **just another stat definition**, with no special-case relationship code or legacy fields remaining.
+
