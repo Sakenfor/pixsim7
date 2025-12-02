@@ -167,9 +167,11 @@ export const Icons = {
 
   // Status indicators
   loading: Loader,
+  loader: Loader,
   success: CheckCircle,
   error: XCircle,
   warning: AlertCircle,
+  alertCircle: AlertCircle,
   alertTriangle: AlertTriangle,
   info: Info,
 

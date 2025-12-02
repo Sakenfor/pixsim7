@@ -1,10 +1,165 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
 import type { LocalAsset } from '@/stores/localFoldersStore';
+
+function useLazyLoadPreview(
+  asset: LocalAsset,
+  previewUrl: string | undefined,
+  loadPreview: (asset: LocalAsset) => Promise<void>,
+) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (previewUrl) return;
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            loadPreview(asset);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: '200px' },
+    );
+
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [asset, previewUrl, loadPreview]);
+
+  return ref;
+}
+
+type UploadState = 'idle' | 'uploading' | 'success' | 'error';
+
+function TreeLazyMediaCard(props: {
+  asset: LocalAsset;
+  previewUrl: string | undefined;
+  loadPreview: (asset: LocalAsset) => Promise<void>;
+  status: UploadState;
+  openViewer: (asset: LocalAsset) => void;
+  uploadOne: (asset: LocalAsset) => Promise<void>;
+}) {
+  const { asset, previewUrl, loadPreview, status, openViewer, uploadOne } = props;
+  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
+
+  return (
+    <div ref={cardRef}>
+      <MediaCard
+        id={parseInt(asset.key.split('-')[0] || '0')}
+        mediaType={asset.kind === 'video' ? 'video' : 'image'}
+        providerId="local"
+        providerAssetId={asset.key}
+        thumbUrl={previewUrl || ''}
+        remoteUrl={previewUrl || ''}
+        width={0}
+        height={0}
+        tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
+        description={asset.name}
+        createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
+        onOpen={() => openViewer(asset)}
+        uploadState={status}
+        onUploadClick={async () => {
+          await uploadOne(asset);
+        }}
+      />
+    </div>
+  );
+}
+
+function GridLazyCard(props: {
+  asset: LocalAsset;
+  previewUrl: string | undefined;
+  loadPreview: (asset: LocalAsset) => Promise<void>;
+  providerId: string | undefined;
+  uploadStatus: UploadState;
+  uploadNote?: string;
+  openViewer: (asset: LocalAsset) => void;
+  uploadOne: (assetKey: string) => Promise<void>;
+}) {
+  const { asset, previewUrl, loadPreview, providerId, uploadStatus, uploadNote, openViewer, uploadOne } = props;
+  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
+
+  return (
+    <div
+      ref={cardRef}
+      className="border rounded-lg overflow-hidden bg-white dark:bg-neutral-900 relative group hover:shadow-lg transition-shadow"
+    >
+      <div
+        className="aspect-video bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center cursor-pointer"
+        onClick={() => openViewer(asset)}
+      >
+        {asset.kind === 'image' && previewUrl && (
+          <img src={previewUrl} className="w-full h-full object-cover" alt={asset.name} />
+        )}
+        {asset.kind === 'video' && previewUrl && (
+          <video src={previewUrl} className="w-full h-full object-cover" muted autoPlay loop />
+        )}
+        {!previewUrl && (
+          <div className="text-4xl opacity-50 group-hover:opacity-100 transition-opacity">
+            {asset.kind === 'image' ? 'dY-мЛ,?' : 'dYZк'}
+          </div>
+        )}
+      </div>
+      <div className="absolute top-2 right-2">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            uploadOne(asset.key);
+          }}
+          disabled={!providerId || uploadStatus === 'uploading'}
+          className={`px-2 py-1 text-[10px] rounded-md shadow-lg font-medium transition-all ${
+            uploadStatus === 'success'
+              ? 'bg-green-600 text-white'
+              : uploadStatus === 'error'
+              ? 'bg-red-600 text-white'
+              : uploadStatus === 'uploading'
+              ? 'bg-neutral-400 text-white'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+          title={
+            uploadStatus === 'success'
+              ? uploadNote || 'Uploaded successfully'
+              : uploadStatus === 'error'
+              ? 'Upload failed'
+              : 'Upload to provider'
+          }
+        >
+          {uploadStatus === 'uploading'
+            ? 'Г+`...'
+            : uploadStatus === 'success'
+            ? 'Гo"'
+            : uploadStatus === 'error'
+            ? 'Гo-'
+            : 'Г+`'}
+        </button>
+      </div>
+      <div className="p-3 space-y-1">
+        <div className="font-medium text-sm truncate" title={asset.name}>
+          {asset.name}
+        </div>
+        <div className="text-xs text-neutral-500">
+          {asset.kind} {asset.size ? `Г?Ы ${(asset.size / 1024 / 1024).toFixed(1)} MB` : ''}
+        </div>
+        {asset.relativePath.includes('/') && (
+          <div className="text-xs text-neutral-400 truncate" title={asset.relativePath}>
+            dY"? {asset.relativePath.split('/').slice(0, -1).join('/')}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function LocalFoldersPanel() {
   const controller = useLocalFoldersController();
@@ -16,39 +171,6 @@ export function LocalFoldersPanel() {
       return acc;
     }, {} as Record<string, string>);
   }, [controller.folders]);
-
-  // Lightweight auto-preview: when viewing a folder in tree or grid mode,
-  // lazily load thumbnails for the first batch of assets instead of every file.
-  useEffect(() => {
-    const MAX_AUTO_PREVIEWS = 32;
-
-    // Tree mode: use filtered assets for the selected folder
-    if (controller.viewMode === 'tree' && controller.selectedFolderPath) {
-      const batch = controller.filteredAssets.slice(0, MAX_AUTO_PREVIEWS);
-      batch.forEach((asset) => {
-        if (!controller.previews[asset.key]) {
-          void controller.loadPreview(asset);
-        }
-      });
-    }
-
-    // Grid mode: show a small batch from all assets
-    if (controller.viewMode === 'grid') {
-      const batch = controller.assets.slice(0, MAX_AUTO_PREVIEWS);
-      batch.forEach((asset) => {
-        if (!controller.previews[asset.key]) {
-          void controller.loadPreview(asset);
-        }
-      });
-    }
-  }, [
-    controller.viewMode,
-    controller.selectedFolderPath,
-    controller.filteredAssets,
-    controller.assets,
-    controller.previews,
-    controller.loadPreview,
-  ]);
 
   return (
     <div className="space-y-4">
@@ -178,7 +300,7 @@ export function LocalFoldersPanel() {
         <>
           {/* Tree View - Split Layout */}
           {controller.viewMode === 'tree' && (
-            <div className="flex gap-4 h-[70vh]">
+            <div className="flex gap-4 h-[80vh]">
               {/* Left: Compact Tree Navigation */}
               <div className="w-64 flex-shrink-0 overflow-y-auto">
                 <TreeFolderView
@@ -203,26 +325,16 @@ export function LocalFoldersPanel() {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2">
                     {controller.filteredAssets.map(asset => {
                       const status = controller.uploadStatus[asset.key] || 'idle';
-
+                      const previewUrl = controller.previews[asset.key];
                       return (
-                        <MediaCard
+                        <TreeLazyMediaCard
                           key={asset.key}
-                          id={parseInt(asset.key.split('-')[0] || '0')}
-                          mediaType={asset.kind === 'video' ? 'video' : 'image'}
-                          providerId="local"
-                          providerAssetId={asset.key}
-                          thumbUrl={controller.previews[asset.key] || ''}
-                          remoteUrl={controller.previews[asset.key] || ''}
-                          width={0}
-                          height={0}
-                          tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
-                          description={asset.name}
-                          createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
-                          onOpen={() => controller.openViewer(asset)}
-                          uploadState={status}
-                          onUploadClick={async () => {
-                            await controller.uploadOne(asset);
-                          }}
+                          asset={asset}
+                          previewUrl={previewUrl}
+                          loadPreview={controller.loadPreview}
+                          status={status}
+                          openViewer={controller.openViewer}
+                          uploadOne={controller.uploadOne}
                         />
                       );
                     })}

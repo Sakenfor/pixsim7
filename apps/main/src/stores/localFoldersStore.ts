@@ -299,13 +299,6 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       if (!folder) return undefined;
       const handle = await getFileHandle(folder.handle, asset.relativePath);
       if (!handle) return undefined;
-      const updated: LocalAsset = { ...asset, fileHandle: handle };
-      set(s => ({
-        assets: {
-          ...s.assets,
-          [updated.key]: updated,
-        },
-      }));
       return await handle.getFile();
     } catch {
       return undefined;
