@@ -158,9 +158,9 @@ function evaluateCondition(
              world.world_time <= condition.maxTime;
 
     case 'relationshipLevel': {
-      if (!session || !session.relationships) return false;
-      const npcKey = `npc_${condition.npcId}`;
-      const relationship = session.relationships[npcKey];
+      if (!session || !session.stats?.relationships) return false;
+      const npcKey = `npc:${condition.npcId}`;
+      const relationship = session.stats.relationships[npcKey];
       if (!relationship || typeof relationship !== 'object') return false;
       const level = (relationship as any).level || 0;
       return level >= condition.minLevel;

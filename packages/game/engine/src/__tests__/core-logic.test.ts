@@ -119,7 +119,7 @@ export function testNpcBrain() {
   const session = createTestSession();
 
   // Set up a basic relationship
-  session.relationships['npc:12'] = {
+  session.stats.relationships['npc:12'] = {
     affinity: 72,
     trust: 40,
     chemistry: 55,
@@ -132,7 +132,7 @@ export function testNpcBrain() {
   // Test 1: Build brain without persona (uses defaults)
   console.log('Test 1: Building brain without persona...');
   const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
-    session.relationships,
+    session.stats.relationships,
     12
   );
 

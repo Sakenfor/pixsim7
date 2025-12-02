@@ -7,10 +7,9 @@ import type {
   NpcBrainState,
 } from './types';
 import {
-  compute_relationship_tier,
-  compute_intimacy_level,
-  extract_relationship_values,
-} from '../relationships/computation';
+  getNpcRelationshipState,
+  setNpcRelationshipState,
+} from '../session/state';
 import { buildNpcBrainState } from '../npcs/brain';
 
 /**
@@ -104,40 +103,7 @@ export class PixSim7Core implements IPixSim7Core {
   getNpcRelationship(npcId: number): NpcRelationshipState | null {
     if (!this.session) return null;
 
-    const npcKey = `npc:${npcId}`;
-    const raw = this.session.relationships[npcKey] as Record<string, any> | undefined;
-
-    const [affinity, trust, chemistry, tension, flags] = extract_relationship_values(
-      this.session.relationships,
-      npcId
-    );
-
-    // Prefer backend-computed tierId and intimacyLevelId
-    // Only compute as fallback if not provided
-    let tierId = typeof raw?.tierId === 'string' ? raw.tierId : undefined;
-    let intimacyLevelId = raw?.intimacyLevelId !== undefined ? raw.intimacyLevelId : undefined;
-
-    const isNormalized =
-      raw?.tierId !== undefined || raw?.intimacyLevelId !== undefined;
-
-    if (!tierId) {
-      tierId = compute_relationship_tier(affinity);
-    }
-    if (intimacyLevelId === undefined) {
-      intimacyLevelId = compute_intimacy_level({ affinity, trust, chemistry, tension });
-    }
-
-    return {
-      affinity,
-      trust,
-      chemistry,
-      tension,
-      flags: Array.isArray(flags) ? flags : [],
-      tierId,
-      intimacyLevelId,
-      isNormalized,
-      raw,
-    };
+    return getNpcRelationshipState(this.session, npcId);
   }
 
   /**
@@ -148,17 +114,8 @@ export class PixSim7Core implements IPixSim7Core {
       throw new Error('No session loaded');
     }
 
-    const npcKey = `npc:${npcId}`;
-    const current = this.session.relationships[npcKey] as Record<string, any> | undefined || {};
-
-    // Apply patches
-    if (patch.affinity !== undefined) current.affinity = patch.affinity;
-    if (patch.trust !== undefined) current.trust = patch.trust;
-    if (patch.chemistry !== undefined) current.chemistry = patch.chemistry;
-    if (patch.tension !== undefined) current.tension = patch.tension;
-    if (patch.flags !== undefined) current.flags = patch.flags;
-
-    this.session.relationships[npcKey] = current;
+    // Use the adapter to update relationship state (returns new session)
+    this.session = setNpcRelationshipState(this.session, npcId, patch);
 
     // Invalidate brain cache for this NPC
     this.brainCache.delete(npcId);

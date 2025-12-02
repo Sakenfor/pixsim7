@@ -11,7 +11,10 @@
 export interface SessionSnapshot {
   sessionId: number;
   flags: Record<string, unknown>;
-  relationships: Record<string, unknown>;
+  stats: {
+    relationships: Record<string, unknown>;
+    [key: string]: unknown;
+  };
   worldTime: number;
   version: number;
 }

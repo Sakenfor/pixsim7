@@ -40,11 +40,11 @@ Out of scope:
 
 ## Phase Checklist
 
-- [ ] **Phase 1 – Audit Game-Core Relationship State Usage**
-- [ ] **Phase 2 – Introduce a Relationship State Adapter over `stats["relationships"]`**
-- [ ] **Phase 3 – Refactor PixSim7Core to Use the Adapter**
-- [ ] **Phase 4 – Align TS Relationship Computation with Stat Definitions**
-- [ ] **Phase 5 – Update Docs and Examples for Game-Core Relationship State**
+- [x] **Phase 1 – Audit Game-Core Relationship State Usage**
+- [x] **Phase 2 – Introduce a Relationship State Adapter over `stats["relationships"]`** (Adapter already existed in `session/state.ts`)
+- [x] **Phase 3 – Refactor PixSim7Core to Use the Adapter**
+- [x] **Phase 4 – Align TS Relationship Computation with Stat Definitions**
+- [x] **Phase 5 – Update Docs and Examples for Game-Core Relationship State**
 
 ---
 
@@ -138,4 +138,32 @@ Out of scope:
   - `PixSim7Core` and related game-core systems should function correctly when session data only has `stats.relationships`, with no `relationships` field.
   - Relationship tier/intimacy values used in game-core should match backend semantics (either via preview API or via stat-aligned TS computations).
   - No direct reads/writes to `session.relationships` should remain in game-core; all relationship state goes through the stat-based adapter.
+
+---
+
+## Implementation Summary (Completed)
+
+All phases have been successfully completed:
+
+### Files Modified:
+1. **`src/core/PixSim7Core.ts`** - Refactored to use `getNpcRelationshipState()` and `setNpcRelationshipState()` adapters instead of direct `session.relationships` access
+2. **`src/scenarios/assertions.ts`** - Updated all assertion helpers to use `session.stats.relationships`
+3. **`src/scenarios/snapshot.ts`** - Updated `SessionSnapshot` type to include `stats` with `relationships` subfield
+4. **`src/world/dynamicThemeRules.ts`** - Updated `relationshipLevel` condition to use `session.stats.relationships`
+5. **`dev/harness.ts`** - Updated test examples to use `session.stats.relationships`
+6. **`src/__tests__/core-logic.test.ts`** - Updated test to use `session.stats.relationships`
+7. **`src/relationships/computation.ts`** - Updated documentation for `extract_relationship_values()`
+8. **`README.md`** - Updated all documentation references to use `session.stats.relationships`
+
+### Key Changes:
+- The adapter functions (`getNpcRelationshipState`, `setNpcRelationshipState`) already existed in `src/session/state.ts` and were correctly using `session.stats.relationships`
+- All game-core code now consistently uses the stat-based relationship system
+- No direct access to legacy `session.relationships` field remains in the codebase
+- Type definitions updated to reflect the new structure
+- Documentation updated to guide developers toward the stat-based approach
+
+### Build Status:
+✅ TypeScript compilation successful
+✅ All dependencies resolved
+✅ No breaking changes to public API
 

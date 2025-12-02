@@ -97,8 +97,8 @@ function testRelationshipHelpers() {
     flags: ['met_at_cafe', 'shared_secret', 'first_kiss'],
   });
 
-  console.log('\n✓ Original session unchanged:', session.relationships['npc:12'].affinity === 65);
-  console.log('✓ New session updated:', (updatedSession.relationships['npc:12'] as any).affinity === 80);
+  console.log('\n✓ Original session unchanged:', (session.stats.relationships?.['npc:12'] as any)?.affinity === 65);
+  console.log('✓ New session updated:', (updatedSession.stats.relationships?.['npc:12'] as any)?.affinity === 80);
 
   const updatedRel = getNpcRelationshipState(updatedSession, 12);
   console.log('\nUpdated NPC 12 relationship:');
@@ -354,7 +354,7 @@ function testSceneRuntime() {
 
   // Build a flags object that includes the relationship value for testing
   const testFlags = {
-    'relationships.npc:12.affinity': (session.relationships['npc:12'] as any).affinity,
+    'relationships.npc:12.affinity': (session.stats.relationships?.['npc:12'] as any)?.affinity,
   };
 
   const conditionsMet = evaluateEdgeConditions(
@@ -363,7 +363,7 @@ function testSceneRuntime() {
   );
 
   console.log('Edge "Choose distant" conditions (affinity < 50):');
-  console.log('  Session affinity for NPC 12:', (session.relationships['npc:12'] as any).affinity);
+  console.log('  Session affinity for NPC 12:', (session.stats.relationships?.['npc:12'] as any)?.affinity);
   console.log('  Conditions met:', conditionsMet);
 
   // Test edge effects

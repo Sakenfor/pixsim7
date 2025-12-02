@@ -80,7 +80,7 @@ Functions marked with `@authority CLIENT_FALLBACK` compute values locally but sh
 ```typescript
 /**
  * @authority CLIENT_FALLBACK
- * @backend_authoritative Use session.relationships["npc:X"].tierId at runtime
+ * @backend_authoritative Use session.stats.relationships["npc:X"].tierId at runtime
  * @use_cases Editor previews, offline tools, tests
  */
 export function compute_relationship_tier(affinity: number): string {
@@ -95,7 +95,7 @@ export function compute_relationship_tier(affinity: number): string {
 - ✅ Use in editor previews and offline tools
 - ✅ Use in tests to validate logic
 - ❌ Do NOT use in runtime game code (Game2D, UI)
-- ✅ Always use `session.relationships["npc:123"].tierId` from backend response
+- ✅ Always use `session.stats.relationships["npc:123"].tierId` from backend response
 
 ### Backend Authoritative
 
@@ -197,7 +197,7 @@ const handleGiftFlowers = async () => {
     //    - Returns authoritative session
 
     // 4. Client receives and applies server truth
-    console.log(updated.relationships[`npc:${npcId}`].tierId); // "romance"
+    console.log(updated.stats.relationships[`npc:${npcId}`].tierId); // "romance"
 
   } catch (err) {
     // 5. On error, optimistic update is rolled back

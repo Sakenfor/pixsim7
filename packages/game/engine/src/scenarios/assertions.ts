@@ -66,7 +66,7 @@ export function getRelationshipMetric(
   metric: string
 ): number | undefined {
   const npcKey = `npc:${npcId}`;
-  const npcData = session.relationships[npcKey] as any;
+  const npcData = session.stats?.relationships?.[npcKey] as any;
 
   if (!npcData) {
     return undefined;
@@ -153,7 +153,7 @@ export function assertRelationshipTier(
       if (!session) return false;
 
       const npcKey = `npc:${npcId}`;
-      const npcData = session.relationships[npcKey] as any;
+      const npcData = session.stats?.relationships?.[npcKey] as any;
 
       return npcData?.tierId === expectedTierId;
     },
@@ -176,7 +176,7 @@ export function assertIntimacyLevel(
       if (!session) return false;
 
       const npcKey = `npc:${npcId}`;
-      const npcData = session.relationships[npcKey] as any;
+      const npcData = session.stats?.relationships?.[npcKey] as any;
 
       return npcData?.intimacyLevelId === expectedLevelId;
     },
@@ -199,7 +199,8 @@ export function assertNoIntimateSceneWithoutConsent(
       if (!session) return true; // Pass if session not found
 
       // Check all NPCs in relationships
-      for (const [key, data] of Object.entries(session.relationships)) {
+      const relationships = session.stats?.relationships || {};
+      for (const [key, data] of Object.entries(relationships)) {
         if (!key.startsWith('npc:')) continue;
 
         const npcData = data as any;

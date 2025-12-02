@@ -93,14 +93,17 @@ export function compute_intimacy_level(relationshipValues: {
   return null;
 }
 
+/**
+ * Extract relationship values for a specific NPC from session.stats.relationships
+ *
+ * @param relationshipsData - The relationships data object (from session.stats.relationships)
+ * @param npcId - The NPC ID
+ * @returns [affinity, trust, chemistry, tension, flags]
+ */
 export function extract_relationship_values(
   relationshipsData: Record<string, any>,
   npcId: number
 ): [number, number, number, number, any] {
-  /**
-   * Extract relationship values for a specific NPC from session relationships
-   * Returns: [affinity, trust, chemistry, tension, flags]
-   */
   const npcKey = `npc:${npcId}`;
 
   if (!(npcKey in relationshipsData)) {
