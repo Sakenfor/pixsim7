@@ -450,6 +450,33 @@ export {
   updateGameContext,
 } from './gameState';
 
+// ===== Runtime & Controller (Task 113) =====
+export {
+  GameRuntime,
+  createGameRuntime,
+  GameController,
+  createGameController,
+} from './runtime';
+
+export type {
+  GameApiClient,
+  SessionStorage,
+  GameRuntimePlugin,
+  GameRuntimeConfig,
+  InteractionIntent,
+  SessionLoadedEvent,
+  SessionUpdatedEvent,
+  SessionChanges,
+  NpcRelationshipChangedEvent,
+  WorldTimeAdvancedEvent,
+  InteractionExecutedEvent,
+  RuntimeErrorEvent,
+  GameRuntimeEvents,
+  GameRuntime as IGameRuntime,
+  GameInputIntent,
+  GameController as IGameController,
+} from './runtime';
+
 // ===== Blanket re-exports for anything missed above =====
 export * from './interactions/validation';
 export * from './interactions/templates';
