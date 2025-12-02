@@ -10,7 +10,7 @@ import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
 import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { resolveDataBinding } from '@/lib/editing-core';
 
 export type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -25,19 +25,15 @@ export interface UploadWidgetConfig {
   visibility: VisibilityConfig;
 
   /**
-   * Current upload state
-   * Preferred: Use stateBinding with DataBinding<UploadState>
-   * Legacy: UploadState | string | ((data: any) => UploadState)
+   * Current upload state binding.
+   * Use createBindingFromValue() for static values or functions.
    */
-  state?: UploadState | string | ((data: any) => UploadState);
   stateBinding?: DataBinding<UploadState>;
 
   /**
-   * Upload progress (0-100, only used when state is 'uploading')
-   * Preferred: Use progressBinding with DataBinding<number>
-   * Legacy: number | string | ((data: any) => number)
+   * Upload progress binding (0-100, only used when state is 'uploading').
+   * Use createBindingFromValue() for static values or functions.
    */
-  progress?: number | string | ((data: any) => number);
   progressBinding?: DataBinding<number>;
 
   /** Button label for each state */
@@ -89,9 +85,7 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     id,
     position,
     visibility,
-    state: stateProp,
     stateBinding,
-    progress: progressProp,
     progressBinding,
     labels = {
       idle: 'Upload',
@@ -115,10 +109,6 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     priority,
   } = config;
 
-  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
-  const finalStateBinding = stateBinding || (stateProp !== undefined ? createBindingFromValue('state', stateProp) : undefined);
-  const finalProgressBinding = progressBinding || (progressProp !== undefined ? createBindingFromValue('progress', progressProp) : undefined);
-
   return {
     id,
     type: 'upload',
@@ -128,9 +118,8 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     interactive: true,
     handlesOwnInteraction: true, // Upload button manages its own click handling internally
     render: (data: any) => {
-      // ✨ Resolve bindings using editing-core DataBinding system
-      const state = resolveDataBinding(finalStateBinding, data) ?? 'idle';
-      const progress = resolveDataBinding(finalProgressBinding, data) ?? 0;
+      const state = resolveDataBinding(stateBinding, data) ?? 'idle';
+      const progress = resolveDataBinding(progressBinding, data) ?? 0;
 
       const handleClick = async () => {
         if (state === 'uploading') return;

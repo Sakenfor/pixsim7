@@ -29,11 +29,9 @@ export interface BadgeWidgetConfig {
   icon?: string;
 
   /**
-   * Text label (if variant includes text)
-   * Preferred: Use labelBinding with DataBinding<string>
-   * Legacy: string | ((data: any) => string)
+   * Text label binding (if variant includes text).
+   * Use createBindingFromValue() for static values or functions.
    */
-  label?: string | ((data: any) => string);
   labelBinding?: DataBinding<string>;
 
   /** Badge color/variant */
@@ -68,7 +66,6 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     visibility,
     variant,
     icon,
-    label,
     labelBinding,
     color = 'gray',
     shape = 'rounded',
@@ -78,9 +75,6 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     className = '',
     priority,
   } = config;
-
-  // Create binding (prefer new DataBinding, fall back to legacy pattern)
-  const finalLabelBinding = labelBinding || (label !== undefined ? createBindingFromValue('label', label) : undefined);
 
   return {
     id,
@@ -92,8 +86,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     ariaLabel: tooltip,
     onClick,
     render: (data, context) => {
-      // ✨ Resolve binding using editing-core DataBinding system
-      const resolvedLabel = resolveDataBinding(finalLabelBinding, data);
+      const resolvedLabel = resolveDataBinding(labelBinding, data);
 
       // Icon-only badges use custom circular styling
       if (variant === 'icon' && !resolvedLabel) {
@@ -220,9 +213,13 @@ export const BadgePresets = {
       position,
       visibility: { trigger: 'always' },
       variant: 'text',
-      label: (data) => {
-        const value = typeof count === 'function' ? count(data) : count;
-        return value > 99 ? '99+' : String(value);
+      labelBinding: {
+        kind: 'fn',
+        target: 'label',
+        fn: (data) => {
+          const value = typeof count === 'function' ? count(data) : count;
+          return value > 99 ? '99+' : String(value);
+        },
       },
       color: 'red',
       shape: 'rounded',

@@ -8,7 +8,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import type { DataBinding } from '@/lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@/lib/editing-core';
+import { resolveDataBinding } from '@/lib/editing-core';
 
 export interface VideoScrubWidgetConfig {
   /** Widget ID */
@@ -21,19 +21,15 @@ export interface VideoScrubWidgetConfig {
   visibility: VisibilityConfig;
 
   /**
-   * Video source URL
-   * Preferred: Use videoUrlBinding with DataBinding<string>
-   * Legacy: string | ((data: any) => string)
+   * Video source URL binding.
+   * Use createBindingFromValue() for static values or functions.
    */
-  videoUrl?: string | ((data: any) => string);
   videoUrlBinding?: DataBinding<string>;
 
   /**
-   * Video duration in seconds (if known)
-   * Preferred: Use durationBinding with DataBinding<number>
-   * Legacy: number | ((data: any) => number | undefined)
+   * Video duration binding in seconds (if known).
+   * Use createBindingFromValue() for static values or functions.
    */
-  duration?: number | ((data: any) => number | undefined);
   durationBinding?: DataBinding<number>;
 
   /** Show timeline scrubber */
@@ -89,9 +85,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     id,
     position,
     visibility,
-    videoUrl,
     videoUrlBinding,
-    duration: durationProp,
     durationBinding,
     showTimeline = true,
     showTimestamp = true,
@@ -105,10 +99,6 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     onScrub,
   } = config;
 
-  // Create bindings (prefer new DataBinding, fall back to legacy pattern)
-  const finalVideoUrlBinding = videoUrlBinding || (videoUrl !== undefined ? createBindingFromValue('videoUrl', videoUrl) : undefined);
-  const finalDurationBinding = durationBinding || (durationProp !== undefined ? createBindingFromValue('duration', durationProp) : undefined);
-
   return {
     id,
     type: 'video-scrub',
@@ -118,9 +108,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     interactive: true,
     handlesOwnInteraction: true, // Video scrub manages its own mouse/hover interaction internally
     render: (data: any) => {
-      // ✨ Resolve bindings using editing-core DataBinding system
-      const resolvedVideoUrl = resolveDataBinding(finalVideoUrlBinding, data);
-      const resolvedDuration = resolveDataBinding(finalDurationBinding, data);
+      const resolvedVideoUrl = resolveDataBinding(videoUrlBinding, data);
+      const resolvedDuration = resolveDataBinding(durationBinding, data);
       const [isHovering, setIsHovering] = useState(false);
       const [currentTime, setCurrentTime] = useState(0);
       const [duration, setDuration] = useState<number | null>(null);
