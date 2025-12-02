@@ -165,8 +165,15 @@ Routine defaults → NPC defaults → Session overrides
 Conditions gate activities and routine transitions:
 
 ```typescript
-// Built-in conditions
+// Stat-based conditions (recommended for any stat-defined metrics)
+{ "type": "stat_axis_gt", "statDefinition": "relationships", "npcIdOrRole": "npc:5", "axis": "affinity", "threshold": 50 }
+{ "type": "stat_axis_lt", "statDefinition": "mood", "axis": "stress", "threshold": 30 }
+{ "type": "stat_axis_between", "statDefinition": "skills", "axis": "strength", "min": 40, "max": 80 }
+
+// Relationship conditions (legacy, convenience wrappers)
 { "type": "relationship_gt", "npcIdOrRole": "npc:5", "metric": "affinity", "threshold": 50 }
+
+// Other built-in conditions
 { "type": "flag_equals", "key": "arc.romance.stage", "value": 2 }
 { "type": "energy_between", "min": 30, "max": 80 }
 { "type": "mood_in", "moodTags": ["playful", "excited"] }
@@ -179,6 +186,58 @@ Conditions gate activities and routine transitions:
   "evaluatorId": "evaluator:is_raining",
   "params": {}
 }
+```
+
+#### Stat-Based Condition Types
+
+The behavior system integrates with the stat system to support flexible, world-configurable metrics:
+
+**`stat_axis_gt`** - Check if stat value > threshold
+```json
+{
+  "type": "stat_axis_gt",
+  "statDefinition": "relationships",
+  "npcIdOrRole": "role:love_interest",
+  "axis": "affinity",
+  "threshold": 60
+}
+```
+
+**`stat_axis_lt`** - Check if stat value < threshold
+```json
+{
+  "type": "stat_axis_lt",
+  "statDefinition": "mood",
+  "axis": "stress",
+  "threshold": 30
+}
+```
+
+**`stat_axis_between`** - Check if min <= stat value <= max
+```json
+{
+  "type": "stat_axis_between",
+  "statDefinition": "skills",
+  "axis": "strength",
+  "min": 40,
+  "max": 80
+}
+```
+
+**Benefits:**
+- Works with any stat definition (relationships, mood, skills, reputation, etc.)
+- Respects stat packages and world configuration
+- Supports both relational stats (with `npcIdOrRole`) and entity stats (without)
+- Falls back to legacy data for backwards compatibility
+
+**Legacy Relationship Conditions:**
+
+The `relationship_gt` and `relationship_lt` conditions are convenience wrappers that automatically use `statDefinition="relationships"`:
+
+```json
+// These two are equivalent:
+{ "type": "relationship_gt", "npcIdOrRole": "npc:5", "metric": "affinity", "threshold": 50 }
+{ "type": "stat_axis_gt", "statDefinition": "relationships", "npcIdOrRole": "npc:5", "axis": "affinity", "threshold": 50 }
 ```
 
 ### 6. Scoring System
@@ -527,6 +586,26 @@ See example configurations for different game types:
 ```
 
 #### 2. Relationship-Gated Activities
+
+Using stat-aware conditions (recommended):
+
+```json
+{
+  "requirements": {
+    "conditions": [
+      {
+        "type": "stat_axis_gt",
+        "statDefinition": "relationships",
+        "npcIdOrRole": "role:friend",
+        "axis": "affinity",
+        "threshold": 50
+      }
+    ]
+  }
+}
+```
+
+Or using legacy relationship conditions (still supported):
 
 ```json
 {

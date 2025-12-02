@@ -1,5 +1,6 @@
 {
   "description": "Example behavior config for a 2D life simulation game (Stardew Valley style)",
+  "_note": "This example uses legacy relationship conditions. For stat-aware conditions that work with any stat definition, use stat_axis_gt/stat_axis_lt with statDefinition field. Both formats are fully supported.",
   "version": 1,
   "activityCategories": {
     "work": {

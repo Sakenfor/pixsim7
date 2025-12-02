@@ -1,5 +1,6 @@
 {
   "description": "Example behavior config for a visual novel / romance game",
+  "_note": "This example uses legacy relationship_gt/relationship_lt conditions for readability. For new configs, consider using stat_axis_gt/stat_axis_lt with statDefinition='relationships' instead. Both formats are fully supported.",
   "version": 1,
   "activityCategories": {
     "romantic": {

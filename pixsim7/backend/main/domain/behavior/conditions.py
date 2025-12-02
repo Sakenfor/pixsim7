@@ -156,30 +156,217 @@ def evaluate_conditions_any(conditions: List[Dict[str, Any]], context: Dict[str,
 # ==================
 
 
-def _eval_relationship_gt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
-    """Evaluate relationship_gt condition."""
-    npc_id_or_role = condition.get("npcIdOrRole", "")
-    metric = condition.get("metric", "affinity")
+# ==================
+# Stat-Aware Evaluators (Task 110)
+# ==================
+
+
+def _get_stat_value(
+    stat_definition_id: str,
+    axis: str,
+    context: Dict[str, Any],
+    npc_id_or_role: Optional[str] = None,
+    default: float = 0.0,
+) -> float:
+    """
+    Helper to retrieve a stat value from the stat system.
+
+    Args:
+        stat_definition_id: The stat definition ID (e.g., "relationships", "mood", "skills")
+        axis: The axis name within the stat definition
+        context: Evaluation context
+        npc_id_or_role: For relational stats (like relationships), the target NPC. None for entity stats.
+        default: Default value if stat not found
+
+    Returns:
+        The stat value, or default if not found
+    """
+    # Try to get from stat system first (session-level stats for relationships)
+    session = context.get("session")
+    if session and npc_id_or_role:
+        # Relational stats stored in session.stats[stat_definition_id][npc_id_or_role][axis]
+        session_stats = getattr(session, "stats", {})
+        stat_def_data = session_stats.get(stat_definition_id, {})
+        target_stats = stat_def_data.get(npc_id_or_role, {})
+        if axis in target_stats:
+            return target_stats.get(axis, default)
+
+    # Try entity-owned stats (for mood, skills, etc.)
+    npc_stats = context.get("npc_stats", {})
+    if npc_stats and not npc_id_or_role:
+        stat_def_data = npc_stats.get(stat_definition_id, {})
+        if axis in stat_def_data:
+            return stat_def_data.get(axis, default)
+
+    # Fall back to legacy relationships dict for backwards compatibility
+    if stat_definition_id == "relationships" and npc_id_or_role:
+        relationships = context.get("relationships", {})
+        relationship = relationships.get(npc_id_or_role, {})
+        if axis in relationship:
+            return relationship.get(axis, default)
+
+    return default
+
+
+def _eval_stat_axis_gt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """
+    Evaluate stat_axis_gt condition - checks if stat value > threshold.
+
+    Supports any stat definition (relationships, mood, skills, etc.).
+
+    Example:
+        {
+            "type": "stat_axis_gt",
+            "statDefinition": "relationships",
+            "npcIdOrRole": "npc:5",
+            "axis": "affinity",
+            "threshold": 50
+        }
+    """
+    stat_definition = condition.get("statDefinition", "")
+    axis = condition.get("axis", "")
     threshold = condition.get("threshold", 0)
+    npc_id_or_role = condition.get("npcIdOrRole")
 
-    relationships = context.get("relationships", {})
-    relationship = relationships.get(npc_id_or_role, {})
-    value = relationship.get(metric, 0)
+    if not stat_definition or not axis:
+        logger.warning(
+            "stat_axis_gt condition missing required fields",
+            stat_definition=stat_definition,
+            axis=axis,
+        )
+        return False
 
+    value = _get_stat_value(stat_definition, axis, context, npc_id_or_role)
     return value > threshold
 
 
-def _eval_relationship_lt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
-    """Evaluate relationship_lt condition."""
+def _eval_stat_axis_lt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """
+    Evaluate stat_axis_lt condition - checks if stat value < threshold.
+
+    Example:
+        {
+            "type": "stat_axis_lt",
+            "statDefinition": "mood",
+            "axis": "stress",
+            "threshold": 30
+        }
+    """
+    stat_definition = condition.get("statDefinition", "")
+    axis = condition.get("axis", "")
+    threshold = condition.get("threshold", 0)
+    npc_id_or_role = condition.get("npcIdOrRole")
+
+    if not stat_definition or not axis:
+        logger.warning(
+            "stat_axis_lt condition missing required fields",
+            stat_definition=stat_definition,
+            axis=axis,
+        )
+        return False
+
+    value = _get_stat_value(stat_definition, axis, context, npc_id_or_role)
+    return value < threshold
+
+
+def _eval_stat_axis_between(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """
+    Evaluate stat_axis_between condition - checks if min <= stat value <= max.
+
+    Example:
+        {
+            "type": "stat_axis_between",
+            "statDefinition": "skills",
+            "axis": "strength",
+            "min": 40,
+            "max": 80
+        }
+    """
+    stat_definition = condition.get("statDefinition", "")
+    axis = condition.get("axis", "")
+    min_val = condition.get("min", 0)
+    max_val = condition.get("max", 100)
+    npc_id_or_role = condition.get("npcIdOrRole")
+
+    if not stat_definition or not axis:
+        logger.warning(
+            "stat_axis_between condition missing required fields",
+            stat_definition=stat_definition,
+            axis=axis,
+        )
+        return False
+
+    value = _get_stat_value(stat_definition, axis, context, npc_id_or_role)
+    return min_val <= value <= max_val
+
+
+# ==================
+# Legacy Relationship Evaluators (Backwards Compatible)
+# ==================
+
+
+def _eval_relationship_gt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """
+    Evaluate relationship_gt condition (legacy, backwards compatible).
+
+    This is now a convenience wrapper around stat_axis_gt with statDefinition="relationships".
+    Supports both "metric" (legacy) and "axis" (new) field names.
+
+    Example:
+        {
+            "type": "relationship_gt",
+            "npcIdOrRole": "npc:5",
+            "metric": "affinity",  // or "axis": "affinity"
+            "threshold": 50
+        }
+    """
     npc_id_or_role = condition.get("npcIdOrRole", "")
-    metric = condition.get("metric", "affinity")
+    # Support both "metric" (legacy) and "axis" (new) field names
+    axis = condition.get("axis") or condition.get("metric", "affinity")
     threshold = condition.get("threshold", 0)
 
-    relationships = context.get("relationships", {})
-    relationship = relationships.get(npc_id_or_role, {})
-    value = relationship.get(metric, 0)
+    # Delegate to stat_axis_gt with statDefinition="relationships"
+    stat_condition = {
+        "type": "stat_axis_gt",
+        "statDefinition": "relationships",
+        "npcIdOrRole": npc_id_or_role,
+        "axis": axis,
+        "threshold": threshold,
+    }
 
-    return value < threshold
+    return _eval_stat_axis_gt(stat_condition, context)
+
+
+def _eval_relationship_lt(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
+    """
+    Evaluate relationship_lt condition (legacy, backwards compatible).
+
+    This is now a convenience wrapper around stat_axis_lt with statDefinition="relationships".
+    Supports both "metric" (legacy) and "axis" (new) field names.
+
+    Example:
+        {
+            "type": "relationship_lt",
+            "npcIdOrRole": "npc:5",
+            "metric": "trust",  // or "axis": "trust"
+            "threshold": 30
+        }
+    """
+    npc_id_or_role = condition.get("npcIdOrRole", "")
+    # Support both "metric" (legacy) and "axis" (new) field names
+    axis = condition.get("axis") or condition.get("metric", "affinity")
+    threshold = condition.get("threshold", 0)
+
+    # Delegate to stat_axis_lt with statDefinition="relationships"
+    stat_condition = {
+        "type": "stat_axis_lt",
+        "statDefinition": "relationships",
+        "npcIdOrRole": npc_id_or_role,
+        "axis": axis,
+        "threshold": threshold,
+    }
+
+    return _eval_stat_axis_lt(stat_condition, context)
 
 
 def _eval_flag_equals(condition: Dict[str, Any], context: Dict[str, Any]) -> bool:
@@ -374,8 +561,16 @@ def _register_builtin_conditions():
     This function is called at module load time to populate the BUILTIN_CONDITIONS registry.
     Built-in conditions use the same lookup pathway as plugin conditions.
     """
+    # Stat-aware conditions (Task 110)
+    BUILTIN_CONDITIONS["stat_axis_gt"] = _eval_stat_axis_gt
+    BUILTIN_CONDITIONS["stat_axis_lt"] = _eval_stat_axis_lt
+    BUILTIN_CONDITIONS["stat_axis_between"] = _eval_stat_axis_between
+
+    # Legacy relationship conditions (backwards compatible, delegate to stat-aware)
     BUILTIN_CONDITIONS["relationship_gt"] = _eval_relationship_gt
     BUILTIN_CONDITIONS["relationship_lt"] = _eval_relationship_lt
+
+    # Other built-in conditions
     BUILTIN_CONDITIONS["flag_equals"] = _eval_flag_equals
     BUILTIN_CONDITIONS["flag_exists"] = _eval_flag_exists
     BUILTIN_CONDITIONS["mood_in"] = _eval_mood_in
