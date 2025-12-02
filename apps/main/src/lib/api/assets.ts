@@ -34,16 +34,8 @@ export async function extractFrame(request: ExtractFrameRequest): Promise<AssetR
   return res.data;
 }
 
-/**
- * Upload an existing local asset to a provider.
- * Frontend helper around POST /assets/{asset_id}/upload-to-provider.
- */
 export async function uploadAssetToProvider(assetId: number, providerId: string): Promise<void> {
-  // Use backend-side fetch: point upload-from-url at our own /assets/{id}/file
-  const fileUrl = `${BACKEND_BASE}/api/v1/assets/${assetId}/file`;
-  await apiClient.post('/assets/upload-from-url', {
-    url: fileUrl,
+  await apiClient.post(`/assets/${assetId}/reupload`, {
     provider_id: providerId,
-    ensure_asset: false,
   });
 }

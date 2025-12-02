@@ -44,7 +44,7 @@ async def list_assets(
     Supports either offset or cursor pagination (cursor takes precedence if provided).
     Assets returned newest first (created_at DESC, id DESC for tie-break).
     """
-    try:
+      try:
         # For now use existing service offset pagination; cursor support will be layered later.
         assets = await asset_service.list_assets(
             user=user,
@@ -342,13 +342,13 @@ async def upload_asset_to_provider(
                 error=str(e),
                 exc_info=True,
             )
-        return UploadAssetResponse(
-            provider_id=result.provider_id,
-            media_type=result.media_type,
-            external_url=result.external_url,
-            provider_asset_id=result.provider_asset_id,
-            note=result.note,
-        )
+          return UploadAssetResponse(
+              provider_id=result.provider_id,
+              media_type=result.media_type,
+              external_url=result.external_url,
+              provider_asset_id=result.provider_asset_id,
+              note=result.note,
+          )
     except InvalidOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -362,7 +362,8 @@ async def upload_asset_to_provider(
                 file_path=tmp_path,
                 error=str(e),
                 detail="Failed to clean up temporary file after upload"
-            )
+              )
+
 
 
 # ===== UPLOAD FROM URL (backend fetches the image) =====
@@ -978,6 +979,65 @@ async def remove_asset_tags(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to remove tags: {str(e)}"
+        )
+
+
+class ReuploadAssetRequest(BaseModel):
+    """Request to re-upload an existing asset to a provider."""
+    provider_id: str = Field(description="Target provider ID, e.g., pixverse")
+
+
+@router.post(
+    "/assets/{asset_id}/reupload",
+    response_model=UploadAssetResponse,
+    status_code=http_status.HTTP_200_OK,
+)
+async def reupload_asset_to_provider(
+    asset_id: int,
+    request: ReuploadAssetRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+):
+    """
+    Re-upload an existing asset to a provider, caching the provider-specific ID.
+
+    This uses AssetSyncService.get_asset_for_provider via AssetService, which will:
+      1. Ensure the asset belongs to the current user.
+      2. Download the asset locally if needed.
+      3. Upload it to the target provider.
+      4. Cache the provider upload ID in asset.provider_uploads.
+    """
+    try:
+        provider_id = request.provider_id
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+        provider_asset_id = await asset_service.get_asset_for_provider(
+            asset_id=asset_id,
+            target_provider_id=provider_id,
+        )
+        return UploadAssetResponse(
+            provider_id=provider_id,
+            media_type=asset.media_type,
+            external_url=asset.remote_url,
+            provider_asset_id=provider_asset_id,
+            note=None,
+        )
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(
+            "reupload_asset_failed",
+            asset_id=asset_id,
+            provider_id=request.provider_id,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to re-upload asset: {str(e)}",
         )
 
 

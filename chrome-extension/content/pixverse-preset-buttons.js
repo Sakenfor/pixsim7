@@ -407,12 +407,15 @@
   function findUploadInputs() {
     const results = [];
 
+    // Determine page type from URL
+    const url = window.location.pathname;
+    const isImageTextPage = url.includes('image-text') || url.includes('image_text');
+    const isImageGenPage = url.includes('create-image') || url.includes('image-generation');
+
     // Find all file inputs that could accept images
-    // Include inputs with image accept, or those in upload containers
     const allFileInputs = document.querySelectorAll('input[type="file"]');
     const inputs = Array.from(allFileInputs).filter(input => {
       const accept = input.getAttribute('accept') || '';
-      // Include if accepts images or is in an ant-upload container
       return accept.includes('image') ||
              accept.includes('.jpg') ||
              accept.includes('.png') ||
@@ -422,8 +425,6 @@
              input.closest('[class*="upload"]');
     });
 
-    console.log('[PixSim7] Found', inputs.length, 'upload inputs on page');
-
     inputs.forEach(input => {
       // Find the containing upload area
       let container = input.closest('.ant-upload') ||
@@ -431,8 +432,21 @@
                       input.closest('[class*="ant-upload"]') ||
                       input.closest('[class*="upload"]');
 
+      // Find parent with ID for context
+      const parentWithId = input.closest('[id]');
+      const containerId = parentWithId?.id || '';
+
+      // Determine priority based on page type and container ID
+      let priority = 0;
+      if (isImageTextPage && containerId.includes('image_text')) {
+        priority = 10; // High priority for image-text page main input
+      } else if (isImageGenPage && containerId.includes('image')) {
+        priority = 10;
+      } else if (containerId.includes('customer') || containerId.includes('main')) {
+        priority = 5;
+      }
+
       // Check if this upload area already has an image
-      // Look for img tags or background-image styles with media URLs
       let hasImage = false;
       if (container) {
         const parentArea = container.closest('.ant-upload-wrapper') || container.parentElement?.parentElement;
