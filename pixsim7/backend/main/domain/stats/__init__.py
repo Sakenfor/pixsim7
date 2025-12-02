@@ -20,6 +20,13 @@ from .schemas import (
 )
 from .engine import StatEngine
 from .mixins import HasStats, HasStatsWithMetadata
+from .migration import (
+    get_default_relationship_definition,
+    migrate_relationship_schemas_to_stat_definition,
+    migrate_world_meta_to_stats_config,
+    migrate_session_relationships_to_stats,
+    needs_migration,
+)
 
 __all__ = [
     "StatAxis",
@@ -30,4 +37,10 @@ __all__ = [
     "StatEngine",
     "HasStats",
     "HasStatsWithMetadata",
+    # Migration utilities
+    "get_default_relationship_definition",
+    "migrate_relationship_schemas_to_stat_definition",
+    "migrate_world_meta_to_stats_config",
+    "migrate_session_relationships_to_stats",
+    "needs_migration",
 ]

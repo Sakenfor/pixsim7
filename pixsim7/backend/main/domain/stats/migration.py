@@ -289,6 +289,127 @@ def migrate_session_relationships_to_stats(
     return stats
 
 
+def get_default_relationship_definition() -> StatDefinition:
+    """
+    Get the default relationship StatDefinition that matches the legacy hardcoded system.
+
+    This provides a sensible default for games that want standard relationship tracking
+    without needing to define custom schemas.
+
+    Returns:
+        StatDefinition with:
+        - 4 axes: affinity, trust, chemistry, tension (0-100)
+        - 5 tiers: stranger, acquaintance, friend, close_friend, lover
+        - 5 levels: light_flirt, deep_flirt, intimate, very_intimate, soulmates
+
+    Usage:
+        # In GameWorld.meta
+        world.meta = {
+            "stats_config": {
+                "version": 1,
+                "definitions": {
+                    "relationships": get_default_relationship_definition().dict()
+                }
+            }
+        }
+    """
+    return StatDefinition(
+        id="relationships",
+        display_name="Relationships",
+        description="NPC relationship tracking with affinity, trust, chemistry, and tension",
+        axes=[
+            StatAxis(
+                name="affinity",
+                min_value=0.0,
+                max_value=100.0,
+                default_value=0.0,
+                display_name="Affinity",
+                description="Overall fondness and attraction"
+            ),
+            StatAxis(
+                name="trust",
+                min_value=0.0,
+                max_value=100.0,
+                default_value=0.0,
+                display_name="Trust",
+                description="Reliability and confidence"
+            ),
+            StatAxis(
+                name="chemistry",
+                min_value=0.0,
+                max_value=100.0,
+                default_value=0.0,
+                display_name="Chemistry",
+                description="Physical and emotional compatibility"
+            ),
+            StatAxis(
+                name="tension",
+                min_value=0.0,
+                max_value=100.0,
+                default_value=0.0,
+                display_name="Tension",
+                description="Unresolved emotional energy"
+            ),
+        ],
+        tiers=[
+            # Affinity tiers (matching legacy defaults)
+            StatTier(id="stranger", axis_name="affinity", min=0.0, max=9.99),
+            StatTier(id="acquaintance", axis_name="affinity", min=10.0, max=29.99),
+            StatTier(id="friend", axis_name="affinity", min=30.0, max=59.99),
+            StatTier(id="close_friend", axis_name="affinity", min=60.0, max=79.99),
+            StatTier(id="lover", axis_name="affinity", min=80.0, max=None),  # No upper bound
+        ],
+        levels=[
+            # Multi-axis intimacy levels (matching legacy defaults)
+            StatLevel(
+                id="light_flirt",
+                conditions={
+                    "affinity": StatCondition(type="min", min_value=20.0),
+                    "chemistry": StatCondition(type="min", min_value=20.0),
+                },
+                priority=1
+            ),
+            StatLevel(
+                id="deep_flirt",
+                conditions={
+                    "affinity": StatCondition(type="min", min_value=40.0),
+                    "chemistry": StatCondition(type="min", min_value=40.0),
+                    "trust": StatCondition(type="min", min_value=20.0),
+                },
+                priority=2
+            ),
+            StatLevel(
+                id="intimate",
+                conditions={
+                    "affinity": StatCondition(type="min", min_value=60.0),
+                    "chemistry": StatCondition(type="min", min_value=60.0),
+                    "trust": StatCondition(type="min", min_value=40.0),
+                },
+                priority=3
+            ),
+            StatLevel(
+                id="very_intimate",
+                conditions={
+                    "affinity": StatCondition(type="min", min_value=80.0),
+                    "chemistry": StatCondition(type="min", min_value=80.0),
+                    "trust": StatCondition(type="min", min_value=60.0),
+                },
+                priority=4
+            ),
+            StatLevel(
+                id="soulmates",
+                conditions={
+                    "affinity": StatCondition(type="min", min_value=95.0),
+                    "chemistry": StatCondition(type="min", min_value=95.0),
+                    "trust": StatCondition(type="min", min_value=90.0),
+                    "tension": StatCondition(type="max", max_value=10.0),  # Low tension
+                },
+                priority=5
+            ),
+        ],
+    )
+
+
 def needs_migration(world_meta: Dict[str, Any]) -> bool:
     """
     Check if world meta needs migration to new stat system.

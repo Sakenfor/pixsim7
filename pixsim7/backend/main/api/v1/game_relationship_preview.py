@@ -1,10 +1,23 @@
 """
 Relationship Preview API
 
+DEPRECATED: This API uses the legacy hardcoded relationship system.
+
 Provides read-only preview endpoints for computing relationship tiers
 and intimacy levels based on world-specific schemas.
 
 These endpoints are stateless and do not mutate game sessions.
+
+MIGRATION NOTE:
+    This API will be replaced with a generic stat preview API that works
+    with any stat type (relationships, skills, reputation, etc.).
+
+    For new code, use the StatService directly:
+        from pixsim7.backend.main.services.game.stat_service import StatService
+        stat_service = StatService(db, redis)
+        await stat_service.normalize_session_stats(session, "relationships")
+
+    See RELATIONSHIP_MIGRATION_GUIDE.md for complete migration instructions.
 """
 
 from __future__ import annotations

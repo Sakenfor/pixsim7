@@ -1,8 +1,36 @@
 """
 Relationship tier and intimacy level computation helpers.
+
+DEPRECATED: This module contains legacy hardcoded relationship logic.
+
+The abstract stat system (domain/stats/) should be used instead for all new code.
+This module is kept for backwards compatibility and will be removed in a future release.
+
+Migration path:
+    1. Use get_default_relationship_definition() for standard relationships
+    2. Use StatEngine for generic tier/level computation
+    3. Store data in GameSession.stats["relationships"] instead of GameSession.relationships
+    4. See RELATIONSHIP_MIGRATION_GUIDE.md for complete migration instructions
+
+New API:
+    from pixsim7.backend.main.domain.stats import (
+        get_default_relationship_definition,
+        StatEngine,
+        StatService
+    )
 """
 
+import warnings
 from typing import Dict, Any, List, Optional, Tuple
+
+# Show deprecation warning when module is imported
+warnings.warn(
+    "domain.narrative.relationships is deprecated. "
+    "Use domain.stats with get_default_relationship_definition() instead. "
+    "See RELATIONSHIP_MIGRATION_GUIDE.md for migration instructions.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 def compute_relationship_tier(
