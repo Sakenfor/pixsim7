@@ -202,9 +202,9 @@ export function SessionStateViewer() {
   };
 
   const renderRelationships = () => {
-    if (!session || !session.relationships) return null;
+    if (!session || !session.stats?.relationships) return null;
 
-    const relationships = session.relationships as Record<string, any>;
+    const relationships = session.stats.relationships as Record<string, any>;
     const entries = Object.entries(relationships);
 
     if (entries.length === 0) return null;
@@ -375,7 +375,7 @@ export function SessionStateViewer() {
         <div>
           <h4 className="text-sm font-semibold mb-2">Relationships</h4>
           {renderRelationships()}
-          {(!session.relationships || Object.keys(session.relationships).length === 0) && (
+          {(!session.stats?.relationships || Object.keys(session.stats.relationships).length === 0) && (
             <p className="text-xs text-neutral-500 text-center py-4">No relationships tracked</p>
           )}
         </div>

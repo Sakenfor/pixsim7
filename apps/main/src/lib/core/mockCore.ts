@@ -60,24 +60,26 @@ export class MockPixSim7Core implements PixSim7Core {
         quests: {},
         inventory: { items: [] },
       },
-      relationships: {
-        'npc:1': {
-          affinity: 75,
-          trust: 60,
-          chemistry: 80,
-          tension: 20,
-          flags: ['first_meeting', 'helped_with_task'],
-          tierId: 'friend',
-          intimacyLevelId: 'light_flirt',
-        },
-        'npc:2': {
-          affinity: 40,
-          trust: 30,
-          chemistry: 20,
-          tension: 60,
-          flags: ['rivalry'],
-          tierId: 'acquaintance',
-          intimacyLevelId: null,
+      stats: {
+        relationships: {
+          'npc:1': {
+            affinity: 75,
+            trust: 60,
+            chemistry: 80,
+            tension: 20,
+            flags: ['first_meeting', 'helped_with_task'],
+            tierId: 'friend',
+            intimacyLevelId: 'light_flirt',
+          },
+          'npc:2': {
+            affinity: 40,
+            trust: 30,
+            chemistry: 20,
+            tension: 60,
+            flags: ['rivalry'],
+            tierId: 'acquaintance',
+            intimacyLevelId: null,
+          },
         },
       },
       created_at: new Date().toISOString(),
@@ -92,8 +94,8 @@ export class MockPixSim7Core implements PixSim7Core {
   }
 
   getNpcRelationship(npcId: number): NpcRelationshipState | null {
-    if (!this.session) return null;
-    return this.session.relationships[`npc:${npcId}`] || null;
+    if (!this.session?.stats.relationships) return null;
+    return this.session.stats.relationships[`npc:${npcId}`] || null;
   }
 
   updateNpcRelationship(
@@ -102,8 +104,13 @@ export class MockPixSim7Core implements PixSim7Core {
   ): void {
     if (!this.session) return;
 
+    // Ensure stats.relationships exists
+    if (!this.session.stats.relationships) {
+      this.session.stats.relationships = {};
+    }
+
     const key = `npc:${npcId}`;
-    const current = this.session.relationships[key] || {
+    const current = this.session.stats.relationships[key] || {
       affinity: 0,
       trust: 0,
       chemistry: 0,
@@ -111,11 +118,11 @@ export class MockPixSim7Core implements PixSim7Core {
       flags: [],
     };
 
-    this.session.relationships[key] = { ...current, ...patch };
+    this.session.stats.relationships[key] = { ...current, ...patch };
 
     this.emit('relationshipChanged', {
       npcId,
-      relationship: this.session.relationships[key],
+      relationship: this.session.stats.relationships[key],
     });
 
     // Also emit brain change

@@ -3,7 +3,7 @@
  * Based on the backend logic from pixsim7/backend/main/domain/narrative/relationships.py
  *
  * IMPORTANT: These functions mirror backend logic and are primarily for preview/offline tools.
- * At runtime, the backend's computed values in GameSession.relationships are authoritative.
+ * At runtime, the backend's computed values in GameSession.stats.relationships are authoritative.
  * Frontends should prefer tierId/intimacyLevelId from the backend when available.
  */
 
@@ -17,11 +17,11 @@
  *   computation.
  *
  * @authority CLIENT_FALLBACK
- * @backend_authoritative Use session.relationships["npc:X"].tierId at runtime
+ * @backend_authoritative Use session.stats.relationships["npc:X"].tierId at runtime
  * @use_cases Legacy fallback only - migrate to preview API
  *
  * NOTE: This is a fallback computation. The backend computes and stores tierId
- * in GameSession.relationships["npc:ID"].tierId, which should be preferred at runtime.
+ * in GameSession.stats.relationships["npc:ID"].tierId, which should be preferred at runtime.
  * For preview/editor use cases, use `previewRelationshipTier()` which calls the
  * backend preview API with world-specific schemas.
  *
@@ -51,11 +51,11 @@ export function compute_relationship_tier(affinity: number): string {
  *   computation.
  *
  * @authority CLIENT_FALLBACK
- * @backend_authoritative Use session.relationships["npc:X"].intimacyLevelId at runtime
+ * @backend_authoritative Use session.stats.relationships["npc:X"].intimacyLevelId at runtime
  * @use_cases Legacy fallback only - migrate to preview API
  *
  * NOTE: This is a fallback computation. The backend computes and stores intimacyLevelId
- * in GameSession.relationships["npc:ID"].intimacyLevelId, which should be preferred at runtime.
+ * in GameSession.stats.relationships["npc:ID"].intimacyLevelId, which should be preferred at runtime.
  * For preview/editor use cases, use `previewIntimacyLevel()` which calls the
  * backend preview API with world-specific schemas.
  *

@@ -62,18 +62,11 @@ class GameSession(SQLModel, table=True):
     world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True, description="Links session to a world for schema-aware normalization")
     flags: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
-    # NEW: Abstract stat system (replaces relationships)
+    # Abstract stat system
     stats: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
         description="Generic stat tracking. Structure: {stat_definition_id: {entity_id: {axis: value, ...}}}"
-    )
-
-    # DEPRECATED: Legacy relationship field (kept for migration, will be removed)
-    relationships: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSON),
-        description="DEPRECATED: Use stats['relationships'] instead. Kept temporarily for data migration."
     )
 
     world_time: float = Field(default=0.0, description="Game time seconds (can map to day cycles)")

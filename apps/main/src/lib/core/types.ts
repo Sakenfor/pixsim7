@@ -49,7 +49,10 @@ export interface GameSession {
   player_character_id?: number;
   current_location_id?: number;
   flags: Record<string, any>;
-  relationships: Record<string, NpcRelationshipState>; // Key: "npc:ID"
+  stats: {
+    relationships?: Record<string, NpcRelationshipState>; // Key: "npc:ID"
+    [statDefId: string]: Record<string, any> | undefined;
+  };
   created_at: string;
   updated_at: string;
 }

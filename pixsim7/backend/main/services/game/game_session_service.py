@@ -234,7 +234,6 @@ class GameSessionService:
         session_id: int,
         world_time: Optional[float] = None,
         flags: Optional[Dict[str, Any]] = None,
-        relationships: Optional[Dict[str, Any]] = None,
         stats: Optional[Dict[str, Any]] = None,
         expected_version: Optional[int] = None,
     ) -> GameSession:
@@ -276,17 +275,7 @@ class GameSessionService:
             session.flags = flags
             changed = True
 
-        # Handle legacy relationships parameter (for backward compatibility)
-        # Convert to stats["relationships"] format
-        if relationships is not None:
-            if "relationships" not in session.stats:
-                session.stats["relationships"] = {}
-            if relationships != session.stats.get("relationships"):
-                session.stats["relationships"] = relationships
-                changed = True
-                relationship_updated = True
-
-        # Handle new stats parameter (preferred)
+        # Handle stats parameter
         if stats is not None and stats != session.stats:
             session.stats = stats
             changed = True
