@@ -363,7 +363,7 @@ class ActionExecutor:
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     )
                 except Exception as check_err:
-                    logger.warning("if_element_check_error error=%s action_type=%s", str(check_err), a_type)
+                    logger.warning("if_element_check_error err=%s action_type=%s", str(check_err), a_type)
                     exists = False  # On error, treat as "not found"
 
                 # Record condition result for UI feedback
@@ -401,7 +401,7 @@ class ActionExecutor:
                         content_desc_match_mode=params.get("content_desc_match_mode", "exact"),
                     )
                 except Exception as check_err:
-                    logger.warning("if_element_check_error error=%s action_type=%s", str(check_err), a_type)
+                    logger.warning("if_element_check_error err=%s action_type=%s", str(check_err), a_type)
                     exists = False  # On error, treat as "not found"
 
                 not_exists = not exists
@@ -466,7 +466,7 @@ class ActionExecutor:
                 try:
                     called_preset = await self._preset_loader(called_preset_id)
                 except Exception as load_err:
-                    logger.error("call_preset_load_error preset_id=%s error=%s", called_preset_id, str(load_err))
+                    logger.error("call_preset_load_error preset_id=%s err=%s", called_preset_id, str(load_err))
                     raise RuntimeError(f"call_preset: failed to load preset {called_preset_id}: {load_err}")
 
                 if not called_preset:
@@ -511,7 +511,7 @@ class ActionExecutor:
             # Check if we should continue on error (default is True now)
             continue_on_error = action.get("continue_on_error", True)
             if continue_on_error:
-                logger.warning("action_error_continuing action_index=%s action_type=%s error=%s action_path=%s",
+                logger.warning("action_error_continuing action_index=%s action_type=%s err=%s action_path=%s",
                     action_index, a_type, str(e), e.action_path)
                 return  # Continue to next action
             # Re-raise ExecutionError as-is
@@ -520,7 +520,7 @@ class ActionExecutor:
             # Check if we should continue on error (default is True now)
             continue_on_error = action.get("continue_on_error", True)
             if continue_on_error:
-                logger.warning("action_error_continuing action_index=%s action_type=%s error=%s",
+                logger.warning("action_error_continuing action_index=%s action_type=%s err=%s",
                     action_index, a_type, str(e))
                 return  # Continue to next action
             # Wrap exception with action context
