@@ -44,7 +44,7 @@ async def list_assets(
     Supports either offset or cursor pagination (cursor takes precedence if provided).
     Assets returned newest first (created_at DESC, id DESC for tie-break).
     """
-      try:
+    try:
         # For now use existing service offset pagination; cursor support will be layered later.
         assets = await asset_service.list_assets(
             user=user,
@@ -342,13 +342,13 @@ async def upload_asset_to_provider(
                 error=str(e),
                 exc_info=True,
             )
-          return UploadAssetResponse(
-              provider_id=result.provider_id,
-              media_type=result.media_type,
-              external_url=result.external_url,
-              provider_asset_id=result.provider_asset_id,
-              note=result.note,
-          )
+        return UploadAssetResponse(
+            provider_id=result.provider_id,
+            media_type=result.media_type,
+            external_url=result.external_url,
+            provider_asset_id=result.provider_asset_id,
+            note=result.note,
+        )
     except InvalidOperationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -997,23 +997,21 @@ async def reupload_asset_to_provider(
     request: ReuploadAssetRequest,
     user: CurrentUser,
     asset_service: AssetSvc,
-):
+) -> UploadAssetResponse:
     """
     Re-upload an existing asset to a provider, caching the provider-specific ID.
 
-    This uses AssetSyncService.get_asset_for_provider via AssetService, which will:
-      1. Ensure the asset belongs to the current user.
-      2. Download the asset locally if needed.
-      3. Upload it to the target provider.
-      4. Cache the provider upload ID in asset.provider_uploads.
+    Uses the sync service helper to upload and cache the provider-specific asset ID.
     """
     try:
         provider_id = request.provider_id
+        # Ensure asset exists and belongs to the user
         asset = await asset_service.get_asset_for_user(asset_id, user)
-        provider_asset_id = await asset_service.get_asset_for_provider(
-            asset_id=asset_id,
-            target_provider_id=provider_id,
-        )
+
+        # Upload to provider using the sync service helper and cache the result
+        provider_asset_id = await asset_service._upload_to_provider(asset, provider_id)
+        await asset_service.cache_provider_upload(asset_id, provider_id, provider_asset_id)
+
         return UploadAssetResponse(
             provider_id=provider_id,
             media_type=asset.media_type,

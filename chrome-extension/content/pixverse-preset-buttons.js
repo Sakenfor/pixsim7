@@ -458,8 +458,21 @@
         }
       }
 
-      results.push({ input, container, hasImage });
+      results.push({ input, container, hasImage, priority, containerId });
     });
+
+    // Sort by priority (highest first), then prefer empty containers
+    results.sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if (a.hasImage !== b.hasImage) return a.hasImage ? 1 : -1;
+      return 0;
+    });
+
+    console.log('[PixSim7] Upload inputs found:', results.map(r => ({
+      id: r.containerId,
+      priority: r.priority,
+      hasImage: r.hasImage
+    })));
 
     return results;
   }
@@ -623,10 +636,10 @@
         return false;
       }
 
-      // Prefer an empty upload area, otherwise use the first one
+      // Use targetInput if specified, otherwise first result (already sorted by priority)
       const targetUpload = targetInput
         ? uploads.find(u => u.input === targetInput) || uploads[0]
-        : uploads.find(u => !u.hasImage) || uploads[0];
+        : uploads[0];
 
       const fileInput = targetUpload.input;
       const container = targetUpload.container;
@@ -1301,8 +1314,22 @@
         providerId: 'pixverse'
       });
       if (res?.success && Array.isArray(res.data)) {
-        // Filter out "snippet(s)" type - those are for prompt building, not execution
-        presetsCache = res.data.filter(p => !p.type?.toLowerCase().includes('snippet'));
+        // Log preset fields to debug filtering
+        console.log('[PixSim7] Raw presets:', res.data.map(p => ({
+          name: p.name,
+          type: p.type,
+          category: p.category
+        })));
+
+        // Filter out "snippet(s)" - check both type and category fields
+        presetsCache = res.data.filter(p => {
+          const typeStr = (p.type || '').toLowerCase();
+          const catStr = (p.category || '').toLowerCase();
+          const isSnippet = typeStr.includes('snippet') || catStr.includes('snippet');
+          return !isSnippet;
+        });
+
+        console.log('[PixSim7] Filtered presets:', presetsCache.length);
         return presetsCache;
       }
     } catch (e) {
@@ -1682,15 +1709,23 @@
 
     if (account) {
       const name = account.nickname || account.email?.split('@')[0] || 'Account';
-      const truncated = name.length > 14 ? name.slice(0, 13) + '…' : name;
+      const truncated = name.length > 12 ? name.slice(0, 11) + '…' : name;
+      const credits = account.total_credits || 0;
+
+      // Get ads from cache
+      const cached = adStatusCache.get(account.id);
+      const adTask = cached?.data?.ad_watch_task;
+      const adsText = adTask ? `${adTask.progress || 0}/${adTask.total_counts || 0}` : '';
+
       btn.innerHTML = `
         <span class="dot ${account.status || 'active'}"></span>
         <span class="name">${truncated}</span>
+        <span style="font-size:10px;opacity:0.7;margin-left:2px;">${credits}cr${adsText ? ` · ${adsText}` : ''}</span>
         <span class="arrow">${isMismatch ? '⚠' : '▼'}</span>
       `;
       btn.title = isMismatch
         ? `Selected: ${account.email}\nBrowser: ${sessionAccount?.email || 'unknown'}\nClick Login to switch`
-        : `${account.email} (${account.total_credits || 0} credits)`;
+        : `${account.email}\n${credits} credits${adsText ? `\nAds: ${adsText}` : ''}`;
     } else {
       btn.innerHTML = `<span class="name">Account</span><span class="arrow">▼</span>`;
       btn.title = 'Select account';
