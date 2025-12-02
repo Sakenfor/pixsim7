@@ -29,12 +29,15 @@ from pixsim7.backend.main.domain.narrative.relationships import (
     compute_relationship_tier,
     compute_intimacy_level,
 )
+from pixsim7.backend.main.services.game.stat_service import StatService
 
 
 class GameSessionService:
     def __init__(self, db: AsyncSession, redis: Optional[Redis] = None):
         self.db = db
         self.redis = redis if REDIS_AVAILABLE else None
+        # Use StatService for generic stat normalization
+        self.stat_service = StatService(db, redis)
 
     async def _get_cached_relationships(self, session_id: int) -> Optional[Dict]:
         """Retrieve cached relationship computations from Redis."""
@@ -132,66 +135,31 @@ class GameSessionService:
 
     async def _normalize_session_relationships(self, session: GameSession) -> None:
         """
-        Compute and store tierId and intimacyLevelId for all NPC relationships.
+        DEPRECATED: Legacy method for backwards compatibility.
 
-        This makes the backend the authoritative source for relationship tiers/intimacy,
-        with frontends consuming these pre-computed values.
-
-        Uses Redis cache to reduce computation overhead (60s TTL).
-        Now world-aware: loads schemas from GameWorld.meta when session.world_id is set.
+        Use normalize_session_stats instead. This method delegates to the new
+        stat service which handles relationships as a generic stat type.
         """
-        if not session.relationships:
-            return
+        # Delegate to new stat service
+        await self.stat_service.normalize_session_stats(session, "relationships")
 
-        # Check cache first
-        cached = await self._get_cached_relationships(session.id)
-        if cached:
-            session.relationships = cached
-            return
+    async def normalize_session_stats(
+        self,
+        session: GameSession,
+        stat_definition_id: str
+    ) -> None:
+        """
+        Normalize any stat type for a session using the generic stat service.
 
-        # Fetch world metadata if session is linked to a world
-        relationship_schemas: Dict[str, Any] = {}
-        intimacy_schema: Optional[Dict[str, Any]] = None
+        Args:
+            session: The game session
+            stat_definition_id: Which stat type to normalize (e.g., "relationships", "skills")
 
-        if session.world_id:
-            result = await self.db.execute(
-                select(GameWorld.id, GameWorld.meta).where(GameWorld.id == session.world_id)
-            )
-            world_row = result.one_or_none()
-
-            if world_row and world_row.meta:
-                relationship_schemas = world_row.meta.get("relationship_schemas", {})
-                intimacy_schema = world_row.meta.get("intimacy_schema")
-
-        # Normalize each NPC relationship
-        for npc_key in list(session.relationships.keys()):
-            if not npc_key.startswith("npc:"):
-                continue
-
-            try:
-                npc_id = int(npc_key.split(":", 1)[1])
-            except (ValueError, IndexError):
-                continue
-
-            # Extract values
-            affinity, trust, chemistry, tension, flags = extract_relationship_values(
-                session.relationships, npc_id
-            )
-
-            # Compute tier and intimacy using world-specific schemas
-            tier_id = compute_relationship_tier(affinity, relationship_schemas)
-            intimacy_id = compute_intimacy_level(
-                {"affinity": affinity, "trust": trust, "chemistry": chemistry, "tension": tension},
-                intimacy_schema
-            )
-
-            # Store computed values back into the relationship JSON
-            if npc_key in session.relationships:
-                session.relationships[npc_key]["tierId"] = tier_id
-                session.relationships[npc_key]["intimacyLevelId"] = intimacy_id
-
-        # Cache results
-        await self._cache_relationships(session.id, session.relationships)
+        Example:
+            await self.normalize_session_stats(session, "relationships")
+            await self.normalize_session_stats(session, "skills")
+        """
+        await self.stat_service.normalize_session_stats(session, stat_definition_id)
 
     async def _get_scene(self, scene_id: int) -> GameScene:
         result = await self.db.execute(

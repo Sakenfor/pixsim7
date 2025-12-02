@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 from sqlalchemy.sql import func
+from pixsim7.backend.main.domain.stats import HasStats
 
 # Scene graph
 class GameScene(SQLModel, table=True):
@@ -108,7 +109,7 @@ class GameWorldState(SQLModel, table=True):
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
-class GameLocation(SQLModel, table=True):
+class GameLocation(SQLModel, HasStats, table=True):
     __tablename__ = "game_locations"
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=64)
@@ -125,13 +126,15 @@ class GameLocation(SQLModel, table=True):
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # stats field inherited from HasStats - used for environmental effects
 
-class GameNPC(SQLModel, table=True):
+class GameNPC(SQLModel, HasStats, table=True):
     __tablename__ = "game_npcs"
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=64)
     personality: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     home_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")
+    # stats field inherited from HasStats - base stats (combat skills, attributes, etc.)
 
 class NPCSchedule(SQLModel, table=True):
     __tablename__ = "npc_schedules"
@@ -143,13 +146,14 @@ class NPCSchedule(SQLModel, table=True):
     location_id: int = Field(foreign_key="game_locations.id")
     rule: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
-class NPCState(SQLModel, table=True):
+class NPCState(SQLModel, HasStats, table=True):
     __tablename__ = "npc_state"
     npc_id: Optional[int] = Field(primary_key=True)
     current_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")
     state: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     version: int = Field(default=0)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # stats field inherited from HasStats - runtime stat overrides (damage, buffs, etc.)
 
 
 class NpcExpression(SQLModel, table=True):

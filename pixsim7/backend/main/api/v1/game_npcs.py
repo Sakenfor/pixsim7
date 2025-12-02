@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import List, Optional, Dict, Any, Tuple
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession, NpcExpressionSvc
 from pixsim7.backend.main.domain.game.models import GameNPC, NPCSchedule, NPCState, GameWorldState
+from pixsim7.backend.main.services.game.npc_stat_service import NPCStatService
 
 
 router = APIRouter()
@@ -32,6 +33,20 @@ class NpcPresenceDTO(BaseModel):
     state: Dict[str, Any]
 
 
+class UpdateNpcStatsRequest(BaseModel):
+    """Request to update NPC stats."""
+    stat_updates: Dict[str, Any]
+    runtime: bool = True  # If True, update NPCState; if False, update GameNPC base stats
+
+
+class NpcStatsResponse(BaseModel):
+    """Response containing NPC stats."""
+    npc_id: int
+    stat_type: str
+    stats: Dict[str, Any]
+    is_runtime: bool = False  # Indicates if stats include runtime overrides
+
+
 SECONDS_PER_DAY = 24 * 60 * 60
 DAYS_PER_WEEK = 7
 
@@ -50,133 +65,140 @@ def _split_world_time(world_time: float) -> Tuple[int, float]:
     return day_of_week, seconds_in_day
 
 
-def _serialize_expression(expression) -> NpcExpressionDTO:
-    """Convert an expression ORM row into the API DTO."""
-
-    return NpcExpressionDTO(
-        id=expression.id,
-        state=expression.state,
-        asset_id=expression.asset_id,
-        crop=expression.crop,
-        meta=expression.meta,
-    )
-
-
 def _filter_schedules_by_location(
     schedules: List[NPCSchedule], location_id: Optional[int]
 ) -> List[NPCSchedule]:
+    """
+    If a location_id is provided, filter schedules to those matching that location.
+    Otherwise return all schedules.
+    """
     if location_id is None:
         return schedules
     return [s for s in schedules if s.location_id == location_id]
 
 
-def _build_presence_entry(
-    schedule: NPCSchedule, npc_state: Optional[NPCState]
-) -> NpcPresenceDTO:
-    base_state: Dict[str, Any] = {}
-    if npc_state and npc_state.state:
-        base_state = dict(npc_state.state)
+def _build_presence_entry(sched: NPCSchedule, npc_state: Optional[NPCState]) -> NpcPresenceDTO:
+    """
+    Build a presence entry for an NPC based on schedule and state.
 
-    # Include lightweight schedule context so callers can derive activity.
-    state = dict(base_state)
-    schedule_info = state.setdefault("schedule", {})
-    if isinstance(schedule_info, dict):
-        schedule_info.setdefault("day_of_week", schedule.day_of_week)
-        schedule_info.setdefault("start_time", schedule.start_time)
-        schedule_info.setdefault("end_time", schedule.end_time)
+    The state can override the location_id from the schedule.
+    """
+    location_id = sched.location_id
+    state_dict = {}
+    if npc_state is not None:
+        if npc_state.current_location_id is not None:
+            location_id = npc_state.current_location_id
+        if npc_state.state:
+            state_dict = npc_state.state
 
     return NpcPresenceDTO(
-        npc_id=schedule.npc_id,
-        location_id=schedule.location_id,
-        state=state,
+        npc_id=sched.npc_id,
+        location_id=location_id,
+        state=state_dict,
     )
 
 
 @router.get("/", response_model=List[NpcSummary])
 async def list_npcs(
-    db: DatabaseSession,
     user: CurrentUser,
+    db: DatabaseSession,
 ) -> List[NpcSummary]:
     """
-    List game NPCs.
-
-    Currently returns all NPCs; future versions may filter by workspace/user.
+    List all NPCs.
     """
-    result = await db.execute(select(GameNPC).order_by(GameNPC.id))
-    npcs = result.scalars().all()
-    return [NpcSummary(id=n.id, name=n.name) for n in npcs]
+    result = await db.execute(select(GameNPC))
+    npcs = list(result.scalars().all())
+    return [NpcSummary(id=npc.id, name=npc.name) for npc in npcs]
 
 
 @router.get("/{npc_id}/expressions", response_model=List[NpcExpressionDTO])
 async def get_npc_expressions(
     npc_id: int,
-    npc_expression_service: NpcExpressionSvc,
     user: CurrentUser,
+    npc_expression_svc: NpcExpressionSvc,
 ) -> List[NpcExpressionDTO]:
     """
-    Get all expression mappings for an NPC.
+    Retrieve all expressions (portraits/animations) for an NPC.
     """
-    expressions = await npc_expression_service.list_expressions(npc_id)
-    return [_serialize_expression(e) for e in expressions]
+    expressions = await npc_expression_svc.get_expressions_for_npc(npc_id)
+    return [
+        NpcExpressionDTO(
+            id=expr.id,
+            state=expr.state,
+            asset_id=expr.asset_id,
+            crop=expr.crop,
+            meta=expr.meta,
+        )
+        for expr in expressions
+    ]
 
 
-@router.put("/{npc_id}/expressions", response_model=List[NpcExpressionDTO])
-async def replace_npc_expressions(
+@router.post("/{npc_id}/expressions", response_model=NpcExpressionDTO)
+async def create_npc_expression(
     npc_id: int,
-    payload: Dict[str, Any],
-    npc_expression_service: NpcExpressionSvc,
+    req: NpcExpressionDTO,
     user: CurrentUser,
-) -> List[NpcExpressionDTO]:
+    npc_expression_svc: NpcExpressionSvc,
+) -> NpcExpressionDTO:
     """
-    Replace all expressions for an NPC.
-
-    Body shape:
-      {
-        "expressions": [
-          { "state": "idle", "asset_id": 123, "crop": {...}, "meta": {...} },
-          ...
-        ]
-      }
+    Create a new expression mapping for an NPC.
     """
-    rows = payload.get("expressions") or []
-    if not isinstance(rows, list):
-        raise HTTPException(status_code=400, detail="expressions must be a list")
+    expr = await npc_expression_svc.create_expression(
+        npc_id=npc_id,
+        state=req.state,
+        asset_id=req.asset_id,
+        crop=req.crop or {},
+        meta=req.meta or {},
+    )
+    return NpcExpressionDTO(
+        id=expr.id,
+        state=expr.state,
+        asset_id=expr.asset_id,
+        crop=expr.crop,
+        meta=expr.meta,
+    )
 
-    created = await npc_expression_service.replace_expressions(npc_id, rows)
-    return [_serialize_expression(e) for e in created]
+
+@router.delete("/{npc_id}/expressions/{expression_id}")
+async def delete_npc_expression(
+    npc_id: int,
+    expression_id: int,
+    user: CurrentUser,
+    npc_expression_svc: NpcExpressionSvc,
+):
+    """
+    Delete an expression mapping for an NPC.
+    """
+    await npc_expression_svc.delete_expression(expression_id)
+    return {"ok": True}
 
 
 @router.get("/presence", response_model=List[NpcPresenceDTO])
 async def get_npc_presence(
-    world_time: Optional[float] = None,
+    db: DatabaseSession,
+    user: CurrentUser,
     world_id: Optional[int] = None,
     location_id: Optional[int] = None,
-    db: DatabaseSession = None,
-    user: CurrentUser = None,
 ) -> List[NpcPresenceDTO]:
     """
-    Compute NPC presence for a given world_time (in seconds).
+    Get NPCs present at a specific location and time based on their schedules.
 
-    This endpoint is backend-agnostic w.r.t. presentation (2D/3D) and simply
-    answers: "which NPCs are scheduled to be where at this time?"
+    Args:
+        world_id: Optional world ID to get world time from
+        location_id: Optional location ID to filter by
 
-    - world_time: continuous game time in seconds (0 = Monday 00:00).
-    - world_id: optional world identifier; when provided and world_time is
-      omitted, the server will use the global world_time from game_world_states.
-    - location_id: optional filter; if provided, only NPCs at this location
-      are returned.
-
-    TODO: Add Redis caching for performance optimization
-    Cache key format: f"npc_presence:{world_id}:{location_id}:{round(world_time/3600)}"
-    This would group by hour to maximize cache hits while maintaining accuracy.
-    Suggested TTL: Until next turn in turn-based mode, or 60s in real-time mode.
+    Returns:
+        List of NPCs present at the current world time
     """
-    effective_world_time: float
-    if world_time is not None:
-      effective_world_time = float(world_time)
-    elif world_id is not None:
-      state = await db.get(GameWorldState, world_id)
-      effective_world_time = float(state.world_time or 0.0) if state else 0.0
+    # Determine effective world time
+    effective_world_time = 0.0
+    if world_id is not None:
+        result = await db.execute(
+            select(GameWorldState.world_time).where(GameWorldState.world_id == world_id)
+        )
+        state_row = result.one_or_none()
+        if state_row is not None:
+            effective_world_time = float(state_row[0])
     else:
       effective_world_time = 0.0
 
@@ -207,3 +229,146 @@ async def get_npc_presence(
         _build_presence_entry(sched, state_by_npc.get(sched.npc_id))
         for sched in schedules
     ]
+
+
+# ============================================================================
+# NPC STAT ENDPOINTS (NEW)
+# ============================================================================
+
+
+def get_npc_stat_service(db: DatabaseSession) -> NPCStatService:
+    """Dependency injection for NPCStatService."""
+    return NPCStatService(db)
+
+
+@router.get("/{npc_id}/stats/{stat_type}", response_model=NpcStatsResponse)
+async def get_npc_stats(
+    npc_id: int,
+    stat_type: str,
+    user: CurrentUser,
+    npc_stat_service: NPCStatService = Depends(get_npc_stat_service),
+    world_id: Optional[int] = None,
+) -> NpcStatsResponse:
+    """
+    Get NPC's effective stats (base + runtime overrides).
+
+    Args:
+        npc_id: The NPC ID
+        stat_type: The stat definition ID (e.g., "combat_skills", "attributes")
+        world_id: Optional world ID for stat definition lookup
+
+    Returns:
+        Normalized stats with computed tiers/levels
+
+    Example:
+        GET /npcs/1/stats/combat_skills?world_id=5
+        → {"npc_id": 1, "stat_type": "combat_skills", "stats": {"strength": 100, "strengthTierId": "expert"}}
+    """
+    try:
+        stats = await npc_stat_service.get_npc_effective_stats(
+            npc_id,
+            stat_type,
+            world_id=world_id
+        )
+        return NpcStatsResponse(
+            npc_id=npc_id,
+            stat_type=stat_type,
+            stats=stats,
+            is_runtime=True
+        )
+    except ValueError as e:
+        if str(e) == "npc_not_found":
+            raise HTTPException(status_code=404, detail="NPC not found")
+        raise
+
+
+@router.patch("/{npc_id}/stats/{stat_type}", response_model=NpcStatsResponse)
+async def update_npc_stats(
+    npc_id: int,
+    stat_type: str,
+    req: UpdateNpcStatsRequest,
+    user: CurrentUser,
+    npc_stat_service: NPCStatService = Depends(get_npc_stat_service),
+    world_id: Optional[int] = None,
+) -> NpcStatsResponse:
+    """
+    Update NPC's stats (base or runtime).
+
+    Args:
+        npc_id: The NPC ID
+        stat_type: The stat definition ID
+        req: Stat updates and whether to update runtime vs base
+        world_id: Optional world ID for stat definition lookup
+
+    Returns:
+        Updated stats
+
+    Example:
+        PATCH /npcs/1/stats/attributes
+        {"stat_updates": {"health": 65}, "runtime": true}
+        → Updates runtime stats (NPC took damage)
+
+        PATCH /npcs/1/stats/combat_skills
+        {"stat_updates": {"strength": 95}, "runtime": false}
+        → Updates base stats (NPC leveled up)
+    """
+    try:
+        if req.runtime:
+            # Update runtime stats (NPCState)
+            await npc_stat_service.update_npc_runtime_stats(
+                npc_id,
+                stat_type,
+                req.stat_updates
+            )
+        else:
+            # Update base stats (GameNPC)
+            await npc_stat_service.update_npc_base_stats(
+                npc_id,
+                stat_type,
+                req.stat_updates
+            )
+
+        # Return effective stats
+        stats = await npc_stat_service.get_npc_effective_stats(
+            npc_id,
+            stat_type,
+            world_id=world_id
+        )
+
+        return NpcStatsResponse(
+            npc_id=npc_id,
+            stat_type=stat_type,
+            stats=stats,
+            is_runtime=req.runtime
+        )
+    except ValueError as e:
+        if str(e) == "npc_not_found":
+            raise HTTPException(status_code=404, detail="NPC not found")
+        raise
+
+
+@router.delete("/{npc_id}/stats/{stat_type}")
+async def reset_npc_runtime_stats(
+    npc_id: int,
+    stat_type: str,
+    user: CurrentUser,
+    npc_stat_service: NPCStatService = Depends(get_npc_stat_service),
+) -> Dict[str, Any]:
+    """
+    Reset NPC's runtime stats for a specific stat type.
+
+    This clears all runtime overrides, reverting the NPC to base stats.
+
+    Args:
+        npc_id: The NPC ID
+        stat_type: The stat definition ID to reset
+
+    Returns:
+        Success message
+
+    Example:
+        DELETE /npcs/1/stats/attributes
+        → Heals NPC back to full health (base stats)
+    """
+    await npc_stat_service.reset_npc_runtime_stats(npc_id, stat_type)
+    return {"ok": True, "message": f"Reset runtime stats for {stat_type}"}
