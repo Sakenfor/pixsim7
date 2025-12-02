@@ -293,7 +293,7 @@ async def generate_next_line(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.relationships if session else {}
+        "relationships": session.stats.get("relationships", {}) if session else {}
     }
 
     # Build context using the engine
@@ -442,7 +442,7 @@ async def generate_next_line_debug(
         "id": session.id if session else 0,
         "world_time": session.world_time if session else 0.0,
         "flags": session.flags if session else {},
-        "relationships": session.relationships if session else {}
+        "relationships": session.stats.get("relationships", {}) if session else {}
     }
 
     # Build context
@@ -591,7 +591,7 @@ async def _run_action_selection(
                 )
 
                 affinity, trust, chemistry, tension, _ = extract_relationship_values(
-                    session.relationships,
+                    session.stats.get("relationships", {}),
                     req.lead_npc_id
                 )
 

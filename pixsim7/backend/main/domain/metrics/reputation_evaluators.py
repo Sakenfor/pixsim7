@@ -174,18 +174,19 @@ async def evaluate_reputation_band(
         )
         session = session_result.scalar_one_or_none()
 
-        if session and session.relationships:
+        if session:
+            relationships = session.stats.get("relationships", {})
             # Look for relationship data
             if subject_type == "player":
                 # Player-to-NPC relationship
                 npc_key = f"npc:{target_id}"
-                npc_rel = session.relationships.get(npc_key, {})
+                npc_rel = relationships.get(npc_key, {})
                 # Use affinity as reputation score
                 reputation_score = npc_rel.get("affinity", 50.0)
             elif subject_type == "npc":
                 # NPC-to-NPC relationship
                 pair_key = f"npcPair:{subject_id}:{target_id}"
-                pair_rel = session.relationships.get(pair_key, {})
+                pair_rel = relationships.get(pair_key, {})
                 # Use friendship or rivalry (convert to 0-100 scale)
                 friendship = pair_rel.get("friendship", 0.5)
                 reputation_score = friendship * 100

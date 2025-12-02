@@ -170,10 +170,12 @@ async def build_generation_social_context(
         )
         session = session_result.scalar_one_or_none()
 
-        if session and session.relationships:
+        if session:
+            # Use stat-based relationships
+            relationships = session.stats.get("relationships", {})
             npc_key = f"npc:{npc_id}"
-            if npc_key in session.relationships:
-                rel_data = session.relationships[npc_key]
+            if npc_key in relationships:
+                rel_data = relationships[npc_key]
                 relationship_values = {
                     'affinity': rel_data.get('affinity', 0),
                     'trust': rel_data.get('trust', 0),

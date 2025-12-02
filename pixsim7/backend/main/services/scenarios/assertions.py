@@ -86,7 +86,8 @@ def get_flag(session, path: str) -> Any:
 def get_relationship_metric(session, npc_id: int, metric: str) -> Optional[float]:
     """Get a relationship metric value for an NPC"""
     npc_key = f"npc:{npc_id}"
-    npc_data = session.relationships.get(npc_key)
+    relationships = session.stats.get("relationships", {})
+    npc_data = relationships.get(npc_key)
 
     if not npc_data:
         return None
@@ -173,7 +174,8 @@ def assert_relationship_tier(
             return False
 
         npc_key = f"npc:{npc_id}"
-        npc_data = session.relationships.get(npc_key)
+        relationships = session.stats.get("relationships", {})
+        npc_data = relationships.get(npc_key)
 
         return npc_data and npc_data.get("tierId") == expected_tier_id
 
@@ -197,7 +199,8 @@ def assert_intimacy_level(
             return False
 
         npc_key = f"npc:{npc_id}"
-        npc_data = session.relationships.get(npc_key)
+        relationships = session.stats.get("relationships", {})
+        npc_data = relationships.get(npc_key)
 
         return npc_data and npc_data.get("intimacyLevelId") == expected_level_id
 
@@ -223,7 +226,8 @@ def assert_no_intimate_scene_without_consent(
             return True  # Pass if session not found
 
         # Check all NPCs in relationships
-        for key, npc_data in session.relationships.items():
+        relationships = session.stats.get("relationships", {})
+        for key, npc_data in relationships.items():
             if not key.startswith("npc:"):
                 continue
 

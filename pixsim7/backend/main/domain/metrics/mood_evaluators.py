@@ -214,9 +214,10 @@ async def evaluate_npc_mood(
         )
         session = session_result.scalar_one_or_none()
 
-        if session and session.relationships:
+        if session:
+            relationships = session.stats.get("relationships", {})
             npc_key = f"npc:{npc_id}"
-            npc_rel = session.relationships.get(npc_key, {})
+            npc_rel = relationships.get(npc_key, {})
             relationship_values = {
                 "affinity": npc_rel.get("affinity", 50.0),
                 "trust": npc_rel.get("trust", 50.0),

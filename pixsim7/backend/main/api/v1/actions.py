@@ -111,7 +111,7 @@ async def _run_action_selection(
                 )
 
                 affinity, trust, chemistry, tension, _ = extract_relationship_values(
-                    session.relationships,
+                    session.stats.get("relationships", {}),
                     req.lead_npc_id
                 )
 

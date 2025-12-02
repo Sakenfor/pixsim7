@@ -47,6 +47,9 @@ async def apply_relationship_deltas(
     """
     Apply relationship metric deltas to a session.
 
+    Uses the abstract stat system (session.stats["relationships"]) instead of
+    legacy session.relationships field.
+
     Args:
         session: Game session to update
         npc_id: Target NPC ID
@@ -59,10 +62,14 @@ async def apply_relationship_deltas(
     """
     npc_key = f"npc:{npc_id}"
 
-    # Get current relationship
-    rel = session.relationships.get(npc_key, {})
+    # Ensure relationships stat exists
+    if "relationships" not in session.stats:
+        session.stats["relationships"] = {}
 
-    # Apply deltas
+    # Get current relationship
+    rel = session.stats["relationships"].get(npc_key, {})
+
+    # Apply deltas with clamping (0-100 range)
     if deltas.affinity is not None:
         current = rel.get("affinity", 50.0)
         rel["affinity"] = max(0, min(100, current + deltas.affinity))
@@ -88,8 +95,8 @@ async def apply_relationship_deltas(
         # Legacy fallback: use real-time ISO format
         rel["lastInteractionAt"] = datetime.utcnow().isoformat()
 
-    # Update session
-    session.relationships[npc_key] = rel
+    # Update session using stat-based storage
+    session.stats["relationships"][npc_key] = rel
 
     return rel
 
@@ -617,7 +624,7 @@ async def prepare_generation_launch(
             "id": session.id,
             "world_time": session.world_time,
             "flags": session.flags,
-            "relationships": session.relationships
+            "relationships": session.stats.get("relationships", {})
         }
 
         # Build context

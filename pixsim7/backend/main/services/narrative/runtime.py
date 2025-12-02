@@ -611,9 +611,10 @@ class NarrativeRuntimeEngine:
         # Load NPC
         npc = await self.db.get(GameNPC, npc_id)
 
-        # Get relationship
+        # Get relationship from stat-based system
         npc_key = f"npc:{npc_id}"
-        relationship = session.relationships.get(npc_key, {})
+        relationships = session.stats.get("relationships", {})
+        relationship = relationships.get(npc_key, {})
 
         return {
             "session": {"id": session.id, "flags": session.flags},

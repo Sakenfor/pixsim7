@@ -74,7 +74,7 @@ class SnapshotService:
             SessionSnapshot(
                 session_id=session.id,
                 flags=session.flags or {},
-                relationships=session.relationships or {},
+                relationships=session.stats.get("relationships", {}),
                 world_time=session.world_time,
                 version=session.version
             )
@@ -169,7 +169,10 @@ class SnapshotService:
             session = await self.db.get(GameSession, session_snapshot.session_id)
             if session:
                 session.flags = session_snapshot.flags
-                session.relationships = session_snapshot.relationships
+                # Restore relationships to stat-based system
+                if "relationships" not in session.stats:
+                    session.stats["relationships"] = {}
+                session.stats["relationships"] = session_snapshot.relationships
                 session.world_time = session_snapshot.world_time
                 session.version = session_snapshot.version
                 session.world_id = target_world_id
