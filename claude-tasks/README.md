@@ -102,11 +102,11 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
 
 ---
 
-## Tasks 85-99 Status Summary (Audit: 2025-12-02)
+## Tasks 85-106 Status Summary (Audit: 2025-12-02)
 
-**Completion Rate:** 80% (12 of 15 tasks completed)
+**Completion Rate:** 93% (14 of 15 tasks completed)
 
-### ✅ Completed Tasks (85-90, 93-97, 99)
+### ✅ Completed Tasks (85-90, 93-99, 106)
 
 **Prompt Lab & Block Fit System (85-90)** – **FULLY IMPLEMENTED**
 - 85: Category Discovery Agent – AI-assisted category/pack/block suggestions
@@ -125,22 +125,22 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
 - 96: Overlay Editor UX & Validation (865ddf0)
 - 97: HUD Editor & Overlay Unified Integration (bfad883)
 
-**Asset System (99)** – **FULLY IMPLEMENTED**
+**Asset/Scene System (98-99)** – **FULLY IMPLEMENTED**
+- 98: Comic Panel Widget & Scene Integration – Sequential image presentation for story beats
+  **Implementation:** `ComicPanelWidget.tsx` (171 lines), `COMIC_PANELS.md` (312 lines), scene-builder types
 - 99: Asset Roles & Action Block Resolver – Tag-based asset resolution system
   **Implementation:** `assetRoles.ts`, `assetResolver.ts`, comprehensive docs
 
-### ❌ Not Started (91-92, 98)
+**Architecture (106)** – **FULLY IMPLEMENTED**
+- 106: Editing Core Data Binding Migration – Unified DataBinding types across all systems
+  **Implementation:** All 5 deliverables complete (type alignment, adapters, consumer migration, overlay widgets, docs)
+  **Evidence:** `bindingAdapters.ts`, 7 overlay widgets using core types, `DATA_BINDING_GUIDE.md` updated
+
+### ❌ Not Started (91-92)
 
 **Registry Refactoring (91-92)** – Design documents only
 - 91: UI Registry Base & Feature Normalization
 - 92: Registry Bridge Simplification
-
-**Asset/Generation (98)** – Planned but not started
-- 98: Comic Panel Widget & Scene Integration
-
-### ⚠️ Unclear Status (106)
-
-- 106: Editing Core Data Binding Migration (renumbered from 99) – Implementation evidence exists but status unclear
 
 ---
 
