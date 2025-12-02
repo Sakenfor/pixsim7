@@ -124,25 +124,24 @@ async def create_world(
 ) -> GameWorldDetail:
     """
     Create a new game world for the current user.
+
+    Schema validation now happens at service layer for defense in depth.
     """
-    # Validate world-level schemas inside meta (if present)
-    if req.meta is not None:
-        try:
-            WorldMetaSchemas.parse_obj(req.meta)
-        except ValidationError as e:
+    try:
+        world = await game_world_service.create_world(
+            owner_user_id=user.id,
+            name=req.name,
+            meta=req.meta or {},
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("invalid_world_schemas"):
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "error": "invalid_world_schemas",
-                    "details": e.errors(),
-                },
+                detail=msg
             )
+        raise
 
-    world = await game_world_service.create_world(
-        owner_user_id=user.id,
-        name=req.name,
-        meta=req.meta or {},
-    )
     state = await game_world_service.get_world_state(world.id)
     return await _build_world_detail(world, game_world_service, state=state)
 
@@ -201,24 +200,24 @@ async def update_world_meta(
     This allows designers to configure per-world settings like HUD layouts,
     enabled plugins, and other UI/UX customizations.
 
-    Also validates relationship/intimacy schemas stored in meta to prevent
-    invalid configurations from breaking relationship computations.
+    Schema validation now happens at service layer for defense in depth,
+    preventing direct service calls from bypassing validation.
     """
     await _get_owned_world(world_id, user, game_world_service)
 
+    # Update the world metadata (service layer validates)
     try:
-        WorldMetaSchemas.parse_obj(req.meta)
-    except ValidationError as e:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "invalid_world_schemas",
-                "details": e.errors(),
-            },
-        )
-
-    # Update the world metadata
-    updated_world = await game_world_service.update_world_meta(world_id, req.meta)
+        updated_world = await game_world_service.update_world_meta(world_id, req.meta)
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("invalid_world_schemas"):
+            raise HTTPException(
+                status_code=400,
+                detail=msg
+            )
+        if msg == "world_not_found":
+            raise HTTPException(status_code=404, detail="World not found")
+        raise
 
     # Get current world time
     return await _build_world_detail(updated_world, game_world_service)

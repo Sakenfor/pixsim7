@@ -270,6 +270,8 @@ async def cleanup_old_session_events(db: AsyncSession):
 
 ### Issue #6: World Time Wrapping Inconsistency
 
+**Status**: ✅ **FIXED**
+
 **File (Backend)**: `pixsim7/backend/main/services/game/game_world_service.py:75`
 **File (Frontend)**: `packages/game/engine/src/world/worldTime.ts`
 
@@ -919,6 +921,8 @@ def compute_intimacy_level(
 
 ### Issue #16: Turn-Based Validation Tolerance Arbitrary
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 **Lines**: 237-250
 
@@ -965,6 +969,8 @@ async def update_session(
 ---
 
 ### Issue #17: Schema Validation Only at API Layer
+
+**Status**: ✅ **FIXED**
 
 **File**: `pixsim7/backend/main/api/v1/game_worlds.py`
 **Lines**: 89-100, 170-179

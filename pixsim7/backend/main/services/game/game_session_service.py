@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, Dict, Any
 import json
 import logging
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
@@ -339,13 +340,16 @@ class GameSessionService:
                 world_config = effective_flags.get('world', {})
                 if world_config.get('mode') == 'turn_based':
                     turn_delta = world_config.get('turnDeltaSeconds', 3600)
-                    actual_delta = world_time - session.world_time
+
+                    # Use Decimal for precise floating-point comparison
+                    actual_delta = Decimal(str(world_time)) - Decimal(str(session.world_time))
+                    expected_delta = Decimal(str(turn_delta))
+                    tolerance = Decimal("0.001")  # 1ms tolerance for floating point
 
                     # Allow turn delta advancement or no change (e.g., updating other fields)
-                    # Tolerance of 1 second for floating point precision
-                    if abs(actual_delta) > 1 and abs(actual_delta - turn_delta) > 1:
+                    if abs(actual_delta) > tolerance and abs(actual_delta - expected_delta) > tolerance:
                         raise ValueError(
-                            f"turn_based_validation_failed: expected delta of {turn_delta}s, got {actual_delta}s"
+                            f"turn_based_validation_failed: expected delta of {turn_delta}s, got {float(actual_delta)}s"
                         )
 
         # Track if any changes were made

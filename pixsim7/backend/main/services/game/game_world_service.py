@@ -6,6 +6,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ except ImportError:
     Redis = None  # type: ignore
 
 from pixsim7.backend.main.domain.game.models import GameWorld, GameWorldState, GameSession
+from pixsim7.backend.main.domain.game.schemas.relationship import WorldMetaSchemas
 
 
 class GameWorldService:
@@ -36,7 +38,17 @@ class GameWorldService:
 
         Uses flush() to get the world ID without committing, then commits
         both world and state together to prevent orphaned records.
+
+        Validates schemas at service layer to ensure direct service calls
+        don't bypass validation.
         """
+        # Validate schemas if meta provided
+        if meta:
+            try:
+                WorldMetaSchemas.model_validate(meta)
+            except ValidationError as e:
+                raise ValueError(f"invalid_world_schemas: {e}")
+
         world = GameWorld(owner_user_id=owner_user_id, name=name, meta=meta or {})
         self.db.add(world)
         await self.db.flush()  # Get world.id without committing
@@ -74,6 +86,15 @@ class GameWorldService:
 
         Uses database-level atomic UPDATE to ensure concurrent requests
         don't overwrite each other's increments.
+
+        IMPORTANT: Backend stores monotonic (unwrapped) world_time that grows
+        indefinitely. Frontends are responsible for week-boundary wrapping
+        (604,800s) for display purposes. Do NOT send wrapped values to the backend.
+
+        This design allows:
+        1. Simple monotonic time tracking at the backend
+        2. Accurate time deltas without wrap-around edge cases
+        3. Flexible frontend display logic (24-hour, 7-day, etc.)
         """
         if delta_seconds < 0:
             delta_seconds = 0.0
@@ -116,6 +137,9 @@ class GameWorldService:
         When schemas change, invalidates cached relationships for all sessions
         linked to this world to ensure normalization uses updated schemas.
 
+        Validates schemas at service layer to ensure direct service calls
+        don't bypass validation.
+
         Args:
             world_id: ID of the world to update
             meta: New metadata dictionary
@@ -123,6 +147,12 @@ class GameWorldService:
         Returns:
             Updated GameWorld instance
         """
+        # Validate schemas
+        try:
+            WorldMetaSchemas.model_validate(meta)
+        except ValidationError as e:
+            raise ValueError(f"invalid_world_schemas: {e}")
+
         world = await self.db.get(GameWorld, world_id)
         if not world:
             raise ValueError("world_not_found")
