@@ -75,7 +75,7 @@ This task should leave us in a place where all of those are possible later, with
 
 ## Phase Checklist
 
-- [ ] **Phase 1 – Document Host Concept & Constraints**
+- [x] **Phase 1 – Document Host Concept & Constraints** (documented in Audit Findings below)
 - [x] **Phase 2 – Ensure Frontend Uses Configurable Backend Base URL**
 - [x] **Phase 3 – Audit Backend for Global-State Assumptions**
 - [x] **Phase 4 – Align Plugin & Stat Package Systems with Host Boundary**
