@@ -11,7 +11,8 @@
 >   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md`  
 >   - `claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md`  
 >   - `claude-tasks/17-npc-interaction-layer-and-conversation-surfaces.md`.
-> - **Key constraint:** do **not** add new DB tables or core columns; everything stays JSON-backed (`GameSession.flags`, `GameSession.relationships`, `GameWorld.meta`, `GameNPC.meta`). ECS is a *data layout and access pattern*, not a schema migration.
+> - **Key constraint:** do **not** add new DB tables or core columns; everything stays JSON-backed (`GameSession.flags`, `GameSession.stats["relationships"]`, `GameWorld.meta`, `GameNPC.meta`). ECS is a *data layout and access pattern*, not a schema migration.
+> - **Status Note (2025-12-02)**: `GameSession.relationships` has been superseded by `GameSession.stats["relationships"]`. References in this task to `GameSession.relationships` reflect the earlier design and should be interpreted in terms of the stat-based relationship system (see Tasks 107, 111, 112).
 
 ---
 
@@ -409,4 +410,3 @@ By the end of this task, you should have:
   - Behavior, mood, interactions, and relationship metrics use ECS/metrics helpers rather than raw JSON.
 - **Minimal schema impact**:
   - No new DB tables or core columns; all changes are within JSON fields and access patterns.
-

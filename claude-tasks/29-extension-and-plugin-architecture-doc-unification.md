@@ -1,5 +1,8 @@
 **Task: Extension & Plugin Architecture Doc Unification**
 
+> **Status Note (2025-12-02)**  
+> Game session extensions now use `GameSession.flags` and `GameSession.stats` (including `stats["relationships"]`) as the canonical JSON surfaces. Earlier references in this task or related docs to `GameSession.relationships` reflect the pre-stats model and should be interpreted accordingly. See Tasks 107, 111, and 112 for details.
+
 > **For Agents (How to use this file)**
 > - This is a **cross-cutting architecture task** to unify how all extension systems are documented (backend plugins, frontend plugins, graph/node plugins, game/world JSON conventions).
 > - It does **not** replace the detailed system docs; instead it:
@@ -146,4 +149,3 @@ Make sure agents and contributors hit the unified extension doc before diving in
 3. Optionally add a note in `claude-tasks/README.md` describing Task 29 as the coordination hub for extension/plugin docs.
 
 **Status:** `[ ]` Not started
-

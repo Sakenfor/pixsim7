@@ -15,6 +15,7 @@
 > - **Key constraint:** as with other tasks, do **not** add new DB tables/columns lightly. Prefer:
 >   - Existing tables (`action_blocks`, `prompt_versions`, `generations`, `GameScene`, `GameWorld` meta).  
 >   - JSON-backed schemas in `GameWorld.meta`, `GameScene.meta`, and ECS components.
+> - **Status Note (2025-12-02)**: Relationship state is now tracked via `GameSession.stats["relationships"]`. Any references in this file to `GameSession.relationships` refer to the previous model and should be read as stat-backed relationships in the current architecture (see Tasks 107, 111, 112).
 
 ---
 
@@ -753,4 +754,3 @@ Based on this inventory, the unification should:
 ---
 
 **Status:** Phase 20.1 completed on 2025-11-19. Inventory summary added above.
-

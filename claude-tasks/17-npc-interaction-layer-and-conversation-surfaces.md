@@ -1,5 +1,8 @@
 **Task: NPC Interaction Layer & Conversation Surfaces (Multi‑Phase)**
 
+> **Status Note (2025-12-02)**  
+> The relationship system is now implemented via `GameSession.stats["relationships"]`. Mentions of `GameSession.relationships` in this task correspond to the earlier shape and should be understood as stat-backed relationships in the current architecture (see Tasks 107, 111, 112).
+
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document** for the player–NPC interaction layer and conversation surfaces; it is not the primary spec for relationships, behavior, or generation.
 > - Read these first for authoritative behavior and data shapes:  
@@ -898,4 +901,3 @@ By the end of Task 17:
 - The system:
   - Respects PixSim7’s JSON‑only schema conventions (no new core tables/columns).
   - Integrates with existing interaction schema, relationship/mood metrics, behavior, and generation pipelines without duplicating logic.
-

@@ -1,5 +1,8 @@
 # Unified Generation Pipeline - Implementation Progress
 
+> **Status Note (2025-12-02)**  
+> This progress log reflects an earlier iteration where relationships were stored in `GameSession.relationships`. In the current architecture, relationship state lives in `GameSession.stats["relationships"]` and related generation logic should treat it as a stat package. See Tasks 107, 109, 111, and 112.
+
 > **For Agents (How to use this file)**
 > - This file is an **implementation progress log** for Task 10, not a spec.
 > - For behavior and data contracts, read:  
@@ -692,4 +695,3 @@ The unified generation pipeline now has:
 - Content safety enforcement
 - Comprehensive testing
 - Developer tooling
-

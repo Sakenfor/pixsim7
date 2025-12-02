@@ -1,5 +1,8 @@
 **Task: World-Aware Session Normalization & Schema Validation (Multi‑Phase)**
 
+> **Status Note (2025-12-02)**  
+> Relationship normalization is now handled via the abstract stat system (`GameSession.stats["relationships"]`) and the generic stat preview API. References here to `GameSession.relationships["npc:X"]` describe the earlier implementation and are historical. See Tasks 107, 111, and 112 for the current model.
+
 **Context**
 - Relationship tiers and intimacy levels are computed and stored in `GameSession.relationships["npc:X"].tierId` / `intimacyLevelId`.
 - Per‑world relationship schemas live in `GameWorld.meta`:
@@ -291,4 +294,3 @@ Update docs so world authors and tool developers understand how world schemas ar
    - What happens when schemas are invalid (validation errors).
    - How to safely evolve schemas over time.
 3. Cross‑link this task from Task 07 (preview API) and Task 08 (social metrics) so future work on metrics and relationships is aware of world‑aware normalization and schema validation.
-

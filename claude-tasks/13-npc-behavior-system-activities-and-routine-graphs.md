@@ -10,10 +10,13 @@ This task designs the core **NPC behavior system** for PixSim7, building on:
 - `claude-tasks/09-intimacy-and-scene-generation-prompts.md`
 - `claude-tasks/14-unified-mood-and-brain-integration.md`
 
+> **Status Note (2025-12-02)**  
+> The relationship system is now fully stat-based. Any references in this task to `GameSession.relationships` should be interpreted as stat-backed relationship state (i.e., `GameSession.stats["relationships"]`) in the current architecture. See Tasks 107, 111, and 112 for details.
+
 Current state:
 
 - Relationships, intimacy, mood, and generation are defined and partially integrated.
-- Worlds and sessions already use JSON-based `meta`, `flags`, and `relationships` (see `docs/RELATIONSHIPS_AND_ARCS.md`).
+- Worlds and sessions already use JSON-based `meta`, `flags`, and stat-backed relationships (see `docs/RELATIONSHIPS_AND_ARCS.md`).
 - There is no unified, data-driven **daily routine + activity selection system** for NPCs.
 
 **Goal:** introduce a **graph-based, preference-driven NPC behavior system** that:
@@ -564,4 +567,3 @@ By the end of Task 13:
 - The system:
   - Respects PixSim7’s JSON-only schema conventions.
   - Keeps scenes world-agnostic and leverages world/NPC meta and session state for concrete bindings.
-

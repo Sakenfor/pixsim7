@@ -1,5 +1,8 @@
 **Task: Intimacy-Aware Generation Nodes & Prompt Context (Multi‑Phase)**
 
+> **Status Note (2025-12-02)**  
+> The relationship system is now fully stat-based. Any references in this file to `GameSession.relationships[...]` should be read as `GameSession.stats["relationships"][...]`. See Tasks 107, 111, and 112 for the current architecture.
+
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document**, not the primary specification.
 > - Read these first for authoritative behavior and data shapes:  
@@ -89,4 +92,3 @@ All 10 phases have a reference implementation in place. This section summarizes 
   - `packages/game/engine/src/relationships/socialContext.ts`  
   - `packages/game/engine/src/generation/requestBuilder.ts`  
   - `packages/game/engine/src/generation/validator.ts`
-
