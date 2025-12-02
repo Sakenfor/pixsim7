@@ -21,6 +21,9 @@ def compute_relationship_tier(
     Returns:
         The tier ID (e.g., "friend", "lover") or None if no match
     """
+    # Clamp affinity to valid range (0-100) to prevent out-of-bounds values
+    affinity = max(0.0, min(100.0, float(affinity)))
+
     if not relationship_schemas or schema_key not in relationship_schemas:
         # Fallback to hardcoded defaults if no schema
         return _default_relationship_tier(affinity)
@@ -81,10 +84,11 @@ def compute_intimacy_level(
     if not isinstance(levels, list):
         return _default_intimacy_level(relationship_values)
 
-    affinity = relationship_values.get("affinity", 0)
-    trust = relationship_values.get("trust", 0)
-    chemistry = relationship_values.get("chemistry", 0)
-    tension = relationship_values.get("tension", 0)
+    # Clamp all values to valid range (0-100) to prevent out-of-bounds values
+    affinity = max(0.0, min(100.0, float(relationship_values.get("affinity", 0))))
+    trust = max(0.0, min(100.0, float(relationship_values.get("trust", 0))))
+    chemistry = max(0.0, min(100.0, float(relationship_values.get("chemistry", 0))))
+    tension = max(0.0, min(100.0, float(relationship_values.get("tension", 0))))
 
     # Check levels from most intimate to least (assuming they're ordered)
     matched_level = None

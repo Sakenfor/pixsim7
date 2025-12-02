@@ -5,7 +5,7 @@ import json
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,51 @@ class GameSessionService:
             logger.warning(
                 f"Redis cache invalidation failed for session {session_id}: {e}",
                 extra={"session_id": session_id, "operation": "cache_invalidate"}
+            )
+            pass
+
+    async def _cleanup_old_events(self, session_id: int, keep_last_n: int = 1000) -> None:
+        """
+        Keep only the last N events for a session to prevent unbounded growth.
+
+        This is called after creating new events to maintain a rolling window
+        of events while preventing database bloat.
+
+        Args:
+            session_id: The session to clean up events for
+            keep_last_n: Number of most recent events to keep (default: 1000)
+        """
+        try:
+            # Get the threshold timestamp (timestamp of the Nth most recent event)
+            result = await self.db.execute(
+                select(GameSessionEvent.ts)
+                .where(GameSessionEvent.session_id == session_id)
+                .order_by(GameSessionEvent.ts.desc())
+                .offset(keep_last_n)
+                .limit(1)
+            )
+            threshold_ts = result.scalar_one_or_none()
+
+            # Delete events older than the threshold
+            if threshold_ts:
+                delete_result = await self.db.execute(
+                    delete(GameSessionEvent)
+                    .where(
+                        GameSessionEvent.session_id == session_id,
+                        GameSessionEvent.ts < threshold_ts
+                    )
+                )
+                deleted_count = delete_result.rowcount
+                if deleted_count > 0:
+                    logger.info(
+                        f"Cleaned up {deleted_count} old events for session {session_id}",
+                        extra={"session_id": session_id, "deleted_count": deleted_count}
+                    )
+        except Exception as e:
+            # Log warning but don't fail the operation
+            logger.warning(
+                f"Event cleanup failed for session {session_id}: {e}",
+                extra={"session_id": session_id, "operation": "event_cleanup"}
             )
             pass
 
@@ -200,6 +245,9 @@ class GameSessionService:
         self.db.add(event)
         await self.db.commit()
 
+        # Clean up old events to prevent unbounded growth
+        await self._cleanup_old_events(session.id)
+
         # Only normalize if relationships exist (optimization)
         if session.relationships:
             await self._normalize_session_relationships(session)
@@ -209,8 +257,23 @@ class GameSessionService:
     async def get_session(self, session_id: int) -> Optional[GameSession]:
         """
         Get session without normalization.
-        Normalization only happens on write operations to avoid redundant work.
-        Frontend will use cached normalized values or compute locally as fallback.
+
+        IMPORTANT: This returns raw relationship data without computed
+        tierId/intimacyLevelId fields. This optimization avoids redundant
+        database queries when the client doesn't need fresh computed values.
+
+        Normalization only happens on write operations (create_session,
+        advance_session, update_session) to ensure consistency when
+        relationships are modified.
+
+        Clients consuming this data should either:
+        1. Use cached values from previous POST/PATCH responses (recommended)
+        2. Compute tiers/intimacy locally using world schemas
+        3. Call update_session with an empty relationships patch to trigger
+           server-side normalization and caching
+
+        This design reduces database load for read-heavy workloads while
+        maintaining correctness for write operations.
         """
         session = await self.db.get(GameSession, session_id)
         return session
@@ -241,6 +304,9 @@ class GameSessionService:
 
         await self.db.commit()
         await self.db.refresh(session)
+
+        # Clean up old events to prevent unbounded growth
+        await self._cleanup_old_events(session.id)
 
         # Only normalize if relationships exist (optimization)
         if session.relationships:

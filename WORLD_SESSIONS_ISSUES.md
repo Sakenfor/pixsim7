@@ -214,6 +214,8 @@ return None
 
 ### Issue #5: Unbounded Session Events Table Growth
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 **Lines**: 161-168, 199-206
 
@@ -495,6 +497,8 @@ async def update_session(
 ---
 
 ### Issue #10: API Inconsistency - GET vs POST/PATCH Normalization
+
+**Status**: ✅ **FIXED**
 
 **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 **Lines**: 175-182
@@ -847,6 +851,8 @@ useEffect(() => {
 ---
 
 ### Issue #15: No Input Validation for Affinity Ranges
+
+**Status**: ✅ **FIXED**
 
 **File**: `pixsim7/backend/main/domain/narrative/relationships.py`
 **Lines**: 8-42
