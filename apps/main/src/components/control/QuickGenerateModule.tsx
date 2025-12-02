@@ -87,7 +87,8 @@ export function QuickGenerateModule() {
   }
 
   const maxChars = resolvePromptLimit(providerId);
-  const canGenerate = operationType === 'text_to_video'
+  const isTextOnlyOperation = operationType === 'text_to_video' || operationType === 'text_to_image';
+  const canGenerate = isTextOnlyOperation
     ? prompt.trim().length > 0
     : true; // Other operations may not strictly require prompt
 
@@ -144,13 +145,14 @@ export function QuickGenerateModule() {
       return transitionQueue.map(q => q.asset);
     }
 
-    // For image_to_video or video_extend, prefer queue first, then active asset
+    // For image_to_video, image_to_image, or video_extend, prefer queue first, then active asset
     if (mainQueue.length > 0) {
       return [mainQueue[0].asset];
     }
 
     if (lastSelectedAsset &&
         ((operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||
+         (operationType === 'image_to_image' && lastSelectedAsset.type === 'image') ||
          (operationType === 'video_extend' && lastSelectedAsset.type === 'video'))) {
       // Convert SelectedAsset to AssetSummary-like shape
       return [{
@@ -168,7 +170,10 @@ export function QuickGenerateModule() {
   };
 
   const displayAssets = getDisplayAssets();
-  const showAssets = operationType !== 'text_to_video' && operationType !== 'fusion';
+  // Operations that need asset display (not text-only operations)
+  const showAssets = !isTextOnlyOperation && operationType !== 'fusion';
+  // Operations where we use side-by-side layout (asset + prompt)
+  const isSingleAssetOperation = operationType === 'image_to_video' || operationType === 'image_to_image' || operationType === 'video_extend';
 
   // Reset selected transition when assets change to avoid out-of-bounds
   useEffect(() => {
@@ -190,8 +195,10 @@ export function QuickGenerateModule() {
             disabled={generating}
             className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 flex-1"
           >
-            <option value="text_to_video">Text to Video</option>
-            <option value="image_to_video">Image to Video</option>
+            <option value="text_to_image">Text → Image</option>
+            <option value="image_to_image">Image → Image</option>
+            <option value="text_to_video">Text → Video</option>
+            <option value="image_to_video">Image → Video</option>
             <option value="video_extend">Video Extend</option>
             <option value="video_transition">Video Transition</option>
             <option value="fusion">Fusion</option>
@@ -234,160 +241,176 @@ export function QuickGenerateModule() {
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col gap-3">
-        {/* Visual asset display - adaptive based on operation type */}
-        {showAssets && (
-          <div className="flex-shrink-0">
-            {operationType === 'video_transition' ? (
-              // Transition mode: show images horizontally with transition prompts between them
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-                  <ThemedIcon name="shuffle" size={14} variant="default" />
-                  <span className="font-medium">Transition Sequence ({transitionQueue.length} images)</span>
-                  {transitionQueue.length > 0 && (
-                    <button
-                      onClick={clearTransitionQueue}
-                      className="ml-auto px-2 py-1 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                      disabled={generating}
-                    >
-                      Clear All
-                    </button>
+        {/* Layout: Side-by-side for asset operations, full-width for text-only */}
+        {operationType === 'video_transition' ? (
+          // Transition mode: horizontal assets with prompt on right
+          <div className="flex gap-3 flex-1 min-h-0">
+            {/* Left: Asset sequence */}
+            <div className="flex-shrink-0 flex flex-col gap-2 min-w-0">
+              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                <ThemedIcon name="shuffle" size={14} variant="default" />
+                <span className="font-medium">Sequence ({transitionQueue.length})</span>
+                {transitionQueue.length > 0 && (
+                  <button
+                    onClick={clearTransitionQueue}
+                    className="ml-auto px-2 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    disabled={generating}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {displayAssets.length > 0 ? (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {transitionQueue.map((queueItem, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <div className="flex-shrink-0 w-20">
+                        <CompactAssetCard
+                          asset={queueItem.asset}
+                          label={`${idx + 1}`}
+                          showRemoveButton
+                          onRemove={() => removeFromQueue(queueItem.asset.id, 'transition')}
+                          lockedTimestamp={queueItem.lockedTimestamp}
+                          onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'transition')}
+                        />
+                      </div>
+                      {idx < displayAssets.length - 1 && (
+                        <button
+                          onClick={() => setSelectedTransitionIndex(idx)}
+                          className={clsx(
+                            'flex-shrink-0 p-1.5 rounded transition-colors',
+                            selectedTransitionIndex === idx
+                              ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500'
+                              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                          )}
+                          title={`Transition ${idx + 1} → ${idx + 2}`}
+                        >
+                          <ThemedIcon name="arrowRight" size={14} variant="default" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                  Add images from gallery
+                </div>
+              )}
+            </div>
+
+            {/* Right: Prompt for selected transition */}
+            <div className="flex-1 flex flex-col gap-2 min-w-0">
+              {displayAssets.length > 1 ? (
+                <>
+                  <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+                    Transition {selectedTransitionIndex + 1} → {selectedTransitionIndex + 2}
+                  </label>
+                  <textarea
+                    value={prompts[selectedTransitionIndex] || ''}
+                    onChange={(e) => {
+                      const newPrompts = [...prompts];
+                      newPrompts[selectedTransitionIndex] = e.target.value;
+                      setPrompts(newPrompts);
+                    }}
+                    placeholder={`Describe how to transition from image ${selectedTransitionIndex + 1} to image ${selectedTransitionIndex + 2}...`}
+                    disabled={generating}
+                    className="flex-1 min-h-[80px] px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none"
+                  />
+                </>
+              ) : displayAssets.length === 1 ? (
+                <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                  Add one more image to create a transition
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
+                  Add images to define transitions
+                </div>
+              )}
+            </div>
+          </div>
+        ) : isSingleAssetOperation ? (
+          // Single asset mode: side-by-side (asset left, prompt right)
+          <div className="flex gap-3 flex-1 min-h-0">
+            {/* Left: Asset */}
+            <div className="flex-shrink-0 flex flex-col gap-2 w-40">
+              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                <ThemedIcon
+                  name={operationType === 'video_extend' ? 'video' : 'image'}
+                  size={14}
+                  variant="default"
+                />
+                <span className="font-medium">
+                  {operationType === 'image_to_video' ? 'Source' : operationType === 'image_to_image' ? 'Input' : 'Video'}
+                </span>
+              </div>
+
+              {displayAssets.length > 0 ? (
+                <div className="space-y-2">
+                  <CompactAssetCard
+                    asset={displayAssets[0]}
+                    showRemoveButton={mainQueue.length > 0}
+                    onRemove={() => mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')}
+                    lockedTimestamp={mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined}
+                    onLockTimestamp={
+                      mainQueue.length > 0
+                        ? (timestamp) => updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
+                        : undefined
+                    }
+                  />
+                  {mainQueue.length > 1 && (
+                    <div className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded text-center">
+                      +{mainQueue.length - 1} queued
+                    </div>
                   )}
                 </div>
-
-                {displayAssets.length > 0 ? (
-                  <div className="space-y-3">
-                    {/* Horizontal asset display with transition arrows */}
-                    <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                      {transitionQueue.map((queueItem, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          {/* Asset card */}
-                          <div className="flex-shrink-0 w-24">
-                            <CompactAssetCard
-                              asset={queueItem.asset}
-                              label={`${idx + 1}`}
-                              showRemoveButton
-                              onRemove={() => removeFromQueue(queueItem.asset.id, 'transition')}
-                              lockedTimestamp={queueItem.lockedTimestamp}
-                              onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'transition')}
-                            />
-                          </div>
-
-                          {/* Arrow button for transition between this image and next */}
-                          {idx < displayAssets.length - 1 && (
-                            <button
-                              onClick={() => setSelectedTransitionIndex(idx)}
-                              className={clsx(
-                                'flex-shrink-0 p-2 rounded transition-colors',
-                                selectedTransitionIndex === idx
-                                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                              )}
-                              title={`Transition ${idx + 1} → ${idx + 2}`}
-                            >
-                              <ThemedIcon name="arrowRight" size={16} variant="default" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Prompt input for selected transition segment */}
-                    {displayAssets.length > 1 && (
-                      <div className="flex flex-col gap-1 p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-neutral-200 dark:border-neutral-700">
-                        <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
-                          Transition {selectedTransitionIndex + 1} → {selectedTransitionIndex + 2}
-                        </label>
-                        <input
-                          type="text"
-                          value={prompts[selectedTransitionIndex] || ''}
-                          onChange={(e) => {
-                            const newPrompts = [...prompts];
-                            newPrompts[selectedTransitionIndex] = e.target.value;
-                            setPrompts(newPrompts);
-                          }}
-                          placeholder={`Describe how to transition from image ${selectedTransitionIndex + 1} to image ${selectedTransitionIndex + 2}...`}
-                          disabled={generating}
-                          className="px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-                        />
-                        <div className="text-[10px] text-neutral-500 italic mt-1">
-                          💡 Describe how the video should smoothly blend from one image to the next.
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Helper text */}
-                    {displayAssets.length === 1 && (
-                      <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                        Add at least one more image to create transitions.
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-neutral-500 italic p-4 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                    No images queued for transition. Use "Add to Transition" from the gallery to add images.
-                  </div>
-                )}
-              </div>
-            ) : (
-              // Single asset mode (image_to_video, video_extend)
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-                  <ThemedIcon
-                    name={operationType === 'image_to_video' ? 'image' : 'video'}
-                    size={14}
-                    variant="default"
-                  />
-                  <span className="font-medium">
-                    {operationType === 'image_to_video' ? 'Source Image' : 'Source Video'}
-                  </span>
+              ) : (
+                <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700 text-center">
+                  {operationType === 'video_extend' ? 'Select video' : 'Select image'}
                 </div>
+              )}
+            </div>
 
-                {displayAssets.length > 0 ? (
-                  <div className="flex gap-2 items-center">
-                    <div className="w-48">
-                      <CompactAssetCard
-                        asset={displayAssets[0]}
-                        showRemoveButton={mainQueue.length > 0}
-                        onRemove={() => mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')}
-                        lockedTimestamp={mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined}
-                        onLockTimestamp={
-                          mainQueue.length > 0
-                            ? (timestamp) => updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
-                            : undefined
-                        }
-                      />
-                    </div>
-
-                    {/* Queue indicator if more items */}
-                    {mainQueue.length > 1 && (
-                      <div className="text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-1 rounded">
-                        +{mainQueue.length - 1} more in queue
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-neutral-500 italic p-4 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                    No {operationType === 'image_to_video' ? 'image' : 'video'} selected.
-                    {operationType === 'image_to_video'
-                      ? ' Click "Image to Video" on a gallery image, or paste an image URL in settings below.'
-                      : ' Click "Video Extend" on a gallery video, or paste a video URL in settings below.'}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Right: Prompt */}
+            <div className="flex-1 flex flex-col gap-2 min-w-0">
+              <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">Prompt</label>
+              <PromptInput
+                value={prompt}
+                onChange={setPrompt}
+                maxChars={maxChars}
+                disabled={generating}
+                variant="compact"
+                placeholder={
+                  operationType === 'image_to_video'
+                    ? 'Describe the motion and action...'
+                    : operationType === 'image_to_image'
+                    ? 'Describe the transformation...'
+                    : 'Describe how to continue the video...'
+                }
+                className="flex-1"
+              />
+            </div>
           </div>
-        )}
-
-        {/* Prompt input - always visible for non-transition modes */}
-        {operationType !== 'video_transition' && (
-          <div className="flex-shrink-0">
+        ) : (
+          // Text-only mode (text_to_image, text_to_video, fusion): full-width prompt
+          <div className="flex-1 flex flex-col gap-2 min-h-0">
+            <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+              {operationType === 'text_to_image' ? 'Describe the image' : operationType === 'text_to_video' ? 'Describe the video' : 'Fusion prompt'}
+            </label>
             <PromptInput
               value={prompt}
               onChange={setPrompt}
               maxChars={maxChars}
               disabled={generating}
               variant="compact"
-              placeholder={`Describe what you want to generate (${operationType})…`}
+              placeholder={
+                operationType === 'text_to_image'
+                  ? 'Describe the image you want to create...'
+                  : operationType === 'text_to_video'
+                  ? 'Describe the video you want to create...'
+                  : 'Describe the fusion...'
+              }
+              className="flex-1"
             />
           </div>
         )}

@@ -39,7 +39,7 @@ export interface ControlCenterState {
   floatingSize: { width: number; height: number }; // size when floating
   activeModule: ControlModule;
   enabledModules: Record<string, boolean>; // module preferences
-  operationType: 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
+  operationType: 'text_to_image' | 'image_to_image' | 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
   prompt: string;
   recentPrompts: string[];
   providerId?: string;      // selected provider

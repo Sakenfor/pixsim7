@@ -58,11 +58,52 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   const trimmedPrompt = prompt.trim();
 
   // Operation-specific validation with context-aware messages
-  if (operationType === 'text_to_video' && !trimmedPrompt) {
+  if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {
       error: 'Please enter a prompt describing what you want to generate.',
       finalPrompt: trimmedPrompt,
     };
+  }
+
+  if (operationType === 'image_to_image') {
+    // Try auto-recovery: use queued asset or active asset if available
+    let imageUrl = dynamicParams.image_url;
+
+    if (!imageUrl && mainQueueFirst?.asset.media_type === 'image') {
+      imageUrl = mainQueueFirst.asset.remote_url;
+      if (imageUrl) {
+        context.dynamicParams.image_url = imageUrl;
+      }
+    }
+
+    if (!imageUrl && activeAsset?.type === 'image') {
+      imageUrl = activeAsset.url;
+      if (imageUrl) {
+        context.dynamicParams.image_url = imageUrl;
+      }
+    }
+
+    // Still no URL? Provide context-aware error
+    if (!imageUrl) {
+      if (mainQueueFirst?.asset.media_type === 'image' && !mainQueueFirst.asset.remote_url) {
+        return {
+          error: 'The queued image is local-only and has no cloud URL. Upload it to the provider first, or select a different image.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
+      if (activeAsset?.type === 'image') {
+        return {
+          error: 'The selected image has no usable URL. Try selecting a gallery image that has been uploaded to the provider.',
+          finalPrompt: trimmedPrompt,
+        };
+      }
+
+      return {
+        error: 'No image selected. Select an image from the gallery to transform.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
   }
 
   if (operationType === 'image_to_video') {
