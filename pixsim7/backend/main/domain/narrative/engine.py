@@ -17,11 +17,12 @@ from .context import (
     SceneContext
 )
 from .programs import PromptProgram, ConditionExpression
-from .relationships import (
-    compute_relationship_tier,
-    compute_intimacy_level,
-    merge_npc_persona,
-    extract_relationship_values
+from .relationships import merge_npc_persona
+from pixsim7.backend.main.domain.stats import StatEngine
+from pixsim7.backend.main.domain.stats.migration import (
+    migrate_world_meta_to_stats_config,
+    needs_migration as needs_world_migration,
+    get_default_relationship_definition,
 )
 
 
@@ -106,20 +107,52 @@ class NarrativeEngine:
         base_personality = npc_data.get("personality", {})
         effective_persona = merge_npc_persona(base_personality, npc_overrides)
 
-        # Extract relationship values
+        # Get relationship data directly from stats
         relationships_data = session_data.get("relationships", {})
-        affinity, trust, chemistry, tension, rel_flags = extract_relationship_values(
-            relationships_data, npc_id
+        npc_key = f"npc:{npc_id}"
+        rel_data = relationships_data.get(npc_key, {})
+
+        affinity = rel_data.get("affinity", 0)
+        trust = rel_data.get("trust", 0)
+        chemistry = rel_data.get("chemistry", 0)
+        tension = rel_data.get("tension", 0)
+        rel_flags = rel_data.get("flags", {})
+
+        # Get or migrate stats config
+        if needs_world_migration(world_meta):
+            stats_config = migrate_world_meta_to_stats_config(world_meta)
+        elif 'stats_config' in world_meta:
+            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
+        else:
+            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            stats_config = WorldStatsConfig(
+                version=1,
+                definitions={"relationships": get_default_relationship_definition()}
+            )
+
+        # Get relationship definition
+        relationship_definition = stats_config.definitions.get("relationships")
+        if not relationship_definition:
+            relationship_definition = get_default_relationship_definition()
+
+        # Compute tier and intimacy using StatEngine
+        relationship_tier = StatEngine.compute_tier(
+            "affinity",
+            affinity,
+            relationship_definition.tiers
         )
 
-        # Compute tier and intimacy
-        relationship_tier = compute_relationship_tier(affinity, relationship_schemas)
-        intimacy_level = compute_intimacy_level({
+        relationship_values = {
             "affinity": affinity,
             "trust": trust,
             "chemistry": chemistry,
             "tension": tension
-        }, intimacy_schema)
+        }
+        intimacy_level = StatEngine.compute_level(
+            relationship_values,
+            relationship_definition.levels
+        )
 
         # Build context objects
         npc_context = NPCContext(

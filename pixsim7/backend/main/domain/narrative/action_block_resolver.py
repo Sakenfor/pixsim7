@@ -208,19 +208,44 @@ async def _resolve_query_blocks(
     # Compute intimacy level from relationship if not provided
     if not intimacy_level and "relationship" in context:
         rel = context["relationship"]
-        # Reuse existing intimacy computation
-        from pixsim7.backend.main.domain.narrative.relationships import compute_intimacy_level
-        world_meta = context.get("world", {}).get("meta", {})
-        intimacy_schema = world_meta.get("intimacy_schema")
+        # Use StatEngine for intimacy computation
+        from pixsim7.backend.main.domain.stats import StatEngine
+        from pixsim7.backend.main.domain.stats.migration import (
+            migrate_world_meta_to_stats_config,
+            needs_migration as needs_world_migration,
+            get_default_relationship_definition,
+        )
 
-        intimacy_level = compute_intimacy_level(
-            {
-                "affinity": rel.get("affinity", 50.0),
-                "trust": rel.get("trust", 50.0),
-                "chemistry": rel.get("chemistry", 50.0),
-                "tension": rel.get("tension", 0.0)
-            },
-            intimacy_schema
+        world_meta = context.get("world", {}).get("meta", {})
+
+        # Get or migrate stats config
+        if needs_world_migration(world_meta):
+            stats_config = migrate_world_meta_to_stats_config(world_meta)
+        elif 'stats_config' in world_meta:
+            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
+        else:
+            from pixsim7.backend.main.domain.stats import WorldStatsConfig
+            stats_config = WorldStatsConfig(
+                version=1,
+                definitions={"relationships": get_default_relationship_definition()}
+            )
+
+        # Get relationship definition
+        relationship_definition = stats_config.definitions.get("relationships")
+        if not relationship_definition:
+            relationship_definition = get_default_relationship_definition()
+
+        # Compute intimacy level using StatEngine
+        relationship_values = {
+            "affinity": rel.get("affinity", 50.0),
+            "trust": rel.get("trust", 50.0),
+            "chemistry": rel.get("chemistry", 50.0),
+            "tension": rel.get("tension", 0.0)
+        }
+        intimacy_level = StatEngine.compute_level(
+            relationship_values,
+            relationship_definition.levels
         )
 
     # Build ActionSelectionContext
