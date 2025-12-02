@@ -11,6 +11,7 @@
   const STORAGE_KEY_PROVIDER_SESSIONS = 'pixsim7ProviderSessions';
   const STORAGE_KEY_SELECTED_ACCOUNT = 'pixsim7SelectedPresetAccount';
   const STORAGE_KEY_SELECTED_PRESET = 'pixsim7SelectedPreset';
+  const STORAGE_KEY_ACCOUNT_SORT = 'pixsim7AccountSort';
   const SESSION_KEY_PRESERVED_INPUT = 'pxs7_preserved_input';
 
   const BTN_GROUP_CLASS = 'pxs7-group';
@@ -81,7 +82,7 @@
 
     /* Account Button */
     .${BTN_CLASS}--account {
-      max-width: 130px;
+      max-width: 200px;
       overflow: hidden;
     }
     .${BTN_CLASS}--account .name {
@@ -289,6 +290,7 @@
   let selectedAccountId = null;
   let selectedPresetId = null;
   let currentSessionAccountId = null; // Account matching browser session
+  let accountSortBy = 'credits'; // 'credits', 'name', 'recent'
 
   function injectStyle() {
     if (styleInjected) return;
@@ -1207,6 +1209,64 @@
     container.appendChild(grid);
   }
 
+  // Hover preview element (shared across grid)
+  let hoverPreview = null;
+  let hoverTimeout = null;
+
+  function showHoverPreview(imgUrl, anchorEl) {
+    clearTimeout(hoverTimeout);
+    hoverTimeout = setTimeout(() => {
+      if (!hoverPreview) {
+        hoverPreview = document.createElement('div');
+        hoverPreview.style.cssText = `
+          position: fixed;
+          z-index: 2147483647;
+          background: ${COLORS.bg};
+          border: 2px solid ${COLORS.accent};
+          border-radius: 8px;
+          padding: 4px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+          pointer-events: none;
+          max-width: 280px;
+          max-height: 280px;
+        `;
+        document.body.appendChild(hoverPreview);
+      }
+
+      hoverPreview.innerHTML = `<img src="${imgUrl}" style="
+        max-width: 100%;
+        max-height: 260px;
+        border-radius: 4px;
+        display: block;
+      "/>`;
+
+      // Position to the left of the picker panel
+      const rect = anchorEl.getBoundingClientRect();
+      const previewWidth = 280;
+      let x = rect.left - previewWidth - 12;
+      let y = rect.top;
+
+      // If no room on left, show on right
+      if (x < 10) {
+        x = rect.right + 12;
+      }
+
+      // Keep within viewport
+      y = Math.max(10, Math.min(y, window.innerHeight - 290));
+
+      hoverPreview.style.left = `${x}px`;
+      hoverPreview.style.top = `${y}px`;
+      hoverPreview.style.display = 'block';
+    }, 300); // Delay before showing preview
+  }
+
+  function hideHoverPreview() {
+    clearTimeout(hoverTimeout);
+    if (hoverPreview) {
+      hoverPreview.style.display = 'none';
+    }
+  }
+
   function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
     const grid = document.createElement('div');
     grid.style.cssText = `
@@ -1248,10 +1308,13 @@
       thumb.addEventListener('mouseenter', () => {
         thumb.style.borderColor = COLORS.accent;
         thumb.style.transform = 'scale(1.05)';
+        // Show larger preview with full URL
+        showHoverPreview(fullUrl || thumbUrl, thumb);
       });
       thumb.addEventListener('mouseleave', () => {
         thumb.style.borderColor = COLORS.border;
         thumb.style.transform = 'scale(1)';
+        hideHoverPreview();
       });
 
       thumb.addEventListener('click', async () => {
@@ -1317,6 +1380,47 @@
       if (preset) return preset;
     }
     return presetsCache[0] || null;
+  }
+
+  async function loadAccountSort() {
+    try {
+      const stored = await chrome.storage.local.get(STORAGE_KEY_ACCOUNT_SORT);
+      if (stored[STORAGE_KEY_ACCOUNT_SORT]) {
+        accountSortBy = stored[STORAGE_KEY_ACCOUNT_SORT];
+      }
+    } catch (e) {}
+  }
+
+  async function saveAccountSort(sortBy) {
+    accountSortBy = sortBy;
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEY_ACCOUNT_SORT]: sortBy });
+    } catch (e) {}
+  }
+
+  function getSortedAccounts(accounts) {
+    const sorted = [...accounts];
+    switch (accountSortBy) {
+      case 'name':
+        sorted.sort((a, b) => {
+          const nameA = (a.nickname || a.email || '').toLowerCase();
+          const nameB = (b.nickname || b.email || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+        break;
+      case 'recent':
+        sorted.sort((a, b) => {
+          const timeA = a.last_used_at || a.updated_at || 0;
+          const timeB = b.last_used_at || b.updated_at || 0;
+          return new Date(timeB) - new Date(timeA);
+        });
+        break;
+      case 'credits':
+      default:
+        sorted.sort((a, b) => (b.total_credits || 0) - (a.total_credits || 0));
+        break;
+    }
+    return sorted;
   }
 
   async function loadCurrentSessionAccount() {
@@ -1401,6 +1505,20 @@
         }
       }).catch(() => {});
     });
+  }
+
+  // Refresh ad status for a single account (force refresh, ignores cache TTL)
+  function refreshAccountAdStatus(accountId) {
+    sendMessageWithTimeout({
+      action: 'getPixverseStatus',
+      accountId
+    }, 5000).then(res => {
+      if (res?.success && res.data) {
+        adStatusCache.set(accountId, { data: res.data, time: Date.now() });
+        // Update buttons to reflect new data
+        updateAllAccountButtons();
+      }
+    }).catch(() => {});
   }
 
   async function loadPresets() {
@@ -1607,15 +1725,43 @@
       menu.appendChild(document.createElement('div')).className = `${MENU_CLASS}__divider`;
     }
 
-    // All Accounts Section
+    // All Accounts Section with sort & refresh
     const sectionHeader = document.createElement('div');
     sectionHeader.className = `${MENU_CLASS}__section`;
-    sectionHeader.innerHTML = `<span>All Accounts</span>`;
+    sectionHeader.style.cssText = 'display: flex; align-items: center; gap: 4px;';
+    sectionHeader.innerHTML = `<span style="flex:1">Accounts</span>`;
 
+    // Sort buttons
+    const sortOpts = [
+      { id: 'credits', label: '💰', title: 'Sort by credits' },
+      { id: 'name', label: 'A-Z', title: 'Sort by name' },
+      { id: 'recent', label: '🕐', title: 'Sort by recent' }
+    ];
+    sortOpts.forEach(opt => {
+      const sortBtn = document.createElement('button');
+      sortBtn.className = `${MENU_CLASS}__sort`;
+      sortBtn.textContent = opt.label;
+      sortBtn.title = opt.title;
+      sortBtn.style.cssText = `
+        padding: 2px 4px; font-size: 9px; background: transparent;
+        border: 1px solid ${accountSortBy === opt.id ? COLORS.accent : 'transparent'};
+        border-radius: 3px; cursor: pointer; color: ${accountSortBy === opt.id ? COLORS.accent : COLORS.textMuted};
+      `;
+      sortBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await saveAccountSort(opt.id);
+        menu.remove();
+        showAccountMenu(btn, onSelect);
+      });
+      sectionHeader.appendChild(sortBtn);
+    });
+
+    // Refresh button
     const refreshBtn = document.createElement('button');
     refreshBtn.className = `${MENU_CLASS}__refresh`;
     refreshBtn.textContent = '↻';
     refreshBtn.title = 'Refresh';
+    refreshBtn.style.cssText = 'margin-left: 4px;';
     refreshBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       refreshBtn.textContent = '...';
@@ -1627,10 +1773,11 @@
     sectionHeader.appendChild(refreshBtn);
     menu.appendChild(sectionHeader);
 
-    // Account list (excluding current if shown above)
-    const otherAccounts = currentSession
+    // Account list (excluding current if shown above), sorted
+    const filteredAccounts = currentSession
       ? accountsCache.filter(a => a.id !== currentSession.id)
       : accountsCache;
+    const otherAccounts = getSortedAccounts(filteredAccounts);
 
     if (otherAccounts.length === 0 && !currentSession) {
       const empty = document.createElement('div');
@@ -1644,6 +1791,12 @@
           isSelected: selected?.id === account.id
         });
         item.addEventListener('click', async () => {
+          // Refresh ads for current account before switching (in background)
+          const previousAccount = getCurrentAccount();
+          if (previousAccount && previousAccount.id !== account.id) {
+            refreshAccountAdStatus(previousAccount.id);
+          }
+
           await saveSelectedAccount(account.id);
           menu.remove();
           if (onSelect) onSelect(account);
@@ -1733,8 +1886,9 @@
   function renderAdsPill(pillEl, payload) {
     const task = payload?.ad_watch_task;
     if (task && typeof task === 'object') {
-      const progress = task.progress ?? 0;
       const total = task.total_counts ?? 0;
+      // Cap progress at total to avoid showing 3/2
+      const progress = Math.min(task.progress ?? 0, total);
       pillEl.textContent = `Ads ${progress}/${total}`;
       pillEl.title = `Watch-ad task: ${progress}/${total}`;
       if (progress >= total && total > 0) {
@@ -1806,7 +1960,9 @@
       // Get ads from cache
       const cached = adStatusCache.get(account.id);
       const adTask = cached?.data?.ad_watch_task;
-      const adsText = adTask ? `${adTask.progress || 0}/${adTask.total_counts || 0}` : '';
+      const adTotal = adTask?.total_counts || 0;
+      const adProgress = Math.min(adTask?.progress || 0, adTotal);
+      const adsText = adTask ? `${adProgress}/${adTotal}` : '';
 
       btn.innerHTML = `
         <span class="dot ${account.status || 'active'}"></span>
@@ -2014,6 +2170,7 @@
     await Promise.all([
       loadSelectedAccount(),
       loadSelectedPreset(),
+      loadAccountSort(),
       loadCurrentSessionAccount()
     ]);
 
