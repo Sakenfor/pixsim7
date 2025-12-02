@@ -2,14 +2,14 @@
 
 ## Scope
 
-**This doc is for:** Developers working on NPC relationships, story arcs, quest systems, inventory, and life-sim progression. Covers conventions for using `GameSession.flags` and `GameSession.relationships` without adding new database tables.
+**This doc is for:** Developers working on NPC relationships, story arcs, quest systems, inventory, and life-sim progression. Covers conventions for using `GameSession.flags` and `GameSession.stats["relationships"]` without adding new database tables.
 
 > **For Agents**
-> - Backend `GameSession.relationships` and the relationship preview APIs are **authoritative** for tier/intimacy values; TypeScript helpers are fallback for tools only.
-> - Prefer extending `flags` and `relationships` JSON (with namespaced keys) over adding new DB tables/columns for arcs/quests/items.
+> - Backend `GameSession.stats["relationships"]` and the generic stat preview API are **authoritative** for tier/intimacy values; TypeScript helpers are fallback for tools only.
+> - Prefer extending `flags` and stat-backed JSON (with namespaced keys) over adding new DB tables/columns for arcs/quests/items.
 > - When changing relationship logic, inspect and keep in sync:  
->   - `pixsim7/backend/main/domain/narrative/relationships.py`  
->   - `pixsim7/backend/main/services/game/game_session_service.py` (`_normalize_session_relationships`)  
+>   - `pixsim7/backend/main/domain/stats/engine.py`  
+>   - `pixsim7/backend/main/services/game/stat_service.py` / `game_session_service.py`  
 >   - `packages/game/engine/src/relationships/*` and `packages/game/engine/src/session/state.ts`.
 > - Related tasks (roadmap/status, not specs):  
 >   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
@@ -33,9 +33,9 @@ namespaced fields in `flags`, `relationships`, and `meta`.
 
 Relevant pieces:
 - `GameSession.flags: Dict[str, Any>`
-- `GameSession.relationships: Dict[str, Any>`
+- `GameSession.stats["relationships"]: Dict[str, Any>`
 - `GameLocation.meta`, `GameHotspot.meta`, `GameScene.meta`, `GameNPC.personality`
-- `PATCH /game/sessions/{id}` (world_time, flags, relationships)
+- `PATCH /game/sessions/{id}` (world_time, flags, stats)
 
 ---
 
@@ -66,7 +66,7 @@ to an explicit `World` table in the future.
 
 ## 2. Relationships (NPC → Player, NPC → NPC, Player → Player)
 
-`GameSession.relationships` is a free-form JSON field. Use namespaced keys
+`GameSession.stats["relationships"]` is a free-form JSON field. Use namespaced keys
 and/or a "network" subtree to organize relationship graphs.
 
 ### 2.1 NPC → Player
@@ -181,19 +181,18 @@ session structure.
 }
 ```
 
-**Projection for Backward Compatibility**: `GameSession.relationships["npc:{id}"]`
-
-The `relationships` field remains as a **projection** of core relationship metrics for backward compatibility:
-
-```jsonc
-{
-  "relationships": {
-    "npc:123": {
-      "affinity": 72,
-      "trust": 60,
-      "chemistry": 40,
-      "tension": 10,
-      "tierId": "friend",
+**Projection (legacy docs)**: earlier examples referenced `GameSession.relationships["npc:{id}"]`. This should now be understood as `GameSession.stats["relationships"]["npc:{id}"]` in the stat-based system.
+  
+  ```jsonc
+  {
+    "stats": {
+      "relationships": {
+        "npc:123": {
+          "affinity": 72,
+          "trust": 60,
+          "chemistry": 40,
+          "tension": 10,
+          "tierId": "friend",
       "intimacyLevelId": "light_flirt",
       "meta": {
         "last_modified_by": "relationship_core_projection"
@@ -319,4 +318,3 @@ See `claude-tasks/19-npc-ecs-relationship-components-and-plugin-metrics.md` for 
 ## 3. Story Arcs and Quests
 
 … (rest of existing content unchanged) …
-

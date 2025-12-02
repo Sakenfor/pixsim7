@@ -51,7 +51,7 @@ The system is designed to be:
 
 **Schema Location**: `GameWorld.meta.relationship_schemas[schema_key]`
 
-**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/relationship_evaluators.py::evaluate_relationship_tier`
+**Backend Evaluator**: Use the generic stat preview API in `pixsim7/backend/main/api/v1/stat_preview.py` (statDefinitionId = "relationships").
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-tier`
 
@@ -73,7 +73,7 @@ The system is designed to be:
 
 **Schema Location**: `GameWorld.meta.intimacy_schema`
 
-**Backend Evaluator**: `pixsim7/backend/main/domain/metrics/relationship_evaluators.py::evaluate_relationship_intimacy`
+**Backend Evaluator**: Use the generic stat preview API in `pixsim7/backend/main/api/v1/stat_preview.py` (statDefinitionId = "relationships").
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-intimacy`
 
@@ -306,7 +306,7 @@ else:
 **Components**:
 - `types.py`: MetricType enum and MetricEvaluator protocol
 - `registry.py`: Metric evaluator registration (future)
-- `relationship_evaluators.py`: Relationship tier and intimacy evaluators
+- `stat_preview.py`: Generic stat preview API (relationships, skills, reputation, etc.)
 - `mood_evaluators.py`: NPC mood evaluator
 - `reputation_evaluators.py`: Reputation band evaluator
 
@@ -518,7 +518,7 @@ Metrics read from `GameSession` for runtime data.
 
 ### Relationships
 
-**Location**: `GameSession.relationships`
+**Location**: `GameSession.stats["relationships"]`
 
 ```json
 {
@@ -748,7 +748,7 @@ Future validation features:
 - `docs/RELATIONSHIPS_AND_ARCS.md`
 - `packages/game/engine/src/relationships/`
 
-**Integration**: Metrics read from `GameSession.relationships`, compute derived values
+**Integration**: Metrics read from `GameSession.stats["relationships"]`, compute derived values
 
 ### NPC Brain System
 

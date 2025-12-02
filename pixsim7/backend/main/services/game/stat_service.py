@@ -28,7 +28,6 @@ from pixsim7.backend.main.domain.stats import StatEngine, WorldStatsConfig, Stat
 from pixsim7.backend.main.domain.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
-    migrate_session_relationships_to_stats,
 )
 
 
@@ -160,14 +159,6 @@ class StatService:
             session: The game session
             stat_definition_id: Which stat type to normalize (e.g., "relationships", "skills")
         """
-        # Auto-migrate legacy relationships if needed
-        if stat_definition_id == "relationships" and session.relationships and not session.stats.get("relationships"):
-            logger.info(
-                f"Auto-migrating session {session.id} relationships to stats format",
-                extra={"session_id": session.id}
-            )
-            session.stats = migrate_session_relationships_to_stats(session.relationships)
-
         # Get stat data for this definition
         stat_data = session.stats.get(stat_definition_id)
         if not stat_data:
@@ -225,10 +216,6 @@ class StatService:
         Args:
             session: The game session
         """
-        # Auto-migrate if needed
-        if session.relationships and not session.stats.get("relationships"):
-            session.stats = migrate_session_relationships_to_stats(session.relationships)
-
         # Normalize each stat type present in session.stats
         for stat_definition_id in list(session.stats.keys()):
             await self.normalize_session_stats(session, stat_definition_id)

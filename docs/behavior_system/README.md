@@ -352,7 +352,7 @@ All data stored in **existing JSON fields** (no new DB tables):
 | NPC Routine Assignment | `GameNPC.meta.behavior.routineId` |
 | NPC Preferences | `GameNPC.meta.behavior.preferences` |
 | NPC Session State | `GameSession.flags.npcs["npc:{id}"].state` |
-| Relationship Metrics | `GameSession.relationships["npc:{id}"]` |
+| Relationship Metrics | `GameSession.stats["relationships"]["npc:{id}"]` |
 
 ### Key Modules
 

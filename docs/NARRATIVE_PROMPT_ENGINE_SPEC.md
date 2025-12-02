@@ -114,7 +114,7 @@
 
 
 
-&nbsp; // GameSession.relationships\["npc:12"]
+&nbsp; // GameSession.stats\["relationships"]["npc:12"]
 
 &nbsp; {
 
@@ -140,7 +140,7 @@
 
 
 
-&nbsp; - This lives in GameSession.relationships (JSON).
+&nbsp; - This lives in GameSession.stats["relationships"] (JSON).
 
 &nbsp; - Values are floats/ints (0–100 is a convention, not enforced).
 
@@ -424,9 +424,9 @@
 
 &nbsp; - Use:
 
-&nbsp;     - GameSession.relationships for per‑NPC numeric state.
+&nbsp;     - GameSession.stats["relationships"] for per‑NPC numeric state.
 
-&nbsp;     - GameSession.flags and GameSession.relationships.flags for boolean flags.
+&nbsp;     - GameSession.flags and GameSession.stats["relationships"].flags for boolean flags.
 
 &nbsp;     - GameWorld.meta.relationship\_schemas and GameWorld.meta.intimacy\_schema for world‑defined tiers.
 
@@ -537,4 +537,3 @@
 
 
 &nbsp; Keep the code small, focused, and wired to the actual PixSim7 types and JSON conventions, not generic placeholders.
-

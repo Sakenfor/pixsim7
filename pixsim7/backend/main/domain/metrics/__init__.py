@@ -8,10 +8,6 @@ without mutating game state.
 
 from .types import MetricType
 from .registry import MetricRegistry, get_metric_registry
-from .relationship_evaluators import (
-    evaluate_relationship_tier,
-    evaluate_relationship_intimacy,
-)
 from .mood_evaluators import evaluate_npc_mood
 from .reputation_evaluators import evaluate_reputation_band
 
@@ -24,15 +20,6 @@ def _register_default_metrics() -> None:
     API route or service without hard-coding imports.
     """
     registry = get_metric_registry()
-
-    if not registry.is_registered(MetricType.RELATIONSHIP_TIER):
-        registry.register(MetricType.RELATIONSHIP_TIER, evaluate_relationship_tier)
-
-    if not registry.is_registered(MetricType.RELATIONSHIP_INTIMACY):
-        registry.register(
-            MetricType.RELATIONSHIP_INTIMACY,
-            evaluate_relationship_intimacy,
-        )
 
     if not registry.is_registered(MetricType.NPC_MOOD):
         registry.register(MetricType.NPC_MOOD, evaluate_npc_mood)
@@ -48,8 +35,6 @@ __all__ = [
     "MetricType",
     "MetricRegistry",
     "get_metric_registry",
-    "evaluate_relationship_tier",
-    "evaluate_relationship_intimacy",
     "evaluate_npc_mood",
     "evaluate_reputation_band",
 ]

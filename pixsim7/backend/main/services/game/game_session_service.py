@@ -24,11 +24,6 @@ from pixsim7.backend.main.domain.game.models import (
     GameSessionEvent,
     GameWorld,
 )
-from pixsim7.backend.main.domain.narrative.relationships import (
-    extract_relationship_values,
-    compute_relationship_tier,
-    compute_intimacy_level,
-)
 from pixsim7.backend.main.services.game.stat_service import StatService
 
 
@@ -39,54 +34,9 @@ class GameSessionService:
         # Use StatService for generic stat normalization
         self.stat_service = StatService(db, redis)
 
-    async def _get_cached_relationships(self, session_id: int) -> Optional[Dict]:
-        """Retrieve cached relationship computations from Redis."""
-        if not self.redis:
-            return None
-
-        try:
-            cache_key = f"session:{session_id}:relationships"
-            cached = await self.redis.get(cache_key)
-            return json.loads(cached) if cached else None
-        except Exception as e:
-            # Log warning for observability
-            logger.warning(
-                f"Redis cache read failed for session {session_id}: {e}",
-                extra={"session_id": session_id, "operation": "cache_read"}
-            )
-            return None
-
-    async def _cache_relationships(self, session_id: int, relationships: Dict):
-        """Cache relationship computations in Redis with 60s TTL."""
-        if not self.redis:
-            return
-
-        try:
-            cache_key = f"session:{session_id}:relationships"
-            await self.redis.setex(cache_key, 60, json.dumps(relationships))
-        except Exception as e:
-            # Log warning for observability
-            logger.warning(
-                f"Redis cache write failed for session {session_id}: {e}",
-                extra={"session_id": session_id, "operation": "cache_write"}
-            )
-            pass
-
     async def _invalidate_cached_relationships(self, session_id: int):
-        """Invalidate cached relationship data for a session."""
-        if not self.redis:
-            return
-
-        try:
-            cache_key = f"session:{session_id}:relationships"
-            await self.redis.delete(cache_key)
-        except Exception as e:
-            # Log warning for observability
-            logger.warning(
-                f"Redis cache invalidation failed for session {session_id}: {e}",
-                extra={"session_id": session_id, "operation": "cache_invalidate"}
-            )
-            pass
+        """Invalidate cached stat data for a session."""
+        await self.stat_service.invalidate_all_session_stats(session_id)
 
     async def _cleanup_old_events(self, session_id: int, keep_last_n: int = 1000) -> None:
         """
@@ -134,13 +84,7 @@ class GameSessionService:
             pass
 
     async def _normalize_session_relationships(self, session: GameSession) -> None:
-        """
-        DEPRECATED: Legacy method for backwards compatibility.
-
-        Use normalize_session_stats instead. This method delegates to the new
-        stat service which handles relationships as a generic stat type.
-        """
-        # Delegate to new stat service
+        """Normalize relationship stats for a session using the generic stat service."""
         await self.stat_service.normalize_session_stats(session, "relationships")
 
     async def normalize_session_stats(

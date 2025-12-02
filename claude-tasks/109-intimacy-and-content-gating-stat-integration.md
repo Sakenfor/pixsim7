@@ -61,18 +61,47 @@ Out of scope:
 
 **Goal:** Collect all the places where intimacy/content gating uses hardcoded thresholds so later changes are comprehensive, not piecemeal.
 
-**Steps:**
+**Status:** ✅ COMPLETED
 
-- Identify all TS/JS helpers and components that:
-  - Compare affinity/chemistry/trust/tension against hardcoded numbers.
-  - Gate content types (romantic, mature, restricted) based on those thresholds.
-  - Implement “intense/light/deep flirt” categories by raw numbers.
-- Expected files to review (non-exhaustive):
-  - `apps/main/src/lib/intimacy/socialContextDerivation.ts`
-  - `apps/main/src/lib/game/interactions/persuade.ts`
-  - `apps/main/src/lib/game/interactions/sensualize.ts`
-  - Any other intimacy/content gating helpers discovered via `rg "chemistry"`, `rg "affinity"`, etc.
-- Add brief notes (file + function name) to this task file so future phases have a clear checklist.
+### Found Hardcoded Thresholds:
+
+#### 1. `apps/main/src/lib/intimacy/socialContextDerivation.ts`
+
+**Function: `deriveIntimacyBandFromMetrics` (lines 96-124)**
+- Line 108: `chemistry >= 70 && affinity >= 70` → "intense" band
+- Line 113: `chemistry >= 50` → "deep" band
+- Line 118: `chemistry >= 25 || affinity >= 60` → "light" band
+
+**Function: `supportsContentRating` (lines 275-328)**
+- Lines 305-307: Romantic requires `chemistry: 25, affinity: 40`
+- Lines 310-313: Mature requires `chemistry: 50, affinity: 60, intimacyLevel: 'intimate'`
+- Lines 316-319: Restricted requires `chemistry: 70, affinity: 70, intimacyLevel: 'very_intimate'`
+
+#### 2. `apps/main/src/lib/game/interactions/persuade.ts`
+
+**Default Config (lines 175-211)**
+- Line 187: `minAffinityForSeduction: 30`
+- Line 188: `minChemistryForSeduction: 20`
+
+**Config Fields (lines 270-285)**
+- Configurable thresholds but still hardcoded as defaults
+
+**Runtime Checks (lines 558-589)**
+- Lines 570-574: Affinity check against `config.minAffinityForSeduction`
+- Lines 576-580: Chemistry check against `config.minChemistryForSeduction`
+- Lines 583-589: Intimacy level check using `isIntimacyLevelAppropriate`
+
+**Function: `isIntimacyLevelAppropriate` (lines 101-106)**
+- Hardcoded list of appropriate levels for seduction
+
+#### 3. `apps/main/src/lib/game/interactions/sensualize.ts`
+
+**Default Config (line 56)**
+- `minimumAffinity: 50`
+
+**Runtime Checks**
+- Lines 150-154: Affinity check against `config.minimumAffinity`
+- Line 223: Availability check `affinity >= 50` (hardcoded)
 
 ---
 

@@ -284,7 +284,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - NPCs have schedules (`NPCSchedule`) for presence queries
 - NPC expressions (`NpcExpression`) are for UI surfaces only, not full-screen video
 - Identity clips live in `GameNPC.meta.identity`, not in expressions
-- Relationships are per-session, stored in `GameSession.relationships`
+- Relationships are per-session, stored in `GameSession.stats["relationships"]`
 
 ---
 

@@ -601,7 +601,7 @@ This document provides a **single source of truth** for what's been completed an
 - Phase 6: TS fallback logic deprecated but still present for backward compatibility
 
 **Key Files:**
-- `pixsim7/backend/main/api/v1/game_relationship_preview.py`
+- `pixsim7/backend/main/api/v1/stat_preview.py`
 - `packages/game/engine/src/relationships/preview.ts`
 - `docs/SOCIAL_METRICS.md`
 

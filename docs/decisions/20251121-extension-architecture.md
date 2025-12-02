@@ -87,7 +87,7 @@ PixSim7 implements a **unified extension architecture** with multiple extension 
    - Example: Custom node types for specific game mechanics
 
 7. **Game/World JSON Extensions**
-   - Location: `GameSession.flags`, `GameSession.relationships`, world `meta`
+   - Location: `GameSession.flags`, `GameSession.stats`, world `meta`
    - Purpose: Game rules, quest state, relationships without new DB tables
    - Validated against JSON schemas
    - Example: Custom flags, relationship types, game state

@@ -10,8 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class MetricType(str, Enum):
     """Supported metric types for preview/evaluation."""
 
-    RELATIONSHIP_TIER = "relationship_tier"
-    RELATIONSHIP_INTIMACY = "relationship_intimacy"
     NPC_MOOD = "npc_mood"
     REPUTATION_BAND = "reputation_band"
 

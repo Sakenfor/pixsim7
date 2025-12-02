@@ -43,7 +43,7 @@ We standardize **JSON state on existing game models** as the primary extension s
      - Quest/arc progress (`flags.quests.*`)
      - Inventory (`flags.inventory.*`)
      - Session-wide plugin or system state (namespaced by `plugin:` or feature ID)
-   - `GameSession.relationships` – JSON keyed by NPC (e.g. `relationships["npc:1"]`), storing:
+   - `GameSession.stats["relationships"]` – JSON keyed by NPC (e.g. `stats["relationships"]["npc:1"]`), storing:
      - Affinity, trust, chemistry, tension.
      - Relationship-specific flags.
 
@@ -117,4 +117,3 @@ Mitigations:
   - AGENTS guidelines for PixSim7 (game/world/scene editor work)
   - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md`
   - `claude-tasks/28-extensible-scoring-and-simulation-config.md`
-

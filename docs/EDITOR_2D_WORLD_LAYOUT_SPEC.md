@@ -283,7 +283,7 @@ Add `pixsim7/backend/main/api/v1/game_stealth.py` (name flexible) with:
     ```
   - Behavior:
     - Perform simple random roll(s) server‑side.
-    - Update `GameSession.flags.stealth` and/or `GameSession.relationships["npc:12"].flags`:
+    - Update `GameSession.flags.stealth` and/or `GameSession.stats["relationships"]["npc:12"].flags`:
       - e.g. set `stealth:stole_from_npc_12` or `stealth:caught_by_npc_12`.
   - Return:
     ```jsonc

@@ -35,7 +35,7 @@ For a high‑level system view, always read `ARCHITECTURE.md` first. For app lay
 | Backend event plugin     | Backend       | `pixsim7/backend/main/infrastructure/events/handlers.py`            | Reacting to domain/game events                  |
 | Frontend UI plugin       | Frontend      | `apps/main/src/lib/plugins/*`, `plugins/`                      | User‑installable UI overlays/tools              |
 | Graph node renderer      | Editor        | `apps/main/src/lib/graph/nodeRendererRegistry.ts` + components | Custom scene/quest node visuals                 |
-| Game/world JSON extension| Game systems  | `GameSession.flags`, `GameSession.relationships`, world `meta` | Game rules, quest state, relationships, config  |
+| Game/world JSON extension| Game systems  | `GameSession.flags`, `GameSession.stats`, world `meta` | Game rules, quest state, relationships, config  |
 
 Later sections go into detail for each.
 
@@ -69,7 +69,7 @@ You need a new HTTP or WebSocket surface, not just an internal behavior change.
 
 Constraints:
 
-- Follow core design: **game systems should prefer JSON on existing models** (e.g. `GameSession.flags`, `GameSession.relationships`) over new tables/columns.
+- Follow core design: **game systems should prefer JSON on existing models** (e.g. `GameSession.flags`, `GameSession.stats`) over new tables/columns.
 - Use domain model plugins for **platform‑level concepts**, not per‑world gameplay flags.
 
 **Use this when:**  
@@ -187,7 +187,7 @@ They should **not**:
 Gameplay systems are designed to be **data‑driven**, storing state in JSON on existing models:
 
 - `GameSession.flags` – quest/arc progress, inventory, events, plugin state.
-- `GameSession.relationships` – NPC affinity/trust/chemistry/tension.
+- `GameSession.stats["relationships"]` – NPC affinity/trust/chemistry/tension.
 - Namespaced keys (e.g. `npc:${id}`, `arc:${id}`, `plugin:${id}`) to avoid clashes.
 
 Examples (see `GAMEPLAY_SYSTEMS.md`):
@@ -251,4 +251,3 @@ If a proposed change doesn’t fit cleanly into one of the categories above, it 
 - `claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md` – backend plugin capabilities roadmap.
 - `claude-tasks/27-registry-unification-and-builtin-dogfooding.md` – registry dogfooding and ECS behaviors.
 - `claude-tasks/28-extensible-scoring-and-simulation-config.md` – pluggable scoring and simulation config.
-

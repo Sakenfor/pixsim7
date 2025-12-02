@@ -28,7 +28,7 @@ The intimacy-aware generation system integrates relationship/intimacy state from
 ## Architecture
 
 ```
-GameSession.relationships["npc:X"]
+GameSession.stats["relationships"]["npc:X"]
   ├─ affinity, trust, chemistry, tension (numeric metrics)
   ├─ tierId (backend-computed: stranger, friend, close_friend, lover)
   └─ intimacyLevelId (backend-computed: light_flirt, intimate, very_intimate)
@@ -127,7 +127,7 @@ Default mapping (from `packages/game/engine/src/relationships/computation.ts`):
 | close_friend  | 60-79          |
 | lover         | ≥ 80           |
 
-**Note**: Backend is authoritative. Frontends should use `tierId` and `intimacyLevelId` from `GameSession.relationships["npc:X"]` when available.
+**Note**: Backend is authoritative. Frontends should use `tierId` and `intimacyLevelId` from `GameSession.stats["relationships"]["npc:X"]` when available.
 
 ---
 

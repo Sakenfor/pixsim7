@@ -205,7 +205,7 @@ The `PixSim7Core` class provides:
 
 - `GameNPC.personality` (already exists)
 - `GameSession.flags` (already exists)
-- `GameSession.relationships` (already exists)
+- `GameSession.stats["relationships"]`
 
 This architecture is **schema-stable** and requires no migrations.
 
