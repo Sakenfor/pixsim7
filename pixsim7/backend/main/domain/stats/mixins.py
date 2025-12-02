@@ -5,7 +5,7 @@ Provides reusable stats field and utilities for any model that needs stat tracki
 """
 
 from typing import Dict, Any
-from sqlmodel import Field, Column
+from sqlmodel import Field
 from sqlalchemy import JSON
 
 
@@ -43,7 +43,7 @@ class HasStats:
 
     stats: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON),
+        sa_type=JSON,
         description="Entity stats. Structure: {stat_definition_id: {axis: value, ...}}"
     )
 
@@ -69,13 +69,13 @@ class HasStatsWithMetadata:
 
     stats: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON),
+        sa_type=JSON,
         description="Entity stats. Structure: {stat_definition_id: {axis: value, ...}}"
     )
 
     stats_metadata: Dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON),
+        sa_type=JSON,
         description="Stat modification metadata (sources, expiration, history)"
     )
 
