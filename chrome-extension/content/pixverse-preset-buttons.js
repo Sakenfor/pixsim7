@@ -1476,7 +1476,7 @@
         accountsCache = res.data.filter(a =>
           a.status === 'active' || (a.total_credits && a.total_credits > 0)
         );
-        accountsCache.sort((a, b) => (b.total_credits || 0) - (a.total_credits || 0));
+        // Sorting done at display time via getSortedAccounts()
 
         // Prefetch ad status for all accounts in background
         prefetchAdStatus(accountsCache);
