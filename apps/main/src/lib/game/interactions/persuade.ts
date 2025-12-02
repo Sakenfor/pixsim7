@@ -17,6 +17,7 @@ import type {
   InteractionContext,
   InteractionResult,
 } from './types';
+import { canAttemptSeduction, type IntimacyGatingConfig } from '@/lib/intimacy/intimacyGating';
 
 /**
  * Persuade/Seduce interaction config
@@ -93,16 +94,6 @@ function advanceIntimacyLevel(currentLevel: string | null | undefined): string {
   }
 
   return INTIMACY_LEVELS[currentIndex + 1];
-}
-
-/**
- * Check if intimacy level is high enough for seduction
- */
-function isIntimacyLevelAppropriate(level: string | null | undefined): boolean {
-  if (!level) return false;
-
-  const appropriateLevels = ['light_flirt', 'flirting', 'romantic_interest', 'intimate', 'lovers', 'deep_bond'];
-  return appropriateLevels.includes(level);
 }
 
 /**
@@ -566,26 +557,35 @@ async function executeSeduce(
   const trust = relState.trust ?? 50;
   const intimacyLevel = relState.intimacyLevelId;
 
-  // Check minimum requirements
-  if (affinity < config.minAffinityForSeduction) {
-    const msg = `❌ Affinity too low for seduction (need ${config.minAffinityForSeduction}, have ${affinity})`;
+  // Build gating config from interaction config (for backwards compatibility)
+  const gatingConfig: Partial<IntimacyGatingConfig> = {
+    interactions: {
+      seduction: {
+        minimumAffinity: config.minAffinityForSeduction,
+        minimumChemistry: config.minChemistryForSeduction,
+        // Use default appropriate levels unless consent checks are disabled
+        appropriateLevels: config.consentChecks && config.blockIfInappropriate
+          ? undefined // Use defaults
+          : [], // Empty array = no level restrictions
+      },
+    },
+  };
+
+  // Use shared gating helper
+  const seductionCheck = canAttemptSeduction(
+    {
+      affinity,
+      chemistry,
+      trust,
+      intimacyLevelId: intimacyLevel,
+    },
+    gatingConfig
+  );
+
+  if (!seductionCheck.allowed) {
+    const msg = `❌ ${seductionCheck.reason}`;
     context.onError(msg);
     return { success: false, message: msg };
-  }
-
-  if (chemistry < config.minChemistryForSeduction) {
-    const msg = `❌ Chemistry too low for seduction (need ${config.minChemistryForSeduction}, have ${chemistry})`;
-    context.onError(msg);
-    return { success: false, message: msg };
-  }
-
-  // Consent check: Intimacy level appropriate?
-  if (config.blockIfInappropriate && config.consentChecks) {
-    if (!isIntimacyLevelAppropriate(intimacyLevel)) {
-      const msg = `❌ Intimacy level inappropriate for seduction (current: ${intimacyLevel || 'none'}). Build relationship first.`;
-      context.onError(msg);
-      return { success: false, message: msg };
-    }
   }
 
   // Calculate success chance

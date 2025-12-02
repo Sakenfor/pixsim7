@@ -11,6 +11,14 @@
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@pixsim7/shared.types';
 import type { SimulatedRelationshipState } from './gateChecking';
+import {
+  deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
+  supportsContentRating as checkContentRatingWithHelper,
+  getContentRatingRequirements,
+  type IntimacyBand,
+  type ContentRating,
+  type IntimacyGatingConfig,
+} from './intimacyGating';
 
 /**
  * Intimacy level to band mapping
@@ -90,8 +98,11 @@ function clampContentRating(
 /**
  * Derive intimacy band from relationship metrics
  *
- * Uses chemistry as primary indicator, with affinity as secondary.
- * This mirrors the runtime logic but is simplified for preview purposes.
+ * Now uses the shared intimacy gating helper for config-driven thresholds.
+ * Falls back to defaults that match the original hardcoded behavior.
+ *
+ * @param metrics - Relationship metrics (affinity, chemistry, etc.)
+ * @param config - Optional gating config override
  */
 function deriveIntimacyBandFromMetrics(
   metrics: {
@@ -99,28 +110,11 @@ function deriveIntimacyBandFromMetrics(
     trust?: number;
     chemistry?: number;
     tension?: number;
-  }
+  },
+  config?: Partial<IntimacyGatingConfig>
 ): 'none' | 'light' | 'deep' | 'intense' {
-  const chemistry = metrics.chemistry || 0;
-  const affinity = metrics.affinity || 0;
-
-  // Intense: High chemistry + high affinity
-  if (chemistry >= 70 && affinity >= 70) {
-    return 'intense';
-  }
-
-  // Deep: Moderate to high chemistry
-  if (chemistry >= 50) {
-    return 'deep';
-  }
-
-  // Light: Some chemistry or high affinity
-  if (chemistry >= 25 || affinity >= 60) {
-    return 'light';
-  }
-
-  // None: Low metrics
-  return 'none';
+  // Use shared helper with default config (matches original behavior)
+  return deriveIntimacyBandFromGatingHelper(metrics, config);
 }
 
 /**
@@ -270,11 +264,17 @@ export function getEffectiveContentRating(
 /**
  * Check if a relationship state supports a given content rating
  *
+ * Now uses the shared intimacy gating helper for config-driven checks.
  * Useful for validation and warnings in the UI.
+ *
+ * @param state - Simulated relationship state
+ * @param rating - Content rating to check
+ * @param config - Optional gating config override
  */
 export function supportsContentRating(
   state: SimulatedRelationshipState,
-  rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
+  rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
+  config?: Partial<IntimacyGatingConfig>
 ): {
   supported: boolean;
   reason?: string;
@@ -282,47 +282,19 @@ export function supportsContentRating(
     chemistry?: number;
     affinity?: number;
     intimacyLevel?: string;
+    intimacyBand?: IntimacyBand;
   };
 } {
-  const derivedBand = state.intimacyLevel
-    ? INTIMACY_BAND_MAP[state.intimacyLevel] || deriveIntimacyBandFromMetrics(state.metrics)
-    : deriveIntimacyBandFromMetrics(state.metrics);
-
-  const naturalRating = deriveContentRating(derivedBand);
-  const naturalIndex = RATING_HIERARCHY.indexOf(naturalRating);
-  const requestedIndex = RATING_HIERARCHY.indexOf(rating);
-
-  if (requestedIndex <= naturalIndex) {
-    return { supported: true };
-  }
-
-  // Not supported - provide guidance
-  const suggestedMinimums: any = {};
-  let reason = '';
-
-  switch (rating) {
-    case 'romantic':
-      suggestedMinimums.chemistry = 25;
-      suggestedMinimums.affinity = 40;
-      reason = 'Romantic content requires at least light intimacy (chemistry 25+ or affinity 60+)';
-      break;
-    case 'mature_implied':
-      suggestedMinimums.chemistry = 50;
-      suggestedMinimums.affinity = 60;
-      suggestedMinimums.intimacyLevel = 'intimate';
-      reason = 'Mature content requires deep intimacy (chemistry 50+, affinity 60+)';
-      break;
-    case 'restricted':
-      suggestedMinimums.chemistry = 70;
-      suggestedMinimums.affinity = 70;
-      suggestedMinimums.intimacyLevel = 'very_intimate';
-      reason = 'Restricted content requires intense intimacy (chemistry 70+, affinity 70+)';
-      break;
-  }
-
-  return {
-    supported: false,
-    reason,
-    suggestedMinimums,
+  // Build relationship state for the helper
+  const relState = {
+    affinity: state.metrics.affinity,
+    trust: state.metrics.trust,
+    chemistry: state.metrics.chemistry,
+    tension: state.metrics.tension,
+    intimacyLevelId: state.intimacyLevel,
+    relationshipTierId: state.tier,
   };
+
+  // Use shared helper
+  return checkContentRatingWithHelper(relState, rating, config);
 }

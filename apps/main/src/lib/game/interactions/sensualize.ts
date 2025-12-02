@@ -4,6 +4,7 @@ import type {
   InteractionContext,
   InteractionResult,
 } from './types';
+import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@/lib/intimacy/intimacyGating';
 
 /**
  * Sensual Touch interaction config
@@ -141,16 +142,34 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
       return { success: false, message: 'No active game session' };
     }
 
-    // Check relationship level
+    // Get relationship state
     const relationships = gameSession.relationships || {};
     const npcKey = `npc:${npcId}`;
     const npcRelationship = relationships[npcKey];
     const currentAffinity = npcRelationship?.affinity || npcRelationship?.score || 0;
+    const intimacyLevel = npcRelationship?.intimacyLevelId;
 
-    if (currentAffinity < config.minimumAffinity) {
-      const message = `Your relationship with this NPC isn't close enough yet. (${currentAffinity}/${config.minimumAffinity})`;
-      context.onError(message);
-      return { success: false, message };
+    // Build gating config from interaction config (for backwards compatibility)
+    const gatingConfig: Partial<IntimacyGatingConfig> = {
+      interactions: {
+        sensualTouch: {
+          minimumAffinity: config.minimumAffinity,
+        },
+      },
+    };
+
+    // Use shared gating helper
+    const touchCheck = canAttemptSensualTouch(
+      {
+        affinity: currentAffinity,
+        intimacyLevelId: intimacyLevel,
+      },
+      gatingConfig
+    );
+
+    if (!touchCheck.allowed) {
+      context.onError(touchCheck.reason!);
+      return { success: false, message: touchCheck.reason! };
     }
 
     try {
@@ -218,8 +237,17 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
     const npcRelationship = relationships[npcKey];
     const flags = npcRelationship?.flags || {};
 
-    // Available if consent flag is set OR relationship is very high
-    return flags['romance:consented'] === true ||
-           (npcRelationship?.affinity || npcRelationship?.score || 0) >= 50;
+    // Available if consent flag is set
+    if (flags['romance:consented'] === true) {
+      return true;
+    }
+
+    // Or check if relationship meets gating requirements
+    const touchCheck = canAttemptSensualTouch({
+      affinity: npcRelationship?.affinity || npcRelationship?.score || 0,
+      intimacyLevelId: npcRelationship?.intimacyLevelId,
+    });
+
+    return touchCheck.allowed;
   },
 };
