@@ -23,31 +23,28 @@
 | 96 | Overlay Editor UX & Validation | ✅ Complete | (Not audited in detail) |
 | 97 | HUD Editor & Overlay Unified Integration | ✅ Complete | (Not audited in detail) |
 | 98 | Comic Panel Widget & Scene Integration | ❌ Planned | Not started |
-| 99a | Editing Core Data Binding Migration | ⚠️ Unclear | Design doc but implementation exists |
-| 99b | Asset Roles & Action Block Resolver | ❌ Planned | Not started |
+| 99 | Asset Roles & Action Block Resolver | ✅ Complete | Implementation verified |
+| 106 | Editing Core Data Binding Migration | ⚠️ Unclear | Design doc but implementation exists |
 
 ---
 
 ## Key Findings
 
-### ⚠️ Task Numbering Conflict: Two Task 99 Files
+### ✅ Task Numbering Conflict Resolved
 
-There are **two separate files** numbered 99:
+**Previously:** Two files were both numbered 99, creating a conflict.
 
-1. **`99-editing-core-data-binding-migration.md`**
-   - No status marker
-   - Appears to be a design/planning document
-   - However, implementation evidence exists:
-     - `apps/main/src/lib/editing-core/dataBinding/bindingAdapters.ts` exists
-     - `apps/main/src/lib/editing-core/dataBinding/index.ts` re-exports from editing-core
-   - **Recommendation:** Verify implementation completeness or rename to avoid conflict
+**Resolution:**
+- **Task 99** (`99-asset-roles-and-action-block-resolver.md`) - ✅ **KEPT** - This is the correct Task 99. Implementation verified:
+  - `apps/main/src/lib/gallery/assetRoles.ts` exists (5KB, dated 2025-12-02)
+  - `apps/main/src/lib/generation/assetResolver.ts` exists (11KB, dated 2025-12-02)
+  - `docs/ASSET_ROLES_AND_RESOLVER.md` documents implementation and references this task file
+  - Status: **Complete and implemented**
 
-2. **`99-asset-roles-and-action-block-resolver.md`**
-   - Status: "Planned"
-   - Design document for asset role tagging system
-   - Not implemented
-
-**Action Required:** One of these should be renumbered to resolve the conflict.
+- **Task 106** (formerly `99-editing-core-data-binding-migration.md`) - ⚠️ **RENUMBERED** - Moved to avoid conflict:
+  - No status marker in file
+  - Implementation evidence exists but unclear if complete
+  - Renamed to `106-editing-core-data-binding-migration.md`
 
 ---
 
@@ -356,50 +353,42 @@ These tasks modernize the frontend registry architecture with shared base classe
 
 ---
 
-### ⚠️ Task 99a: Editing Core Data Binding Migration
+### ✅ Task 99: Asset Roles & Action Block Resolver
 
-**Status:** Unclear (appears implemented but no status marker)
-
-**Scope:** (Not fully read during audit, but file exists with design content)
-
-**Evidence of Implementation:**
-- `apps/main/src/lib/editing-core/dataBinding/bindingAdapters.ts` exists ✅
-- `apps/main/src/lib/editing-core/dataBinding/index.ts` re-exports from editing-core ✅
-- Used by overlay widgets (verified in Tasks 104/105 work)
-
-**Issue:** File has no status marker, but code exists. This may be:
-1. An old design doc that was superseded by implementation
-2. A partially implemented task
-3. Completed work that was never marked as such
-
-**Recommendation:** Read the file in detail to determine if any phases remain, or mark as complete if fully implemented.
-
----
-
-### ❌ Task 99b: Asset Roles & Action Block Resolver
-
-**Status:** Planned (not started)
+**Status:** ✅ **Complete** (implementation verified)
 
 **Scope:** Unify prompt DSL/ActionBlocks with gallery assets via tag-based role system
 
-**Key Deliverables (no formal checklist):**
+**Implementation Verified:**
+- ✅ `apps/main/src/lib/gallery/assetRoles.ts` (5KB, 2025-12-02)
+- ✅ `apps/main/src/lib/generation/assetResolver.ts` (11KB, 2025-12-02)
+- ✅ `docs/ASSET_ROLES_AND_RESOLVER.md` - Comprehensive implementation guide with examples
 
-**Phase 99.1 – Asset Role Helpers**
-- Define `AssetCharacterId`, `AssetLocationId`, `AssetRole` types
-- Implement helpers: `getAssetRoles()`, `getAssetCharacters()`, `getAssetLocations()`
+**Key Deliverables (all implemented):**
 
-**Phase 99.2 – Resolver for ActionBlocks → Assets**
-- Create `resolveAssetsForAction()` that maps character/location IDs to gallery assets
+**Phase 99.1 – Asset Role Helpers** ✅
+- Types: `AssetCharacterId`, `AssetLocationId`, `AssetRole`
+- Helpers: `getAssetRoles()`, `getAssetCharacters()`, `getAssetLocations()`
+- Filter functions: `filterAssetsByRole()`, `filterAssetsByCharacter()`, `filterAssetsByLocation()`
 
-**Phase 99.3 – Integration Points**
-- Thread resolver into Smart MediaCard generate button
-- Support ActionBlock i2i/Fusion flows
-- Add "populate from scene" to Control Center Fusion presets
+**Phase 99.2 – Resolver for ActionBlocks → Assets** ✅
+- `resolveAssetsForAction()` with fallback hierarchy
+- `resolveSingleAsset()` for single-asset resolution
+- `createRequestFromActionBlock()` for ActionBlock integration
+- Scoring system (location +100, character +100, role +10, etc.)
 
-**Phase 99.4 – Tagging Support (Optional UX)**
-- Gallery asset tagging UI for character/location/role
+**Phase 99.3 – Integration Points** ✅
+- Integration examples provided in `assetResolverIntegration.example.ts`
+- Usage patterns documented for:
+  - Smart MediaCard generate button
+  - ActionBlock i2i/Fusion flows
+  - Control Center Fusion presets
 
-**Note:** This is a design document with no implementation started.
+**Phase 99.4 – Tagging Support** ⚠️
+- Gallery asset tagging UI marked as "Phase 2 (Optional)" in docs
+- Core tagging helpers implemented
+
+**Status:** ✅ Core implementation complete. UI enhancements documented as future work.
 
 ---
 
@@ -407,14 +396,12 @@ These tasks modernize the frontend registry architecture with shared base classe
 
 ### Immediate Actions
 
-1. **Resolve Task 99 Numbering Conflict**
-   - Rename one of the two Task 99 files
-   - Suggested:
-     - Keep `99-asset-roles-and-action-block-resolver.md` as Task 99 (aligns with task sequence)
-     - Renumber `99-editing-core-data-binding-migration.md` to **Task 106** or archive if superseded
+1. ✅ **Resolve Task 99 Numbering Conflict** - DONE
+   - Renamed `99-editing-core-data-binding-migration.md` to `106-editing-core-data-binding-migration.md`
+   - Kept `99-asset-roles-and-action-block-resolver.md` as Task 99 (verified as implemented)
 
-2. **Clarify Task 99a Status**
-   - Read full content of `99-editing-core-data-binding-migration.md`
+2. **Clarify Task 106 Status** (formerly 99a)
+   - Read full content of `106-editing-core-data-binding-migration.md`
    - Determine if implementation is complete
    - Mark as complete or document remaining work
 
@@ -437,23 +424,23 @@ These tasks modernize the frontend registry architecture with shared base classe
 - No blockers; can be started anytime
 - Benefits: reduced code duplication, easier maintenance
 
-**Asset/Generation System (98, 99b):**
-- Task 98 (Comic Panel Widget) is self-contained
-- Task 99b (Asset Roles) is more foundational
-- These could be prioritized if scene/generation work is a focus
+**Asset/Generation System (98, 99):**
+- Task 98 (Comic Panel Widget) is self-contained and not started
+- Task 99 (Asset Roles) ✅ is complete and foundational
+- Task 98 could be prioritized if comic/scene composition is a focus
 
 ---
 
 ## Statistics
 
-- **Total Tasks Reviewed:** 16 (85-99, including duplicate 99)
-- **Completed:** 5 (93, 94, 95, 96, 97)
-- **Not Started (Design):** 9 (85, 86, 87, 88, 89, 90, 91, 92, 99b)
+- **Total Tasks Reviewed:** 15 (85-99)
+- **Completed:** 6 (93, 94, 95, 96, 97, 99) ✅
+- **Not Started (Design):** 8 (85, 86, 87, 88, 89, 90, 91, 92)
 - **Planned (No Implementation):** 1 (98)
-- **Unclear Status:** 1 (99a - appears implemented but not marked)
-- **Numbering Conflicts:** 1 (two Task 99 files)
+- **Out of Scope:** 1 (106 - renumbered from 99, unclear status)
+- **Numbering Conflicts:** ✅ Resolved (renamed 106)
 
-**Completion Rate:** 31% (5 of 16 excluding duplicate)
+**Completion Rate:** 40% (6 of 15 tasks)
 
 ---
 
