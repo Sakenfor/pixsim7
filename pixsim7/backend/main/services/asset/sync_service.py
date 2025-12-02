@@ -3,7 +3,7 @@ Asset Sync Service
 
 Manages asset downloading, syncing, and provider upload/download operations.
 """
-from typing import Optional
+from typing import Optional, Literal, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -34,6 +34,116 @@ class AssetSyncService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ===== UPLOAD HISTORY TRACKING (Task 104) =====
+
+    async def record_upload_attempt(
+        self,
+        asset: Asset,
+        *,
+        provider_id: str,
+        status: Literal['success', 'error'],
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+        method: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Record an upload attempt in asset.media_metadata.upload_history
+
+        This is the ONLY way to record upload attempts. All upload flows should use this.
+
+        Follows the schema defined in claude-tasks/104-rejected-upload-tracking-and-asset-metadata.md:
+        - Stores attempts in media_metadata.upload_history.upload_attempts[]
+        - Updates media_metadata.upload_history.last_upload_status_by_provider
+
+        Args:
+            asset: Asset to record attempt for
+            provider_id: Provider ID (e.g., "pixverse", "sora", "runway")
+            status: 'success' or 'error'
+            error_code: Optional provider-specific error code
+            error_message: Optional human-readable error message (safe for UI)
+            method: Optional method (e.g., "extension", "local_folders", "api")
+            context: Optional free-form context (job ID, route, etc.)
+
+        Note:
+            - This is best-effort; failures to record metadata are logged but not raised
+            - This must not affect the upload operation itself
+        """
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        try:
+            # Load existing metadata or initialize
+            metadata = asset.media_metadata or {}
+
+            # Ensure upload_history structure exists
+            if 'upload_history' not in metadata:
+                metadata['upload_history'] = {
+                    'upload_attempts': [],
+                    'last_upload_status_by_provider': {}
+                }
+
+            upload_history = metadata['upload_history']
+
+            # Ensure sub-structures exist
+            if 'upload_attempts' not in upload_history:
+                upload_history['upload_attempts'] = []
+            if 'last_upload_status_by_provider' not in upload_history:
+                upload_history['last_upload_status_by_provider'] = {}
+
+            # Create new attempt record
+            attempt = {
+                'provider_id': provider_id,
+                'status': status,
+                'at': datetime.utcnow().isoformat() + 'Z',  # ISO 8601 UTC
+            }
+
+            # Add optional fields
+            if error_code is not None:
+                attempt['error_code'] = error_code
+            if error_message is not None:
+                attempt['error_message'] = error_message
+            if method is not None:
+                attempt['method'] = method
+            if context is not None:
+                attempt['context'] = context
+
+            # Append to attempts list
+            upload_history['upload_attempts'].append(attempt)
+
+            # Update last status for this provider
+            upload_history['last_upload_status_by_provider'][provider_id] = status
+
+            # Save back to asset
+            asset.media_metadata = metadata
+
+            # Mark for update (SQLAlchemy needs to know the JSON changed)
+            from sqlalchemy.orm import attributes
+            attributes.flag_modified(asset, 'media_metadata')
+
+            await self.db.commit()
+
+            logger.debug(
+                "upload_attempt_recorded",
+                asset_id=asset.id,
+                provider_id=provider_id,
+                status=status,
+                error_code=error_code,
+                method=method
+            )
+
+        except Exception as e:
+            # Never raise - this is best-effort metadata tracking
+            logger.warning(
+                "record_upload_attempt_failed",
+                asset_id=asset.id if asset else None,
+                provider_id=provider_id,
+                status=status,
+                error_type=type(e).__name__,
+                error=str(e),
+                detail="Failed to record upload attempt metadata (non-blocking)"
+            )
 
     # ===== ASSET DOWNLOAD (Phase 2) =====
 
@@ -333,9 +443,31 @@ class AssetSyncService:
             # Note: Need to add upload_asset() method to Provider interface
             uploaded_id = await provider.upload_asset(local_path)
 
+            # Record successful upload (Task 104)
+            await self.record_upload_attempt(
+                asset,
+                provider_id=target_provider_id,
+                status='success',
+                method='cross_provider'
+            )
+
             return uploaded_id
 
         except Exception as e:
+            # Extract error details for tracking
+            error_code = getattr(e, 'code', None) or type(e).__name__
+            error_message = str(e)
+
+            # Record failed upload (Task 104)
+            await self.record_upload_attempt(
+                asset,
+                provider_id=target_provider_id,
+                status='error',
+                error_code=error_code,
+                error_message=error_message,
+                method='cross_provider'
+            )
+
             raise InvalidOperationError(
                 f"Failed to upload asset to {target_provider_id}: {e}"
             )

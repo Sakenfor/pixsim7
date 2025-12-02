@@ -15,6 +15,10 @@ export type LocalAsset = {
   lastModified?: number;
   fileHandle?: FileHandle;
   folderId: string;
+  // Upload history tracking (Task 104)
+  lastUploadStatus?: 'success' | 'error';
+  lastUploadNote?: string;
+  lastUploadAt?: number;
 };
 
 type FolderEntry = {
@@ -34,6 +38,12 @@ type LocalFoldersState = {
   refreshFolder: (id: string) => Promise<void>;
   loadPersisted: () => Promise<void>;
   getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
+  // Task 104: Update upload history for an asset
+  updateAssetUploadStatus: (
+    assetKey: string,
+    status: 'success' | 'error',
+    note?: string
+  ) => Promise<void>;
 };
 
 // --- minimal IndexedDB helpers ---
@@ -82,7 +92,7 @@ function extKind(name: string): LocalAsset['kind'] {
   return 'other';
 }
 
-// Serializable asset metadata for caching
+// Serializable asset metadata for caching (Task 104)
 type AssetMeta = {
   key: string;
   name: string;
@@ -91,6 +101,10 @@ type AssetMeta = {
   size?: number;
   lastModified?: number;
   folderId: string;
+  // Upload history tracking (Task 104)
+  lastUploadStatus?: 'success' | 'error';
+  lastUploadNote?: string;
+  lastUploadAt?: number;
 };
 
 async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
@@ -167,7 +181,7 @@ async function loadCachedAssets(id: string, _handle: DirHandle): Promise<LocalAs
   }
 }
 
-// Save assets to cache
+// Save assets to cache (Task 104: includes upload history)
 async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
   try {
     const meta: AssetMeta[] = assets.map(a => ({
@@ -178,6 +192,10 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
       size: a.size,
       lastModified: a.lastModified,
       folderId: a.folderId,
+      // Task 104: persist upload history
+      lastUploadStatus: a.lastUploadStatus,
+      lastUploadNote: a.lastUploadNote,
+      lastUploadAt: a.lastUploadAt,
     }));
     await idbSet(`assets_${id}`, meta);
   } catch (e) {
@@ -303,6 +321,29 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     } catch {
       return undefined;
     }
+  },
+
+  // Task 104: Update upload history for an asset and persist to cache
+  updateAssetUploadStatus: async (assetKey, status, note) => {
+    const asset = get().assets[assetKey];
+    if (!asset) return;
+
+    // Update in-memory asset
+    const updated = {
+      ...asset,
+      lastUploadStatus: status,
+      lastUploadNote: note,
+      lastUploadAt: Date.now(),
+    };
+
+    set(s => ({
+      assets: { ...s.assets, [assetKey]: updated },
+    }));
+
+    // Persist to cache so it survives page reload
+    const folderId = asset.folderId;
+    const folderAssets = Object.values(get().assets).filter(a => a.folderId === folderId);
+    await cacheAssets(folderId, folderAssets);
   },
 }));
 

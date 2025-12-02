@@ -32,7 +32,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     refreshFolder,
     adding,
     error,
-  getFileForAsset,
+    getFileForAsset,
+    updateAssetUploadStatus,
   } = useLocalFolders();
 
   // View state
@@ -54,6 +55,26 @@ export function useLocalFoldersController(): LocalFoldersController {
   useEffect(() => {
     loadPersisted();
   }, []);
+
+  // Task 104: Initialize upload status from cached assets
+  useEffect(() => {
+    const initialStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'> = {};
+    const initialNotes: Record<string, string | undefined> = {};
+
+    for (const asset of Object.values(assetsRecord)) {
+      if (asset.lastUploadStatus) {
+        initialStatus[asset.key] = asset.lastUploadStatus;
+        if (asset.lastUploadNote) {
+          initialNotes[asset.key] = asset.lastUploadNote;
+        }
+      }
+    }
+
+    if (Object.keys(initialStatus).length > 0) {
+      setUploadStatus(initialStatus);
+      setUploadNotes(initialNotes);
+    }
+  }, [assetsRecord]);
 
   // Compute sorted asset list
   const assetList = useMemo(() => {
@@ -191,10 +212,21 @@ export function useLocalFoldersController(): LocalFoldersController {
       }
 
       const data = await res.json().catch(() => ({}));
-      setUploadNotes(n => ({ ...n, [asset.key]: data?.note }));
+      const note = data?.note;
+
+      setUploadNotes(n => ({ ...n, [asset.key]: note }));
       setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
+
+      // Task 104: Persist upload success to cache
+      await updateAssetUploadStatus(asset.key, 'success', note);
     } catch (e: any) {
+      const errorMsg = e?.message || 'Upload failed';
+
       setUploadStatus(s => ({ ...s, [asset.key]: 'error' }));
+      setUploadNotes(n => ({ ...n, [asset.key]: errorMsg }));
+
+      // Task 104: Persist upload failure to cache
+      await updateAssetUploadStatus(asset.key, 'error', errorMsg);
     }
   };
 
