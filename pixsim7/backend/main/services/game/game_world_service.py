@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 try:
     from redis.asyncio import Redis
@@ -28,15 +28,23 @@ class GameWorldService:
         name: str,
         meta: Optional[dict] = None,
     ) -> GameWorld:
+        """
+        Create a new world with its initial state atomically.
+
+        Uses flush() to get the world ID without committing, then commits
+        both world and state together to prevent orphaned records.
+        """
         world = GameWorld(owner_user_id=owner_user_id, name=name, meta=meta or {})
         self.db.add(world)
-        await self.db.commit()
-        await self.db.refresh(world)
+        await self.db.flush()  # Get world.id without committing
 
         # Initialize world state with zero world_time.
         state = GameWorldState(world_id=world.id, world_time=0.0)
         self.db.add(state)
+
+        # Commit both together to ensure atomicity
         await self.db.commit()
+        await self.db.refresh(world)
 
         return world
 
@@ -58,25 +66,40 @@ class GameWorldService:
         world_id: int,
         delta_seconds: float,
     ) -> GameWorldState:
-        state = await self.db.get(GameWorldState, world_id)
-        if not state:
-            # Lazily initialize state for existing world if missing.
-            world = await self.db.get(GameWorld, world_id)
-            if not world:
-                raise ValueError("world_not_found")
-            state = GameWorldState(world_id=world.id, world_time=0.0)
-            self.db.add(state)
-            await self.db.commit()
-            await self.db.refresh(state)
+        """
+        Advance world time atomically to prevent race conditions.
 
+        Uses database-level atomic UPDATE to ensure concurrent requests
+        don't overwrite each other's increments.
+        """
         if delta_seconds < 0:
             delta_seconds = 0.0
 
-        state.world_time = float(state.world_time or 0.0) + float(delta_seconds)
-        state.last_advanced_at = datetime.utcnow()
-        self.db.add(state)
-        await self.db.commit()
-        await self.db.refresh(state)
+        # Atomic update at database level
+        result = await self.db.execute(
+            update(GameWorldState)
+            .where(GameWorldState.world_id == world_id)
+            .values(
+                world_time=GameWorldState.world_time + delta_seconds,
+                last_advanced_at=datetime.utcnow()
+            )
+            .returning(GameWorldState)
+        )
+
+        state = result.scalar_one_or_none()
+
+        if not state:
+            # Lazily initialize if missing
+            world = await self.db.get(GameWorld, world_id)
+            if not world:
+                raise ValueError("world_not_found")
+            state = GameWorldState(world_id=world.id, world_time=delta_seconds)
+            self.db.add(state)
+            await self.db.commit()
+            await self.db.refresh(state)
+        else:
+            await self.db.commit()
+
         return state
 
     async def update_world_meta(

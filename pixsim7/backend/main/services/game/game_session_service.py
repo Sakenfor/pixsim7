@@ -146,7 +146,25 @@ class GameSessionService:
     async def create_session(
         self, *, user_id: int, scene_id: int, world_id: Optional[int] = None, flags: Optional[Dict[str, Any]] = None
     ) -> GameSession:
+        """
+        Create a new game session for a user.
+
+        Validates world ownership if world_id is provided to ensure users
+        can only create sessions for worlds they own.
+        """
         scene = await self._get_scene(scene_id)
+
+        # Validate world ownership if world_id provided
+        if world_id is not None:
+            result = await self.db.execute(
+                select(GameWorld).where(GameWorld.id == world_id)
+            )
+            world = result.scalar_one_or_none()
+            if not world:
+                raise ValueError("world_not_found")
+            if world.owner_user_id != user_id:
+                raise ValueError("world_access_denied")
+
         session = GameSession(
             user_id=user_id,
             scene_id=scene.id,

@@ -82,6 +82,10 @@ async def create_session(
             raise HTTPException(status_code=404, detail="Scene not found")
         if msg == "scene_missing_entry_node":
             raise HTTPException(status_code=400, detail="Scene has no entry node")
+        if msg == "world_not_found":
+            raise HTTPException(status_code=404, detail="World not found")
+        if msg == "world_access_denied":
+            raise HTTPException(status_code=403, detail="You don't have access to this world")
         raise
     return GameSessionResponse.from_model(gs)
 
