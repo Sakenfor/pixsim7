@@ -17,13 +17,45 @@ from .context import (
     SceneContext
 )
 from .programs import PromptProgram, ConditionExpression
-from .relationships import merge_npc_persona
 from pixsim7.backend.main.domain.stats import StatEngine
 from pixsim7.backend.main.domain.stats.migration import (
     migrate_world_meta_to_stats_config,
     needs_migration as needs_world_migration,
     get_default_relationship_definition,
 )
+
+
+def merge_npc_persona(
+    base_personality: Dict[str, Any],
+    world_overrides: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Merge base NPC personality with world-specific overrides.
+
+    Args:
+        base_personality: GameNPC.personality data
+        world_overrides: GameWorld.meta.npc_overrides[npc_id] data
+
+    Returns:
+        Merged personality dictionary
+    """
+    if not world_overrides:
+        return base_personality.copy() if base_personality else {}
+
+    merged = base_personality.copy() if base_personality else {}
+
+    # Apply personality overrides
+    if "personality" in world_overrides:
+        personality_overrides = world_overrides["personality"]
+        if isinstance(personality_overrides, dict):
+            merged.update(personality_overrides)
+
+    # Apply other overrides at top level
+    for key in ["tags", "nameOverride", "conversationStyle"]:
+        if key in world_overrides:
+            merged[key] = world_overrides[key]
+
+    return merged
 
 
 class NarrativeEngine:
