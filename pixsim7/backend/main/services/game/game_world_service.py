@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+
+logger = logging.getLogger(__name__)
 
 try:
     from redis.asyncio import Redis
@@ -155,7 +158,11 @@ class GameWorldService:
             if session_ids:
                 cache_keys = [f"session:{sid}:relationships" for sid in session_ids]
                 await self.redis.delete(*cache_keys)
-        except Exception:
-            # Fail gracefully if cache invalidation fails
+        except Exception as e:
+            # Log warning for observability
+            logger.warning(
+                f"Redis cache invalidation failed for world {world_id}: {e}",
+                extra={"world_id": world_id, "operation": "cache_invalidate_world"}
+            )
             pass
 

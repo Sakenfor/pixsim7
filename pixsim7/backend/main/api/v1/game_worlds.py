@@ -23,6 +23,13 @@ class GameWorldSummary(BaseModel):
     name: str
 
 
+class PaginatedWorldsResponse(BaseModel):
+    worlds: List[GameWorldSummary]
+    total: int
+    offset: int
+    limit: int
+
+
 class GameWorldDetail(BaseModel):
     id: int
     name: str
@@ -65,16 +72,48 @@ async def _build_world_detail(
     return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
 
 
-@router.get("/", response_model=List[GameWorldSummary])
+@router.get("/", response_model=PaginatedWorldsResponse)
 async def list_worlds(
     game_world_service: GameWorldSvc,
     user: CurrentUser,
-) -> List[GameWorldSummary]:
+    offset: int = 0,
+    limit: int = 100,
+) -> PaginatedWorldsResponse:
     """
-    List game worlds owned by the current user.
+    List game worlds owned by the current user with pagination.
+
+    Args:
+        offset: Number of records to skip (default: 0)
+        limit: Maximum records to return (default: 100, max: 1000)
     """
-    worlds = await game_world_service.list_worlds_for_user(owner_user_id=user.id)
-    return [GameWorldSummary(id=w.id, name=w.name) for w in worlds]
+    from sqlalchemy import select, func
+    from pixsim7.backend.main.domain.game.models import GameWorld
+
+    # Clamp limit to reasonable range
+    limit = min(max(1, limit), 1000)
+
+    # Get total count
+    count_result = await game_world_service.db.execute(
+        select(func.count()).select_from(GameWorld).where(GameWorld.owner_user_id == user.id)
+    )
+    total = count_result.scalar_one()
+
+    # Get paginated results
+    result = await game_world_service.db.execute(
+        select(GameWorld)
+        .where(GameWorld.owner_user_id == user.id)
+        .order_by(GameWorld.id)
+        .offset(offset)
+        .limit(limit)
+    )
+    worlds = list(result.scalars().all())
+
+    return PaginatedWorldsResponse(
+        worlds=[GameWorldSummary(id=w.id, name=w.name) for w in worlds],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.post("/", response_model=GameWorldDetail)

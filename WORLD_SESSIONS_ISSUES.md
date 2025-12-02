@@ -432,6 +432,8 @@ async def update_session(
 
 ### Issue #9: Version Incremented on No-Op Updates
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/services/game/game_session_service.py`
 **Lines**: 219-273
 
@@ -542,6 +544,8 @@ async def get_session(self, session_id: int) -> Optional[GameSession]:
 
 ### Issue #11: No Pagination for list_worlds
 
+**Status**: ✅ **FIXED**
+
 **File**: `pixsim7/backend/main/api/v1/game_worlds.py`
 **Lines**: 68-77
 
@@ -602,6 +606,8 @@ async def list_worlds(
 ---
 
 ### Issue #12: Redis Failures Not Observable
+
+**Status**: ✅ **FIXED**
 
 **File**: Multiple locations with Redis try/except blocks
 

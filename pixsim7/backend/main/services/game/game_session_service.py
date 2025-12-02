@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any
 import json
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+logger = logging.getLogger(__name__)
 
 try:
     from redis.asyncio import Redis
@@ -41,8 +44,12 @@ class GameSessionService:
             cache_key = f"session:{session_id}:relationships"
             cached = await self.redis.get(cache_key)
             return json.loads(cached) if cached else None
-        except Exception:
-            # Fail gracefully if cache is unavailable
+        except Exception as e:
+            # Log warning for observability
+            logger.warning(
+                f"Redis cache read failed for session {session_id}: {e}",
+                extra={"session_id": session_id, "operation": "cache_read"}
+            )
             return None
 
     async def _cache_relationships(self, session_id: int, relationships: Dict):
@@ -53,8 +60,12 @@ class GameSessionService:
         try:
             cache_key = f"session:{session_id}:relationships"
             await self.redis.setex(cache_key, 60, json.dumps(relationships))
-        except Exception:
-            # Fail gracefully if cache is unavailable
+        except Exception as e:
+            # Log warning for observability
+            logger.warning(
+                f"Redis cache write failed for session {session_id}: {e}",
+                extra={"session_id": session_id, "operation": "cache_write"}
+            )
             pass
 
     async def _invalidate_cached_relationships(self, session_id: int):
@@ -65,8 +76,12 @@ class GameSessionService:
         try:
             cache_key = f"session:{session_id}:relationships"
             await self.redis.delete(cache_key)
-        except Exception:
-            # Fail gracefully if cache is unavailable
+        except Exception as e:
+            # Log warning for observability
+            logger.warning(
+                f"Redis cache invalidation failed for session {session_id}: {e}",
+                extra={"session_id": session_id, "operation": "cache_invalidate"}
+            )
             pass
 
     async def _normalize_session_relationships(self, session: GameSession) -> None:
@@ -267,15 +282,22 @@ class GameSessionService:
                             f"turn_based_validation_failed: expected delta of {turn_delta}s, got {actual_delta}s"
                         )
 
-        if world_time is not None:
-            session.world_time = float(world_time)
-        if flags is not None:
-            session.flags = flags
-        if relationships is not None:
-            session.relationships = relationships
+        # Track if any changes were made
+        changed = False
 
-        # Increment version on update
-        session.version += 1
+        if world_time is not None and world_time != session.world_time:
+            session.world_time = float(world_time)
+            changed = True
+        if flags is not None and flags != session.flags:
+            session.flags = flags
+            changed = True
+        if relationships is not None and relationships != session.relationships:
+            session.relationships = relationships
+            changed = True
+
+        # Only increment version if changes were made
+        if changed:
+            session.version += 1
 
         self.db.add(session)
         await self.db.commit()
