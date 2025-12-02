@@ -12,6 +12,7 @@ This completes the migration to the abstract stat system for relationships.
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import inspect
 
 revision = '1202droprelations'
 down_revision = '1202addentitystats'
@@ -20,8 +21,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Drop the deprecated relationships column
-    op.drop_column('game_sessions', 'relationships')
+    """
+    Drop the deprecated relationships column.
+
+    Guarded by an existence check to keep this migration idempotent in
+    environments where the column may already have been removed.
+    """
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [col["name"] for col in inspector.get_columns("game_sessions")]
+    if "relationships" in columns:
+        op.drop_column("game_sessions", "relationships")
 
 
 def downgrade() -> None:
