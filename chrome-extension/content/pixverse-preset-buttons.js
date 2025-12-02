@@ -407,15 +407,29 @@
   function findUploadInputs() {
     const results = [];
 
-    // Find all file inputs that accept images
-    const inputs = document.querySelectorAll('input[type="file"][accept*="image"]');
+    // Find all file inputs that could accept images
+    // Include inputs with image accept, or those in upload containers
+    const allFileInputs = document.querySelectorAll('input[type="file"]');
+    const inputs = Array.from(allFileInputs).filter(input => {
+      const accept = input.getAttribute('accept') || '';
+      // Include if accepts images or is in an ant-upload container
+      return accept.includes('image') ||
+             accept.includes('.jpg') ||
+             accept.includes('.png') ||
+             accept.includes('.jpeg') ||
+             accept.includes('.webp') ||
+             input.closest('.ant-upload') ||
+             input.closest('[class*="upload"]');
+    });
+
+    console.log('[PixSim7] Found', inputs.length, 'upload inputs on page');
 
     inputs.forEach(input => {
       // Find the containing upload area
-      // Could be .ant-upload, .ant-upload-btn, or parent with ant-upload-drag-container
       let container = input.closest('.ant-upload') ||
                       input.closest('.ant-upload-btn') ||
-                      input.closest('[class*="ant-upload"]');
+                      input.closest('[class*="ant-upload"]') ||
+                      input.closest('[class*="upload"]');
 
       // Check if this upload area already has an image
       // Look for img tags or background-image styles with media URLs
@@ -1236,12 +1250,34 @@
           a.status === 'active' || (a.total_credits && a.total_credits > 0)
         );
         accountsCache.sort((a, b) => (b.total_credits || 0) - (a.total_credits || 0));
+
+        // Prefetch ad status for all accounts in background
+        prefetchAdStatus(accountsCache);
+
         return accountsCache;
       }
     } catch (e) {
       // Timeout or error - continue with empty cache
     }
     return [];
+  }
+
+  // Prefetch ad status for accounts (background, no await)
+  function prefetchAdStatus(accounts) {
+    accounts.forEach(account => {
+      // Skip if recently cached
+      const cached = adStatusCache.get(account.id);
+      if (cached && (Date.now() - cached.time) < 60000) return;
+
+      sendMessageWithTimeout({
+        action: 'getPixverseStatus',
+        accountId: account.id
+      }, 5000).then(res => {
+        if (res?.success && res.data) {
+          adStatusCache.set(account.id, { data: res.data, time: Date.now() });
+        }
+      }).catch(() => {});
+    });
   }
 
   async function loadPresets() {
@@ -1526,17 +1562,20 @@
       meta.appendChild(emailSpan);
     }
 
-    // Ads pill - always show
-    const adsPill = document.createElement('span');
-    adsPill.style.cssText = `
-      font-size: 9px;
-      padding: 1px 4px;
-      border-radius: 3px;
-      background: rgba(0,0,0,0.2);
-      color: ${COLORS.textMuted};
-    `;
-    adsPill.textContent = 'Ads …';
-    meta.appendChild(adsPill);
+    // Ads pill - show from cache only
+    const cached = adStatusCache.get(account.id);
+    if (cached?.data) {
+      const adsPill = document.createElement('span');
+      adsPill.style.cssText = `
+        font-size: 9px;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: rgba(0,0,0,0.2);
+        color: ${COLORS.textMuted};
+      `;
+      renderAdsPill(adsPill, cached.data);
+      meta.appendChild(adsPill);
+    }
 
     info.appendChild(meta);
 
@@ -1561,35 +1600,7 @@
     credits.textContent = account.total_credits || 0;
     item.appendChild(credits);
 
-    // Fetch ad status asynchronously
-    fetchAdStatus(account.id, adsPill);
-
     return item;
-  }
-
-  async function fetchAdStatus(accountId, pillEl) {
-    // Check cache first (30 second TTL)
-    const cached = adStatusCache.get(accountId);
-    if (cached && (Date.now() - cached.time) < 30000) {
-      renderAdsPill(pillEl, cached.data);
-      return;
-    }
-
-    try {
-      const res = await sendMessageWithTimeout({
-        action: 'getPixverseStatus',
-        accountId
-      }, 5000);
-
-      if (res?.success && res.data) {
-        adStatusCache.set(accountId, { data: res.data, time: Date.now() });
-        renderAdsPill(pillEl, res.data);
-      } else {
-        pillEl.textContent = 'Ads N/A';
-      }
-    } catch (e) {
-      pillEl.textContent = 'Ads N/A';
-    }
   }
 
   function renderAdsPill(pillEl, payload) {
