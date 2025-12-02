@@ -61,10 +61,10 @@ Out of scope:
 
 ## Phase Checklist (High-Level)
 
-- [ ] **Phase 1 – Make Relationship Stats Canonical in Session/World Models**
-- [ ] **Phase 2 – Replace Legacy Relationship Logic in Backend Services**
-- [ ] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview**
-- [ ] **Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships**
+- [x] **Phase 1 – Make Relationship Stats Canonical in Session/World Models**
+- [x] **Phase 2 – Replace Legacy Relationship Logic in Backend Services**
+- [x] **Phase 3 – Replace Relationship Preview API with Stat-Based Preview**
+- [x] **Phase 4 – Migrate Frontend/Editor to Use Stat-Based Relationships**
 - [ ] **Phase 5 – Remove Legacy Relationship Fields, Helpers, and Docs**
 
 Each phase should be implemented via small, reviewable PRs and validated with existing tests + targeted new tests where needed.
