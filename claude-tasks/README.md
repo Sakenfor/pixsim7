@@ -38,6 +38,41 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
 - `[~]` – Partially implemented / diverged (must include a note).
 - `[x]` – Implemented and in use.
 
+## Quick Task Index (by Area)
+
+> Labels: `[active]` = current guide, `[reference]` = describes completed/legacy work, `[future]` = design only.
+
+- **Relationships & Stat System**
+  - `[active]` `107-relationship-stats-cutover-and-legacy-removal.md` – end-to-end migration plan (now completed; use as reference when touching relationships).
+  - `[active]` `111-session-dto-and-api-relationships-field-removal.md` – remove `relationships` from DTO/API/schema (stats-only relationships).
+  - `[active]` `112-game-core-relationship-state-and-stat-packages.md` – align game-core (`PixSim7Core`, helpers) with `stats["relationships"]` and stat packages.
+  - `[reference]` `07-relationship-preview-api-and-metrics.md` – original relationship preview/metrics design (superseded by generic stat preview API).
+  - `[reference]` `11-world-aware-session-normalization-and-schema-validation.md` – pre-stats world-aware normalization; see status note inside for legacy details.
+
+- **Intimacy & Generation**
+  - `[active]` `09-intimacy-and-scene-generation-prompts.md` – intimacy-aware generation nodes & social context (see status note for stat-based interpretation).
+  - `[active]` `10-unified-generation-pipeline-and-dev-tools.md` – unified generation pipeline design.
+  - `[reference]` `10-unified-generation-pipeline-progress.md` – implementation log for Task 10.
+  - `[active]` `109-intimacy-and-content-gating-stat-integration.md` – move intimacy/content gating thresholds onto stat/config.
+
+- **Behavior, ECS & Metrics**
+  - `[active]` `13-npc-behavior-system-activities-and-routine-graphs.md` – behavior system design (activities, routine graphs).
+  - `[reference]` `19-npc-ecs-relationship-components-and-plugin-metrics.md` – ECS relationship components; read with `stats["relationships"]` in mind.
+  - `[active]` `110-behavior-metrics-and-stat-definitions-alignment.md` – make behavior conditions stat-definition aware (relationships, mood, reputation).
+  - `[reference]` `20-narrative-runtime-and-action-block-unification.md` – narrative runtime unification; relationship mentions are legacy shape.
+
+- **Plugins, Extensions & Hosting**
+  - `[active]` `16-backend-plugin-capabilities-and-sandboxing.md` – backend plugin capabilities & sandboxing.
+  - `[active]` `29-extension-and-plugin-architecture-doc-unification.md` – unify extension/plugin docs; assumes `flags` + `stats` as extension surfaces.
+  - `[active]` `108-hosting-models-and-host-boundaries.md` – host concept, host-local IDs, and multi-host friendly constraints.
+
+- **Editing, Overlay & HUD**
+  - `[active]` `100-world-visual-role-binder-panel.md` – world visual role binder.
+  - `[active]` `101-*-scene-and-world-visual-context-resolver.md` / `106-editing-core-*` – editing-core / HUD / overlay data-binding tasks.
+  - `[active]` `93-99-*` – overlay and asset/scene tasks (see status summary below for details).
+
+Use this index to jump into the right task file for the area you’re touching, then rely on system docs (`APP_MAP.md`, `SYSTEM_OVERVIEW.md`, `RELATIONSHIPS_AND_ARCS.md`, etc.) as the ground truth for current data shapes.
+
 ## Current Task Files (Status Snapshot)
 
 - `01-world-hud-layout-designer.md`  
@@ -153,4 +188,3 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
   - Dev tooling and visualization.
 
 This keeps the historical plan intact while giving future agents room to grow the system in a structured way.
-
