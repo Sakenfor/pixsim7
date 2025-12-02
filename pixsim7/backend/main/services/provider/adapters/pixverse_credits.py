@@ -11,7 +11,10 @@ from pixsim7.backend.main.domain import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
 
 logger = get_logger()
-PIXVERSE_CREDITS_TIMEOUT_SEC = 3.0
+# Allow a bit more time for Pixverse web dashboard credits endpoint, which can
+# be slow or occasionally rate-limited. We still wrap calls in wait_for so
+# hung requests won't block forever.
+PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
 
 
 class PixverseCreditsMixin:
@@ -64,6 +67,18 @@ class PixverseCreditsMixin:
                         web_total = int(raw_web or 0)
                     except (TypeError, ValueError):
                         web_total = 0
+            except asyncio.TimeoutError as exc:
+                # For pixverse-status, treat timeouts as "unknown credits" but do not
+                # fail the entire call so ad-watch status and any cached credits can
+                # still be shown.
+                logger.warning(
+                    "PixverseAPI get_credits_web_failed",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                web_total = 0
             except Exception as exc:
                 logger.warning(
                     "PixverseAPI get_credits_web_failed",
@@ -72,7 +87,8 @@ class PixverseCreditsMixin:
                     error=str(exc),
                     error_type=exc.__class__.__name__,
                 )
-                # Let the session manager classify and potentially auto-reauth
+                # Let the session manager classify and potentially auto-reauth or
+                # propagate a real error for non-timeout failures.
                 raise
 
             openapi_total = 0

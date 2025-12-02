@@ -386,15 +386,37 @@ class PixverseOperationsMixin:
         except ProviderError:
             raise
         except Exception as e:
-            logger.error(
-                "upload_asset_failed",
-                provider_id="pixverse",
-                file_path=file_path,
-                error=str(e),
-                error_type=e.__class__.__name__,
-                exc_info=True
+            error_msg = str(e)
+            error_type = e.__class__.__name__
+
+            # Check if this is a provider-side content policy or API error (not our fault)
+            is_provider_error = (
+                error_type == "APIError" or
+                "not compliant" in error_msg.lower() or
+                "content policy" in error_msg.lower() or
+                "upload failed" in error_msg.lower()
             )
-            raise ProviderError(f"Pixverse upload failed: {e}")
+
+            if is_provider_error:
+                # Provider-side error - log as warning without traceback
+                logger.warning(
+                    "upload_rejected_by_provider",
+                    provider_id="pixverse",
+                    file_path=file_path,
+                    reason=error_msg,
+                )
+                raise ProviderError(f"Upload rejected by Pixverse: {error_msg}")
+            else:
+                # Unexpected error - log as error with traceback
+                logger.error(
+                    "upload_asset_failed",
+                    provider_id="pixverse",
+                    file_path=file_path,
+                    error=error_msg,
+                    error_type=error_type,
+                    exc_info=True
+                )
+                raise ProviderError(f"Pixverse upload failed: {e}")
 
 
     def _upload_via_openapi(
