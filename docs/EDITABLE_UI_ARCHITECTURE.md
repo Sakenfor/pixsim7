@@ -56,6 +56,386 @@ Keep both paradigms but unify them in the schema:
 | New data source | Either (add to data binding) | Shared data binding system |
 | New preset storage backend | Either (implement PresetStore) | Shared PresetStore interface |
 
+---
+
+## Editing-Core Integration Guide
+
+**For detailed documentation, see:** `apps/main/src/lib/editing-core/README.md`
+
+This section provides a concise, prescriptive guide for adopting editing-core in new UI surfaces.
+
+### When to Use Editing-Core
+
+✅ **Use editing-core when:**
+- Surface is user-configurable (users can customize layout, widgets, or presets)
+- You want portable configs between worlds/sessions/users
+- You need an editor UI to manipulate configs visually
+- Multiple widget types need to be registered and discovered
+
+❌ **Don't use editing-core when:**
+- Building simple static UI (status bars, fixed menus, hardcoded layouts)
+- No user customization needed (one fixed design)
+- Pure game logic that doesn't need visual editing
+- One-off prototype or temporary UI experiment
+
+### Quick Reference: Core Concepts
+
+#### Component Types
+
+Every editable surface has a `componentType` that identifies it:
+- `'overlay'` - Overlay system (media cards, video players, upload widgets)
+- `'hud'` - HUD layout editor (health bars, quest trackers, game UI)
+- `'interaction'` - Interaction studio (if/when implemented)
+- `'your-editor'` - Your custom editor
+
+`componentType` is used to:
+- Differentiate widget instances from the same widget type
+- Validate preset imports (can't import HUD preset as overlay)
+- Specialize widget behavior per surface
+
+#### Unified Configuration
+
+All configs convert to/from `UnifiedSurfaceConfig`:
+
+```typescript
+interface UnifiedSurfaceConfig {
+  version: string;             // e.g., "1.0.0" for migrations
+  componentType: string;       // e.g., "overlay", "hud"
+  widgets: UnifiedWidgetConfig[];
+  metadata?: Record<string, unknown>;
+}
+```
+
+This enables:
+- **Preset portability** - Export/import configs across sessions
+- **Version migrations** - Handle breaking changes gracefully
+- **Cross-editor compatibility** - Share widget types
+
+#### Data Bindings
+
+Three binding types for widget properties:
+
+1. **Static** - Fixed value: `{ kind: 'static', staticValue: 'Hello' }`
+2. **Path** - Dynamic from context: `{ kind: 'path', path: 'user.name' }`
+3. **Function** - Custom resolver (not serializable): `{ kind: 'function', resolve: (ctx) => ... }`
+
+Use path bindings for most dynamic data. Function bindings for advanced cases where serialization isn't needed.
+
+### 5-Step Adoption Checklist
+
+#### Step 1: Define Your Component Type
+
+Choose a unique `componentType` string:
+
+```typescript
+// In your config types
+export interface MyEditorConfig {
+  componentType: 'my-editor';  // Unique identifier
+  tools: MyTool[];
+  // ... your config fields
+}
+```
+
+#### Step 2: Decide on Widget Types
+
+Ask: Can I reuse existing widgets or do I need new ones?
+
+**Reuse existing widgets if:**
+- Badge, panel, button, upload widgets fit your needs
+- You can adapt them with different props/styling
+- Cross-surface consistency is valuable
+
+**Create new widgets if:**
+- Existing widgets don't match your UX
+- You need domain-specific behavior
+- Widget is complex and surface-specific
+
+Check registered widgets:
+```typescript
+import { listWidgets } from '@/lib/editing-core';
+const widgets = listWidgets(); // See what's available
+```
+
+#### Step 3: Register Widget Types
+
+For each widget type your surface uses:
+
+```typescript
+import { registerWidget } from '@/lib/editing-core';
+
+registerWidget({
+  type: 'my-widget',           // Global type identifier
+  displayName: 'My Widget',    // Human-readable name
+  icon: '🎨',                  // Optional icon for palette
+  factory: (config, runtimeOptions) => {
+    // Create widget instance
+    // Use runtimeOptions.componentType to specialize behavior
+    return createMyWidget(config);
+  },
+  defaultConfig: {
+    id: 'widget-1',
+    type: 'my-widget',
+    position: { /* default position */ },
+    props: { /* default props */ },
+  },
+});
+```
+
+**Reusing existing widget types:**
+
+```typescript
+// Overlay already registered 'badge', you can reuse it
+import { createWidget } from '@/lib/editing-core';
+
+const badge = createWidget(
+  'badge',
+  config,
+  { componentType: 'my-editor' }  // Your componentType
+);
+```
+
+#### Step 4: Create Config Converters
+
+Implement bidirectional conversion between your config and `UnifiedSurfaceConfig`:
+
+```typescript
+// Your config → Unified
+export function toUnifiedSurfaceConfig(
+  config: MyEditorConfig
+): UnifiedSurfaceConfig {
+  return {
+    version: '1.0.0',
+    componentType: 'my-editor',
+    widgets: config.tools.map(tool => ({
+      id: tool.id,
+      type: tool.type,
+      position: toUnifiedPosition(tool.position),
+      visibility: toUnifiedVisibility(tool.visibility),
+      props: tool.props,
+      bindings: tool.bindings,
+    })),
+    metadata: {
+      // Surface-specific metadata
+      editorVersion: config.editorVersion,
+    },
+  };
+}
+
+// Unified → Your config
+export function fromUnifiedSurfaceConfig(
+  unified: UnifiedSurfaceConfig
+): MyEditorConfig | null {
+  if (unified.componentType !== 'my-editor') {
+    console.error('Cannot import non-my-editor config');
+    return null;
+  }
+
+  return {
+    componentType: 'my-editor',
+    tools: unified.widgets.map(w => ({
+      id: w.id,
+      type: w.type,
+      position: fromUnifiedPosition(w.position),
+      visibility: fromUnifiedVisibility(w.visibility),
+      props: w.props,
+      bindings: w.bindings,
+    })),
+    editorVersion: unified.metadata?.editorVersion,
+  };
+}
+```
+
+**See examples:**
+- Overlay: `apps/main/src/lib/overlay/overlayConfig.ts`
+- HUD: `apps/main/src/lib/gameplay-ui-core/hudConfig.ts`
+
+#### Step 5: Wire Up Your Editor
+
+Use editing-core utilities in your editor component:
+
+```typescript
+import { useUndoRedo } from '@/lib/editing-core';
+import { useState } from 'react';
+
+function MyEditor() {
+  const [config, setConfig] = useState<MyEditorConfig>(initialConfig);
+
+  // Add undo/redo support
+  const { updateWithHistory, undo, redo, canUndo, canRedo } =
+    useUndoRedo(config, setConfig);
+
+  const handleAddTool = (tool: MyTool) => {
+    updateWithHistory({
+      ...config,
+      tools: [...config.tools, tool],
+    });
+  };
+
+  const handleImportPreset = (unified: UnifiedSurfaceConfig) => {
+    const imported = fromUnifiedSurfaceConfig(unified);
+    if (imported) {
+      updateWithHistory(imported);
+    }
+  };
+
+  return (
+    <div>
+      <button onClick={undo} disabled={!canUndo}>Undo</button>
+      <button onClick={redo} disabled={!canRedo}>Redo</button>
+      {/* Your editor UI */}
+    </div>
+  );
+}
+```
+
+### Common Patterns
+
+#### Pattern: Cross-Surface Widget Reuse
+
+If you want to reuse overlay's badge in your editor:
+
+```typescript
+import { createWidget } from '@/lib/editing-core';
+
+// Create badge widget with your componentType
+const badge = createWidget<OverlayWidget>(
+  'badge',  // Reuse overlay's badge type
+  {
+    id: 'my-badge-1',
+    type: 'badge',
+    position: { anchor: 'top-left', offset: { x: 10, y: 10 } },
+    props: { variant: 'icon', color: 'blue' },
+  },
+  { componentType: 'my-editor' }  // Your surface
+);
+```
+
+#### Pattern: Surface-Specific Widget Variants
+
+If a widget needs different behavior per surface, specialize in the factory:
+
+```typescript
+registerWidget({
+  type: 'status-indicator',
+  factory: (config, runtimeOptions) => {
+    const componentType = runtimeOptions?.componentType;
+
+    if (componentType === 'overlay') {
+      return createOverlayStatusIndicator(config);
+    } else if (componentType === 'hud') {
+      return createHudStatusIndicator(config);
+    }
+
+    // Fallback generic version
+    return createGenericStatusIndicator(config);
+  },
+});
+```
+
+#### Pattern: Preset Import/Export
+
+Use unified configs for portability:
+
+```typescript
+// Export preset
+const exportPreset = (config: MyEditorConfig) => {
+  const unified = toUnifiedSurfaceConfig(config);
+  const json = JSON.stringify(unified, null, 2);
+  // Save to file or API
+};
+
+// Import preset
+const importPreset = (json: string) => {
+  const unified = JSON.parse(json) as UnifiedSurfaceConfig;
+
+  // Validate componentType
+  if (unified.componentType !== 'my-editor') {
+    throw new Error('Cannot import preset for different surface');
+  }
+
+  const config = fromUnifiedSurfaceConfig(unified);
+  if (config) {
+    updateWithHistory(config);
+  }
+};
+```
+
+### Anti-Patterns
+
+#### ❌ Don't: Embed Domain Logic in Widget Factories
+
+**Bad:**
+```typescript
+registerWidget({
+  type: 'npc-affinity-badge',
+  factory: (config) => ({
+    render: () => {
+      const npc = getNpc(config.props.npcId);  // ❌ Game logic in widget
+      return <Badge>{npc.affinity}</Badge>;
+    }
+  })
+});
+```
+
+**Good:**
+```typescript
+// Compute value outside widget, pass via data binding
+const context = { npcAffinity: getNpc(npcId).affinity };
+const value = resolveDataBinding(widget.labelBinding, context);
+```
+
+#### ❌ Don't: Create Parallel Registry Systems
+
+**Bad:**
+```typescript
+// DON'T: New registry for every feature
+const myFeatureWidgetRegistry = new Map();
+```
+
+**Good:**
+```typescript
+// DO: Use shared widget registry
+import { registerWidget } from '@/lib/editing-core';
+registerWidget({ type: 'my-feature-widget', ... });
+```
+
+#### ❌ Don't: Mutate Configs Directly
+
+**Bad:**
+```typescript
+config.tools[0].position.x = 100;  // ❌ Breaks undo/redo
+```
+
+**Good:**
+```typescript
+updateWithHistory({
+  ...config,
+  tools: config.tools.map((t, i) =>
+    i === 0 ? { ...t, position: { ...t.position, x: 100 } } : t
+  ),
+});
+```
+
+### Testing Your Integration
+
+**Checklist:**
+
+- [ ] Widgets registered with correct `type` and `componentType`
+- [ ] Config converts to/from `UnifiedSurfaceConfig` without data loss
+- [ ] Undo/redo works for all config changes
+- [ ] Presets can be exported and reimported
+- [ ] Widget factories respect `componentType` in runtimeOptions
+- [ ] Data bindings resolve correctly with your context object
+
+### Getting Help
+
+- **Editing-core README**: `apps/main/src/lib/editing-core/README.md`
+- **Overlay integration example**: `apps/main/src/lib/overlay/`
+- **HUD integration example**: `apps/main/src/lib/gameplay-ui-core/`
+- **Widget registry docs**: `apps/main/src/lib/editing-core/registry/widgetRegistry.ts`
+
+---
+
 ## Current Architecture
 
 ### Two Parallel Systems
