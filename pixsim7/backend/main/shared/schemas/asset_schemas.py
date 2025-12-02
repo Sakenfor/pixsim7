@@ -2,7 +2,7 @@
 Asset management request/response schemas
 """
 from datetime import datetime
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 from pydantic import BaseModel, Field, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 
@@ -57,6 +57,9 @@ class AssetResponse(BaseModel):
     # Provider status (derived field)
     provider_status: Optional[Literal["ok", "local_only", "unknown", "flagged"]] = None
 
+    # Upload history (Task 104 - derived from media_metadata)
+    last_upload_status_by_provider: Optional[Dict[str, Literal['success', 'error']]] = None
+
     # Timestamps
     created_at: datetime
 
@@ -99,6 +102,38 @@ class AssetResponse(BaseModel):
                 object.__setattr__(self, "thumbnail_url", file_url)
 
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_upload_history(cls, data):
+        """
+        Extract upload history from media_metadata (Task 104)
+
+        Reads media_metadata.upload_history.last_upload_status_by_provider
+        and exposes it as a top-level field for easy frontend access.
+        """
+        # Handle both dict and SQLAlchemy model instances
+        if hasattr(data, "media_metadata"):
+            media_metadata = data.media_metadata
+        elif isinstance(data, dict):
+            media_metadata = data.get("media_metadata")
+        else:
+            return data
+
+        # Extract upload history if present
+        if media_metadata and isinstance(media_metadata, dict):
+            upload_history = media_metadata.get("upload_history")
+            if upload_history and isinstance(upload_history, dict):
+                last_status = upload_history.get("last_upload_status_by_provider")
+                if last_status and isinstance(last_status, dict):
+                    # Set the field if data is a dict
+                    if isinstance(data, dict):
+                        data["last_upload_status_by_provider"] = last_status
+                    # For SQLAlchemy models, we'll set it via __dict__
+                    elif hasattr(data, "__dict__"):
+                        data.__dict__["last_upload_status_by_provider"] = last_status
+
+        return data
 
 
 class AssetListResponse(BaseModel):

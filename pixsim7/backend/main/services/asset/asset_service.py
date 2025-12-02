@@ -71,6 +71,9 @@ class AssetService:
 
     # ===== Sync Operations (delegate to AssetSyncService) =====
 
+    async def record_upload_attempt(self, *args, **kwargs):
+        return await self._sync.record_upload_attempt(*args, **kwargs)
+
     async def mark_downloading(self, *args, **kwargs):
         return await self._sync.mark_downloading(*args, **kwargs)
 
