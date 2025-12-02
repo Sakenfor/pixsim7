@@ -18,6 +18,10 @@ export interface PromptInputProps {
   className?: string;
   variant?: 'default' | 'compact';
   showCounter?: boolean;
+  /** Allow vertical resize. Defaults to false for backwards compat */
+  resizable?: boolean;
+  /** Minimum height in pixels */
+  minHeight?: number;
 }
 
 export const PromptInput: React.FC<PromptInputProps> = ({
@@ -30,6 +34,8 @@ export const PromptInput: React.FC<PromptInputProps> = ({
   className,
   variant = 'default',
   showCounter = true,
+  resizable = false,
+  minHeight,
 }) => {
   const remaining = maxChars - value.length;
 
@@ -43,6 +49,10 @@ export const PromptInput: React.FC<PromptInputProps> = ({
     }
   }, [onChange, maxChars]);
 
+  // Calculate min-height: use prop if provided, else variant default
+  const defaultMinHeight = variant === 'compact' ? 70 : 110;
+  const effectiveMinHeight = minHeight ?? defaultMinHeight;
+
   return (
     <div className={clsx('flex flex-col', className)}>
       <textarea
@@ -51,10 +61,12 @@ export const PromptInput: React.FC<PromptInputProps> = ({
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}
+        style={{ minHeight: `${effectiveMinHeight}px` }}
         className={clsx(
-          'w-full resize-none rounded border p-2 bg-white dark:bg-neutral-900 outline-none focus:ring-2 focus:ring-blue-500/40',
+          'w-full rounded border p-2 bg-white dark:bg-neutral-900 outline-none focus:ring-2 focus:ring-blue-500/40 flex-1',
           disabled && 'opacity-60 cursor-not-allowed',
-          variant === 'compact' ? 'text-sm min-h-[70px]' : 'text-base min-h-[110px]'
+          variant === 'compact' ? 'text-sm' : 'text-base',
+          resizable ? 'resize-y' : 'resize-none'
         )}
       />
       {showCounter && (

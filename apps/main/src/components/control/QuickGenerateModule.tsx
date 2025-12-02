@@ -5,10 +5,9 @@ import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '@/hooks/useProviders';
 import { useProviderSpecs } from '@/hooks/useProviderSpecs';
-import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
+import { type ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
 import { useGenerationQueueStore } from '@/stores/generationQueueStore';
-import { GenerationPluginRenderer } from '@/lib/providers';
 import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
 import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
 import { CompactAssetCard } from './CompactAssetCard';
@@ -54,9 +53,9 @@ export function QuickGenerateModule() {
   const setPresetParams = useControlCenterStore(s => s.setPresetParams);
   const updateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
 
-  // UI state for collapsible sections
+  // UI state for settings popover
   const [showSettings, setShowSettings] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
@@ -74,6 +73,26 @@ export function QuickGenerateModule() {
       p.name !== 'prompts'
     );
   }, [specs, operationType]);
+
+  // Split params into primary (shown directly in bar) and advanced (in dropdown)
+  // Primary: common user-facing options that should be immediately visible
+  const PRIMARY_PARAM_NAMES = ['duration', 'quality', 'aspect_ratio', 'model', 'model_version', 'seconds', 'style', 'resolution'];
+  const primaryParams = useMemo(() =>
+    paramSpecs.filter(p => PRIMARY_PARAM_NAMES.includes(p.name) && p.enum), // only enums for inline selects
+    [paramSpecs]
+  );
+  const advancedParams = useMemo(() =>
+    paramSpecs.filter(p => !PRIMARY_PARAM_NAMES.includes(p.name) || !p.enum),
+    [paramSpecs]
+  );
+
+  // Auto-show settings for operations with important visible options
+  const hasVisibleOptions = primaryParams.length > 0 || operationType === 'image_to_image';
+  useEffect(() => {
+    if (hasVisibleOptions) {
+      setShowSettings(true);
+    }
+  }, [hasVisibleOptions, operationType]);
 
   // Check if operation requires special array fields
   const needsArrayFields = operationType === 'video_transition';
@@ -185,25 +204,22 @@ export function QuickGenerateModule() {
 
   return (
     <div className="flex flex-col gap-3 h-full overflow-y-auto">
-      {/* Header: Operation selector + Presets + Settings */}
-      <div className="flex gap-2 items-center justify-between flex-shrink-0 pb-2 border-b border-neutral-200 dark:border-neutral-700">
-        <div className="flex gap-2 items-center flex-1">
-          <label className="text-xs text-neutral-500 font-medium">Mode:</label>
-          <select
-            value={operationType}
-            onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
-            disabled={generating}
-            className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 flex-1"
-          >
-            <option value="text_to_image">Text → Image</option>
-            <option value="image_to_image">Image → Image</option>
-            <option value="text_to_video">Text → Video</option>
-            <option value="image_to_video">Image → Video</option>
-            <option value="video_extend">Video Extend</option>
-            <option value="video_transition">Video Transition</option>
-            <option value="fusion">Fusion</option>
-          </select>
-        </div>
+      {/* Header: Operation selector + Presets + Settings + Generate */}
+      <div className="flex gap-1.5 items-center flex-shrink-0 pb-2 border-b border-neutral-200 dark:border-neutral-700">
+        <select
+          value={operationType}
+          onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
+          disabled={generating}
+          className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 min-w-0"
+        >
+          <option value="text_to_image">Text → Img</option>
+          <option value="image_to_image">Img → Img</option>
+          <option value="text_to_video">Text → Vid</option>
+          <option value="image_to_video">Img → Vid</option>
+          <option value="video_extend">Extend</option>
+          <option value="video_transition">Transition</option>
+          <option value="fusion">Fusion</option>
+        </select>
 
         {/* Presets dropdown */}
         {availablePresets.length > 0 && (
@@ -219,23 +235,158 @@ export function QuickGenerateModule() {
               }
             }}
             disabled={generating}
-            className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 max-w-[120px]"
+            className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 max-w-[100px] min-w-0"
             title="Quick presets"
           >
-            <option value="">No Preset</option>
+            <option value="">Preset</option>
             {availablePresets.map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         )}
 
+        <div className="flex-1" />
+
+        {/* Settings bar - expands left horizontally */}
+        {showSettings && (
+          <div className="flex items-center gap-1 px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-l-md border-r-0 animate-in slide-in-from-right-2 duration-150">
+            {/* Provider selector - inline */}
+            <select
+              value={providerId ?? ''}
+              onChange={(e) => setProvider(e.target.value || undefined)}
+              disabled={generating}
+              className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer"
+              title="Provider"
+            >
+              <option value="">Auto</option>
+              {providers.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            {/* Primary params - shown directly as small selects */}
+            {primaryParams.map(param => (
+              <select
+                key={param.name}
+                value={dynamicParams[param.name] ?? param.default ?? ''}
+                onChange={(e) => handleDynamicParamChange(param.name, e.target.value)}
+                disabled={generating}
+                className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
+                title={param.name}
+              >
+                {param.enum ? (
+                  param.enum.map((opt: string) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))
+                ) : (
+                  <option value={dynamicParams[param.name] ?? ''}>{dynamicParams[param.name] ?? param.name}</option>
+                )}
+              </select>
+            ))}
+
+            {/* Advanced params button - only if there are additional params */}
+            {advancedParams.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setExpandedSetting(expandedSetting === 'advanced' ? null : 'advanced')}
+                  className={clsx(
+                    'px-2 py-1 text-[10px] rounded transition-colors',
+                    expandedSetting === 'advanced'
+                      ? 'bg-white dark:bg-neutral-700 shadow-sm'
+                      : 'hover:bg-white/50 dark:hover:bg-neutral-700/50'
+                  )}
+                >
+                  +{advancedParams.length}
+                </button>
+                {expandedSetting === 'advanced' && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg p-2 min-w-[180px] max-h-[250px] overflow-y-auto space-y-2">
+                    {advancedParams.map(param => (
+                      <div key={param.name} className="flex items-center gap-2">
+                        <span className="text-[10px] text-neutral-500 min-w-[60px]">{param.name.replace(/_/g, ' ')}</span>
+                        {param.enum ? (
+                          <select
+                            value={dynamicParams[param.name] ?? param.default ?? ''}
+                            onChange={(e) => handleDynamicParamChange(param.name, e.target.value)}
+                            disabled={generating}
+                            className="flex-1 p-1 text-[10px] border rounded bg-white dark:bg-neutral-800 disabled:opacity-50"
+                          >
+                            <option value="">-</option>
+                            {param.enum.map((opt: string) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : param.type === 'boolean' ? (
+                          <input
+                            type="checkbox"
+                            checked={!!dynamicParams[param.name]}
+                            onChange={(e) => handleDynamicParamChange(param.name, e.target.checked)}
+                            disabled={generating}
+                            className="w-3 h-3"
+                          />
+                        ) : (
+                          <input
+                            type={param.type === 'number' ? 'number' : 'text'}
+                            value={dynamicParams[param.name] ?? ''}
+                            onChange={(e) => handleDynamicParamChange(param.name, param.type === 'number' ? Number(e.target.value) : e.target.value)}
+                            disabled={generating}
+                            placeholder={param.default?.toString()}
+                            className="flex-1 p-1 text-[10px] border rounded bg-white dark:bg-neutral-800 disabled:opacity-50 w-16"
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Preset indicator */}
+            {presetId && (
+              <span className="px-1.5 py-0.5 text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
+                {presetId}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Settings toggle */}
         <button
-          onClick={() => setShowSettings(!showSettings)}
-          className="p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          title="Toggle settings"
+          onClick={() => {
+            setShowSettings(!showSettings);
+            setExpandedSetting(null);
+          }}
+          className={clsx(
+            'p-1.5 rounded transition-colors',
+            showSettings
+              ? 'bg-neutral-200 dark:bg-neutral-700'
+              : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+          )}
+          title="Settings"
         >
-          <ThemedIcon name={showSettings ? 'chevronUp' : 'settings'} size={16} variant="default" />
+          <ThemedIcon name="settings" size={14} variant="default" />
+        </button>
+
+        {/* Generate button - compact */}
+        <button
+          onClick={generate}
+          disabled={generating || !canGenerate}
+          className={clsx(
+            'px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-all',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            generating || !canGenerate
+              ? 'bg-neutral-400'
+              : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+          )}
+          title={generating ? 'Generating...' : 'Generate (Enter)'}
+        >
+          {generating ? (
+            <ThemedIcon name="loader" size={14} variant="default" className="animate-spin" />
+          ) : (
+            <span className="flex items-center gap-1">
+              <ThemedIcon name="zap" size={12} variant="default" />
+              Go
+            </span>
+          )}
         </button>
       </div>
 
@@ -246,20 +397,20 @@ export function QuickGenerateModule() {
           // Transition mode: horizontal assets with prompt on right
           <div className="flex gap-3 flex-1 min-h-0">
             {/* Left: Asset sequence */}
-            <div className="flex-shrink-0 flex flex-col gap-2 min-w-0">
-              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-                <ThemedIcon name="shuffle" size={14} variant="default" />
-                <span className="font-medium">Sequence ({transitionQueue.length})</span>
-                {transitionQueue.length > 0 && (
+            <div className="flex-shrink-0 flex flex-col gap-1 min-w-0">
+              {transitionQueue.length > 0 && (
+                <div className="flex items-center gap-2 text-[10px] text-neutral-500">
+                  <span>{transitionQueue.length} images</span>
                   <button
                     onClick={clearTransitionQueue}
-                    className="ml-auto px-2 py-0.5 text-[10px] bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                    className="text-red-500 hover:text-red-600"
                     disabled={generating}
+                    title="Clear all"
                   >
-                    Clear
+                    ✕
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
               {displayAssets.length > 0 ? (
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
@@ -300,31 +451,22 @@ export function QuickGenerateModule() {
             </div>
 
             {/* Right: Prompt for selected transition */}
-            <div className="flex-1 flex flex-col gap-2 min-w-0">
+            <div className="flex-1 flex flex-col min-w-0">
               {displayAssets.length > 1 ? (
-                <>
-                  <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
-                    Transition {selectedTransitionIndex + 1} → {selectedTransitionIndex + 2}
-                  </label>
-                  <textarea
-                    value={prompts[selectedTransitionIndex] || ''}
-                    onChange={(e) => {
-                      const newPrompts = [...prompts];
-                      newPrompts[selectedTransitionIndex] = e.target.value;
-                      setPrompts(newPrompts);
-                    }}
-                    placeholder={`Describe how to transition from image ${selectedTransitionIndex + 1} to image ${selectedTransitionIndex + 2}...`}
-                    disabled={generating}
-                    className="flex-1 min-h-[80px] px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none"
-                  />
-                </>
-              ) : displayAssets.length === 1 ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                  Add one more image to create a transition
-                </div>
+                <textarea
+                  value={prompts[selectedTransitionIndex] || ''}
+                  onChange={(e) => {
+                    const newPrompts = [...prompts];
+                    newPrompts[selectedTransitionIndex] = e.target.value;
+                    setPrompts(newPrompts);
+                  }}
+                  placeholder={`Transition ${selectedTransitionIndex + 1} → ${selectedTransitionIndex + 2}: Describe the motion...`}
+                  disabled={generating}
+                  className="flex-1 min-h-[80px] px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50 resize-y focus:ring-2 focus:ring-blue-500/40 outline-none"
+                />
               ) : (
                 <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                  Add images to define transitions
+                  {displayAssets.length === 1 ? 'Add one more image' : 'Add images from gallery'}
                 </div>
               )}
             </div>
@@ -333,20 +475,9 @@ export function QuickGenerateModule() {
           // Single asset mode: side-by-side (asset left, prompt right)
           <div className="flex gap-3 flex-1 min-h-0">
             {/* Left: Asset */}
-            <div className="flex-shrink-0 flex flex-col gap-2 w-40">
-              <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-                <ThemedIcon
-                  name={operationType === 'video_extend' ? 'video' : 'image'}
-                  size={14}
-                  variant="default"
-                />
-                <span className="font-medium">
-                  {operationType === 'image_to_video' ? 'Source' : operationType === 'image_to_image' ? 'Input' : 'Video'}
-                </span>
-              </div>
-
+            <div className="flex-shrink-0 w-36">
               {displayAssets.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <CompactAssetCard
                     asset={displayAssets[0]}
                     showRemoveButton={mainQueue.length > 0}
@@ -365,21 +496,22 @@ export function QuickGenerateModule() {
                   )}
                 </div>
               ) : (
-                <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700 text-center">
+                <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700 text-center h-full flex items-center justify-center">
                   {operationType === 'video_extend' ? 'Select video' : 'Select image'}
                 </div>
               )}
             </div>
 
             {/* Right: Prompt */}
-            <div className="flex-1 flex flex-col gap-2 min-w-0">
-              <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">Prompt</label>
+            <div className="flex-1 min-w-0">
               <PromptInput
                 value={prompt}
                 onChange={setPrompt}
                 maxChars={maxChars}
                 disabled={generating}
                 variant="compact"
+                resizable
+                minHeight={100}
                 placeholder={
                   operationType === 'image_to_video'
                     ? 'Describe the motion and action...'
@@ -387,22 +519,21 @@ export function QuickGenerateModule() {
                     ? 'Describe the transformation...'
                     : 'Describe how to continue the video...'
                 }
-                className="flex-1"
+                className="h-full"
               />
             </div>
           </div>
         ) : (
           // Text-only mode (text_to_image, text_to_video, fusion): full-width prompt
-          <div className="flex-1 flex flex-col gap-2 min-h-0">
-            <label className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
-              {operationType === 'text_to_image' ? 'Describe the image' : operationType === 'text_to_video' ? 'Describe the video' : 'Fusion prompt'}
-            </label>
+          <div className="flex-1 min-h-0">
             <PromptInput
               value={prompt}
               onChange={setPrompt}
               maxChars={maxChars}
               disabled={generating}
               variant="compact"
+              resizable
+              minHeight={120}
               placeholder={
                 operationType === 'text_to_image'
                   ? 'Describe the image you want to create...'
@@ -410,89 +541,8 @@ export function QuickGenerateModule() {
                   ? 'Describe the video you want to create...'
                   : 'Describe the fusion...'
               }
-              className="flex-1"
+              className="h-full"
             />
-          </div>
-        )}
-
-        {/* Collapsible Settings */}
-        {showSettings && (
-          <div className="flex-shrink-0 space-y-3 p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-neutral-200 dark:border-neutral-700">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">Settings</h3>
-              <button
-                onClick={() => setShowSettings(false)}
-                className="text-xs text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-              >
-                <ThemedIcon name="close" size={14} variant="default" />
-              </button>
-            </div>
-
-            {/* Provider selection */}
-            <div>
-              <label className="text-xs text-neutral-500 font-medium block mb-1">Provider</label>
-              <select
-                value={providerId ?? ''}
-                onChange={(e) => setProvider(e.target.value || undefined)}
-                disabled={generating}
-                className="w-full p-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50"
-              >
-                <option value="">Auto</option>
-                {providers.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Active preset display */}
-            {presetId && (
-              <div className="text-xs p-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded">
-                <div className="font-medium text-blue-700 dark:text-blue-300">Preset: {presetId}</div>
-                {Object.keys(presetParams).length > 0 && (
-                  <div className="mt-1 text-neutral-600 dark:text-neutral-400">
-                    {Object.entries(presetParams).map(([k, v]) => (
-                      <div key={k}>{k}: {String(v)}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Dynamic parameters (collapsed in advanced) */}
-            {paramSpecs.length > 0 && (
-              <div>
-                <button
-                  onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100 mb-2"
-                >
-                  <ThemedIcon name={showAdvanced ? 'chevronDown' : 'chevronRight'} size={12} variant="default" />
-                  Advanced Parameters ({paramSpecs.length})
-                </button>
-
-                {showAdvanced && (
-                  <div className="pl-3 border-l-2 border-neutral-300 dark:border-neutral-700">
-                    <DynamicParamForm
-                      specs={paramSpecs}
-                      values={dynamicParams}
-                      onChange={handleDynamicParamChange}
-                      disabled={generating}
-                      operationType={operationType}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Provider-specific plugin UI */}
-            {providerId && (
-              <GenerationPluginRenderer
-                providerId={providerId}
-                operationType={operationType}
-                values={dynamicParams}
-                onChange={handleDynamicParamChange}
-                disabled={generating}
-              />
-            )}
           </div>
         )}
 
@@ -510,33 +560,6 @@ export function QuickGenerateModule() {
         {generationId && (
           <GenerationStatusDisplay generationId={generationId} />
         )}
-
-        {/* Generate button - prominent and always visible */}
-        <div className="flex-shrink-0 sticky bottom-0 bg-white dark:bg-neutral-950 pt-2 border-t border-neutral-200 dark:border-neutral-700">
-          <button
-            onClick={generate}
-            disabled={generating || !canGenerate}
-            className={clsx(
-              'w-full py-3 px-4 rounded-lg text-sm font-semibold text-white transition-all shadow-lg',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              generating || !canGenerate
-                ? 'bg-neutral-400'
-                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 hover:shadow-xl'
-            )}
-          >
-            {generating ? (
-              <span className="flex items-center justify-center gap-2">
-                <ThemedIcon name="loader" size={16} variant="default" className="animate-spin" />
-                Generating…
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <ThemedIcon name="zap" size={16} variant="default" />
-                Generate
-              </span>
-            )}
-          </button>
-        </div>
 
         {/* Recent prompts */}
         {recentPrompts.length > 0 && (

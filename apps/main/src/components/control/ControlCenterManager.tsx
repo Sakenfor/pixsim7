@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { controlCenterRegistry } from '@/lib/plugins/controlCenterPlugin';
 import { Button } from '@pixsim7/shared.ui';
 import { useToast } from '@pixsim7/shared.ui';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
 
 export function ControlCenterManager() {
   const [activePlugin, setActivePlugin] = useState(() => controlCenterRegistry.getActive());
@@ -17,6 +18,9 @@ export function ControlCenterManager() {
     controlCenterRegistry.getAll()
   );
   const toast = useToast();
+
+  // Hide switcher button when control center is expanded
+  const controlCenterOpen = useControlCenterStore(s => s.open);
 
   // Load user preference on mount
   useEffect(() => {
@@ -173,8 +177,8 @@ export function ControlCenterManager() {
         </div>
       )}
 
-      {/* Quick switcher hint (only show if multiple options) */}
-      {availableControlCenters.length > 1 && !showSelector && (
+      {/* Quick switcher hint (only show if multiple options and control center is collapsed) */}
+      {availableControlCenters.length > 1 && !showSelector && !controlCenterOpen && (
         <button
           onClick={() => setShowSelector(true)}
           className="fixed bottom-4 left-4 z-40 px-3 py-2 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-lg text-white text-xs transition-all hover:scale-105"

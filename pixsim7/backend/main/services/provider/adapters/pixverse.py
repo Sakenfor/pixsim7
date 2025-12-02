@@ -106,6 +106,8 @@ class PixverseProvider(
     @property
     def supported_operations(self) -> list[OperationType]:
         return [
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
             OperationType.TEXT_TO_VIDEO,
             OperationType.IMAGE_TO_VIDEO,
             OperationType.VIDEO_EXTEND,
@@ -252,7 +254,22 @@ class PixverseProvider(
             "name": "camera_movement", "type": "enum", "required": False, "default": None,
             "enum": ["slow_pan", "fast_pan", "zoom_in", "zoom_out"], "description": "Camera movement preset", "group": "style"
         }
+        # Image generation model options
+        image_model = {
+            "name": "model", "type": "enum", "required": False, "default": "v2",
+            "enum": ["v2", "v2.1", "anime", "realistic"], "description": "Image generation model", "group": "core"
+        }
+        image_quality = {
+            "name": "quality", "type": "enum", "required": False, "default": "standard",
+            "enum": ["standard", "hd", "ultra"], "description": "Image quality preset", "group": "render"
+        }
+        strength = {
+            "name": "strength", "type": "number", "required": False, "default": 0.7,
+            "enum": None, "description": "Transformation strength (0.0-1.0)", "group": "style", "min": 0.0, "max": 1.0
+        }
         spec = {
+            "text_to_image": {"parameters": [base_prompt, image_model, image_quality, aspect_ratio, seed, style, negative_prompt]},
+            "image_to_image": {"parameters": [base_prompt, image_url, image_model, image_quality, strength, seed, style, negative_prompt]},
             "text_to_video": {"parameters": [base_prompt, model, quality, duration, aspect_ratio, seed, motion_mode, style, negative_prompt, template_id]},
             "image_to_video": {"parameters": [base_prompt, image_url, model, quality, duration, aspect_ratio, seed, camera_movement, motion_mode, style, negative_prompt]},
             "video_extend": {"parameters": [base_prompt, video_url, original_video_id, model, quality, duration, seed]},
