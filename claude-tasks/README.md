@@ -88,9 +88,17 @@ The **Phase Checklist** at the top of each file is the authoritative high‑leve
   World‑aware session normalization and schema validation for relationship schemas.  
   **Status:** Phase 4 and 9 partially implemented (schema validation + metric registry wiring); others are greenfield.
 
-- `12-intimacy-scene-composer-and-progression-editor.md`  
-  Intimacy Scene Composer and Relationship Progression Editor.  
+- `12-intimacy-scene-composer-and-progression-editor.md`
+  Intimacy Scene Composer and Relationship Progression Editor.
   **Status:** All phases `[ ]` (greenfield future editor tooling).
+
+- `104-rejected-upload-tracking-and-asset-metadata.md`
+  Upload attempt tracking (success & failure) across all sources using metadata.
+  **Status:** Phases 1–4 implemented (backend, API, Local Folders); Phase 5 (UX) documented as future work.
+
+- `105-editing-core-hardening-and-adoption-guidelines.md`
+  Hardening and documentation for the editing-core layer.
+  **Status:** Phases 1–3 implemented (README, widget registry docs, adoption guide); Phase 4 (tests) skipped.
 
 ## How to Evolve Tasks
 

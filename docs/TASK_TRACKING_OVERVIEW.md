@@ -1,6 +1,6 @@
 # PixSim7 Task Tracking Overview
 
-**Last Updated:** 2025-11-23
+**Last Updated:** 2025-12-02
 **Purpose:** Comprehensive status of all Claude tasks to enable quick coordination between agents and humans without redundant analysis.
 
 ---
@@ -52,6 +52,8 @@ This document provides a **single source of truth** for what's been completed an
 | 52 | Panel Configuration & Layout | ✅ Complete | 5/5 | All phases complete; panel config store |
 | 53 | Graph Editor Registry & Surfaces | ✅ Complete | 5/5 | All phases complete; graph editor plugin system |
 | 54 | Dev Tools Surface & Debug Workspace | ✅ Complete | 5/5 | All phases complete; dev tools registry and presets |
+| 104 | Rejected Upload Tracking & Asset Metadata | ✅ Complete | 4/5 | Backend infrastructure done; UI features future work |
+| 105 | Editing-Core Hardening & Adoption Guidelines | ✅ Complete | 3/4 | Documentation complete; tests skipped (optional) |
 
 **Legend:**
 - ✅ Complete: All or nearly all phases done
