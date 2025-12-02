@@ -470,6 +470,73 @@ This document provides a **single source of truth** for what's been completed an
 
 ---
 
+#### Task 104: Rejected Upload Tracking & Asset Metadata
+**Status:** Backend complete (2025-12-02)
+
+**What it does:**
+- Tracks upload attempts (success & failure) across all sources
+- Uses `Asset.media_metadata` for upload history (no schema changes)
+- Records attempts for cross-provider uploads (e.g., Pixverse → Sora)
+- Local Folders caches upload status (survives page reloads)
+- API exposes `last_upload_status_by_provider` for UI
+
+**What's Complete:**
+- Phase 1: Backend upload history helper (`record_upload_attempt()`)
+- Phase 2: Wired into cross-provider upload flows
+- Phase 3: API projection via `AssetResponse.last_upload_status_by_provider`
+- Phase 4: Local Folders IndexedDB persistence
+
+**What's Future Work (Documented but Not Implemented):**
+- Phase 5: UI badges in gallery showing upload failures
+- UI filters for "failed uploads"
+- "Fix and retry" workflows in asset inspector
+
+**Key Files:**
+- `pixsim7/backend/main/services/asset/sync_service.py` (record_upload_attempt)
+- `pixsim7/backend/main/shared/schemas/asset_schemas.py` (API projection)
+- `apps/main/src/stores/localFoldersStore.ts` (persistence)
+
+---
+
+#### Task 105: Editing-Core Hardening & Adoption Guidelines
+**Status:** Documentation complete (2025-12-02)
+
+**What it does:**
+- Comprehensive documentation for the `editing-core` layer
+- Clear adoption guidelines for HUD, Interaction Studio, and future surfaces
+- Enhanced widget registry documentation with componentType patterns
+- Cleanup of unused backwards compatibility code
+
+**What's Complete:**
+- Phase 1: Created `editing-core/README.md` (400+ lines)
+  - What it is/isn't, features, quick start, architecture
+  - Usage guidelines with when-to-use/when-not-to-use criteria
+  - 5-step adoption checklist, common patterns, anti-patterns, FAQ
+- Phase 2: Enhanced widget registry documentation
+  - Module header explaining componentType and widget reuse patterns
+  - Comprehensive JSDoc for all interfaces and functions with examples
+  - Pattern guidance for cross-surface widget reuse
+- Phase 3: Added adoption guide to `EDITABLE_UI_ARCHITECTURE.md` (380+ lines)
+  - When to use / when not to use decision criteria
+  - Quick reference for core concepts
+  - Complete 5-step adoption checklist with code examples
+  - Common patterns, anti-patterns, testing checklist
+- **Bonus:** Usage audit and cleanup
+  - Removed 140 lines of unused backwards compatibility code
+  - Simplified widget APIs to single-pattern (DataBinding only)
+
+**What's Skipped:**
+- Phase 4: Tests (optional, deferred per user request)
+
+**Key Files:**
+- `apps/main/src/lib/editing-core/README.md` (new)
+- `apps/main/src/lib/editing-core/registry/widgetRegistry.ts` (enhanced docs)
+- `docs/EDITABLE_UI_ARCHITECTURE.md` (adoption guide added)
+- `docs/EDITING_CORE_CLEANUP_AUDIT.md` (cleanup analysis)
+- Widget files simplified: BadgeWidget, ButtonWidget, PanelWidget, etc.
+
+---
+
 ### ⏸️ PARTIALLY COMPLETE TASKS
 
 #### Task 01: World HUD Layout Designer
