@@ -112,6 +112,9 @@ class AssetService:
     async def find_asset_by_hash(self, *args, **kwargs):
         return await self._quota.find_asset_by_hash(*args, **kwargs)
 
+    async def find_similar_asset_by_phash(self, *args, **kwargs):
+        return await self._quota.find_similar_by_phash(*args, **kwargs)
+
     # ===== Tag Management (delegate to AssetCoreService) =====
 
     async def update_tags(self, *args, **kwargs):

@@ -18,6 +18,7 @@ import os, tempfile, hashlib
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
+from pixsim7.backend.main.services.asset.asset_hasher import compute_image_phash
 from pixsim_logging import get_logger
 
 router = APIRouter()
@@ -576,12 +577,16 @@ async def upload_asset_from_url(
         shutil.copy2(tmp_path, temp_local_path)
         file_size_bytes = os.path.getsize(temp_local_path)
 
-        # Compute SHA256 for deduplication
-        sha256_hash = hashlib.sha256()
-        with open(temp_local_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256_hash.update(chunk)
-        sha256 = sha256_hash.hexdigest()
+        # Compute SHA256 for deduplication (reuse helper)
+        try:
+            sha256 = asset_service._compute_sha256(temp_local_path)
+        except Exception as e:
+            logger.warning(
+                "asset_sha256_compute_failed",
+                error=str(e),
+                detail="Continuing upload-from-url without sha256 deduplication",
+            )
+            sha256 = None
 
         # Deduplication: reuse existing asset with same hash for this user
         try:
@@ -621,14 +626,63 @@ async def upload_asset_from_url(
                 note="Reused existing asset (deduplicated by sha256)",
             )
 
-        # Extract image dimensions if it's an image
+        # Extract image dimensions if it's an image and compute perceptual hash
         width = height = None
+        image_hash: Optional[str] = None
+        phash64: Optional[int] = None
         if media_type == MediaType.IMAGE:
             try:
                 with Image.open(temp_local_path) as img:
                     width, height = img.size
+                # Compute simple perceptual hash
+                try:
+                    image_hash, phash64 = compute_image_phash(temp_local_path)
+                except Exception as e:
+                    logger.warning(
+                        "asset_phash_compute_failed",
+                        error=str(e),
+                        detail="Continuing without image_hash/phash64",
+                    )
             except Exception as e:
                 logger.warning(f"Failed to extract image dimensions: {e}")
+
+        # Phash-based near-duplicate detection for images
+        if phash64 is not None:
+            try:
+                similar = await asset_service.find_similar_asset_by_phash(phash64, user.id, max_distance=5)
+            except Exception as e:
+                similar = None
+                logger.warning(
+                    "asset_phash_lookup_failed",
+                    error=str(e),
+                    detail="Failed to check for similar asset by phash; continuing with new asset",
+                )
+            else:
+                if similar:
+                    # Clean up temp files since we're reusing an existing asset
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+                    try:
+                        if os.path.exists(temp_local_path):
+                            os.unlink(temp_local_path)
+                    except Exception:
+                        pass
+
+                    existing_external = similar.remote_url
+                    if not existing_external or not (
+                        existing_external.startswith("http://") or existing_external.startswith("https://")
+                    ):
+                        existing_external = f"/api/v1/assets/{similar.id}/file"
+
+                    return UploadAssetResponse(
+                        provider_id=request.provider_id,
+                        media_type=similar.media_type,
+                        external_url=existing_external,
+                        provider_asset_id=similar.provider_asset_id,
+                        note="Reused existing asset (phash match)",
+                    )
 
         # Extract video duration if it's a video
         duration_sec = None
@@ -684,6 +738,8 @@ async def upload_asset_from_url(
             mime_type=content_type,
             file_size_bytes=file_size_bytes,
             sha256=sha256,
+            image_hash=image_hash,
+            phash64=phash64,
             tags=["user_upload", "from_url"],
             media_metadata=media_metadata or None,
         )

@@ -9,6 +9,8 @@ from sqlalchemy import select, func
 import hashlib
 
 from pixsim7.backend.main.domain import Asset
+from pixsim7.backend.main.services.asset.asset_hasher import hamming_distance_64
+from datetime import datetime
 
 
 class AssetQuotaService:
@@ -97,3 +99,45 @@ class AssetQuotaService:
             await self.db.commit()
 
         return asset
+
+    async def find_similar_by_phash(
+        self,
+        phash64: int,
+        user_id: int,
+        max_distance: int = 5,
+    ) -> Optional[Asset]:
+        """
+        Find an asset with a similar perceptual hash (phash64).
+
+        This is a best-effort helper for near-duplicate detection, primarily
+        used by extension/web uploads where the same visual asset might be
+        re-encoded or served from different URLs.
+        """
+        if phash64 is None:
+            return None
+
+        result = await self.db.execute(
+            select(Asset).where(
+                Asset.user_id == user_id,
+                Asset.phash64.isnot(None),
+            )
+        )
+        candidates = result.scalars().all()
+        if not candidates:
+            return None
+
+        best: Optional[Asset] = None
+        best_dist = max_distance + 1
+
+        for asset in candidates:
+            dist = hamming_distance_64(phash64, asset.phash64 or 0)
+            if dist < best_dist:
+                best = asset
+                best_dist = dist
+
+        if best and best_dist <= max_distance:
+            best.last_accessed_at = datetime.utcnow()
+            await self.db.commit()
+            return best
+
+        return None
