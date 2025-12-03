@@ -139,13 +139,16 @@ export function MasonryGrid({
     const occupiedRects: { top: number; left: number; bottom: number; right: number }[] = [];
 
     // Helper: Check if a position would overlap with existing items
+    // Note: Items that exactly touch (adjacent) should NOT be considered overlapping
     const wouldOverlap = (top: number, left: number, height: number, width: number): boolean => {
       const bottom = top + height;
       const right = left + width;
 
       return occupiedRects.some(rect => {
-        const horizontalOverlap = left < rect.right && right > rect.left;
-        const verticalOverlap = top < rect.bottom && bottom > rect.top;
+        // Use < instead of <= to allow adjacent (touching) items
+        // Subtract 1 to account for pixel rounding and allow exact adjacency
+        const horizontalOverlap = left < rect.right - 1 && right > rect.left + 1;
+        const verticalOverlap = top < rect.bottom - 1 && bottom > rect.top + 1;
         return horizontalOverlap && verticalOverlap;
       });
     };
