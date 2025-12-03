@@ -102,7 +102,7 @@ export function AssetsRoute() {
   }, [allSources, handleSourceChange]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden content-with-dock">
+    <div className="flex flex-col h-screen overflow-hidden">
       {/* Fixed header section */}
       <div className="flex-shrink-0 p-6 space-y-4 overflow-visible">
         {/* Selection Mode Banner */}
