@@ -5,6 +5,9 @@ IMPORTANT: After building, the following fixes must be applied:
 1. Add syncModuleCaches() call after loadAssets() in assets button click handler
 2. Add syncModuleCaches() call in init's Promise.all().then() callback
 3. Fix variable references: currentSessionAccountId, accountSortBy, recentSiteImages
+4. Add mouse wheel scroll handler to account button (see current refactored version)
+
+Note: Some features (like wheel scroll) are only in the refactored version.
 """
 
 # Read original file

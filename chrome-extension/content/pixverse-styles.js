@@ -75,7 +75,7 @@ const STYLE = `
 
   /* Account Button */
   .${BTN_CLASS}--account {
-    max-width: 200px;
+    max-width: 260px;
     overflow: hidden;
   }
   .${BTN_CLASS}--account .name {

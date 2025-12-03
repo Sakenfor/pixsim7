@@ -509,7 +509,7 @@
 
     if (account) {
       const name = account.nickname || account.email?.split('@')[0] || 'Account';
-      const truncated = name.length > 12 ? name.slice(0, 11) + '…' : name;
+      const truncated = name.length > 15 ? name.slice(0, 14) + '…' : name;
       const credits = account.total_credits || 0;
 
       // Get ads from cache
@@ -568,6 +568,52 @@
       }
 
       showAccountMenu(accountBtn, () => updateAccountButton(accountBtn));
+    });
+
+    // Mouse wheel scroll to cycle through accounts
+    accountBtn.addEventListener('wheel', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Load accounts if not loaded
+      if (accountsCache.length === 0) {
+        await loadAccounts();
+      }
+
+      if (accountsCache.length === 0) return;
+
+      // Get sorted accounts (same order as menu)
+      const currentSession = getCurrentSessionAccount();
+      const filteredAccounts = currentSession
+        ? accountsCache.filter(a => a.id !== currentSession.id)
+        : accountsCache;
+      const sortedAccounts = currentSession
+        ? [currentSession, ...getSortedAccounts(filteredAccounts)]
+        : getSortedAccounts(accountsCache);
+
+      // Find current account index
+      const currentAccount = getCurrentAccount();
+      let currentIndex = sortedAccounts.findIndex(a => a.id === currentAccount?.id);
+      if (currentIndex === -1) currentIndex = 0;
+
+      // Scroll up = previous, scroll down = next
+      let newIndex;
+      if (e.deltaY < 0) {
+        // Scroll up - go to previous account
+        newIndex = currentIndex - 1;
+        if (newIndex < 0) newIndex = sortedAccounts.length - 1; // wrap to last
+      } else {
+        // Scroll down - go to next account
+        newIndex = currentIndex + 1;
+        if (newIndex >= sortedAccounts.length) newIndex = 0; // wrap to first
+      }
+
+      // Select the new account
+      const newAccount = sortedAccounts[newIndex];
+      if (newAccount) {
+        await saveSelectedAccount(newAccount.id);
+        updateAccountButton(accountBtn);
+      }
     });
 
     // Login button
