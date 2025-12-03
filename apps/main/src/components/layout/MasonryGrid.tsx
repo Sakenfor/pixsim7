@@ -90,12 +90,19 @@ export function MasonryGrid({
       : containerWidth;
   }, [containerWidth, columnGap, cols]);
 
-  // Compute positions once we know container width and item heights
+  // Update columnWidth state when colWidth changes
   useLayoutEffect(() => {
-    if (!containerWidth || items.length === 0) {
+    if (colWidth !== columnWidth) {
+      setColumnWidth(colWidth);
+    }
+  }, [colWidth, columnWidth]);
+
+  // Compute positions once we know container width and item heights
+  // Includes columnWidth in dependencies to remeasure after width changes
+  useLayoutEffect(() => {
+    if (!containerWidth || items.length === 0 || !columnWidth) {
       setPositions([]);
       setContainerHeight(0);
-      setColumnWidth(0);
       return;
     }
 
@@ -128,11 +135,10 @@ export function MasonryGrid({
     });
 
     setPositions(nextPositions);
-    setColumnWidth(colWidth);
     setContainerHeight(
       colHeights.length ? Math.max(...colHeights) - rowGap : 0
     );
-  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth]);
+  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth]);
 
   return (
     <div

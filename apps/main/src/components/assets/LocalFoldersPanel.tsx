@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
+import { MasonryGrid } from '../layout/MasonryGrid';
+import { GalleryLayoutControls } from '../gallery/GalleryLayoutControls';
 import type { LocalAsset } from '@/stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
 
@@ -101,6 +103,11 @@ export function LocalFoldersPanel() {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
 
+  // Layout state (same as remote gallery)
+  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
+  const [cardSize, setCardSize] = useState<number>(260);
+  const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
+
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
       acc[f.id] = f.name;
@@ -115,6 +122,33 @@ export function LocalFoldersPanel() {
     return controller.folders[0]?.id;
   }, [controller.selectedFolderPath, controller.folders]);
 
+
+  // Determine which assets to show based on folder selection
+  const displayAssets = useMemo(() => {
+    // If a folder is selected, show filtered assets for that folder
+    if (controller.selectedFolderPath) {
+      return controller.filteredAssets;
+    }
+    // Otherwise show all assets
+    return controller.assets;
+  }, [controller.selectedFolderPath, controller.filteredAssets, controller.assets]);
+
+  // Render media cards for gallery layouts
+  const cardItems = displayAssets.map(asset => {
+    const status = controller.uploadStatus[asset.key] || 'idle';
+    const previewUrl = controller.previews[asset.key];
+    return (
+      <TreeLazyMediaCard
+        key={asset.key}
+        asset={asset}
+        previewUrl={previewUrl}
+        loadPreview={controller.loadPreview}
+        status={status}
+        openViewer={controller.openViewer}
+        uploadOne={controller.uploadOne}
+      />
+    );
+  });
 
   const renderMainContent = () => {
     if (controller.assets.length === 0) {
@@ -135,188 +169,61 @@ export function LocalFoldersPanel() {
       );
     }
 
-    if (controller.viewMode === 'tree') {
-      // Tree mode: Shows filtered assets based on selected folder
+    // Empty state when folder is selected but no assets in that folder
+    if (controller.selectedFolderPath && displayAssets.length === 0) {
       return (
-        <div>
-          {controller.selectedFolderPath && controller.filteredAssets.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {controller.filteredAssets.map(asset => {
-                const status = controller.uploadStatus[asset.key] || 'idle';
-                const previewUrl = controller.previews[asset.key];
-                return (
-                  <TreeLazyMediaCard
-                    key={asset.key}
-                    asset={asset}
-                    previewUrl={previewUrl}
-                    loadPreview={controller.loadPreview}
-                    status={status}
-                    openViewer={controller.openViewer}
-                    uploadOne={controller.uploadOne}
-                  />
-                );
-              })}
+        <div className="flex items-center justify-center h-[60vh] text-neutral-500">
+          <div className="text-center">
+            <div className="mb-4 flex justify-center">
+              <Icons.folderOpen size={48} className="text-neutral-400" />
             </div>
-          ) : controller.selectedFolderPath ? (
-            <div className="flex items-center justify-center h-[60vh] text-neutral-500">
-              <div className="text-center">
-                <div className="mb-4 flex justify-center">
-                  <Icons.folderOpen size={48} className="text-neutral-400" />
-                </div>
-                <p>No files in this folder</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-[60vh] text-neutral-500">
-              <div className="text-center">
-                <div className="mb-4 flex justify-center">
-                  <Icons.cursorClick size={48} className="text-neutral-400" />
-                </div>
-                <p>Select a folder from the sidebar</p>
-              </div>
-            </div>
-          )}
+            <p>No files in this folder</p>
+          </div>
         </div>
       );
     }
 
-    if (controller.viewMode === 'grid') {
+
+    // Render masonry or grid layout
+    if (layout === 'masonry') {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {controller.assets.map(asset => {
-            const status = controller.uploadStatus[asset.key] || 'idle';
-            const previewUrl = controller.previews[asset.key];
-            return (
-              <TreeLazyMediaCard
-                key={asset.key}
-                asset={asset}
-                previewUrl={previewUrl}
-                loadPreview={controller.loadPreview}
-                status={status}
-                openViewer={controller.openViewer}
-                uploadOne={controller.uploadOne}
-              />
-            );
-          })}
-        </div>
+        <MasonryGrid
+          items={cardItems}
+          rowGap={layoutSettings.rowGap}
+          columnGap={layoutSettings.columnGap}
+          minColumnWidth={cardSize}
+        />
       );
     }
 
-    // List view
+    // Grid layout
     return (
-      <div className="border rounded-lg overflow-hidden bg-white dark:bg-neutral-900">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700">
-              <tr>
-                <th className="text-left p-3 font-medium">Preview</th>
-                <th className="text-left p-3 font-medium">Name</th>
-                <th className="text-left p-3 font-medium">Path</th>
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Size</th>
-                <th className="text-left p-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-700">
-              {controller.assets.map(a => (
-                <tr key={a.key} className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
-                  <td className="p-3">
-                    <div
-                      className="w-16 h-12 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden cursor-pointer"
-                      onClick={() => controller.openViewer(a)}
-                    >
-                      {controller.previews[a.key] ? (
-                        a.kind === 'image' ? (
-                          <img src={controller.previews[a.key]} className="w-full h-full object-cover" alt={a.name} />
-                        ) : (
-                          <video src={controller.previews[a.key]} className="w-full h-full object-cover" muted />
-                        )
-                      ) : (
-                        <div className="text-xs text-neutral-500">
-                          {a.kind === 'image' ? <Icons.image size={16} /> : <Icons.video size={16} />}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-3 font-medium cursor-pointer hover:text-blue-600" onClick={() => controller.openViewer(a)}>
-                    {a.name}
-                  </td>
-                  <td className="p-3 text-neutral-600 dark:text-neutral-400 font-mono text-xs">
-                    {a.relativePath}
-                  </td>
-                  <td className="p-3">
-                    <span className="px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded text-xs">
-                      {a.kind}
-                    </span>
-                  </td>
-                  <td className="p-3 text-neutral-600 dark:text-neutral-400">
-                    {a.size ? `${(a.size / 1024 / 1024).toFixed(1)} MB` : '-'}
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      {!controller.previews[a.key] && (
-                        <button
-                          onClick={() => controller.loadPreview(a.key)}
-                          className="px-2 py-1 text-xs border rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                        >
-                          Preview
-                        </button>
-                      )}
-                      <button
-                        onClick={() => controller.uploadOne(a.key)}
-                        disabled={!controller.providerId || controller.uploadStatus[a.key] === 'uploading'}
-                        className={`px-3 py-1 text-xs rounded font-medium flex items-center gap-1.5 ${
-                          controller.uploadStatus[a.key] === 'success'
-                            ? 'bg-green-600 text-white'
-                            : controller.uploadStatus[a.key] === 'error'
-                            ? 'bg-red-600 text-white'
-                            : controller.uploadStatus[a.key] === 'uploading'
-                            ? 'bg-neutral-400 text-white'
-                            : 'bg-blue-600 text-white hover:bg-blue-700'
-                        }`}
-                        title={
-                          controller.uploadStatus[a.key] === 'success'
-                            ? controller.uploadNotes[a.key] || 'Uploaded successfully'
-                            : controller.uploadStatus[a.key] === 'error'
-                            ? controller.uploadNotes[a.key] || 'Upload failed'
-                            : 'Upload to provider'
-                        }
-                      >
-                        {controller.uploadStatus[a.key] === 'uploading' ? (
-                          <>
-                            <Icons.loader size={12} className="animate-spin" />
-                            Uploading...
-                          </>
-                        ) : controller.uploadStatus[a.key] === 'success' ? (
-                          <>
-                            <Icons.check size={12} />
-                            Uploaded
-                          </>
-                        ) : controller.uploadStatus[a.key] === 'error' ? (
-                          <>
-                            <Icons.close size={12} />
-                            Failed
-                          </>
-                        ) : (
-                          <>
-                            <Icons.upload size={12} />
-                            Upload
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+          rowGap: `${layoutSettings.rowGap}px`,
+          columnGap: `${layoutSettings.columnGap}px`,
+        }}
+      >
+        {cardItems}
       </div>
     );
   };
 
   return (
     <div className="space-y-4">
+      {/* Top bar with layout controls */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Local Folders</h2>
+        <GalleryLayoutControls
+          layout={layout}
+          setLayout={setLayout}
+          cardSize={cardSize}
+          setCardSize={setCardSize}
+        />
+      </div>
+
       <div className="flex gap-4">
         {/* Sidebar */}
         <div className="w-72 flex-shrink-0 space-y-4">
@@ -344,60 +251,19 @@ export function LocalFoldersPanel() {
             )}
           </div>
 
-          {/* View Mode + Provider */}
-          <div className="space-y-2">
-            <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 p-1 rounded-lg">
-              <button
-                onClick={() => controller.setViewMode('tree')}
-                className={`flex-1 px-3 py-1 text-xs rounded transition-colors flex items-center justify-center gap-1.5 ${
-                  controller.viewMode === 'tree'
-                    ? 'bg-white dark:bg-neutral-700 shadow'
-                    : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-                title="Tree view - filtered by selected folder"
-              >
-                <Icons.folder size={14} />
-                Tree
-              </button>
-              <button
-                onClick={() => controller.setViewMode('grid')}
-                className={`flex-1 px-3 py-1 text-xs rounded transition-colors flex items-center justify-center gap-1.5 ${
-                  controller.viewMode === 'grid'
-                    ? 'bg-white dark:bg-neutral-700 shadow'
-                    : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-                title="Grid view - all files"
-              >
-                <Icons.layoutGrid size={14} />
-                Grid
-              </button>
-              <button
-                onClick={() => controller.setViewMode('list')}
-                className={`flex-1 px-3 py-1 text-xs rounded transition-colors flex items-center justify-center gap-1.5 ${
-                  controller.viewMode === 'list'
-                    ? 'bg-white dark:bg-neutral-700 shadow'
-                    : 'hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                }`}
-                title="List view - all files"
-              >
-                <Icons.clipboardList size={14} />
-                List
-              </button>
-            </div>
-
-            <div className="space-y-1">
-              <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                Upload to
-              </label>
-              <select
-                className="w-full px-3 py-1.5 border rounded-lg bg-white dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={controller.providerId || ''}
-                onChange={(e) => controller.setProviderId(e.target.value || undefined)}
-              >
-                <option value="">Select provider</option>
-                {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+          {/* Provider selection */}
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-neutral-600 dark:text-neutral-400">
+              Upload to
+            </label>
+            <select
+              className="w-full px-3 py-1.5 border rounded-lg bg-white dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={controller.providerId || ''}
+              onChange={(e) => controller.setProviderId(e.target.value || undefined)}
+            >
+              <option value="">Select provider</option>
+              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
 
           {/* Folder selection + list */}

@@ -12,6 +12,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
 import { GalleryToolsPanel } from '@/components/gallery/panels/GalleryToolsPanel';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
+import { GalleryLayoutControls } from '../components/gallery/GalleryLayoutControls';
 import { gallerySurfaceRegistry } from '../lib/gallery/surfaceRegistry';
 import { mergeBadgeConfig, deriveOverlayPresetIdFromBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { mediaCardPresets } from '@/lib/overlay';
@@ -41,6 +42,7 @@ export function AssetsRoute() {
   const [view, setView] = useState<'remote' | 'local'>('remote');
   const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
+  const [cardSize, setCardSize] = useState<number>(260); // Card width in pixels (160-400 range)
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
   const [showToolsPanel, setShowToolsPanel] = useState(false);
 
@@ -352,36 +354,13 @@ export function AssetsRoute() {
             >Local</button>
           </div>
           {view === 'remote' && (
-            <div className="flex items-center gap-1 text-xs">
-              <button
-                className={`px-2 py-1 rounded ${
-                  layout === 'masonry'
-                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                    : 'bg-neutral-200 dark:bg-neutral-700'
-                }`}
-                onClick={() => setLayout('masonry')}
-              >
-                Masonry
-              </button>
-              <button
-                className={`px-2 py-1 rounded ${
-                  layout === 'grid'
-                    ? 'bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-                    : 'bg-neutral-200 dark:bg-neutral-700'
-                }`}
-                onClick={() => setLayout('grid')}
-              >
-                Grid
-              </button>
-              <button
-                type="button"
-                className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                title="Layout settings"
-                onClick={() => setShowLayoutSettings(true)}
-              >
-                <ThemedIcon name="settings" size={12} variant="default" />
-              </button>
-            </div>
+            <GalleryLayoutControls
+              layout={layout}
+              setLayout={setLayout}
+              cardSize={cardSize}
+              setCardSize={setCardSize}
+              onSettingsClick={() => setShowLayoutSettings(true)}
+            />
           )}
           {!controller.isSelectionMode && (
             <button
@@ -509,11 +488,13 @@ export function AssetsRoute() {
 	              items={cardItems}
 	              rowGap={layoutSettings.rowGap}
               columnGap={layoutSettings.columnGap}
+              minColumnWidth={cardSize}
             />
           ) : (
             <div
-              className="grid md:grid-cols-3 lg:grid-cols-4"
+              className="grid"
               style={{
+                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
                 rowGap: `${layoutSettings.rowGap}px`,
 	              columnGap: `${layoutSettings.columnGap}px`,
 	              }}

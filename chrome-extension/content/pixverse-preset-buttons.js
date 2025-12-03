@@ -181,6 +181,14 @@
         assetsTotalCount = total;
       }
 
+      console.log('[PixSim7] Loaded assets:', {
+        newCount: newImages.length,
+        totalInCache: assetsCache.length,
+        assetsLoadedCount,
+        assetsTotalCount,
+        append
+      });
+
       return assetsCache;
     } catch (e) {
       console.warn('[PixSim7] Failed to load assets:', e);
@@ -661,7 +669,14 @@
       // Show unified picker - default to Assets tab, but Recent if there are recent images
       const recentImages = imagePicker.getRecentImages();
       const defaultTab = recentImages.length > 0 ? 'recent' : 'assets';
-      showUnifiedImagePicker(defaultTab);
+
+      // Pass loadAssets wrapper that syncs after loading
+      const loadAssetsWrapper = async (forceRefresh = false, append = false) => {
+        await loadAssets(forceRefresh, append);
+        syncModuleCaches();
+      };
+
+      showUnifiedImagePicker(defaultTab, loadAssetsWrapper);
     });
 
     // Run button - shows selected preset, click to run

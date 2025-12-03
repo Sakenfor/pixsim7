@@ -777,10 +777,13 @@ window.PXS7 = window.PXS7 || {};
     const grid = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
     container.appendChild(grid);
 
-    const hasMore = assetsTotalCount === 0 || assetsLoadedCount < assetsTotalCount;
-    if (hasMore) {
+    // Show Load More button if there are more assets to load
+    const hasMore = assetsTotalCount > 0 && assetsLoadedCount < assetsTotalCount;
+    console.log('[PixSim7] Load More check:', { assetsLoadedCount, assetsTotalCount, hasMore, hasLoadAssetsFn: !!loadAssets });
+
+    if (hasMore && loadAssets) {
       const loadMoreBtn = document.createElement('button');
-      loadMoreBtn.textContent = 'Load More';
+      loadMoreBtn.textContent = `Load More (${assetsLoadedCount} of ${assetsTotalCount})`;
       loadMoreBtn.style.cssText = `
         width: 100%; padding: 8px; margin-top: 10px;
         font-size: 11px; font-weight: 600;
@@ -793,7 +796,7 @@ window.PXS7 = window.PXS7 || {};
       loadMoreBtn.addEventListener('click', async () => {
         loadMoreBtn.disabled = true;
         loadMoreBtn.textContent = 'Loading...';
-        if (loadAssets) await loadAssets(false, true);
+        await loadAssets(false, true);
         renderTabContent('assets', container, panel, loadAssets);
       });
       container.appendChild(loadMoreBtn);
