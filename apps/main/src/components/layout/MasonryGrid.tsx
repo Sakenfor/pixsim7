@@ -13,27 +13,6 @@ export function MasonryGrid({
   rowGap = 16,
   minColumnWidth = 260,
 }: MasonryGridProps) {
-  // Detect if user prefers reduced motion
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  // Fallback to simple grid for reduced motion or unsupported browsers
-  if (prefersReducedMotion) {
-    return (
-      <div
-        className="grid gap-4 md:grid-cols-3 lg:grid-cols-4"
-        style={{
-          gap: `${rowGap}px ${columnGap}px`,
-        }}
-      >
-        {items.map((item, index) => (
-          <div key={index}>{item}</div>
-        ))}
-      </div>
-    );
-  }
-
   // JS-driven masonry layout for full control over placement
   const containerRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);

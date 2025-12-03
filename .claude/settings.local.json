@@ -40,7 +40,9 @@
       "Bash(dir:*)",
       "Bash(del:*)",
       "Bash(node:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pnpm exec vite build:*)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []

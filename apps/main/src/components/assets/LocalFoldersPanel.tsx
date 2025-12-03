@@ -5,7 +5,6 @@ import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
 import { MediaCard } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import { GalleryLayoutControls } from '../gallery/GalleryLayoutControls';
 import type { LocalAsset } from '@/stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
 
@@ -99,13 +98,16 @@ function TreeLazyMediaCard(props: {
   );
 }
 
-export function LocalFoldersPanel() {
+interface LocalFoldersPanelProps {
+  layout: 'masonry' | 'grid';
+  cardSize: number;
+}
+
+export function LocalFoldersPanel({ layout, cardSize }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
 
-  // Layout state (same as remote gallery)
-  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
-  const [cardSize, setCardSize] = useState<number>(260);
+  // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
 
   const folderNames = useMemo(() => {
@@ -213,15 +215,9 @@ export function LocalFoldersPanel() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Top bar with layout controls */}
-      <div className="flex-shrink-0 flex items-center justify-between mb-4 px-6">
+      {/* Top bar */}
+      <div className="flex-shrink-0 mb-4 px-6">
         <h2 className="text-lg font-semibold">Local Folders</h2>
-        <GalleryLayoutControls
-          layout={layout}
-          setLayout={setLayout}
-          cardSize={cardSize}
-          setCardSize={setCardSize}
-        />
       </div>
 
       <div className="flex-1 flex gap-4 min-h-0 px-6">

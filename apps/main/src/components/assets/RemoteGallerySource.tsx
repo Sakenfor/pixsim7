@@ -4,7 +4,6 @@ import { useProviders } from '@/hooks/useProviders';
 import { useAssetsController } from '@/hooks/useAssetsController';
 import { MediaCard } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
-import { GalleryLayoutControls } from '../gallery/GalleryLayoutControls';
 import { GalleryToolsPanel } from '../gallery/panels/GalleryToolsPanel';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@/lib/icons';
@@ -17,14 +16,17 @@ const SCOPE_TABS = [
   { id: 'recent', label: 'Recent' },
 ];
 
-export function RemoteGallerySource() {
+interface RemoteGallerySourceProps {
+  layout: 'masonry' | 'grid';
+  cardSize: number;
+}
+
+export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourceProps) {
   const controller = useAssetsController();
   const { providers } = useProviders();
   const location = useLocation();
 
-  // Layout state
-  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
-  const [cardSize, setCardSize] = useState<number>(260);
+  // Layout settings (gaps)
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
   const [showToolsPanel, setShowToolsPanel] = useState(false);
@@ -181,15 +183,8 @@ export function RemoteGallerySource() {
       <div className="flex-shrink-0 space-y-4">
         {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
 
-        <div className="flex items-center justify-between">
+        <div>
           <h2 className="text-lg font-semibold">Remote Gallery</h2>
-          <GalleryLayoutControls
-            layout={layout}
-            setLayout={setLayout}
-            cardSize={cardSize}
-            setCardSize={setCardSize}
-            onSettingsClick={() => setShowLayoutSettings(true)}
-          />
         </div>
 
         <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">

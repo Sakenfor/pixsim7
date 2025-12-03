@@ -7,6 +7,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { usePanelConfigStore } from '../stores/panelConfigStore';
 import { GallerySurfaceSwitcher } from '../components/gallery/GallerySurfaceSwitcher';
+import { GalleryLayoutControls } from '../components/gallery/GalleryLayoutControls';
 import { mergeBadgeConfig, deriveOverlayPresetIdFromBadgeConfig } from '../lib/gallery/badgeConfigMerge';
 import { mediaCardPresets } from '@/lib/overlay';
 import { ThemedIcon } from '../lib/icons';
@@ -24,6 +25,10 @@ export function AssetsRoute() {
   const controller = useAssetsController();
   const jobsSocket = useJobsSocket({ autoConnect: true });
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Shared layout state for all sources
+  const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
+  const [cardSize, setCardSize] = useState<number>(260);
 
   // Get current surface ID from URL (for remote gallery)
   const currentSurfaceId = useMemo(() => {
@@ -229,6 +234,14 @@ export function AssetsRoute() {
               </div>
             )}
 
+            {/* Gallery Layout Controls */}
+            <GalleryLayoutControls
+              layout={layout}
+              setLayout={setLayout}
+              cardSize={cardSize}
+              setCardSize={setCardSize}
+            />
+
             {/* Jobs feed indicator */}
             <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
               <button
@@ -277,7 +290,7 @@ export function AssetsRoute() {
 
         {/* Source component with fade transition */}
         <div className={`h-full transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
-          <SourceComponent />
+          <SourceComponent layout={layout} cardSize={cardSize} />
         </div>
       </div>
 
