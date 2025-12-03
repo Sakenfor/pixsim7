@@ -167,7 +167,8 @@ export function MasonryGrid({
         for (let colIdx = 0; colIdx < cols; colIdx++) {
           const left = colIdx * (colWidth + columnGap);
 
-          if (!wouldOverlap(top, left, itemHeight + rowGap, itemWidth + (colIdx < cols - 1 ? columnGap : 0))) {
+          // Check overlap WITHOUT including gaps (gaps are already in occupied rects)
+          if (!wouldOverlap(top, left, itemHeight, itemWidth)) {
             return { top, left };
           }
         }
