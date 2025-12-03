@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useJobsSocket } from '../hooks/useJobsSocket';
@@ -23,6 +23,7 @@ export function AssetsRoute() {
   const location = useLocation();
   const controller = useAssetsController();
   const jobsSocket = useJobsSocket({ autoConnect: true });
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Get current surface ID from URL (for remote gallery)
   const currentSurfaceId = useMemo(() => {
@@ -68,12 +69,37 @@ export function AssetsRoute() {
     }
   };
 
-  // Handle source change
-  const handleSourceChange = (sourceId: AssetSourceId) => {
+  // Handle source change with smooth transition
+  const handleSourceChange = useCallback((sourceId: AssetSourceId) => {
+    if (sourceId === activeSourceId) return;
+
+    setIsTransitioning(true);
     const params = new URLSearchParams(location.search);
     params.set('source', sourceId);
-    navigate(`?${params.toString()}`);
-  };
+
+    // Short delay for smooth transition
+    setTimeout(() => {
+      navigate(`?${params.toString()}`);
+      setTimeout(() => setIsTransitioning(false), 100);
+    }, 150);
+  }, [activeSourceId, location.search, navigate]);
+
+  // Keyboard shortcuts for source switching
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+1, Ctrl+2, etc. to switch sources
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const sourceIndex = parseInt(e.key, 10) - 1;
+        if (sourceIndex < allSources.length) {
+          handleSourceChange(allSources[sourceIndex].id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [allSources, handleSourceChange]);
 
   return (
     <div className="flex flex-col h-screen content-with-dock">
@@ -132,18 +158,39 @@ export function AssetsRoute() {
           </div>
           <div className="flex items-center gap-4">
             {/* Source Switcher */}
-            <div className="flex gap-1 text-xs">
-              {allSources.map((source) => (
+            <div className="flex gap-2">
+              {allSources.map((source, idx) => (
                 <button
                   key={source.id}
-                  className={`px-2 py-1 rounded ${
-                    activeSourceId === source.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-neutral-200 dark:bg-neutral-700'
-                  }`}
+                  className={`
+                    flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                    transition-all duration-200 relative
+                    ${
+                      activeSourceId === source.id
+                        ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    }
+                  `}
                   onClick={() => handleSourceChange(source.id)}
+                  title={`${source.label} (${source.kind}) - Ctrl+${idx + 1}`}
+                  aria-label={`Switch to ${source.label}`}
                 >
+                  <ThemedIcon
+                    name={source.icon}
+                    size={14}
+                    variant={activeSourceId === source.id ? 'default' : 'default'}
+                  />
                   {source.label}
+                  <span className={`
+                    ml-1 px-1 py-0.5 text-[9px] rounded
+                    ${
+                      activeSourceId === source.id
+                        ? 'bg-blue-500 text-blue-100'
+                        : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
+                    }
+                  `}>
+                    ⌘{idx + 1}
+                  </span>
                 </button>
               ))}
             </div>
@@ -217,8 +264,21 @@ export function AssetsRoute() {
       </div>
 
       {/* Scrollable source component */}
-      <div className="flex-1 overflow-auto px-6 pb-6">
-        <SourceComponent />
+      <div className="flex-1 overflow-auto px-6 pb-6 relative">
+        {/* Loading overlay during transition */}
+        {isTransitioning && (
+          <div className="absolute inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 transition-opacity duration-150">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-neutral-600 dark:text-neutral-400">Loading source...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Source component with fade transition */}
+        <div className={`transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+          <SourceComponent />
+        </div>
       </div>
 
       {/* Fullscreen viewer for remote assets */}
