@@ -37,20 +37,6 @@
     },
     {
       "matches": [
-        "http://localhost:5173/*",
-        "http://*:5173/*"
-      ],
-      "js": [
-        "emojis.js",
-        "widget.js"
-      ],
-      "css": [
-        "widget.css"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
         "*://*.pixverse.ai/*",
         "*://*.runwayml.com/*",
         "*://*.pika.art/*",

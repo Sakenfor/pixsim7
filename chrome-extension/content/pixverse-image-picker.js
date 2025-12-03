@@ -128,6 +128,9 @@ window.PXS7 = window.PXS7 || {};
     const url = window.location.pathname;
     const isImageTextPage = url.includes('image-text') || url.includes('image_text');
     const isImageGenPage = url.includes('create-image') || url.includes('image-generation');
+    const isTransitionPage = url.includes('transition');
+    const isFusionPage = url.includes('fusion');
+    const isImageEditPage = url.includes('edit') || url.includes('image-edit');
 
     const allFileInputs = document.querySelectorAll('input[type="file"]');
     const inputs = Array.from(allFileInputs).filter(input => {
@@ -154,6 +157,12 @@ window.PXS7 = window.PXS7 || {};
       if (isImageTextPage && containerId.includes('image_text')) {
         priority = 10;
       } else if (isImageGenPage && containerId.includes('image')) {
+        priority = 10;
+      } else if (isTransitionPage && (containerId.includes('transition') || containerId.includes('start') || containerId.includes('end'))) {
+        priority = 10;
+      } else if (isFusionPage && (containerId.includes('fusion') || containerId.includes('character') || containerId.includes('style'))) {
+        priority = 10;
+      } else if (isImageEditPage && containerId.includes('edit')) {
         priority = 10;
       } else if (containerId.includes('customer') || containerId.includes('main')) {
         priority = 5;
@@ -442,8 +451,9 @@ window.PXS7 = window.PXS7 || {};
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     `;
 
-    // Get all upload inputs
-    const uploadInputs = Array.from(document.querySelectorAll('.ant-upload input[type="file"]'));
+    // Get all upload inputs using smart detection
+    const uploadResults = findUploadInputs();
+    const uploadInputs = uploadResults.map(r => r.input);
 
     if (uploadInputs.length === 0) {
       const item = document.createElement('div');
@@ -503,10 +513,8 @@ window.PXS7 = window.PXS7 || {};
           gap: 8px;
         `;
 
-        // Check if this slot already has an image
-        const input = uploadInputs[i];
-        const container = input.closest('.ant-upload');
-        const hasImage = container?.querySelector('img[src*="media.pixverse"], [style*="background-image"]');
+        // Check if this slot already has an image (from smart detection)
+        const hasImage = uploadResults[i]?.hasImage || false;
 
         item.innerHTML = `
           <span style="opacity:0.6">${i + 1}</span>

@@ -607,6 +607,7 @@
         const origText = assetsBtn.textContent;
         assetsBtn.textContent = '...';
         await loadAssets();
+        syncModuleCaches();
         assetsBtn.classList.remove('loading');
         assetsBtn.textContent = origText;
       }
@@ -739,6 +740,7 @@
       loadAccounts(),
       loadAssets()
     ]).then(() => {
+      syncModuleCaches();
       updateAllAccountButtons();
       updateAllRunButtons();
     }).catch(e => {

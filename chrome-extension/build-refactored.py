@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Build refactored pixverse-preset-buttons.js from original file"""
+"""Build refactored pixverse-preset-buttons.js from original file
+
+IMPORTANT: After building, the following fixes must be applied:
+1. Add syncModuleCaches() call after loadAssets() in assets button click handler
+2. Add syncModuleCaches() call in init's Promise.all().then() callback
+3. Fix variable references: currentSessionAccountId, accountSortBy, recentSiteImages
+"""
 
 # Read original file
 with open('content/pixverse-preset-buttons-original.js', 'r', encoding='utf-8') as f:
@@ -82,9 +88,37 @@ for start, end in sections:
 
 # Write result
 result = ''.join(output)
+
+# Post-processing fixes for module integration
+print('Applying post-processing fixes...')
+
+# Fix 1: Add syncModuleCaches() after loadAssets() in assets button
+result = result.replace(
+    'await loadAssets();\n        assetsBtn.classList.remove',
+    'await loadAssets();\n        syncModuleCaches();\n        assetsBtn.classList.remove'
+)
+
+# Fix 2: Add syncModuleCaches() in init's Promise.all().then()
+result = result.replace(
+    ']).then(() => {\n      updateAllAccountButtons();',
+    ']).then(() => {\n      syncModuleCaches();\n      updateAllAccountButtons();'
+)
+
+# Fix 3: Fix variable references
+result = result.replace('currentSessionAccountId = account.id;', 'storage.state.currentSessionAccountId = account.id;')
+result = result.replace('${accountSortBy === opt.id', '${storage.state.accountSortBy === opt.id')
+result = result.replace(
+    'const defaultTab = recentSiteImages.length > 0',
+    'const recentImages = imagePicker.getRecentImages();\n      const defaultTab = recentImages.length > 0'
+)
+
+# Fix 4: Remove duplicate adStatusCache declaration
+result = result.replace('\n  // Cache for Pixverse ad status\n  const adStatusCache = new Map();\n\n  function createAccountMenuItem', '\n  function createAccountMenuItem')
+
 with open('content/pixverse-preset-buttons.js', 'w', encoding='utf-8') as f:
     f.write(result)
 
+print('Post-processing complete!')
 print('SUCCESS: Refactored main file created!')
 print(f'  Original: {len(lines)} lines')
 print(f'  New: {len(output)} lines')
