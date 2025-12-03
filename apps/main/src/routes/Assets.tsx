@@ -163,41 +163,20 @@ export function AssetsRoute() {
           </div>
           <div className="flex items-center gap-4">
             {/* Source Switcher */}
-            <div className="flex gap-2">
-              {allSources.map((source, idx) => (
-                <button
-                  key={source.id}
-                  className={`
-                    flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-                    transition-all duration-200 relative
-                    ${
-                      activeSourceId === source.id
-                        ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
-                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                    }
-                  `}
-                  onClick={() => handleSourceChange(source.id)}
-                  title={`${source.label} (${source.kind}) - Ctrl+${idx + 1}`}
-                  aria-label={`Switch to ${source.label}`}
-                >
-                  <ThemedIcon
-                    name={source.icon}
-                    size={14}
-                    variant={activeSourceId === source.id ? 'default' : 'default'}
-                  />
-                  {source.label}
-                  <span className={`
-                    ml-1 px-1 py-0.5 text-[9px] rounded
-                    ${
-                      activeSourceId === source.id
-                        ? 'bg-blue-500 text-blue-100'
-                        : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
-                    }
-                  `}>
-                    ⌘{idx + 1}
-                  </span>
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">Source:</span>
+              <select
+                value={activeSourceId}
+                onChange={(e) => handleSourceChange(e.target.value as AssetSourceId)}
+                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                title="Select asset source"
+              >
+                {allSources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Surface Switcher (only for remote gallery) */}
@@ -208,16 +187,16 @@ export function AssetsRoute() {
             {/* MediaCard Preset Switcher (only for remote gallery) */}
             {activeSourceId === 'remote-gallery' && (
               <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">MediaCard Preset:</span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">Media Card:</span>
                 <select
                   value={currentOverlayPresetId}
                   onChange={(e) => handleOverlayPresetChange(e.target.value)}
                   className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                  title="Quick MediaCard overlay presets"
+                  title="Select media card preset"
                 >
                   {mediaCardPresets.map(preset => (
                     <option key={preset.id} value={preset.id}>
-                      {preset.icon} {preset.name}
+                      {preset.name}
                     </option>
                   ))}
                 </select>
