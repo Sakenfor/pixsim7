@@ -741,7 +741,9 @@ window.PXS7 = window.PXS7 || {};
 
     const countLabel = document.createElement('span');
     countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
-    const totalText = assetsTotalCount > 0 ? ` of ${assetsTotalCount}` : '';
+    // For cursor pagination, show + if there are more to load
+    const moreAvailable = assetsTotalCount > assetsLoadedCount;
+    const totalText = moreAvailable ? '+' : '';
     countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText} image${urls.length !== 1 ? 's' : ''}` : '';
 
     const refreshBtn = document.createElement('button');
@@ -778,12 +780,18 @@ window.PXS7 = window.PXS7 || {};
     container.appendChild(grid);
 
     // Show Load More button if there are more assets to load
-    const hasMore = assetsTotalCount > 0 && assetsLoadedCount < assetsTotalCount;
-    console.log('[PixSim7] Load More check:', { assetsLoadedCount, assetsTotalCount, hasMore, hasLoadAssetsFn: !!loadAssets });
+    // For cursor-based pagination: assetsTotalCount > assetsLoadedCount means there's a next_cursor
+    const hasMore = assetsTotalCount > assetsLoadedCount;
+    console.log('[PixSim7] Load More check:', {
+      assetsLoadedCount,
+      assetsTotalCount,
+      hasMore,
+      hasLoadAssetsFn: !!loadAssets
+    });
 
     if (hasMore && loadAssets) {
       const loadMoreBtn = document.createElement('button');
-      loadMoreBtn.textContent = `Load More (${assetsLoadedCount} of ${assetsTotalCount})`;
+      loadMoreBtn.textContent = `Load More (${assetsLoadedCount} loaded)`;
       loadMoreBtn.style.cssText = `
         width: 100%; padding: 8px; margin-top: 10px;
         font-size: 11px; font-weight: 600;

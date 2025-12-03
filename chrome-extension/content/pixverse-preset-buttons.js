@@ -41,6 +41,7 @@
   let assetsCache = [];
   let assetsTotalCount = 0;
   let assetsLoadedCount = 0;
+  let assetsNextCursor = null;
   let adStatusCache = new Map();
 
   // Sync caches with modules
@@ -135,25 +136,51 @@
     }
     try {
       const limit = 100;
-      const offset = append ? assetsLoadedCount : 0;
 
-      const res = await sendMessageWithTimeout({
+      // Build request params - use cursor for pagination if appending
+      const params = {
         action: 'getAssets',
-        limit: limit,
-        offset: offset
-      });
+        limit: limit
+      };
+
+      if (append && assetsNextCursor) {
+        // Use cursor for next page
+        params.cursor = assetsNextCursor;
+      } else if (!append) {
+        // Fresh load - start from beginning
+        params.offset = 0;
+      }
+
+      const res = await sendMessageWithTimeout(params);
 
       if (!res?.success) {
         return [];
       }
 
+      console.log('[PixSim7] Raw backend response:', {
+        success: res.success,
+        dataType: Array.isArray(res.data) ? 'array' : typeof res.data,
+        dataKeys: res.data && typeof res.data === 'object' ? Object.keys(res.data) : null,
+        hasNextCursor: res.data?.next_cursor ? true : false
+      });
+
       // Handle different response formats
       let items = res.data;
       let total = null;
+      let nextCursor = null;
+
       if (items && !Array.isArray(items)) {
-        total = items.total || items.count || null;
-        items = items.items || items.assets || items.data || [];
+        total = items.total || items.count || items.totalCount || items.total_count || null;
+        nextCursor = items.next_cursor || items.nextCursor || items.cursor || null;
+        items = items.items || items.assets || items.data || items.results || [];
       }
+
+      console.log('[PixSim7] Parsed response:', {
+        itemsCount: items?.length,
+        total,
+        nextCursor: nextCursor ? 'exists' : 'null',
+        isArray: Array.isArray(items)
+      });
 
       if (!Array.isArray(items)) {
         return [];
@@ -174,11 +201,23 @@
         assetsCache = [...assetsCache, ...newImages];
       } else {
         assetsCache = newImages;
+        // Reset cursor on fresh load
+        assetsNextCursor = null;
+      }
+
+      // Store the next cursor for pagination
+      if (nextCursor) {
+        assetsNextCursor = nextCursor;
       }
 
       assetsLoadedCount = assetsCache.length;
-      if (total !== null) {
-        assetsTotalCount = total;
+
+      // For cursor-based pagination, we don't know the true total
+      // Set a high number if there's a next cursor, otherwise use loaded count
+      if (nextCursor) {
+        assetsTotalCount = assetsLoadedCount + 1; // Signal there's more
+      } else {
+        assetsTotalCount = assetsLoadedCount; // No more to load
       }
 
       console.log('[PixSim7] Loaded assets:', {
@@ -186,6 +225,7 @@
         totalInCache: assetsCache.length,
         assetsLoadedCount,
         assetsTotalCount,
+        hasNextCursor: !!assetsNextCursor,
         append
       });
 
