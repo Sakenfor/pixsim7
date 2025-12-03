@@ -7,9 +7,11 @@ Usage:
     # Start worker
     arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
-    # Or with custom Redis URL
-    ARQ_REDIS_URL=redis://localhost:6379/0 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
+Redis configuration:
+    Both the API and worker use the same redis_url from shared settings
+    (settings.redis_url). Override via REDIS_URL in .env when needed.
 """
+
 import os
 
 # Load .env file BEFORE any other imports that need env vars
@@ -22,6 +24,7 @@ from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
+from pixsim7.backend.main.shared.config import settings
 from pixsim_logging import configure_logging
 
 # Configure structured logging and optional ingestion via env
@@ -72,10 +75,8 @@ class WorkerSettings:
     - Worker configuration (max jobs, timeouts, retries)
     """
 
-    # Redis connection
-    redis_settings = RedisSettings.from_dsn(
-        os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    )
+    # Redis connection (shared with API via settings.redis_url)
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
 
     # Task functions that can be queued
     functions = [

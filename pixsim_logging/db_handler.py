@@ -24,6 +24,34 @@ from sqlalchemy import Integer, String, DateTime, JSON, Text
 from .schema import LOG_ENTRY_COLUMNS
 
 
+def _to_json_safe(value: Any) -> Any:
+    """
+    Recursively convert values to JSON-serializable forms.
+
+    - datetime -> ISO 8601 string (UTC if tz-aware)
+    - dict -> dict with normalized values
+    - list/tuple -> list with normalized values
+    - set -> list with normalized values
+    - other types are returned as-is; if they are not JSON-serializable,
+      SQLAlchemy/driver will fall back to their string representation.
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.isoformat(timespec="microseconds")
+
+    if isinstance(value, dict):
+        return {k: _to_json_safe(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_to_json_safe(v) for v in value]
+
+    if isinstance(value, set):
+        return [_to_json_safe(v) for v in value]
+
+    return value
+
+
 class DBLogHandler:
     """
     Structlog processor that batches and inserts logs directly into DB.
@@ -173,7 +201,8 @@ class DBLogHandler:
                 row["msg"] = ev.get("message")
                 extra.pop("message", None)
         # Always set extra field (None if empty to avoid bind parameter errors)
-        row["extra"] = extra if extra else None
+        # Normalize to JSON-safe types so datetime and other objects don't break JSON encoding.
+        row["extra"] = _to_json_safe(extra) if extra else None
         # Default env/service/level values so DB constraints hold even if upstream binding is missing.
         row.setdefault("env", os.getenv("PIXSIM_ENV", "dev"))
         default_service = os.getenv("PIXSIM_SERVICE_NAME") or os.getenv("PIXSIM_SERVICE") or os.getenv("SERVICE_NAME")
