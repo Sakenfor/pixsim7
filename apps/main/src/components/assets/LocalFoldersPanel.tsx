@@ -99,11 +99,11 @@ function TreeLazyMediaCard(props: {
 }
 
 interface LocalFoldersPanelProps {
-  layout: 'masonry' | 'grid';
-  cardSize: number;
+  layout?: 'masonry' | 'grid';
+  cardSize?: number;
 }
 
-export function LocalFoldersPanel({ layout, cardSize }: LocalFoldersPanelProps) {
+export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
 
