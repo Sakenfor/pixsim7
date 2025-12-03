@@ -102,9 +102,9 @@ export function AssetsRoute() {
   }, [allSources, handleSourceChange]);
 
   return (
-    <div className="flex flex-col h-screen content-with-dock">
+    <div className="flex flex-col h-screen overflow-hidden content-with-dock">
       {/* Fixed header section */}
-      <div className="flex-shrink-0 p-6 space-y-4">
+      <div className="flex-shrink-0 p-6 space-y-4 overflow-visible">
         {/* Selection Mode Banner */}
         {controller.isSelectionMode && (
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
@@ -264,7 +264,7 @@ export function AssetsRoute() {
       </div>
 
       {/* Scrollable source component */}
-      <div className="flex-1 overflow-auto px-6 pb-6 relative">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-6 relative">
         {/* Loading overlay during transition */}
         {isTransitioning && (
           <div className="absolute inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 transition-opacity duration-150">
