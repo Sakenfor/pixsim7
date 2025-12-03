@@ -126,8 +126,8 @@ export function MasonryGrid({
     }
   }, [colWidth, columnWidth]);
 
-  // Compute positions once we know container width and item heights
-  // Includes columnWidth and layoutVersion to remeasure after width or item height changes
+  // Compute positions with true tetris-like 2D bin packing
+  // Items can fill ANY available gap, not just column bottoms
   useLayoutEffect(() => {
     if (!containerWidth || items.length === 0 || !columnWidth) {
       setPositions([]);
@@ -135,38 +135,94 @@ export function MasonryGrid({
       return;
     }
 
-    const colHeights = new Array(cols).fill(0);
     const nextPositions: { top: number; left: number; height: number }[] = [];
+    const occupiedRects: { top: number; left: number; bottom: number; right: number }[] = [];
 
+    // Helper: Check if a position would overlap with existing items
+    const wouldOverlap = (top: number, left: number, height: number, width: number): boolean => {
+      const bottom = top + height;
+      const right = left + width;
+
+      return occupiedRects.some(rect => {
+        const horizontalOverlap = left < rect.right && right > rect.left;
+        const verticalOverlap = top < rect.bottom && bottom > rect.top;
+        return horizontalOverlap && verticalOverlap;
+      });
+    };
+
+    // Helper: Find the highest available position for an item
+    const findBestPosition = (itemHeight: number): { top: number; left: number } => {
+      const itemWidth = colWidth;
+
+      // Collect all possible "landing" Y positions (0, and bottom of each existing item)
+      const landingYs = new Set<number>([0]);
+      occupiedRects.forEach(rect => {
+        landingYs.add(rect.bottom);
+      });
+      const sortedYs = Array.from(landingYs).sort((a, b) => a - b);
+
+      // Try each landing position from top to bottom
+      for (const top of sortedYs) {
+        // Try each column position
+        for (let colIdx = 0; colIdx < cols; colIdx++) {
+          const left = colIdx * (colWidth + columnGap);
+
+          if (!wouldOverlap(top, left, itemHeight + rowGap, itemWidth + (colIdx < cols - 1 ? columnGap : 0))) {
+            return { top, left };
+          }
+        }
+      }
+
+      // Fallback: place at bottom of shortest column
+      const colHeights = new Array(cols).fill(0);
+      occupiedRects.forEach(rect => {
+        const colIdx = Math.floor(rect.left / (colWidth + columnGap));
+        if (colIdx >= 0 && colIdx < cols) {
+          colHeights[colIdx] = Math.max(colHeights[colIdx], rect.bottom);
+        }
+      });
+
+      let minHeight = colHeights[0];
+      let minCol = 0;
+      for (let c = 1; c < cols; c++) {
+        if (colHeights[c] < minHeight) {
+          minHeight = colHeights[c];
+          minCol = c;
+        }
+      }
+
+      return { top: minHeight, left: minCol * (colWidth + columnGap) };
+    };
+
+    // Place each item
     items.forEach((_, index) => {
       const el = itemRefs.current[index];
       if (!el) {
         nextPositions[index] = { top: 0, left: 0, height: 0 };
         return;
       }
+
       const height = el.offsetHeight;
-
-      // Find shortest column (shortest-column / tetris algorithm)
-      let colIndex = 0;
-      let minHeight = colHeights[0];
-      for (let c = 1; c < cols; c++) {
-        if (colHeights[c] < minHeight) {
-          minHeight = colHeights[c];
-          colIndex = c;
-        }
-      }
-
-      const top = colHeights[colIndex];
-      const left = colIndex * (colWidth + columnGap);
+      const { top, left } = findBestPosition(height);
 
       nextPositions[index] = { top, left, height };
-      colHeights[colIndex] = top + height + rowGap;
+
+      // Mark this space as occupied
+      occupiedRects.push({
+        top,
+        left,
+        bottom: top + height + rowGap,
+        right: left + colWidth + columnGap,
+      });
     });
 
     setPositions(nextPositions);
-    setContainerHeight(
-      colHeights.length ? Math.max(...colHeights) - rowGap : 0
-    );
+
+    // Calculate total height
+    const maxBottom = occupiedRects.length > 0
+      ? Math.max(...occupiedRects.map(r => r.bottom)) - rowGap
+      : 0;
+    setContainerHeight(maxBottom);
   }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth, layoutVersion]);
 
   return (
