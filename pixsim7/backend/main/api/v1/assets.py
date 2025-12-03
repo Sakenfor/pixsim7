@@ -274,14 +274,21 @@ async def upload_asset_to_provider(
     user: CurrentUser,
     db: DatabaseSession,
     account_service: AccountSvc,
+    asset_service: AssetSvc,
     file: UploadFile = File(...),
     provider_id: str = Form(...),
+    source_folder_id: Optional[str] = Form(None),
+    source_relative_path: Optional[str] = Form(None),
 ):
     """
     Upload media to the specified provider (no cross-provider Pixverse override).
 
-    Pixverse: OpenAPI usage is internal preference via UploadService (based on api_keys). 
+    Pixverse: OpenAPI usage is internal preference via UploadService (based on api_keys).
     If provider rejects (e.g., unsupported mime/dimensions), returns error.
+
+    Optional source tracking fields:
+    - source_folder_id: ID of local folder if uploaded from Local Folders panel
+    - source_relative_path: Relative path within folder if uploaded from Local Folders
     """
     content_type = file.content_type or ""
     media_type = MediaType.IMAGE if content_type.startswith("image/") else MediaType.VIDEO if content_type.startswith("video/") else None
@@ -297,6 +304,51 @@ async def upload_asset_to_provider(
             tmp_path = tmp.name
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {e}")
+
+    # Compute SHA256 for deduplication (best-effort, reuse AssetService helper)
+    sha256: Optional[str] = None
+    try:
+        sha256 = asset_service._compute_sha256(tmp_path)
+    except Exception as e:
+        logger.warning(
+            "asset_sha256_compute_failed",
+            error=str(e),
+            detail="Continuing upload without sha256 deduplication",
+        )
+
+    # If we have a hash, try to deduplicate before uploading to provider
+    if sha256:
+        try:
+            existing = await asset_service.find_asset_by_hash(sha256, user.id)
+        except Exception as e:
+            existing = None
+            logger.warning(
+                "asset_dedup_lookup_failed",
+                error=str(e),
+                detail="Failed to check for existing asset by hash; continuing with new upload",
+            )
+        else:
+            if existing:
+                # Reuse existing asset and avoid re-uploading to provider
+                try:
+                  os.unlink(tmp_path)
+                except Exception:
+                  pass
+
+                existing_external = existing.remote_url
+                if not existing_external or not (
+                    isinstance(existing_external, str)
+                    and (existing_external.startswith("http://") or existing_external.startswith("https://"))
+                ):
+                    existing_external = f"/api/v1/assets/{existing.id}/file"
+
+                return UploadAssetResponse(
+                    provider_id=provider_id,
+                    media_type=existing.media_type,
+                    external_url=existing_external,
+                    provider_asset_id=existing.provider_asset_id,
+                    note="Reused existing asset (deduplicated by sha256)",
+                )
 
     # Use UploadService
     from pixsim7.backend.main.services.upload.upload_service import UploadService
@@ -316,6 +368,20 @@ async def upload_asset_to_provider(
         else:
             digest = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()[:16]
             provider_asset_id = f"upload_{digest}"
+
+        # Build upload context metadata
+        upload_context = {}
+        if source_folder_id or source_relative_path:
+            upload_context["source"] = "local_folders"
+            if source_folder_id:
+                upload_context["source_folder_id"] = source_folder_id
+            if source_relative_path:
+                upload_context["source_relative_path"] = source_relative_path
+
+        media_metadata = {}
+        if upload_context:
+            media_metadata["upload_history"] = {"context": upload_context}
+
         try:
             await add_asset(
                 db,
@@ -330,7 +396,9 @@ async def upload_asset_to_provider(
                 duration_sec=None,
                 mime_type=result.mime_type or content_type,
                 file_size_bytes=result.file_size_bytes,
+                 sha256=sha256,
                 tags=["user_upload"],
+                media_metadata=media_metadata or None,
             )
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
@@ -378,6 +446,14 @@ class UploadFromUrlRequest(BaseModel):
             "provider upload fails. If false, provider upload failures will "
             "roll back the asset creation and return an error."
         ),
+    )
+    source_url: Optional[str] = Field(
+        default=None,
+        description="Full page URL where asset was found (for extension uploads)"
+    )
+    source_site: Optional[str] = Field(
+        default=None,
+        description="Hostname/domain of source site (e.g., twitter.com)"
     )
 
 
@@ -578,6 +654,19 @@ async def upload_asset_from_url(
     # Use placeholder provider_asset_id initially
     placeholder_provider_asset_id = f"local_{sha256[:16]}"
 
+    # Build upload context metadata for extension uploads
+    upload_context = {}
+    if request.source_url or request.source_site:
+        upload_context["source"] = "extension"
+        if request.source_url:
+            upload_context["source_url"] = request.source_url
+        if request.source_site:
+            upload_context["source_site"] = request.source_site
+
+    media_metadata = {}
+    if upload_context:
+        media_metadata["upload_history"] = {"context": upload_context}
+
     try:
         asset = await add_asset(
             db,
@@ -596,6 +685,7 @@ async def upload_asset_from_url(
             file_size_bytes=file_size_bytes,
             sha256=sha256,
             tags=["user_upload", "from_url"],
+            media_metadata=media_metadata or None,
         )
 
         # Rename file to use actual asset ID

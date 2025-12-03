@@ -5,7 +5,7 @@
  * Manages folder state, asset filtering, previews, uploads, and viewer navigation.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   useLocalFolders,
   getLocalThumbnailBlob,
@@ -49,6 +49,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Preview state
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const loadingPreviewsRef = useRef<Set<string>>(new Set());
 
   // Viewer state
   const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
@@ -129,10 +130,15 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [assetList, selectedFolderPath, viewMode]);
 
   // Load preview for an asset
-  const loadPreview = async (keyOrAsset: string | LocalAsset) => {
+  const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
     if (!asset) return;
-    if (previews[asset.key]) return;
+
+    // Check if already loaded or currently loading
+    if (loadingPreviewsRef.current.has(asset.key)) return;
+
+    // Mark as loading
+    loadingPreviewsRef.current.add(asset.key);
 
     // Try cached thumbnail blob first (persisted in IndexedDB)
     let url: string | undefined;
@@ -149,19 +155,24 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (!url) {
       try {
         const file = await getFileForAsset(asset);
-        if (!file) return;
+        if (!file) {
+          loadingPreviewsRef.current.delete(asset.key);
+          return;
+        }
         url = URL.createObjectURL(file);
         // Cache original file blob as thumbnail for future sessions
         void setLocalThumbnailBlob(asset, file);
       } catch {
-        url = undefined;
+        loadingPreviewsRef.current.delete(asset.key);
+        return;
       }
     }
 
     if (url) {
       setPreviews(p => ({ ...p, [asset.key]: url }));
     }
-  };
+    // Keep in loading set - will be cleared on next check since preview exists
+  }, [assetsRecord]);
 
   // Open viewer
   const openViewer = async (asset: LocalAsset) => {
@@ -208,6 +219,13 @@ export function useLocalFoldersController(): LocalFoldersController {
       const form = new FormData();
       form.append('file', file, asset.name);
       form.append('provider_id', providerId);
+      // Add source context for upload tracking
+      if (asset.folderId) {
+        form.append('source_folder_id', asset.folderId);
+      }
+      if (asset.relativePath) {
+        form.append('source_relative_path', asset.relativePath);
+      }
       const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
       // Get auth token from localStorage

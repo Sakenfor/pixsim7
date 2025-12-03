@@ -73,6 +73,7 @@ import {
   Clock,
   Code,
   ListPlus,
+  FolderTree,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -180,6 +181,10 @@ export const Icons = {
   chevronRight: ChevronRight,
   chevronUp: ChevronUp,
   chevronDown: ChevronDown,
+
+  // Misc
+  folderTree: FolderTree,
+  cursorClick: Target,
 } as const;
 
 export type IconName = keyof typeof Icons;

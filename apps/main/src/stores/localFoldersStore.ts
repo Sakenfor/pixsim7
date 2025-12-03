@@ -302,10 +302,29 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
     const items = await scanFolder(f.id, f.handle, 5);
+
+    // Preserve upload history for any assets that already exist in state
+    const currentAssets = get().assets;
+    const merged = items.map((item) => {
+      const existing = currentAssets[item.key];
+      if (!existing) return item;
+      return {
+        ...item,
+        lastUploadStatus: existing.lastUploadStatus,
+        lastUploadNote: existing.lastUploadNote,
+        lastUploadAt: existing.lastUploadAt,
+      };
+    });
+
     // replace entries belonging to this folder
-    const others = Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'));
-    set({ assets: { ...Object.fromEntries(others), ...Object.fromEntries(items.map(a => [a.key, a])) } });
-    await cacheAssets(f.id, items);
+    const others = Object.entries(currentAssets).filter(([k]) => !k.startsWith(id + ':'));
+    set({
+      assets: {
+        ...Object.fromEntries(others),
+        ...Object.fromEntries(merged.map(a => [a.key, a])),
+      },
+    });
+    await cacheAssets(f.id, merged);
   },
 
   getFileForAsset: async (asset: LocalAsset) => {
