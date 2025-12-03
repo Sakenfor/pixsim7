@@ -276,7 +276,7 @@ export function AssetsRoute() {
         )}
 
         {/* Source component with fade transition */}
-        <div className={`transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+        <div className={`h-full transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
           <SourceComponent />
         </div>
       </div>
