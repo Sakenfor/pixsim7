@@ -377,6 +377,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
 
+          // Extract source context from sender tab
+          const sourceUrl = sender?.tab?.url;
+          const sourceSite = sourceUrl ? new URL(sourceUrl).hostname : undefined;
+
           const uploadUrl = `${settings.backendUrl}/api/v1/assets/upload-from-url`;
           const resp = await fetch(uploadUrl, {
             method: 'POST',
@@ -390,6 +394,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // Default to true to preserve existing semantics for callers that
               // don't specify ensureAsset (local asset even if provider fails).
               ensure_asset: ensureAsset === false ? false : true,
+              // Include source tracking for extension uploads
+              source_url: sourceUrl,
+              source_site: sourceSite,
             }),
           });
           if (!resp.ok) {

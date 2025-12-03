@@ -287,6 +287,8 @@
   let presetsCache = [];
   let accountsCache = [];
   let assetsCache = [];
+  let assetsTotalCount = 0;
+  let assetsLoadedCount = 0;
   let selectedAccountId = null;
   let selectedPresetId = null;
   let currentSessionAccountId = null; // Account matching browser session
@@ -1168,7 +1170,8 @@
 
     const countLabel = document.createElement('span');
     countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
-    countLabel.textContent = urls.length > 0 ? `${urls.length} image${urls.length !== 1 ? 's' : ''}` : '';
+    const totalText = assetsTotalCount > 0 ? ` of ${assetsTotalCount}` : '';
+    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText} image${urls.length !== 1 ? 's' : ''}` : '';
 
     const refreshBtn = document.createElement('button');
     refreshBtn.textContent = '↻ Refresh';
@@ -1183,7 +1186,7 @@
     `;
     refreshBtn.addEventListener('click', async () => {
       refreshBtn.textContent = '...';
-      await loadAssets(true);
+      await loadAssets(true, false);
       renderTabContent('assets', container, panel);
     });
 
@@ -1207,6 +1210,39 @@
 
     const grid = createImageGrid(urls, (item) => item.thumb, (item) => item.full, (item) => item.name);
     container.appendChild(grid);
+
+    // Load More button (if there are more assets available)
+    const hasMore = assetsTotalCount === 0 || assetsLoadedCount < assetsTotalCount;
+    if (hasMore) {
+      const loadMoreBtn = document.createElement('button');
+      loadMoreBtn.textContent = 'Load More';
+      loadMoreBtn.style.cssText = `
+        width: 100%;
+        padding: 8px;
+        margin-top: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        background: ${COLORS.accent};
+        border: none;
+        border-radius: 4px;
+        color: white;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      `;
+      loadMoreBtn.addEventListener('mouseover', () => {
+        loadMoreBtn.style.opacity = '0.8';
+      });
+      loadMoreBtn.addEventListener('mouseout', () => {
+        loadMoreBtn.style.opacity = '1';
+      });
+      loadMoreBtn.addEventListener('click', async () => {
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.textContent = 'Loading...';
+        await loadAssets(false, true);
+        renderTabContent('assets', container, panel);
+      });
+      container.appendChild(loadMoreBtn);
+    }
   }
 
   // Hover preview element (shared across grid)
@@ -1542,14 +1578,18 @@
     return [];
   }
 
-  async function loadAssets(forceRefresh = false) {
-    if (assetsCache.length > 0 && !forceRefresh) {
+  async function loadAssets(forceRefresh = false, append = false) {
+    if (assetsCache.length > 0 && !forceRefresh && !append) {
       return assetsCache;
     }
     try {
+      const limit = 100;
+      const offset = append ? assetsLoadedCount : 0;
+
       const res = await sendMessageWithTimeout({
         action: 'getAssets',
-        limit: 50
+        limit: limit,
+        offset: offset
       });
 
       if (!res?.success) {
@@ -1558,7 +1598,9 @@
 
       // Handle different response formats
       let items = res.data;
+      let total = null;
       if (items && !Array.isArray(items)) {
+        total = items.total || items.count || null;
         items = items.items || items.assets || items.data || [];
       }
 
@@ -1567,7 +1609,7 @@
       }
 
       // Filter to only images
-      assetsCache = items.filter(a => {
+      const newImages = items.filter(a => {
         if (a.media_type === 'image') return true;
         if (a.type === 'image') return true;
         const path = a.file_path || a.file_url || a.external_url || a.remote_url || a.url || '';
@@ -1576,6 +1618,17 @@
         if (a.file_url || a.external_url || a.remote_url || a.thumbnail_url) return true;
         return false;
       });
+
+      if (append) {
+        assetsCache = [...assetsCache, ...newImages];
+      } else {
+        assetsCache = newImages;
+      }
+
+      assetsLoadedCount = assetsCache.length;
+      if (total !== null) {
+        assetsTotalCount = total;
+      }
 
       return assetsCache;
     } catch (e) {
