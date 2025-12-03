@@ -2,20 +2,56 @@ import { useMemo, useState } from 'react';
 import clsx from 'clsx';
 import type { ParamSpec } from './DynamicParamForm';
 
+/**
+ * Provider option for the provider selector dropdown.
+ */
 interface ProviderOption {
   id: string;
   name: string;
 }
 
+/**
+ * Props for the GenerationSettingsBar component.
+ *
+ * This component provides a compact, horizontal settings bar for generation
+ * parameters. It's designed to be reusable across different generation UIs
+ * (QuickGenerateModule, IntimacySceneComposer, dev tools, etc.).
+ *
+ * Usage:
+ * ```tsx
+ * <GenerationSettingsBar
+ *   providerId={providerId}
+ *   providers={providers}
+ *   paramSpecs={paramSpecs}
+ *   dynamicParams={dynamicParams}
+ *   onChangeParam={(name, value) => setDynamicParams(prev => ({...prev, [name]: value}))}
+ *   onChangeProvider={(id) => setProviderId(id)}
+ *   generating={generating}
+ *   showSettings={showSettings}
+ *   onToggleSettings={() => setShowSettings(!showSettings)}
+ * />
+ * ```
+ */
 export interface GenerationSettingsBarProps {
+  /** Currently selected provider ID, or undefined for "Auto" */
   providerId?: string;
+  /** List of available providers to show in the dropdown */
   providers: ProviderOption[];
+  /** Parameter specifications from the provider's operation_specs */
   paramSpecs: ParamSpec[];
+  /** Current dynamic parameter values */
   dynamicParams: Record<string, any>;
+  /** Callback when a parameter value changes */
   onChangeParam: (name: string, value: any) => void;
+  /** Callback when provider selection changes (cleaner than using __provider__ sentinel) */
+  onChangeProvider?: (providerId: string | undefined) => void;
+  /** Whether generation is in progress (disables inputs) */
   generating?: boolean;
+  /** Whether the settings bar is expanded/visible */
   showSettings: boolean;
+  /** Callback to toggle settings visibility */
   onToggleSettings: () => void;
+  /** Currently active preset ID (shown as a badge) */
   presetId?: string;
 }
 
@@ -31,12 +67,39 @@ const PRIMARY_PARAM_NAMES = [
   'resolution',
 ];
 
+/**
+ * GenerationSettingsBar
+ *
+ * A compact, horizontal settings bar for generation parameters.
+ * Displays primary parameters (model, quality, aspect_ratio, etc.) as inline
+ * dropdowns, with advanced parameters (booleans, seed, etc.) in a popover.
+ *
+ * This component is provider-agnostic - it works with any provider that
+ * returns operation_specs with parameters. The split between primary and
+ * advanced is based on PRIMARY_PARAM_NAMES and whether the param has an enum.
+ *
+ * @example
+ * // In QuickGenerateModule:
+ * <GenerationSettingsBar
+ *   providerId={providerId}
+ *   providers={providers}
+ *   paramSpecs={paramSpecs}
+ *   dynamicParams={dynamicParams}
+ *   onChangeParam={handleDynamicParamChange}
+ *   onChangeProvider={setProvider}
+ *   generating={generating}
+ *   showSettings={showSettings}
+ *   onToggleSettings={() => setShowSettings(!showSettings)}
+ *   presetId={presetId}
+ * />
+ */
 export function GenerationSettingsBar({
   providerId,
   providers,
   paramSpecs,
   dynamicParams,
   onChangeParam,
+  onChangeProvider,
   generating = false,
   showSettings,
   onToggleSettings,
@@ -44,11 +107,13 @@ export function GenerationSettingsBar({
 }: GenerationSettingsBarProps) {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
 
+  // Primary params: shown directly in the bar as inline selects (only enums)
   const primaryParams = useMemo(
     () => paramSpecs.filter((p) => PRIMARY_PARAM_NAMES.includes(p.name) && p.enum),
     [paramSpecs]
   );
 
+  // Advanced params: shown in a popover (non-primary or non-enum types like booleans)
   const advancedParams = useMemo(
     () => paramSpecs.filter((p) => !PRIMARY_PARAM_NAMES.includes(p.name) || !p.enum),
     [paramSpecs]
@@ -56,6 +121,15 @@ export function GenerationSettingsBar({
 
   function handleChange(name: string, value: any) {
     onChangeParam(name, value);
+  }
+
+  function handleProviderChange(newProviderId: string | undefined) {
+    if (onChangeProvider) {
+      onChangeProvider(newProviderId);
+    } else {
+      // Fallback: use __provider__ sentinel for backward compatibility
+      onChangeParam('__provider__', newProviderId);
+    }
   }
 
   return (
@@ -66,7 +140,7 @@ export function GenerationSettingsBar({
           {/* Provider selector - inline */}
           <select
             value={providerId ?? ''}
-            onChange={(e) => onChangeParam('__provider__', e.target.value || undefined)}
+            onChange={(e) => handleProviderChange(e.target.value || undefined)}
             disabled={generating}
             className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer"
             title="Provider"

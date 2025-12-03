@@ -28,12 +28,13 @@ try:  # pragma: no cover - exercised indirectly via providers API
         TransitionOptions,
         VideoModel,
         ImageModel,
+        CameraMovement,
     )
     from pixverse import infer_video_dimensions  # type: ignore - New in SDK
 except ImportError:  # pragma: no cover
     PixverseClient = None  # type: ignore
     GenerationOptions = TransitionOptions = object  # fallbacks
-    VideoModel = ImageModel = None  # type: ignore
+    VideoModel = ImageModel = CameraMovement = None  # type: ignore
     infer_video_dimensions = None  # type: ignore
 
 from pixsim7.backend.main.domain import (
@@ -160,13 +161,27 @@ class PixverseProvider(
         if "aspect_ratio" in params:
             mapped["aspect_ratio"] = params["aspect_ratio"]
 
-        # Optional parameters
+        # Optional style/mode parameters (all video operations)
         for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
             if field in params:
                 mapped[field] = params[field]
 
+        # Video-specific options (for TEXT_TO_VIDEO, IMAGE_TO_VIDEO, VIDEO_EXTEND)
+        # Add new video options here - they'll be passed through automatically
+        VIDEO_OPTION_PARAMS = ['multi_shot', 'audio', 'off_peak']
+        if operation_type in (
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+            OperationType.VIDEO_EXTEND,
+        ):
+            for field in VIDEO_OPTION_PARAMS:
+                if field in params:
+                    mapped[field] = params[field]
+
         # Operation-specific parameters
         if operation_type == OperationType.IMAGE_TO_VIDEO:
+            # Defensively strip aspect_ratio for image_to_video since it follows the source image
+            mapped.pop("aspect_ratio", None)
             if "image_url" in params:
                 mapped["image_url"] = params["image_url"]
 
@@ -308,9 +323,23 @@ class PixverseProvider(
             "name": "fusion_assets", "type": "array", "required": True, "default": None,
             "enum": None, "description": "Assets used for fusion consistency", "group": "source"
         }
+        # Camera movements (only for image_to_video - requires image input)
+        # Derived from SDK's CameraMovement.ALL
+        camera_movement_enum: list[str] = []
+        if CameraMovement is not None and getattr(CameraMovement, "ALL", None):
+            camera_movement_enum = list(CameraMovement.ALL)
+        else:
+            # Fallback if SDK doesn't have CameraMovement yet
+            camera_movement_enum = ["zoom_in", "zoom_out"]
+
         camera_movement = {
-            "name": "camera_movement", "type": "enum", "required": False, "default": None,
-            "enum": ["slow_pan", "fast_pan", "zoom_in", "zoom_out"], "description": "Camera movement preset", "group": "style"
+            "name": "camera_movement",
+            "type": "enum",
+            "required": False,
+            "default": None,
+            "enum": camera_movement_enum,
+            "description": "Camera movement preset (image_to_video only)",
+            "group": "style",
         }
         # Image generation model options (from pixverse-py ImageModel)
         image_model = {
@@ -354,9 +383,21 @@ class PixverseProvider(
             "description": "Native audio generation (v5.5+ only, enable for audio)",
             "group": "advanced",
         }
+        # Off-peak mode (subscription accounts - reduces credit cost)
+        off_peak = {
+            "name": "off_peak",
+            "type": "boolean",
+            "required": False,
+            "default": False,
+            "enum": None,
+            "description": "Queue for off-peak processing (subscription accounts, reduces credits)",
+            "group": "advanced",
+        }
 
         # Any future video options added to GenerationOptions that we don't
         # explicitly model above will be surfaced as additional advanced params.
+        # NOTE: We filter out SDK internals (fields starting with "_") to avoid
+        # accidentally exposing implementation details in the UI.
         extra_video_params: list[dict[str, Any]] = []
         handled_field_names = {
             "model",
@@ -371,11 +412,16 @@ class PixverseProvider(
             "template_id",
             "multi_shot",
             "audio",
+            "off_peak",
         }
         try:  # pragma: no cover - defensive; relies on SDK details
             model_fields = getattr(GenerationOptions, "model_fields", {})  # type: ignore[attr-defined]
             for field_name, field in model_fields.items():
+                # Skip fields we already handle explicitly
                 if field_name in handled_field_names:
+                    continue
+                # Skip SDK internals (private fields, validators, etc.)
+                if field_name.startswith("_"):
                     continue
                 # Map basic python types to our simple schema
                 annotation = getattr(field, "annotation", None)
@@ -445,6 +491,7 @@ class PixverseProvider(
                     template_id,
                     multi_shot,
                     audio,
+                    off_peak,
                 ] + extra_video_params
             },
             # Image-to-video: aspect ratio follows source image, so we do NOT expose it
@@ -462,6 +509,7 @@ class PixverseProvider(
                     negative_prompt,
                     multi_shot,
                     audio,
+                    off_peak,
                 ] + extra_video_params
             },
             "video_extend": {
@@ -475,6 +523,7 @@ class PixverseProvider(
                     seed,
                     multi_shot,
                     audio,
+                    off_peak,
                 ] + extra_video_params
             },
             "video_transition": {"parameters": [image_urls, prompts, quality, duration]},

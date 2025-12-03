@@ -20,6 +20,15 @@ from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
 
 logger = get_logger()
 
+# Video generation options that should be passed through to the SDK
+# Add new options here - they'll be included automatically in all video operations
+VIDEO_OPTION_PARAMS = ['multi_shot', 'audio', 'off_peak']
+
+
+def _extract_video_options(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract video options from params dict (multi_shot, audio, off_peak, etc.)"""
+    return {k: params[k] for k in VIDEO_OPTION_PARAMS if params.get(k)}
+
 
 class PixverseOperationsMixin:
     """Mixin for Pixverse video operations"""
@@ -148,6 +157,9 @@ class PixverseOperationsMixin:
             if params.get(field):
                 kwargs[field] = params[field]
 
+        # Video options (multi_shot, audio, off_peak, etc.)
+        kwargs.update(_extract_video_options(params))
+
         # Call pixverse-py (synchronous) in thread
         video = await asyncio.to_thread(
             client.create,
@@ -164,13 +176,12 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate image-to-video"""
-        # Build GenerationOptions
+        # Build GenerationOptions (no aspect_ratio for image_to_video - follows source)
         gen_options = GenerationOptions(
             model=params.get("model", "v5"),
             quality=params.get("quality", "360p"),
             duration=params.get("duration", 5),
             seed=params.get("seed", 0),
-            aspect_ratio=params.get("aspect_ratio"),
         )
 
         # Build kwargs
@@ -181,6 +192,9 @@ class PixverseOperationsMixin:
         for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
             if params.get(field):
                 kwargs[field] = params[field]
+
+        # Video options (multi_shot, audio, off_peak, etc.)
+        kwargs.update(_extract_video_options(params))
 
         # Call pixverse-py
         video = await asyncio.to_thread(
@@ -198,14 +212,22 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Extend video"""
+        # Build kwargs for extend
+        kwargs = {
+            "prompt": params.get("prompt", ""),
+            "video_url": params.get("video_url"),
+            "original_video_id": params.get("original_video_id"),
+            "quality": params.get("quality", "360p"),
+            "seed": params.get("seed", 0),
+        }
+
+        # Video options (multi_shot, audio, off_peak, etc.)
+        kwargs.update(_extract_video_options(params))
+
         # Call pixverse-py extend method
         video = await asyncio.to_thread(
             client.extend,
-            prompt=params.get("prompt", ""),
-            video_url=params.get("video_url"),
-            original_video_id=params.get("original_video_id"),
-            quality=params.get("quality", "360p"),
-            seed=params.get("seed", 0),
+            **kwargs
         )
 
         return video
