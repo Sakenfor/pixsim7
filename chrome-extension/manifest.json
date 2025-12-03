@@ -72,6 +72,10 @@
         "*://*.pixverse.ai/*"
       ],
       "js": [
+        "content/pixverse-styles.js",
+        "content/pixverse-utils.js",
+        "content/pixverse-storage.js",
+        "content/pixverse-image-picker.js",
         "content/pixverse-preset-buttons.js"
       ],
       "run_at": "document_idle"

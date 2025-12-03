@@ -4,13 +4,18 @@
  * CSS constants and styling for Pixverse preset buttons.
  */
 
-// Class names
-export const BTN_GROUP_CLASS = 'pxs7-group';
-export const BTN_CLASS = 'pxs7-btn';
-export const MENU_CLASS = 'pxs7-menu';
+window.PXS7 = window.PXS7 || {};
 
-// Unified dark theme colors
-export const COLORS = {
+(function() {
+  'use strict';
+
+  // Class names
+  const BTN_GROUP_CLASS = 'pxs7-group';
+  const BTN_CLASS = 'pxs7-btn';
+  const MENU_CLASS = 'pxs7-menu';
+
+  // Unified dark theme colors
+  const COLORS = {
   bg: '#1f2937',
   bgHover: '#374151',
   border: '#4b5563',
@@ -23,7 +28,7 @@ export const COLORS = {
   error: '#ef4444',
 };
 
-export const STYLE = `
+const STYLE = `
   /* Button Group */
   .${BTN_GROUP_CLASS} {
     display: inline-flex;
@@ -271,15 +276,27 @@ export const STYLE = `
   }
 `;
 
-let styleInjected = false;
+  let styleInjected = false;
 
-export function injectStyle() {
-  if (styleInjected) return;
-  const existing = document.getElementById('pxs7-style');
-  if (existing) { styleInjected = true; return; }
-  const style = document.createElement('style');
-  style.id = 'pxs7-style';
-  style.textContent = STYLE;
-  (document.head || document.documentElement).appendChild(style);
-  styleInjected = true;
-}
+  function injectStyle() {
+    if (styleInjected) return;
+    const existing = document.getElementById('pxs7-style');
+    if (existing) { styleInjected = true; return; }
+    const style = document.createElement('style');
+    style.id = 'pxs7-style';
+    style.textContent = STYLE;
+    (document.head || document.documentElement).appendChild(style);
+    styleInjected = true;
+  }
+
+  // Export to global namespace
+  window.PXS7.styles = {
+    BTN_GROUP_CLASS,
+    BTN_CLASS,
+    MENU_CLASS,
+    COLORS,
+    STYLE,
+    injectStyle
+  };
+
+})();

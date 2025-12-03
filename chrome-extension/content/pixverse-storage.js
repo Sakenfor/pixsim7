@@ -149,6 +149,7 @@ window.PXS7 = window.PXS7 || {};
 
   // Export to global namespace
   window.PXS7.storage = {
+    STORAGE_KEY_PROVIDER_SESSIONS,
     state,
     loadSelectedAccount,
     saveSelectedAccount,
