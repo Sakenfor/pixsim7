@@ -62,6 +62,7 @@ class AndroidDevice(SQLModel, table=True):
 
     # Metadata
     last_seen: Optional[datetime] = Field(default=None)
+    last_used_at: Optional[datetime] = Field(default=None)  # Track last execution time for LRU device pool
     error_message: Optional[str] = Field(default=None, sa_column=Column(Text))
 
     created_at: Optional[datetime] = Field(default=None)

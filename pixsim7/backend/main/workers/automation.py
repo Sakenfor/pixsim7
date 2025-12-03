@@ -74,17 +74,20 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             from pixsim7.backend.main.domain import ProviderAccount
             account = await db.get(ProviderAccount, execution.account_id) if execution.account_id else None
 
-            device = await db.get(AndroidDevice, execution.device_id) if execution.device_id else None
-            if not device:
-                # Pick any device by adb_id from first ONLINE one (optional enhancement: proper selection in loop)
-                from sqlalchemy import select
-                from pixsim7.backend.main.domain.automation import DeviceStatus
-                result = await db.execute(select(AndroidDevice).where(AndroidDevice.status == DeviceStatus.ONLINE))
-                device = result.scalars().first()
-                if device:
-                    execution.device_id = device.id
-                    await db.commit()
+            # Smart device assignment using device pool service
+            if not execution.device_id:
+                from pixsim7.backend.main.services.automation import DevicePoolService
+                pool_service = DevicePoolService(db)
+                assignment_result = await pool_service.assign_device(execution)
 
+                if assignment_result.status == "no_devices":
+                    raise RuntimeError("No devices available for automation execution")
+                elif assignment_result.status == "waiting":
+                    # Future: Handle wait queue - for now, just fail
+                    raise RuntimeError("Device wait queue not yet implemented")
+                # If assigned, execution.device_id was already set by the service
+
+            device = await db.get(AndroidDevice, execution.device_id)
             if not device:
                 raise RuntimeError("No device available for automation execution")
 
