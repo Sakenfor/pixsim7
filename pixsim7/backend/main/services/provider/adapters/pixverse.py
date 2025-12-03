@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # usage should assert availability when generating jobs.
 try:  # pragma: no cover - exercised indirectly via providers API
     from pixverse import PixverseClient  # type: ignore
+    from pixverse import get_video_operation_fields  # type: ignore[attr-defined]
     from pixverse.models import (  # type: ignore
         GenerationOptions,
         TransitionOptions,
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover
     PixverseClient = None  # type: ignore
     GenerationOptions = TransitionOptions = object  # fallbacks
     VideoModel = ImageModel = CameraMovement = None  # type: ignore
+    get_video_operation_fields = None  # type: ignore
     infer_video_dimensions = None  # type: ignore
 
 from pixsim7.backend.main.domain import (
@@ -393,63 +395,38 @@ class PixverseProvider(
             "description": "Queue for off-peak processing (subscription accounts, reduces credits)",
             "group": "advanced",
         }
-
-        # Any future video options added to GenerationOptions that we don't
-        # explicitly model above will be surfaced as additional advanced params.
-        # NOTE: We filter out SDK internals (fields starting with "_") to avoid
-        # accidentally exposing implementation details in the UI.
-        extra_video_params: list[dict[str, Any]] = []
-        handled_field_names = {
-            "model",
-            "quality",
-            "duration",
-            "seed",
-            "aspect_ratio",
-            "motion_mode",
-            "negative_prompt",
-            "camera_movement",
-            "style",
-            "template_id",
-            "multi_shot",
-            "audio",
-            "off_peak",
+        # Map GenerationOptions field names to spec objects so we can build
+        # per-operation parameter lists based on SDK-provided metadata.
+        video_field_specs: dict[str, dict[str, Any]] = {
+            "model": model,
+            "quality": quality,
+            "duration": duration,
+            "aspect_ratio": aspect_ratio,
+            "seed": seed,
+            "motion_mode": motion_mode,
+            "negative_prompt": negative_prompt,
+            "camera_movement": camera_movement,
+            "style": style,
+            "template_id": template_id,
+            "multi_shot": multi_shot,
+            "audio": audio,
+            "off_peak": off_peak,
         }
-        try:  # pragma: no cover - defensive; relies on SDK details
-            model_fields = getattr(GenerationOptions, "model_fields", {})  # type: ignore[attr-defined]
-            for field_name, field in model_fields.items():
-                # Skip fields we already handle explicitly
-                if field_name in handled_field_names:
-                    continue
-                # Skip SDK internals (private fields, validators, etc.)
-                if field_name.startswith("_"):
-                    continue
-                # Map basic python types to our simple schema
-                annotation = getattr(field, "annotation", None)
-                if annotation in (int, Optional[int]):
-                    param_type = "integer"
-                    default = field.default if field.default is not None else 0
-                elif annotation in (float, Optional[float]):
-                    param_type = "number"
-                    default = field.default if field.default is not None else 0.0
-                elif annotation in (bool, Optional[bool]):
-                    param_type = "boolean"
-                    default = bool(field.default) if field.default is not None else False
-                else:
-                    param_type = "string"
-                    default = field.default if field.default is not None else None
 
-                extra_video_params.append({
-                    "name": field_name,
-                    "type": param_type,
-                    "required": False,
-                    "default": default,
-                    "enum": None,
-                    "description": f"Pixverse video option: {field_name}",
-                    "group": "advanced",
-                })
-        except Exception:
-            # If anything goes wrong with introspection, we simply skip extras.
-            extra_video_params = []
+        def _fields_for(operation: str, fallback: list[str]) -> list[dict[str, Any]]:
+            """
+            Resolve GenerationOptions fields for a given operation using
+            pixverse-py's get_video_operation_fields when available, falling
+            back to the local list for backward compatibility.
+            """
+            field_names: list[str] = fallback
+            if get_video_operation_fields is not None:  # type: ignore[truthy-function]
+                try:
+                    field_names = list(get_video_operation_fields(operation))  # type: ignore[call-arg]
+                except Exception:
+                    # If the SDK raises for a new/unknown operation, stick to fallback.
+                    field_names = fallback
+            return [video_field_specs[name] for name in field_names if name in video_field_specs]
 
         spec = {
             # Image generation uses ImageModel / QUALITIES / ASPECT_RATIOS from SDK
@@ -478,53 +455,59 @@ class PixverseProvider(
             },
             # Text-only video: can choose aspect ratio explicitly
             "text_to_video": {
-                "parameters": [
-                    base_prompt,
-                    model,
-                    quality,
-                    duration,
-                    aspect_ratio,
-                    seed,
-                    motion_mode,
-                    style,
-                    negative_prompt,
-                    template_id,
-                    multi_shot,
-                    audio,
-                    off_peak,
-                ] + extra_video_params
+                "parameters": [base_prompt]
+                + _fields_for(
+                    "text_to_video",
+                    [
+                        "model",
+                        "quality",
+                        "duration",
+                        "aspect_ratio",
+                        "seed",
+                        "motion_mode",
+                        "style",
+                        "negative_prompt",
+                        "template_id",
+                        "multi_shot",
+                        "audio",
+                        "off_peak",
+                    ],
+                )
             },
             # Image-to-video: aspect ratio follows source image, so we do NOT expose it
             "image_to_video": {
-                "parameters": [
-                    base_prompt,
-                    image_url,
-                    model,
-                    quality,
-                    duration,
-                    seed,
-                    camera_movement,
-                    motion_mode,
-                    style,
-                    negative_prompt,
-                    multi_shot,
-                    audio,
-                    off_peak,
-                ] + extra_video_params
+                "parameters": [base_prompt, image_url]
+                + _fields_for(
+                    "image_to_video",
+                    [
+                        "model",
+                        "quality",
+                        "duration",
+                        "seed",
+                        "camera_movement",
+                        "motion_mode",
+                        "style",
+                        "negative_prompt",
+                        "multi_shot",
+                        "audio",
+                        "off_peak",
+                    ],
+                )
             },
             "video_extend": {
-                "parameters": [
-                    base_prompt,
-                    video_url,
-                    original_video_id,
-                    model,
-                    quality,
-                    duration,
-                    seed,
-                    multi_shot,
-                    audio,
-                    off_peak,
-                ] + extra_video_params
+                "parameters": [base_prompt, video_url, original_video_id]
+                + _fields_for(
+                    "video_extend",
+                    [
+                        "model",
+                        "quality",
+                        "duration",
+                        "seed",
+                        "multi_shot",
+                        "audio",
+                        "off_peak",
+                    ],
+                )
             },
             "video_transition": {"parameters": [image_urls, prompts, quality, duration]},
             "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, seed]},
