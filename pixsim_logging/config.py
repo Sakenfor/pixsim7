@@ -115,7 +115,8 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
     if json:
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer(colors=True))
+        from .console_renderer import CleanConsoleRenderer
+        processors.append(CleanConsoleRenderer(colors=True))
 
     structlog.configure(
         processors=processors,

@@ -65,7 +65,7 @@ function getQuickGeneratePresets(providerId) {
 }
 
 const PROVIDER_TARGETS = {
-  pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai' },
+  pixverse: { domain: 'pixverse.ai', url: 'https://app.pixverse.ai/create/image-text' },
   runway: { domain: 'runwayml.com', url: 'https://app.runwayml.com' },
   pika: { domain: 'pika.art', url: 'https://app.pika.art' },
   sora: { domain: 'chatgpt.com', url: 'https://chatgpt.com' },

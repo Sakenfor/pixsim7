@@ -42,6 +42,23 @@ function useLazyLoadPreview(
 
 type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
+function getLocalAssetNumericId(asset: LocalAsset): number {
+  let hash = 0;
+  for (let i = 0; i < asset.key.length; i += 1) {
+    const chr = asset.key.charCodeAt(i);
+    hash = ((hash << 5) - hash) + chr;
+    hash |= 0;
+  }
+  const id = Math.abs(hash);
+  return id || 1;
+}
+
+function uploadStatusToProviderStatus(status: UploadState | undefined) {
+  if (status === 'success') return 'ok' as const;
+  if (status === 'error') return 'local_only' as const;
+  return undefined;
+}
+
 function TreeLazyMediaCard(props: {
   asset: LocalAsset;
   previewUrl: string | undefined;
@@ -52,11 +69,12 @@ function TreeLazyMediaCard(props: {
 }) {
   const { asset, previewUrl, loadPreview, status, openViewer, uploadOne } = props;
   const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
+  const providerStatus = uploadStatusToProviderStatus(status);
 
   return (
     <div ref={cardRef}>
       <MediaCard
-        id={parseInt(asset.key.split('-')[0] || '0')}
+        id={getLocalAssetNumericId(asset)}
         mediaType={asset.kind === 'video' ? 'video' : 'image'}
         providerId="local"
         providerAssetId={asset.key}
@@ -68,6 +86,7 @@ function TreeLazyMediaCard(props: {
         description={asset.name}
         createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
         onOpen={() => openViewer(asset)}
+        providerStatus={providerStatus}
         uploadState={status}
         onUploadClick={async () => {
           await uploadOne(asset);
@@ -131,7 +150,7 @@ function GridLazyCard(props: {
             uploadStatus === 'success'
               ? uploadNote || 'Uploaded successfully'
               : uploadStatus === 'error'
-              ? 'Upload failed'
+              ? uploadNote || 'Upload failed'
               : 'Upload to provider'
           }
         >
@@ -399,7 +418,7 @@ export function LocalFoldersPanel() {
                         controller.uploadStatus[a.key] === 'success'
                           ? controller.uploadNotes[a.key] || 'Uploaded successfully'
                           : controller.uploadStatus[a.key] === 'error'
-                          ? 'Upload failed'
+                          ? controller.uploadNotes[a.key] || 'Upload failed'
                           : 'Upload to provider'
                       }
                     >
@@ -502,6 +521,13 @@ export function LocalFoldersPanel() {
                                   ? 'bg-neutral-400 text-white'
                                   : 'bg-blue-600 text-white hover:bg-blue-700'
                               }`}
+                              title={
+                                controller.uploadStatus[a.key] === 'success'
+                                  ? controller.uploadNotes[a.key] || 'Uploaded successfully'
+                                  : controller.uploadStatus[a.key] === 'error'
+                                  ? controller.uploadNotes[a.key] || 'Upload failed'
+                                  : 'Upload to provider'
+                              }
                             >
                               {controller.uploadStatus[a.key] === 'uploading'
                                 ? 'Uploading...'

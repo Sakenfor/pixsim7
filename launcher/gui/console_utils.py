@@ -25,6 +25,10 @@ ISO_TIMESTAMP_REGEX = re.compile(r'(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\.?
 LEVEL_PREFIX_REGEX = re.compile(r'(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)', re.IGNORECASE)
 # Match structured log format: timestamp [level] message
 STRUCTURED_LOG_REGEX = re.compile(r'^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})[^\[]*\[(\w+)\s*\]\s*(.*)$')
+# Match clean log format: [HH:MM:SS] LEVEL [optional spaces] content
+# Level can be: DEBUG, INFO, WARN, ERROR, CRIT, WARNING, CRITICAL
+# This handles both our custom format and standard structlog format with variable spacing
+CLEAN_LOG_REGEX = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s+(DEBUG|INFO|WARN(?:ING)?|ERROR|CRIT(?:ICAL)?)\s+(.+)$', re.IGNORECASE)
 
 
 def convert_utc_to_local_time(timestamp_str: str) -> str | None:
@@ -61,8 +65,16 @@ READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening
 ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
 WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
-# ANSI / SGR detection
+# ANSI / SGR detection and stripping
 ANSI_SGR_REGEX = re.compile(r'(\x1b\[|\[)([0-9;]{1,5})m')
+ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+
+
+def strip_ansi(text: str) -> str:
+    """Strip ANSI color codes from text."""
+    if not text:
+        return text
+    return ANSI_ESCAPE_RE.sub('', text)
 
 
 def detect_console_level(line: str) -> str | None:
@@ -235,6 +247,8 @@ def format_console_log_html_enhanced(log_lines) -> str:
     in_traceback = False
     for raw_line in log_lines:
         line = str(raw_line)
+        # Strip ANSI codes for regex matching (but keep original for display)
+        line_clean = strip_ansi(line)
 
         # Detect traceback lines for better visual grouping
         is_traceback_line = line.strip().startswith(('File "', 'Traceback', '  File', 'at ')) or 'File "' in line
@@ -249,7 +263,7 @@ def format_console_log_html_enhanced(log_lines) -> str:
             html_lines.append('</div>')
             in_traceback = False
 
-        line_level = detect_console_level(line)
+        line_level = detect_console_level(line_clean)
         style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
         border_color = style_def.get("accent", "#555")
         bg_color = style_def.get("bg", "")
@@ -261,7 +275,8 @@ def format_console_log_html_enhanced(log_lines) -> str:
             wrapper_style += f" background-color: {bg_color};"
 
         # Try structured log format first (most specific)
-        structured_match = STRUCTURED_LOG_REGEX.match(line)
+        # Use line_clean (ANSI-stripped) for regex matching
+        structured_match = STRUCTURED_LOG_REGEX.match(line_clean)
         if structured_match:
             timestamp_str, level, content = structured_match.groups()
             # Convert UTC to local time if it's a full ISO timestamp
@@ -273,36 +288,51 @@ def format_console_log_html_enhanced(log_lines) -> str:
             tag = None
             line_level = level.upper() if level.upper() in CONSOLE_LEVEL_STYLES else line_level
         else:
-            # Try launcher timestamp format
-            timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line)
-            if timestamp_match:
-                time, tag, content = timestamp_match.groups()
+            # Try clean log format: [HH:MM:SS] LEVEL service event ...
+            clean_match = CLEAN_LOG_REGEX.match(line_clean)
+            if clean_match:
+                time, level, content = clean_match.groups()
+                tag = None
+                # Normalize levels to standard forms
+                level_upper = level.upper()
+                level_normalized = {
+                    "WARN": "WARNING",
+                    "CRIT": "CRITICAL",
+                }.get(level_upper, level_upper)
+                # Ensure the level is recognized
+                if level_normalized in CONSOLE_LEVEL_STYLES:
+                    line_level = level_normalized
             else:
-                # Try ISO timestamp format
-                iso_match = ISO_TIMESTAMP_REGEX.match(line)
-                if iso_match:
-                    full_timestamp = f"{iso_match.group(1)}T{iso_match.group(2)}"
-                    if iso_match.group(3):  # Has timezone indicator
-                        full_timestamp += iso_match.group(3)
-                    # Convert UTC to local time
-                    time = convert_utc_to_local_time(full_timestamp)
-                    if not time:
-                        # Fallback: Just use HH:MM:SS part
-                        time = iso_match.group(2)
-                    tag = None
-                    content = iso_match.group(4).strip() or line
+                # Try launcher timestamp format
+                timestamp_match = CONSOLE_TIMESTAMP_REGEX.match(line_clean)
+                if timestamp_match:
+                    time, tag, content = timestamp_match.groups()
                 else:
-                    # Try level prefix format
-                    prefix_match = LEVEL_PREFIX_REGEX.match(line)
-                    if prefix_match:
-                        possible_level = prefix_match.group(1).upper()
-                        if not line_level:
-                            line_level = "WARNING" if possible_level == "WARN" else possible_level
-                        time = None
+                    # Try ISO timestamp format
+                    iso_match = ISO_TIMESTAMP_REGEX.match(line_clean)
+                    if iso_match:
+                        full_timestamp = f"{iso_match.group(1)}T{iso_match.group(2)}"
+                        if iso_match.group(3):  # Has timezone indicator
+                            full_timestamp += iso_match.group(3)
+                        # Convert UTC to local time
+                        time = convert_utc_to_local_time(full_timestamp)
+                        if not time:
+                            # Fallback: Just use HH:MM:SS part
+                            time = iso_match.group(2)
                         tag = None
-                        content = prefix_match.group(2) or line
+                        content = iso_match.group(4).strip() or line_clean
                     else:
-                        time, tag, content = None, None, line
+                        # Try level prefix format
+                        prefix_match = LEVEL_PREFIX_REGEX.match(line_clean)
+                        if prefix_match:
+                            possible_level = prefix_match.group(1).upper()
+                            if not line_level:
+                                line_level = "WARNING" if possible_level == "WARN" else possible_level
+                            time = None
+                            tag = None
+                            content = prefix_match.group(2) or line_clean
+                        else:
+                            time, tag, content = None, None, line_clean
 
         tag_color = '#f44336' if (tag or '').upper() == 'ERR' else '#4CAF50'
         time_display = time or '--:--:--'

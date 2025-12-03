@@ -37,7 +37,8 @@
       "Bash(pip install:*)",
       "Bash(pnpm --filter @pixsim7/main exec tsc:*)",
       "Bash(dir /s /b G:codepixverse-py)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

@@ -12,6 +12,7 @@ import {
   setLocalThumbnailBlob,
   type LocalAsset,
 } from '../stores/localFoldersStore';
+import { usePersistentState } from './usePersistentState';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 
 const LOCAL_SOURCE: SourceInfo = {
@@ -36,9 +37,15 @@ export function useLocalFoldersController(): LocalFoldersController {
     updateAssetUploadStatus,
   } = useLocalFolders();
 
-  // View state
-  const [viewMode, setViewMode] = useState<ViewMode>('tree');
-  const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
+  // View state (persisted)
+  const [viewMode, setViewMode] = usePersistentState<ViewMode>(
+    'ps7_localFolders_viewMode',
+    'tree',
+  );
+  const [selectedFolderPath, setSelectedFolderPath] = usePersistentState<string | null>(
+    'ps7_localFolders_selectedFolderPath',
+    null,
+  );
 
   // Preview state
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -46,8 +53,18 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Viewer state
   const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
 
-  // Upload state
-  const [providerId, setProviderId] = useState<string | undefined>(undefined);
+  // Upload state (persisted provider)
+  const [providerId, setProviderId] = usePersistentState<string | undefined>(
+    'ps7_localFolders_providerId',
+    undefined,
+    {
+      serializer: (value) => JSON.stringify(value ?? null),
+      deserializer: (str) => {
+        const parsed = JSON.parse(str);
+        return (parsed ?? undefined) as string | undefined;
+      },
+    },
+  );
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
 

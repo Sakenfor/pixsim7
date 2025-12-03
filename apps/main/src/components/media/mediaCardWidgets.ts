@@ -72,6 +72,15 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
                      statusMeta.color === 'yellow' ? 'yellow' :
                      statusMeta.color === 'red' ? 'red' : 'gray';
 
+  const statusBgClass =
+    statusColor === 'green'
+      ? '!bg-green-500 text-white'
+      : statusColor === 'yellow'
+      ? '!bg-amber-400 text-white'
+      : statusColor === 'red'
+      ? '!bg-red-500 text-white'
+      : '!bg-white/80 dark:!bg-white/30';
+
   // If we have actions, create a menu widget
   if (actions && (actions.onOpenDetails || actions.onShowMetadata || actions.onDelete || actions.onReupload)) {
     const menuItems: MenuItem[] = [];
@@ -122,7 +131,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
       trigger: {
         icon: statusMeta.icon,
         variant: 'icon',
-        className: `!bg-white/20 dark:!bg-white/30 backdrop-blur-md text-${statusColor}-500`,
+        className: `${statusBgClass} backdrop-blur-md`,
       },
       triggerType: 'click',
       placement: 'bottom-right',
@@ -141,7 +150,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
     shape: 'circle',
     tooltip: statusMeta.label,
     onClick: actions?.onOpenDetails ? () => actions.onOpenDetails!(id) : undefined,
-    className: '!bg-white/20 dark:!bg-white/30 backdrop-blur-md',
+    className: `${statusBgClass} backdrop-blur-md`,
     priority: 20,
   });
 }
