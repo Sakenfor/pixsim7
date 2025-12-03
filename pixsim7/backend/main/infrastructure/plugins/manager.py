@@ -188,6 +188,7 @@ class PluginManager:
             # during load. Handlers receive the plugin ID so they can tag
             # ownership metadata if needed.
             plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=manifest.id)
+            plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=manifest.id)
 
             # Emit event (sync context)
             plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)

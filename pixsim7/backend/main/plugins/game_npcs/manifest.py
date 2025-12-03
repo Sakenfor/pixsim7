@@ -230,6 +230,46 @@ async def get_npc_presence(
     return presences
 
 
+# ===== NPC SURFACE PACKAGES =====
+
+class NpcSurfacePackageDTO(BaseModel):
+    """DTO for NPC surface packages"""
+    id: str
+    label: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    surface_types: Dict[str, Dict[str, Any]]
+    source_plugin_id: Optional[str] = None
+
+
+@router.get("/surface-packages", response_model=List[NpcSurfacePackageDTO])
+async def list_npc_surface_packages(
+    user: CurrentUser,
+) -> List[NpcSurfacePackageDTO]:
+    """
+    List all registered NPC surface packages.
+
+    Surface packages define available expression surface types (portrait, dialogue,
+    closeup, mood, etc.) that can be used when creating NPC expressions.
+
+    Returns a list of all surface packages registered by core and plugins.
+    """
+    from pixsim7.backend.main.domain.npc_surfaces import list_npc_surface_packages
+
+    packages = list_npc_surface_packages()
+    return [
+        NpcSurfacePackageDTO(
+            id=pkg.id,
+            label=pkg.label,
+            description=pkg.description,
+            category=pkg.category,
+            surface_types=pkg.surface_types,
+            source_plugin_id=pkg.source_plugin_id,
+        )
+        for pkg in packages.values()
+    ]
+
+
 # ===== LIFECYCLE HOOKS =====
 
 def on_load(app):

@@ -91,6 +91,19 @@ export interface NpcPresenceDTO {
   state: Record<string, unknown>;
 }
 
+/**
+ * NPC Surface Package - defines available expression surface types
+ * (portrait, dialogue, closeup, mood, etc.)
+ */
+export interface NpcSurfacePackage {
+  id: string;
+  label: string;
+  description?: string | null;
+  category?: string | null;
+  surface_types: Record<string, Record<string, unknown>>;
+  source_plugin_id?: string | null;
+}
+
 // ===================
 // World Types
 // ===================

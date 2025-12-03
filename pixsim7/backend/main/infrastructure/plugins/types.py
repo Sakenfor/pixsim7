@@ -200,6 +200,9 @@ class PluginEvents:
     # Stat system
     STAT_PACKAGES_REGISTER = "stat:packages_register"
 
+    # NPC Surface system
+    NPC_SURFACES_REGISTER = "npc:surfaces_register"
+
     # System events
     APP_STARTUP = "app:startup"
     APP_SHUTDOWN = "app:shutdown"

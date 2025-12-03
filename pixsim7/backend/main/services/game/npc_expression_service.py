@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain.game.models import NpcExpression
+from pixsim7.backend.main.domain.npc_surfaces import validate_expression_meta
 
 
 class NpcExpressionService:
@@ -34,6 +35,9 @@ class NpcExpressionService:
           - asset_id: int
           - crop: Optional[dict]
           - meta: Optional[dict]
+            - surfaceType: str (recommended) - e.g. "portrait", "dialogue", "closeup_kiss"
+            - pluginId: str (optional) - plugin that owns this expression
+            - tags: list[str] (optional) - additional tags for filtering
         """
         await self.db.execute(
             delete(NpcExpression).where(NpcExpression.npc_id == npc_id)
@@ -41,12 +45,17 @@ class NpcExpressionService:
 
         created: List[NpcExpression] = []
         for r in rows:
+            # Validate meta field (logs warnings but doesn't fail)
+            meta = r.get("meta")
+            if meta:
+                validate_expression_meta(meta, npc_id=npc_id)
+
             expr = NpcExpression(
                 npc_id=npc_id,
                 state=r["state"],
                 asset_id=r["asset_id"],
                 crop=r.get("crop"),
-                meta=r.get("meta"),
+                meta=meta,
             )
             self.db.add(expr)
             created.append(expr)
