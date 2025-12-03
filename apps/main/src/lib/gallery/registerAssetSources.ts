@@ -26,7 +26,7 @@ function registerSourceTypes() {
   registerSourceType({
     typeId: 'remote-gallery',
     name: 'Remote Gallery',
-    icon: 'database',
+    icon: 'globe',
     category: 'remote',
     description: 'Database-backed remote assets with multiple viewing surfaces',
     component: RemoteGallerySource,
@@ -65,7 +65,7 @@ function createStaticInstances() {
   registerAssetSource({
     id: getDefaultInstanceId('remote-gallery'),
     label: 'Remote Gallery',
-    icon: 'database',
+    icon: 'globe',
     kind: 'remote',
     component: RemoteGallerySource,
   });
