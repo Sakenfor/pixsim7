@@ -43,6 +43,7 @@ export function MasonryGrid({
   >([]);
   const [containerHeight, setContainerHeight] = useState<number>(0);
   const [columnWidth, setColumnWidth] = useState<number>(0);
+  const [layoutVersion, setLayoutVersion] = useState<number>(0);
 
   // Track container width via ResizeObserver for responsive layout
   useEffect(() => {
@@ -73,6 +74,34 @@ export function MasonryGrid({
     };
   }, [containerWidth]);
 
+  // Watch for item height changes (images loading, content wrapping, etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('ResizeObserver' in window)) return;
+
+    const observers: ResizeObserver[] = [];
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleLayout = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        // Trigger re-layout when any item's height changes
+        setLayoutVersion(v => v + 1);
+      }, 50); // Debounce by 50ms to avoid excessive re-layouts
+    };
+
+    itemRefs.current.forEach((el) => {
+      if (!el) return;
+      const ro = new ResizeObserver(scheduleLayout);
+      ro.observe(el);
+      observers.push(ro);
+    });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      observers.forEach(ro => ro.disconnect());
+    };
+  }, [items.length, containerWidth]);
+
   // Memoize column count calculation
   const cols = useMemo(() => {
     if (!containerWidth) return 1;
@@ -98,7 +127,7 @@ export function MasonryGrid({
   }, [colWidth, columnWidth]);
 
   // Compute positions once we know container width and item heights
-  // Includes columnWidth in dependencies to remeasure after width changes
+  // Includes columnWidth and layoutVersion to remeasure after width or item height changes
   useLayoutEffect(() => {
     if (!containerWidth || items.length === 0 || !columnWidth) {
       setPositions([]);
@@ -117,7 +146,7 @@ export function MasonryGrid({
       }
       const height = el.offsetHeight;
 
-      // Find shortest column
+      // Find shortest column (shortest-column / tetris algorithm)
       let colIndex = 0;
       let minHeight = colHeights[0];
       for (let c = 1; c < cols; c++) {
@@ -138,7 +167,7 @@ export function MasonryGrid({
     setContainerHeight(
       colHeights.length ? Math.max(...colHeights) - rowGap : 0
     );
-  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth]);
+  }, [items.length, containerWidth, columnGap, rowGap, cols, colWidth, columnWidth, layoutVersion]);
 
   return (
     <div
