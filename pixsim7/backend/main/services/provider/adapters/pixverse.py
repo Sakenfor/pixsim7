@@ -21,13 +21,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # NOTE: pixverse-py SDK imports are optional; guard for environments where
 # the SDK isn't installed yet to keep the adapter importable. Real runtime
 # usage should assert availability when generating jobs.
-try:
+try:  # pragma: no cover - exercised indirectly via providers API
     from pixverse import PixverseClient  # type: ignore
-    from pixverse.models import GenerationOptions, TransitionOptions  # type: ignore
+    from pixverse.models import (  # type: ignore
+        GenerationOptions,
+        TransitionOptions,
+        VideoModel,
+        ImageModel,
+    )
     from pixverse import infer_video_dimensions  # type: ignore - New in SDK
 except ImportError:  # pragma: no cover
     PixverseClient = None  # type: ignore
     GenerationOptions = TransitionOptions = object  # fallbacks
+    VideoModel = ImageModel = None  # type: ignore
     infer_video_dimensions = None  # type: ignore
 
 from pixsim7.backend.main.domain import (
@@ -183,16 +189,63 @@ class PixverseProvider(
         return mapped
 
     def get_operation_parameter_spec(self) -> dict:
-        """Pixverse-specific parameter specification for dynamic UI forms."""
-        common_quality_enum = ["360p", "720p", "1080p"]
-        aspect_enum = ["16:9", "9:16", "1:1"]
+        """
+        Pixverse-specific parameter specification for dynamic UI forms.
+
+        The spec is primarily derived from the pixverse-py SDK models so that:
+        - New video models (e.g., v5.5+) are surfaced automatically.
+        - Image models / qualities / aspect ratios stay in sync with the SDK.
+
+        If the SDK is unavailable at import time, we fall back to a static
+        specification compatible with older behavior.
+        """
+        # ==== Derive enums from SDK when available ====
+        # Video models (v3.5, v4, v5, v5.5, ...)
+        video_model_enum: list[str]
+        default_video_model: str
+        if VideoModel is not None and getattr(VideoModel, "ALL", None):
+            video_model_enum = list(VideoModel.ALL)
+            default_video_model = getattr(VideoModel, "DEFAULT", video_model_enum[0])
+        else:
+            # Fallback to previous behavior
+            video_model_enum = ["v5"]
+            default_video_model = "v5"
+
+        # Image models and qualities
+        image_model_enum: list[str] = []
+        image_quality_enum: list[str] = []
+        image_aspect_enum: list[str] = []
+        if ImageModel is not None:
+            image_model_enum = list(getattr(ImageModel, "ALL", []))
+            # Union of all known qualities across models
+            qualities = getattr(ImageModel, "QUALITIES", None)
+            if isinstance(qualities, dict):
+                for qs in qualities.values():
+                    for q in qs:
+                        if q not in image_quality_enum:
+                            image_quality_enum.append(q)
+            image_aspect_enum = list(
+                getattr(ImageModel, "ASPECT_RATIOS", ["16:9", "9:16", "1:1"])
+            )
+
+        # Video quality presets – derive from pricing tables when possible
+        video_quality_enum: list[str] = []
+        try:  # pragma: no cover - convenience only
+            from pixverse.pricing import WEBAPI_BASE_COSTS  # type: ignore
+
+            video_quality_enum = list(WEBAPI_BASE_COSTS.keys())
+        except Exception:  # pragma: no cover
+            # Conservative default; SDK docs list 360p/540p/720p/1080p
+            video_quality_enum = ["360p", "540p", "720p", "1080p"]
+
+        # ==== Common field specs ====
         base_prompt = {
             "name": "prompt", "type": "string", "required": True, "default": None,
             "enum": None, "description": "Primary text prompt", "group": "core"
         }
         quality = {
             "name": "quality", "type": "enum", "required": False, "default": "720p",
-            "enum": common_quality_enum, "description": "Output resolution preset", "group": "render"
+            "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
         }
         duration = {
             "name": "duration", "type": "number", "required": False, "default": 5,
@@ -204,15 +257,20 @@ class PixverseProvider(
         }
         aspect_ratio = {
             "name": "aspect_ratio", "type": "enum", "required": False, "default": "16:9",
-            "enum": aspect_enum, "description": "Frame aspect ratio", "group": "render"
+            "enum": image_aspect_enum or ["16:9", "9:16", "1:1"],
+            "description": "Frame aspect ratio",
+            "group": "render",
         }
         negative_prompt = {
             "name": "negative_prompt", "type": "string", "required": False, "default": None,
             "enum": None, "description": "Elements to discourage in generation", "group": "advanced"
         }
         model = {
-            "name": "model", "type": "enum", "required": False, "default": "v5",
-            "enum": ["v5"], "description": "Pixverse model version", "group": "core"
+            "name": "model", "type": "enum", "required": False,
+            "default": default_video_model,
+            "enum": video_model_enum,
+            "description": "Pixverse video model version",
+            "group": "core",
         }
         motion_mode = {
             "name": "motion_mode", "type": "enum", "required": False, "default": None,
@@ -254,25 +312,171 @@ class PixverseProvider(
             "name": "camera_movement", "type": "enum", "required": False, "default": None,
             "enum": ["slow_pan", "fast_pan", "zoom_in", "zoom_out"], "description": "Camera movement preset", "group": "style"
         }
-        # Image generation model options
+        # Image generation model options (from pixverse-py ImageModel)
         image_model = {
-            "name": "model", "type": "enum", "required": False, "default": "v2",
-            "enum": ["v2", "v2.1", "anime", "realistic"], "description": "Image generation model", "group": "core"
+            "name": "model",
+            "type": "enum",
+            "required": False,
+            "default": image_model_enum[0] if image_model_enum else None,
+            "enum": image_model_enum or None,
+            "description": "Image generation model",
+            "group": "core",
         }
         image_quality = {
-            "name": "quality", "type": "enum", "required": False, "default": "standard",
-            "enum": ["standard", "hd", "ultra"], "description": "Image quality preset", "group": "render"
+            "name": "quality",
+            "type": "enum",
+            "required": False,
+            "default": image_quality_enum[0] if image_quality_enum else None,
+            "enum": image_quality_enum or None,
+            "description": "Image quality preset",
+            "group": "render",
         }
         strength = {
             "name": "strength", "type": "number", "required": False, "default": 0.7,
             "enum": None, "description": "Transformation strength (0.0-1.0)", "group": "style", "min": 0.0, "max": 1.0
         }
+        # v5.5+ only features (exposed as advanced toggles)
+        multi_shot = {
+            "name": "multi_shot",
+            "type": "boolean",
+            "required": False,
+            "default": False,
+            "enum": None,
+            "description": "Multi-shot video generation (v5.5+ only, enable for multi-shot)",
+            "group": "advanced",
+        }
+        audio = {
+            "name": "audio",
+            "type": "boolean",
+            "required": False,
+            "default": False,
+            "enum": None,
+            "description": "Native audio generation (v5.5+ only, enable for audio)",
+            "group": "advanced",
+        }
+
+        # Any future video options added to GenerationOptions that we don't
+        # explicitly model above will be surfaced as additional advanced params.
+        extra_video_params: list[dict[str, Any]] = []
+        handled_field_names = {
+            "model",
+            "quality",
+            "duration",
+            "seed",
+            "aspect_ratio",
+            "motion_mode",
+            "negative_prompt",
+            "camera_movement",
+            "style",
+            "template_id",
+            "multi_shot",
+            "audio",
+        }
+        try:  # pragma: no cover - defensive; relies on SDK details
+            model_fields = getattr(GenerationOptions, "model_fields", {})  # type: ignore[attr-defined]
+            for field_name, field in model_fields.items():
+                if field_name in handled_field_names:
+                    continue
+                # Map basic python types to our simple schema
+                annotation = getattr(field, "annotation", None)
+                if annotation in (int, Optional[int]):
+                    param_type = "integer"
+                    default = field.default if field.default is not None else 0
+                elif annotation in (float, Optional[float]):
+                    param_type = "number"
+                    default = field.default if field.default is not None else 0.0
+                elif annotation in (bool, Optional[bool]):
+                    param_type = "boolean"
+                    default = bool(field.default) if field.default is not None else False
+                else:
+                    param_type = "string"
+                    default = field.default if field.default is not None else None
+
+                extra_video_params.append({
+                    "name": field_name,
+                    "type": param_type,
+                    "required": False,
+                    "default": default,
+                    "enum": None,
+                    "description": f"Pixverse video option: {field_name}",
+                    "group": "advanced",
+                })
+        except Exception:
+            # If anything goes wrong with introspection, we simply skip extras.
+            extra_video_params = []
+
         spec = {
-            "text_to_image": {"parameters": [base_prompt, image_model, image_quality, aspect_ratio, seed, style, negative_prompt]},
-            "image_to_image": {"parameters": [base_prompt, image_url, image_model, image_quality, strength, seed, style, negative_prompt]},
-            "text_to_video": {"parameters": [base_prompt, model, quality, duration, aspect_ratio, seed, motion_mode, style, negative_prompt, template_id]},
-            "image_to_video": {"parameters": [base_prompt, image_url, model, quality, duration, aspect_ratio, seed, camera_movement, motion_mode, style, negative_prompt]},
-            "video_extend": {"parameters": [base_prompt, video_url, original_video_id, model, quality, duration, seed]},
+            # Image generation uses ImageModel / QUALITIES / ASPECT_RATIOS from SDK
+            "text_to_image": {
+                "parameters": [
+                    base_prompt,
+                    image_model,
+                    image_quality,
+                    aspect_ratio,
+                    seed,
+                    style,
+                    negative_prompt,
+                ]
+            },
+            "image_to_image": {
+                "parameters": [
+                    base_prompt,
+                    image_url,
+                    image_model,
+                    image_quality,
+                    strength,
+                    seed,
+                    style,
+                    negative_prompt,
+                ]
+            },
+            # Text-only video: can choose aspect ratio explicitly
+            "text_to_video": {
+                "parameters": [
+                    base_prompt,
+                    model,
+                    quality,
+                    duration,
+                    aspect_ratio,
+                    seed,
+                    motion_mode,
+                    style,
+                    negative_prompt,
+                    template_id,
+                    multi_shot,
+                    audio,
+                ] + extra_video_params
+            },
+            # Image-to-video: aspect ratio follows source image, so we do NOT expose it
+            "image_to_video": {
+                "parameters": [
+                    base_prompt,
+                    image_url,
+                    model,
+                    quality,
+                    duration,
+                    seed,
+                    camera_movement,
+                    motion_mode,
+                    style,
+                    negative_prompt,
+                    multi_shot,
+                    audio,
+                ] + extra_video_params
+            },
+            "video_extend": {
+                "parameters": [
+                    base_prompt,
+                    video_url,
+                    original_video_id,
+                    model,
+                    quality,
+                    duration,
+                    seed,
+                    multi_shot,
+                    audio,
+                ] + extra_video_params
+            },
             "video_transition": {"parameters": [image_urls, prompts, quality, duration]},
             "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, seed]},
         }

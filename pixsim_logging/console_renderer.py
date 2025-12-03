@@ -1,6 +1,7 @@
 """Custom console renderer for cleaner, more readable log output."""
 from __future__ import annotations
 import json
+from datetime import datetime
 from typing import Any
 from structlog.typing import EventDict, WrappedLogger
 from structlog.dev import _pad
@@ -52,7 +53,8 @@ class CleanConsoleRenderer:
             except Exception:
                 time_str = timestamp[:8]
         else:
-            time_str = "--:--:--"
+            # Fallback for logs that didn't go through TimeStamper (e.g., plain stdlib logs)
+            time_str = datetime.utcnow().strftime("%H:%M:%S")
 
         # Build line
         parts = []

@@ -4,7 +4,7 @@ import { useProviders } from '../hooks/useProviders';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { MediaCard } from '../components/media/MediaCard';
 import { useJobsSocket } from '../hooks/useJobsSocket';
-import { Tabs, Modal } from '@pixsim7/shared.ui';
+import { Modal } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { MasonryGrid } from '../components/layout/MasonryGrid';
 import { LocalFoldersPanel } from '../components/assets/LocalFoldersPanel';
@@ -37,7 +37,6 @@ export function AssetsRoute() {
   const { providers } = useProviders();
   const jobsSocket = useJobsSocket({ autoConnect: true });
 
-  const currentTab = SCOPE_TABS.find((t) => t.id === controller.scope);
   // UI state (not part of controller - route-specific display settings)
   const [view, setView] = useState<'remote' | 'local'>('remote');
   const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
@@ -262,7 +261,8 @@ export function AssetsRoute() {
 	  });
 
   return (
-    <div className="p-6 space-y-4 content-with-dock min-h-screen">
+    <div className="flex flex-col h-screen content-with-dock">
+      <div className="flex-shrink-0 p-6 space-y-4">
       {/* Selection Mode Banner */}
       {controller.isSelectionMode && (
         <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
@@ -416,10 +416,27 @@ export function AssetsRoute() {
 
       {view === 'remote' && (
         <>
-          <Tabs tabs={SCOPE_TABS} value={controller.scope} onChange={controller.setScope} />
+          <div className="flex-shrink-0 px-6 space-y-4">
           {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
           <div className="space-y-2 bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
             <div className="flex flex-wrap gap-2 items-center">
+              {/* Scope tabs inline */}
+              <div className="flex gap-1 border-r border-neutral-300 dark:border-neutral-600 pr-2">
+                {SCOPE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={`px-3 py-1 text-xs rounded transition-colors ${
+                      controller.scope === tab.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600'
+                    }`}
+                    onClick={() => controller.setScope(tab.id as any)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <input
                 placeholder="Search..."
                 className="px-2 py-1 text-sm border rounded"
@@ -482,7 +499,10 @@ export function AssetsRoute() {
               <GalleryToolsPanel context={galleryContext} surfaceId={currentSurfaceId} />
             </div>
           )}
+          </div>
 
+          {/* Scrollable gallery area */}
+          <div className="flex-1 overflow-auto px-6 pb-6">
 	          {layout === 'masonry' ? (
 	            <MasonryGrid
 	              items={cardItems}
@@ -510,9 +530,14 @@ export function AssetsRoute() {
             )}
             {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
           </div>
+          </div>
         </>
       )}
-	      {view === 'local' && <LocalFoldersPanel />}
+	      {view === 'local' && (
+        <div className="flex-1 overflow-auto px-6">
+          <LocalFoldersPanel />
+        </div>
+      )}
 
 	      {/* Fullscreen viewer for remote assets */}
 	      {controller.viewerAsset && controller.viewerSrc && (
@@ -643,6 +668,6 @@ export function AssetsRoute() {
 	          </div>
 	        </Modal>
 	      )}
-	    </div>
-	  );
-	}
+    </div>
+  );
+}

@@ -212,9 +212,9 @@ export function LocalFoldersPanel() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full">
       {/* Top bar with layout controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex-shrink-0 flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Local Folders</h2>
         <GalleryLayoutControls
           layout={layout}
@@ -224,7 +224,7 @@ export function LocalFoldersPanel() {
         />
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex-1 flex gap-4 min-h-0">
         {/* Sidebar */}
         <div className="w-72 flex-shrink-0 space-y-4">
           {/* Add Folder + support/error */}
@@ -293,8 +293,8 @@ export function LocalFoldersPanel() {
           )}
         </div>
 
-        {/* Main content */}
-        <div className="flex-1">
+        {/* Main content - scrollable */}
+        <div className="flex-1 overflow-auto">
           {renderMainContent()}
         </div>
       </div>

@@ -5,7 +5,7 @@ import { PromptInput } from '@pixsim7/shared.ui';
 import { resolvePromptLimit } from '../../utils/prompt/limits';
 import { useProviders } from '@/hooks/useProviders';
 import { useProviderSpecs } from '@/hooks/useProviderSpecs';
-import { type ParamSpec } from './DynamicParamForm';
+import type { ParamSpec } from './DynamicParamForm';
 import { ArrayFieldInput } from './ArrayFieldInput';
 import { useGenerationQueueStore } from '@/stores/generationQueueStore';
 import { useGenerationWebSocket } from '@/hooks/useGenerationWebSocket';
@@ -13,6 +13,7 @@ import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
 import { CompactAssetCard } from './CompactAssetCard';
 import { ThemedIcon } from '@/lib/icons';
 import { GenerationStatusDisplay } from './GenerationStatusDisplay';
+import { GenerationSettingsBar } from './GenerationSettingsBar';
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
@@ -87,7 +88,7 @@ export function QuickGenerateModule() {
   );
 
   // Auto-show settings for operations with important visible options
-  const hasVisibleOptions = primaryParams.length > 0 || operationType === 'image_to_image';
+  const hasVisibleOptions = paramSpecs.length > 0 || operationType === 'image_to_image';
   useEffect(() => {
     if (hasVisibleOptions) {
       setShowSettings(true);
@@ -584,4 +585,3 @@ export function QuickGenerateModule() {
     </div>
   );
 }
-
