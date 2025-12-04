@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useProviders } from '@/hooks/useProviders';
 import { useAssetsController } from '@/hooks/useAssetsController';
@@ -30,6 +30,30 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
   const [showToolsPanel, setShowToolsPanel] = useState(false);
+
+  // Infinite scroll sentinel ref
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Infinite scroll: auto-load more when sentinel comes into view
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !controller.hasMore || controller.loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && controller.hasMore && !controller.loading) {
+          controller.loadMore();
+        }
+      },
+      { rootMargin: '400px' } // Start loading 400px before reaching the sentinel
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [controller.hasMore, controller.loading, controller.loadMore]);
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
@@ -291,13 +315,23 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
             {cardItems}
           </div>
         )}
-        <div className="pt-4">
+        {/* Infinite scroll sentinel and loading indicator */}
+        <div className="pt-4 pb-8 flex justify-center">
           {controller.hasMore && (
-            <button disabled={controller.loading} onClick={controller.loadMore} className="border px-4 py-2 rounded">
-              {controller.loading ? 'Loading...' : 'Load More'}
-            </button>
+            <div ref={sentinelRef} className="text-sm text-neutral-500">
+              {controller.loading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span>Loading more assets...</span>
+                </div>
+              ) : (
+                <span className="text-neutral-400">Scroll for more</span>
+              )}
+            </div>
           )}
-          {!controller.hasMore && <div className="text-sm text-neutral-500">No more assets</div>}
+          {!controller.hasMore && controller.assets.length > 0 && (
+            <div className="text-sm text-neutral-500">No more assets</div>
+          )}
         </div>
       </div>
     </div>
