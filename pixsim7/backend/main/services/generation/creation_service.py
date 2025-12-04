@@ -326,23 +326,24 @@ class GenerationCreationService:
 
         This extracts common fields and normalizes them into a provider-agnostic format.
         Handles both legacy flat params and new structured params.
+
+        For structured params (from unified generations API):
+        - Preserves full generation_config for introspection/dev tools
+        - Extracts canonical top-level fields for provider adapters
+        - Provider-specific settings are in style.<provider_id> (e.g., style.pixverse)
+
+        For legacy flat params:
+        - Simple extraction of known fields
         """
         # Check if params are already structured (from unified generations API)
         is_structured = 'generation_config' in params or 'scene_context' in params
 
         if is_structured:
-            # Already structured - return as-is
-            # The structured format is already canonical
-            logger.info("Params already structured, using as canonical")
-            return params
+            # Structured format - extract canonical fields while preserving full config
+            logger.info("Structured params detected, extracting canonical fields")
+            return self._canonicalize_structured_params(params, operation_type, provider_id)
 
         # Legacy flat params - canonicalize to common format
-        # For now, just copy params as-is
-        # In the full pipeline refactor, we'd use parameter mappers here
-        # Example: from pixsim7.backend.main.services.submission.parameter_mappers import get_mapper
-        # mapper = get_mapper(operation_type)
-        # return mapper.canonicalize(params, provider_id)
-
         # Simple canonicalization for now
         canonical = {
             "prompt": params.get("prompt"),
@@ -362,6 +363,117 @@ class GenerationCreationService:
 
         # Remove None values
         return {k: v for k, v in canonical.items() if v is not None}
+
+    def _canonicalize_structured_params(
+        self,
+        params: Dict[str, Any],
+        operation_type: OperationType,
+        provider_id: str
+    ) -> Dict[str, Any]:
+        """
+        Canonicalize structured params from unified generations API.
+
+        Extracts useful fields from generation_config to top-level canonical fields
+        so that provider adapters (e.g., PixverseProvider.map_parameters) can work
+        with a consistent interface.
+
+        Provider-specific settings convention:
+        - Settings like model, quality, off_peak, audio are nested under
+          generation_config.style.<provider_id> (e.g., style.pixverse.model)
+        - This method extracts them to top-level canonical fields
+
+        Returns:
+            Canonical params dict with:
+            - All original structured params preserved
+            - generation_config intact for introspection
+            - Top-level canonical fields extracted for provider adapters
+        """
+        canonical: Dict[str, Any] = {}
+
+        # Get generation_config (may be at top level or nested)
+        gen_config = params.get("generation_config", {})
+        if not isinstance(gen_config, dict):
+            gen_config = {}
+
+        # Extract core fields from generation_config
+        # These are provider-agnostic fields that all adapters understand
+
+        # Duration: duration.target -> canonical duration
+        duration_config = gen_config.get("duration", {})
+        if isinstance(duration_config, dict):
+            duration_target = duration_config.get("target")
+            if duration_target is not None:
+                canonical["duration"] = duration_target
+        elif isinstance(duration_config, (int, float)):
+            canonical["duration"] = duration_config
+
+        # Constraints: constraints.rating -> canonical content_rating
+        constraints = gen_config.get("constraints", {})
+        if isinstance(constraints, dict):
+            rating = constraints.get("rating")
+            if rating:
+                canonical["content_rating"] = rating
+
+        # Style: style.pacing -> canonical pacing hint
+        style = gen_config.get("style", {})
+        if isinstance(style, dict):
+            pacing = style.get("pacing")
+            if pacing:
+                canonical["pacing"] = pacing
+
+            # Extract provider-specific settings from style.<provider_id>
+            # Convention: style.pixverse = { model, quality, off_peak, audio, ... }
+            provider_style = style.get(provider_id, {})
+            if isinstance(provider_style, dict):
+                # Map provider-specific fields to canonical top-level fields
+                # These are the fields PixverseProvider.map_parameters expects
+                for field in [
+                    "model", "quality", "off_peak", "audio", "multi_shot",
+                    "aspect_ratio", "seed", "camera_movement", "negative_prompt"
+                ]:
+                    if field in provider_style:
+                        canonical[field] = provider_style[field]
+
+        # Extract prompt from generation_config or params root
+        prompt = gen_config.get("prompt") or params.get("prompt")
+        if prompt:
+            canonical["prompt"] = prompt
+
+        # Extract operation-specific fields from generation_config
+        if operation_type == OperationType.IMAGE_TO_VIDEO:
+            image_url = gen_config.get("image_url") or params.get("image_url")
+            if image_url:
+                canonical["image_url"] = image_url
+
+        elif operation_type == OperationType.VIDEO_EXTEND:
+            video_url = gen_config.get("video_url") or params.get("video_url")
+            if video_url:
+                canonical["video_url"] = video_url
+
+        elif operation_type == OperationType.VIDEO_TRANSITION:
+            image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            prompts = gen_config.get("prompts") or params.get("prompts")
+            if image_urls:
+                canonical["image_urls"] = image_urls
+            if prompts:
+                canonical["prompts"] = prompts
+
+        # Preserve full structured params for introspection/dev tools
+        # The generation_config is kept intact so dev tools can see the full config
+        canonical["generation_config"] = gen_config
+
+        # Preserve scene_context and other structured fields if present
+        for context_key in ["scene_context", "player_context", "social_context"]:
+            if context_key in params:
+                canonical[context_key] = params[context_key]
+
+        logger.info(
+            f"Canonicalized structured params for {provider_id}: "
+            f"model={canonical.get('model')}, quality={canonical.get('quality')}, "
+            f"duration={canonical.get('duration')}, off_peak={canonical.get('off_peak')}"
+        )
+
+        return canonical
 
     def _extract_inputs(
         self,

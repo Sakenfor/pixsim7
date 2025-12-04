@@ -49,11 +49,22 @@ class ConstraintSetSchema(BaseModel):
 
 
 class StyleRulesSchema(BaseModel):
-    """Style and transition rules"""
+    """
+    Style and transition rules
+
+    Provider-specific settings convention:
+    - Additional provider-specific fields can be nested under a key matching the
+      provider_id (e.g., style.pixverse = { model, quality, off_peak, ... })
+    - The backend's _canonicalize_params extracts these to top-level canonical fields
+    - This allows the schema to remain backward-compatible while supporting provider extensions
+    """
     mood_from: Optional[str] = None
     mood_to: Optional[str] = None
     pacing: Optional[str] = Field(None, pattern="^(slow|medium|fast)$")
     transition_type: Optional[str] = Field(None, pattern="^(gradual|abrupt)$")
+
+    # Allow extra fields for provider-specific extensions (e.g., pixverse: {...})
+    model_config = {"extra": "allow"}
 
 
 class FallbackConfigSchema(BaseModel):
@@ -69,6 +80,13 @@ class GenerationNodeConfigSchema(BaseModel):
     Complete generation node configuration
 
     This schema mirrors GenerationNodeConfig from packages/types/src/generation.ts
+
+    Additional fields for Control Center integration:
+    - prompt: Text prompt for generation
+    - image_url: Source image URL for image_to_video operations
+    - video_url: Source video URL for video_extend operations
+    - image_urls: Image URLs for video_transition operations
+    - prompts: Transition prompts for video_transition operations
     """
     generation_type: str = Field(..., pattern="^(transition|variation|dialogue|environment|npc_response)$")
     purpose: str = Field(..., pattern="^(gap_fill|variation|adaptive|ambient)$")
@@ -81,6 +99,16 @@ class GenerationNodeConfigSchema(BaseModel):
     template_id: Optional[str] = None
     enabled: bool = True
     version: int = Field(1, ge=1)
+
+    # Control Center fields - passed through for canonicalization
+    prompt: Optional[str] = None
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    image_urls: Optional[List[str]] = None
+    prompts: Optional[List[str]] = None
+
+    # Allow extra fields for future extensions
+    model_config = {"extra": "allow"}
 
 
 class GenerationSocialContextSchema(BaseModel):
