@@ -42,6 +42,8 @@ async def add_asset(
     media_metadata: Optional[Dict[str, Any]] = None,
     parent_asset_ids: Optional[List[int]] = None,
     relation_type: Optional[str] = None,
+    image_hash: Optional[str] = None,
+    phash64: Optional[int] = None,
 ) -> Asset:
     """
     Create or upsert an Asset record with sensible deduplication.
@@ -138,6 +140,8 @@ async def add_asset(
         _fill(existing, "local_path", local_path)
         _fill(existing, "sha256", sha256)
         _fill(existing, "file_size_bytes", file_size_bytes)
+        _fill(existing, "image_hash", image_hash)
+        _fill(existing, "phash64", phash64)
 
         if tags:
             existing.tags = existing.tags or []
@@ -178,6 +182,8 @@ async def add_asset(
         tags=tags or [],
         style_tags=style_tags or [],
         media_metadata=media_metadata,
+        image_hash=image_hash,
+        phash64=phash64,
         created_at=datetime.utcnow(),
     )
     db.add(asset)
