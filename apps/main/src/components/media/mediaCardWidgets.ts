@@ -416,6 +416,8 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
  * Create default widget set for MediaCard
  */
 export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWidget<MediaCardOverlayData>[] {
+  const { presetCapabilities } = props;
+
   // All presets rely on runtime widgets for the primary icon. The Generation
   // preset has an empty widgets array specifically to use runtime widgets.
   const widgets = [
@@ -430,7 +432,17 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
   ];
 
   // Tag all runtime widgets for validation/linting and filter out nulls
-  return widgets
+  let result = widgets
     .filter((w): w is OverlayWidget<MediaCardOverlayData> => w !== null)
     .map((w) => ({ ...w, group: 'media-card-runtime' }));
+
+  // Apply forceHoverOnly: override all widget visibility to hover-container
+  if (presetCapabilities?.forceHoverOnly) {
+    result = result.map((w) => ({
+      ...w,
+      visibility: { trigger: 'hover-container' as const },
+    }));
+  }
+
+  return result;
 }

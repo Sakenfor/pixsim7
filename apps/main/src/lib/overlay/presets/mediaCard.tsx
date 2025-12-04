@@ -248,6 +248,32 @@ export const reviewPreset: OverlayPreset = {
 };
 
 /**
+ * Focus Mode
+ *
+ * Clean presentation mode - all overlays hidden until hover.
+ * Ideal for showcasing content without visual clutter.
+ */
+export const focusPreset: OverlayPreset = {
+  id: 'media-card-focus',
+  name: 'Focus',
+  icon: '🎯',
+  category: 'media',
+  // Focus mode: hide everything, show only on hover
+  capabilities: {
+    forceHoverOnly: true,
+    skipUploadButton: true,
+    skipTagsTooltip: true,
+  },
+  configuration: {
+    id: 'media-card-focus',
+    name: 'Focus Mode',
+    description: 'Clean presentation with overlays only on hover',
+    spacing: 'normal',
+    widgets: [],
+  },
+};
+
+/**
  * All media card presets
  */
 export const mediaCardPresets: OverlayPreset[] = [
@@ -255,6 +281,7 @@ export const mediaCardPresets: OverlayPreset[] = [
   minimalPreset,
   compactPreset,
   detailedPreset,
+  focusPreset,
   generationPreset,
   reviewPreset,
 ];

@@ -302,6 +302,12 @@ export interface PresetCapabilities {
 
   /** Whether buttons should be visible on touch devices (default: inherit from visibility) */
   touchFriendlyButtons?: boolean;
+
+  /**
+   * Force all runtime widgets to use hover-container visibility.
+   * Useful for "focus" mode where everything is hidden until hover.
+   */
+  forceHoverOnly?: boolean;
 }
 
 /**
