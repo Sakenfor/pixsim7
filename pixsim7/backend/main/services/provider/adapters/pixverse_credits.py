@@ -9,6 +9,10 @@ from typing import Dict, Any, Optional
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
+from pixsim7.backend.main.services.provider.provider_logging import (
+    log_provider_timeout,
+    log_provider_error,
+)
 
 logger = get_logger()
 # Allow a bit more time for Pixverse web dashboard credits endpoint, which can
@@ -71,8 +75,9 @@ class PixverseCreditsMixin:
                 # For pixverse-status, treat timeouts as "unknown credits" but do not
                 # fail the entire call so ad-watch status and any cached credits can
                 # still be shown.
-                logger.warning(
-                    "PixverseAPI get_credits_web_timeout",
+                log_provider_timeout(
+                    provider_id="pixverse",
+                    operation="get_credits_web",
                     account_id=account.id,
                     email=account.email,
                     error=str(exc),
@@ -80,12 +85,14 @@ class PixverseCreditsMixin:
                 )
                 web_total = 0
             except Exception as exc:
-                logger.warning(
-                    "PixverseAPI get_credits_web_failed",
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="get_credits_web",
                     account_id=account.id,
                     email=account.email,
                     error=str(exc),
                     error_type=exc.__class__.__name__,
+                    severity="warning",
                 )
                 # Let the session manager classify and potentially auto-reauth or
                 # propagate a real error for non-timeout failures.
@@ -189,8 +196,9 @@ class PixverseCreditsMixin:
                 # callers fall back to cookie-based extraction or simply report
                 # that no new credits could be fetched, instead of surfacing a
                 # 500 error to the user.
-                logger.warning(
-                    "PixverseAPI get_credits_web_timeout",
+                log_provider_timeout(
+                    provider_id="pixverse",
+                    operation="get_credits_web_basic",
                     account_id=account.id,
                     email=account.email,
                     error=str(exc),
@@ -198,7 +206,14 @@ class PixverseCreditsMixin:
                 )
                 return {}
             except Exception as exc:
-                logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="get_credits_web_basic",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
                 raise
 
             openapi_total = 0

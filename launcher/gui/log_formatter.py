@@ -324,6 +324,9 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
 
     # Show inline extra details (important fields)
     inline_extras = []
+    provider_id = log.get('provider_id') or (extra.get('provider_id') if isinstance(extra, dict) else None)
+    stage = log.get('stage') or (extra.get('stage') if isinstance(extra, dict) else None)
+
     if isinstance(extra, dict):
         # Service/process info
         if extra.get('service_key'):
@@ -337,6 +340,16 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
             inline_extras.append(f'<span style="color: {COMPONENT_COLORS["pid"]};">pid:{extra["pid"]}</span>')
         if extra.get('port'):
             inline_extras.append(f'<span style="color: {COMPONENT_COLORS["port"]};">port:{extra["port"]}</span>')
+
+        # Provider / stage info
+        if provider_id:
+            inline_extras.append(
+                f'<span style="color: {COMPONENT_COLORS.get("provider", "#4DD0E1")};">provider:{escape_html(str(provider_id))}</span>'
+            )
+        if stage and isinstance(stage, str) and stage.startswith("provider:"):
+            inline_extras.append(
+                f'<span style="color: {COMPONENT_COLORS.get("stage", "#9FA8DA")};">{escape_html(stage)}</span>'
+            )
 
         # HTTP request details
         if extra.get('method'):
@@ -363,6 +376,11 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
     duration_ms = log.get('duration_ms') or (extra.get('duration_ms') if isinstance(extra, dict) else None)
     if duration_ms:
         line_content += f' <span style="color: {COMPONENT_COLORS["duration"]};">({duration_ms}ms)</span>'
+
+    # Highlight known timeout errors inline for quick scanning
+    error_type = log.get('error_type') or (extra.get('error_type') if isinstance(extra, dict) else None)
+    if error_type == "TimeoutError":
+        line_content += ' <span style="color: #FFB74D; font-weight: bold;">[TIMEOUT]</span>'
 
     # Error
     error_extra = format_error(log.get('error'))

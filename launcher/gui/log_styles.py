@@ -122,5 +122,7 @@ COMPONENT_COLORS = {
     'request_id': '#AB47BC',
     'user_id': '#66BB6A',
     'timestamp': '#999',
-    'message': '#E0E0E0'
+    'message': '#E0E0E0',
+    'provider': '#4DD0E1',
+    'stage': '#9FA8DA',
 }

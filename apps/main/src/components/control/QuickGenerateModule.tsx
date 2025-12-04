@@ -45,6 +45,7 @@ export function QuickGenerateModule() {
     setPrompts,
     useActiveAsset,
     generate,
+    cycleQueue,
   } = useQuickGenerateController();
 
   const { providers } = useProviders();
@@ -358,17 +359,44 @@ export function QuickGenerateModule() {
             <div className="flex-shrink-0 w-36">
               {displayAssets.length > 0 ? (
                 <div className="space-y-1.5">
-                  <CompactAssetCard
-                    asset={displayAssets[0]}
-                    showRemoveButton={mainQueue.length > 0}
-                    onRemove={() => mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')}
-                    lockedTimestamp={mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined}
-                    onLockTimestamp={
-                      mainQueue.length > 0
-                        ? (timestamp) => updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
-                        : undefined
-                    }
-                  />
+                  <div className="flex items-center gap-1">
+                    {mainQueue.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => cycleQueue('main', 'prev')}
+                        className="p-1 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        title="Previous queued asset"
+                      >
+                        <ThemedIcon name="chevronLeft" size={12} variant="default" />
+                      </button>
+                    )}
+                    <CompactAssetCard
+                      asset={displayAssets[0]}
+                      showRemoveButton={mainQueue.length > 0}
+                      onRemove={() =>
+                        mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')
+                      }
+                      lockedTimestamp={
+                        mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined
+                      }
+                      onLockTimestamp={
+                        mainQueue.length > 0
+                          ? (timestamp) =>
+                              updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
+                          : undefined
+                      }
+                    />
+                    {mainQueue.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => cycleQueue('main', 'next')}
+                        className="p-1 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        title="Next queued asset"
+                      >
+                        <ThemedIcon name="chevronRight" size={12} variant="default" />
+                      </button>
+                    )}
+                  </div>
                   {mainQueue.length > 1 && (
                     <div className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded text-center">
                       +{mainQueue.length - 1} queued

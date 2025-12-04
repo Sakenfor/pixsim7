@@ -42,6 +42,9 @@ from pixsim7.backend.main.services.provider.base import (
     RateLimitError,
 )
 from pixsim7.backend.main.shared.jwt_helpers import JWTExtractor
+from pixsim7.backend.main.services.provider.provider_logging import (
+    log_provider_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -294,21 +297,75 @@ class SoraProvider(Provider):
             )
 
         except SoraAuthError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Sora authentication error: {e}")
             raise AuthenticationError("sora", str(e))
         except SoraRateLimitError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Sora rate limit: {e}")
             raise RateLimitError("sora", None)
         except SoraContentFilteredError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Sora content filtered: {e}")
             raise ContentFilteredError("sora", str(e))
         except SoraTaskNotFoundError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Sora task not found: {e}")
             raise JobNotFoundError("sora", "unknown")
         except SoraError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Sora API error: {e}", exc_info=True)
             raise ProviderError(f"Sora API error: {e}")
         except Exception as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="execute",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(f"Unexpected Sora error: {e}", exc_info=True)
             raise ProviderError(f"Unexpected error: {e}")
 
@@ -379,10 +436,40 @@ class SoraProvider(Provider):
             )
 
         except SoraTaskNotFoundError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="check_status",
+                stage="provider:status",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                extra={"provider_job_id": provider_job_id},
+            )
             raise JobNotFoundError("sora", provider_job_id)
         except SoraAuthError as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="check_status",
+                stage="provider:status",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                extra={"provider_job_id": provider_job_id},
+            )
             raise AuthenticationError("sora", str(e))
         except Exception as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="check_status",
+                stage="provider:status",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                extra={"provider_job_id": provider_job_id},
+            )
             logger.error(f"Error checking Sora status: {e}", exc_info=True)
             raise ProviderError(f"Error checking status: {e}")
 
@@ -410,6 +497,17 @@ class SoraProvider(Provider):
             )
             return success
         except Exception as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="cancel",
+                stage="provider:status",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                extra={"provider_job_id": provider_job_id},
+                severity="warning",
+            )
             logger.error(f"Error cancelling Sora task: {e}", exc_info=True)
             return False
 
@@ -525,5 +623,15 @@ class SoraProvider(Provider):
             return media_id
 
         except Exception as e:
+            log_provider_error(
+                provider_id="sora",
+                operation="upload_asset",
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+                extra={"file_path": file_path},
+            )
             logger.error(f"Failed to upload asset to Sora: {e}", exc_info=True)
             raise ProviderError(f"Sora upload failed: {e}")

@@ -23,6 +23,7 @@ export interface QuickGenerateBindings {
   consumeFromQueue: GenerationQueueState['consumeFromQueue'];
   removeFromQueue: GenerationQueueState['removeFromQueue'];
   clearTransitionQueue: () => void;
+  cycleQueue: (queueType?: 'main' | 'transition', direction?: 'next' | 'prev') => void;
   /**
    * Apply the currently active asset (if compatible) to dynamic parameters.
    */
@@ -52,6 +53,7 @@ export function useQuickGenerateBindings(
   const consumeFromQueue = useGenerationQueueStore(s => s.consumeFromQueue);
   const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
   const clearQueue = useGenerationQueueStore(s => s.clearQueue);
+  const cycleQueue = useGenerationQueueStore(s => s.cycleQueue);
 
   // Dynamic params from operation_specs (shared across UIs via store)
   const dynamicParams = useGenerationSettingsStore(s => s.params);
@@ -146,6 +148,7 @@ export function useQuickGenerateBindings(
     consumeFromQueue,
     removeFromQueue,
     clearTransitionQueue,
+    cycleQueue,
     useActiveAsset,
   };
 }

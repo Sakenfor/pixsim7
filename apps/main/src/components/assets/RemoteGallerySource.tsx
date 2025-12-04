@@ -3,11 +3,13 @@ import { useLocation } from 'react-router-dom';
 import { useProviders } from '@/hooks/useProviders';
 import { useAssetsController } from '@/hooks/useAssetsController';
 import { MediaCard } from '../media/MediaCard';
+import type { MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import { GalleryToolsPanel } from '../gallery/panels/GalleryToolsPanel';
 import { Button } from '@pixsim7/shared.ui';
 import { ThemedIcon } from '@/lib/icons';
 import type { GalleryToolContext, GalleryAsset } from '@/lib/gallery/types';
+import { getMediaCardPreset } from '@/lib/overlay';
 
 const SCOPE_TABS = [
   { id: 'all', label: 'All' },
@@ -19,9 +21,10 @@ const SCOPE_TABS = [
 interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
   cardSize: number;
+  overlayPresetId?: string;
 }
 
-export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourceProps) {
+export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: RemoteGallerySourceProps) {
   const controller = useAssetsController();
   const { providers } = useProviders();
   const location = useLocation();
@@ -30,6 +33,14 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
   const [showToolsPanel, setShowToolsPanel] = useState(false);
+
+  // Get badge config from overlay preset
+  const badgeConfig = useMemo((): MediaCardBadgeConfig | undefined => {
+    if (!overlayPresetId) return undefined;
+    const preset = getMediaCardPreset(overlayPresetId);
+    if (!preset?.badgeConfig) return undefined;
+    return preset.badgeConfig as MediaCardBadgeConfig;
+  }, [overlayPresetId]);
 
   // Infinite scroll sentinel ref
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -136,6 +147,7 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
               providerStatus={a.provider_status}
               onOpen={undefined}
               actions={controller.getAssetActions(a)}
+              badgeConfig={badgeConfig}
             />
           </div>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -214,6 +226,7 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
               providerStatus={a.provider_status}
               onOpen={() => controller.openInViewer(a)}
               actions={actions}
+              badgeConfig={badgeConfig}
             />
           );
         })()}

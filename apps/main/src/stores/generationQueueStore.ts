@@ -31,6 +31,12 @@ export interface GenerationQueueState {
   getNextInQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
   consumeFromQueue: (queueType?: 'main' | 'transition') => QueuedAsset | null;
   updateLockedTimestamp: (assetId: number, timestamp: number | undefined, queueType?: 'main' | 'transition') => void;
+  /**
+   * Cycle the queue forward/backward so that a different asset becomes the
+   * "front" item. Useful for UI controls that let the user step through
+   * queued assets without changing queue membership.
+   */
+  cycleQueue: (queueType?: 'main' | 'transition', direction?: 'next' | 'prev') => void;
 }
 
 export const useGenerationQueueStore = create<GenerationQueueState>()(
@@ -139,6 +145,27 @@ export const useGenerationQueueStore = create<GenerationQueueState>()(
               ),
             };
           }
+        });
+      },
+
+      cycleQueue: (queueType = 'main', direction = 'next') => {
+        set((state) => {
+          const key = queueType === 'main' ? 'mainQueue' : 'transitionQueue';
+          const queue = state[key];
+          if (!queue || queue.length <= 1) {
+            return {};
+          }
+
+          let nextQueue: QueuedAsset[];
+          if (direction === 'next') {
+            nextQueue = [...queue.slice(1), queue[0]];
+          } else {
+            nextQueue = [queue[queue.length - 1], ...queue.slice(0, queue.length - 1)];
+          }
+
+          return {
+            [key]: nextQueue,
+          } as any;
         });
       },
     }),

@@ -160,6 +160,21 @@ class DatabaseLogViewer(QWidget):
         """)
         filter_bar.addWidget(self.search_input)
 
+        # Presets for common investigations (e.g., provider issues)
+        self.preset_combo = self._styled_combo(
+            [
+                'Presets',
+                'Pixverse timeouts (1h)',
+                'Pixverse errors (1h)',
+                'Sora errors (1h)',
+                'All provider errors (1h)',
+            ]
+        )
+        self.preset_combo.setCurrentText('Presets')
+        self.preset_combo.setMinimumWidth(170)
+        self.preset_combo.currentTextChanged.connect(self._apply_preset)
+        filter_bar.addWidget(self.preset_combo)
+
         filter_bar.addStretch()
         layout.addLayout(filter_bar)
 
@@ -260,6 +275,45 @@ class DatabaseLogViewer(QWidget):
         # Search focus shortcut
         self.search_focus_shortcut = QShortcut(QKeySequence('Ctrl+F'), self)
         self.search_focus_shortcut.activated.connect(lambda: self.search_input.setFocus())
+
+    def _apply_preset(self, preset_name: str):
+        """Apply a preset filter configuration for common investigations."""
+        if preset_name == 'Pixverse timeouts (1h)':
+            # Focus on API-level Pixverse timeouts in the last hour.
+            self.service_combo.setCurrentText('api')
+            self.level_combo.setCurrentText('WARNING')
+            self.time_combo.setCurrentText('Last hour')
+            # Match normalized provider timeout events for Pixverse.
+            self.search_input.setText('provider_timeout pixverse')
+            self.refresh_logs()
+        elif preset_name == 'Pixverse errors (1h)':
+            # Broader Pixverse provider errors, including session/auth issues.
+            self.service_combo.setCurrentText('api')
+            self.level_combo.setCurrentText('ERROR')
+            self.time_combo.setCurrentText('Last hour')
+            self.search_input.setText('provider_error pixverse')
+            self.refresh_logs()
+        elif preset_name == 'Sora errors (1h)':
+            # Sora provider errors (no timeouts yet, but same pattern).
+            self.service_combo.setCurrentText('api')
+            self.level_combo.setCurrentText('ERROR')
+            self.time_combo.setCurrentText('Last hour')
+            self.search_input.setText('provider_error sora')
+            self.refresh_logs()
+        elif preset_name == 'All provider errors (1h)':
+            # Any provider_* errors regardless of provider_id.
+            self.service_combo.setCurrentText('api')
+            self.level_combo.setCurrentText('ERROR')
+            self.time_combo.setCurrentText('Last hour')
+            self.search_input.setText('provider_error provider_timeout')
+            self.refresh_logs()
+
+        # Reset preset selector back to neutral label so the user can see
+        # which filters are active without the combo staying "stuck".
+        if preset_name != 'Presets':
+            self.preset_combo.blockSignals(True)
+            self.preset_combo.setCurrentText('Presets')
+            self.preset_combo.blockSignals(False)
 
     def _toggle_auto_refresh(self, state):
         """Enable/disable auto-refresh."""
