@@ -8,8 +8,6 @@
 import type { OverlayWidget } from '@/lib/overlay';
 import {
   createBadgeWidget,
-  createButtonWidget,
-  createPanelWidget,
   createMenuWidget,
   createVideoScrubWidget,
   createUploadWidget,
@@ -69,23 +67,23 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
  * Create status badge/menu widget (top-right)
  * Uses MenuWidget for expandable actions when actions are available
  */
-export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
+export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, providerStatus, actions, presetCapabilities } = props;
 
   // If preset provides its own status widget, skip the runtime one
   if (presetCapabilities?.providesStatusWidget) {
-    return null as any; // Will be filtered out
+    return null;
   }
 
   if (!providerStatus) {
-    return null as any; // Will be filtered out
+    return null;
   }
 
   // Map external providerStatus ("ok", "local_only", etc.) to internal keys
   const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
   const statusMeta = MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON];
   if (!statusMeta) {
-    return null as any; // Status not in mapping, skip widget
+    return null;
   }
 
   const statusColor = statusMeta.color === 'green' ? 'green' :
@@ -110,7 +108,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         id: 'details',
         label: 'View Details',
         icon: 'eye',
-        onClick: () => actions.onOpenDetails!(id),
+        onClick: () => actions.onOpenDetails?.(id),
       });
     }
 
@@ -119,7 +117,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         id: 'metadata',
         label: 'Show Metadata',
         icon: 'fileText',
-        onClick: () => actions.onShowMetadata!(id),
+        onClick: () => actions.onShowMetadata?.(id),
       });
     }
 
@@ -128,7 +126,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         id: 'reupload',
         label: 'Upload to provider…',
         icon: 'upload',
-        onClick: () => actions.onReupload!(id),
+        onClick: () => actions.onReupload?.(id),
       });
     }
 
@@ -138,7 +136,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         label: 'Delete',
         icon: 'trash',
         variant: 'danger',
-        onClick: () => actions.onDelete!(id),
+        onClick: () => actions.onDelete?.(id),
         divider: true,
       });
     }
@@ -354,7 +352,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       id: 'img2vid',
       label: 'Image to Video',
       icon: 'video',
-      onClick: () => actions.onImageToVideo!(id),
+      onClick: () => actions.onImageToVideo?.(id),
     });
   }
 
@@ -363,7 +361,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       id: 'extend',
       label: 'Extend Video',
       icon: 'arrowRight',
-      onClick: () => actions.onVideoExtend!(id),
+      onClick: () => actions.onVideoExtend?.(id),
     });
   }
 
@@ -372,7 +370,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       id: 'transition',
       label: 'Add to Transition',
       icon: 'shuffle',
-      onClick: () => actions.onAddToTransition!(id),
+      onClick: () => actions.onAddToTransition?.(id),
     });
   }
 
@@ -381,7 +379,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       id: 'generate',
       label: 'Add to Generation',
       icon: 'zap',
-      onClick: () => actions.onAddToGenerate!(id),
+      onClick: () => actions.onAddToGenerate?.(id),
     });
   }
 
