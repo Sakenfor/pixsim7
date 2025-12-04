@@ -6,6 +6,7 @@ import {
   type QueuedAsset,
 } from '../stores/generationQueueStore';
 import type { ControlCenterState } from '../stores/controlCenterStore';
+import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
 
 export type OperationType = ControlCenterState['operationType'];
 
@@ -52,8 +53,9 @@ export function useQuickGenerateBindings(
   const removeFromQueue = useGenerationQueueStore(s => s.removeFromQueue);
   const clearQueue = useGenerationQueueStore(s => s.clearQueue);
 
-  // Dynamic params from operation_specs
-  const [dynamicParams, setDynamicParams] = useState<Record<string, any>>({});
+  // Dynamic params from operation_specs (shared across UIs via store)
+  const dynamicParams = useGenerationSettingsStore(s => s.params);
+  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
 
   // Operation-specific array fields for video_transition
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -147,4 +149,3 @@ export function useQuickGenerateBindings(
     useActiveAsset,
   };
 }
-

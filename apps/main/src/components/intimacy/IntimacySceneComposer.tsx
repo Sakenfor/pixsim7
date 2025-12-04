@@ -9,7 +9,7 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type {
   IntimacySceneConfig,
   IntimacySceneType,
@@ -28,6 +28,12 @@ import { SceneTemplateBrowser } from './TemplateBrowser';
 import { createDefaultState, type SimulatedRelationshipState } from '@/lib/intimacy/gateChecking';
 import { saveSceneAsTemplate, type SceneTemplate } from '@/lib/intimacy/templates';
 import { validateSceneForTemplate } from '@/lib/intimacy/templateValidation';
+import { useProviders } from '@/hooks/useProviders';
+import { useProviderSpecs } from '@/hooks/useProviderSpecs';
+import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
+import type { ParamSpec } from '../control/DynamicParamForm';
+import { useControlCenterStore } from '@/stores/controlCenterStore';
+import { useGenerationSettingsStore } from '@/stores/generationSettingsStore';
 
 interface IntimacySceneComposerProps {
   /** Current scene configuration */
@@ -92,6 +98,7 @@ export function IntimacySceneComposer({
   const [simulatedState, setSimulatedState] = useState<SimulatedRelationshipState>(createDefaultState());
   const [showTemplateBrowser, setShowTemplateBrowser] = useState(false);
   const [showSaveTemplateModal, setShowSaveTemplateModal] = useState(false);
+  const [showGenerationSettings, setShowGenerationSettings] = useState(true);
 
   // Validate scene
   const validation = validateIntimacyScene(scene, worldMaxRating, userMaxRating);
@@ -129,6 +136,26 @@ export function IntimacySceneComposer({
       setExpandedGateId(null);
     }
   };
+
+  // Shared generation settings (provider + core params) using the same bar as Control Center.
+  const { providers } = useProviders();
+  const [providerId, setProvider] = useControlCenterStore(s => [s.providerId, s.setProvider]);
+  const { specs } = useProviderSpecs(providerId);
+  const dynamicParams = useGenerationSettingsStore(s => s.params);
+  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
+
+  // For intimacy preview, treat generation as text_to_video-style for settings purposes.
+  const intimacyOperationType: 'text_to_video' = 'text_to_video';
+
+  const intimacyParamSpecs = useMemo<ParamSpec[]>(() => {
+    if (!specs?.operation_specs) return [];
+    const opSpec = specs.operation_specs[intimacyOperationType];
+    if (!opSpec?.parameters) return [];
+    // Filter out prompt and array fields; this bar focuses on core options.
+    return opSpec.parameters.filter(
+      (p: any) => p.name !== 'prompt' && p.name !== 'image_urls' && p.name !== 'prompts'
+    );
+  }, [specs, intimacyOperationType]);
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
@@ -433,6 +460,24 @@ export function IntimacySceneComposer({
 
         {activeTab === 'generation' && (
           <div className="space-y-6">
+            {/* Shared generation settings bar (mirrors Control Center) */}
+            <div className="flex justify-end">
+              <GenerationSettingsBar
+                providerId={providerId}
+                providers={providers}
+                paramSpecs={intimacyParamSpecs}
+                dynamicParams={dynamicParams}
+                onChangeParam={(name, value) =>
+                  setDynamicParams(prev => ({ ...prev, [name]: value }))
+                }
+                onChangeProvider={setProvider}
+                generating={false}
+                showSettings={showGenerationSettings}
+                onToggleSettings={() => setShowGenerationSettings(v => !v)}
+                presetId={undefined}
+              />
+            </div>
+
             {/* Top Row: State Editor & Gate Preview */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Left: State Editor */}

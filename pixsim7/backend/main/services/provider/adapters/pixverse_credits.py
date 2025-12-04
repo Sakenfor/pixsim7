@@ -72,7 +72,7 @@ class PixverseCreditsMixin:
                 # fail the entire call so ad-watch status and any cached credits can
                 # still be shown.
                 logger.warning(
-                    "PixverseAPI get_credits_web_failed",
+                    "PixverseAPI get_credits_web_timeout",
                     account_id=account.id,
                     email=account.email,
                     error=str(exc),
@@ -156,64 +156,78 @@ class PixverseCreditsMixin:
             raise Exception("pixverse-py not installed; cannot fetch credits")
 
         async def _operation(session: PixverseSessionData) -> dict:
-              temp_account = Account(
-                  email=account.email,
-                  session={
-                      "jwt_token": session.get("jwt_token"),
-                      "cookies": session.get("cookies", {}),
-                      **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
-                  },
-              )
-              api = self._get_cached_api(account)
+            temp_account = Account(
+                email=account.email,
+                session={
+                    "jwt_token": session.get("jwt_token"),
+                    "cookies": session.get("cookies", {}),
+                    **({"openapi_key": session["openapi_key"]} if "openapi_key" in session else {}),
+                },
+            )
+            api = self._get_cached_api(account)
 
-              web_total = 0
-              try:
-                  web_data = await asyncio.wait_for(
-                      asyncio.to_thread(api.get_credits, temp_account),
-                      timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
-                  )
-                  if isinstance(web_data, dict):
-                      raw_web = (
-                          web_data.get("remainingCredits")
-                          or web_data.get("remaining_credits")
-                          or web_data.get("total_credits")
-                          or web_data.get("credits")
-                      )
-                      try:
-                          web_total = int(raw_web or 0)
-                      except (TypeError, ValueError):
-                          web_total = 0
-              except Exception as exc:
-                  logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
-                  raise
+            web_total = 0
+            try:
+                web_data = await asyncio.wait_for(
+                    asyncio.to_thread(api.get_credits, temp_account),
+                    timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                )
+                if isinstance(web_data, dict):
+                    raw_web = (
+                        web_data.get("remainingCredits")
+                        or web_data.get("remaining_credits")
+                        or web_data.get("total_credits")
+                        or web_data.get("credits")
+                    )
+                    try:
+                        web_total = int(raw_web or 0)
+                    except (TypeError, ValueError):
+                        web_total = 0
+            except asyncio.TimeoutError as exc:
+                # For bulk/basic sync operations, treat Pixverse timeouts as
+                # "no fresh credits data" rather than a hard failure. This lets
+                # callers fall back to cookie-based extraction or simply report
+                # that no new credits could be fetched, instead of surfacing a
+                # 500 error to the user.
+                logger.warning(
+                    "PixverseAPI get_credits_web_timeout",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                return {}
+            except Exception as exc:
+                logger.warning("PixverseAPI get_credits (web) failed: %s", exc)
+                raise
 
-              openapi_total = 0
-              if "openapi_key" in session:
-                  try:
-                      openapi_data = await asyncio.wait_for(
-                          asyncio.to_thread(api.get_openapi_credits, temp_account),
-                          timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
-                      )
-                      if isinstance(openapi_data, dict):
-                          raw_openapi = (
-                              openapi_data.get("credits")
-                              or openapi_data.get("total_credits")
-                          )
-                          try:
-                              openapi_total = int(raw_openapi or 0)
-                          except (TypeError, ValueError):
-                              openapi_total = 0
-                  except Exception as exc:
-                      # OpenAPI credits are optional for bulk sync; treat failures
-                      # as non-fatal so that web credits can still be updated even
-                      # if the OpenAPI key/session is stale.
-                      logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
-                      openapi_total = 0
+            openapi_total = 0
+            if "openapi_key" in session:
+                try:
+                    openapi_data = await asyncio.wait_for(
+                        asyncio.to_thread(api.get_openapi_credits, temp_account),
+                        timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                    )
+                    if isinstance(openapi_data, dict):
+                        raw_openapi = (
+                            openapi_data.get("credits")
+                            or openapi_data.get("total_credits")
+                        )
+                        try:
+                            openapi_total = int(raw_openapi or 0)
+                        except (TypeError, ValueError):
+                            openapi_total = 0
+                except Exception as exc:
+                    # OpenAPI credits are optional for bulk sync; treat failures
+                    # as non-fatal so that web credits can still be updated even
+                    # if the OpenAPI key/session is stale.
+                    logger.warning("PixverseAPI get_openapi_credits failed: %s", exc)
+                    openapi_total = 0
 
-              return {
-                  "web": max(0, web_total),
-                  "openapi": max(0, openapi_total),
-              }
+            return {
+                "web": max(0, web_total),
+                "openapi": max(0, openapi_total),
+            }
 
         return await self.session_manager.run_with_session(
             account=account,
