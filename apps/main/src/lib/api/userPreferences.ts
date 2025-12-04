@@ -1,10 +1,17 @@
 import { apiClient } from './client';
 
+export interface DebugPreferences {
+  generation?: boolean; // Generation pipeline debug (dedup, cache, params)
+  provider?: boolean; // Provider API calls and responses
+  worker?: boolean; // Worker job processing
+}
+
 export interface UserPreferences {
   cubes?: any; // Cube state
   workspace?: any; // Workspace layout
   theme?: string;
   notifications?: any;
+  debug?: DebugPreferences; // Backend debug toggles
   [key: string]: any; // Allow arbitrary preferences
 }
 

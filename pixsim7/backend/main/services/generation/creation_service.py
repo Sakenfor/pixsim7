@@ -26,6 +26,7 @@ from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
 from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
+from pixsim7.backend.main.shared.debug import DebugLogger
 
 logger = logging.getLogger(__name__)
 
@@ -180,12 +181,15 @@ class GenerationCreationService:
         reproducible_hash = Generation.compute_hash(canonical_params, inputs)
 
         # === PHASE 6: Caching & Deduplication ===
+        # Initialize debug logger from user preferences
+        debug = DebugLogger(user)
+
         # Skip dedup if force_new is True (for creating variations/versions)
         if not force_new:
             # Check for duplicate generation by hash
-            print(f"[DEDUP DEBUG] Looking up hash: {reproducible_hash[:16]}...")
+            debug.generation(f"Looking up hash: {reproducible_hash[:16]}...")
             existing_generation_id = await self.cache.find_by_hash(reproducible_hash)
-            print(f"[DEDUP DEBUG] Hash lookup result: {existing_generation_id}")
+            debug.generation(f"Hash lookup result: {existing_generation_id}")
             if existing_generation_id:
                 result = await self.db.execute(
                     select(Generation).where(Generation.id == existing_generation_id)
@@ -196,22 +200,22 @@ class GenerationCreationService:
                 if existing_generation:
                     # Handle both enum and string status (SQLModel may return either)
                     status_value = existing_generation.status.value if hasattr(existing_generation.status, 'value') else str(existing_generation.status)
-                    print(f"[DEDUP DEBUG] Found generation {existing_generation.id}, status={status_value}, type={type(existing_generation.status)}")
+                    debug.generation(f"Found generation {existing_generation.id}, status={status_value}")
                     if status_value != "failed":
-                        print(f"[DEDUP DEBUG] Returning existing (not failed)")
+                        debug.generation(f"Returning existing (not failed)")
                         logger.info(f"Deduplication: Returning existing generation {existing_generation.id} (status={status_value})")
                         return existing_generation
                     else:
-                        print(f"[DEDUP DEBUG] Skipping failed generation, will create new")
+                        debug.generation(f"Skipping failed generation, will create new")
                         logger.info(f"Deduplication: Skipping failed generation {existing_generation.id}, allowing retry")
         else:
-            print(f"[DEDUP DEBUG] force_new=True, skipping dedup")
+            debug.generation(f"force_new=True, skipping dedup")
 
         # Check cache based on strategy (if structured params)
         generation_config = canonical_params.get("generation_config", {})
         strategy = generation_config.get("strategy", "once")
         purpose = generation_config.get("purpose", "unknown")
-        print(f"[CACHE DEBUG] strategy={strategy}, purpose={purpose}, force_new={force_new}")
+        debug.generation(f"strategy={strategy}, purpose={purpose}, force_new={force_new}")
 
         # Pre-compute cache key if caching is enabled (reused for lookup and store)
         cache_key = None
@@ -224,11 +228,11 @@ class GenerationCreationService:
                 strategy=strategy,
                 params=params,
             )
-            print(f"[CACHE DEBUG] cache_key={cache_key[:50]}...")
+            debug.generation(f"cache_key={cache_key[:50]}...")
 
             # Check cache
             cached_generation_id = await self.cache.get_cached_generation(cache_key)
-            print(f"[CACHE DEBUG] cached_generation_id={cached_generation_id}")
+            debug.generation(f"cached_generation_id={cached_generation_id}")
             if cached_generation_id:
                 result = await self.db.execute(
                     select(Generation).where(Generation.id == cached_generation_id)
@@ -238,13 +242,13 @@ class GenerationCreationService:
                     # Skip failed generations - allow retry with new params
                     status_value = cached_generation.status.value if hasattr(cached_generation.status, 'value') else str(cached_generation.status)
                     if status_value == "failed":
-                        print(f"[CACHE DEBUG] Skipping failed cached generation {cached_generation_id}")
+                        debug.generation(f"Skipping failed cached generation {cached_generation_id}")
                         logger.info(f"Cache: Skipping failed generation {cached_generation_id}, allowing retry")
                         # Invalidate the cache entry
                         await self.cache.invalidate_cache(cache_key)
                     else:
                         logger.info(f"Cache HIT: Returning cached generation {cached_generation_id}")
-                        print(f"[CACHE DEBUG] HIT! Returning cached generation {cached_generation_id}")
+                        debug.generation(f"Cache HIT! Returning cached generation {cached_generation_id}")
                         return cached_generation
 
         # Resolve prompt if version provided
@@ -304,18 +308,17 @@ class GenerationCreationService:
 
         # Queue generation for processing via ARQ
         try:
-            print(f"[ARQ DEBUG] About to enqueue generation {generation.id}")
+            debug.generation(f"Enqueuing generation {generation.id}...")
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
             arq_pool = await get_arq_pool()
-            print(f"[ARQ DEBUG] Got ARQ pool: {arq_pool}")
             result = await arq_pool.enqueue_job(
                 "process_generation",  # ARQ worker function (see workers/job_processor.py)
                 generation_id=generation.id,
             )
-            print(f"[ARQ DEBUG] Enqueue result: {result}")
+            debug.generation(f"Enqueue result: {result}")
             logger.info(f"Generation {generation.id} queued for processing")
         except Exception as e:
-            print(f"[ARQ DEBUG] Failed to enqueue: {e}")
+            debug.generation(f"Failed to enqueue: {e}")
             logger.error(f"Failed to queue generation {generation.id}: {e}")
             # Don't fail generation creation if ARQ is down
             # Worker can pick it up later via scheduled polling
