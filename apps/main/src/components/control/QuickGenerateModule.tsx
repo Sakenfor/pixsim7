@@ -60,10 +60,16 @@ export function QuickGenerateModule() {
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
+  // For now, treat image_to_image as an alias of image_to_video for
+  // provider parameter specs and presets, since the unified pipeline is
+  // video-first. This avoids sending image-only models to video endpoints.
+  const effectiveOperationType: ControlCenterState['operationType'] =
+    operationType === 'image_to_image' ? 'image_to_video' : operationType;
+
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
     if (!specs?.operation_specs) return [];
-    const opSpec = specs.operation_specs[operationType];
+    const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return [];
 
     // Filter out prompt and operation-specific array fields we handle separately
@@ -72,7 +78,7 @@ export function QuickGenerateModule() {
       p.name !== 'image_urls' &&
       p.name !== 'prompts'
     );
-  }, [specs, operationType]);
+  }, [specs, effectiveOperationType]);
 
   // Auto-show settings for operations with important visible options
   const hasVisibleOptions = paramSpecs.length > 0 || operationType === 'image_to_image';
@@ -100,7 +106,7 @@ export function QuickGenerateModule() {
   // Build dynamic presets from provider specs
   const availablePresets = useMemo(() => {
     if (!specs?.operation_specs) return [];
-    const opSpec = specs.operation_specs[operationType];
+    const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return [];
 
     // Quick presets: extract first few quality/aspect/model combos
@@ -137,7 +143,7 @@ export function QuickGenerateModule() {
     }
 
     return presets;
-  }, [specs, operationType]);
+  }, [specs, effectiveOperationType]);
 
   function applyPreset(preset: { id: string; name: string; params: Record<string, any> }) {
     setPreset(preset.id);

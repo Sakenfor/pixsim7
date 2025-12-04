@@ -607,6 +607,10 @@ class ServiceProcess:
                         pass
                 # Keep detected_pid so user can try force kill
                 self.health_status = HealthStatus.UNHEALTHY
+                # Mark as externally managed so the UI can reflect that
+                # this process is no longer under launcher control.
+                if hasattr(self, "externally_managed"):
+                    self.externally_managed = True
             else:
                 # Kill failed entirely
                 if _launcher_logger:
@@ -654,6 +658,8 @@ class ServiceProcess:
                                 # so the UI can show what's there and allow force kill retry
                                 self.running = False
                                 self.health_status = HealthStatus.UNHEALTHY
+                                if hasattr(self, "externally_managed"):
+                                    self.externally_managed = True
                                 if _launcher_logger:
                                     try:
                                         _launcher_logger.warning(
@@ -815,6 +821,11 @@ class ServiceProcess:
             log_line = f"[{timestamp}] [INFO] Service stopped normally"
             sanitized = self._append_log_buffer(log_line)
             self._persist_log_line(sanitized, sanitized=True)
+
+            # On clean exit, assume the user's desired state is "stopped"
+            # so HealthWorker won't keep treating this as a service that
+            # "should" be running but isn't.
+            self.requested_running = False
 
         if _launcher_logger:
             try:

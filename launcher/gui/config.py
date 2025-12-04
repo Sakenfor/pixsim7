@@ -9,11 +9,20 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 # Global setting for SQL logging (set by launcher on startup)
 _sql_logging_enabled = False
 
+# Global setting for worker debug categories (set by launcher on startup)
+_worker_debug_flags = ""
+
 
 def set_sql_logging(enabled: bool) -> None:
     """Set the global SQL logging preference."""
     global _sql_logging_enabled
     _sql_logging_enabled = enabled
+
+
+def set_worker_debug_flags(flags: str) -> None:
+    """Set global worker debug categories (comma-separated)."""
+    global _worker_debug_flags
+    _worker_debug_flags = flags or ""
 
 
 @dataclass
@@ -143,6 +152,10 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     # SQL logging control (use parameter if provided, otherwise use global setting)
     sql_log_enabled = sql_logging if sql_logging is not None else _sql_logging_enabled
     env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
+
+    # Worker debug flags (if set via launcher, propagate to services)
+    if _worker_debug_flags:
+        env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
     # Prefer direct DB ingestion via env if configured globally (.env)
     # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
     # We intentionally do NOT set PIXSIM_LOG_INGESTION_URL here to avoid routing through backend.
@@ -176,6 +189,7 @@ class UIState:
     stop_services_on_exit: bool = True  # Graceful shutdown of all services when closing launcher
     auto_refresh_logs: bool = False     # Enable DB log auto-refresh by default
     sql_logging_enabled: bool = False   # Enable SQLAlchemy query logging (verbose)
+    worker_debug_flags: str = ""        # Worker debug categories (comma-separated)
 
     # Console settings
     autoscroll_enabled: bool = False    # Auto-scroll console logs to bottom
@@ -203,6 +217,8 @@ def load_ui_state() -> UIState:
                     data['auto_refresh_logs'] = False
                 if 'sql_logging_enabled' not in data:
                     data['sql_logging_enabled'] = False
+                if 'worker_debug_flags' not in data:
+                    data['worker_debug_flags'] = ""
                 if 'window_always_on_top' not in data:
                     data['window_always_on_top'] = False
                 if 'health_check_interval' not in data:

@@ -214,6 +214,11 @@ class SettingsDialog(QDialog):
         self.chk_sql_logging.setToolTip("Log all database queries from backend services (very verbose, requires service restart)")
         logging_layout.addWidget(self.chk_sql_logging)
 
+        self.chk_worker_debug = QCheckBox("Enable worker debug (generation/provider/worker)")
+        self.chk_worker_debug.setChecked(bool(self._state.worker_debug_flags))
+        self.chk_worker_debug.setToolTip("Enable verbose worker debug logs. Categories are configured globally via PIXSIM_WORKER_DEBUG.")
+        logging_layout.addWidget(self.chk_worker_debug)
+
         layout.addWidget(logging_group)
 
         layout.addStretch()
@@ -299,6 +304,31 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return tab
 
+    def get_state(self) -> UIState:
+        """Return updated UI state from dialog controls."""
+        # General / window
+        self._state.window_always_on_top = self.chk_always_on_top.isChecked()
+        self._state.stop_services_on_exit = self.chk_stop_on_exit.isChecked()
+
+        # Logging
+        self._state.auto_refresh_logs = self.chk_auto_refresh_logs.isChecked()
+        self._state.sql_logging_enabled = self.chk_sql_logging.isChecked()
+        # Simple toggle: when enabled, default to all worker debug categories
+        if hasattr(self, "chk_worker_debug") and self.chk_worker_debug.isChecked():
+            if not self._state.worker_debug_flags:
+                self._state.worker_debug_flags = "generation,provider,worker"
+        else:
+            self._state.worker_debug_flags = ""
+
+        # Performance / health check
+        self._state.health_check_adaptive = self.chk_adaptive_health.isChecked()
+        self._state.health_check_interval = float(self.spin_health_interval.value())
+        self._state.health_check_startup_interval = float(self.spin_startup_interval.value())
+        self._state.health_check_stable_interval = float(self.spin_stable_interval.value())
+
+        save_ui_state(self._state)
+        return self._state
+
     def _on_adaptive_toggled(self, checked: bool):
         """Show/hide adaptive interval options."""
         # Show adaptive options only when adaptive mode is enabled
@@ -334,22 +364,3 @@ class SettingsDialog(QDialog):
             self.spin_health_interval.setValue(defaults.health_check_interval)
             self.spin_startup_interval.setValue(defaults.health_check_startup_interval)
             self.spin_stable_interval.setValue(defaults.health_check_stable_interval)
-
-    def get_state(self) -> UIState:
-        """Get updated state from UI."""
-        self._state.window_always_on_top = self.chk_always_on_top.isChecked()
-        self._state.stop_services_on_exit = self.chk_stop_on_exit.isChecked()
-        self._state.auto_refresh_logs = self.chk_auto_refresh_logs.isChecked()
-        self._state.sql_logging_enabled = self.chk_sql_logging.isChecked()
-        self._state.health_check_adaptive = self.chk_adaptive_health.isChecked()
-        self._state.health_check_interval = self.spin_health_interval.value()
-        self._state.health_check_startup_interval = self.spin_startup_interval.value()
-        self._state.health_check_stable_interval = self.spin_stable_interval.value()
-
-        # Persist immediately
-        try:
-            save_ui_state(self._state)
-        except Exception:
-            pass
-
-        return self._state

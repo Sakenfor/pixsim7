@@ -88,7 +88,7 @@ class GenerationNodeConfigSchema(BaseModel):
     - image_urls: Image URLs for video_transition operations
     - prompts: Transition prompts for video_transition operations
     """
-    generation_type: str = Field(..., pattern="^(transition|variation|dialogue|environment|npc_response|fusion)$")
+    generation_type: str = Field(..., pattern="^(transition|variation|dialogue|environment|npc_response|image_edit|fusion)$")
     purpose: str = Field(..., pattern="^(gap_fill|variation|adaptive|ambient)$")
     style: StyleRulesSchema
     duration: DurationRuleSchema

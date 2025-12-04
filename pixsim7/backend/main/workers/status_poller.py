@@ -7,9 +7,11 @@ Runs periodically to:
 3. Create assets when completed
 4. Update generation status
 """
-from pixsim_logging import configure_logging
 from datetime import datetime, timedelta
+
 from sqlalchemy import select
+
+from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus
 from pixsim7.backend.main.services.generation import GenerationService
@@ -17,14 +19,28 @@ from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.shared.debug import (
+    get_global_debug_logger,
+    load_global_debug_from_env,
+)
 from pixsim7.backend.main.shared.errors import ProviderError
 
 logger = configure_logging("worker")
+_poller_debug_initialized = False
+
+
+def _init_poller_debug_flags() -> None:
+    """Initialize global debug flags for the status poller from environment."""
+    global _poller_debug_initialized
+    if _poller_debug_initialized:
+        return
+    load_global_debug_from_env()
+    _poller_debug_initialized = True
 
 
 async def poll_job_statuses(ctx: dict) -> dict:
     """
-    Poll status of all processing generations
+    Poll status of all processing generations.
 
     This runs periodically (e.g., every 10 seconds) to check
     generation status with providers and update accordingly.
@@ -35,6 +51,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
     Returns:
         dict with poll statistics
     """
+    _init_poller_debug_flags()
+    worker_debug = get_global_debug_logger()
+    worker_debug.worker("poll_start")
     checked = 0
     completed = 0
     failed = 0
@@ -42,13 +61,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
     async for db in get_db():
         try:
-            # Initialize services
             user_service = UserService(db)
             generation_service = GenerationService(db, user_service)
             provider_service = ProviderService(db)
             asset_service = AssetService(db, user_service)
 
-            # Get all PROCESSING generations
             result = await db.execute(
                 select(Generation)
                 .where(Generation.status == GenerationStatus.PROCESSING)
@@ -56,9 +73,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
             )
             processing_generations = list(result.scalars().all())
 
-            # Only log if there are generations to process
             if processing_generations:
                 logger.info("poll_found_generations", count=len(processing_generations))
+                worker_debug.worker("poll_found_generations", count=len(processing_generations))
 
             # Timeout threshold (processing > 2 hours = stuck)
             TIMEOUT_HOURS = 2
@@ -68,7 +85,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 checked += 1
 
                 try:
-                    # Get submission for this generation (needed for both timeout and status check)
                     submission_result = await db.execute(
                         select(ProviderSubmission)
                         .where(ProviderSubmission.generation_id == generation.id)
@@ -85,7 +101,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         failed += 1
                         continue
 
-                    # Get account
                     account = await db.get(ProviderAccount, submission.account_id)
                     if not account:
                         logger.error("account_not_found", account_id=submission.account_id)
@@ -93,7 +108,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         failed += 1
                         continue
 
-                    # Check timeout first - skip provider API call for timed-out generations
                     if generation.started_at and generation.started_at < timeout_threshold:
                         logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
                         await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
@@ -105,7 +119,6 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         failed += 1
                         continue
 
-                    # Check status with provider
                     try:
                         status_result = await provider_service.check_status(
                             submission=submission,
@@ -113,6 +126,12 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         )
 
                         logger.debug("generation_status", generation_id=generation.id, status=str(status_result.status), progress=status_result.progress)
+                        worker_debug.provider(
+                            "generation_status",
+                            generation_id=generation.id,
+                            status=str(status_result.status),
+                            progress=status_result.progress,
+                        )
 
                         # Handle status
                         if status_result.status == VideoStatus.COMPLETED:
@@ -122,6 +141,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 generation=generation
                             )
                             logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
+                            worker_debug.worker(
+                                "generation_completed",
+                                generation_id=generation.id,
+                                asset_id=asset.id,
+                            )
 
                             # Mark generation as completed
                             await generation_service.mark_completed(generation.id, asset.id)
@@ -160,9 +184,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                 except Exception as e:
                     logger.error("poll_generation_error", generation_id=generation.id, error=str(e), exc_info=True)
+                    worker_debug.worker(
+                        "poll_generation_error",
+                        generation_id=generation.id,
+                        error=str(e),
+                    )
                     # Continue with next generation
 
-            # Commit all changes
             await db.commit()
 
             stats = {
@@ -173,9 +201,15 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            # Only log if there was actual activity
             if checked > 0:
                 logger.info("poll_complete", checked=checked, completed=completed, failed=failed, still_processing=still_processing)
+                worker_debug.worker(
+                    "poll_complete",
+                    checked=checked,
+                    completed=completed,
+                    failed=failed,
+                    still_processing=still_processing,
+                )
             else:
                 logger.debug("poll_complete_idle", msg="No generations to process")
 
@@ -183,6 +217,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
         except Exception as e:
             logger.error("poll_error", error=str(e), exc_info=True)
+            worker_debug.worker("poll_error", error=str(e))
             raise
 
         finally:

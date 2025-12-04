@@ -24,13 +24,14 @@ export interface GenerateAssetResponse {
  */
 function mapOperationToGenerationType(
   operationType?: string
-): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'fusion' {
+): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' {
   switch (operationType) {
     case 'video_transition':
       return 'transition';
     case 'image_to_video':
-    case 'image_to_image':
       return 'npc_response';
+    case 'image_to_image':
+      return 'image_edit';
     case 'dialogue':
       return 'dialogue';
     case 'environment':
@@ -52,7 +53,7 @@ function mapOperationToGenerationType(
  * - The backend's _canonicalize_params extracts these to top-level canonical fields.
  */
 function buildGenerationConfig(
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'fusion',
+  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion',
   presetParams: Record<string, any>,
   extraParams: Record<string, any>,
   providerId: string = 'pixverse'

@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import { createBackendStorage } from '../lib/backendStorage';
+import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
+import { debugFlags } from '../lib/debugFlags';
 
 export interface GenerationSettingsState {
   /**
@@ -26,22 +30,49 @@ export interface GenerationSettingsState {
   reset: () => void;
 }
 
-export const useGenerationSettingsStore = create<GenerationSettingsState>((set) => ({
-  params: {},
+const STORAGE_KEY = 'generation_settings_v1';
 
-  setDynamicParams: (updater) =>
-    set((prev) => ({
-      params:
-        typeof updater === 'function'
-          ? (updater as (p: Record<string, any>) => Record<string, any>)(prev.params)
-          : updater,
-    })),
+export const useGenerationSettingsStore = create<GenerationSettingsState>()(
+  persist(
+    (set, get) => ({
+      params: {},
 
-  setParam: (name, value) =>
-    set((prev) => ({
-      params: { ...prev.params, [name]: value },
-    })),
+      setDynamicParams: (updater) =>
+        set((prev) => ({
+          params:
+            typeof updater === 'function'
+              ? (updater as (p: Record<string, any>) => Record<string, any>)(prev.params)
+              : updater,
+        })),
 
-  reset: () => set({ params: {} }),
-}));
+      setParam: (name, value) =>
+        set((prev) => ({
+          params: { ...prev.params, [name]: value },
+        })),
 
+      reset: () => set({ params: {} }),
+    }),
+    {
+      name: STORAGE_KEY,
+      storage: createBackendStorage('generationSettings'),
+      // Only persist parameter values; methods are recreated by the store
+      partialize: (state) => ({
+        params: state.params,
+      }),
+      version: 1,
+    }
+  )
+);
+
+// Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    debugFlags.log('rehydration', '[GenerationSettingsStore] Triggering manual rehydration');
+    manuallyRehydrateStore(
+      useGenerationSettingsStore,
+      'generationSettings_local',
+      'GenerationSettingsStore'
+    );
+    exposeStoreForDebugging(useGenerationSettingsStore, 'GenerationSettings');
+  }, 50);
+}

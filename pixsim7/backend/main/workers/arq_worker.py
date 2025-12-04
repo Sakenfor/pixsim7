@@ -25,6 +25,7 @@ from pixsim7.backend.main.workers.automation import process_automation, run_auto
 from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging
 
 # Configure structured logging and optional ingestion via env
@@ -42,6 +43,14 @@ async def startup(ctx: dict) -> None:
     health = get_health_tracker()
 
     logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
+
+    # Initialize global worker debug flags from environment (if set)
+    debug_flags = load_global_debug_from_env()
+    if debug_flags:
+        enabled = [name for name, enabled in debug_flags.items() if enabled]
+        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
+    else:
+        logger.info("worker_debug_flags", flags="none")
 
     # Register providers (required for generation processing)
     from pixsim7.backend.main.services.provider.registry import register_default_providers

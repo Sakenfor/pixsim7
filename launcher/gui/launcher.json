@@ -1,6 +1,6 @@
 {
-  "window_x": 122,
-  "window_y": 160,
+  "window_x": 118,
+  "window_y": 184,
   "window_width": 1881,
   "window_height": 779,
   "window_always_on_top": false,
@@ -8,6 +8,7 @@
   "stop_services_on_exit": false,
   "auto_refresh_logs": true,
   "sql_logging_enabled": false,
+  "worker_debug_flags": "",
   "autoscroll_enabled": false,
   "console_style_enhanced": true,
   "console_level_filter": "All",

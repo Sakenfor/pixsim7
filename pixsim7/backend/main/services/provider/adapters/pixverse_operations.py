@@ -6,7 +6,7 @@ Handles video generation, status checking, and uploads.
 import asyncio
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import OperationType, VideoStatus, ProviderAccount
@@ -67,7 +67,7 @@ def _extract_video_options(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class PixverseOperationsMixin:
-    """Mixin for Pixverse video operations"""
+    """Mixin for Pixverse video and image operations"""
 
     async def execute(
         self,
@@ -110,6 +110,9 @@ class PixverseOperationsMixin:
 
             elif operation_type == OperationType.IMAGE_TO_VIDEO:
                 video = await self._generate_image_to_video(client, params)
+
+            elif operation_type == OperationType.IMAGE_TO_IMAGE:
+                video = await self._generate_image_to_image(client, params)
 
             elif operation_type == OperationType.VIDEO_EXTEND:
                 video = await self._extend_video(client, params)
@@ -278,6 +281,49 @@ class PixverseOperationsMixin:
         )
 
         return video
+
+    async def _generate_image_to_image(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate image-to-image (Pixverse image API)."""
+        # Normalize image URLs to list
+        image_urls: List[str] = []
+        if "image_urls" in params and isinstance(params["image_urls"], list):
+            image_urls = params["image_urls"]
+        elif "image_url" in params and isinstance(params["image_url"], str):
+            image_urls = [params["image_url"]]
+
+        if not image_urls:
+            raise ProviderError("Pixverse IMAGE_TO_IMAGE operation requires at least one image_url")
+
+        # Use pixverse-py image operations via client.api._image_ops
+        # This requires a JWT (Web API) session.
+        try:
+            image = await asyncio.to_thread(
+                client.api._image_ops.create_image,  # type: ignore[attr-defined]
+                prompt=params.get("prompt", ""),
+                image_urls=image_urls,
+                account=client.pool.get_next(),
+                model=params.get("model") or None,
+                quality=params.get("quality") or "720p",
+                aspect_ratio=params.get("aspect_ratio") or "9:16",
+                seed=int(params.get("seed", 0)),
+                create_count=1,
+            )
+        except Exception as exc:  # Let upstream handler classify
+            raise exc
+
+        # Wrap image result in a GenerationResult-compatible object.
+        # Status mapping: treat "processing" vs "completed" similar to videos.
+        status = VideoStatus.PROCESSING
+        if getattr(image, "status", None) == "completed":
+            status = VideoStatus.COMPLETED
+        elif getattr(image, "status", None) in {"failed", "filtered"}:
+            status = VideoStatus.FAILED
+
+        return image
 
 
     async def _extend_video(

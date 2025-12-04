@@ -26,6 +26,10 @@ from pixsim7.backend.main.shared.errors import (
     ValidationError as DomainValidationError,
     QuotaExceededError,
 )
+from pixsim7.backend.main.shared.operation_mapping import (
+    resolve_operation_type,
+    list_generation_operation_metadata,
+)
 from pixsim7.backend.main.shared.rate_limit import job_create_limiter, get_client_identifier
 import logging
 from pydantic import BaseModel, Field
@@ -83,18 +87,8 @@ async def create_generation(
             "social_context": social_context_dict,
         }
 
-        # Determine operation type from generation type
-        operation_type_map = {
-            "transition": OperationType.VIDEO_TRANSITION,
-            "variation": OperationType.TEXT_TO_VIDEO,
-            "dialogue": OperationType.TEXT_TO_VIDEO,
-            "environment": OperationType.TEXT_TO_VIDEO,
-            "npc_response": OperationType.IMAGE_TO_VIDEO,
-            "fusion": OperationType.FUSION,
-        }
-
         generation_type = request.config.generation_type if request.config else "transition"
-        operation_type = operation_type_map.get(generation_type, OperationType.TEXT_TO_VIDEO)
+        operation_type = resolve_operation_type(generation_type)
 
         # Build prompt config if template_id or prompt_version_id provided
         prompt_config = None
@@ -144,6 +138,24 @@ async def create_generation(
     except Exception as e:
         logger.error(f"Failed to create generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to create generation: {str(e)}")
+
+
+class GenerationOperationMetadataItem(BaseModel):
+    """Metadata entry describing a single generation_type mapping."""
+    generation_type: str = Field(..., description="Structured generation type identifier")
+    operation_type: OperationType = Field(..., description="Backend OperationType value")
+
+
+@router.get("/generation-operations", response_model=list[GenerationOperationMetadataItem])
+async def list_generation_operations() -> list[GenerationOperationMetadataItem]:
+    """
+    List known generation_type → OperationType mappings.
+
+    This endpoint provides a single source of truth that frontends and tooling
+    can use to avoid duplicating mapping logic.
+    """
+    items = list_generation_operation_metadata()
+    return [GenerationOperationMetadataItem(**item) for item in items]
 
 
 # ===== SIMPLE IMAGE-TO-VIDEO GENERATION (LEGACY-FRIENDLY) =====

@@ -112,10 +112,15 @@ class GenerationCreationService:
         # Structured format has keys: generation_config, scene_context, player_context, social_context
         is_structured = 'generation_config' in params or 'scene_context' in params
 
+        # Keep a reference to generation_config for strategy/purpose and introspection
+        generation_config_for_cache: Dict[str, Any] = {}
         if is_structured:
             # New structured format - validation handled by schema
             # Just verify we have the necessary context for the operation
             logger.info(f"Structured params detected for {operation_type.value}")
+            raw_gen_config = params.get("generation_config") or {}
+            if isinstance(raw_gen_config, dict):
+                generation_config_for_cache = raw_gen_config
         else:
             # Legacy flat format - apply operation-specific validation
             if operation_type == OperationType.TEXT_TO_VIDEO:
@@ -211,8 +216,8 @@ class GenerationCreationService:
         else:
             debug.generation(f"force_new=True, skipping dedup")
 
-        # Check cache based on strategy (if structured params)
-        generation_config = canonical_params.get("generation_config", {})
+        # Check cache based on strategy (for structured params, use raw generation_config)
+        generation_config = generation_config_for_cache if is_structured else {}
         strategy = generation_config.get("strategy", "once")
         purpose = generation_config.get("purpose", "unknown")
         debug.generation(f"strategy={strategy}, purpose={purpose}, force_new={force_new}")
@@ -486,6 +491,15 @@ class GenerationCreationService:
             if image_url:
                 canonical["image_url"] = image_url
 
+        elif operation_type == OperationType.IMAGE_TO_IMAGE:
+            # Image-to-image may use a single image_url or a list of image_urls.
+            image_url = gen_config.get("image_url") or params.get("image_url")
+            image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            if image_urls:
+                canonical["image_urls"] = image_urls
+            elif image_url:
+                canonical["image_urls"] = [image_url]
+
         elif operation_type == OperationType.VIDEO_EXTEND:
             video_url = gen_config.get("video_url") or params.get("video_url")
             if video_url:
@@ -506,10 +520,6 @@ class GenerationCreationService:
             fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
             if fusion_assets:
                 canonical["fusion_assets"] = fusion_assets
-
-        # Preserve full structured params for introspection/dev tools
-        # The generation_config is kept intact so dev tools can see the full config
-        canonical["generation_config"] = gen_config
 
         # Preserve scene_context and other structured fields if present
         for context_key in ["scene_context", "player_context", "social_context"]:

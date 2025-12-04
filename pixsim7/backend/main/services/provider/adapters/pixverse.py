@@ -187,6 +187,15 @@ class PixverseProvider(
             if "image_url" in params:
                 mapped["image_url"] = params["image_url"]
 
+        elif operation_type == OperationType.IMAGE_TO_IMAGE:
+            # Image-to-image uses the Pixverse image API.
+            # It expects one or more Pixverse-hosted image URLs/paths.
+            if "image_urls" in params:
+                mapped["image_urls"] = params["image_urls"]
+            elif "image_url" in params:
+                # Normalize single URL to list to align with SDK signature.
+                mapped["image_urls"] = [params["image_url"]]
+
         elif operation_type == OperationType.VIDEO_EXTEND:
             if "video_url" in params:
                 mapped["video_url"] = params["video_url"]
@@ -544,11 +553,130 @@ class PixverseProvider(
         Raises:
             Appropriate ProviderError subclass
         """
-        error_msg = str(error).lower()
+        raw_error = str(error)
+        error_msg = raw_error.lower()
 
-        # Authentication errors
+        # Special case: known SDK bug where APIError symbol is undefined.
+        # The SDK raises a NameError with name "APIERROR"/"APIError".
+        if isinstance(error, NameError):
+            missing_name = getattr(error, "name", None)
+            if missing_name and missing_name.lower() == "apierror":
+                sdk_version = None
+                try:  # Best-effort SDK version logging; don't fail if missing
+                    import pixverse as _pixverse  # type: ignore
+                    sdk_version = getattr(_pixverse, "__version__", None)
+                except Exception:
+                    sdk_version = None
+
+                logger.error(
+                    "pixverse_sdk_internal_error",
+                    msg="Pixverse SDK raised NameError for APIError symbol",
+                    error=raw_error,
+                    error_type=error.__class__.__name__,
+                    missing_name=missing_name,
+                    sdk_version=sdk_version or "unknown",
+                )
+
+                friendly = "Pixverse SDK internal error: APIError symbol is undefined in the SDK."
+                if sdk_version:
+                    friendly += f" Detected pixverse-py version: {sdk_version}."
+                friendly += " This is a provider-side issue; please update pixverse-py or contact support."
+
+                raise ProviderError(friendly)
+
+        # Try to extract structured ErrCode/ErrMsg from SDK error (if available)
+        err_code: int | None = None
+        err_msg: str | None = None
+
+        # Future‑proof: SDK may attach err_code/err_msg attributes
+        if hasattr(error, "err_code"):
+            try:
+                err_code = int(getattr(error, "err_code"))  # type: ignore[arg-type]
+            except Exception:
+                err_code = None
+        if hasattr(error, "err_msg"):
+            try:
+                err_msg = str(getattr(error, "err_msg"))
+            except Exception:
+                err_msg = None
+
+        # Fallback: parse JSON body from underlying response if present
+        if err_code is None and hasattr(error, "response"):
+            resp = getattr(error, "response", None)
+            try:
+                if resp is not None and hasattr(resp, "json"):
+                    data = resp.json()
+                    if isinstance(data, dict) and "ErrCode" in data:
+                        err_code = int(data.get("ErrCode", 0))
+                        err_msg = str(data.get("ErrMsg", "")) or None
+            except Exception:
+                # If response.json() fails, just ignore and fall back to string‑based handling
+                pass
+
+        # If we have a structured error code, map it to a more precise ProviderError
+        if err_code is not None and err_code != 0:
+            logger.error(
+                "pixverse_error",
+                err_code=err_code,
+                err_msg=err_msg or raw_error,
+            )
+
+            # Content moderation / safety errors
+            if err_code in {500054, 500063}:
+                friendly = (
+                    "Pixverse rejected the content for safety or policy reasons "
+                    f"(ErrCode {err_code}: {err_msg or 'content moderation failed'})."
+                )
+                raise ContentFilteredError("pixverse", friendly)
+
+            # Insufficient balance / quota
+            if err_code in {500090}:
+                friendly = (
+                    "Pixverse reports insufficient balance for this account. "
+                    "Please top up credits or pick a different account."
+                )
+                raise QuotaExceededError("pixverse", 0)
+
+            # Concurrent generations limit
+            if err_code in {500044}:
+                friendly = (
+                    "Pixverse is at its concurrent generation limit for this account. "
+                    "Please wait for existing jobs to finish and try again."
+                )
+                raise ProviderError(friendly)
+
+            # Prompt length / parameter validation
+            if err_code in {400017, 400018, 400019}:
+                friendly = (
+                    "Pixverse rejected the request due to invalid or too‑long parameters. "
+                    "Try shortening or simplifying the prompt and checking extra options. "
+                    f"(ErrCode {err_code}: {err_msg or 'invalid parameter'})"
+                )
+                raise ProviderError(friendly)
+
+            # Permission / access
+            if err_code in {500020, 500070, 500071}:
+                friendly = (
+                    "This Pixverse account does not have permission or the required template "
+                    f"for the requested operation (ErrCode {err_code}: {err_msg or 'permission error'})."
+                )
+                raise ProviderError(friendly)
+
+            # High load / temporary issues
+            if err_code in {500069}:
+                friendly = (
+                    "Pixverse is currently under high load and cannot process this request. "
+                    "Please try again in a few moments."
+                )
+                raise ProviderError(friendly)
+
+            # Generic mapping for any other known ErrCode
+            friendly = f"Pixverse API error {err_code}: {err_msg or raw_error}"
+            raise ProviderError(friendly)
+
+        # Authentication errors (fallback when no structured ErrCode was found)
         if "auth" in error_msg or "token" in error_msg or "unauthorized" in error_msg:
-            raise AuthenticationError("pixverse", str(error))
+            raise AuthenticationError("pixverse", raw_error)
 
         # Quota errors
         if "quota" in error_msg or "credits" in error_msg or "insufficient" in error_msg:
@@ -556,12 +684,12 @@ class PixverseProvider(
 
         # Content filtered
         if "filtered" in error_msg or "policy" in error_msg or "inappropriate" in error_msg:
-            raise ContentFilteredError("pixverse", str(error))
+            raise ContentFilteredError("pixverse", raw_error)
 
         # Job not found
         if "not found" in error_msg or "404" in error_msg:
             raise JobNotFoundError("pixverse", "unknown")
 
         # Generic provider error
-        raise ProviderError(f"Pixverse API error: {error}")
+        raise ProviderError(f"Pixverse API error: {raw_error}")
 

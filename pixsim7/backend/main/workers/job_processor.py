@@ -20,13 +20,18 @@ from pixsim7.backend.main.shared.errors import (
     AccountExhaustedError,
     ProviderError,
 )
+from pixsim7.backend.main.shared.debug import (
+    DebugLogger,
+    get_global_debug_logger,
+    load_global_debug_from_env,
+)
 from pixsim7.backend.main.workers.health import get_health_tracker
 
-# Configure structured logging using pixsim_logging
-from pixsim_logging import configure_logging, get_logger, bind_job_context
+from pixsim_logging import configure_logging, bind_job_context
 
-# Initialize logger at module level
 _base_logger = None
+_worker_debug_initialized = False
+
 
 def _get_worker_logger():
     """Get or initialize worker logger."""
@@ -34,6 +39,21 @@ def _get_worker_logger():
     if _base_logger is None:
         _base_logger = configure_logging("worker")
     return _base_logger
+
+
+def _init_worker_debug_flags() -> None:
+    """
+    Initialize global worker debug flags from environment.
+
+    This allows enabling worker debug without user context via
+    PIXSIM_WORKER_DEBUG (e.g. 'generation,provider,worker').
+    """
+    global _worker_debug_initialized
+    if _worker_debug_initialized:
+        return
+    load_global_debug_from_env()
+    _worker_debug_initialized = True
+
 
 logger = _get_worker_logger()
 
@@ -94,7 +114,7 @@ def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
 
 async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
-    Process a single generation
+    Process a single generation.
 
     This is the main ARQ task that gets queued when a generation is created.
 
@@ -105,21 +125,28 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
     Returns:
         dict with status and message
     """
-    # Bind generation context for all logs in this function
-    # Keep job_id in logs for backward compatibility with log analysis tools
+    _init_worker_debug_flags()
+
     gen_logger = bind_job_context(logger, job_id=generation_id)
     gen_logger.info("pipeline:start", msg="generation_processing_started")
 
+    # Global worker debug logger (no user context yet)
+    worker_debug = get_global_debug_logger()
+    worker_debug.worker("process_generation_start", generation_id=generation_id)
+
     async for db in get_db():
         try:
-            # Initialize services
             user_service = UserService(db)
             generation_service = GenerationService(db, user_service)
             account_service = AccountService(db)
             provider_service = ProviderService(db)
 
-            # Get generation
             generation = await generation_service.get_generation(generation_id)
+
+            # Per-user debug logger once we have the user
+            user = await user_service.get_user(generation.user_id)
+            debug = DebugLogger(user)
+            debug.worker("loaded_generation", generation_id=generation.id, status=str(generation.status))
 
             if generation.status != "pending":
                 gen_logger.warning("generation_not_pending", status=generation.status)
@@ -129,6 +156,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             from datetime import datetime
             if generation.scheduled_at and generation.scheduled_at > datetime.utcnow():
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
+                debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
 
             # Select and reserve account atomically (prevents race conditions)
@@ -138,8 +166,10 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     user_id=generation.user_id
                 )
                 gen_logger.info("account_selected", account_id=account.id, provider_id=generation.provider_id)
+                debug.worker("account_selected", account_id=account.id, provider_id=generation.provider_id)
             except (NoAccountAvailableError, AccountCooldownError) as e:
                 gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
+                debug.worker("no_account_available", error=str(e), error_type=e.__class__.__name__)
                 # Requeue generation for later (ARQ will retry)
                 raise
 
@@ -147,6 +177,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             credits_data = await refresh_account_credits(account, account_service, gen_logger)
             if credits_data and not has_sufficient_credits(credits_data):
                 gen_logger.warning("account_no_credits", account_id=account.id, credits=credits_data)
+                debug.worker("account_no_credits", account_id=account.id, credits=credits_data)
                 # Release this account and mark as exhausted
                 await account_service.release_account(account.id)
                 await account_service.mark_exhausted(account.id)
@@ -156,6 +187,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # Mark generation as started
             await generation_service.mark_started(generation_id)
             gen_logger.info("generation_started")
+            debug.worker("generation_started", generation_id=generation_id)
 
             # Execute generation via provider
             try:
@@ -173,6 +205,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     account_id=account.id,
                     msg="generation_submitted_to_provider"
                 )
+                debug.provider(
+                    "provider_submit",
+                    provider_id=generation.provider_id,
+                    provider_job_id=submission.provider_job_id,
+                    account_id=account.id,
+                )
 
                 # Note: Credits refreshed before submission; status_poller refreshes on completion
 
@@ -187,6 +225,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             except ProviderError as e:
                 gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
+                debug.provider(
+                    "provider_error",
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    generation_id=generation_id,
+                )
                 await generation_service.mark_failed(generation_id, str(e))
 
                 # Release account reservation on failure
@@ -204,6 +248,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
         except Exception as e:
             gen_logger.error("generation_processing_failed", error=str(e), error_type=e.__class__.__name__, exc_info=True)
+            worker_debug.worker(
+                "generation_processing_failed",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                generation_id=generation_id,
+            )
 
             # Track failed generation
             get_health_tracker().increment_failed()
