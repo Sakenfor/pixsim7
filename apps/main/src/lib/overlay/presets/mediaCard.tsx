@@ -135,17 +135,8 @@ export const detailedPreset: OverlayPreset = {
         priority: 10,
       }),
 
-      createBadgeWidget({
-        id: 'status-badge',
-        position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon-text',
-        icon: 'check',
-        label: 'OK',
-        color: 'success',
-        shape: 'rounded',
-        priority: 10,
-      }),
+      // Note: Status badge is handled by MediaCard runtime widgets
+      // to avoid overlap with status-menu
 
       createPanelWidget({
         id: 'metadata-panel',
