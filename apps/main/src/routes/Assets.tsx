@@ -196,7 +196,7 @@ export function AssetsRoute() {
                 >
                   {mediaCardPresets.map(preset => (
                     <option key={preset.id} value={preset.id}>
-                      {preset.name}
+                      {preset.icon} {preset.name}
                     </option>
                   ))}
                 </select>
