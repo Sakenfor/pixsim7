@@ -627,10 +627,13 @@
       // Load accounts if not loaded
       if (accountsCache.length === 0) {
         await loadAccounts();
-        syncModuleCaches();
       }
 
       if (accountsCache.length === 0) return;
+
+      // Always sync caches to ensure storage.state has current data
+      // (needed for getCurrentSessionAccount to work correctly)
+      syncModuleCaches();
 
       // Get sorted accounts (same order as menu)
       const currentSession = getCurrentSessionAccount();
