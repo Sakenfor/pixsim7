@@ -41,21 +41,36 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
   // Infinite scroll: auto-load more when sentinel comes into view
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel) return;
+    if (!sentinel) {
+      console.log('[InfiniteScroll] No sentinel element');
+      return;
+    }
+
+    console.log('[InfiniteScroll] Setting up observer');
 
     const observer = new IntersectionObserver(
       (entries) => {
         const ctrl = controllerRef.current;
+        console.log('[InfiniteScroll] Intersection event:', {
+          isIntersecting: entries[0].isIntersecting,
+          hasMore: ctrl.hasMore,
+          loading: ctrl.loading,
+        });
         if (entries[0].isIntersecting && ctrl.hasMore && !ctrl.loading) {
+          console.log('[InfiniteScroll] Triggering loadMore()');
           ctrl.loadMore();
         }
       },
-      { rootMargin: '400px' } // Start loading 400px before reaching the sentinel
+      {
+        rootMargin: '200px', // Start loading 200px before reaching the sentinel
+        threshold: 0.1
+      }
     );
 
     observer.observe(sentinel);
 
     return () => {
+      console.log('[InfiniteScroll] Cleaning up observer');
       observer.disconnect();
     };
   }, []); // Empty deps OK - uses ref for latest controller values
