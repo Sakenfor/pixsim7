@@ -57,6 +57,7 @@ async def create_generation(
 
     Rate limited: 10 requests per 60 seconds per user/IP
     """
+    print(f"[API DEBUG] POST /generations called, provider={request.provider_id}")
     # Rate limit check
     identifier = await get_client_identifier(req)
     await job_create_limiter.check(identifier)
@@ -125,6 +126,7 @@ async def create_generation(
             scheduled_at=request.scheduled_at,
             parent_generation_id=request.parent_generation_id,
             prompt_version_id=request.prompt_version_id,
+            force_new=request.force_new,
         )
 
         # Update generation with prompt_config if we have one

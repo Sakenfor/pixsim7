@@ -71,6 +71,7 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (operationFilter !== 'all') params.set('operation_type', operationFilter);
       params.set('limit', '50');
+      params.set('_', 'dev-list');
 
       const response = await fetch(`/api/v1/generations?${params}`);
       const data = await response.json();
@@ -93,7 +94,7 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
 
   const loadProviderHealth = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/generations/telemetry/providers');
+      const response = await fetch('/api/v1/generations/telemetry/providers?_=health');
       const data = await response.json();
       setProviderHealth(data.providers || []);
     } catch (error) {
@@ -103,7 +104,7 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
 
   const loadCacheStats = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/generations/cache/stats');
+      const response = await fetch('/api/v1/generations/cache/stats?_=cache');
       const data = await response.json();
       setCacheStats(data);
     } catch (error) {

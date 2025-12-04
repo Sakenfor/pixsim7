@@ -151,7 +151,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 await account_service.release_account(account.id)
                 await account_service.mark_exhausted(account.id)
                 # Raise to retry with different account
-                raise AccountExhaustedError(f"Account {account.id} has no credits")
+                raise AccountExhaustedError(account.id, account.provider_id)
 
             # Mark generation as started
             await generation_service.mark_started(generation_id)

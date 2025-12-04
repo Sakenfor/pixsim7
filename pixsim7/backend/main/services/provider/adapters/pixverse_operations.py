@@ -190,8 +190,8 @@ class PixverseOperationsMixin:
             gen_options = GenerationOptions(
                 model=params.get("model", "v5"),
                 quality=params.get("quality", "360p"),
-                duration=params.get("duration", 5),
-                seed=params.get("seed", 0),
+                duration=int(params.get("duration", 5)),
+                seed=int(params.get("seed", 0)),
                 aspect_ratio=params.get("aspect_ratio"),
                 motion_mode=params.get("motion_mode"),
                 negative_prompt=params.get("negative_prompt"),
@@ -208,8 +208,8 @@ class PixverseOperationsMixin:
             kwargs: Dict[str, Any] = {
                 "model": params.get("model", "v5"),
                 "quality": params.get("quality", "360p"),
-                "duration": params.get("duration", 5),
-                "seed": params.get("seed", 0),
+                "duration": int(params.get("duration", 5)),
+                "seed": int(params.get("seed", 0)),
                 "aspect_ratio": params.get("aspect_ratio"),
             }
             kwargs = {k: v for k, v in kwargs.items() if v is not None}
@@ -239,8 +239,8 @@ class PixverseOperationsMixin:
             gen_options = GenerationOptions(
                 model=params.get("model", "v5"),
                 quality=params.get("quality", "360p"),
-                duration=params.get("duration", 5),
-                seed=params.get("seed", 0),
+                duration=int(params.get("duration", 5)),
+                seed=int(params.get("seed", 0)),
                 # No aspect_ratio for image_to_video - follows source image
                 motion_mode=params.get("motion_mode"),
                 negative_prompt=params.get("negative_prompt"),
@@ -258,8 +258,8 @@ class PixverseOperationsMixin:
             kwargs: Dict[str, Any] = {
                 "model": params.get("model", "v5"),
                 "quality": params.get("quality", "360p"),
-                "duration": params.get("duration", 5),
-                "seed": params.get("seed", 0),
+                "duration": int(params.get("duration", 5)),
+                "seed": int(params.get("seed", 0)),
             }
             kwargs = {k: v for k, v in kwargs.items() if v is not None}
             for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
@@ -319,7 +319,7 @@ class PixverseOperationsMixin:
                 prompts=params["prompts"],  # Required
                 image_urls=params["image_urls"],  # Required
                 quality=params.get("quality", "360p"),
-                duration=params.get("duration", 5),
+                duration=int(params.get("duration", 5)),
             )
             kwargs = transition_options.__dict__
         else:
@@ -328,7 +328,7 @@ class PixverseOperationsMixin:
                 "prompts": params["prompts"],
                 "image_urls": params["image_urls"],
                 "quality": params.get("quality", "360p"),
-                "duration": params.get("duration", 5),
+                "duration": int(params.get("duration", 5)),
             }
 
         # Call pixverse-py
@@ -352,8 +352,8 @@ class PixverseOperationsMixin:
             prompt=params.get("prompt", ""),
             fusion_assets=params["fusion_assets"],  # Required
             quality=params.get("quality", "360p"),
-            duration=params.get("duration", 5),
-            seed=params.get("seed", 0),
+            duration=int(params.get("duration", 5)),
+            seed=int(params.get("seed", 0)),
         )
 
         return video
@@ -408,15 +408,27 @@ class PixverseOperationsMixin:
 
             status = self._map_pixverse_status(video)
 
+            # Handle both dict and object access (SDK may return either)
+            def get_field(obj, *keys, default=None):
+                """Get field from dict or object, trying multiple key names."""
+                for key in keys:
+                    if isinstance(obj, dict):
+                        if key in obj:
+                            return obj[key]
+                    else:
+                        if hasattr(obj, key):
+                            return getattr(obj, key)
+                return default
+
             return VideoStatusResult(
                 status=status,
-                video_url=getattr(video, "url", None),
-                thumbnail_url=getattr(video, "thumbnail_url", None),
-                width=getattr(video, "width", None),
-                height=getattr(video, "height", None),
-                duration_sec=getattr(video, "duration", None),
-                provider_video_id=video.id,
-                metadata={"provider_status": getattr(video, "status", None)},
+                video_url=get_field(video, "url"),
+                thumbnail_url=get_field(video, "first_frame", "thumbnail_url"),
+                width=get_field(video, "output_width", "width"),
+                height=get_field(video, "output_height", "height"),
+                duration_sec=get_field(video, "video_duration", "duration"),
+                provider_video_id=str(get_field(video, "video_id", "id")),
+                metadata={"provider_status": get_field(video, "video_status", "status")},
             )
 
         return await self.session_manager.run_with_session(
@@ -659,13 +671,38 @@ class PixverseOperationsMixin:
         Map Pixverse video status to universal VideoStatus
 
         Args:
-            pv_video: Pixverse video object from pixverse-py
+            pv_video: Pixverse video object or dict from pixverse-py
 
         Returns:
             Universal VideoStatus
         """
-        if hasattr(pv_video, 'status'):
-            status = pv_video.status.lower()
+        # Get status from dict or object
+        if isinstance(pv_video, dict):
+            status = pv_video.get('video_status') or pv_video.get('status')
+        elif hasattr(pv_video, 'video_status'):
+            status = pv_video.video_status
+        elif hasattr(pv_video, 'status'):
+            status = pv_video.status
+        else:
+            return VideoStatus.PROCESSING
+
+        # Handle integer status codes (Pixverse API uses integers)
+        # 1 = completed, 0 = processing, 2 = failed (based on observed behavior)
+        if isinstance(status, int):
+            if status == 1:
+                return VideoStatus.COMPLETED
+            elif status == 0:
+                return VideoStatus.PROCESSING
+            elif status == 2:
+                return VideoStatus.FAILED
+            elif status == 3:
+                return VideoStatus.FILTERED
+            else:
+                return VideoStatus.PROCESSING
+
+        # Handle string status codes
+        if isinstance(status, str):
+            status = status.lower()
             if status in ['completed', 'success']:
                 return VideoStatus.COMPLETED
             elif status in ['processing', 'pending', 'queued']:

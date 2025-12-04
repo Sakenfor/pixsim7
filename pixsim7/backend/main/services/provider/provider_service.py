@@ -113,7 +113,7 @@ class ProviderService:
 
             # Emit success event
             await event_bus.publish(PROVIDER_SUBMITTED, {
-                "job_id": job.id,
+                "job_id": generation.id,
                 "submission_id": submission.id,
                 "provider_job_id": result.provider_job_id,
             })
@@ -135,7 +135,7 @@ class ProviderService:
 
             # Emit failure event
             await event_bus.publish(PROVIDER_FAILED, {
-                "job_id": job.id,
+                "job_id": generation.id,
                 "submission_id": submission.id,
                 "error": str(e),
             })

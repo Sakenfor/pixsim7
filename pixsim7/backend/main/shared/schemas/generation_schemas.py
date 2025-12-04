@@ -167,6 +167,9 @@ class CreateGenerationRequest(BaseModel):
     scheduled_at: Optional[datetime] = None
     parent_generation_id: Optional[int] = None
 
+    # Deduplication control
+    force_new: bool = Field(False, description="Skip dedup and cache, always create new generation")
+
     class Config:
         json_schema_extra = {
             "example": {

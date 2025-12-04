@@ -97,6 +97,9 @@ export interface CreateGenerationRequest {
   priority?: number;
   scheduled_at?: string;
   parent_generation_id?: number;
+
+  // Deduplication control
+  force_new?: boolean;
 }
 
 // ===== API FUNCTIONS =====
@@ -107,7 +110,7 @@ export interface CreateGenerationRequest {
 export async function createGeneration(
   request: CreateGenerationRequest
 ): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>('/generations', request);
+  const res = await apiClient.post<GenerationResponse>('/generations?_=new', request);
   return res.data;
 }
 
@@ -115,7 +118,7 @@ export async function createGeneration(
  * Get generation by ID
  */
 export async function getGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.get<GenerationResponse>(`/generations/${id}`);
+  const res = await apiClient.get<GenerationResponse>(`/generations/${id}?_=details`);
   return res.data;
 }
 
@@ -129,7 +132,7 @@ export async function listGenerations(params?: {
   limit?: number;
   offset?: number;
 }): Promise<GenerationListResponse> {
-  const res = await apiClient.get<GenerationListResponse>('/generations', { params });
+  const res = await apiClient.get<GenerationListResponse>('/generations', { params: { ...params, _: 'list' } });
   return res.data;
 }
 
@@ -137,7 +140,7 @@ export async function listGenerations(params?: {
  * Cancel a generation
  */
 export async function cancelGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/cancel`);
+  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/cancel?_=cancel`);
   return res.data;
 }
 
@@ -148,7 +151,7 @@ export async function cancelGeneration(id: number): Promise<GenerationResponse> 
  * Useful for content filter rejections or temporary errors.
  */
 export async function retryGeneration(id: number): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry`);
+  const res = await apiClient.post<GenerationResponse>(`/generations/${id}/retry?_=retry`);
   return res.data;
 }
 
@@ -163,7 +166,7 @@ export async function validateGenerationConfig(
   warnings: string[];
   suggestions: string[];
 }> {
-  const res = await apiClient.post('/generations/validate', request);
+  const res = await apiClient.post('/generations/validate?_=validate', request);
   return res.data;
 }
 
@@ -176,6 +179,6 @@ export async function buildSocialContext(params: {
   npc_id?: string;
   user_max_rating?: string;
 }): Promise<any> {
-  const res = await apiClient.post('/generations/social-context/build', null, { params });
+  const res = await apiClient.post('/generations/social-context/build', null, { params: { ...params, _: 'social' } });
   return res.data;
 }
