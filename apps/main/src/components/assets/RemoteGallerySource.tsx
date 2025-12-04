@@ -34,6 +34,10 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
   // Infinite scroll sentinel ref
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // Store controller in ref so observer always has latest values
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+
   // Infinite scroll: auto-load more when sentinel comes into view
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -41,8 +45,9 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && controller.hasMore && !controller.loading) {
-          controller.loadMore();
+        const ctrl = controllerRef.current;
+        if (entries[0].isIntersecting && ctrl.hasMore && !ctrl.loading) {
+          ctrl.loadMore();
         }
       },
       { rootMargin: '400px' } // Start loading 400px before reaching the sentinel
@@ -53,7 +58,7 @@ export function RemoteGallerySource({ layout, cardSize }: RemoteGallerySourcePro
     return () => {
       observer.disconnect();
     };
-  }, []); // Empty deps - observer checks controller state on each intersection
+  }, []); // Empty deps OK - uses ref for latest controller values
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
