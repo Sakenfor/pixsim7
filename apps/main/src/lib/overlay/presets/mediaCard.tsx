@@ -5,10 +5,15 @@
  * the legacy badge configuration system.
  */
 
-import type { OverlayPreset, OverlayConfiguration } from '../types';
+import type { OverlayPreset, OverlayConfiguration, OverlayWidget } from '../types';
 import { createBadgeWidget, BadgePresets } from '../widgets/BadgeWidget';
 import { createButtonWidget } from '../widgets/ButtonWidget';
 import { createPanelWidget } from '../widgets/PanelWidget';
+
+// Helper to tag preset-defined widgets for linting/debugging
+function asMediaCardPresetWidget(widget: OverlayWidget): OverlayWidget {
+  return { ...widget, group: 'media-card-preset' };
+}
 
 /**
  * Default / Full Featured
@@ -27,17 +32,19 @@ export const defaultPreset: OverlayPreset = {
     spacing: 'normal',
     widgets: [
       // Primary media type icon - top-left
-      createBadgeWidget({
-        id: 'primary-icon',
-        position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon',
-        icon: 'video', // Will be dynamic based on media type
-        color: 'primary',
-        shape: 'circle',
-        tooltip: 'Media type',
-        priority: 10,
-      }),
+      asMediaCardPresetWidget(
+        createBadgeWidget({
+          id: 'primary-icon',
+          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+          visibility: { trigger: 'always' },
+          variant: 'icon',
+          icon: 'video', // Will be dynamic based on media type
+          color: 'primary',
+          shape: 'circle',
+          tooltip: 'Media type',
+          priority: 10,
+        }),
+      ),
 
       // Note: tag display for the default preset is handled by
       // runtime widgets (e.g., technical tags tooltip) to keep the
@@ -62,17 +69,19 @@ export const minimalPreset: OverlayPreset = {
     description: 'Clean interface with only essential information',
     spacing: 'compact',
     widgets: [
-      createBadgeWidget({
-        id: 'primary-icon',
-        position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon',
-        icon: 'image',
-        color: 'neutral',
-        shape: 'circle',
-        priority: 10,
-        className: 'opacity-60',
-      }),
+      asMediaCardPresetWidget(
+        createBadgeWidget({
+          id: 'primary-icon',
+          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+          visibility: { trigger: 'always' },
+          variant: 'icon',
+          icon: 'image',
+          color: 'neutral',
+          shape: 'circle',
+          priority: 10,
+          className: 'opacity-60',
+        }),
+      ),
     ],
   },
 };
@@ -93,16 +102,18 @@ export const compactPreset: OverlayPreset = {
     description: 'Balanced view with essential badges',
     spacing: 'compact',
     widgets: [
-      createBadgeWidget({
-        id: 'primary-icon',
-        position: { anchor: 'top-left', offset: { x: 6, y: 6 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon',
-        icon: 'video',
-        color: 'primary',
-        shape: 'circle',
-        priority: 10,
-      }),
+      asMediaCardPresetWidget(
+        createBadgeWidget({
+          id: 'primary-icon',
+          position: { anchor: 'top-left', offset: { x: 6, y: 6 } },
+          visibility: { trigger: 'always' },
+          variant: 'icon',
+          icon: 'video',
+          color: 'primary',
+          shape: 'circle',
+          priority: 10,
+        }),
+      ),
     ],
   },
 };
@@ -123,37 +134,43 @@ export const detailedPreset: OverlayPreset = {
     description: 'Maximum information with all available data',
     spacing: 'normal',
     widgets: [
-      createBadgeWidget({
-        id: 'primary-icon',
-        position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon-text',
-        icon: 'video',
-        label: (data) => data.mediaType,
-        color: 'primary',
-        shape: 'rounded',
-        priority: 10,
-      }),
+      asMediaCardPresetWidget(
+        createBadgeWidget({
+          id: 'primary-icon',
+          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
+          visibility: { trigger: 'always' },
+          variant: 'icon-text',
+          icon: 'video',
+          label: (data) => data.mediaType,
+          color: 'primary',
+          shape: 'rounded',
+          priority: 10,
+        }),
+      ),
 
       // Note: Status badge is handled by MediaCard runtime widgets
       // to avoid overlap with status-menu
 
-      createPanelWidget({
-        id: 'metadata-panel',
-        position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-        visibility: { trigger: 'always' },
-        title: 'Metadata',
-        variant: 'glass',
-        content: (data) => (
-          <div className="space-y-1 text-xs">
-            <div>Provider: {data.provider}</div>
-            <div>Type: {data.mediaType}</div>
-            <div>Size: {data.size}</div>
-            {data.duration && <div>Duration: {data.duration}</div>}
-          </div>
-        ),
-        priority: 5,
-      }),
+      // Use bottom-center to avoid overlapping MediaCard's runtime
+      // upload/tag widgets at bottom-left.
+      asMediaCardPresetWidget(
+        createPanelWidget({
+          id: 'metadata-panel',
+          position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
+          visibility: { trigger: 'always' },
+          title: 'Metadata',
+          variant: 'glass',
+          content: (data) => (
+            <div className="space-y-1 text-xs">
+              <div>Provider: {data.provider}</div>
+              <div>Type: {data.mediaType}</div>
+              <div>Size: {data.size}</div>
+              {data.duration && <div>Duration: {data.duration}</div>}
+            </div>
+          ),
+          priority: 5,
+        }),
+      ),
     ],
   },
 };
@@ -173,54 +190,8 @@ export const generationPreset: OverlayPreset = {
     name: 'Generation Focused',
     description: 'Optimized for AI generation workflows',
     spacing: 'normal',
-    widgets: [
-      createBadgeWidget({
-        id: 'media-type',
-        position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon',
-        icon: 'video',
-        color: 'primary',
-        shape: 'circle',
-        priority: 10,
-      }),
-
-      createButtonWidget({
-        id: 'quick-generate',
-        position: { anchor: 'center' },
-        visibility: { trigger: 'hover-container', transition: 'scale' },
-        icon: 'zap',
-        label: 'Quick Generate',
-        variant: 'primary',
-        size: 'lg',
-        onClick: (data) => console.log('Quick generate', data),
-        priority: 20,
-      }),
-
-      createButtonWidget({
-        id: 'extend-video',
-        position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-        visibility: { trigger: 'hover-container', transition: 'fade' },
-        icon: 'arrowRight',
-        label: 'Extend',
-        variant: 'secondary',
-        size: 'sm',
-        onClick: (data) => console.log('Extend', data),
-        priority: 10,
-      }),
-
-      createButtonWidget({
-        id: 'add-transition',
-        position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-        visibility: { trigger: 'hover-container', transition: 'fade' },
-        icon: 'link',
-        label: 'Transition',
-        variant: 'secondary',
-        size: 'sm',
-        onClick: (data) => console.log('Add transition', data),
-        priority: 10,
-      }),
-    ],
+    // Rely entirely on MediaCard runtime widgets (primary icon, generation menu, etc.)
+    widgets: [],
   },
 };
 
@@ -239,42 +210,53 @@ export const reviewPreset: OverlayPreset = {
     name: 'Review Mode',
     description: 'Optimized for content review and approval',
     spacing: 'normal',
+    collisionDetection: true,
     widgets: [
-      createBadgeWidget({
-        id: 'review-status',
-        position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
-        visibility: { trigger: 'always' },
-        variant: 'icon-text',
-        icon: 'eye',
-        label: 'Review',
-        color: 'warning',
-        shape: 'rounded',
-        priority: 15,
-      }),
+      asMediaCardPresetWidget(
+        createBadgeWidget({
+          id: 'review-status',
+          position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+          visibility: { trigger: 'always' },
+          variant: 'icon-text',
+          icon: 'eye',
+          label: 'Review',
+          color: 'warning',
+          shape: 'rounded',
+          priority: 15,
+        }),
+      ),
 
-      createButtonWidget({
-        id: 'approve',
-        position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-        visibility: { trigger: 'hover-container' },
-        icon: 'check',
-        label: 'Approve',
-        variant: 'primary',
-        size: 'sm',
-        onClick: (data) => console.log('Approve', data),
-        priority: 10,
-      }),
+      asMediaCardPresetWidget(
+        createButtonWidget({
+          id: 'approve',
+          // Slightly above the bottom-left reserved upload/tag slot
+          position: { anchor: 'bottom-left', offset: { x: 8, y: -32 } },
+          visibility: { trigger: 'hover-container' },
+          icon: 'check',
+          label: 'Approve',
+          tooltip: 'Mark asset as approved (review UI)',
+          variant: 'primary',
+          size: 'sm',
+          onClick: (data) => console.log('Approve', data),
+          priority: 10,
+        }),
+      ),
 
-      createButtonWidget({
-        id: 'reject',
-        position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-        visibility: { trigger: 'hover-container' },
-        icon: 'x',
-        label: 'Reject',
-        variant: 'danger',
-        size: 'sm',
-        onClick: (data) => console.log('Reject', data),
-        priority: 10,
-      }),
+      asMediaCardPresetWidget(
+        createButtonWidget({
+          id: 'reject',
+          // Slightly above the bottom-right reserved duration slot
+          position: { anchor: 'bottom-right', offset: { x: -8, y: -32 } },
+          visibility: { trigger: 'hover-container' },
+          icon: 'x',
+          label: 'Reject',
+          tooltip: 'Mark asset as rejected (review UI)',
+          variant: 'danger',
+          size: 'sm',
+          onClick: (data) => console.log('Reject', data),
+          priority: 10,
+        }),
+      ),
     ],
   },
 };

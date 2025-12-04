@@ -10,6 +10,7 @@
  */
 
 import type { ComponentType } from 'react';
+import type { MediaCardBadgeConfig } from '../../components/media/MediaCard';
 
 /**
  * Gallery surface identifier
@@ -73,14 +74,7 @@ export interface GallerySurfaceDefinition {
   defaultTools?: string[];
 
   /** Badge configuration for media cards in this surface */
-  badgeConfig?: {
-    showPrimaryIcon?: boolean;      // default true
-    showStatusIcon?: boolean;       // default true
-    showStatusTextOnHover?: boolean; // default true
-    showTagsInOverlay?: boolean;    // default true
-    showFooterProvider?: boolean;   // default true
-    showFooterDate?: boolean;       // default true
-  };
+  badgeConfig?: Partial<MediaCardBadgeConfig>;
 
   /** Lifecycle: Called when surface is entered/mounted */
   onEnter?: () => void | Promise<void>;

@@ -10,6 +10,9 @@ from typing import Dict, Any
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import ProviderAccount
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
+from pixsim7.backend.main.services.provider.provider_logging import (
+    log_provider_error,
+)
 
 logger = get_logger()
 
@@ -64,6 +67,17 @@ class PixverseAuthMixin:
                 api = PixverseAPI()
                 user_info_data = api.get_user_info(temp_account)
             except Exception as e:  # pragma: no cover - defensive fallback
+                # No account ID/email here, but still record a normalized provider error.
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="get_user_info",
+                    stage="provider:status",
+                    account_id=None,
+                    email=None,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    severity="warning",
+                )
                 logger.warning(f"PixverseAPI get_user_info failed: {e}")
                 user_info_data = {}
 
@@ -295,6 +309,20 @@ class PixverseAuthMixin:
             )
 
         except Exception as e:
+            log_provider_error(
+                provider_id="pixverse",
+                operation="get_user_info_extract",
+                stage="provider:status",
+                account_id=None,
+                email=fallback_email,
+                error=str(e),
+                error_type=type(e).__name__,
+                extra={
+                    "has_jwt": bool(ai_token),
+                    "jwt_length": len(ai_token) if ai_token else 0,
+                },
+                severity="warning",
+            )
             logger.warning(
                 "pixverse_get_user_info_failed",
                 error=str(e),
@@ -349,6 +377,15 @@ class PixverseAuthMixin:
                         account_id = str(jwt_account_id) if jwt_account_id else None
 
             except Exception as jwt_error:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="parse_jwt",
+                    stage="provider:status",
+                    account_id=None,
+                    email=fallback_email,
+                    error=str(jwt_error),
+                    error_type=jwt_error.__class__.__name__,
+                )
                 logger.error(f"[Pixverse] JWT parsing also failed: {jwt_error}", exc_info=True)
 
         if not email:
@@ -369,6 +406,21 @@ class PixverseAuthMixin:
                 )
                 email = username
             else:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="extract_account_data",
+                    stage="provider:status",
+                    account_id=None,
+                    email=fallback_email,
+                    error="email_extraction_failed",
+                    error_type="EmailExtractionError",
+                    extra={
+                        "has_jwt": bool(ai_token),
+                        "has_username": bool(username),
+                        "has_account_id": bool(account_id),
+                        "getUserInfo_attempted": True,
+                    },
+                )
                 logger.error(
                     "pixverse_email_extraction_failed",
                     has_jwt=bool(ai_token),

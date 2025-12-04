@@ -36,6 +36,12 @@ interface GenerationPreviewPanelProps {
 
   /** Workspace ID (optional) */
   workspaceId?: number;
+
+  /** Provider ID for generation (e.g., 'pixverse') */
+  providerId?: string;
+
+  /** Generation parameters from shared settings (model, quality, duration, multi_shot, audio, off_peak, etc.) */
+  generationParams?: Record<string, any>;
 }
 
 export function GenerationPreviewPanel({
@@ -44,6 +50,8 @@ export function GenerationPreviewPanel({
   worldMaxRating,
   userMaxRating,
   workspaceId,
+  providerId,
+  generationParams,
 }: GenerationPreviewPanelProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewResult, setPreviewResult] = useState<IntimacyPreviewResult | null>(null);
@@ -72,6 +80,8 @@ export function GenerationPreviewPanel({
         worldMaxRating,
         userMaxRating,
         workspaceId,
+        providerId,
+        generationParams,
       });
 
       setPreviewResult(result);

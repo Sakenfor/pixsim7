@@ -199,6 +199,103 @@ async def poll_job_statuses(ctx: dict) -> dict:
             await db.close()
 
 
+async def requeue_pending_generations(ctx: dict) -> dict:
+    """
+    Re-queue stuck PENDING generations.
+
+    This runs periodically to find generations that:
+    1. Are in PENDING status
+    2. Have been pending for more than STALE_THRESHOLD_SECONDS
+    3. Are not scheduled for the future
+
+    These generations likely failed to enqueue properly when created
+    (e.g., worker was down, Redis was unavailable).
+
+    Args:
+        ctx: ARQ worker context
+
+    Returns:
+        dict with requeue statistics
+    """
+    STALE_THRESHOLD_SECONDS = 60  # Consider pending > 1 minute as stuck
+    MAX_REQUEUE_PER_RUN = 10  # Limit to avoid overwhelming the queue
+
+    requeued = 0
+    skipped = 0
+    errors = 0
+
+    async for db in get_db():
+        try:
+            from datetime import timedelta
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            # Find stale PENDING generations
+            threshold = datetime.utcnow() - timedelta(seconds=STALE_THRESHOLD_SECONDS)
+
+            result = await db.execute(
+                select(Generation)
+                .where(Generation.status == GenerationStatus.PENDING)
+                .where(Generation.created_at < threshold)
+                .where(
+                    (Generation.scheduled_at == None) |
+                    (Generation.scheduled_at <= datetime.utcnow())
+                )
+                .order_by(Generation.created_at)
+                .limit(MAX_REQUEUE_PER_RUN)
+            )
+            stuck_generations = list(result.scalars().all())
+
+            if not stuck_generations:
+                logger.debug("requeue_idle", msg="No stuck pending generations found")
+                return {"requeued": 0, "skipped": 0, "errors": 0}
+
+            logger.info("requeue_found_stuck", count=len(stuck_generations))
+
+            # Get ARQ pool for enqueueing
+            try:
+                arq_pool = await get_arq_pool()
+            except Exception as e:
+                logger.error("requeue_pool_error", error=str(e))
+                return {"requeued": 0, "skipped": 0, "errors": len(stuck_generations)}
+
+            for generation in stuck_generations:
+                try:
+                    # Check if already in queue (avoid duplicates)
+                    # ARQ doesn't have a great way to check this, so we just requeue
+                    # The job processor will skip if status changed
+
+                    await arq_pool.enqueue_job(
+                        "process_generation",
+                        generation_id=generation.id,
+                    )
+
+                    logger.info("requeue_generation", generation_id=generation.id,
+                               age_seconds=(datetime.utcnow() - generation.created_at).total_seconds())
+                    requeued += 1
+
+                except Exception as e:
+                    logger.error("requeue_generation_error",
+                               generation_id=generation.id, error=str(e))
+                    errors += 1
+
+            stats = {
+                "requeued": requeued,
+                "skipped": skipped,
+                "errors": errors,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            logger.info("requeue_complete", **stats)
+            return stats
+
+        except Exception as e:
+            logger.error("requeue_error", error=str(e), exc_info=True)
+            raise
+
+        finally:
+            await db.close()
+
+
 async def on_startup(ctx: dict) -> None:
     """ARQ worker startup"""
     logger.info("status_poller_started")

@@ -13,6 +13,8 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  ArrowLeft,
+  ArrowRight,
   Download,
   Video,
   Camera,
@@ -110,6 +112,7 @@ export const Icons = {
   unpin: Pin,
   check: Check,
   close: X,
+  x: X,
   add: Plus,
   remove: Minus,
   delete: Trash,
@@ -181,6 +184,8 @@ export const Icons = {
   chevronRight: ChevronRight,
   chevronUp: ChevronUp,
   chevronDown: ChevronDown,
+  arrowLeft: ArrowLeft,
+  arrowRight: ArrowRight,
 
   // Misc
   folderTree: FolderTree,

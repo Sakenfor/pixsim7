@@ -323,6 +323,31 @@ registerOverlayWidgets();
 
 ---
 
+## MediaCard Runtime Widgets & Reserved Positions
+
+MediaCard uses a set of runtime widgets that are always attached by the component itself (status, duration, upload, etc.). These widgets are tagged with `group === 'media-card-runtime'` in the overlay configuration.
+
+Default runtime positions:
+
+- `top-left`, offset `{ x: 8, y: 8 }` – primary media-type icon.
+- `top-right`, offset `{ x: -8, y: 8 }` – provider status badge / menu.
+- `top-right`, offset `{ x: -8, y: 48 }` – provider label badge (hover-only).
+- `bottom-right`, offset `{ x: -4, y: -4 }` – duration badge (videos only).
+- `bottom-right`, offset `{ x: -8, y: -8 }` – generic generation menu button.
+- `bottom-left`, offset `{ x: 8, y: -8 }` – upload button and technical-tags tooltip.
+- `top-left`, offset `{ x: 0, y: 0 }` – video scrub overlay (covers the media on hover).
+
+Guidelines when creating MediaCard presets or custom configs:
+
+- Avoid placing static widgets exactly at these positions unless you intentionally override a runtime widget.
+- To intentionally override a runtime widget, either:
+  - Reuse its `id` so your preset widget replaces the runtime one, or
+  - Disable the runtime widget via `badgeConfig` / preset-specific logic.
+- Prefer enabling `collisionDetection` on MediaCard overlays when you add many widgets near the same anchor, and use `priority` to control which widget should stay closest to the reserved position.
+- The validator will emit `PRESET_AT_RESERVED_POSITION` when a non-runtime widget shares an exact position with a MediaCard runtime widget and `collisionDetection` is disabled.
+
+---
+
 ## Non-Goals / Out of Scope
 
 - Full HUD editor integration (covered by Task 101+)

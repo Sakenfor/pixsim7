@@ -32,7 +32,7 @@ import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import { ThemedIcon } from '@/lib/icons';
 import { resolveMediaBadgeConfig } from './mediaBadgeConfig';
-import { createDefaultMediaCardWidgets } from './mediaCardWidgets';
+import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 
 export interface MediaCardActions {
   onOpenDetails?: (id: number) => void;
@@ -166,8 +166,17 @@ export function MediaCard(props: MediaCardProps) {
 
   // Build overlay configuration dynamically
   const overlayConfig: OverlayConfiguration = useMemo(() => {
+    const effectivePresetId =
+      overlayPresetId ||
+      customOverlayConfig?.id ||
+      'media-card-default';
+
     // Get default widgets from factory
-    const defaultWidgets = createDefaultMediaCardWidgets(props);
+    // Pass effectivePresetId through so runtime widgets can adapt
+    const defaultWidgets = createDefaultMediaCardWidgets({
+      ...props,
+      overlayPresetId: effectivePresetId,
+    });
 
     // Merge with custom widgets (custom widgets replace default by id)
     const widgetMap = new Map<string, OverlayWidget>();
@@ -188,33 +197,52 @@ export function MediaCard(props: MediaCardProps) {
       spacing: customOverlayConfig?.spacing || 'normal',
     };
 
-    // Resolve overlay preset ID
-    const presetId =
-      overlayPresetId ||
-      customOverlayConfig?.id ||
-      'media-card-default';
-
     // Get preset configuration
     const preset =
-      getMediaCardPreset(presetId) ??
+      getMediaCardPreset(effectivePresetId) ??
       { configuration: getDefaultMediaCardConfig() };
 
     // Merge preset configuration with runtime widgets
     const merged = mergeConfigurations(preset.configuration, baseConfig);
 
-    // Apply custom overlay config overrides
-    return {
+    // Apply custom overlay config overrides and ensure sensible defaults
+    let result: OverlayConfiguration = {
       ...merged,
-      id: customOverlayConfig?.id || merged.id,
-      name: customOverlayConfig?.name || merged.name,
-      spacing: customOverlayConfig?.spacing || merged.spacing,
+      id: customOverlayConfig?.id || merged.id || 'media-card-default-runtime',
+      name: customOverlayConfig?.name || merged.name || 'Media Card',
+      spacing: customOverlayConfig?.spacing || merged.spacing || 'normal',
+      // Default to enabling collision detection unless explicitly disabled
+      collisionDetection: merged.collisionDetection ?? true,
     };
+
+    // As a safety net, enforce preset-specific widget rules at the configuration
+    // level so we don't accidentally leak preset-specific widgets into other
+    // presets even if runtime factories misbehave.
+    if (result.id !== 'media-card-generation') {
+      result = {
+        ...result,
+        widgets: result.widgets.filter((w) => w.id !== 'generation-menu'),
+      };
+    }
+
+    if (result.id === 'media-card-review') {
+      // Review mode relies on its own approve/reject controls; remove generic
+      // upload/technical-tag widgets if any slipped through.
+      result = {
+        ...result,
+        widgets: result.widgets.filter(
+          (w) => w.id !== 'upload-button' && w.id !== 'technical-tags',
+        ),
+      };
+    }
+
+    return result;
   }, [props, customWidgets, customOverlayConfig, overlayPresetId]);
 
   // Prepare data for overlay widgets
   // This object is passed to ALL widget render functions
   // Widgets can use function-based configs to reactively access this data
-  const overlayData = {
+  const overlayData: MediaCardOverlayData = {
     id,
     mediaType,
     providerId,

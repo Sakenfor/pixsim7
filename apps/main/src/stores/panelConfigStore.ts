@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 import type { PanelId } from './workspaceStore';
 import { pluginCatalog } from '../lib/plugins/pluginSystem';
+import type { MediaCardBadgeConfig } from '../components/media/MediaCard';
 
 /**
  * Panel Configuration Store
@@ -67,17 +68,10 @@ export interface PanelConfigActions {
 // Gallery panel badge configuration
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
-  badgeConfig?: {
-    showPrimaryIcon?: boolean;
-    showStatusIcon?: boolean;
-    showStatusTextOnHover?: boolean;
-    showTagsInOverlay?: boolean;
-    showFooterProvider?: boolean;
-    showFooterDate?: boolean;
-  };
+  badgeConfig?: Partial<MediaCardBadgeConfig>;
 }
 
-const defaultGalleryBadgeConfig = {
+const defaultGalleryBadgeConfig: Partial<MediaCardBadgeConfig> = {
   showPrimaryIcon: true,
   showStatusIcon: true,
   showStatusTextOnHover: true,

@@ -37,6 +37,12 @@ export interface IntimacyPreviewRequest {
 
   /** Workspace ID for tracking (optional) */
   workspaceId?: number;
+
+  /** Provider ID for generation (e.g., 'pixverse') */
+  providerId?: string;
+
+  /** Generation parameters from shared settings (model, quality, duration, etc.) */
+  generationParams?: Record<string, any>;
 }
 
 /**
@@ -108,7 +114,7 @@ export async function generateIntimacyPreview(
   request: IntimacyPreviewRequest,
   options?: PreviewPollingOptions
 ): Promise<IntimacyPreviewResult> {
-  const { scene, relationshipState, worldMaxRating, userMaxRating, workspaceId } = request;
+  const { scene, relationshipState, worldMaxRating, userMaxRating, workspaceId, providerId, generationParams } = request;
 
   // Derive social context from relationship state
   const socialContext = deriveSocialContext(
@@ -141,8 +147,10 @@ export async function generateIntimacyPreview(
       enabled: true,
       version: 1,
       socialContext,
+      // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
+      provider_params: generationParams || {},
     },
-    provider_id: 'mock_provider', // TODO: Make configurable
+    provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,
     workspace_id: workspaceId,
     name: `Intimacy Preview: ${scene.name || 'Unnamed Scene'}`,
@@ -213,7 +221,7 @@ export async function generateIntimacyPreview(
 export async function startIntimacyPreview(
   request: IntimacyPreviewRequest
 ): Promise<{ generationId: number; result: IntimacyPreviewResult }> {
-  const { scene, relationshipState, worldMaxRating, userMaxRating, workspaceId } = request;
+  const { scene, relationshipState, worldMaxRating, userMaxRating, workspaceId, providerId, generationParams } = request;
 
   // Derive social context
   const socialContext = deriveSocialContext(
@@ -246,8 +254,10 @@ export async function startIntimacyPreview(
       enabled: true,
       version: 1,
       socialContext,
+      // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
+      provider_params: generationParams || {},
     },
-    provider_id: 'mock_provider', // TODO: Make configurable
+    provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,
     workspace_id: workspaceId,
     name: `Intimacy Preview: ${scene.name || 'Unnamed Scene'}`,

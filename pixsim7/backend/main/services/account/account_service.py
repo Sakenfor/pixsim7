@@ -153,6 +153,69 @@ class AccountService:
 
         return account
 
+    async def select_and_reserve_account(
+        self,
+        provider_id: str,
+        user_id: Optional[int] = None,
+    ) -> ProviderAccount:
+        """
+        Atomically select and reserve an account.
+
+        Uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions when
+        multiple jobs try to select accounts simultaneously.
+
+        Args:
+            provider_id: Provider ID (e.g., "pixverse")
+            user_id: User ID (optional, for private accounts)
+
+        Returns:
+            Reserved account with incremented concurrency counter
+
+        Raises:
+            NoAccountAvailableError: No suitable account found
+        """
+        now = datetime.utcnow()
+
+        # Build query with row-level locking
+        query = select(ProviderAccount).where(
+            ProviderAccount.provider_id == provider_id,
+            ProviderAccount.status == AccountStatus.ACTIVE,
+            ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs,
+            (ProviderAccount.cooldown_until == None) | (ProviderAccount.cooldown_until < now),
+        )
+
+        # Add user filter
+        if user_id:
+            query = query.where(
+                (ProviderAccount.user_id == user_id) | (ProviderAccount.is_private == False)
+            )
+        else:
+            query = query.where(ProviderAccount.is_private == False)
+
+        # Sort by priority, least recently used
+        query = query.order_by(
+            ProviderAccount.priority.desc(),
+            ProviderAccount.last_used.asc().nullsfirst()
+        )
+
+        # Lock and skip already-locked rows (concurrent jobs will get different accounts)
+        query = query.with_for_update(skip_locked=True).limit(1)
+
+        result = await self.db.execute(query)
+        account = result.scalar_one_or_none()
+
+        if not account:
+            raise NoAccountAvailableError(provider_id)
+
+        # Reserve the account
+        account.current_processing_jobs += 1
+        account.last_used = now
+
+        await self.db.commit()
+        await self.db.refresh(account)
+
+        return account
+
     async def release_account(self, account_id: int) -> ProviderAccount:
         """
         Release account after job (decrement concurrency counter)
@@ -182,6 +245,36 @@ class AccountService:
             raise ResourceNotFoundError("ProviderAccount", account_id)
 
         account.current_processing_jobs = max(0, account.current_processing_jobs - 1)
+
+        await self.db.commit()
+        await self.db.refresh(account)
+
+        return account
+
+    async def mark_exhausted(self, account_id: int) -> ProviderAccount:
+        """
+        Mark account as exhausted (no credits remaining).
+
+        Args:
+            account_id: Account ID
+
+        Returns:
+            Updated account
+
+        Raises:
+            ResourceNotFoundError: Account not found
+        """
+        query = select(ProviderAccount).where(
+            ProviderAccount.id == account_id
+        ).with_for_update()
+
+        result = await self.db.execute(query)
+        account = result.scalar_one_or_none()
+
+        if not account:
+            raise ResourceNotFoundError("ProviderAccount", account_id)
+
+        account.status = AccountStatus.EXHAUSTED
 
         await self.db.commit()
         await self.db.refresh(account)

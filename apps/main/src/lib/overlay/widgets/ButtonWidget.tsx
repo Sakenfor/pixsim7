@@ -90,7 +90,7 @@ export function createButtonWidget(config: ButtonWidgetConfig): OverlayWidget {
     interactive: true,
     handlesOwnInteraction: true, // Button handles its own click
     ariaLabel: tooltip,
-    tabIndex: 0,
+    // Let the inner shared Button handle focus/tab order
     render: (data, context) => {
       const resolvedLabel = resolveDataBinding(labelBinding, data);
 

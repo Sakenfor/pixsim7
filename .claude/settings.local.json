@@ -42,7 +42,13 @@
       "Bash(node:*)",
       "Bash(python3:*)",
       "Bash(pnpm exec vite build:*)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "WebFetch(domain:arq-docs.helpmanual.io)",
+      "Bash(git -C G:/code/pixsim7 status)",
+      "Bash(git -C G:/code/pixsim7 diff apps/main/src/components/media/mediaCardWidgets.ts)",
+      "Bash(git -C G:/code/pixsim7 log --oneline -10)",
+      "Bash(git -C G:/code/pixsim7 add apps/main/src/components/media/mediaCardWidgets.ts)",
+      "Bash(git -C G:/code/pixsim7 commit -m \"$(cat <<''EOF''\nFix Generation menu hover-only visibility\n\nThe Generate button was always visible instead of appearing only on\nhover. Root cause: using transition: ''fade'' (opacity-based) instead of\nmatching Review preset''s approach (display-based).\n\nChanges:\n- Remove transition: ''fade'' from generation-menu visibility config\n- Now uses display: none when hidden (matches Review buttons)\n- Always include primary icon for all presets (including Generation)\n- Add runtime widget group tagging for validation\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

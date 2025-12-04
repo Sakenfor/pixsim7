@@ -17,6 +17,7 @@ from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
     AccountCooldownError,
+    AccountExhaustedError,
     ProviderError,
 )
 from pixsim7.backend.main.services.submission.pipeline import GenerationSubmissionPipeline, is_enabled as pipeline_enabled
@@ -38,6 +39,60 @@ def _get_worker_logger():
 logger = _get_worker_logger()
 
 
+async def refresh_account_credits(
+    account: ProviderAccount,
+    account_service: AccountService,
+    gen_logger,
+) -> dict:
+    """
+    Refresh credits for an account from the provider.
+
+    Returns dict with credit amounts, or empty dict on failure.
+    """
+    from pixsim7.backend.main.services.provider.registry import registry
+
+    try:
+        provider = registry.get(account.provider_id)
+
+        # Use get_credits_basic (faster, no ad-task lookup)
+        if hasattr(provider, 'get_credits_basic'):
+            credits_data = await provider.get_credits_basic(account, retry_on_session_error=False)
+        elif hasattr(provider, 'get_credits'):
+            credits_data = await provider.get_credits(account)
+        else:
+            gen_logger.debug("provider_no_credits_method", provider_id=account.provider_id)
+            return {}
+
+        # Update credits in database
+        if credits_data:
+            for credit_type, amount in credits_data.items():
+                if credit_type in ('web', 'webapi', 'openapi', 'standard'):
+                    # Map 'web' to 'webapi' for consistency
+                    db_credit_type = 'webapi' if credit_type == 'web' else credit_type
+                    try:
+                        await account_service.set_credit(account.id, db_credit_type, int(amount))
+                    except Exception as e:
+                        gen_logger.warning("credit_update_failed", credit_type=db_credit_type, error=str(e))
+
+            gen_logger.info("credits_refreshed", account_id=account.id, credits=credits_data)
+
+        return credits_data or {}
+
+    except Exception as e:
+        gen_logger.warning("credits_refresh_failed", account_id=account.id, error=str(e))
+        return {}
+
+
+def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
+    """Check if account has any usable credits."""
+    # Check web/webapi credits (free tier)
+    web = credits_data.get('web', 0) or credits_data.get('webapi', 0)
+    # Check openapi credits (paid tier)
+    openapi = credits_data.get('openapi', 0)
+
+    return (web >= min_credits) or (openapi >= min_credits)
+
+
 async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
     Process a single generation
@@ -53,7 +108,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
     # Bind generation context for all logs in this function
     # Keep job_id in logs for backward compatibility with log analysis tools
-    gen_logger = bind_job_context(logger, job_id=generation_id, generation_id=generation_id)
+    gen_logger = bind_job_context(logger, job_id=generation_id)
     gen_logger.info("pipeline:start", msg="generation_processing_started")
 
     async for db in get_db():
@@ -113,9 +168,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
 
-            # Select account
+            # Select and reserve account atomically (prevents race conditions)
             try:
-                account = await account_service.select_account(
+                account = await account_service.select_and_reserve_account(
                     provider_id=generation.provider_id,
                     user_id=generation.user_id
                 )
@@ -124,6 +179,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 gen_logger.warning("no_account_available", error=str(e), error_type=e.__class__.__name__)
                 # Requeue generation for later (ARQ will retry)
                 raise
+
+            # Refresh credits BEFORE generation to verify account has credits
+            credits_data = await refresh_account_credits(account, account_service, gen_logger)
+            if credits_data and not has_sufficient_credits(credits_data):
+                gen_logger.warning("account_no_credits", account_id=account.id, credits=credits_data)
+                # Release this account and mark as exhausted
+                await account_service.release_account(account.id)
+                await account_service.mark_exhausted(account.id)
+                # Raise to retry with different account
+                raise AccountExhaustedError(f"Account {account.id} has no credits")
 
             # Mark generation as started
             await generation_service.mark_started(generation_id)
@@ -137,9 +202,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     params=generation.raw_params  # Use raw_params for legacy path
                 )
 
-                # Increment account's concurrent job count
-                account.current_processing_jobs += 1
-                await db.commit()
+                # Note: Concurrency was already incremented by select_and_reserve_account
 
                 gen_logger.info(
                     "provider:submit",
@@ -147,6 +210,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     account_id=account.id,
                     msg="generation_submitted_to_provider"
                 )
+
+                # Refresh credits AFTER successful submission
+                await refresh_account_credits(account, account_service, gen_logger)
 
                 # Track successful generation
                 get_health_tracker().increment_processed()
@@ -160,6 +226,15 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             except ProviderError as e:
                 gen_logger.error("provider:error", error=str(e), error_type=e.__class__.__name__)
                 await generation_service.mark_failed(generation_id, str(e))
+
+                # Release account reservation on failure
+                try:
+                    await account_service.release_account(account.id)
+                except Exception as release_err:
+                    gen_logger.warning("account_release_failed", error=str(release_err))
+
+                # Refresh credits AFTER failure (credits may have been deducted anyway)
+                await refresh_account_credits(account, account_service, gen_logger)
 
                 # Track failed generation
                 get_health_tracker().increment_failed()

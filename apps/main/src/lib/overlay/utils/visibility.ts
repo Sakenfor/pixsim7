@@ -294,7 +294,12 @@ export function validateVisibilityConfig(config: VisibilityConfig): string | nul
 }
 
 /**
- * Fallback for touch devices - converts hover triggers to always/focus
+ * Fallback for touch devices - converts some hover triggers to always/focus
+ *
+ * Note: We intentionally only adapt direct "hover" triggers here. Container-level
+ * hover (hover-container) is left untouched so that overlays which are meant to
+ * appear only when the whole card is hovered (e.g. MediaCard generation menu)
+ * do not become always-visible on hybrid/touch devices.
  */
 export function adaptVisibilityForTouch(config: VisibilityConfig): VisibilityConfig {
   if (typeof window === 'undefined') {
@@ -311,7 +316,7 @@ export function adaptVisibilityForTouch(config: VisibilityConfig): VisibilityCon
   // Convert hover triggers for touch devices
   const { trigger } = config;
 
-  if (trigger === 'hover' || trigger === 'hover-container' || trigger === 'hover-sibling') {
+  if (trigger === 'hover') {
     return {
       ...config,
       trigger: 'always', // Show always on touch devices

@@ -42,8 +42,17 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   );
   devLogParams(params, `generateAsset(${req.operationType})`);
 
-  // Map operation type to generation type
-  const generationType = req.operationType === 'video_transition' ? 'transition' : 'variation';
+  // Map control center operation type to unified generation_type
+  const generationType =
+    req.operationType === 'video_transition'
+      ? 'transition'
+      : req.operationType === 'image_to_video' || req.operationType === 'image_to_image'
+      ? 'npc_response'
+      : req.operationType === 'dialogue'
+      ? 'dialogue'
+      : req.operationType === 'environment'
+      ? 'environment'
+      : 'variation';
 
   // Build minimal generation config for legacy API
   const config = {

@@ -11,7 +11,7 @@ import type {
   ValidationError,
   WidgetStyle,
 } from '../types';
-import { WIDGET_Z_INDEX_RANGE, SIZE_VALUES } from '../types';
+import { WIDGET_Z_INDEX_RANGE, SIZE_VALUES, isOverlayPosition } from '../types';
 import { validatePosition } from './position';
 import { validateVisibilityConfig } from './visibility';
 
@@ -339,6 +339,49 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
         message: `Interactive widget ${widget.id} has no onClick handler and handlesOwnInteraction is not set`,
         severity: 'info',
       });
+    }
+  }
+
+  // Accessibility: too many interactive widgets can be overwhelming
+  const interactiveCount = config.widgets.filter((w) => w.interactive).length;
+  if (interactiveCount > 5) {
+    warnings.push({
+      code: 'TOO_MANY_INTERACTIVE_WIDGETS',
+      message: `Configuration has ${interactiveCount} interactive widgets. Consider simplifying interactions for accessibility.`,
+      severity: 'info',
+    });
+  }
+
+  // MediaCard-specific linting: reserved runtime positions
+  // MediaCard runtime widgets tag themselves with group === 'media-card-runtime'.
+  const hasMediaCardRuntimeWidgets = config.widgets.some(
+    (w) => w.group === 'media-card-runtime',
+  );
+
+  if (hasMediaCardRuntimeWidgets) {
+    const runtimePositionKeys = new Set<string>();
+
+    for (const widget of config.widgets) {
+      if (widget.group === 'media-card-runtime' && isOverlayPosition(widget.position)) {
+        runtimePositionKeys.add(JSON.stringify(widget.position));
+      }
+    }
+
+    for (const widget of config.widgets) {
+      if (widget.group === 'media-card-runtime') continue;
+      if (!isOverlayPosition(widget.position)) continue;
+
+      const posKey = JSON.stringify(widget.position);
+      if (runtimePositionKeys.has(posKey)) {
+        warnings.push({
+          widgetId: widget.id,
+          code: 'PRESET_AT_RESERVED_POSITION',
+          message: `Widget ${widget.id} uses a reserved MediaCard runtime position (${posKey}). Adjust anchor/offset, enable collisionDetection, or disable the conflicting runtime widget.`,
+          // Treat as informational for built-in presets to avoid noisy warnings,
+          // while still surfacing the issue in dev tools.
+          severity: 'info',
+        });
+      }
     }
   }
 

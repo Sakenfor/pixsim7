@@ -22,7 +22,7 @@ from arq import cron
 from arq.connections import RedisSettings
 from pixsim7.backend.main.workers.job_processor import process_generation
 from pixsim7.backend.main.workers.automation import process_automation, run_automation_loops, queue_pending_executions
-from pixsim7.backend.main.workers.status_poller import poll_job_statuses
+from pixsim7.backend.main.workers.status_poller import poll_job_statuses, requeue_pending_generations
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.shared.config import settings
 from pixsim_logging import configure_logging
@@ -42,11 +42,17 @@ async def startup(ctx: dict) -> None:
     health = get_health_tracker()
 
     logger.info("worker_start", msg="PixSim7 ARQ Worker Starting")
+
+    # Register providers (required for generation processing)
+    from pixsim7.backend.main.services.provider.registry import register_default_providers
+    register_default_providers()
+    logger.info("worker_providers_registered", msg="Provider plugins loaded")
     logger.info("worker_component_registered", component="process_generation")
     logger.info("worker_component_registered", component="process_automation")
     logger.info("worker_component_registered", component="poll_job_statuses", schedule="*/10s")
     logger.info("worker_component_registered", component="run_automation_loops", schedule="*/30s")
     logger.info("worker_component_registered", component="queue_pending_executions", schedule="*/15s")
+    logger.info("worker_component_registered", component="requeue_pending_generations", schedule="*/30s")
     logger.info("worker_component_registered", component="update_heartbeat", schedule="*/30s")
 
     # Send initial heartbeat
@@ -85,6 +91,7 @@ class WorkerSettings:
         poll_job_statuses,
         run_automation_loops,
         queue_pending_executions,
+        requeue_pending_generations,
     ]
 
     # Cron jobs (periodic tasks)
@@ -106,6 +113,12 @@ class WorkerSettings:
             queue_pending_executions,
             second={0, 15, 30, 45},  # Every 15 seconds
             run_at_startup=True,  # Check immediately on startup
+        ),
+        # Requeue stuck pending generations every 30 seconds
+        cron(
+            requeue_pending_generations,
+            second={15, 45},  # Every 30 seconds (offset from heartbeat)
+            run_at_startup=True,  # Check immediately on startup to pick up old stuck jobs
         ),
         # Update worker heartbeat every 30 seconds
         cron(

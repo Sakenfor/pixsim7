@@ -17,6 +17,10 @@ from pixsim7.backend.main.services.provider.base import (
     JobNotFoundError,
 )
 from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
+from pixsim7.backend.main.services.provider.provider_logging import (
+    log_provider_error,
+    log_provider_timeout,
+)
 
 logger = get_logger()
 
@@ -122,6 +126,15 @@ class PixverseOperationsMixin:
         except Exception as e:
             if self._is_session_invalid_error(e):
                 self._evict_account_cache(account)
+            log_provider_error(
+                provider_id="pixverse",
+                operation=operation_type.value,
+                stage="provider:submit",
+                account_id=account.id,
+                email=account.email,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
             logger.error(
                 "provider:error",
                 msg="pixverse_api_error",
@@ -301,6 +314,16 @@ class PixverseOperationsMixin:
                     video_id=provider_job_id,
                 )
             except Exception as exc:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="check_status",
+                    stage="provider:status",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    extra={"provider_job_id": provider_job_id},
+                )
                 logger.error(
                     "provider:status",
                     msg="status_check_failed",
@@ -421,6 +444,17 @@ class PixverseOperationsMixin:
 
             if is_provider_error:
                 # Provider-side error - log as warning without traceback
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="upload_asset",
+                    stage="provider:submit",
+                    account_id=account.id,
+                    email=account.email,
+                    error=error_msg,
+                    error_type=error_type,
+                    extra={"file_path": file_path},
+                    severity="warning",
+                )
                 logger.warning(
                     "upload_rejected_by_provider",
                     provider_id="pixverse",
@@ -430,6 +464,16 @@ class PixverseOperationsMixin:
                 raise ProviderError(f"Upload rejected by Pixverse: {error_msg}")
             else:
                 # Unexpected error - log as error with traceback
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="upload_asset",
+                    stage="provider:submit",
+                    account_id=account.id,
+                    email=account.email,
+                    error=error_msg,
+                    error_type=error_type,
+                    extra={"file_path": file_path},
+                )
                 logger.error(
                     "upload_asset_failed",
                     provider_id="pixverse",

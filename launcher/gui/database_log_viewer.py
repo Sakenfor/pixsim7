@@ -117,6 +117,14 @@ class DatabaseLogViewer(QWidget):
         self.level_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.level_combo)
 
+        # Provider
+        # Mirror common provider IDs used across the app; more can be added over time.
+        filter_bar.addWidget(QLabel('Provider:'))
+        self.provider_combo = self._styled_combo(['All', 'pixverse', 'runway', 'pika', 'sora'])
+        self.provider_combo.setMinimumWidth(110)
+        self.provider_combo.currentTextChanged.connect(self.refresh_logs)
+        filter_bar.addWidget(self.provider_combo)
+
         # Time
         filter_bar.addWidget(QLabel('Time:'))
         self.time_combo = self._styled_combo(['Last 5 min', 'Last 15 min', 'Last hour', 'Last 6 hours', 'Last 24 hours', 'All time'])
@@ -337,6 +345,7 @@ class DatabaseLogViewer(QWidget):
         """Reset all filters to default values."""
         self.service_combo.setCurrentText('All')
         self.level_combo.setCurrentText('All')
+        self.provider_combo.setCurrentText('All')
         self.stage_combo.setCurrentText('All')
         self.time_combo.setCurrentText('Last hour')
         self.limit_combo.setCurrentText('100')
@@ -382,6 +391,11 @@ class DatabaseLogViewer(QWidget):
             if level != 'All':
                 params['level'] = level
 
+            # Provider filter
+            provider = self.provider_combo.currentText()
+            if provider and provider != 'All':
+                params['provider_id'] = provider.lower()
+
             # Dynamic filter inputs
             for field_name, widget in self.dynamic_filter_inputs.items():
                 value = widget.text().strip()
@@ -420,6 +434,8 @@ class DatabaseLogViewer(QWidget):
             filter_info = []
             if service != 'All':
                 filter_info.append(f"service={service}")
+            if provider != 'All':
+                filter_info.append(f"provider={provider}")
             if level != 'All':
                 filter_info.append(f"level={level}")
             if search:

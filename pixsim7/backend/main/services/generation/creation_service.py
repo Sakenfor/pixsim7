@@ -306,7 +306,6 @@ class GenerationCreationService:
             await arq_pool.enqueue_job(
                 "process_generation",  # ARQ worker function (see workers/job_processor.py)
                 generation_id=generation.id,
-                _queue_name="default",
             )
             logger.info(f"Generation {generation.id} queued for processing")
         except Exception as e:

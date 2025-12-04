@@ -146,6 +146,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               onOpen={undefined}
               actions={controller.getAssetActions(a)}
               overlayConfig={overlayConfig}
+              overlayPresetId={overlayPresetId}
             />
           </div>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -225,6 +226,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               onOpen={() => controller.openInViewer(a)}
               actions={actions}
               overlayConfig={overlayConfig}
+              overlayPresetId={overlayPresetId}
             />
           );
         })()}

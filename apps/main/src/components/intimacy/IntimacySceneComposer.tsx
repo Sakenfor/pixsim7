@@ -554,6 +554,8 @@ export function IntimacySceneComposer({
                 worldMaxRating={worldMaxRating}
                 userMaxRating={userMaxRating}
                 workspaceId={workspaceId}
+                providerId={providerId}
+                generationParams={dynamicParams}
               />
             </div>
           </div>
