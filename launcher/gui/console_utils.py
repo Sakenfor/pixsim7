@@ -2,6 +2,12 @@
 import re
 from html import escape
 
+# Reuse shared header formatting where helpful to keep styles consistent
+try:
+    from .log_formatter import build_log_header_html
+except ImportError:  # pragma: no cover - fallback for direct execution
+    from log_formatter import build_log_header_html
+
 # Level detection patterns
 CONSOLE_LEVEL_PATTERNS = {
     "ERROR": re.compile(r"(?:\[(?:ERR|ERROR)\])|\b(?:ERR|ERROR)\b", re.IGNORECASE),
@@ -65,6 +71,18 @@ READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening
 ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
 WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
+# Structured key=value highlights (best-effort for important fields)
+STRUCT_FIELD_REGEX = re.compile(
+    r'\b(provider_id|job_id|submission_id|generation_id|error_type)=(\S+)',
+)
+STRUCT_FIELD_COLORS = {
+    "provider_id": "#4DD0E1",
+    "job_id": "#FFB74D",
+    "submission_id": "#FFB74D",
+    "generation_id": "#FFB74D",
+    "error_type": "#EF5350",
+}
+
 # ANSI / SGR detection and stripping
 ANSI_SGR_REGEX = re.compile(r'(\x1b\[|\[)([0-9;]{1,5})m')
 ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
@@ -104,6 +122,26 @@ def _apply_inline_highlighting(escaped_text: str) -> str:
     text = WARN_REGEX.sub(
         r'<span style="color: #FFB74D; font-weight: bold;">\1</span>', text
     )
+
+    # Highlight structured key=value fields (provider_id, job_id, etc.)
+    def _struct_repl(match: re.Match) -> str:
+        key, raw_value = match.group(1), match.group(2)
+        value = raw_value  # already HTML-escaped as part of escaped_text
+        color = STRUCT_FIELD_COLORS.get(key, "#4DD0E1")
+        # Make IDs clickable into DB log viewer via the launcher (dbfilter:// scheme)
+        if key in {"provider_id", "job_id", "submission_id", "generation_id"}:
+            href = f'dbfilter://{key}/{raw_value}'
+            value_html = (
+                f'<a href="{href}" '
+                f'style="color: {color}; font-weight: bold; text-decoration: underline;">{value}</a>'
+            )
+        else:
+            value_html = f'<span style="color: {color}; font-weight: bold;">{value}</span>'
+
+        return f'<span style="color: #888;">{key}=</span>{value_html}'
+
+    text = STRUCT_FIELD_REGEX.sub(_struct_repl, text)
+
     return text
 
 
@@ -251,11 +289,11 @@ def format_console_log_html_enhanced(log_lines) -> str:
         line_clean = strip_ansi(line)
 
         # Detect traceback lines for better visual grouping
-        is_traceback_line = line.strip().startswith(('File "', 'Traceback', '  File', 'at ')) or 'File "' in line
+        is_traceback_line = line.strip().startswith(('File "', 'Traceback', '  File', 'at ')) or 'Traceback (most recent call last)' in line
         is_exception_line = any(x in line for x in ('Error:', 'Exception:', 'Warning:'))
 
         # Start traceback block
-        if not in_traceback and (is_traceback_line or (is_exception_line and 'Traceback' in '\n'.join(str(l) for l in log_lines[max(0, log_lines.index(raw_line)-5):log_lines.index(raw_line)]))):
+        if not in_traceback and (is_traceback_line or is_exception_line):
             in_traceback = True
             html_lines.append('<div style="background-color: rgba(239,83,80,0.08); border-left: 4px solid #EF5350; margin: 8px 0; padding: 8px; border-radius: 4px;">')
         elif in_traceback and not is_traceback_line and not is_exception_line and line.strip() and not line.startswith(' '):
@@ -263,6 +301,7 @@ def format_console_log_html_enhanced(log_lines) -> str:
             html_lines.append('</div>')
             in_traceback = False
 
+        # Initial level and style
         line_level = detect_console_level(line_clean)
         style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
         border_color = style_def.get("accent", "#555")
@@ -274,8 +313,12 @@ def format_console_log_html_enhanced(log_lines) -> str:
         if bg_color:
             wrapper_style += f" background-color: {bg_color};"
 
+        # Parse time/tag/content
+        time = None
+        tag = None
+        content = line_clean
+
         # Try structured log format first (most specific)
-        # Use line_clean (ANSI-stripped) for regex matching
         structured_match = STRUCTURED_LOG_REGEX.match(line_clean)
         if structured_match:
             timestamp_str, level, content = structured_match.groups()
@@ -286,7 +329,8 @@ def format_console_log_html_enhanced(log_lines) -> str:
                 time_match = re.search(r'(\d{2}:\d{2}:\d{2})', timestamp_str)
                 time = time_match.group(1) if time_match else None
             tag = None
-            line_level = level.upper() if level.upper() in CONSOLE_LEVEL_STYLES else line_level
+            if level.upper() in CONSOLE_LEVEL_STYLES:
+                line_level = level.upper()
         else:
             # Try clean log format: [HH:MM:SS] LEVEL service event ...
             clean_match = CLEAN_LOG_REGEX.match(line_clean)
@@ -299,7 +343,6 @@ def format_console_log_html_enhanced(log_lines) -> str:
                     "WARN": "WARNING",
                     "CRIT": "CRITICAL",
                 }.get(level_upper, level_upper)
-                # Ensure the level is recognized
                 if level_normalized in CONSOLE_LEVEL_STYLES:
                     line_level = level_normalized
             else:
@@ -314,11 +357,7 @@ def format_console_log_html_enhanced(log_lines) -> str:
                         full_timestamp = f"{iso_match.group(1)}T{iso_match.group(2)}"
                         if iso_match.group(3):  # Has timezone indicator
                             full_timestamp += iso_match.group(3)
-                        # Convert UTC to local time
-                        time = convert_utc_to_local_time(full_timestamp)
-                        if not time:
-                            # Fallback: Just use HH:MM:SS part
-                            time = iso_match.group(2)
+                        time = convert_utc_to_local_time(full_timestamp) or iso_match.group(2)
                         tag = None
                         content = iso_match.group(4).strip() or line_clean
                     else:
@@ -334,41 +373,35 @@ def format_console_log_html_enhanced(log_lines) -> str:
                         else:
                             time, tag, content = None, None, line_clean
 
-        tag_color = '#f44336' if (tag or '').upper() == 'ERR' else '#4CAF50'
         time_display = time or '--:--:--'
+
+        # Extract an optional "service" token from the beginning of the content
+        service_label = ""
+        content_text = content or ""
+        if content_text:
+            parts = content_text.split(None, 1)
+            first = parts[0]
+            # Heuristic: treat first token as service/logger name if it's a short identifier
+            if re.match(r"^[A-Za-z][A-Za-z0-9_.:-]{0,15}$", first):
+                service_label = first
+                content_body = parts[1] if len(parts) > 1 else ""
+            else:
+                content_body = content_text
+        else:
+            content_body = ""
+
+        content_html = decorate_console_message(content_body or "")
+
+        # Build unified header using shared helper (timestamp + tag + level + service)
         tag_display = tag or 'LOG'
+        header_html = build_log_header_html(time_display, level=line_level, service=service_label, tag=tag_display)
 
-        content_html = decorate_console_message(content or "")
-
-        level_badge = ""
-        if line_level:
-            badge_color = style_def.get("accent", "#888")
-            level_badge = (
-                f'<span style="color: {badge_color}; border: 1px solid {badge_color};'
-                'border-radius: 4px; padding: 0 6px; font-size: 8pt; font-weight: bold;'
-                'min-width: 58px; text-align: center;">'
-                f'{line_level}'
-                '</span>'
-            )
-        level_html = level_badge or '<span style="display:inline-block; width: 60px;"></span>'
-
-        time_html = (
-            f'<span style="color: #888; display: inline-block; width: 80px;">[{time_display}]</span>'
-        )
-        tag_html = (
-            f'<span style="color: {tag_color}; font-weight: bold; display: inline-block; width: 60px; text-align: center;">'
-            f'[{tag_display}]'
-            '</span>'
-        )
         text_html = (
             f'<span style="color: #dcdcdc; white-space: pre-wrap;">{content_html}</span>'
         )
 
         html_lines.append(
-            f'<div style="{wrapper_style}">{time_html}&nbsp;'
-            f'{tag_html}&nbsp;'
-            f'{level_html}&nbsp;'
-            f'{text_html}</div>'
+            f'<div style="{wrapper_style}">{header_html}&nbsp;{text_html}</div>'
         )
 
     # Close traceback block if still open

@@ -181,6 +181,30 @@ class ServiceProcess:
         except Exception:
             pass
 
+    def attach_logs(self):
+        """
+        Attach to this service's log file even if the process was
+        started externally.
+
+        This starts the incremental file monitor so new lines written
+        to data/logs/console/{key}.log are reflected in the in-memory
+        buffer and console tab.
+        """
+        try:
+            if os.path.exists(self.log_file_path):
+                # Start tailing from the end to avoid replaying old lines
+                self._log_file_position = os.path.getsize(self.log_file_path)
+            else:
+                self._log_file_position = 0
+        except Exception:
+            self._log_file_position = 0
+
+        # Mark as externally managed so the UI can indicate this state
+        self.externally_managed = True
+
+        # Begin monitoring the log file for new content
+        self._start_log_monitor()
+
     def check_tool_availability(self) -> bool:
         if not self.defn.required_tool:
             self.tool_available = True

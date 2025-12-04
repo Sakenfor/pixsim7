@@ -116,12 +116,26 @@ class ConsoleTab:
         launcher.pause_logs_button.toggled.connect(launcher._on_pause_logs_changed)
         toolbar.addWidget(launcher.pause_logs_button)
 
+        # Attach logs button for externally started services
+        launcher.btn_attach_logs = QPushButton('Attach')
+        launcher.btn_attach_logs.setToolTip("Attach to this service's log file (useful if it was started externally)")
+        launcher.btn_attach_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
+        toolbar.addWidget(launcher.btn_attach_logs)
+
         toolbar.addStretch()
         console_layout.addLayout(toolbar)
 
         # Use unified LogViewWidget for smart scrolling
         launcher.log_view = LogViewWidget()
         launcher.log_view.setStyleSheet(theme.get_text_browser_stylesheet())
+        # Let launcher handle clicks (e.g., DB filters) instead of opening links directly
+        launcher.log_view.setOpenLinks(False)
+        launcher.log_view.setOpenExternalLinks(False)
+        try:
+            launcher.log_view.anchorClicked.connect(launcher._on_console_link_clicked)
+        except Exception:
+            # Fallback: if handler is missing for some reason, just ignore anchor clicks
+            pass
         console_layout.addWidget(launcher.log_view)
 
         # Add keyboard shortcuts for console

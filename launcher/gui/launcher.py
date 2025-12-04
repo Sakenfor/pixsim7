@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
     QScrollArea, QFrame, QGridLayout, QTabWidget
 )
-from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread
+from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread, QUrl
 from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence
 
 # Load .env file into environment BEFORE initializing logger
@@ -438,6 +438,8 @@ class LauncherWindow(QWidget):
         # Console log controls
         self.btn_refresh_logs.clicked.connect(lambda: self._refresh_console_logs(force=True))
         self.btn_clear_logs.clicked.connect(self._clear_console_display)
+        if hasattr(self, 'btn_attach_logs'):
+            self.btn_attach_logs.clicked.connect(self._on_attach_logs_clicked)
         self.btn_open_db_logs.clicked.connect(self._open_db_logs_for_current_service)
 
         # Auto-refresh timer for console
@@ -449,6 +451,37 @@ class LauncherWindow(QWidget):
         # Track scroll position changes for current service
         if hasattr(self, 'log_view'):
             self.log_view.verticalScrollBar().valueChanged.connect(self._on_console_scroll)
+
+    def _on_console_link_clicked(self, url: QUrl):
+        """Handle clickable links in the console view (e.g., ID filters into DB logs)."""
+        scheme = url.scheme()
+
+        # Pivot into DB logs with a pre-applied field filter
+        if scheme == "dbfilter":
+            field_name = url.host()
+            value = url.path().lstrip("/")
+            if not field_name or not value:
+                return
+
+            # Switch to DB logs tab (keeps current service selection in sync)
+            self._open_db_logs_for_current_service()
+
+            # Delegate actual filtering to DatabaseLogViewer using its existing handler
+            if hasattr(self, "db_log_viewer") and self.db_log_viewer:
+                try:
+                    filter_url = QUrl(f"filter://{field_name}/{value}")
+                    self.db_log_viewer._on_log_link_clicked(filter_url)
+                except Exception:
+                    # Best-effort; ignore if viewer isn't ready yet
+                    pass
+            return
+
+        # Fallback: open regular web links in browser
+        if scheme in {"http", "https"}:
+            try:
+                webbrowser.open(url.toString())
+            except Exception:
+                pass
 
     def _open_db_logs_for_current_service(self):
         """Switch to Database Logs tab and apply current service filter."""
@@ -496,9 +529,17 @@ class LauncherWindow(QWidget):
 
         # Select new card
         self.selected_service_key = key
+        sp = self.processes.get(key)
         if key in self.cards:
             self.cards[key].set_selected(True)
             _startup_trace("_select_service card selected")
+
+            # Auto-attach logs for externally running services (e.g., backend started outside launcher)
+            if sp is not None and getattr(sp, "proc", None) is None and getattr(sp, "running", False):
+                attach_fn = getattr(sp, "attach_logs", None)
+                if callable(attach_fn):
+                    attach_fn()
+                    _startup_trace("_select_service auto-attached logs")
 
             # Refresh logs (scroll position will be restored in _refresh_console_logs)
             self._refresh_console_logs(force=True)
@@ -979,9 +1020,12 @@ class LauncherWindow(QWidget):
             _startup_trace("_refresh_console_logs skipped (no service)")
             return
 
-        # Update service label
+        # Update service label (include basic attach state)
         service_title = next((s.title for s in self.services if s.key == self.selected_service_key), self.selected_service_key)
-        self.log_service_label.setText(f"({service_title})")
+        attached_suffix = ""
+        if getattr(sp, "externally_managed", False):
+            attached_suffix = " – attached"
+        self.log_service_label.setText(f"({service_title}{attached_suffix})")
 
         # Calculate hash of current log buffer to detect changes
         if sp.log_buffer:
@@ -1032,7 +1076,15 @@ class LauncherWindow(QWidget):
             if sp.running:
                 # Check health status to provide more context
                 if sp.health_status == HealthStatus.HEALTHY:
-                    msg = f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is running (detected from previous session).<br><br>Note: Console output is only captured when services are started from this launcher.<br>The service was likely started externally or in a previous session.</div>'
+                    msg = (
+                        f'<div style="color: #888; padding: 20px;">'
+                        f'Service <strong>{service_title}</strong> is running (detected from previous session).'
+                        f'<br><br>'
+                        f'Note: Console output is only captured automatically when services are started from this launcher.'
+                        f'<br>'
+                        f'If you started this service externally, click <strong>Attach</strong> to tail its log file.'
+                        f'</div>'
+                    )
                 else:
                     msg = f'<div style="color: #888; padding: 20px;">Service <strong>{service_title}</strong> is starting up...<br>Waiting for output...</div>'
             else:
@@ -1111,6 +1163,23 @@ class LauncherWindow(QWidget):
         if self.selected_service_key and self.selected_service_key in self.processes:
             self.processes[self.selected_service_key].clear_logs()
         self.log_view.clear()
+
+    def _on_attach_logs_clicked(self):
+        """Attach console view to the selected service's log file.
+
+        This is useful when the service was started outside the launcher
+        but is still writing to data/logs/console/{key}.log.
+        """
+        if not self.selected_service_key or self.selected_service_key not in self.processes:
+            return
+
+        sp = self.processes[self.selected_service_key]
+        # Not all process adapters may implement attach_logs; guard accordingly.
+        attach_fn = getattr(sp, "attach_logs", None)
+        if callable(attach_fn):
+            attach_fn()
+            # Refresh immediately so the label/empty-state messaging updates
+            self._refresh_console_logs(force=True)
 
     def _refresh_db_logs(self):
         try:

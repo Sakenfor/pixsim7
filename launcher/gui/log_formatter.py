@@ -109,6 +109,38 @@ def format_message(msg):
     )
 
 
+def build_log_header_html(timestamp, level=None, service=None, tag=None):
+    """
+    Build a standardized HTML header fragment for a log row.
+
+    Used by both the database log viewer and, optionally, other log views
+    (console, integrations) to keep timestamp/level/service rendering consistent.
+    """
+    parts = []
+
+    # Timestamp (shared styling + relative tooltip)
+    if timestamp:
+        ts_html, _ = format_timestamp(timestamp)
+        parts.append(ts_html)
+
+    # Optional stdout/stderr tag (primarily for console-style logs)
+    if tag:
+        tag_color = '#f44336' if str(tag).upper() == 'ERR' else '#4CAF50'
+        parts.append(
+            f'<span style="color: {tag_color}; font-weight: bold;">[{escape_html(str(tag))}]</span>'
+        )
+
+    # Level badge/text
+    if level:
+        parts.append(format_level(level))
+
+    # Service name (clickable in DB viewer)
+    if service:
+        parts.append(format_service(service))
+
+    return ' '.join(parts)
+
+
 def format_http_request(method, path, status_code=None):
     """Format HTTP request details."""
     parts = []
@@ -297,17 +329,11 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
     Returns:
         HTML string for the log row (main + expandable details)
     """
-    # Timestamp
-    ts_html, _ = format_timestamp(log.get('timestamp', ''))
-
-    # Level
-    level_html = format_level(log.get('level', 'INFO'))
-
-    # Service
-    service_html = format_service(log.get('service', '?'))
-
-    # Build line content
-    line_content = f'{ts_html} {level_html} {service_html}'
+    # Header (timestamp + level + service) using shared helper
+    timestamp = log.get('timestamp', '')
+    level = log.get('level', 'INFO')
+    service = log.get('service', '?')
+    line_content = build_log_header_html(timestamp, level=level, service=service)
 
     # Message
     msg = log.get('msg') or log.get('event') or ''
