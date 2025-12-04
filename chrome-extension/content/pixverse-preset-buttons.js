@@ -612,6 +612,7 @@
         const orig = accountBtn.innerHTML;
         accountBtn.innerHTML = '<span class="name">...</span>';
         await loadAccounts();
+        syncModuleCaches();
         updateAccountButton(accountBtn);
       }
 
@@ -626,6 +627,7 @@
       // Load accounts if not loaded
       if (accountsCache.length === 0) {
         await loadAccounts();
+        syncModuleCaches();
       }
 
       if (accountsCache.length === 0) return;
@@ -639,10 +641,14 @@
         ? [currentSession, ...getSortedAccounts(filteredAccounts)]
         : getSortedAccounts(accountsCache);
 
-      // Find current account index
-      const currentAccount = getCurrentAccount();
-      let currentIndex = sortedAccounts.findIndex(a => a.id === currentAccount?.id);
-      if (currentIndex === -1) currentIndex = 0;
+      // Find current account index - use selectedAccountId directly to avoid cache mismatch
+      const selectedId = storage.state.selectedAccountId;
+      let currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
+      if (currentIndex === -1) {
+        // Selected account not in sorted list, try current session
+        currentIndex = sortedAccounts.findIndex(a => a.id === storage.state.currentSessionAccountId);
+        if (currentIndex === -1) currentIndex = 0;
+      }
 
       // Scroll up = previous, scroll down = next
       let newIndex;
