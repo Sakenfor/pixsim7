@@ -198,6 +198,19 @@ class DatabaseLogViewer(QWidget):
         self.dynamic_filter_inputs = {}  # Track dynamically created inputs
         layout.addWidget(self.service_filter_widget)
 
+        # Active filters summary bar
+        self.active_filters_label = QLabel('Active filters: none')
+        self.active_filters_label.setStyleSheet("""
+            QLabel {
+                color: #888;
+                font-size: 8pt;
+                padding: 4px 8px;
+                background-color: rgba(60, 60, 60, 0.4);
+                border-radius: 3px;
+            }
+        """)
+        layout.addWidget(self.active_filters_label)
+
         # Control buttons
         btn_row = QHBoxLayout()
 
@@ -357,10 +370,72 @@ class DatabaseLogViewer(QWidget):
 
         self.log_display.clear()
         self._expanded_rows.clear()  # Reset expansion state
+        self._update_active_filters_summary()
         self.status_label.setText('Filters reset - Click Refresh to load logs')
+
+    def _update_active_filters_summary(self):
+        """Update the active filters summary label."""
+        filters = []
+
+        service = self.service_combo.currentText()
+        if service != 'All':
+            filters.append(f"service={service}")
+
+        level = self.level_combo.currentText()
+        if level != 'All':
+            filters.append(f"level={level}")
+
+        provider = self.provider_combo.currentText()
+        if provider != 'All':
+            filters.append(f"provider={provider}")
+
+        stage = self.stage_combo.currentText()
+        if stage != 'All':
+            filters.append(f"stage={stage}")
+
+        search = self.search_input.text().strip()
+        if search:
+            # Truncate long search terms for display
+            display_search = search if len(search) <= 20 else search[:17] + '...'
+            filters.append(f'text="{display_search}"')
+
+        # Include any active dynamic filters
+        for field_name, widget in self.dynamic_filter_inputs.items():
+            value = widget.text().strip()
+            if value:
+                display_val = value if len(value) <= 12 else value[:9] + '...'
+                filters.append(f"{field_name}={display_val}")
+
+        if filters:
+            summary = "Active filters: " + " · ".join(filters)
+            self.active_filters_label.setStyleSheet("""
+                QLabel {
+                    color: #81C784;
+                    font-size: 8pt;
+                    padding: 4px 8px;
+                    background-color: rgba(76, 175, 80, 0.1);
+                    border-radius: 3px;
+                }
+            """)
+        else:
+            summary = "Active filters: none"
+            self.active_filters_label.setStyleSheet("""
+                QLabel {
+                    color: #888;
+                    font-size: 8pt;
+                    padding: 4px 8px;
+                    background-color: rgba(60, 60, 60, 0.4);
+                    border-radius: 3px;
+                }
+            """)
+
+        self.active_filters_label.setText(summary)
 
     def refresh_logs(self):
         """Query logs from API and display (non-blocking)."""
+        # Update active filters summary
+        self._update_active_filters_summary()
+
         # Increment generation to mark previous workers as stale
         self._worker_generation += 1
         current_generation = self._worker_generation

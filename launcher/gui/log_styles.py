@@ -6,14 +6,22 @@ CSS styles and color schemes for log viewer.
 LOG_ROW_STYLES = '''
 <style>
     .log-row {
-        padding: 4px 8px;
-        margin: 1px 0;
-        border-radius: 3px;
+        padding: 5px 8px;
+        margin: 0;
+        border-radius: 0;
         cursor: pointer;
         position: relative;
         font-family: 'Consolas', 'Courier New', monospace;
         font-size: 9pt;
+        line-height: 1.5;
         user-select: text;
+        border-bottom: 1px solid rgba(80, 80, 80, 0.3);
+    }
+    .log-row:nth-child(even) {
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+    .log-row:nth-child(odd) {
+        background-color: transparent;
     }
     .log-row:hover {
         background-color: rgba(255, 255, 255, 0.08);

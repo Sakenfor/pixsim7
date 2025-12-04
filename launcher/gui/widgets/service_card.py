@@ -17,6 +17,7 @@ except ImportError:
 class ServiceCard(QFrame):
     clicked = Signal(str)
     restart_requested = Signal(str)
+    db_logs_requested = Signal(str)
 
     def __init__(self, service_def: 'ServiceDef', service_process):
         super().__init__()
@@ -29,13 +30,13 @@ class ServiceCard(QFrame):
         self.setFrameShadow(QFrame.Raised)
         self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(48)
-        self.setMaximumHeight(58)
+        self.setMinimumHeight(54)
+        self.setMaximumHeight(66)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_SM, theme.SPACING_LG, theme.SPACING_SM)
+        layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_MD, theme.SPACING_LG, theme.SPACING_MD)
         layout.setSpacing(theme.SPACING_LG)
 
         self.status_indicator = QLabel()
@@ -228,17 +229,35 @@ class ServiceCard(QFrame):
         select_action.triggered.connect(lambda: self.clicked.emit(self.service_def.key))
         menu.addAction(select_action)
 
+        # Quick pivot into DB logs for this service
+        db_logs_action = QAction("View Database Logs", self)
+        db_logs_action.triggered.connect(lambda: self.db_logs_requested.emit(self.service_def.key))
+        menu.addAction(db_logs_action)
+
         menu.exec_(self.mapToGlobal(position))
 
     def set_selected(self, selected: bool):
         self.is_selected = selected
         self._update_style()
 
+    def _refresh_title(self):
+        """Update title label to reflect external management state."""
+        base_title = self.service_def.title
+        if getattr(self.service_process, "externally_managed", False):
+            # Add a subtle visual marker for externally managed services
+            title = f"◇ {base_title}"
+            self.title_label.setToolTip(f"{base_title} (running outside launcher)")
+        else:
+            title = base_title
+            self.title_label.setToolTip(base_title)
+        self.title_label.setText(title)
+
     def update_status(self, status: HealthStatus):
         # Determine running state from health status
         # A service is "running" if it's STARTING, HEALTHY, or UNHEALTHY
         old_running = self.service_process.running
         is_running = status in (HealthStatus.STARTING, HealthStatus.HEALTHY, HealthStatus.UNHEALTHY)
+        requested_running = getattr(self.service_process, "requested_running", None)
 
         self.service_process.health_status = status
 
@@ -283,38 +302,100 @@ class ServiceCard(QFrame):
             else:
                 status_info += f" • Just started"
 
+        # Show intent vs actual state when interesting
+        if requested_running is True and not is_running:
+            status_info += " • Start requested"
+        elif requested_running is False and is_running and getattr(self.service_process, "externally_managed", False):
+            status_info += " • Stop requested"
+
         if status == HealthStatus.UNHEALTHY and getattr(self.service_process, 'last_error_line', ''):
             err = self.service_process.last_error_line
             if len(err) > 80:
                 err = err[:77] + '...'
             status_info += f" • {err}"
         self.status_label.setText(status_info)
+
+        # Build a helpful tooltip with error + recent logs
+        tooltip_lines = [self.service_def.title]
+        if self.service_process.tool_available is False:
+            tooltip_lines.append(f"Tool: {self.service_process.tool_check_message}")
+        if getattr(self.service_process, 'last_error_line', ''):
+            tooltip_lines.append(f"Last error: {self.service_process.last_error_line}")
+        buf = getattr(self.service_process, "log_buffer", None)
+        if buf:
+            recent = [str(l) for l in buf[-2:] if str(l).strip()]
+            if recent:
+                tooltip_lines.append("Recent log lines:")
+                tooltip_lines.extend(recent)
+        self.setToolTip("\n".join(tooltip_lines))
+        # Keep title in sync with external flag
+        self._refresh_title()
         # Update button states based on the new running state
         self.start_btn.setEnabled(not is_running and self.service_process.tool_available)
         self.stop_btn.setEnabled(is_running)
         self.force_stop_btn.setEnabled(is_running)
         self.restart_btn.setEnabled(is_running)
+        # Update card style based on health state
+        self._update_style()
 
     def _update_style(self):
+        # Determine if service is in an unhealthy state
+        is_unhealthy = self.service_process.health_status == HealthStatus.UNHEALTHY
+        is_external = getattr(self.service_process, "externally_managed", False)
+
         if self.is_selected:
+            border_color = theme.ACCENT_ERROR if is_unhealthy else theme.ACCENT_PRIMARY
+            bg_color = "rgba(248, 81, 73, 0.08)" if is_unhealthy else theme.BG_HOVER
             self.setStyleSheet(f"""
                 ServiceCard {{
-                    background-color: {theme.BG_HOVER};
-                    border: 1px solid {theme.ACCENT_PRIMARY};
+                    background-color: {bg_color};
+                    border: 1px solid {border_color};
                     border-radius: {theme.RADIUS_MD}px;
                 }}
                 QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
             """)
         else:
-            self.setStyleSheet(f"""
-                ServiceCard {{
-                    background-color: {theme.BG_TERTIARY};
-                    border: 1px solid {theme.BORDER_DEFAULT};
-                    border-radius: {theme.RADIUS_MD}px;
-                }}
-                ServiceCard:hover {{
-                    background-color: {theme.BG_HOVER};
-                    border: 1px solid {theme.BORDER_FOCUS};
-                }}
-                QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
-            """)
+            # Normal (unselected) state
+            if is_unhealthy:
+                # Stronger visual for unhealthy services
+                self.setStyleSheet(f"""
+                    ServiceCard {{
+                        background-color: rgba(248, 81, 73, 0.06);
+                        border: 1px solid {theme.ACCENT_ERROR};
+                        border-radius: {theme.RADIUS_MD}px;
+                    }}
+                    ServiceCard:hover {{
+                        background-color: rgba(248, 81, 73, 0.12);
+                        border: 1px solid {theme.ACCENT_ERROR};
+                    }}
+                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+                """)
+            elif is_external:
+                # Subtle indicator for externally managed services
+                self.setStyleSheet(f"""
+                    ServiceCard {{
+                        background-color: {theme.BG_TERTIARY};
+                        border: 1px solid {theme.BORDER_DEFAULT};
+                        border-left: 3px solid {theme.ACCENT_INFO};
+                        border-radius: {theme.RADIUS_MD}px;
+                    }}
+                    ServiceCard:hover {{
+                        background-color: {theme.BG_HOVER};
+                        border: 1px solid {theme.BORDER_FOCUS};
+                        border-left: 3px solid {theme.ACCENT_INFO};
+                    }}
+                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+                """)
+            else:
+                self.setStyleSheet(f"""
+                    ServiceCard {{
+                        background-color: {theme.BG_TERTIARY};
+                        border: 1px solid {theme.BORDER_DEFAULT};
+                        border-radius: {theme.RADIUS_MD}px;
+                    }}
+                    ServiceCard:hover {{
+                        background-color: {theme.BG_HOVER};
+                        border: 1px solid {theme.BORDER_FOCUS};
+                    }}
+                    QLabel {{ background: transparent; color: {theme.TEXT_PRIMARY}; }}
+                """)

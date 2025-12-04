@@ -71,6 +71,25 @@ READY_REGEX = re.compile(r'\b(VITE|ready|Local|Network|running|started|listening
 ERROR_REGEX = re.compile(r'\b(ERROR|error|failed|Error|FAILED)\b')
 WARN_REGEX = re.compile(r'\b(WARNING|warning|WARN|warn)\b')
 
+# Low-signal patterns to dim (health checks, routine pings, etc.)
+LOW_SIGNAL_PATTERNS = [
+    re.compile(r'/health\b', re.IGNORECASE),
+    re.compile(r'/ping\b', re.IGNORECASE),
+    re.compile(r'/ready\b', re.IGNORECASE),
+    re.compile(r'/live\b', re.IGNORECASE),
+    re.compile(r'\bhealth.?check\b', re.IGNORECASE),
+    re.compile(r'\bstatus.?poll\b', re.IGNORECASE),
+    re.compile(r'"GET /api/v1/health"', re.IGNORECASE),
+]
+
+
+def is_low_signal_line(line: str) -> bool:
+    """Check if a line is low-signal (routine health checks, pings, etc.)."""
+    for pattern in LOW_SIGNAL_PATTERNS:
+        if pattern.search(line):
+            return True
+    return False
+
 # Structured key=value highlights (best-effort for important fields)
 STRUCT_FIELD_REGEX = re.compile(
     r'\b(provider_id|job_id|submission_id|generation_id|error_type)=(\S+)',
@@ -280,13 +299,16 @@ def format_console_log_html_classic(log_lines) -> str:
 
 def format_console_log_html_enhanced(log_lines) -> str:
     """Format console logs with enhanced styling."""
-    html_lines = ['<div style="margin: 0; padding: 0; line-height: 1.45; font-family: \'Consolas\', \'Courier New\', monospace; font-size: 9pt;">']
+    html_lines = ['<div style="margin: 0; padding: 0; line-height: 1.5; font-family: \'Consolas\', \'Courier New\', monospace; font-size: 9pt;">']
 
     in_traceback = False
     for raw_line in log_lines:
         line = str(raw_line)
         # Strip ANSI codes for regex matching (but keep original for display)
         line_clean = strip_ansi(line)
+
+        # Check if this is a low-signal line (health checks, pings)
+        is_dimmed = is_low_signal_line(line_clean)
 
         # Detect traceback lines for better visual grouping
         is_traceback_line = line.strip().startswith(('File "', 'Traceback', '  File', 'at ')) or 'Traceback (most recent call last)' in line
@@ -306,12 +328,20 @@ def format_console_log_html_enhanced(log_lines) -> str:
         style_def = CONSOLE_LEVEL_STYLES.get(line_level, {})
         border_color = style_def.get("accent", "#555")
         bg_color = style_def.get("bg", "")
-        wrapper_style = (
-            f"border-left: 3px solid {border_color}; padding: 4px 8px;"
-            "margin: 0 0 4px; border-radius: 4px;"
-        )
-        if bg_color:
-            wrapper_style += f" background-color: {bg_color};"
+
+        # Apply dimming for low-signal lines
+        if is_dimmed:
+            wrapper_style = (
+                f"border-left: 2px solid #444; padding: 3px 8px;"
+                "margin: 0 0 2px; border-radius: 3px; opacity: 0.55;"
+            )
+        else:
+            wrapper_style = (
+                f"border-left: 3px solid {border_color}; padding: 4px 8px;"
+                "margin: 0 0 4px; border-radius: 4px;"
+            )
+            if bg_color:
+                wrapper_style += f" background-color: {bg_color};"
 
         # Parse time/tag/content
         time = None

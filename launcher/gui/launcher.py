@@ -183,8 +183,13 @@ class LauncherWindow(QWidget):
 
         # Load UI state
         self.ui_state = load_ui_state()
-        # Apply SQL logging preference
+        # Apply SQL logging and worker debug preferences
         set_sql_logging(self.ui_state.sql_logging_enabled)
+        try:
+            from .config import set_worker_debug_flags
+        except Exception:
+            from config import set_worker_debug_flags
+        set_worker_debug_flags(self.ui_state.worker_debug_flags)
         if self.ui_state.window_width > 0 and self.ui_state.window_height > 0:
             self.resize(self.ui_state.window_width, self.ui_state.window_height)
         else:
@@ -333,6 +338,8 @@ class LauncherWindow(QWidget):
             card.stop_btn.clicked.connect(lambda checked, k=s.key: self._stop_service(k))
             card.force_stop_btn.clicked.connect(lambda checked, k=s.key: self._force_stop_service(k))
             card.restart_requested.connect(self._restart_service)
+            # Open DB logs for this specific service from card context menu
+            card.db_logs_requested.connect(lambda k=s.key: (self._select_service(k), self._open_db_logs_for_current_service()))
             if card.open_btn:
                 card.open_btn.clicked.connect(lambda checked, k=s.key: self._open_service_url(k))
 
@@ -722,6 +729,10 @@ class LauncherWindow(QWidget):
 
     def start_all(self):
         """Start all services in dependency order."""
+        # Disable bulk buttons and update status during operation
+        self._set_bulk_buttons_enabled(False)
+        self.status_label.setText("Starting all services...")
+
         # Build dependency graph and start in correct order
         started = set()
 
@@ -765,6 +776,22 @@ class LauncherWindow(QWidget):
             iteration += 1
 
         self._refresh_console_logs()
+        # Re-enable buttons and restore status after a short delay
+        QTimer.singleShot(500, lambda: (
+            self._set_bulk_buttons_enabled(True),
+            self._restore_status_label()
+        ))
+
+    def _set_bulk_buttons_enabled(self, enabled: bool):
+        """Enable/disable bulk action buttons."""
+        self.btn_all.setEnabled(enabled)
+        self.btn_kill_all.setEnabled(enabled)
+        self.btn_restart_all.setEnabled(enabled)
+        self.btn_db_down.setEnabled(enabled)
+
+    def _restore_status_label(self):
+        """Restore the status label to show port status."""
+        self._update_status_bar()
 
     def stop_all(self):
         for sp in self.processes.values():
@@ -785,7 +812,15 @@ class LauncherWindow(QWidget):
             QMessageBox.No
         )
         if reply == QMessageBox.Yes:
+            # Disable bulk buttons and update status during operation
+            self._set_bulk_buttons_enabled(False)
+            self.status_label.setText("Stopping all services...")
             self.stop_all()
+            # Re-enable buttons and restore status after a short delay
+            QTimer.singleShot(500, lambda: (
+                self._set_bulk_buttons_enabled(True),
+                self._restore_status_label()
+            ))
 
     def _restart_all(self):
         """Restart all currently running services."""
@@ -806,6 +841,10 @@ class LauncherWindow(QWidget):
                 except Exception:
                     pass
 
+            # Disable bulk buttons and update status during operation
+            self._set_bulk_buttons_enabled(False)
+            self.status_label.setText("Restarting all services...")
+
             # Stop all running services
             self.stop_all()
 
@@ -819,6 +858,11 @@ class LauncherWindow(QWidget):
             if sp and sp.tool_available:
                 sp.start()
         self._refresh_console_logs()
+        # Re-enable buttons and restore status after restart
+        QTimer.singleShot(500, lambda: (
+            self._set_bulk_buttons_enabled(True),
+            self._restore_status_label()
+        ))
 
     def stop_databases(self):
         """Stop databases using docker-compose down."""
