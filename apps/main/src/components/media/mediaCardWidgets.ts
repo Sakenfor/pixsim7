@@ -19,10 +19,25 @@ import {
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
 
+export interface MediaCardOverlayData {
+  id: number;
+  mediaType: MediaCardProps['mediaType'];
+  providerId: string;
+  status?: MediaCardProps['providerStatus'];
+  tags: string[];
+  description?: string;
+  createdAt: string;
+  uploadState: MediaCardProps['uploadState'] | 'idle';
+  uploadProgress: number;
+  remoteUrl: string;
+  durationSec?: number;
+  actions?: MediaCardProps['actions'];
+}
+
 /**
  * Create primary media type icon widget (top-left)
  */
-export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
+export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
   const { mediaType, providerStatus, badgeConfig } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
@@ -54,8 +69,14 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget {
  * Create status badge/menu widget (top-right)
  * Uses MenuWidget for expandable actions when actions are available
  */
-export function createStatusWidget(props: MediaCardProps): OverlayWidget {
-  const { id, providerStatus, actions } = props;
+export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
+  const { id, providerStatus, actions, overlayPresetId } = props;
+
+  // In review preset we rely on preset-provided review status badge,
+  // so skip the runtime provider status badge/menu to avoid overlap.
+  if (overlayPresetId === 'media-card-review') {
+    return null as any; // Will be filtered out
+  }
 
   if (!providerStatus) {
     return null as any; // Will be filtered out
@@ -158,7 +179,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget {
 /**
  * Create duration badge widget (bottom-right)
  */
-export function createDurationWidget(props: MediaCardProps): OverlayWidget | null {
+export function createDurationWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { mediaType, durationSec } = props;
 
   if (mediaType !== 'video' || !durationSec) {
@@ -184,7 +205,7 @@ export function createDurationWidget(props: MediaCardProps): OverlayWidget | nul
 /**
  * Create provider badge widget (top-right, shows on hover)
  */
-export function createProviderWidget(props: MediaCardProps): OverlayWidget | null {
+export function createProviderWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { providerId, badgeConfig } = props;
 
   if (!badgeConfig?.showFooterProvider || !providerId || providerId.includes('_')) {
@@ -212,7 +233,7 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget | nul
  * Create video scrub widget (covers entire card on hover)
  * Uses REACTIVE function-based values for dynamic video URL
  */
-export function createVideoScrubber(props: MediaCardProps): OverlayWidget | null {
+export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { mediaType } = props;
 
   if (mediaType !== 'video') {
@@ -239,8 +260,14 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget | null
  * Create upload widget (bottom-left or custom position)
  * Uses REACTIVE function-based values for state and progress
  */
-export function createUploadButton(props: MediaCardProps): OverlayWidget | null {
-  const { id, onUploadClick } = props;
+export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { id, onUploadClick, overlayPresetId } = props;
+
+  // For specialized presets that provide their own primary actions (e.g. generation, review),
+  // skip the generic upload widget to avoid bottom-left conflicts.
+  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+    return null;
+  }
 
   if (!onUploadClick) {
     return null;
@@ -268,8 +295,14 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget | null 
  * Create tags tooltip widget
  * Uses REACTIVE function-based content for dynamic tag display
  */
-export function createTagsTooltip(props: MediaCardProps): OverlayWidget | null {
-  const { badgeConfig } = props;
+export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { badgeConfig, overlayPresetId } = props;
+
+  // Generation and Review presets keep the surface focused; skip technical tags
+  // tooltip to avoid colliding with other controls at bottom-left.
+  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+    return null;
+  }
 
   if (!badgeConfig?.showTagsInOverlay) {
     return null;
@@ -309,16 +342,18 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget | null {
 /**
  * Create generation actions menu widget
  */
-export function createGenerationMenu(props: MediaCardProps): OverlayWidget | null {
+export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, mediaType, actions, badgeConfig, overlayPresetId } = props;
 
-  // For specialized presets that provide their own generation/review buttons,
-  // skip the generic generation menu to avoid duplicate controls.
-  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+  // Only show the generation menu for the Generation overlay preset.
+  // Review and other presets either have their own controls or should stay clean.
+  if (overlayPresetId !== 'media-card-generation') {
     return null;
   }
 
-  if (!badgeConfig?.showGenerationBadge || !actions) {
+  const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
+
+  if (!showGenerationBadge || !actions) {
     return null;
   }
 
@@ -364,12 +399,14 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget | nul
     return null;
   }
 
+  // Use hover-container visibility to match Review preset button behavior.
+  // Avoid using transition: 'fade' as it uses opacity (element still in DOM)
+  // which can have edge cases. Using no transition matches Review's approach
+  // which uses display: none for hidden state.
   return createMenuWidget({
     id: 'generation-menu',
     position: { anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-    visibility: badgeConfig.showGenerationOnHoverOnly
-      ? { trigger: 'hover-container', transition: 'fade' }
-      : { trigger: 'always' },
+    visibility: { trigger: 'hover-container' },
     items: menuItems,
     trigger: {
       icon: 'zap',
@@ -377,6 +414,8 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget | nul
       label: 'Generate',
       className: 'bg-blue-500 hover:bg-blue-600 text-white',
     },
+    // Use click to expand the menu so it doesn't disappear when the
+    // pointer moves from the trigger into the menu.
     triggerType: 'click',
     placement: 'top-right',
     priority: 35,
@@ -386,7 +425,9 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget | nul
 /**
  * Create default widget set for MediaCard
  */
-export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWidget[] {
+export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWidget<MediaCardOverlayData>[] {
+  // All presets rely on runtime widgets for the primary icon. The Generation
+  // preset has an empty widgets array specifically to use runtime widgets.
   const widgets = [
     createPrimaryIconWidget(props),
     createStatusWidget(props),
@@ -398,6 +439,8 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
     createGenerationMenu(props),
   ];
 
-  // Filter out null widgets
-  return widgets.filter((w): w is OverlayWidget => w !== null);
+  // Tag all runtime widgets for validation/linting and filter out nulls
+  return widgets
+    .filter((w): w is OverlayWidget<MediaCardOverlayData> => w !== null)
+    .map((w) => ({ ...w, group: 'media-card-runtime' }));
 }
