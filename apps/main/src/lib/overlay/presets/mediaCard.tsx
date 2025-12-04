@@ -6,7 +6,7 @@
  */
 
 import type { OverlayPreset, OverlayConfiguration, OverlayWidget } from '../types';
-import { createBadgeWidget, BadgePresets } from '../widgets/BadgeWidget';
+import { createBadgeWidget } from '../widgets/BadgeWidget';
 import { createButtonWidget } from '../widgets/ButtonWidget';
 import { createPanelWidget } from '../widgets/PanelWidget';
 
@@ -18,138 +18,96 @@ function asMediaCardPresetWidget(widget: OverlayWidget): OverlayWidget {
 /**
  * Default / Full Featured
  *
- * Shows all badges and information - ideal for detailed browsing
+ * Shows all badges and information - ideal for detailed browsing.
+ * Runtime widgets provide: primary icon, status menu, duration, provider badge,
+ * video scrubber, upload button, and tags tooltip.
  */
 export const defaultPreset: OverlayPreset = {
   id: 'media-card-default',
   name: 'Default',
   icon: '⚖️',
   category: 'media',
+  // Default preset uses all runtime widgets with no special capabilities
+  capabilities: {},
   configuration: {
     id: 'media-card-default',
     name: 'Default Media Card',
     description: 'Full featured media card with all badges and information',
     spacing: 'normal',
-    widgets: [
-      // Primary media type icon - top-left
-      asMediaCardPresetWidget(
-        createBadgeWidget({
-          id: 'primary-icon',
-          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon',
-          icon: 'video', // Will be dynamic based on media type
-          color: 'primary',
-          shape: 'circle',
-          tooltip: 'Media type',
-          priority: 10,
-        }),
-      ),
-
-      // Note: tag display for the default preset is handled by
-      // runtime widgets (e.g., technical tags tooltip) to keep the
-      // always-visible card surface lean. No dedicated tags panel here.
-    ],
+    // All widgets provided by runtime - see createDefaultMediaCardWidgets()
+    widgets: [],
   },
 };
 
 /**
  * Minimal
  *
- * Shows only essential badges - clean and minimal
+ * Shows only essential badges - clean and minimal.
+ * Uses compact spacing and relies on runtime widgets.
  */
 export const minimalPreset: OverlayPreset = {
   id: 'media-card-minimal',
   name: 'Minimal',
   icon: '✨',
   category: 'media',
+  // Minimal preset skips hover widgets for cleaner look
+  capabilities: {
+    skipUploadButton: true,
+    skipTagsTooltip: true,
+  },
   configuration: {
     id: 'media-card-minimal',
     name: 'Minimal Media Card',
     description: 'Clean interface with only essential information',
     spacing: 'compact',
-    widgets: [
-      asMediaCardPresetWidget(
-        createBadgeWidget({
-          id: 'primary-icon',
-          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon',
-          icon: 'image',
-          color: 'neutral',
-          shape: 'circle',
-          priority: 10,
-          className: 'opacity-60',
-        }),
-      ),
-    ],
+    // Runtime widgets provide primary icon, status, duration
+    widgets: [],
   },
 };
 
 /**
  * Compact
  *
- * Balanced view with key information
+ * Balanced view with key information.
+ * Uses compact spacing for denser gallery layouts.
  */
 export const compactPreset: OverlayPreset = {
   id: 'media-card-compact',
   name: 'Compact',
   icon: '📦',
   category: 'media',
+  // Compact uses all runtime widgets
+  capabilities: {},
   configuration: {
     id: 'media-card-compact',
     name: 'Compact Media Card',
     description: 'Balanced view with essential badges',
     spacing: 'compact',
-    widgets: [
-      asMediaCardPresetWidget(
-        createBadgeWidget({
-          id: 'primary-icon',
-          position: { anchor: 'top-left', offset: { x: 6, y: 6 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon',
-          icon: 'video',
-          color: 'primary',
-          shape: 'circle',
-          priority: 10,
-        }),
-      ),
-    ],
+    // Runtime widgets provide all badges
+    widgets: [],
   },
 };
 
 /**
  * Detailed / Information Heavy
  *
- * Maximum information display
+ * Maximum information display with metadata panel on hover.
  */
 export const detailedPreset: OverlayPreset = {
   id: 'media-card-detailed',
   name: 'Detailed',
   icon: '📋',
   category: 'media',
+  // Detailed uses all runtime widgets plus its own metadata panel
+  capabilities: {},
   configuration: {
     id: 'media-card-detailed',
     name: 'Detailed Media Card',
     description: 'Maximum information with all available data',
     spacing: 'normal',
     widgets: [
-      asMediaCardPresetWidget(
-        createBadgeWidget({
-          id: 'primary-icon',
-          position: { anchor: 'top-left', offset: { x: 8, y: 8 } },
-          visibility: { trigger: 'always' },
-          variant: 'icon-text',
-          icon: 'video',
-          label: (data) => data.mediaType,
-          color: 'primary',
-          shape: 'rounded',
-          priority: 10,
-        }),
-      ),
-
-      // Note: Status badge is handled by MediaCard runtime widgets
-      // to avoid overlap with status-menu
+      // Runtime provides primary icon, status, duration, etc.
+      // This preset adds a metadata panel for extra information.
 
       // Use bottom-center to avoid overlapping MediaCard's runtime
       // upload/tag widgets at bottom-left.
@@ -157,17 +115,30 @@ export const detailedPreset: OverlayPreset = {
         createPanelWidget({
           id: 'metadata-panel',
           position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
-          visibility: { trigger: 'always' },
+          visibility: { trigger: 'hover-container' },
           title: 'Metadata',
           variant: 'glass',
-          content: (data) => (
-            <div className="space-y-1 text-xs">
-              <div>Provider: {data.provider}</div>
-              <div>Type: {data.mediaType}</div>
-              <div>Size: {data.size}</div>
-              {data.duration && <div>Duration: {data.duration}</div>}
-            </div>
-          ),
+          content: (data) => {
+            // Format duration as MM:SS
+            const formatDuration = (sec?: number) => {
+              if (!sec) return null;
+              const mins = Math.floor(sec / 60);
+              const secs = Math.floor(sec % 60);
+              return `${mins}:${secs.toString().padStart(2, '0')}`;
+            };
+            const duration = formatDuration(data.durationSec);
+
+            return (
+              <div className="space-y-1 text-xs">
+                <div>Provider: {data.providerId}</div>
+                <div>Type: {data.mediaType}</div>
+                {duration && <div>Duration: {duration}</div>}
+                {data.createdAt && (
+                  <div>Created: {new Date(data.createdAt).toLocaleDateString()}</div>
+                )}
+              </div>
+            );
+          },
           priority: 5,
         }),
       ),
@@ -185,6 +156,12 @@ export const generationPreset: OverlayPreset = {
   name: 'Generation',
   icon: '⚡',
   category: 'media',
+  // Generation preset shows generation menu, skips upload/tags for focused workflow
+  capabilities: {
+    showsGenerationMenu: true,
+    skipUploadButton: true,
+    skipTagsTooltip: true,
+  },
   configuration: {
     id: 'media-card-generation',
     name: 'Generation Focused',
@@ -205,6 +182,13 @@ export const reviewPreset: OverlayPreset = {
   name: 'Review',
   icon: '✓',
   category: 'media',
+  // Review preset provides its own status widget and buttons, skips upload/tags
+  capabilities: {
+    providesStatusWidget: true,
+    skipUploadButton: true,
+    skipTagsTooltip: true,
+    touchFriendlyButtons: true,
+  },
   configuration: {
     id: 'media-card-review',
     name: 'Review Mode',
@@ -231,13 +215,14 @@ export const reviewPreset: OverlayPreset = {
           id: 'approve',
           // Slightly above the bottom-left reserved upload/tag slot
           position: { anchor: 'bottom-left', offset: { x: 8, y: -32 } },
-          visibility: { trigger: 'hover-container' },
+          // Use touchFallback: 'always' so buttons are visible on tablets
+          visibility: { trigger: 'hover-container', touchFallback: 'always' },
           icon: 'check',
           label: 'Approve',
-          tooltip: 'Mark asset as approved (review UI)',
+          tooltip: 'Mark asset as approved',
           variant: 'primary',
           size: 'sm',
-          onClick: (data) => console.log('Approve', data),
+          onClick: (data) => data.actions?.onApprove?.(data.id),
           priority: 10,
         }),
       ),
@@ -247,13 +232,14 @@ export const reviewPreset: OverlayPreset = {
           id: 'reject',
           // Slightly above the bottom-right reserved duration slot
           position: { anchor: 'bottom-right', offset: { x: -8, y: -32 } },
-          visibility: { trigger: 'hover-container' },
+          // Use touchFallback: 'always' so buttons are visible on tablets
+          visibility: { trigger: 'hover-container', touchFallback: 'always' },
           icon: 'x',
           label: 'Reject',
-          tooltip: 'Mark asset as rejected (review UI)',
+          tooltip: 'Mark asset as rejected',
           variant: 'danger',
           size: 'sm',
-          onClick: (data) => console.log('Reject', data),
+          onClick: (data) => data.actions?.onReject?.(data.id),
           priority: 10,
         }),
       ),

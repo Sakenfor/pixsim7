@@ -70,11 +70,10 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
  * Uses MenuWidget for expandable actions when actions are available
  */
 export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
-  const { id, providerStatus, actions, overlayPresetId } = props;
+  const { id, providerStatus, actions, presetCapabilities } = props;
 
-  // In review preset we rely on preset-provided review status badge,
-  // so skip the runtime provider status badge/menu to avoid overlap.
-  if (overlayPresetId === 'media-card-review') {
+  // If preset provides its own status widget, skip the runtime one
+  if (presetCapabilities?.providesStatusWidget) {
     return null as any; // Will be filtered out
   }
 
@@ -215,11 +214,8 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget<Media
   return createBadgeWidget({
     id: 'provider',
     position: { anchor: 'top-right', offset: { x: -8, y: 48 } },
-    visibility: {
-      trigger: 'hover-container',
-      transition: 'fade',
-      transitionDuration: 200,
-    },
+    // Use hover-container without transition for consistent behavior
+    visibility: { trigger: 'hover-container' },
     variant: 'text',
     label: providerId,
     color: 'gray',
@@ -261,11 +257,10 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaC
  * Uses REACTIVE function-based values for state and progress
  */
 export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, onUploadClick, overlayPresetId } = props;
+  const { id, onUploadClick, presetCapabilities } = props;
 
-  // For specialized presets that provide their own primary actions (e.g. generation, review),
-  // skip the generic upload widget to avoid bottom-left conflicts.
-  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+  // Skip if preset capabilities indicate no upload button
+  if (presetCapabilities?.skipUploadButton) {
     return null;
   }
 
@@ -276,11 +271,8 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
   return createUploadWidget({
     id: 'upload-button',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
-    visibility: {
-      trigger: 'hover-container',
-      transition: 'fade',
-      transitionDuration: 200,
-    },
+    // Use hover-container without transition for consistent behavior
+    visibility: { trigger: 'hover-container' },
     // ✨ REACTIVE: Function gets fresh data on every render
     state: (data) => data.uploadState || 'idle',
     progress: (data) => data.uploadProgress || 0,
@@ -296,11 +288,10 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
  * Uses REACTIVE function-based content for dynamic tag display
  */
 export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { badgeConfig, overlayPresetId } = props;
+  const { badgeConfig, presetCapabilities } = props;
 
-  // Generation and Review presets keep the surface focused; skip technical tags
-  // tooltip to avoid colliding with other controls at bottom-left.
-  if (overlayPresetId === 'media-card-generation' || overlayPresetId === 'media-card-review') {
+  // Skip if preset capabilities indicate no tags tooltip
+  if (presetCapabilities?.skipTagsTooltip) {
     return null;
   }
 
@@ -343,11 +334,10 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
  * Create generation actions menu widget
  */
 export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, mediaType, actions, badgeConfig, overlayPresetId } = props;
+  const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
 
-  // Only show the generation menu for the Generation overlay preset.
-  // Review and other presets either have their own controls or should stay clean.
-  if (overlayPresetId !== 'media-card-generation') {
+  // Only show the generation menu if preset capabilities enable it
+  if (!presetCapabilities?.showsGenerationMenu) {
     return null;
   }
 

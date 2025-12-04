@@ -106,6 +106,14 @@ export interface VisibilityConfig {
 
   /** Respect user's reduced motion preference */
   reduceMotion?: boolean;
+
+  /**
+   * Fallback trigger for touch-only devices.
+   * When set, this trigger is used instead of the primary trigger on touch devices.
+   * Useful for making hover-container buttons visible on tablets.
+   * @example { trigger: 'hover-container', touchFallback: 'always' }
+   */
+  touchFallback?: VisibilityTrigger;
 }
 
 // ============================================================================
@@ -274,6 +282,29 @@ export interface OverlayConfiguration {
 export type PresetCategory = 'media' | 'video' | 'hud' | 'dashboard' | 'custom';
 
 /**
+ * Preset capabilities for runtime widget configuration
+ *
+ * Used by runtime widget factories to determine which widgets to create
+ * without hardcoding preset ID checks.
+ */
+export interface PresetCapabilities {
+  /** Whether this preset shows the generation menu (default: false) */
+  showsGenerationMenu?: boolean;
+
+  /** Whether this preset provides its own status widget (skip runtime status) */
+  providesStatusWidget?: boolean;
+
+  /** Whether to skip the upload button (e.g., for review/generation modes) */
+  skipUploadButton?: boolean;
+
+  /** Whether to skip the tags tooltip (e.g., for focused workflows) */
+  skipTagsTooltip?: boolean;
+
+  /** Whether buttons should be visible on touch devices (default: inherit from visibility) */
+  touchFriendlyButtons?: boolean;
+}
+
+/**
  * Preset configuration that can be saved and reused
  */
 export interface OverlayPreset {
@@ -291,6 +322,9 @@ export interface OverlayPreset {
 
   /** The actual configuration */
   configuration: OverlayConfiguration;
+
+  /** Runtime capabilities for widget configuration */
+  capabilities?: PresetCapabilities;
 
   /** Whether this was created by a user */
   isUserCreated?: boolean;

@@ -45,6 +45,9 @@ export interface MediaCardActions {
   onImageToVideo?: (id: number) => void;
   onVideoExtend?: (id: number) => void;
   onAddToTransition?: (id: number) => void;
+  // Review actions
+  onApprove?: (id: number) => void;
+  onReject?: (id: number) => void;
 }
 
 export interface MediaCardBadgeConfig {
@@ -103,6 +106,13 @@ export interface MediaCardProps {
    * When provided, the preset's configuration is merged with runtime widgets.
    */
   overlayPresetId?: string;
+
+  /**
+   * Preset capabilities for runtime widget configuration.
+   * Automatically populated from the preset when overlayPresetId is provided.
+   * Can be overridden for custom behavior.
+   */
+  presetCapabilities?: import('@/lib/overlay').PresetCapabilities;
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -171,11 +181,16 @@ export function MediaCard(props: MediaCardProps) {
       customOverlayConfig?.id ||
       'media-card-default';
 
+    // Get preset to access capabilities
+    const preset = getMediaCardPreset(effectivePresetId);
+    const capabilities = preset?.capabilities ?? {};
+
     // Get default widgets from factory
-    // Pass effectivePresetId through so runtime widgets can adapt
+    // Pass capabilities so runtime widgets can adapt without hardcoded ID checks
     const defaultWidgets = createDefaultMediaCardWidgets({
       ...props,
       overlayPresetId: effectivePresetId,
+      presetCapabilities: capabilities,
     });
 
     // Merge with custom widgets (custom widgets replace default by id)
@@ -197,13 +212,9 @@ export function MediaCard(props: MediaCardProps) {
       spacing: customOverlayConfig?.spacing || 'normal',
     };
 
-    // Get preset configuration
-    const preset =
-      getMediaCardPreset(effectivePresetId) ??
-      { configuration: getDefaultMediaCardConfig() };
-
     // Merge preset configuration with runtime widgets
-    const merged = mergeConfigurations(preset.configuration, baseConfig);
+    const presetConfig = preset?.configuration ?? getDefaultMediaCardConfig();
+    const merged = mergeConfigurations(presetConfig, baseConfig);
 
     // Apply custom overlay config overrides and ensure sensible defaults
     let result: OverlayConfiguration = {
@@ -215,24 +226,23 @@ export function MediaCard(props: MediaCardProps) {
       collisionDetection: merged.collisionDetection ?? true,
     };
 
-    // As a safety net, enforce preset-specific widget rules at the configuration
-    // level so we don't accidentally leak preset-specific widgets into other
-    // presets even if runtime factories misbehave.
-    if (result.id !== 'media-card-generation') {
+    // Safety net: ensure preset-specific widgets are filtered based on capabilities.
+    // This catches edge cases where widgets might slip through despite capability checks.
+    if (!capabilities.showsGenerationMenu) {
       result = {
         ...result,
         widgets: result.widgets.filter((w) => w.id !== 'generation-menu'),
       };
     }
 
-    if (result.id === 'media-card-review') {
-      // Review mode relies on its own approve/reject controls; remove generic
-      // upload/technical-tag widgets if any slipped through.
+    if (capabilities.skipUploadButton || capabilities.skipTagsTooltip) {
       result = {
         ...result,
-        widgets: result.widgets.filter(
-          (w) => w.id !== 'upload-button' && w.id !== 'technical-tags',
-        ),
+        widgets: result.widgets.filter((w) => {
+          if (capabilities.skipUploadButton && w.id === 'upload-button') return false;
+          if (capabilities.skipTagsTooltip && w.id === 'technical-tags') return false;
+          return true;
+        }),
       };
     }
 

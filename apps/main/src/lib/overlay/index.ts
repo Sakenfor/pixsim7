@@ -44,6 +44,7 @@ export type {
   WidgetSpacing,
   OverlayConfiguration,
   PresetCategory,
+  PresetCapabilities,
   OverlayPreset,
   ValidationError,
   ValidationResult,

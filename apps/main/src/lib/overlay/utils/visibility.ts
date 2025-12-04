@@ -296,10 +296,13 @@ export function validateVisibilityConfig(config: VisibilityConfig): string | nul
 /**
  * Fallback for touch devices - converts some hover triggers to always/focus
  *
- * Note: We intentionally only adapt direct "hover" triggers here. Container-level
- * hover (hover-container) is left untouched so that overlays which are meant to
- * appear only when the whole card is hovered (e.g. MediaCard generation menu)
- * do not become always-visible on hybrid/touch devices.
+ * Supports explicit touchFallback override in config, otherwise falls back
+ * to automatic conversion:
+ * - 'hover' → 'always'
+ * - Other triggers (including hover-container) are left untouched by default
+ *
+ * Use touchFallback when you need hover-container buttons to be visible on
+ * tablets, e.g.: { trigger: 'hover-container', touchFallback: 'always' }
  */
 export function adaptVisibilityForTouch(config: VisibilityConfig): VisibilityConfig {
   if (typeof window === 'undefined') {
@@ -313,13 +316,21 @@ export function adaptVisibilityForTouch(config: VisibilityConfig): VisibilityCon
     return config;
   }
 
-  // Convert hover triggers for touch devices
+  // If explicit touchFallback is provided, use it
+  if (config.touchFallback) {
+    return {
+      ...config,
+      trigger: config.touchFallback,
+    };
+  }
+
+  // Default: convert hover to always on touch devices
   const { trigger } = config;
 
   if (trigger === 'hover') {
     return {
       ...config,
-      trigger: 'always', // Show always on touch devices
+      trigger: 'always',
     };
   }
 
