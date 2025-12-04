@@ -39,19 +39,19 @@ class ProviderService:
 
     # ===== PROVIDER EXECUTION =====
 
-    async def execute_job(
+    async def execute_generation(
         self,
-        job: Generation,
+        generation: Generation,
         account: ProviderAccount,
         params: Dict[str, Any]
     ) -> ProviderSubmission:
         """
-        Execute job via provider
+        Execute generation via provider
 
         Args:
-            job: Generation to execute
+            generation: Generation to execute
             account: Provider account to use
-            params: Generation parameters
+            params: Generation parameters (canonical_params)
 
         Returns:
             ProviderSubmission record
@@ -61,22 +61,22 @@ class ProviderService:
             ProviderError: Provider API error
         """
         # Get provider from registry
-        provider = registry.get(job.provider_id)
+        provider = registry.get(generation.provider_id)
 
         # Map parameters to provider format
         mapped_params = provider.map_parameters(
-            operation_type=job.operation_type,
+            operation_type=generation.operation_type,
             params=params
         )
 
         # Record submission start
         submission = ProviderSubmission(
-            job_id=job.id,
-            account_id=account.id,  # Track which account is used
-            provider_id=job.provider_id,
+            generation_id=generation.id,
+            account_id=account.id,
+            provider_id=generation.provider_id,
             payload=mapped_params,
             response={},
-            retry_attempt=job.retry_count,
+            retry_attempt=generation.retry_count,
             submitted_at=datetime.utcnow(),
             status="pending",
         )
@@ -87,7 +87,7 @@ class ProviderService:
         try:
             # Execute provider operation
             result: GenerationResult = await provider.execute(
-                operation_type=job.operation_type,
+                operation_type=generation.operation_type,
                 account=account,
                 params=mapped_params
             )
@@ -199,13 +199,13 @@ class ProviderService:
             
             await event_bus.publish(PROVIDER_COMPLETED, {
                 "submission_id": submission.id,
-                "job_id": submission.job_id,
+                "job_id": submission.generation_id,  # Keep key for backward compat
                 "video_url": status_result.video_url,
             })
         elif status_result.status == VideoStatus.FAILED:
             await event_bus.publish(PROVIDER_FAILED, {
                 "submission_id": submission.id,
-                "job_id": submission.job_id,
+                "job_id": submission.generation_id,  # Keep key for backward compat
                 "error": status_result.error_message or "Unknown error",
             })
 
@@ -254,12 +254,12 @@ class ProviderService:
             raise ResourceNotFoundError("ProviderSubmission", submission_id)
         return submission
 
-    async def get_job_submissions(self, job_id: int) -> list[ProviderSubmission]:
+    async def get_generation_submissions(self, generation_id: int) -> list[ProviderSubmission]:
         """
-        Get all submissions for a job (including retries)
+        Get all submissions for a generation (including retries)
 
         Args:
-            job_id: Job ID
+            generation_id: Generation ID
 
         Returns:
             List of submissions ordered by attempt
@@ -268,17 +268,20 @@ class ProviderService:
 
         result = await self.db.execute(
             select(ProviderSubmission)
-            .where(ProviderSubmission.job_id == job_id)
+            .where(ProviderSubmission.generation_id == generation_id)
             .order_by(ProviderSubmission.retry_attempt.asc())
         )
         return list(result.scalars().all())
 
-    async def get_latest_submission(self, job_id: int) -> ProviderSubmission | None:
+    # Backward compatibility alias
+    get_job_submissions = get_generation_submissions
+
+    async def get_latest_submission(self, generation_id: int) -> ProviderSubmission | None:
         """
-        Get latest submission for a job
+        Get latest submission for a generation
 
         Args:
-            job_id: Job ID
+            generation_id: Generation ID
 
         Returns:
             Latest submission or None
@@ -287,7 +290,7 @@ class ProviderService:
 
         result = await self.db.execute(
             select(ProviderSubmission)
-            .where(ProviderSubmission.job_id == job_id)
+            .where(ProviderSubmission.generation_id == generation_id)
             .order_by(ProviderSubmission.retry_attempt.desc())
             .limit(1)
         )

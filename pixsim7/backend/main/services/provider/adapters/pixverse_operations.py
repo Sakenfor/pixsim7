@@ -5,8 +5,9 @@ Handles video generation, status checking, and uploads.
 """
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any
+
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import OperationType, VideoStatus, ProviderAccount
 from pixsim7.backend.main.services.provider.base import (
@@ -23,6 +24,37 @@ from pixsim7.backend.main.services.provider.provider_logging import (
 )
 
 logger = get_logger()
+
+# Optional pixverse-py SDK imports.
+# We import SDK models here so they're available in this module's scope.
+# If unavailable, we log and fall back gracefully.
+_SDK_AVAILABLE = False
+GenerationOptions = None  # Will be set below if SDK import succeeds
+TransitionOptions = None
+
+try:  # pragma: no cover
+    from pixverse import infer_video_dimensions  # type: ignore[attr-defined]
+    from pixverse import GenerationOptions as _GenerationOptions  # type: ignore
+    from pixverse import TransitionOptions as _TransitionOptions  # type: ignore
+    GenerationOptions = _GenerationOptions
+    TransitionOptions = _TransitionOptions
+    _SDK_AVAILABLE = True
+except ImportError as e:  # pragma: no cover
+    logger.warning(
+        "pixverse_sdk_import_partial",
+        msg="Some pixverse-py SDK imports failed; using kwargs fallback",
+        error=str(e),
+    )
+
+    def infer_video_dimensions(quality: str, aspect_ratio: str | None = None) -> tuple[int, int]:
+        """Fallback: Infer video dimensions (prefer SDK version when available)."""
+        if not aspect_ratio or aspect_ratio == "16:9":
+            return (1280, 720) if quality == "720p" else (640, 360) if quality == "360p" else (1920, 1080)
+        if aspect_ratio == "9:16":
+            return (720, 1280) if quality == "720p" else (360, 640) if quality == "360p" else (1080, 1920)
+        if aspect_ratio == "1:1":
+            return (720, 720) if quality == "720p" else (360, 360) if quality == "360p" else (1080, 1080)
+        return (1280, 720)
 
 # Video generation options that should be passed through to the SDK
 # Add new options here - they'll be included automatically in all video operations
@@ -153,25 +185,38 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate text-to-video"""
-        # Build GenerationOptions
-        gen_options = GenerationOptions(
-            model=params.get("model", "v5"),
-            quality=params.get("quality", "360p"),
-            duration=params.get("duration", 5),
-            seed=params.get("seed", 0),
-            aspect_ratio=params.get("aspect_ratio"),
-        )
-
-        # Build kwargs
-        kwargs = {k: v for k, v in gen_options.__dict__.items() if v is not None}
-
-        # Add optional parameters
-        for field in ['motion_mode', 'negative_prompt', 'style', 'template_id']:
-            if params.get(field):
-                kwargs[field] = params[field]
-
-        # Video options (multi_shot, audio, off_peak, etc.)
-        kwargs.update(_extract_video_options(params))
+        # Use GenerationOptions if SDK available for validation, else build kwargs directly
+        if GenerationOptions is not None:
+            gen_options = GenerationOptions(
+                model=params.get("model", "v5"),
+                quality=params.get("quality", "360p"),
+                duration=params.get("duration", 5),
+                seed=params.get("seed", 0),
+                aspect_ratio=params.get("aspect_ratio"),
+                motion_mode=params.get("motion_mode"),
+                negative_prompt=params.get("negative_prompt"),
+                style=params.get("style"),
+                template_id=params.get("template_id"),
+                multi_shot=params.get("multi_shot"),
+                audio=params.get("audio"),
+                off_peak=params.get("off_peak"),
+            )
+            # Convert to dict and drop None values
+            kwargs = {k: v for k, v in gen_options.model_dump().items() if v is not None}
+        else:
+            # Fallback: build kwargs directly
+            kwargs: Dict[str, Any] = {
+                "model": params.get("model", "v5"),
+                "quality": params.get("quality", "360p"),
+                "duration": params.get("duration", 5),
+                "seed": params.get("seed", 0),
+                "aspect_ratio": params.get("aspect_ratio"),
+            }
+            kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            for field in ['motion_mode', 'negative_prompt', 'style', 'template_id']:
+                if params.get(field):
+                    kwargs[field] = params[field]
+            kwargs.update(_extract_video_options(params))
 
         # Call pixverse-py (synchronous) in thread
         video = await asyncio.to_thread(
@@ -189,25 +234,41 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate image-to-video"""
-        # Build GenerationOptions (no aspect_ratio for image_to_video - follows source)
-        gen_options = GenerationOptions(
-            model=params.get("model", "v5"),
-            quality=params.get("quality", "360p"),
-            duration=params.get("duration", 5),
-            seed=params.get("seed", 0),
-        )
+        # Use GenerationOptions if SDK available (no aspect_ratio - follows source image)
+        if GenerationOptions is not None:
+            gen_options = GenerationOptions(
+                model=params.get("model", "v5"),
+                quality=params.get("quality", "360p"),
+                duration=params.get("duration", 5),
+                seed=params.get("seed", 0),
+                # No aspect_ratio for image_to_video - follows source image
+                motion_mode=params.get("motion_mode"),
+                negative_prompt=params.get("negative_prompt"),
+                camera_movement=params.get("camera_movement"),
+                style=params.get("style"),
+                template_id=params.get("template_id"),
+                multi_shot=params.get("multi_shot"),
+                audio=params.get("audio"),
+                off_peak=params.get("off_peak"),
+            )
+            # Convert to dict and drop None values
+            kwargs = {k: v for k, v in gen_options.model_dump().items() if v is not None}
+        else:
+            # Fallback: build kwargs directly
+            kwargs: Dict[str, Any] = {
+                "model": params.get("model", "v5"),
+                "quality": params.get("quality", "360p"),
+                "duration": params.get("duration", 5),
+                "seed": params.get("seed", 0),
+            }
+            kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
+                if params.get(field):
+                    kwargs[field] = params[field]
+            kwargs.update(_extract_video_options(params))
 
-        # Build kwargs
-        kwargs = {k: v for k, v in gen_options.__dict__.items() if v is not None}
-        kwargs["image_url"] = params["image_url"]  # Required
-
-        # Add optional parameters
-        for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
-            if params.get(field):
-                kwargs[field] = params[field]
-
-        # Video options (multi_shot, audio, off_peak, etc.)
-        kwargs.update(_extract_video_options(params))
+        # Add required image_url
+        kwargs["image_url"] = params["image_url"]
 
         # Call pixverse-py
         video = await asyncio.to_thread(
@@ -252,18 +313,28 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate transition between images"""
-        # Build TransitionOptions
-        transition_options = TransitionOptions(
-            prompts=params["prompts"],  # Required
-            image_urls=params["image_urls"],  # Required
-            quality=params.get("quality", "360p"),
-            duration=params.get("duration", 5),
-        )
+        # Build kwargs for transition (use TransitionOptions if available, else direct kwargs)
+        if TransitionOptions is not None:
+            transition_options = TransitionOptions(
+                prompts=params["prompts"],  # Required
+                image_urls=params["image_urls"],  # Required
+                quality=params.get("quality", "360p"),
+                duration=params.get("duration", 5),
+            )
+            kwargs = transition_options.__dict__
+        else:
+            # Fallback: build kwargs directly
+            kwargs = {
+                "prompts": params["prompts"],
+                "image_urls": params["image_urls"],
+                "quality": params.get("quality", "360p"),
+                "duration": params.get("duration", 5),
+            }
 
         # Call pixverse-py
         video = await asyncio.to_thread(
             client.transition,
-            **transition_options.__dict__
+            **kwargs
         )
 
         return video

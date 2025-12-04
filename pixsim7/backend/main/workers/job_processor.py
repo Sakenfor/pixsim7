@@ -20,7 +20,6 @@ from pixsim7.backend.main.shared.errors import (
     AccountExhaustedError,
     ProviderError,
 )
-from pixsim7.backend.main.services.submission.pipeline import GenerationSubmissionPipeline, is_enabled as pipeline_enabled
 from pixsim7.backend.main.workers.health import get_health_tracker
 
 # Configure structured logging using pixsim_logging
@@ -112,42 +111,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
     gen_logger.info("pipeline:start", msg="generation_processing_started")
 
     async for db in get_db():
-        # If feature flag enabled, delegate to pipeline
-        if pipeline_enabled():
-            try:
-                pipeline = GenerationSubmissionPipeline(db)
-                generation_service = pipeline.generation_service
-                generation = await generation_service.get_generation(generation_id)
-                result = await pipeline.run(generation)
-
-                # Track successful generation
-                if result.status in ("submitted", "processing"):
-                    get_health_tracker().increment_processed()
-
-                return {
-                    "status": result.status,
-                    "provider_job_id": result.provider_job_id,
-                    "account_id": result.account_id,
-                    "error": result.error,
-                    "generation_id": result.generation_id,
-                }
-            except Exception as e:
-                gen_logger.error("pipeline_error", error=str(e), error_type=e.__class__.__name__, exc_info=True)
-
-                # Track failed generation
-                get_health_tracker().increment_failed()
-
-                # Attempt to mark failed
-                try:
-                    await GenerationService(db, UserService(db)).mark_failed(generation_id, str(e))
-                except Exception:
-                    pass
-                raise
-            finally:
-                await db.close()
-            return
-
-        # Legacy path (pre-pipeline) - updated to use GenerationService
         try:
             # Initialize services
             user_service = UserService(db)
@@ -196,10 +159,10 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
             # Execute generation via provider
             try:
-                submission = await provider_service.execute_job(
-                    job=generation,  # Pass generation (compatible interface)
+                submission = await provider_service.execute_generation(
+                    generation=generation,
                     account=account,
-                    params=generation.raw_params  # Use raw_params for legacy path
+                    params=generation.canonical_params or generation.raw_params,
                 )
 
                 # Note: Concurrency was already incremented by select_and_reserve_account
@@ -211,8 +174,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     msg="generation_submitted_to_provider"
                 )
 
-                # Refresh credits AFTER successful submission
-                await refresh_account_credits(account, account_service, gen_logger)
+                # Note: Credits refreshed before submission; status_poller refreshes on completion
 
                 # Track successful generation
                 get_health_tracker().increment_processed()
@@ -233,8 +195,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 except Exception as release_err:
                     gen_logger.warning("account_release_failed", error=str(release_err))
 
-                # Refresh credits AFTER failure (credits may have been deducted anyway)
-                await refresh_account_credits(account, account_service, gen_logger)
+                # Note: Credits not refreshed on failure - provider rejects before billing
 
                 # Track failed generation
                 get_health_tracker().increment_failed()

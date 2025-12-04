@@ -197,23 +197,16 @@ class GenerationCreationService:
         strategy = generation_config.get("strategy", "once")
         purpose = generation_config.get("purpose", "unknown")
 
+        # Pre-compute cache key if caching is enabled (reused for lookup and store)
+        cache_key = None
         if strategy != "always":
-            # Extract context for cache key
-            player_context = params.get("player_context") or {}
-            if not isinstance(player_context, dict):
-                player_context = {}
-            playthrough_id = player_context.get("playthrough_id")
-            player_id = user.id  # Use user ID as player ID
-
-            # Compute cache key
-            cache_key = await self.cache.compute_cache_key(
+            cache_key = await self._compute_generation_cache_key(
+                user=user,
                 operation_type=operation_type,
                 purpose=purpose,
                 canonical_params=canonical_params,
                 strategy=strategy,
-                playthrough_id=playthrough_id,
-                player_id=player_id,
-                version=1,  # Can be incremented for cache invalidation
+                params=params,
             )
 
             # Check cache
@@ -265,24 +258,7 @@ class GenerationCreationService:
         await self.cache.store_hash(reproducible_hash, generation.id)
 
         # === PHASE 6: Cache generation if strategy permits ===
-        if strategy != "always":
-            # Extract context for cache key (same as lookup above)
-            player_context = params.get("player_context") or {}
-            if not isinstance(player_context, dict):
-                player_context = {}
-            playthrough_id = player_context.get("playthrough_id")
-            player_id = user.id
-
-            cache_key = await self.cache.compute_cache_key(
-                operation_type=operation_type,
-                purpose=purpose,
-                canonical_params=canonical_params,
-                strategy=strategy,
-                playthrough_id=playthrough_id,
-                player_id=player_id,
-                version=1,
-            )
-
+        if cache_key:
             # Note: We cache the generation ID immediately, even if not yet completed
             # This prevents duplicate requests during processing
             # Cache will be refreshed on completion in lifecycle service
@@ -314,6 +290,36 @@ class GenerationCreationService:
             # Worker can pick it up later via scheduled polling
 
         return generation
+
+    async def _compute_generation_cache_key(
+        self,
+        user: User,
+        operation_type: OperationType,
+        purpose: str,
+        canonical_params: Dict[str, Any],
+        strategy: str,
+        params: Dict[str, Any],
+    ) -> str:
+        """
+        Compute cache key for generation deduplication.
+
+        Extracts player context from params and delegates to cache service.
+        """
+        player_context = params.get("player_context") or {}
+        if not isinstance(player_context, dict):
+            player_context = {}
+        playthrough_id = player_context.get("playthrough_id")
+        player_id = user.id
+
+        return await self.cache.compute_cache_key(
+            operation_type=operation_type,
+            purpose=purpose,
+            canonical_params=canonical_params,
+            strategy=strategy,
+            playthrough_id=playthrough_id,
+            player_id=player_id,
+            version=1,  # Can be incremented for cache invalidation
+        )
 
     async def _canonicalize_params(
         self,

@@ -60,38 +60,15 @@ async def poll_job_statuses(ctx: dict) -> dict:
             if processing_generations:
                 logger.info("poll_found_generations", count=len(processing_generations))
 
-            # Check for timed-out generations (processing > 2 hours)
-            from datetime import timedelta
+            # Timeout threshold (processing > 2 hours = stuck)
             TIMEOUT_HOURS = 2
             timeout_threshold = datetime.utcnow() - timedelta(hours=TIMEOUT_HOURS)
-
-            for generation in processing_generations:
-                # Check timeout first
-                if generation.started_at and generation.started_at < timeout_threshold:
-                    logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
-
-                    # Get submission and account to decrement counter
-                    submission_result = await db.execute(
-                        select(ProviderSubmission)
-                        .where(ProviderSubmission.generation_id == generation.id)
-                        .order_by(ProviderSubmission.submitted_at.desc())
-                    )
-                    submission = submission_result.scalar_one_or_none()
-
-                    if submission and submission.account_id:
-                        account = await db.get(ProviderAccount, submission.account_id)
-                        if account and account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
-
-                    await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
-                    failed += 1
-                    continue
 
             for generation in processing_generations:
                 checked += 1
 
                 try:
-                    # Get submission for this generation
+                    # Get submission for this generation (needed for both timeout and status check)
                     submission_result = await db.execute(
                         select(ProviderSubmission)
                         .where(ProviderSubmission.generation_id == generation.id)
@@ -116,6 +93,18 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         failed += 1
                         continue
 
+                    # Check timeout first - skip provider API call for timed-out generations
+                    if generation.started_at and generation.started_at < timeout_threshold:
+                        logger.warning("generation_timeout", generation_id=generation.id, started_at=str(generation.started_at))
+                        await generation_service.mark_failed(generation.id, f"Generation timed out after {TIMEOUT_HOURS} hours")
+
+                        # Decrement account's concurrent job count
+                        if account.current_processing_jobs > 0:
+                            account.current_processing_jobs -= 1
+
+                        failed += 1
+                        continue
+
                     # Check status with provider
                     try:
                         status_result = await provider_service.check_status(
@@ -130,7 +119,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             # Create asset from submission
                             asset = await asset_service.create_from_submission(
                                 submission=submission,
-                                generation=generation  # Changed from job=job
+                                generation=generation
                             )
                             logger.info("generation_completed", generation_id=generation.id, asset_id=asset.id)
 
@@ -167,6 +156,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         logger.error("provider_check_error", generation_id=generation.id, error=str(e))
                         # Don't fail the generation yet - might be temporary
                         # Let it retry on next poll
+                        still_processing += 1
 
                 except Exception as e:
                     logger.error("poll_generation_error", generation_id=generation.id, error=str(e), exc_info=True)
