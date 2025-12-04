@@ -441,7 +441,7 @@ window.PXS7 = window.PXS7 || {};
       position: fixed;
       left: ${x}px;
       top: ${y}px;
-      z-index: 2147483647;
+      z-index: ${Z_INDEX_MENU};
       background: ${COLORS.bg};
       border: 1px solid ${COLORS.border};
       border-radius: 6px;
@@ -556,9 +556,16 @@ window.PXS7 = window.PXS7 || {};
     }, 0);
   }
 
+  // Z-index constants - use lower values so site popups can appear above
+  const Z_INDEX_PICKER = 100000;
+  const Z_INDEX_PICKER_INACTIVE = 99990;
+  const Z_INDEX_MENU = 100001;
+  const Z_INDEX_PREVIEW = 100002;
+
   // Hover preview element (shared across grid)
   let hoverPreview = null;
   let hoverTimeout = null;
+  let activePickerPanel = null;
 
   function showHoverPreview(imgUrl, anchorEl) {
     clearTimeout(hoverTimeout);
@@ -567,7 +574,7 @@ window.PXS7 = window.PXS7 || {};
         hoverPreview = document.createElement('div');
         hoverPreview.style.cssText = `
           position: fixed;
-          z-index: 2147483647;
+          z-index: ${Z_INDEX_PREVIEW};
           background: ${COLORS.bg};
           border: 2px solid ${COLORS.accent};
           border-radius: 8px;
@@ -831,13 +838,33 @@ window.PXS7 = window.PXS7 || {};
     const panel = document.createElement('div');
     panel.className = 'pxs7-image-picker';
     panel.style.cssText = `
-      position: fixed; top: 80px; right: 20px; z-index: 2147483647;
+      position: fixed; top: 80px; right: 20px; z-index: ${Z_INDEX_PICKER};
       background: ${COLORS.bg}; border: 1px solid ${COLORS.border};
       border-radius: 8px; width: 320px; max-height: 480px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       display: flex; flex-direction: column; resize: both; overflow: hidden;
     `;
+    activePickerPanel = panel;
+
+    // Lower z-index when clicking outside so site popups can appear above
+    const lowerPriority = () => {
+      if (panel.isConnected) {
+        panel.style.zIndex = Z_INDEX_PICKER_INACTIVE;
+      }
+    };
+    const raisePriority = () => {
+      if (panel.isConnected) {
+        panel.style.zIndex = Z_INDEX_PICKER;
+      }
+    };
+    panel.addEventListener('mouseenter', raisePriority);
+    panel.addEventListener('mousedown', raisePriority);
+    document.addEventListener('mousedown', (e) => {
+      if (!panel.contains(e.target)) {
+        lowerPriority();
+      }
+    });
 
     let isMinimized = false;
 
@@ -880,7 +907,10 @@ window.PXS7 = window.PXS7 || {};
       background: none; border: none; color: ${COLORS.textMuted};
       font-size: 18px; cursor: pointer; padding: 0; line-height: 1; width: 20px;
     `;
-    closeBtn.addEventListener('click', () => panel.remove());
+    closeBtn.addEventListener('click', () => {
+      panel.remove();
+      activePickerPanel = null;
+    });
     btnGroup.appendChild(closeBtn);
 
     header.appendChild(btnGroup);
