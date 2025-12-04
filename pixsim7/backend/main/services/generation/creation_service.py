@@ -115,12 +115,53 @@ class GenerationCreationService:
         # Keep a reference to generation_config for strategy/purpose and introspection
         generation_config_for_cache: Dict[str, Any] = {}
         if is_structured:
-            # New structured format - validation handled by schema
-            # Just verify we have the necessary context for the operation
+            # New structured format - apply operation-specific validation
             logger.info(f"Structured params detected for {operation_type.value}")
             raw_gen_config = params.get("generation_config") or {}
             if isinstance(raw_gen_config, dict):
                 generation_config_for_cache = raw_gen_config
+
+            # Operation-specific validation for structured params
+            gen_config = raw_gen_config
+
+            if operation_type == OperationType.IMAGE_TO_VIDEO:
+                # Require image_url in config or root params
+                if not (gen_config.get("image_url") or params.get("image_url")):
+                    raise InvalidOperationError("'image_url' is required for image_to_video")
+
+            elif operation_type == OperationType.IMAGE_TO_IMAGE:
+                # Require image_url or image_urls
+                has_urls = bool(
+                    gen_config.get("image_urls") or params.get("image_urls") or
+                    gen_config.get("image_url") or params.get("image_url")
+                )
+                if not has_urls:
+                    raise InvalidOperationError("'image_url' or 'image_urls' is required for image_to_image")
+
+            elif operation_type == OperationType.VIDEO_EXTEND:
+                # Require video_url or original_video_id
+                has_video = bool(
+                    gen_config.get("video_url") or params.get("video_url") or
+                    gen_config.get("original_video_id") or params.get("original_video_id")
+                )
+                if not has_video:
+                    raise InvalidOperationError("'video_url' or 'original_video_id' is required for video_extend")
+
+            elif operation_type == OperationType.VIDEO_TRANSITION:
+                # Require image_urls (list with at least 2 images) and prompts
+                image_urls = gen_config.get("image_urls") or params.get("image_urls") or []
+                prompts = gen_config.get("prompts") or params.get("prompts") or []
+
+                if not isinstance(image_urls, list) or len(image_urls) < 2:
+                    raise InvalidOperationError("video_transition requires at least 2 images in 'image_urls'")
+
+                # Prompts should be N-1 where N is number of images
+                expected_prompts = len(image_urls) - 1
+                if not isinstance(prompts, list) or len(prompts) != expected_prompts:
+                    raise InvalidOperationError(
+                        f"video_transition requires exactly {expected_prompts} prompts for {len(image_urls)} images "
+                        f"(one prompt for each transition between images)"
+                    )
         else:
             # Legacy flat format - apply operation-specific validation
             if operation_type == OperationType.TEXT_TO_VIDEO:

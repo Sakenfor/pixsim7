@@ -21,11 +21,18 @@ GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
     "dialogue": OperationType.TEXT_TO_VIDEO,
     "environment": OperationType.TEXT_TO_VIDEO,
 
-    # Image → video NPC response clips
-    "npc_response": OperationType.IMAGE_TO_VIDEO,
+    # Image → video operations
+    "npc_response": OperationType.IMAGE_TO_VIDEO,  # Legacy alias for game/narrative contexts
+    "image_to_video": OperationType.IMAGE_TO_VIDEO,  # Generic image-to-video
 
     # Image → image edits / transformations
     "image_edit": OperationType.IMAGE_TO_IMAGE,
+
+    # Text → image generation
+    "text_to_image": OperationType.TEXT_TO_IMAGE,
+
+    # Video extension
+    "video_extend": OperationType.VIDEO_EXTEND,
 
     # Fusion / character-consistent video
     "fusion": OperationType.FUSION,
