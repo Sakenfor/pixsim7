@@ -14,6 +14,7 @@ window.PXS7 = window.PXS7 || {};
   const STORAGE_KEY_SELECTED_ACCOUNT = 'pixsim7SelectedPresetAccount';
   const STORAGE_KEY_SELECTED_PRESET = 'pixsim7SelectedPreset';
   const STORAGE_KEY_ACCOUNT_SORT = 'pixsim7AccountSort';
+  const STORAGE_KEY_PENDING_PAGE_STATE = 'pixsim7PendingPageState';
 
   // Storage state
   const state = {
@@ -147,9 +148,50 @@ window.PXS7 = window.PXS7 || {};
     return null;
   }
 
+  // ===== Page State Preservation =====
+  // Used when switching accounts to preserve prompt/image state
+
+  async function savePendingPageState(pageState) {
+    try {
+      // Add timestamp for expiry (only valid for 30 seconds)
+      const stateWithExpiry = {
+        ...pageState,
+        savedAt: Date.now(),
+      };
+      await chrome.storage.local.set({ [STORAGE_KEY_PENDING_PAGE_STATE]: stateWithExpiry });
+    } catch (e) {
+      console.warn('[PXS7 Storage] Failed to save pending page state:', e);
+    }
+  }
+
+  async function loadAndClearPendingPageState() {
+    try {
+      const stored = await chrome.storage.local.get(STORAGE_KEY_PENDING_PAGE_STATE);
+      const pageState = stored[STORAGE_KEY_PENDING_PAGE_STATE];
+
+      // Clear immediately to prevent reuse
+      await chrome.storage.local.remove(STORAGE_KEY_PENDING_PAGE_STATE);
+
+      if (!pageState) return null;
+
+      // Check if state is expired (30 second window)
+      const age = Date.now() - (pageState.savedAt || 0);
+      if (age > 30000) {
+        console.log('[PXS7 Storage] Pending page state expired, ignoring');
+        return null;
+      }
+
+      return pageState;
+    } catch (e) {
+      console.warn('[PXS7 Storage] Failed to load pending page state:', e);
+      return null;
+    }
+  }
+
   // Export to global namespace
   window.PXS7.storage = {
     STORAGE_KEY_PROVIDER_SESSIONS,
+    STORAGE_KEY_PENDING_PAGE_STATE,
     state,
     loadSelectedAccount,
     saveSelectedAccount,
@@ -162,6 +204,8 @@ window.PXS7 = window.PXS7 || {};
     loadCurrentSessionAccount,
     getCurrentAccount,
     getCurrentSessionAccount,
+    savePendingPageState,
+    loadAndClearPendingPageState,
   };
 
 })();

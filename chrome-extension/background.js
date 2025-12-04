@@ -556,13 +556,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         };
 
-        // Open or reuse tab - prefer sender's tab, then explicit tabId, then new tab
+        // Check if current tab is already on the provider's domain
         const useTabId = sender?.tab?.id || tabId;
+        const currentTabUrl = sender?.tab?.url || '';
+        const isOnProviderDomain = currentTabUrl.includes(target.domain);
+
         if (useTabId && typeof useTabId === 'number') {
-          // Reuse existing tab (current tab in most cases)
-          chrome.tabs.update(useTabId, { url: target.url }, (tab) => {
-            handleTabReady(tab);
-          });
+          if (isOnProviderDomain) {
+            // Already on provider domain - save page state and reload to preserve URL
+            console.log('[Background] Already on provider domain, preserving page state');
+
+            // Ask content script to save current page state before reload
+            try {
+              await new Promise((resolve) => {
+                chrome.tabs.sendMessage(
+                  useTabId,
+                  { action: 'savePageStateBeforeLogin' },
+                  (res) => {
+                    if (chrome.runtime.lastError) {
+                      console.warn('[Background] Failed to save page state:', chrome.runtime.lastError.message);
+                    }
+                    resolve();
+                  }
+                );
+                // Don't wait forever
+                setTimeout(resolve, 500);
+              });
+            } catch (e) {
+              console.warn('[Background] Error saving page state:', e);
+            }
+
+            // Reload the current page instead of navigating to target.url
+            chrome.tabs.reload(useTabId, {}, () => {
+              chrome.tabs.get(useTabId, (tab) => {
+                handleTabReady(tab);
+              });
+            });
+          } else {
+            // Not on provider domain - navigate to target.url
+            chrome.tabs.update(useTabId, { url: target.url }, (tab) => {
+              handleTabReady(tab);
+            });
+          }
         } else {
           // Fallback: open a new tab
           chrome.tabs.create({ url: target.url }, (tab) => {

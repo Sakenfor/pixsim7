@@ -28,7 +28,8 @@
 
   const {
     saveInputState, restoreInputState,
-    setupUploadInterceptor, showUnifiedImagePicker
+    setupUploadInterceptor, showUnifiedImagePicker,
+    showImageRestorePanel
   } = imagePicker;
 
   // Local constants
@@ -859,6 +860,35 @@
 
     // Restore any saved input state after a delay (wait for page to fully render)
     setTimeout(restoreInputState, 1000);
+
+    // Also check for pending page state from account switch (chrome.storage)
+    setTimeout(async () => {
+      try {
+        const pendingState = await storage.loadAndClearPendingPageState();
+        if (pendingState) {
+          console.log('[PixSim7] Found pending page state to restore:', pendingState);
+
+          // Restore prompts to textareas
+          if (pendingState.prompts) {
+            document.querySelectorAll('textarea').forEach((el, i) => {
+              const key = el.id || el.name || el.placeholder || `textarea_${i}`;
+              if (pendingState.prompts[key]) {
+                el.value = pendingState.prompts[key];
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('[PixSim7] Restored prompt:', key);
+              }
+            });
+          }
+
+          // Show image restore panel if there are images
+          if (pendingState.images && pendingState.images.length > 0) {
+            showImageRestorePanel(pendingState.images);
+          }
+        }
+      } catch (e) {
+        console.warn('[PixSim7] Failed to restore pending page state:', e);
+      }
+    }, 1500);
 
     // Watch for DOM changes
     const observer = new MutationObserver((mutations) => {
