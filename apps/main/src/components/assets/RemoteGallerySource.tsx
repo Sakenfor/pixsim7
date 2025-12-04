@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom';
 import { useProviders } from '@/hooks/useProviders';
 import { useAssetsController } from '@/hooks/useAssetsController';
 import { MediaCard } from '../media/MediaCard';
-import type { MediaCardBadgeConfig } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import { GalleryToolsPanel } from '../gallery/panels/GalleryToolsPanel';
 import { Button } from '@pixsim7/shared.ui';
@@ -34,12 +33,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
   const [showLayoutSettings, setShowLayoutSettings] = useState(false);
   const [showToolsPanel, setShowToolsPanel] = useState(false);
 
-  // Get badge config from overlay preset
-  const badgeConfig = useMemo((): MediaCardBadgeConfig | undefined => {
+  // Get overlay configuration from preset
+  const overlayConfig = useMemo(() => {
     if (!overlayPresetId) return undefined;
     const preset = getMediaCardPreset(overlayPresetId);
-    if (!preset?.badgeConfig) return undefined;
-    return preset.badgeConfig as MediaCardBadgeConfig;
+    return preset?.configuration;
   }, [overlayPresetId]);
 
   // Infinite scroll sentinel ref
@@ -147,7 +145,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerStatus={a.provider_status}
               onOpen={undefined}
               actions={controller.getAssetActions(a)}
-              badgeConfig={badgeConfig}
+              overlayConfig={overlayConfig}
             />
           </div>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -226,7 +224,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               providerStatus={a.provider_status}
               onOpen={() => controller.openInViewer(a)}
               actions={actions}
-              badgeConfig={badgeConfig}
+              overlayConfig={overlayConfig}
             />
           );
         })()}
