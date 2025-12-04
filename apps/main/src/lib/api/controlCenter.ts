@@ -24,7 +24,7 @@ export interface GenerateAssetResponse {
  */
 function mapOperationToGenerationType(
   operationType?: string
-): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' {
+): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'fusion' {
   switch (operationType) {
     case 'video_transition':
       return 'transition';
@@ -35,6 +35,8 @@ function mapOperationToGenerationType(
       return 'dialogue';
     case 'environment':
       return 'environment';
+    case 'fusion':
+      return 'fusion';
     default:
       return 'variation';
   }
@@ -44,15 +46,16 @@ function mapOperationToGenerationType(
  * Build a GenerationNodeConfig-compatible object from Control Center settings.
  *
  * Provider-specific settings convention:
- * - Pixverse settings (model, quality, off_peak, audio, multi_shot) are placed
- *   in style.pixverse = { model, quality, off_peak, audio, multi_shot }
+ * - Provider settings (model, quality, off_peak, audio, multi_shot) are placed
+ *   in style.<providerId> = { model, quality, off_peak, audio, multi_shot }
  * - This keeps the config schema-compliant while allowing provider extensions.
  * - The backend's _canonicalize_params extracts these to top-level canonical fields.
  */
 function buildGenerationConfig(
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response',
+  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'fusion',
   presetParams: Record<string, any>,
-  extraParams: Record<string, any>
+  extraParams: Record<string, any>,
+  providerId: string = 'pixverse'
 ): Record<string, any> {
   // Merge params (extra overrides preset)
   const merged = { ...presetParams, ...extraParams };
@@ -68,18 +71,22 @@ function buildGenerationConfig(
   // Extract rating constraint
   const rating = merged.rating ?? 'PG-13';
 
-  // Build Pixverse-specific settings (placed in style.pixverse)
+  // Build provider-specific settings (placed in style.<providerId>)
   // The backend will extract these for the provider adapter
-  const pixverseSettings: Record<string, any> = {};
-  if (merged.model !== undefined) pixverseSettings.model = merged.model;
-  if (merged.quality !== undefined) pixverseSettings.quality = merged.quality;
-  if (merged.off_peak !== undefined) pixverseSettings.off_peak = merged.off_peak;
-  if (merged.audio !== undefined) pixverseSettings.audio = merged.audio;
-  if (merged.multi_shot !== undefined) pixverseSettings.multi_shot = merged.multi_shot;
-  if (merged.aspect_ratio !== undefined) pixverseSettings.aspect_ratio = merged.aspect_ratio;
-  if (merged.seed !== undefined) pixverseSettings.seed = merged.seed;
-  if (merged.camera_movement !== undefined) pixverseSettings.camera_movement = merged.camera_movement;
-  if (merged.negative_prompt !== undefined) pixverseSettings.negative_prompt = merged.negative_prompt;
+  const providerSettings: Record<string, any> = {};
+  if (merged.model !== undefined) providerSettings.model = merged.model;
+  if (merged.quality !== undefined) providerSettings.quality = merged.quality;
+  if (merged.off_peak !== undefined) providerSettings.off_peak = merged.off_peak;
+  if (merged.audio !== undefined) providerSettings.audio = merged.audio;
+  if (merged.multi_shot !== undefined) providerSettings.multi_shot = merged.multi_shot;
+  if (merged.aspect_ratio !== undefined) providerSettings.aspect_ratio = merged.aspect_ratio;
+  if (merged.seed !== undefined) providerSettings.seed = merged.seed;
+  if (merged.camera_movement !== undefined) providerSettings.camera_movement = merged.camera_movement;
+  if (merged.negative_prompt !== undefined) providerSettings.negative_prompt = merged.negative_prompt;
+  // Additional provider fields that map_parameters expects
+  if (merged.motion_mode !== undefined) providerSettings.motion_mode = merged.motion_mode;
+  if (merged.style !== undefined) providerSettings.style = merged.style;
+  if (merged.template_id !== undefined) providerSettings.template_id = merged.template_id;
 
   // Build the config object (matches GenerationNodeConfigSchema)
   const config: Record<string, any> = {
@@ -89,7 +96,7 @@ function buildGenerationConfig(
       pacing,
       // Provider-specific settings nested under provider key
       // This is the convention: style.<provider_id> = { provider-specific fields }
-      ...(Object.keys(pixverseSettings).length > 0 ? { pixverse: pixverseSettings } : {}),
+      ...(Object.keys(providerSettings).length > 0 ? { [providerId]: providerSettings } : {}),
     },
     duration: {
       target: durationTarget,
@@ -115,9 +122,12 @@ function buildGenerationConfig(
     config.image_url = merged.image_url;
   }
 
-  // Include video_url for video_extend operations
+  // Include video_url and original_video_id for video_extend operations
   if (merged.video_url) {
     config.video_url = merged.video_url;
+  }
+  if (merged.original_video_id) {
+    config.original_video_id = merged.original_video_id;
   }
 
   // Include transition-specific fields
@@ -126,6 +136,11 @@ function buildGenerationConfig(
   }
   if (merged.prompts) {
     config.prompts = merged.prompts;
+  }
+
+  // Include fusion-specific fields
+  if (merged.fusion_assets) {
+    config.fusion_assets = merged.fusion_assets;
   }
 
   return config;
@@ -140,35 +155,39 @@ function buildGenerationConfig(
  * Returns a job ID that can be tracked via polling.
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
-  // Build params - merge preset and extra params
-  const params = {
+  // extraParams from buildGenerationRequest already includes presetParams merged in,
+  // so we just add prompt and preset_id for the final merged params
+  const mergedParams = {
     prompt: req.prompt,
     preset_id: req.presetId,
-    ...(req.presetParams || {}),
     ...(req.extraParams || {}),
   };
 
   // Optional dev validation (warnings only, doesn't block)
   devValidateParams(
-    { kind: req.operationType || 'text_to_video', ...params },
+    { kind: req.operationType || 'text_to_video', ...mergedParams },
     'generateAsset'
   );
-  devLogParams(params, `generateAsset(${req.operationType})`);
+  devLogParams(mergedParams, `generateAsset(${req.operationType})`);
 
   // Map control center operation type to unified generation_type
   const generationType = mapOperationToGenerationType(req.operationType);
+  const providerId = req.providerId || 'pixverse';
 
   // Build proper GenerationNodeConfig from Control Center settings
+  // Note: extraParams already contains presetParams from buildGenerationRequest,
+  // so we pass empty object for presetParams to avoid double-merging
   const config = buildGenerationConfig(
     generationType,
-    req.presetParams || {},
-    { prompt: req.prompt, ...(req.extraParams || {}) }
+    {},  // presetParams already in extraParams
+    { prompt: req.prompt, ...(req.extraParams || {}) },
+    providerId
   );
 
   // Create generation request
   const generationRequest: CreateGenerationRequest = {
     config,
-    provider_id: req.providerId || 'pixverse',
+    provider_id: providerId,
     name: `Quick generation: ${req.prompt.slice(0, 50)}`,
   };
 

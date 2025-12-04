@@ -429,7 +429,8 @@ class GenerationCreationService:
                 # These are the fields PixverseProvider.map_parameters expects
                 for field in [
                     "model", "quality", "off_peak", "audio", "multi_shot",
-                    "aspect_ratio", "seed", "camera_movement", "negative_prompt"
+                    "aspect_ratio", "seed", "camera_movement", "negative_prompt",
+                    "motion_mode", "style", "template_id"
                 ]:
                     if field in provider_style:
                         canonical[field] = provider_style[field]
@@ -449,6 +450,9 @@ class GenerationCreationService:
             video_url = gen_config.get("video_url") or params.get("video_url")
             if video_url:
                 canonical["video_url"] = video_url
+            original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
+            if original_video_id:
+                canonical["original_video_id"] = original_video_id
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
             image_urls = gen_config.get("image_urls") or params.get("image_urls")
@@ -457,6 +461,11 @@ class GenerationCreationService:
                 canonical["image_urls"] = image_urls
             if prompts:
                 canonical["prompts"] = prompts
+
+        elif operation_type == OperationType.FUSION:
+            fusion_assets = gen_config.get("fusion_assets") or params.get("fusion_assets")
+            if fusion_assets:
+                canonical["fusion_assets"] = fusion_assets
 
         # Preserve full structured params for introspection/dev tools
         # The generation_config is kept intact so dev tools can see the full config

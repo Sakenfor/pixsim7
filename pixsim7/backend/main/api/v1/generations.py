@@ -90,6 +90,7 @@ async def create_generation(
             "dialogue": OperationType.TEXT_TO_VIDEO,
             "environment": OperationType.TEXT_TO_VIDEO,
             "npc_response": OperationType.IMAGE_TO_VIDEO,
+            "fusion": OperationType.FUSION,
         }
 
         generation_type = request.config.generation_type if request.config else "transition"
