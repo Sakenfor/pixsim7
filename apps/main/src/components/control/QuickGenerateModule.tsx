@@ -93,6 +93,27 @@ export function QuickGenerateModule() {
     setDynamicParams(prev => ({ ...prev, [name]: value }));
   }
 
+  // Keep primary dynamic params (quality, aspect_ratio, model, etc.) in sync
+  // with the currently selected preset parameters so the settings bar reflects
+  // preset changes (from both Quick presets and PresetsModule/Operator).
+  useEffect(() => {
+    if (!specs?.operation_specs) return;
+    const opSpec = specs.operation_specs[effectiveOperationType];
+    if (!opSpec?.parameters) return;
+
+    const paramNames: string[] = opSpec.parameters.map((p: any) => p.name);
+
+    setDynamicParams(prev => {
+      const next = { ...prev };
+      for (const name of paramNames) {
+        if (presetParams[name] !== undefined) {
+          next[name] = presetParams[name];
+        }
+      }
+      return next;
+    });
+  }, [presetParams, specs, effectiveOperationType, setDynamicParams]);
+
   function restorePrompt(p: string) {
     setPrompt(p);
   }

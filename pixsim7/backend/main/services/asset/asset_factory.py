@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.asset import Asset
-from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
+from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
+from pixsim7.backend.main.domain.relation_types import DERIVATION
 
 
 async def add_asset(
@@ -44,6 +45,7 @@ async def add_asset(
     relation_type: Optional[str] = None,
     image_hash: Optional[str] = None,
     phash64: Optional[int] = None,
+    operation_type: Optional[OperationType] = None,
 ) -> Asset:
     """
     Create or upsert an Asset record with sensible deduplication.
@@ -192,24 +194,56 @@ async def add_asset(
 
     # Create lineage links if provided
     if parent_asset_ids:
-        from pixsim7.backend.main.domain.asset_lineage import AssetLineage
-        from pixsim7.backend.main.domain.enums import OperationType
-        op_type = OperationType.IMAGE_TO_VIDEO if media_type == MediaType.VIDEO else OperationType.IMAGE_TO_VIDEO
-        for order, pid in enumerate(parent_asset_ids):
-            if pid == asset.id:
-                continue
-            db.add(AssetLineage(
-                child_asset_id=asset.id,
-                parent_asset_id=pid,
-                relation_type=relation_type or "DERIVATION",
-                operation_type=op_type,
-                sequence_order=order,
-            ))
-        await db.commit()
-        # no refresh needed for lineage
+        # Default operation type if not provided: treat video children as IMAGE_TO_VIDEO,
+        # and image children as TEXT_TO_IMAGE. Callers can override via operation_type.
+        op_type = operation_type
+        if op_type is None:
+            if media_type == MediaType.VIDEO:
+                op_type = OperationType.IMAGE_TO_VIDEO
+            else:
+                op_type = OperationType.TEXT_TO_IMAGE
+
+        await create_lineage_links(
+            db,
+            child_asset_id=asset.id,
+            parent_asset_ids=parent_asset_ids,
+            relation_type=relation_type or DERIVATION,
+            operation_type=op_type,
+        )
     return asset
 
 
 def _fill_missing(obj: Asset, field: str, value):
     if value is not None and getattr(obj, field) in (None, [], ""):
         setattr(obj, field, value)
+
+
+async def create_lineage_links(
+    db: AsyncSession,
+    *,
+    child_asset_id: int,
+    parent_asset_ids: List[int],
+    relation_type: str,
+    operation_type: OperationType,
+) -> None:
+    """
+    Create AssetLineage rows linking parent assets to a child asset.
+
+    This centralizes lineage writing so callers don't duplicate
+    AssetLineage construction logic.
+    """
+    from pixsim7.backend.main.domain.asset_lineage import AssetLineage
+
+    for order, parent_id in enumerate(parent_asset_ids):
+        if parent_id == child_asset_id:
+            continue
+        db.add(
+            AssetLineage(
+                child_asset_id=child_asset_id,
+                parent_asset_id=parent_id,
+                relation_type=relation_type,
+                operation_type=operation_type,
+                sequence_order=order,
+            )
+        )
+    await db.commit()

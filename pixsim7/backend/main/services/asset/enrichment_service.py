@@ -97,7 +97,12 @@ class AssetEnrichmentService:
             return
 
         # Insert child assets for media types (skip pure prompts for now)
-        from pixsim7.backend.main.services.asset.asset_factory import add_asset
+        from pixsim7.backend.main.services.asset.asset_factory import (
+            add_asset,
+            create_lineage_links,
+        )
+        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION
+        from pixsim7.backend.main.domain.enums import OperationType
 
         for idx, item in enumerate(embedded):
             if item.get("type") not in {"image", "video"}:
@@ -112,7 +117,8 @@ class AssetEnrichmentService:
             media_type = MediaType.IMAGE if item.get("media_type") == "image" else MediaType.VIDEO
 
             # Canonical direction: video (child) generated from images (parents).
-            # Here we're creating the parent image assets AFTER the video exists, so we attach lineage with child=video, parent=image.
+            # Here we're creating the parent image assets AFTER the video exists, so we
+            # attach lineage with child=video, parent=image using the shared helper.
             newly_created = await add_asset(
                 self.db,
                 user_id=user.id,
@@ -127,18 +133,15 @@ class AssetEnrichmentService:
                 sync_status=SyncStatus.REMOTE,
                 source_generation_id=None,
             )
-            # Add lineage link child=video asset, parent=new image/video asset
-            from pixsim7.backend.main.domain.asset_lineage import AssetLineage
-            from pixsim7.backend.main.domain.enums import OperationType
-            relation_type = "SOURCE_IMAGE" if media_type == MediaType.IMAGE else "DERIVATION"
-            self.db.add(AssetLineage(
+
+            relation_type = SOURCE_IMAGE if media_type == MediaType.IMAGE else DERIVATION
+            await create_lineage_links(
+                self.db,
                 child_asset_id=asset.id,
-                parent_asset_id=newly_created.id,
+                parent_asset_ids=[newly_created.id],
                 relation_type=relation_type,
-                operation_type=OperationType.IMAGE_TO_VIDEO if media_type == MediaType.IMAGE else OperationType.IMAGE_TO_VIDEO,
-                sequence_order=0,
-            ))
-        await self.db.commit()
+                operation_type=OperationType.IMAGE_TO_VIDEO,
+            )
 
     async def create_asset_from_paused_frame(
         self,
@@ -183,8 +186,9 @@ class AssetEnrichmentService:
             >>> # Returns existing asset if frame was previously extracted
         """
         from pixsim7.backend.main.services.asset.frame_extractor import extract_frame_with_metadata
-        from pixsim7.backend.main.domain.asset_lineage import AssetLineage
+        from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links
         from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME
+        from pixsim7.backend.main.domain.enums import OperationType
 
         # Get video asset with authorization
         video_asset = await self.get_asset_for_user(video_asset_id, user)
@@ -254,18 +258,13 @@ class AssetEnrichmentService:
             await self.db.refresh(asset)
 
             # Create lineage link: child=frame_asset, parent=video_asset
-            lineage = AssetLineage(
+            await create_lineage_links(
+                self.db,
                 child_asset_id=asset.id,
-                parent_asset_id=video_asset.id,
+                parent_asset_ids=[video_asset.id],
                 relation_type=PAUSED_FRAME,
                 operation_type=OperationType.IMAGE_TO_VIDEO,  # Reverse direction for UI
-                parent_start_time=timestamp,
-                parent_frame=frame_number,
-                sequence_order=0,
             )
-
-            self.db.add(lineage)
-            await self.db.commit()
 
             # Update user storage
             storage_gb = file_size / (1024 ** 3)
