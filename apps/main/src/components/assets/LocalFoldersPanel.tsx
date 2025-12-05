@@ -16,6 +16,7 @@ function useLazyLoadPreview(
 ) {
   const ref = useRef<HTMLDivElement | null>(null);
   const wasVisibleRef = useRef(false);
+  const revokeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -25,26 +26,39 @@ function useLazyLoadPreview(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            // Element is visible - load preview if not loaded
+            // Element is visible - cancel any pending revoke and load if needed
             wasVisibleRef.current = true;
+            if (revokeTimeoutRef.current) {
+              clearTimeout(revokeTimeoutRef.current);
+              revokeTimeoutRef.current = null;
+            }
             if (!previewUrl) {
               loadPreview(asset);
             }
           } else if (wasVisibleRef.current && previewUrl && revokePreview) {
-            // Element scrolled out of view - revoke blob URL to free memory
+            // Element scrolled out of view - delay revoke to handle quick scrolling
             // Only revoke if it was previously visible (avoid revoking on initial render)
-            revokePreview(asset.key);
-            wasVisibleRef.current = false;
+            if (revokeTimeoutRef.current) {
+              clearTimeout(revokeTimeoutRef.current);
+            }
+            revokeTimeoutRef.current = setTimeout(() => {
+              revokePreview(asset.key);
+              wasVisibleRef.current = false;
+              revokeTimeoutRef.current = null;
+            }, 2000); // 2 second delay before cleanup
           }
         });
       },
-      { rootMargin: '400px' },  // Load earlier, cleanup later for smooth scrolling
+      { rootMargin: '800px' },  // Larger buffer for smoother scrolling
     );
 
     observer.observe(el);
 
     return () => {
       observer.disconnect();
+      if (revokeTimeoutRef.current) {
+        clearTimeout(revokeTimeoutRef.current);
+      }
     };
   }, [asset, previewUrl, loadPreview, revokePreview]);
 
@@ -84,7 +98,10 @@ function TreeLazyMediaCard(props: {
   const providerStatus = uploadStatusToProviderStatus(status);
 
   return (
-    <div ref={cardRef}>
+    <div
+      ref={cardRef}
+      className={`transition-opacity duration-300 ${previewUrl ? 'opacity-100' : 'opacity-50'}`}
+    >
       <MediaCard
         id={getLocalAssetNumericId(asset)}
         mediaType={asset.kind === 'video' ? 'video' : 'image'}
