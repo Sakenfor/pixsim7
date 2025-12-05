@@ -257,13 +257,17 @@ class PixverseOperationsMixin:
         except Exception as exc:  # Let upstream handler classify
             raise exc
 
-        # Wrap image result in a GenerationResult-compatible object.
-        # Status mapping: treat "processing" vs "completed" similar to videos.
-        status = VideoStatus.PROCESSING
-        if getattr(image, "status", None) == "completed":
-            status = VideoStatus.COMPLETED
-        elif getattr(image, "status", None) in {"failed", "filtered"}:
-            status = VideoStatus.FAILED
+        # Validate that we got an image ID from the API
+        image_id = getattr(image, "id", None)
+        if not image_id or image_id == "unknown":
+            logger.error(
+                "provider:image",
+                msg="text_to_image_missing_id",
+                image_obj=str(image),
+            )
+            raise ProviderError(
+                "Pixverse API did not return an image ID - generation may have failed"
+            )
 
         return image
 
@@ -352,13 +356,17 @@ class PixverseOperationsMixin:
         except Exception as exc:  # Let upstream handler classify
             raise exc
 
-        # Wrap image result in a GenerationResult-compatible object.
-        # Status mapping: treat "processing" vs "completed" similar to videos.
-        status = VideoStatus.PROCESSING
-        if getattr(image, "status", None) == "completed":
-            status = VideoStatus.COMPLETED
-        elif getattr(image, "status", None) in {"failed", "filtered"}:
-            status = VideoStatus.FAILED
+        # Validate that we got an image ID from the API
+        image_id = getattr(image, "id", None)
+        if not image_id or image_id == "unknown":
+            logger.error(
+                "provider:image",
+                msg="image_to_image_missing_id",
+                image_obj=str(image),
+            )
+            raise ProviderError(
+                "Pixverse API did not return an image ID - generation may have failed"
+            )
 
         return image
 
@@ -462,6 +470,18 @@ class PixverseOperationsMixin:
         Raises:
             JobNotFoundError: Video/image not found
         """
+        # Guard against missing provider_job_id (stale submission from incomplete flow)
+        if not provider_job_id:
+            logger.warning(
+                "provider:status",
+                msg="missing_provider_job_id",
+                operation_type=operation_type.value if operation_type else None,
+            )
+            return VideoStatusResult(
+                status=VideoStatus.FAILED,
+                error_message="No provider job ID - submission may be incomplete",
+            )
+
         is_image_operation = operation_type == OperationType.IMAGE_TO_IMAGE
 
         async def _operation(session: PixverseSessionData) -> VideoStatusResult:
