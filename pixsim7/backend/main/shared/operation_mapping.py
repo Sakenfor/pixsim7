@@ -12,7 +12,21 @@ from pixsim7.backend.main.domain.enums import OperationType
 
 # Canonical mapping from structured generation_type (JSON/config)
 # to internal OperationType enum.
+#
+# Frontend operation mappings:
+# - text_to_image → "text_to_image" → TEXT_TO_IMAGE
+# - text_to_video → "variation" → TEXT_TO_VIDEO
+# - image_to_video → "npc_response" → IMAGE_TO_VIDEO (legacy/game-oriented alias)
+# - image_to_image → "image_edit" → IMAGE_TO_IMAGE
+# - video_extend → "video_extend" → VIDEO_EXTEND
+# - video_transition → "transition" → VIDEO_TRANSITION
+# - fusion → "fusion" → FUSION
+# - dialogue → "dialogue" → TEXT_TO_VIDEO
+# - environment → "environment" → TEXT_TO_VIDEO
 GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
+    # Text to image generation (Quick Generate)
+    "text_to_image": OperationType.TEXT_TO_IMAGE,
+
     # Scene transitions between images
     "transition": OperationType.VIDEO_TRANSITION,
 
@@ -21,11 +35,14 @@ GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
     "dialogue": OperationType.TEXT_TO_VIDEO,
     "environment": OperationType.TEXT_TO_VIDEO,
 
-    # Image → video NPC response clips
+    # Image → video NPC response clips (legacy/game-oriented alias for IMAGE_TO_VIDEO)
     "npc_response": OperationType.IMAGE_TO_VIDEO,
 
     # Image → image edits / transformations
     "image_edit": OperationType.IMAGE_TO_IMAGE,
+
+    # Video extension (Quick Generate)
+    "video_extend": OperationType.VIDEO_EXTEND,
 
     # Fusion / character-consistent video
     "fusion": OperationType.FUSION,

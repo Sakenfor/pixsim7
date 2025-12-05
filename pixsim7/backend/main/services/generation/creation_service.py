@@ -121,6 +121,9 @@ class GenerationCreationService:
             raw_gen_config = params.get("generation_config") or {}
             if isinstance(raw_gen_config, dict):
                 generation_config_for_cache = raw_gen_config
+
+            # Validate operation-specific required fields for structured params
+            self._validate_structured_params(operation_type, raw_gen_config, params)
         else:
             # Legacy flat format - apply operation-specific validation
             if operation_type == OperationType.TEXT_TO_VIDEO:
@@ -611,6 +614,81 @@ class GenerationCreationService:
                 })
 
         return inputs
+
+    def _validate_structured_params(
+        self,
+        operation_type: OperationType,
+        gen_config: Dict[str, Any],
+        params: Dict[str, Any]
+    ) -> None:
+        """
+        Validate operation-specific required fields for structured params.
+
+        Raises InvalidOperationError for missing or invalid required fields.
+
+        Args:
+            operation_type: The operation type being validated
+            gen_config: The generation_config dict
+            params: The full params dict (may have fields at root level)
+        """
+        # Helper to check if a field exists in either gen_config or root params
+        def has_field(field_name: str) -> bool:
+            return bool(gen_config.get(field_name) or params.get(field_name))
+
+        def get_field(field_name: str) -> Any:
+            return gen_config.get(field_name) or params.get(field_name)
+
+        # IMAGE_TO_VIDEO requires image_url
+        if operation_type == OperationType.IMAGE_TO_VIDEO:
+            if not has_field("image_url"):
+                raise InvalidOperationError(
+                    "IMAGE_TO_VIDEO operation requires 'image_url' field in generation config"
+                )
+
+        # IMAGE_TO_IMAGE requires image_urls or image_url
+        elif operation_type == OperationType.IMAGE_TO_IMAGE:
+            image_urls = get_field("image_urls")
+            image_url = get_field("image_url")
+
+            if not image_urls and not image_url:
+                raise InvalidOperationError(
+                    "IMAGE_TO_IMAGE operation requires 'image_urls' (list) or 'image_url' (single URL)"
+                )
+
+            # If image_urls is provided, ensure it's non-empty
+            if image_urls and (not isinstance(image_urls, list) or len(image_urls) == 0):
+                raise InvalidOperationError(
+                    "IMAGE_TO_IMAGE 'image_urls' must be a non-empty list"
+                )
+
+        # VIDEO_EXTEND requires video_url or original_video_id
+        elif operation_type == OperationType.VIDEO_EXTEND:
+            if not has_field("video_url") and not has_field("original_video_id"):
+                raise InvalidOperationError(
+                    "VIDEO_EXTEND operation requires 'video_url' or 'original_video_id'"
+                )
+
+        # VIDEO_TRANSITION requires image_urls and prompts with correct counts
+        elif operation_type == OperationType.VIDEO_TRANSITION:
+            image_urls = get_field("image_urls")
+            prompts = get_field("prompts")
+
+            if not image_urls or not isinstance(image_urls, list) or len(image_urls) < 2:
+                raise InvalidOperationError(
+                    "VIDEO_TRANSITION operation requires 'image_urls' list with at least 2 images"
+                )
+
+            if not prompts or not isinstance(prompts, list):
+                raise InvalidOperationError(
+                    "VIDEO_TRANSITION operation requires 'prompts' list"
+                )
+
+            expected_prompts = len(image_urls) - 1
+            if len(prompts) != expected_prompts:
+                raise InvalidOperationError(
+                    f"VIDEO_TRANSITION requires exactly {expected_prompts} prompt(s) "
+                    f"for {len(image_urls)} images, but got {len(prompts)}"
+                )
 
     def _validate_content_rating(
         self,

@@ -6,7 +6,7 @@ export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
   presetId?: string;
-  operationType?: 'text_to_video' | 'image_to_video' | 'image_to_image' | 'video_extend' | 'video_transition' | 'fusion';
+  operationType?: 'text_to_image' | 'text_to_video' | 'image_to_video' | 'image_to_image' | 'video_extend' | 'video_transition' | 'fusion';
   extraParams?: Record<string, any>;
   presetParams?: Record<string, any>;
 }
@@ -24,14 +24,18 @@ export interface GenerateAssetResponse {
  */
 function mapOperationToGenerationType(
   operationType?: string
-): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' {
+): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' | 'text_to_image' | 'video_extend' {
   switch (operationType) {
+    case 'text_to_image':
+      return 'text_to_image';
     case 'video_transition':
       return 'transition';
     case 'image_to_video':
       return 'npc_response';
     case 'image_to_image':
       return 'image_edit';
+    case 'video_extend':
+      return 'video_extend';
     case 'dialogue':
       return 'dialogue';
     case 'environment':
@@ -53,7 +57,7 @@ function mapOperationToGenerationType(
  * - The backend's _canonicalize_params extracts these to top-level canonical fields.
  */
 function buildGenerationConfig(
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion',
+  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' | 'text_to_image' | 'video_extend',
   presetParams: Record<string, any>,
   extraParams: Record<string, any>,
   providerId: string = 'pixverse'

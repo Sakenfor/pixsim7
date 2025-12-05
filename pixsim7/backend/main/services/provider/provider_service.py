@@ -12,6 +12,7 @@ from pixsim7.backend.main.domain import (
     ProviderSubmission,
     ProviderAccount,
     VideoStatus,
+    OperationType,
 )
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import (
@@ -93,14 +94,28 @@ class ProviderService:
             )
 
             # Update submission with response
-            submission.response = {
-                "provider_job_id": result.provider_job_id,
-                "provider_video_id": result.provider_video_id,
-                "status": result.status.value,
-                "video_url": result.video_url,
-                "thumbnail_url": result.thumbnail_url,
-                "metadata": result.metadata or {},
-            }
+            # For image operations, use image-specific field names
+            # to ensure correct media type classification in asset creation
+            if generation.operation_type in (OperationType.TEXT_TO_IMAGE, OperationType.IMAGE_TO_IMAGE):
+                submission.response = {
+                    "provider_job_id": result.provider_job_id,
+                    "provider_image_id": result.provider_video_id,  # Re-key for images
+                    "status": result.status.value,
+                    "image_url": result.video_url,  # Re-key for images
+                    "thumbnail_url": result.thumbnail_url,
+                    "metadata": result.metadata or {},
+                    "media_type": "image",  # Explicit media type
+                }
+            else:
+                # Video operations use standard field names
+                submission.response = {
+                    "provider_job_id": result.provider_job_id,
+                    "provider_video_id": result.provider_video_id,
+                    "status": result.status.value,
+                    "video_url": result.video_url,
+                    "thumbnail_url": result.thumbnail_url,
+                    "metadata": result.metadata or {},
+                }
             submission.provider_job_id = result.provider_job_id
             submission.responded_at = datetime.utcnow()
             submission.status = "success"
