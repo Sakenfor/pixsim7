@@ -144,6 +144,14 @@ class GenerationOperationMetadataItem(BaseModel):
     """Metadata entry describing a single generation_type mapping."""
     generation_type: str = Field(..., description="Structured generation type identifier")
     operation_type: OperationType = Field(..., description="Backend OperationType value")
+    owner: Optional[str] = Field(
+        None,
+        description="Plugin ID that owns this alias, or null for canonical core aliases",
+    )
+    is_semantic_alias: bool = Field(
+        False,
+        description="True if this is a semantic/plugin-owned alias rather than a canonical core name",
+    )
 
 
 @router.get("/generation-operations", response_model=list[GenerationOperationMetadataItem])

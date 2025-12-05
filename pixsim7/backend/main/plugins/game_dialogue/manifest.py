@@ -1127,6 +1127,7 @@ def on_load(app):
     register_generation_alias("npc_response", OperationType.IMAGE_TO_VIDEO, owner="game-dialogue")
     register_generation_alias("dialogue", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
     register_generation_alias("environment", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
+    register_generation_alias("variation", OperationType.TEXT_TO_VIDEO, owner="game-dialogue")
 
     logger = configure_logging("plugin.game-dialogue")
     logger.info("Game Dialogue plugin loaded")

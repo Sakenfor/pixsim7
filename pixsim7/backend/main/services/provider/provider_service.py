@@ -22,6 +22,7 @@ from pixsim7.backend.main.services.provider.base import (
 )
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ResourceNotFoundError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, PROVIDER_SUBMITTED, PROVIDER_COMPLETED, PROVIDER_FAILED
+from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
 
 class ProviderService:
@@ -95,8 +96,9 @@ class ProviderService:
 
             # Update submission with response
             # For image operations, use image-specific field names
-            # to ensure correct media type classification in asset creation
-            if generation.operation_type in (OperationType.TEXT_TO_IMAGE, OperationType.IMAGE_TO_IMAGE):
+            # to ensure correct media type classification in asset creation.
+            # The set of image operations is owned by OPERATION_REGISTRY.
+            if generation.operation_type in get_image_operations():
                 submission.response = {
                     "provider_job_id": result.provider_job_id,
                     "provider_image_id": result.provider_video_id,  # Re-key for images

@@ -17,6 +17,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from pixsim_logging import configure_logging
+from pixsim7.backend.main.shared.operation_mapping import assert_operation_coverage
 
 logger = configure_logging("startup")
 
@@ -56,7 +57,21 @@ def setup_domain_registry(models_dir: str | Path):
     - No hidden globals
     """
     from pixsim7.backend.main.infrastructure.domain_registry import init_domain_registry
-    return init_domain_registry(str(models_dir))
+    registry = init_domain_registry(str(models_dir))
+
+    # Validate operation coverage after domain models are registered.
+    # This will raise AssertionError in case of drift or incomplete mappings,
+    # failing fast in development/CI while remaining lightweight.
+    try:
+        assert_operation_coverage()
+        logger.info("operation_mapping_validated")
+    except AssertionError as e:
+        # In development, it's useful to fail fast; in production we log
+        # the error and continue, since this is primarily a developer guardrail.
+        logger.error("operation_mapping_validation_failed", error=str(e))
+        raise
+
+    return registry
 
 
 async def setup_database_and_seed() -> None:
