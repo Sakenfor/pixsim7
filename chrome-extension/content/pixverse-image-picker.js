@@ -222,9 +222,31 @@ window.PXS7 = window.PXS7 || {};
       if (container) {
         const parentArea = container.closest('.ant-upload-wrapper') || container.parentElement?.parentElement;
         if (parentArea) {
-          const existingImg = parentArea.querySelector('img[src*="media.pixverse.ai"], img[src*="blob:"]');
-          const bgWithImage = parentArea.querySelector('[style*="background-image"][style*="media.pixverse.ai"]');
-          hasImage = !!(existingImg || bgWithImage);
+          // Check for any img with a real src (not placeholder/empty)
+          const existingImg = parentArea.querySelector('img[src]:not([src=""]):not([src="#"])');
+          // Check for background-image style (any URL)
+          const bgWithImage = parentArea.querySelector('[style*="background-image"]');
+          // Check for Ant Design upload list items (indicates uploaded file)
+          const uploadListItem = parentArea.querySelector('.ant-upload-list-item, .ant-upload-list-picture-card-container');
+          // Check for preview elements
+          const previewEl = parentArea.querySelector('[class*="preview"], [class*="Preview"]');
+
+          // Validate that img actually has content (not 1x1 placeholder)
+          let imgHasContent = false;
+          if (existingImg) {
+            const src = existingImg.src || '';
+            // Real images have substantial URLs, not data:image/gif placeholders
+            imgHasContent = src.length > 100 || src.includes('media.pixverse') || src.includes('blob:') || src.includes('aliyun');
+          }
+
+          // Validate background-image has a real URL
+          let bgHasContent = false;
+          if (bgWithImage) {
+            const style = bgWithImage.getAttribute('style') || '';
+            bgHasContent = style.includes('url(') && !style.includes('data:image/gif');
+          }
+
+          hasImage = imgHasContent || bgHasContent || !!uploadListItem || !!previewEl;
         }
       }
 
@@ -265,16 +287,69 @@ window.PXS7 = window.PXS7 || {};
 
   function clearUploadContainer(container) {
     try {
+      // Search in multiple possible wrapper elements
       const wrapper = container?.closest('.ant-upload-wrapper') ||
-                      container?.closest('[class*="ant-upload"]')?.parentElement;
-      if (!wrapper) return;
-
-      const deleteBtn = wrapper.querySelector('[class*="delete"], [class*="remove"], .anticon-delete, .anticon-close');
-      if (deleteBtn) {
-        deleteBtn.click();
-        console.log('[PixSim7] Clicked delete button to clear upload');
-        return;
+                      container?.closest('[class*="ant-upload"]')?.parentElement ||
+                      container?.parentElement?.parentElement;
+      if (!wrapper) {
+        console.warn('[PixSim7] Could not find upload wrapper');
+        return false;
       }
+
+      // Extended selectors for delete/remove buttons (Ant Design + Pixverse custom)
+      const deleteSelectors = [
+        // Ant Design icons
+        '.anticon-delete',
+        '.anticon-close',
+        '.anticon-close-circle',
+        // Class-based
+        '[class*="delete"]',
+        '[class*="remove"]',
+        '[class*="Delete"]',
+        '[class*="Remove"]',
+        // SVG icons that might be delete buttons
+        'svg[class*="close"]',
+        'svg[class*="delete"]',
+        // Button with aria labels
+        '[aria-label*="delete"]',
+        '[aria-label*="remove"]',
+        '[aria-label*="Delete"]',
+        '[aria-label*="Remove"]',
+        // Pixverse specific (hover-revealed buttons)
+        '.ant-upload-list-item-actions button',
+        '.ant-upload-list-item-card-actions button',
+      ];
+
+      let deleteBtn = null;
+      for (const selector of deleteSelectors) {
+        deleteBtn = wrapper.querySelector(selector);
+        if (deleteBtn) break;
+      }
+
+      // Also check parent elements for the delete button
+      if (!deleteBtn) {
+        const parent = wrapper.parentElement;
+        if (parent) {
+          for (const selector of deleteSelectors) {
+            deleteBtn = parent.querySelector(selector);
+            if (deleteBtn) break;
+          }
+        }
+      }
+
+      if (deleteBtn) {
+        // Trigger hover state first (some buttons only appear on hover)
+        wrapper.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+        setTimeout(() => {
+          deleteBtn.click();
+          console.log('[PixSim7] Clicked delete button to clear upload');
+        }, 50);
+        return true;
+      }
+
+      // Fallback: manually clear preview
+      console.log('[PixSim7] No delete button found, trying manual clear');
 
       const previewDiv = wrapper.querySelector('[style*="background-image"]');
       if (previewDiv) {
@@ -286,9 +361,11 @@ window.PXS7 = window.PXS7 || {};
       const fileInput = wrapper.querySelector('input[type="file"]');
       if (fileInput) fileInput.value = '';
 
-      console.log('[PixSim7] Cleared upload container');
+      console.log('[PixSim7] Cleared upload container (manual)');
+      return true;
     } catch (e) {
       console.warn('[PixSim7] Failed to clear container:', e);
+      return false;
     }
   }
 
@@ -315,9 +392,30 @@ window.PXS7 = window.PXS7 || {};
         return false;
       }
 
-      const targetUpload = targetInput
-        ? uploads.find(u => u.input === targetInput) || uploads[0]
-        : uploads[0];
+      // If specific target provided, use it; otherwise use smart selection
+      let targetUpload;
+      if (targetInput) {
+        targetUpload = uploads.find(u => u.input === targetInput) || uploads[0];
+      } else {
+        // Filter to only high-priority (page-relevant) slots
+        const relevantSlots = uploads.filter(u => u.priority >= 10);
+
+        if (relevantSlots.length > 0) {
+          // Among relevant slots, prefer one WITH an image (for replacement)
+          // This handles the case where user wants to replace existing image
+          targetUpload = relevantSlots.find(u => u.hasImage) || relevantSlots[0];
+        } else {
+          // Fall back to first empty slot, or first slot if all have images
+          targetUpload = uploads.find(u => !u.hasImage) || uploads[0];
+        }
+      }
+
+      console.log('[PixSim7] Upload slots (relevant):', uploads.filter(u => u.priority >= 10).map(u => ({
+        hasImage: u.hasImage,
+        containerId: u.containerId,
+        priority: u.priority
+      })));
+      console.log('[PixSim7] Target slot:', { hasImage: targetUpload.hasImage, containerId: targetUpload.containerId });
 
       const fileInput = targetUpload.input;
       const container = targetUpload.container;
@@ -328,8 +426,18 @@ window.PXS7 = window.PXS7 || {};
       }
 
       if (targetUpload.hasImage) {
+        if (showToast) showToast('Replacing existing image...', true);
         clearUploadContainer(container);
-        await new Promise(r => setTimeout(r, 200));
+        // Wait longer for React/Ant to process the deletion and re-render
+        await new Promise(r => setTimeout(r, 500));
+        // Re-fetch uploads in case DOM changed after deletion
+        const refreshedUploads = findUploadInputs();
+        const refreshedTarget = targetInput
+          ? refreshedUploads.find(u => u.input === targetInput) || refreshedUploads[0]
+          : refreshedUploads[0];
+        if (refreshedTarget && !refreshedTarget.hasImage) {
+          // Successfully cleared, proceed with new target
+        }
       }
 
       const isPixverseUrl = imageUrl.includes('media.pixverse.ai');
