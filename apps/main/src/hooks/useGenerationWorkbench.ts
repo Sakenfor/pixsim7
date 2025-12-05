@@ -197,7 +197,7 @@ export function useGenerationWorkbench(
         }
 
         if (currentValue === undefined) {
-          if (param.default !== undefined && next[name] !== param.default) {
+          if (param.default !== undefined && param.default !== null && next[name] !== param.default) {
             next[name] = param.default;
             changed = true;
           }

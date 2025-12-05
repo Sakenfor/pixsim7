@@ -169,9 +169,8 @@ class PixverseProvider(
         # === Common parameters (all operations) ===
         if "prompt" in params and params["prompt"] is not None:
             mapped["prompt"] = params["prompt"]
-        if "seed" in params:
-            # Treat None as 0 for seed; otherwise pass through.
-            mapped["seed"] = params["seed"] if params["seed"] is not None else 0
+        if "seed" in params and params["seed"] is not None and params["seed"] != "":
+            mapped["seed"] = params["seed"]
 
         # === Model selection (video vs image) ===
         if "model" in params and params["model"] is not None:
@@ -338,8 +337,13 @@ class PixverseProvider(
             "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 20
         }
         seed = {
-            "name": "seed", "type": "integer", "required": False, "default": 0,
-            "enum": None, "description": "Deterministic seed (0 for random)", "group": "advanced"
+            "name": "seed",
+            "type": "integer",
+            "required": False,
+            "default": None,
+            "enum": None,
+            "description": "Deterministic seed (leave blank for random)",
+            "group": "advanced",
         }
         aspect_ratio = {
             "name": "aspect_ratio", "type": "enum", "required": False, "default": "16:9",
