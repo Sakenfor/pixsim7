@@ -614,12 +614,32 @@ window.PXS7 = window.PXS7 || {};
 
   // Hover preview element (shared across grid)
   let hoverPreview = null;
+  let hoverPreviewImg = null;
   let hoverTimeout = null;
   let activePickerPanel = null;
+  let lastPreviewUrl = null;
+
+  // Convert URL to medium-size preview (Pixverse OSS supports image processing)
+  function getPreviewSizeUrl(url) {
+    if (!url) return url;
+    // If it's a Pixverse CDN URL, request a medium-sized version
+    if (url.includes('pixverse') || url.includes('aliyuncs.com')) {
+      // Remove any existing processing params and add medium size
+      const baseUrl = url.split('?')[0];
+      return baseUrl + '?x-oss-process=image/resize,w_400,h_400,m_lfit';
+    }
+    return url;
+  }
 
   function showHoverPreview(imgUrl, anchorEl) {
     clearTimeout(hoverTimeout);
     hoverTimeout = setTimeout(() => {
+      // Use medium-size preview URL to avoid loading full resolution
+      const previewUrl = getPreviewSizeUrl(imgUrl);
+
+      // Skip if anchor is no longer in DOM (user scrolled/moved away)
+      if (!anchorEl.isConnected) return;
+
       if (!hoverPreview) {
         hoverPreview = document.createElement('div');
         hoverPreview.style.cssText = `
@@ -634,15 +654,22 @@ window.PXS7 = window.PXS7 || {};
           max-width: 280px;
           max-height: 280px;
         `;
+        hoverPreviewImg = document.createElement('img');
+        hoverPreviewImg.style.cssText = `
+          max-width: 100%;
+          max-height: 260px;
+          border-radius: 4px;
+          display: block;
+        `;
+        hoverPreview.appendChild(hoverPreviewImg);
         document.body.appendChild(hoverPreview);
       }
 
-      hoverPreview.innerHTML = `<img src="${imgUrl}" style="
-        max-width: 100%;
-        max-height: 260px;
-        border-radius: 4px;
-        display: block;
-      "/>`;
+      // Only update src if URL changed (avoid reloading same image)
+      if (lastPreviewUrl !== previewUrl) {
+        hoverPreviewImg.src = previewUrl;
+        lastPreviewUrl = previewUrl;
+      }
 
       const rect = anchorEl.getBoundingClientRect();
       const previewWidth = 280;
@@ -655,7 +682,7 @@ window.PXS7 = window.PXS7 || {};
       hoverPreview.style.left = `${x}px`;
       hoverPreview.style.top = `${y}px`;
       hoverPreview.style.display = 'block';
-    }, 300);
+    }, 400); // Slightly longer delay to reduce thrashing on fast mouse movement
   }
 
   function hideHoverPreview() {
@@ -663,72 +690,97 @@ window.PXS7 = window.PXS7 || {};
     if (hoverPreview) hoverPreview.style.display = 'none';
   }
 
-  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
-    const grid = document.createElement('div');
-    grid.style.cssText = `
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
+  // Inject grid styles once
+  let gridStylesInjected = false;
+  function injectGridStyles() {
+    if (gridStylesInjected) return;
+    gridStylesInjected = true;
+    const style = document.createElement('style');
+    style.textContent = `
+      .pxs7-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; contain: layout style; }
+      .pxs7-thumb { position: relative; aspect-ratio: 1; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid ${COLORS.border}; contain: layout style paint; }
+      .pxs7-thumb:hover { border-color: ${COLORS.accent}; }
+      .pxs7-thumb.pxs7-success { border-color: ${COLORS.success}; }
+      .pxs7-thumb.pxs7-loading { opacity: 0.5; pointer-events: none; }
+      .pxs7-thumb img { width: 100%; height: 100%; object-fit: cover; }
     `;
+    document.head.appendChild(style);
+  }
 
-    items.forEach((item) => {
+  function createImageGrid(items, getThumbUrl, getFullUrl = null, getName = null) {
+    injectGridStyles();
+
+    const grid = document.createElement('div');
+    grid.className = 'pxs7-grid';
+
+    // Build data map for event delegation
+    const itemDataMap = new Map();
+
+    items.forEach((item, index) => {
       const thumbUrl = typeof getThumbUrl === 'function' ? getThumbUrl(item) : item;
       const fullUrl = getFullUrl ? getFullUrl(item) : (typeof item === 'string' ? item : item);
       const name = getName ? getName(item) : null;
 
       const thumb = document.createElement('div');
-      thumb.style.cssText = `
-        position: relative;
-        aspect-ratio: 1;
-        border-radius: 4px;
-        overflow: hidden;
-        cursor: pointer;
-        border: 2px solid ${COLORS.border};
-        transition: border-color 0.2s, transform 0.15s;
-      `;
+      thumb.className = 'pxs7-thumb';
+      thumb.dataset.idx = index;
+      if (name) thumb.title = name;
 
       const img = document.createElement('img');
       img.src = thumbUrl;
-      img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
       img.loading = 'lazy';
+      img.decoding = 'async';
       thumb.appendChild(img);
 
-      if (name) thumb.title = name;
-
-      thumb.addEventListener('mouseenter', () => {
-        thumb.style.borderColor = COLORS.accent;
-        thumb.style.transform = 'scale(1.05)';
-        showHoverPreview(fullUrl || thumbUrl, thumb);
-      });
-      thumb.addEventListener('mouseleave', () => {
-        thumb.style.borderColor = COLORS.border;
-        thumb.style.transform = 'scale(1)';
-        hideHoverPreview();
-      });
-
-      thumb.addEventListener('click', async () => {
-        thumb.style.opacity = '0.5';
-        thumb.style.pointerEvents = 'none';
-        const success = await injectImageToUpload(fullUrl);
-        if (success) {
-          thumb.style.borderColor = COLORS.success;
-          thumb.style.opacity = '1';
-          thumb.style.pointerEvents = 'auto';
-        } else {
-          await navigator.clipboard.writeText(fullUrl);
-          if (showToast) showToast('URL copied - paste manually', true);
-          thumb.style.opacity = '1';
-          thumb.style.pointerEvents = 'auto';
-        }
-      });
-
-      // Right-click to choose specific upload slot
-      thumb.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showUploadSlotMenu(fullUrl, e.clientX, e.clientY);
-      });
-
+      itemDataMap.set(index, { thumbUrl, fullUrl, name, element: thumb });
       grid.appendChild(thumb);
+    });
+
+    // Event delegation - single set of listeners on grid
+    let currentHoverIdx = null;
+
+    grid.addEventListener('mouseenter', (e) => {
+      const thumb = e.target.closest('.pxs7-thumb');
+      if (!thumb) return;
+      const idx = parseInt(thumb.dataset.idx, 10);
+      if (isNaN(idx) || currentHoverIdx === idx) return;
+      currentHoverIdx = idx;
+      const data = itemDataMap.get(idx);
+      if (data) showHoverPreview(data.fullUrl || data.thumbUrl, thumb);
+    }, true);
+
+    grid.addEventListener('mouseleave', (e) => {
+      const thumb = e.target.closest('.pxs7-thumb');
+      if (!thumb) return;
+      currentHoverIdx = null;
+      hideHoverPreview();
+    }, true);
+
+    grid.addEventListener('click', async (e) => {
+      const thumb = e.target.closest('.pxs7-thumb');
+      if (!thumb) return;
+      const idx = parseInt(thumb.dataset.idx, 10);
+      const data = itemDataMap.get(idx);
+      if (!data) return;
+
+      thumb.classList.add('pxs7-loading');
+      const success = await injectImageToUpload(data.fullUrl);
+      thumb.classList.remove('pxs7-loading');
+      if (success) {
+        thumb.classList.add('pxs7-success');
+      } else {
+        await navigator.clipboard.writeText(data.fullUrl);
+        if (showToast) showToast('URL copied - paste manually', true);
+      }
+    });
+
+    grid.addEventListener('contextmenu', (e) => {
+      const thumb = e.target.closest('.pxs7-thumb');
+      if (!thumb) return;
+      e.preventDefault();
+      const idx = parseInt(thumb.dataset.idx, 10);
+      const data = itemDataMap.get(idx);
+      if (data) showUploadSlotMenu(data.fullUrl, e.clientX, e.clientY);
     });
 
     return grid;
@@ -839,12 +891,6 @@ window.PXS7 = window.PXS7 || {};
     // Show Load More button if there are more assets to load
     // For cursor-based pagination: assetsTotalCount > assetsLoadedCount means there's a next_cursor
     const hasMore = assetsTotalCount > assetsLoadedCount;
-    console.log('[PixSim7] Load More check:', {
-      assetsLoadedCount,
-      assetsTotalCount,
-      hasMore,
-      hasLoadAssetsFn: !!loadAssets
-    });
 
     if (hasMore && loadAssets) {
       const loadMoreBtn = document.createElement('button');
@@ -886,14 +932,6 @@ window.PXS7 = window.PXS7 || {};
     if (!loadAssets && loadAssetsFunction) {
       loadAssets = loadAssetsFunction;
     }
-
-    console.log('[PixSim7] showUnifiedImagePicker:', {
-      activeTab,
-      hasLoadAssets: !!loadAssets,
-      hasStoredFn: !!loadAssetsFunction,
-      assetsLoadedCount,
-      assetsTotalCount
-    });
 
     document.querySelectorAll('.pxs7-restore-panel, .pxs7-image-picker').forEach(p => p.remove());
     if (closeMenus) closeMenus();
