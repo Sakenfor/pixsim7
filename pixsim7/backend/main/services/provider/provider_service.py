@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import (
     Generation,
     ProviderSubmission,
@@ -23,6 +24,8 @@ from pixsim7.backend.main.services.provider.base import (
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ResourceNotFoundError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, PROVIDER_SUBMITTED, PROVIDER_COMPLETED, PROVIDER_FAILED
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
+
+logger = configure_logging("provider_service")
 
 
 class ProviderService:
@@ -118,6 +121,19 @@ class ProviderService:
                     "thumbnail_url": result.thumbnail_url,
                     "metadata": result.metadata or {},
                 }
+            # Validate provider_job_id before saving
+            if not result.provider_job_id:
+                logger.error(
+                    "provider:submit",
+                    msg="missing_provider_job_id",
+                    generation_id=generation.id,
+                    operation_type=generation.operation_type.value,
+                    result=str(result),
+                )
+                raise ProviderError(
+                    f"Provider did not return a job ID for {generation.operation_type.value}"
+                )
+
             submission.provider_job_id = result.provider_job_id
             submission.responded_at = datetime.utcnow()
             submission.status = "success"
