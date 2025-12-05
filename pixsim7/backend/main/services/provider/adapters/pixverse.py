@@ -130,7 +130,10 @@ class PixverseProvider(
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Map generic parameters to Pixverse-specific format
+        Map generic parameters to Pixverse-specific format.
+
+        Cleanly separates video operations from image operations with
+        appropriate defaults for each.
 
         Args:
             operation_type: Operation type
@@ -138,62 +141,85 @@ class PixverseProvider(
 
         Returns:
             Pixverse-specific parameters
-
-        Example:
-            Input:  {"prompt": "sunset", "quality": "720p", "duration": 5}
-            Output: {"prompt": "sunset", "model": "v5", "quality": "720p", "duration": 5}
         """
-        mapped = {}
-
-        # Common parameters
-        if "prompt" in params:
-            mapped["prompt"] = params["prompt"]
-        if "model" in params:
-            mapped["model"] = params["model"]
-        else:
-            mapped["model"] = "v5"  # Default model
-
-        if "quality" in params:
-            mapped["quality"] = params["quality"]
-        if "duration" in params:
-            mapped["duration"] = params["duration"]
-        if "seed" in params:
-            # Pixverse requires 0 instead of None
-            mapped["seed"] = params["seed"] if params["seed"] is not None else 0
-        if "aspect_ratio" in params:
-            mapped["aspect_ratio"] = params["aspect_ratio"]
-
-        # Optional style/mode parameters (all video operations)
-        for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
-            if field in params:
-                mapped[field] = params[field]
-
-        # Video-specific options (for TEXT_TO_VIDEO, IMAGE_TO_VIDEO, VIDEO_EXTEND)
-        # Add new video options here - they'll be passed through automatically
-        VIDEO_OPTION_PARAMS = ['multi_shot', 'audio', 'off_peak']
-        if operation_type in (
+        # Categorize operations
+        VIDEO_OPERATIONS = {
             OperationType.TEXT_TO_VIDEO,
             OperationType.IMAGE_TO_VIDEO,
             OperationType.VIDEO_EXTEND,
-        ):
-            for field in VIDEO_OPTION_PARAMS:
+            OperationType.VIDEO_TRANSITION,
+            OperationType.FUSION,
+        }
+        IMAGE_OPERATIONS = {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+        }
+        VIDEO_MODELS = {"v3.5", "v4", "v5", "v5.5"}
+        IMAGE_MODELS = {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0"}
+
+        is_video_op = operation_type in VIDEO_OPERATIONS
+        is_image_op = operation_type in IMAGE_OPERATIONS
+
+        mapped = {}
+
+        # === Common parameters (all operations) ===
+        if "prompt" in params:
+            mapped["prompt"] = params["prompt"]
+        if "seed" in params:
+            mapped["seed"] = params["seed"] if params["seed"] is not None else 0
+
+        # === Model selection (video vs image) ===
+        if "model" in params:
+            model = params["model"]
+            # Validate model matches operation type
+            if is_image_op and model in VIDEO_MODELS:
+                mapped["model"] = "qwen-image"  # Default image model
+            elif is_video_op and model in IMAGE_MODELS:
+                mapped["model"] = "v5"  # Default video model
+            else:
+                mapped["model"] = model
+        else:
+            # Set appropriate default
+            mapped["model"] = "v5" if is_video_op else "qwen-image"
+
+        # === Quality (both, but different defaults) ===
+        if "quality" in params:
+            mapped["quality"] = params["quality"]
+        else:
+            mapped["quality"] = "360p" if is_video_op else "720p"
+
+        # === Aspect ratio (both, but not for IMAGE_TO_VIDEO) ===
+        if operation_type != OperationType.IMAGE_TO_VIDEO:
+            if "aspect_ratio" in params:
+                mapped["aspect_ratio"] = params["aspect_ratio"]
+            elif is_image_op:
+                mapped["aspect_ratio"] = "16:9"  # Default for images
+
+        # === Video-only parameters ===
+        if is_video_op:
+            if "duration" in params:
+                mapped["duration"] = params["duration"]
+
+            # Style/mode parameters
+            for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
                 if field in params:
                     mapped[field] = params[field]
 
-        # Operation-specific parameters
+            # Video options (multi_shot, audio, off_peak)
+            for field in ['multi_shot', 'audio', 'off_peak']:
+                if field in params:
+                    mapped[field] = params[field]
+
+        # === Operation-specific parameters ===
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            # Defensively strip aspect_ratio for image_to_video since it follows the source image
-            mapped.pop("aspect_ratio", None)
             if "image_url" in params:
                 mapped["image_url"] = params["image_url"]
 
-        elif operation_type == OperationType.IMAGE_TO_IMAGE:
-            # Image-to-image uses the Pixverse image API.
-            # It expects one or more Pixverse-hosted image URLs/paths.
+        elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
+            # Image operations use image_urls list
             if "image_urls" in params:
                 mapped["image_urls"] = params["image_urls"]
             elif "image_url" in params:
-                # Normalize single URL to list to align with SDK signature.
                 mapped["image_urls"] = [params["image_url"]]
 
         elif operation_type == OperationType.VIDEO_EXTEND:
