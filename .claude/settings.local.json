@@ -1,10 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C G:/code/pixsim7 diff launcher/gui/widgets/service_card.py launcher/gui/console_utils.py launcher/gui/log_styles.py launcher/gui/database_log_viewer.py launcher/gui/launcher.py)",
-      "Bash(git -C G:/code/pixsim7 add launcher/gui/widgets/service_card.py launcher/gui/console_utils.py launcher/gui/log_styles.py launcher/gui/database_log_viewer.py launcher/gui/launcher.py)",
-      "Bash(git -C G:/code/pixsim7 commit -m \"$(cat <<''EOF''\nPolish launcher GUI: readability, typography, and UX improvements\n\nService list:\n- Increased card height and vertical padding for better spacing\n- Added visual markers for externally managed services (◇ prefix, blue left border)\n- Added stronger visual for UNHEALTHY status (red border + tinted background)\n- Card style now updates on every status change\n\nConsole logs:\n- Increased line-height to 1.5 for readability\n- Added dimming for low-signal lines (health checks, pings) at 55% opacity\n\nDB logs:\n- Added row separation with bottom border and subtle alternating backgrounds\n- Added \"Active filters\" summary bar below filter toolbar\n- Shows compact filter summary (green when active, gray when none)\n\nBulk actions:\n- Disable Start/Stop/Restart All buttons during operation\n- Show progress in status label (\"Starting all services...\")\n- Re-enable buttons and restore status after completion\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git -C G:/code/pixsim7 log --oneline -1)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(git push)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []
