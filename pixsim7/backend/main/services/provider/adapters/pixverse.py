@@ -648,7 +648,7 @@ class PixverseProvider(
             # Prompt length / parameter validation
             if err_code in {400017, 400018, 400019}:
                 friendly = (
-                    "Pixverse rejected the request due to invalid or too‑long parameters. "
+                    "Pixverse rejected the request due to invalid or too-long parameters. "
                     "Try shortening or simplifying the prompt and checking extra options. "
                     f"(ErrCode {err_code}: {err_msg or 'invalid parameter'})"
                 )
