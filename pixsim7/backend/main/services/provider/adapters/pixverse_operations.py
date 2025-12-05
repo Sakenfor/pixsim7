@@ -22,6 +22,7 @@ from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
     log_provider_timeout,
 )
+from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
 logger = get_logger()
 
@@ -91,6 +92,8 @@ class PixverseOperationsMixin:
         """
         # Validate operation is supported
         self.validate_operation(operation_type)
+        image_ops = get_image_operations()
+        is_image_operation = operation_type in image_ops
 
         # Extract use_method if provided
         use_method = params.pop("use_method", None)
@@ -113,40 +116,35 @@ class PixverseOperationsMixin:
                 params=params,
             )
 
-            # Route to appropriate method
-            if operation_type == OperationType.TEXT_TO_IMAGE:
-                video = await self._generate_text_to_image(client, params)
+            # Route to appropriate method using a mapping instead of
+            # a long if/elif chain. This keeps routing declarative and
+            # makes it easier to add new operations.
+            handler_map = {
+                OperationType.TEXT_TO_IMAGE: self._generate_text_to_image,
+                OperationType.TEXT_TO_VIDEO: self._generate_text_to_video,
+                OperationType.IMAGE_TO_VIDEO: self._generate_image_to_video,
+                OperationType.IMAGE_TO_IMAGE: self._generate_image_to_image,
+                OperationType.VIDEO_EXTEND: self._extend_video,
+                OperationType.VIDEO_TRANSITION: self._generate_transition,
+                OperationType.FUSION: self._generate_fusion,
+            }
 
-            elif operation_type == OperationType.TEXT_TO_VIDEO:
-                video = await self._generate_text_to_video(client, params)
-
-            elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                video = await self._generate_image_to_video(client, params)
-
-            elif operation_type == OperationType.IMAGE_TO_IMAGE:
-                video = await self._generate_image_to_image(client, params)
-
-            elif operation_type == OperationType.VIDEO_EXTEND:
-                video = await self._extend_video(client, params)
-
-            elif operation_type == OperationType.VIDEO_TRANSITION:
-                video = await self._generate_transition(client, params)
-
-            elif operation_type == OperationType.FUSION:
-                video = await self._generate_fusion(client, params)
-
-            else:
+            handler = handler_map.get(operation_type)
+            if handler is None:
                 raise ProviderError(f"Operation {operation_type} not implemented")
+
+            video = await handler(client, params)
 
             # Map status
             status = self._map_pixverse_status(video)
 
-            # Infer dimensions if not in response
+            # Infer dimensions if not in response. For image operations we rely
+            # on the provider payload (no aspect-ratio based inference).
             width, height = None, None
             if hasattr(video, 'width') and hasattr(video, 'height'):
                 width, height = video.width, video.height
-            else:
-                # Infer from quality and aspect_ratio
+            elif not is_image_operation:
+                # Infer from quality and aspect_ratio for video-only operations
                 quality = params.get("quality", "720p")
                 aspect_ratio = params.get("aspect_ratio")
                 width, height = infer_video_dimensions(quality, aspect_ratio)
@@ -155,6 +153,23 @@ class PixverseOperationsMixin:
             estimated_seconds = account.get_estimated_completion_time()
             estimated_completion = datetime.utcnow() + timedelta(seconds=estimated_seconds)
 
+            metadata: Dict[str, Any] = {
+                "operation_type": operation_type.value,
+                "width": width,
+                "height": height,
+            }
+            if not is_image_operation:
+                # Prefer SDK-provided duration fields from the video object,
+                # falling back to requested duration in params as a planned
+                # duration hint (final duration comes from check_status).
+                planned_duration = getattr(video, "video_duration", None)
+                if planned_duration is None and hasattr(video, "duration"):
+                    planned_duration = getattr(video, "duration")
+                if planned_duration is None:
+                    planned_duration = params.get("duration")
+                if planned_duration is not None:
+                    metadata["planned_duration_sec"] = int(planned_duration)
+
             return GenerationResult(
                 provider_job_id=video.id,
                 provider_video_id=video.id,
@@ -162,12 +177,7 @@ class PixverseOperationsMixin:
                 video_url=getattr(video, 'url', None),
                 thumbnail_url=getattr(video, 'thumbnail_url', None),
                 estimated_completion=estimated_completion,
-                metadata={
-                    "operation_type": operation_type.value,
-                    "width": width,
-                    "height": height,
-                    "duration_sec": params.get("duration", 5),
-                }
+                metadata=metadata,
             )
 
         except Exception as e:
@@ -491,7 +501,12 @@ class PixverseOperationsMixin:
                 error_message="No provider job ID - submission may be incomplete",
             )
 
-        is_image_operation = operation_type == OperationType.IMAGE_TO_IMAGE
+        # Use the shared operation registry to determine which
+        # operations produce images, so we don't have to hard-code
+        # IMAGE_TO_IMAGE (and future image operations are handled
+        # automatically).
+        image_ops = get_image_operations()
+        is_image_operation = operation_type in image_ops if operation_type else False
 
         async def _operation(session: PixverseSessionData) -> VideoStatusResult:
             client = self._create_client(account)

@@ -83,6 +83,10 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_session import Pix
 from pixsim7.backend.main.services.provider.adapters.pixverse_auth import PixverseAuthMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_credits import PixverseCreditsMixin
 from pixsim7.backend.main.services.provider.adapters.pixverse_operations import PixverseOperationsMixin
+from pixsim7.backend.main.services.generation.pixverse_pricing import (
+    get_image_credit_change,
+    estimate_video_credit_change,
+)
 
 class PixverseProvider(
     PixverseSessionMixin,
@@ -160,16 +164,17 @@ class PixverseProvider(
         is_video_op = operation_type in VIDEO_OPERATIONS
         is_image_op = operation_type in IMAGE_OPERATIONS
 
-        mapped = {}
+        mapped: Dict[str, Any] = {}
 
         # === Common parameters (all operations) ===
-        if "prompt" in params:
+        if "prompt" in params and params["prompt"] is not None:
             mapped["prompt"] = params["prompt"]
         if "seed" in params:
+            # Treat None as 0 for seed; otherwise pass through.
             mapped["seed"] = params["seed"] if params["seed"] is not None else 0
 
         # === Model selection (video vs image) ===
-        if "model" in params:
+        if "model" in params and params["model"] is not None:
             model = params["model"]
             # Validate model matches operation type
             if is_image_op and model in VIDEO_MODELS:
@@ -183,62 +188,91 @@ class PixverseProvider(
             mapped["model"] = "v5" if is_video_op else "qwen-image"
 
         # === Quality (both, but different defaults) ===
-        if "quality" in params:
+        if "quality" in params and params["quality"] is not None:
             mapped["quality"] = params["quality"]
         else:
             mapped["quality"] = "360p" if is_video_op else "720p"
 
         # === Aspect ratio (both, but not for IMAGE_TO_VIDEO) ===
         if operation_type != OperationType.IMAGE_TO_VIDEO:
-            if "aspect_ratio" in params:
+            if "aspect_ratio" in params and params["aspect_ratio"] is not None:
                 mapped["aspect_ratio"] = params["aspect_ratio"]
             elif is_image_op:
                 mapped["aspect_ratio"] = "16:9"  # Default for images
 
         # === Video-only parameters ===
         if is_video_op:
-            if "duration" in params:
+            if "duration" in params and params["duration"] is not None:
                 mapped["duration"] = params["duration"]
 
-            # Style/mode parameters
+            # Style/mode parameters (omit nulls)
             for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
-                if field in params:
-                    mapped[field] = params[field]
+                value = params.get(field)
+                if value is not None:
+                    mapped[field] = value
 
             # Video options (multi_shot, audio, off_peak)
             for field in ['multi_shot', 'audio', 'off_peak']:
-                if field in params:
-                    mapped[field] = params[field]
+                value = params.get(field)
+                if value is not None:
+                    mapped[field] = value
 
         # === Operation-specific parameters ===
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            if "image_url" in params:
+            if "image_url" in params and params["image_url"] is not None:
                 mapped["image_url"] = params["image_url"]
 
         elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
             # Image operations use image_urls list
-            if "image_urls" in params:
+            if "image_urls" in params and params["image_urls"] is not None:
                 mapped["image_urls"] = params["image_urls"]
-            elif "image_url" in params:
+            elif "image_url" in params and params["image_url"] is not None:
                 mapped["image_urls"] = [params["image_url"]]
 
         elif operation_type == OperationType.VIDEO_EXTEND:
-            if "video_url" in params:
+            if "video_url" in params and params["video_url"] is not None:
                 mapped["video_url"] = params["video_url"]
-            if "original_video_id" in params:
+            if "original_video_id" in params and params["original_video_id"] is not None:
                 mapped["original_video_id"] = params["original_video_id"]
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
-            if "image_urls" in params:
+            if "image_urls" in params and params["image_urls"] is not None:
                 mapped["image_urls"] = params["image_urls"]
-            if "prompts" in params:
+            if "prompts" in params and params["prompts"] is not None:
                 mapped["prompts"] = params["prompts"]
 
         elif operation_type == OperationType.FUSION:
-            if "fusion_assets" in params:
+            if "fusion_assets" in params and params["fusion_assets"] is not None:
                 mapped["fusion_assets"] = params["fusion_assets"]
 
-        return mapped
+        # credit_change hint: provide expected Pixverse credit delta based on
+        # model/quality/duration. For image operations we use a static table;
+        # for video operations we use pixverse_calculate_cost when available.
+        credit_change: int | None = None
+        model = mapped.get("model")
+        quality = mapped.get("quality")
+
+        if is_image_op and isinstance(model, str) and isinstance(quality, str):
+            credit_change = get_image_credit_change(model, quality)
+        elif is_video_op:
+            duration = mapped.get("duration") or params.get("duration")
+            if duration is not None and isinstance(duration, (int, float)):
+                credit_change = estimate_video_credit_change(
+                    quality=quality or "360p",
+                    duration=int(duration),
+                    model=model or "v5",
+                    motion_mode=mapped.get("motion_mode"),
+                    multi_shot=bool(mapped.get("multi_shot")),
+                    audio=bool(mapped.get("audio")),
+                )
+
+        if credit_change is not None:
+            mapped["credit_change"] = credit_change
+
+        # Drop any remaining None values so we never send explicit nulls
+        # to the Pixverse API. This keeps the mapping logic simple while
+        # ensuring providers only see fields that are intentionally set.
+        return {k: v for k, v in mapped.items() if v is not None}
 
     def get_operation_parameter_spec(self) -> dict:
         """
