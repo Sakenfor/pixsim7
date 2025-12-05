@@ -104,6 +104,15 @@ class PixverseOperationsMixin:
         )
 
         try:
+            # Log params being sent to Pixverse for debugging
+            logger.info(
+                "provider:execute",
+                msg="pixverse_request_params",
+                operation_type=operation_type.value,
+                account_id=account.id,
+                params=params,
+            )
+
             # Route to appropriate method
             if operation_type == OperationType.TEXT_TO_IMAGE:
                 video = await self._generate_text_to_image(client, params)
