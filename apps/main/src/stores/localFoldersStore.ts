@@ -317,8 +317,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
                 ...Object.fromEntries(cachedItems.map(a => [a.key, a])),
               },
             }));
-            // Background refresh to pick up any changes since last cache write
-            void get().refreshFolder(f.id);
+            // Background refresh to pick up any changes since last cache write (silent - no progress indicator)
+            void get().refreshFolder(f.id, true);
           } else {
             // No cache, do full scan now (also writes cache)
             const items = await scanFolder(f.id, f.handle, 5);
@@ -382,16 +382,20 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
   },
 
-  refreshFolder: async (id: string) => {
+  refreshFolder: async (id: string, silent = false) => {
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
 
-    // Use chunked scanner with progress reporting
-    set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
-    const items = await scanFolderChunked(f.id, f.handle, (progress) => {
+    // Use chunked scanner - only show progress if not silent (background refresh)
+    if (!silent) {
+      set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
+    }
+    const items = await scanFolderChunked(f.id, f.handle, silent ? undefined : (progress) => {
       set({ scanning: { folderId: id, ...progress } });
     }, 5);
-    set({ scanning: null });
+    if (!silent) {
+      set({ scanning: null });
+    }
 
     // Preserve upload history for any assets that already exist in state
     const currentAssets = get().assets;

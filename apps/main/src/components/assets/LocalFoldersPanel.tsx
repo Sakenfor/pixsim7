@@ -8,59 +8,47 @@ import { MasonryGrid } from '../layout/MasonryGrid';
 import type { LocalAsset } from '@/stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
 
+/**
+ * Simple lazy load hook - loads preview when element enters viewport.
+ * Does NOT revoke on scroll out - keeps images stable once loaded.
+ * Revocation only happens on folder change or unmount (handled by controller).
+ */
 function useLazyLoadPreview(
   asset: LocalAsset,
   previewUrl: string | undefined,
   loadPreview: (asset: LocalAsset) => Promise<void>,
-  revokePreview?: (assetKey: string) => void,
 ) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const wasVisibleRef = useRef(false);
-  const revokeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
+    // Already have preview or already loading - skip
+    if (previewUrl || loadingRef.current) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            // Element is visible - cancel any pending revoke and load if needed
-            wasVisibleRef.current = true;
-            if (revokeTimeoutRef.current) {
-              clearTimeout(revokeTimeoutRef.current);
-              revokeTimeoutRef.current = null;
-            }
-            if (!previewUrl) {
-              loadPreview(asset);
-            }
-          } else if (wasVisibleRef.current && previewUrl && revokePreview) {
-            // Element scrolled out of view - delay revoke to handle quick scrolling
-            // Only revoke if it was previously visible (avoid revoking on initial render)
-            if (revokeTimeoutRef.current) {
-              clearTimeout(revokeTimeoutRef.current);
-            }
-            revokeTimeoutRef.current = setTimeout(() => {
-              revokePreview(asset.key);
-              wasVisibleRef.current = false;
-              revokeTimeoutRef.current = null;
-            }, 2000); // 2 second delay before cleanup
+          if (entry.isIntersecting && !previewUrl && !loadingRef.current) {
+            loadingRef.current = true;
+            loadPreview(asset).finally(() => {
+              loadingRef.current = false;
+            });
+            observer.disconnect();
           }
         });
       },
-      { rootMargin: '800px' },  // Larger buffer for smoother scrolling
+      { rootMargin: '400px' },
     );
 
     observer.observe(el);
 
     return () => {
       observer.disconnect();
-      if (revokeTimeoutRef.current) {
-        clearTimeout(revokeTimeoutRef.current);
-      }
     };
-  }, [asset, previewUrl, loadPreview, revokePreview]);
+  }, [asset, previewUrl, loadPreview]);
 
   return ref;
 }
@@ -88,20 +76,16 @@ function TreeLazyMediaCard(props: {
   asset: LocalAsset;
   previewUrl: string | undefined;
   loadPreview: (asset: LocalAsset) => Promise<void>;
-  revokePreview?: (assetKey: string) => void;
   status: UploadState;
   openViewer: (asset: LocalAsset) => void;
   uploadOne: (asset: LocalAsset) => Promise<void>;
 }) {
-  const { asset, previewUrl, loadPreview, revokePreview, status, openViewer, uploadOne } = props;
-  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview, revokePreview);
+  const { asset, previewUrl, loadPreview, status, openViewer, uploadOne } = props;
+  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
   const providerStatus = uploadStatusToProviderStatus(status);
 
   return (
-    <div
-      ref={cardRef}
-      className={`transition-opacity duration-300 ${previewUrl ? 'opacity-100' : 'opacity-50'}`}
-    >
+    <div ref={cardRef}>
       <MediaCard
         id={getLocalAssetNumericId(asset)}
         mediaType={asset.kind === 'video' ? 'video' : 'image'}
@@ -200,7 +184,6 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
         asset={asset}
         previewUrl={previewUrl}
         loadPreview={controller.loadPreview}
-        revokePreview={controller.revokePreview}
         status={status}
         openViewer={controller.openViewer}
         uploadOne={controller.uploadOne}

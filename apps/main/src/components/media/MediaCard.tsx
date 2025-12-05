@@ -286,12 +286,12 @@ export function MediaCard(props: MediaCardProps) {
       >
         <div
           className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer ${
-            mediaType === 'video' ? 'aspect-video' : ''
+            mediaType === 'video' ? 'aspect-video' : !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
         >
-          {thumbSrc && (
+          {thumbSrc ? (
             mediaType === 'video' ? (
               <video
                 ref={videoRef}
@@ -309,6 +309,10 @@ export function MediaCard(props: MediaCardProps) {
                 loading="lazy"
               />
             )
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+            </div>
           )}
         </div>
       </OverlayContainer>
