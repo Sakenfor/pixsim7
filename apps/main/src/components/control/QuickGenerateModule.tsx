@@ -49,10 +49,15 @@ export function QuickGenerateModule() {
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
   const maxChars = resolvePromptLimit(providerId);
-  const isTextOnlyOperation = operationType === 'text_to_video' || operationType === 'text_to_image';
-  const canGenerate = isTextOnlyOperation
-    ? prompt.trim().length > 0
-    : true; // Other operations may not strictly require prompt
+  const promptRequiredOps = new Set<ControlCenterState['operationType']>([
+    'text_to_video',
+    'text_to_image',
+    'image_to_image',
+    'image_to_video',
+    'fusion',
+  ]);
+  const requiresPrompt = promptRequiredOps.has(operationType);
+  const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
   // Build dynamic presets from provider specs
   const availablePresets = useMemo(() => {

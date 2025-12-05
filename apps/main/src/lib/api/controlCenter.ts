@@ -207,6 +207,12 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
     providerId
   );
 
+  // Ensure prompt is always embedded in the config (some callers may omit it
+  // from extraParams when presets/dynamic params change).
+  if (req.prompt && req.prompt.trim().length > 0) {
+    config.prompt = req.prompt.trim();
+  }
+
   // Create generation request
   const generationRequest: CreateGenerationRequest = {
     config,
