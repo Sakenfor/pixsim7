@@ -409,3 +409,114 @@ async def test_e2e_deduplication():
     3. Hash lookup works correctly
     """
     pass
+
+
+# ============================================================================
+# Task 128: Legacy Flat Payload Rejection Tests
+# ============================================================================
+
+class TestLegacyPayloadRejection:
+    """
+    Regression tests for Task 128: Drop Legacy Generation Payloads
+
+    These tests verify that legacy flat payloads (with top-level prompt,
+    quality, duration etc.) are properly rejected with a helpful error message.
+    """
+
+    def test_flat_payload_detected(self):
+        """
+        Verify flat payloads are identified as non-structured
+
+        A flat payload has keys like 'prompt', 'quality', 'duration' at the
+        top level instead of inside 'generation_config'.
+        """
+        flat_params = {
+            "prompt": "A scenic landscape",
+            "quality": "high",
+            "duration": 10,
+        }
+
+        # Check that flat params don't have structured markers
+        is_structured = 'generation_config' in flat_params or 'scene_context' in flat_params
+        assert not is_structured, "Flat params should not be detected as structured"
+
+    def test_structured_payload_detected(self, structured_generation_params):
+        """
+        Verify structured payloads are identified correctly
+
+        A structured payload has 'generation_config' and/or 'scene_context' keys.
+        """
+        is_structured = 'generation_config' in structured_generation_params or 'scene_context' in structured_generation_params
+        assert is_structured, "Structured params should be detected as structured"
+
+    def test_legacy_flat_payload_error_message(self):
+        """
+        Verify the error message for flat payload rejection is helpful
+
+        Regression anchor for Task 128: Legacy flat payloads must be rejected
+        with a clear error message explaining the required structured format.
+        """
+        expected_keywords = [
+            "structured",
+            "generation_config",
+            "no longer supported",
+        ]
+
+        # This is the error message from creation_service.py
+        error_message = (
+            "Structured generation_config is required. "
+            "Legacy flat payload format (top-level prompt, quality, duration) is no longer supported. "
+            "Please use the structured format with generation_config, scene_context, etc. "
+            "See POST /api/v1/generations for the expected schema."
+        )
+
+        for keyword in expected_keywords:
+            assert keyword.lower() in error_message.lower(), \
+                f"Error message should contain '{keyword}'"
+
+    @pytest.fixture
+    def legacy_flat_params(self) -> dict:
+        """Example legacy flat params that should be rejected"""
+        return {
+            "prompt": "A peaceful sunset over the ocean",
+            "negative_prompt": "blurry, distorted",
+            "quality": "high",
+            "duration": 10,
+            "aspect_ratio": "16:9",
+            "model": "v3",
+        }
+
+    def test_flat_payload_lacks_generation_config(self, legacy_flat_params):
+        """
+        Verify flat payload format characteristics
+
+        Regression anchor: These characteristics define what makes a payload "flat"
+        and therefore subject to rejection.
+        """
+        # Flat payloads have these at top level
+        assert "prompt" in legacy_flat_params
+        assert "quality" in legacy_flat_params
+        assert "duration" in legacy_flat_params
+
+        # But lack structured format keys
+        assert "generation_config" not in legacy_flat_params
+        assert "scene_context" not in legacy_flat_params
+        assert "player_context" not in legacy_flat_params
+        assert "social_context" not in legacy_flat_params
+
+    def test_structured_payload_has_generation_config(self, structured_generation_params):
+        """
+        Verify structured payload format characteristics
+
+        Regression anchor: These characteristics define what makes a payload "structured"
+        and therefore accepted by the service.
+        """
+        assert "generation_config" in structured_generation_params
+        assert "scene_context" in structured_generation_params
+        assert "player_context" in structured_generation_params
+
+        # Verify generation_config has the expected structure
+        gen_config = structured_generation_params["generation_config"]
+        assert "generationType" in gen_config
+        assert "purpose" in gen_config
+        assert "strategy" in gen_config

@@ -166,13 +166,16 @@ async def list_generation_operations() -> list[GenerationOperationMetadataItem]:
     return [GenerationOperationMetadataItem(**item) for item in items]
 
 
-# ===== SIMPLE IMAGE-TO-VIDEO GENERATION (LEGACY-FRIENDLY) =====
+# ===== SIMPLE IMAGE-TO-VIDEO GENERATION (THIN CLIENT HELPER) =====
 
 class SimpleImageToVideoRequest(BaseModel):
   """Minimal request for quick image-to-video generations.
 
   This is designed for thin clients (e.g., Chrome extension) that only have
   an image URL and a freeform prompt, and don't need full GenerationNodeConfig.
+
+  The endpoint converts the flat request to structured format internally before
+  calling the service layer, keeping the service layer structured-only.
   """
   provider_id: str = Field(..., min_length=1, max_length=50)
   prompt: str = Field(..., min_length=1, max_length=4096)
@@ -190,10 +193,10 @@ async def create_simple_image_to_video(
 ):
   """Create a simple IMAGE_TO_VIDEO generation from raw prompt + image URL.
 
-  This endpoint intentionally uses the legacy flat parameter format so that:
-  - `prompt` and `image_url` are validated at the service layer
-  - Canonicalization keeps `prompt`/`image_url` as top-level fields
-  - Input extraction can derive a `seed_image` input from `image_url`
+  This convenience endpoint converts flat parameters to structured format:
+  - Wraps prompt/image_url into a minimal GenerationNodeConfig
+  - Uses default style/duration/constraints for quick generation
+  - Calls the unified service layer with structured params
 
   It is primarily intended for tooling like the Chrome extension's Quick Generate.
   """
@@ -202,9 +205,34 @@ async def create_simple_image_to_video(
   await job_create_limiter.check(identifier)
 
   try:
+    # Convert flat request to structured generation_config format
+    # This keeps the service layer structured-only
     params = {
-      "prompt": request.prompt,
-      "image_url": request.image_url,
+      "generation_config": {
+        "generationType": "image_to_video",
+        "purpose": "adaptive",
+        "prompt": request.prompt,
+        "image_url": request.image_url,
+        "style": {
+          "pacing": "medium",
+        },
+        "duration": {
+          "target": 5,  # Default short duration for quick generation
+        },
+        "constraints": {},
+        "strategy": "always",  # Quick generate always creates new
+        "fallback": {
+          "mode": "skip",
+        },
+        "enabled": True,
+        "version": 1,
+      },
+      "scene_context": {
+        "from_scene": None,
+        "to_scene": None,
+      },
+      "player_context": None,
+      "social_context": None,
     }
 
     generation = await generation_service.create_generation(
@@ -219,6 +247,7 @@ async def create_simple_image_to_video(
       scheduled_at=None,
       parent_generation_id=None,
       prompt_version_id=None,
+      force_new=True,  # Quick generate always creates new
     )
 
     return GenerationResponse.model_validate(generation)
