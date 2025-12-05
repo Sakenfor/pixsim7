@@ -16,12 +16,62 @@ window.PXS7 = window.PXS7 || {};
   const { COLORS } = window.PXS7.styles || {};
   const showToast = window.PXS7.utils?.showToast;
   const closeMenus = window.PXS7.utils?.closeMenus;
+  const sendMessageWithTimeout = window.PXS7.utils?.sendMessageWithTimeout;
+  const storage = window.PXS7.storage;
 
   // Module state
   let recentSiteImages = [];
   let assetsCache = [];
   let assetsTotalCount = 0;
   let assetsLoadedCount = 0;
+  let loadAssetsFunction = null;  // Store the loadAssets function for reuse
+
+  // ===== Dev: Pixverse Dry-Run Sync =====
+
+  async function triggerPixverseDryRunSync() {
+    try {
+      if (!storage || !storage.getCurrentAccount) {
+        if (showToast) showToast('Storage module not available', false);
+        return;
+      }
+      const currentAccount = storage.getCurrentAccount();
+      if (!currentAccount || currentAccount.provider_id !== 'pixverse') {
+        if (showToast) showToast('No Pixverse account selected in extension', false);
+        return;
+      }
+      if (!sendMessageWithTimeout) {
+        if (showToast) showToast('Background messaging unavailable', false);
+        return;
+      }
+
+      const res = await sendMessageWithTimeout(
+        {
+          action: 'pixverseDryRunSync',
+          accountId: currentAccount.id,
+          limit: 20,
+          offset: 0,
+        },
+        15000
+      );
+
+      if (!res?.success) {
+        if (showToast) showToast(`Pixverse sync dry-run failed: ${res?.error || 'unknown error'}`, false);
+        return;
+      }
+
+      const data = res.data || {};
+      const total = data.total_remote ?? 0;
+      const existing = data.existing_count ?? 0;
+
+      console.log('[PixSim7] Pixverse dry-run sync result:', data);
+      if (showToast) {
+        showToast(`Pixverse dry-run: ${existing}/${total} videos already imported`, true);
+      }
+    } catch (e) {
+      console.warn('[PixSim7] Pixverse dry-run sync failed:', e);
+      if (showToast) showToast(`Pixverse sync dry-run error: ${e.message || e}`, false);
+    }
+  }
 
   // ===== Input Preservation =====
 
@@ -828,6 +878,23 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function showUnifiedImagePicker(activeTab = 'assets', loadAssets = null) {
+    // Store the loadAssets function for future use if provided
+    if (loadAssets) {
+      loadAssetsFunction = loadAssets;
+    }
+    // Use stored function if no new one provided
+    if (!loadAssets && loadAssetsFunction) {
+      loadAssets = loadAssetsFunction;
+    }
+
+    console.log('[PixSim7] showUnifiedImagePicker:', {
+      activeTab,
+      hasLoadAssets: !!loadAssets,
+      hasStoredFn: !!loadAssetsFunction,
+      assetsLoadedCount,
+      assetsTotalCount
+    });
+
     document.querySelectorAll('.pxs7-restore-panel, .pxs7-image-picker').forEach(p => p.remove());
     if (closeMenus) closeMenus();
 
@@ -900,6 +967,20 @@ window.PXS7 = window.PXS7 || {};
     });
     btnGroup.appendChild(minBtn);
 
+    const syncBtn = document.createElement('button');
+    syncBtn.textContent = 'Sync';
+    syncBtn.title = 'Pixverse video sync dry-run (backend)';
+    syncBtn.style.cssText = `
+      background: none; border: none; color: ${COLORS.textMuted};
+      font-size: 10px; cursor: pointer; padding: 0 4px; line-height: 1;
+    `;
+    syncBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      triggerPixverseDryRunSync();
+    });
+    btnGroup.appendChild(syncBtn);
+
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
     closeBtn.title = 'Close';
@@ -919,7 +1000,7 @@ window.PXS7 = window.PXS7 || {};
     // Make draggable
     let isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
     header.addEventListener('mousedown', (e) => {
-      if (e.target === minBtn || e.target === closeBtn) return;
+      if (e.target === minBtn || e.target === closeBtn || e.target === syncBtn) return;
       isDragging = true;
       dragOffsetX = e.clientX - panel.offsetLeft;
       dragOffsetY = e.clientY - panel.offsetTop;
@@ -1000,6 +1081,7 @@ window.PXS7 = window.PXS7 || {};
     // State setters for main file
     setAssetsCache: (cache) => { assetsCache = cache; },
     setAssetsCounts: (loaded, total) => { assetsLoadedCount = loaded; assetsTotalCount = total; },
+    setLoadAssetsFunction: (fn) => { loadAssetsFunction = fn; },
     getRecentImages: () => recentSiteImages,
     setRecentImages: (images) => { recentSiteImages = images; },
   };

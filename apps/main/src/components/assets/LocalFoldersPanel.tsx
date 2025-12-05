@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
@@ -12,11 +12,12 @@ function useLazyLoadPreview(
   asset: LocalAsset,
   previewUrl: string | undefined,
   loadPreview: (asset: LocalAsset) => Promise<void>,
+  revokePreview?: (assetKey: string) => void,
 ) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
-    if (previewUrl) return;
     const el = ref.current;
     if (!el) return;
 
@@ -24,12 +25,20 @@ function useLazyLoadPreview(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            loadPreview(asset);
-            observer.disconnect();
+            // Element is visible - load preview if not loaded
+            wasVisibleRef.current = true;
+            if (!previewUrl) {
+              loadPreview(asset);
+            }
+          } else if (wasVisibleRef.current && previewUrl && revokePreview) {
+            // Element scrolled out of view - revoke blob URL to free memory
+            // Only revoke if it was previously visible (avoid revoking on initial render)
+            revokePreview(asset.key);
+            wasVisibleRef.current = false;
           }
         });
       },
-      { rootMargin: '200px' },
+      { rootMargin: '400px' },  // Load earlier, cleanup later for smooth scrolling
     );
 
     observer.observe(el);
@@ -37,7 +46,7 @@ function useLazyLoadPreview(
     return () => {
       observer.disconnect();
     };
-  }, [asset, previewUrl, loadPreview]);
+  }, [asset, previewUrl, loadPreview, revokePreview]);
 
   return ref;
 }
@@ -65,12 +74,13 @@ function TreeLazyMediaCard(props: {
   asset: LocalAsset;
   previewUrl: string | undefined;
   loadPreview: (asset: LocalAsset) => Promise<void>;
+  revokePreview?: (assetKey: string) => void;
   status: UploadState;
   openViewer: (asset: LocalAsset) => void;
   uploadOne: (asset: LocalAsset) => Promise<void>;
 }) {
-  const { asset, previewUrl, loadPreview, status, openViewer, uploadOne } = props;
-  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
+  const { asset, previewUrl, loadPreview, revokePreview, status, openViewer, uploadOne } = props;
+  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview, revokePreview);
   const providerStatus = uploadStatusToProviderStatus(status);
 
   return (
@@ -103,12 +113,28 @@ interface LocalFoldersPanelProps {
   cardSize?: number;
 }
 
+// Pagination settings for large folders
+const INITIAL_DISPLAY_LIMIT = 50;
+const LOAD_MORE_INCREMENT = 50;
+
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
 
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
+
+  // Pagination state - reset when folder changes
+  const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT);
+  const prevFolderPath = useRef(controller.selectedFolderPath);
+
+  // Reset display limit when folder selection changes
+  useEffect(() => {
+    if (prevFolderPath.current !== controller.selectedFolderPath) {
+      setDisplayLimit(INITIAL_DISPLAY_LIMIT);
+      prevFolderPath.current = controller.selectedFolderPath;
+    }
+  }, [controller.selectedFolderPath]);
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -126,7 +152,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
 
 
   // Determine which assets to show based on folder selection
-  const displayAssets = useMemo(() => {
+  const allDisplayAssets = useMemo(() => {
     // If a folder is selected, show filtered assets for that folder
     if (controller.selectedFolderPath) {
       return controller.filteredAssets;
@@ -134,6 +160,18 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     // Otherwise show all assets
     return controller.assets;
   }, [controller.selectedFolderPath, controller.filteredAssets, controller.assets]);
+
+  // Apply pagination limit
+  const displayAssets = useMemo(() => {
+    return allDisplayAssets.slice(0, displayLimit);
+  }, [allDisplayAssets, displayLimit]);
+
+  const hasMore = allDisplayAssets.length > displayLimit;
+  const remainingCount = allDisplayAssets.length - displayLimit;
+
+  const loadMore = useCallback(() => {
+    setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT);
+  }, []);
 
   // Render media cards for gallery layouts
   const cardItems = displayAssets.map(asset => {
@@ -145,6 +183,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
         asset={asset}
         previewUrl={previewUrl}
         loadPreview={controller.loadPreview}
+        revokePreview={controller.revokePreview}
         status={status}
         openViewer={controller.openViewer}
         uploadOne={controller.uploadOne}
@@ -186,30 +225,58 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     }
 
 
+    // Load More button component
+    const loadMoreButton = hasMore && (
+      <div className="flex justify-center py-6">
+        <button
+          onClick={loadMore}
+          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+        >
+          <Icons.chevronDown size={16} />
+          Load More ({remainingCount.toLocaleString()} remaining)
+        </button>
+      </div>
+    );
+
+    // Asset count indicator
+    const assetCountIndicator = allDisplayAssets.length > 0 && (
+      <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+        Showing {displayAssets.length.toLocaleString()} of {allDisplayAssets.length.toLocaleString()} files
+      </div>
+    );
+
     // Render masonry or grid layout
     if (layout === 'masonry') {
       return (
-        <MasonryGrid
-          items={cardItems}
-          rowGap={layoutSettings.rowGap}
-          columnGap={layoutSettings.columnGap}
-          minColumnWidth={cardSize}
-        />
+        <>
+          {assetCountIndicator}
+          <MasonryGrid
+            items={cardItems}
+            rowGap={layoutSettings.rowGap}
+            columnGap={layoutSettings.columnGap}
+            minColumnWidth={cardSize}
+          />
+          {loadMoreButton}
+        </>
       );
     }
 
     // Grid layout
     return (
-      <div
-        className="grid"
-        style={{
-          gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
-          rowGap: `${layoutSettings.rowGap}px`,
-          columnGap: `${layoutSettings.columnGap}px`,
-        }}
-      >
-        {cardItems}
-      </div>
+      <>
+        {assetCountIndicator}
+        <div
+          className="grid"
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+            rowGap: `${layoutSettings.rowGap}px`,
+            columnGap: `${layoutSettings.columnGap}px`,
+          }}
+        >
+          {cardItems}
+        </div>
+        {loadMoreButton}
+      </>
     );
   };
 
@@ -228,11 +295,30 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
             <button
               className="w-full px-4 py-2 border rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
               onClick={controller.addFolder}
-              disabled={controller.adding || !controller.supported}
+              disabled={controller.adding || controller.scanning !== null || !controller.supported}
             >
               <Icons.folderOpen size={18} />
               {controller.adding ? 'Adding...' : 'Add Folder'}
             </button>
+
+            {/* Scanning progress indicator */}
+            {controller.scanning && (
+              <div className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="font-medium">Scanning folder...</span>
+                </div>
+                <div className="text-[10px] text-blue-600 dark:text-blue-400 space-y-0.5">
+                  <div>Files scanned: {controller.scanning.scanned.toLocaleString()}</div>
+                  <div>Media found: {controller.scanning.found.toLocaleString()}</div>
+                  {controller.scanning.currentPath && (
+                    <div className="truncate opacity-75" title={controller.scanning.currentPath}>
+                      {controller.scanning.currentPath}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {!controller.supported && (
               <div className="px-3 py-2 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg text-xs text-red-700 dark:text-red-400 flex items-center gap-2">

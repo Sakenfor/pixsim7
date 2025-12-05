@@ -90,24 +90,39 @@ window.PXS7 = window.PXS7 || {};
 
   function getSortedAccounts(accounts) {
     const sorted = [...accounts];
+
+    // Helper to get display name for secondary sorting
+    const getName = (acc) => (acc.nickname || acc.email || '').toLowerCase();
+
     switch (state.accountSortBy) {
       case 'name':
         sorted.sort((a, b) => {
-          const nameA = (a.nickname || a.email || '').toLowerCase();
-          const nameB = (b.nickname || b.email || '').toLowerCase();
-          return nameA.localeCompare(nameB);
+          const nameA = getName(a);
+          const nameB = getName(b);
+          const nameCmp = nameA.localeCompare(nameB);
+          if (nameCmp !== 0) return nameCmp;
+          // Secondary: sort by credits descending
+          return (b.total_credits || 0) - (a.total_credits || 0);
         });
         break;
       case 'recent':
         sorted.sort((a, b) => {
           const timeA = a.last_used_at || a.updated_at || 0;
           const timeB = b.last_used_at || b.updated_at || 0;
-          return new Date(timeB) - new Date(timeA);
+          const timeDiff = new Date(timeB) - new Date(timeA);
+          if (timeDiff !== 0) return timeDiff;
+          // Secondary: sort by name
+          return getName(a).localeCompare(getName(b));
         });
         break;
       case 'credits':
       default:
-        sorted.sort((a, b) => (b.total_credits || 0) - (a.total_credits || 0));
+        sorted.sort((a, b) => {
+          const creditDiff = (b.total_credits || 0) - (a.total_credits || 0);
+          if (creditDiff !== 0) return creditDiff;
+          // Secondary: sort by name
+          return getName(a).localeCompare(getName(b));
+        });
         break;
     }
     return sorted;

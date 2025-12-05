@@ -615,12 +615,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getAssets') {
     (async () => {
       try {
-        const { providerId, limit, offset } = message;
+        const { providerId, limit, offset, cursor } = message;
         let endpoint = '/api/v1/assets?';
         const params = [];
         if (providerId) params.push(`provider_id=${encodeURIComponent(providerId)}`);
         if (limit) params.push(`limit=${limit}`);
-        if (offset) params.push(`offset=${offset}`);
+        if (cursor) params.push(`cursor=${encodeURIComponent(cursor)}`);
+        else if (offset != null) params.push(`offset=${offset}`);
         endpoint += params.join('&');
 
         const data = await backendRequest(endpoint);
@@ -663,6 +664,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { accountId } = message;
         if (!accountId) throw new Error('accountId is required');
         const data = await backendRequest(`/api/v1/accounts/${accountId}/pixverse-status`);
+        sendResponse({ success: true, data });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Dev: Pixverse dry-run sync for a specific account
+  if (message.action === 'pixverseDryRunSync') {
+    (async () => {
+      try {
+        const { accountId, limit, offset } = message;
+        if (!accountId) throw new Error('accountId is required');
+
+        const params = new URLSearchParams();
+        params.set('account_id', String(accountId));
+        if (typeof limit === 'number') params.set('limit', String(limit));
+        if (typeof offset === 'number') params.set('offset', String(offset));
+
+        const endpoint = `/api/v1/dev/pixverse-sync/dry-run?${params.toString()}`;
+        const data = await backendRequest(endpoint);
         sendResponse({ success: true, data });
       } catch (error) {
         sendResponse({ success: false, error: error.message });

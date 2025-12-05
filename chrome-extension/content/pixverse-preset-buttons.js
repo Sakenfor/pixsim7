@@ -202,14 +202,10 @@
         assetsCache = [...assetsCache, ...newImages];
       } else {
         assetsCache = newImages;
-        // Reset cursor on fresh load
-        assetsNextCursor = null;
       }
 
-      // Store the next cursor for pagination
-      if (nextCursor) {
-        assetsNextCursor = nextCursor;
-      }
+      // Store the next cursor for pagination (or clear if no more pages)
+      assetsNextCursor = nextCursor || null;
 
       assetsLoadedCount = assetsCache.length;
 
@@ -605,25 +601,13 @@
     accountBtn.className = `${BTN_CLASS} ${BTN_CLASS}--account`;
     updateAccountButton(accountBtn);
 
-    accountBtn.addEventListener('click', async (e) => {
+    // Shared wheel handler for cycling through accounts (works on any button in the group)
+    const handleAccountWheel = async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      if (accountsCache.length === 0) {
-        const orig = accountBtn.innerHTML;
-        accountBtn.innerHTML = '<span class="name">...</span>';
-        await loadAccounts();
-        syncModuleCaches();
-        updateAccountButton(accountBtn);
-      }
-
-      showAccountMenu(accountBtn, () => updateAccountButton(accountBtn));
-    });
-
-    // Mouse wheel scroll to cycle through accounts
-    accountBtn.addEventListener('wheel', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+      // Reload session from storage first (in case it changed externally)
+      await loadCurrentSessionAccount();
 
       // Load accounts if not loaded
       if (accountsCache.length === 0) {
@@ -632,26 +616,37 @@
 
       if (accountsCache.length === 0) return;
 
-      // Always sync caches to ensure storage.state has current data
-      // (needed for getCurrentSessionAccount to work correctly)
+      // Sync caches to ensure storage.state has current account data
       syncModuleCaches();
 
-      // Get sorted accounts (same order as menu)
-      const currentSession = getCurrentSessionAccount();
-      const filteredAccounts = currentSession
-        ? accountsCache.filter(a => a.id !== currentSession.id)
+      // Build sorted account list matching the menu order:
+      // 1. Session account at top (if exists and in cache)
+      // 2. Other accounts sorted by user preference
+      const sessionId = storage.state.currentSessionAccountId;
+      const sessionAccount = sessionId ? accountsCache.find(a => a.id === sessionId) : null;
+      const otherAccounts = sessionAccount
+        ? accountsCache.filter(a => a.id !== sessionId)
         : accountsCache;
-      const sortedAccounts = currentSession
-        ? [currentSession, ...getSortedAccounts(filteredAccounts)]
-        : getSortedAccounts(accountsCache);
+      const sortedOthers = getSortedAccounts(otherAccounts);
+      const sortedAccounts = sessionAccount
+        ? [sessionAccount, ...sortedOthers]
+        : sortedOthers;
 
-      // Find current account index - use selectedAccountId directly to avoid cache mismatch
+      if (sortedAccounts.length === 0) return;
+
+      // Find current account index
+      // Priority: selected account > session account > first account
       const selectedId = storage.state.selectedAccountId;
-      let currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
+      let currentIndex = -1;
+
+      if (selectedId) {
+        currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
+      }
+      if (currentIndex === -1 && sessionId) {
+        currentIndex = sortedAccounts.findIndex(a => a.id === sessionId);
+      }
       if (currentIndex === -1) {
-        // Selected account not in sorted list, try current session
-        currentIndex = sortedAccounts.findIndex(a => a.id === storage.state.currentSessionAccountId);
-        if (currentIndex === -1) currentIndex = 0;
+        currentIndex = 0;
       }
 
       // Scroll up = previous, scroll down = next
@@ -672,7 +667,25 @@
         await saveSelectedAccount(newAccount.id);
         updateAccountButton(accountBtn);
       }
+    };
+
+    accountBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (accountsCache.length === 0) {
+        const orig = accountBtn.innerHTML;
+        accountBtn.innerHTML = '<span class="name">...</span>';
+        await loadAccounts();
+        syncModuleCaches();
+        updateAccountButton(accountBtn);
+      }
+
+      showAccountMenu(accountBtn, () => updateAccountButton(accountBtn));
     });
+
+    // Mouse wheel scroll to cycle through accounts
+    accountBtn.addEventListener('wheel', handleAccountWheel);
 
     // Login button
     const loginBtn = document.createElement('button');
@@ -695,6 +708,8 @@
       updateAccountButton(accountBtn);
     });
 
+    loginBtn.addEventListener('wheel', handleAccountWheel);
+
     // Assets button
     const assetsBtn = document.createElement('button');
     assetsBtn.className = `${BTN_CLASS} ${BTN_CLASS}--assets`;
@@ -711,10 +726,12 @@
         const origText = assetsBtn.textContent;
         assetsBtn.textContent = '...';
         await loadAssets();
-        syncModuleCaches();
         assetsBtn.classList.remove('loading');
         assetsBtn.textContent = origText;
       }
+
+      // Always sync caches before opening picker to ensure counts are up to date
+      syncModuleCaches();
 
       // Show unified picker - default to Assets tab, but Recent if there are recent images
       const recentImages = imagePicker.getRecentImages();
@@ -726,8 +743,14 @@
         syncModuleCaches();
       };
 
+      // Store the wrapper in the image picker module so it's available even when
+      // the picker is opened from other sources (e.g., restore panel)
+      imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
+
       showUnifiedImagePicker(defaultTab, loadAssetsWrapper);
     });
+
+    assetsBtn.addEventListener('wheel', handleAccountWheel);
 
     // Run button - shows selected preset, click to run
     const runBtn = document.createElement('button');
@@ -764,6 +787,8 @@
       showPresetMenu(runBtn, () => updateRunButton(runBtn));
     });
 
+    runBtn.addEventListener('wheel', handleAccountWheel);
+
     // Preset selector dropdown button
     const presetArrow = document.createElement('button');
     presetArrow.className = `${BTN_CLASS}`;
@@ -775,6 +800,11 @@
       e.stopPropagation();
       showPresetMenu(presetArrow, () => updateRunButton(runBtn));
     });
+
+    presetArrow.addEventListener('wheel', handleAccountWheel);
+
+    // Also add wheel handler to the group container itself
+    group.addEventListener('wheel', handleAccountWheel);
 
     group.appendChild(accountBtn);
     group.appendChild(loginBtn);
@@ -905,7 +935,13 @@
     // Listen for session changes
     chrome.storage?.onChanged?.addListener((changes, area) => {
       if (area === 'local' && changes[STORAGE_KEY_PROVIDER_SESSIONS]) {
-        loadCurrentSessionAccount().then(updateAllAccountButtons);
+        // Session changed - reload session ID and refresh accounts to stay in sync
+        loadCurrentSessionAccount().then(async () => {
+          // Refresh accounts in case the new session is a new account
+          await loadAccounts();
+          syncModuleCaches();
+          updateAllAccountButtons();
+        });
       }
     });
 

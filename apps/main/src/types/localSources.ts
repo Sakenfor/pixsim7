@@ -41,6 +41,7 @@ export interface LocalFoldersController {
   // Previews & viewer
   previews: Record<string, string>;
   loadPreview: (asset: LocalAsset | string) => Promise<void>;
+  revokePreview: (assetKey: string) => void;  // Cleanup blob URL when no longer visible
   viewerAsset: LocalAsset | null;
   openViewer: (asset: LocalAsset) => void;
   closeViewer: () => void;
@@ -56,5 +57,11 @@ export interface LocalFoldersController {
   // Errors / state from useLocalFolders
   supported: boolean;
   adding: boolean;
+  scanning: {
+    folderId: string;
+    scanned: number;
+    found: number;
+    currentPath: string;
+  } | null;
   error: string | null;
 }

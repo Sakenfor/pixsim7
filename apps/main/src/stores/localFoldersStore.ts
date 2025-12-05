@@ -27,11 +27,19 @@ type FolderEntry = {
   handle: DirHandle;
 };
 
+type ScanningState = {
+  folderId: string;
+  scanned: number;
+  found: number;
+  currentPath: string;
+} | null;
+
 type LocalFoldersState = {
   supported: boolean;
   folders: FolderEntry[];
   assets: Record<string, LocalAsset>; // key -> asset
   adding: boolean;
+  scanning: ScanningState;  // Progress indicator for folder scanning
   error?: string;
   addFolder: () => Promise<void>;
   removeFolder: (id: string) => Promise<void>;
@@ -107,20 +115,52 @@ type AssetMeta = {
   lastUploadAt?: number;
 };
 
-async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
+// Chunked folder scanning - yields to main thread every N files for responsiveness
+const SCAN_CHUNK_SIZE = 50;  // Process this many files before yielding
+
+// Helper to yield to main thread
+function yieldToMain(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+type ScanProgress = {
+  scanned: number;
+  found: number;
+  currentPath: string;
+};
+
+async function scanFolderChunked(
+  id: string,
+  handle: DirHandle,
+  onProgress?: (progress: ScanProgress) => void,
+  depth = 5,
+  prefix = '',
+  stats = { scanned: 0, found: 0 }
+): Promise<LocalAsset[]> {
   const out: LocalAsset[] = [];
   try {
     // @ts-expect-error: for-await supported in handles
     for await (const [name, entry] of handle.entries()) {
       const rel = prefix ? `${prefix}/${name}` : name;
+      stats.scanned++;
+
       if (entry.kind === 'directory' && depth > 0) {
-        out.push(...await scanFolder(id, entry as DirHandle, depth - 1, rel));
+        // Recursively scan subdirectory
+        const subAssets = await scanFolderChunked(id, entry as DirHandle, onProgress, depth - 1, rel, stats);
+        out.push(...subAssets);
       } else if (entry.kind === 'file') {
         const fh = entry as FileHandle;
         const kind = extKind(name);
         if (kind === 'other') continue; // filter to media only
-        let size: number | undefined; let lastModified: number | undefined;
-        try { const f = await fh.getFile(); size = f.size; lastModified = f.lastModified; } catch {}
+
+        let size: number | undefined;
+        let lastModified: number | undefined;
+        try {
+          const f = await fh.getFile();
+          size = f.size;
+          lastModified = f.lastModified;
+        } catch {}
+
         out.push({
           key: `${id}:${rel}`,
           name,
@@ -131,12 +171,26 @@ async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = '')
           fileHandle: fh,
           folderId: id,
         });
+        stats.found++;
+      }
+
+      // Yield to main thread periodically for UI responsiveness
+      if (stats.scanned % SCAN_CHUNK_SIZE === 0) {
+        if (onProgress) {
+          onProgress({ scanned: stats.scanned, found: stats.found, currentPath: rel });
+        }
+        await yieldToMain();
       }
     }
   } catch (e) {
     console.warn('scanFolder error', e);
   }
   return out;
+}
+
+// Legacy sync version for backward compatibility
+async function scanFolder(id: string, handle: DirHandle, depth = 5, prefix = ''): Promise<LocalAsset[]> {
+  return scanFolderChunked(id, handle, undefined, depth, prefix);
 }
 
 // Get file handle by walking the path from root
@@ -208,6 +262,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   folders: [],
   assets: {},
   adding: false,
+  scanning: null,
   error: undefined,
 
   loadPersisted: async () => {
@@ -216,18 +271,41 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       const stored = await idbGet<FolderEntry[]>('folders');
       if (stored && stored.length) {
         // Request permission again if needed
+        // IMPORTANT: Keep all folders even if permission fails - prevents data loss
         const ok: FolderEntry[] = [];
+        const needsPermission: FolderEntry[] = [];
         for (const f of stored) {
           try {
             // @ts-ignore permission API
-            const perm = await (f.handle as any).requestPermission?.({ mode: 'read' })
-              ?? (await (f.handle as any).queryPermission?.({ mode: 'read' }));
-            if (perm === 'granted' || perm === 'prompt' || perm === true) ok.push(f);
-          } catch {
-            // drop silently
+            const perm = await (f.handle as any).queryPermission?.({ mode: 'read' });
+            if (perm === 'granted') {
+              ok.push(f);
+            } else {
+              // Try to request permission
+              try {
+                const requested = await (f.handle as any).requestPermission?.({ mode: 'read' });
+                if (requested === 'granted') {
+                  ok.push(f);
+                } else {
+                  // Keep folder but mark as needing permission - don't lose it!
+                  needsPermission.push(f);
+                  console.warn(`[LocalFolders] Folder "${f.name}" needs permission re-grant`);
+                }
+              } catch (reqErr) {
+                // Keep folder even if request fails
+                needsPermission.push(f);
+                console.warn(`[LocalFolders] Folder "${f.name}" permission request failed:`, reqErr);
+              }
+            }
+          } catch (e) {
+            // Keep folder even on error - don't silently lose it!
+            needsPermission.push(f);
+            console.warn(`[LocalFolders] Folder "${f.name}" permission check failed:`, e);
           }
         }
-        set({ folders: ok });
+        // Include ALL folders in state - those needing permission just won't load assets yet
+        const allFolders = [...ok, ...needsPermission];
+        set({ folders: allFolders });
         // Load from cache first for instant display, then always kick off a fresh
         // scan in the background so newly added files appear without manual refresh.
         for (const f of ok) {
@@ -273,13 +351,19 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       const folders = [...get().folders, entry];
       set({ folders });
       await idbSet('folders', folders);
-      const items = await scanFolder(id, dir, 5);
+
+      // Use chunked scanner with progress reporting
+      set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
+      const items = await scanFolderChunked(id, dir, (progress) => {
+        set({ scanning: { folderId: id, ...progress } });
+      }, 5);
+
       set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
       await cacheAssets(id, items);
     } catch (e: any) {
       if (e?.name !== 'AbortError') set({ error: e?.message || 'Failed to add folder' });
     } finally {
-      set({ adding: false });
+      set({ adding: false, scanning: null });
     }
   },
 
@@ -301,7 +385,13 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   refreshFolder: async (id: string) => {
     const f = get().folders.find(x => x.id === id);
     if (!f) return;
-    const items = await scanFolder(f.id, f.handle, 5);
+
+    // Use chunked scanner with progress reporting
+    set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
+    const items = await scanFolderChunked(f.id, f.handle, (progress) => {
+      set({ scanning: { folderId: id, ...progress } });
+    }, 5);
+    set({ scanning: null });
 
     // Preserve upload history for any assets that already exist in state
     const currentAssets = get().assets;
@@ -390,5 +480,67 @@ export async function setLocalThumbnailBlob(asset: LocalAsset, blob: Blob): Prom
     await idbSet<Blob>(key, blob);
   } catch (e) {
     console.warn('Failed to cache local thumbnail', e);
+  }
+}
+
+/**
+ * Generate a thumbnail from a file.
+ * For images: resize to max 400px on longest side
+ * For videos: extract first frame (future enhancement)
+ */
+const THUMBNAIL_MAX_SIZE = 400;
+
+export async function generateThumbnail(file: File): Promise<Blob | null> {
+  // Only handle images for now
+  if (!file.type.startsWith('image/')) {
+    return file; // Return original for videos (will be handled by video element)
+  }
+
+  try {
+    // Create an image bitmap for efficient processing
+    const bitmap = await createImageBitmap(file);
+
+    // Calculate new dimensions maintaining aspect ratio
+    let width = bitmap.width;
+    let height = bitmap.height;
+
+    if (width > THUMBNAIL_MAX_SIZE || height > THUMBNAIL_MAX_SIZE) {
+      if (width > height) {
+        height = Math.round((height / width) * THUMBNAIL_MAX_SIZE);
+        width = THUMBNAIL_MAX_SIZE;
+      } else {
+        width = Math.round((width / height) * THUMBNAIL_MAX_SIZE);
+        height = THUMBNAIL_MAX_SIZE;
+      }
+    }
+
+    // Use OffscreenCanvas if available (better performance), otherwise fallback
+    if (typeof OffscreenCanvas !== 'undefined') {
+      const canvas = new OffscreenCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      return await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.8 });
+    } else {
+      // Fallback for browsers without OffscreenCanvas
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.8);
+      });
+    }
+  } catch (e) {
+    console.warn('Failed to generate thumbnail', e);
+    return null;
   }
 }

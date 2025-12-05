@@ -46,14 +46,14 @@ async def list_assets(
     Assets returned newest first (created_at DESC, id DESC for tie-break).
     """
     try:
-        # For now use existing service offset pagination; cursor support will be layered later.
         assets = await asset_service.list_assets(
             user=user,
             media_type=media_type,
             sync_status=sync_status,
             provider_id=provider_id,
             limit=limit,
-            offset=offset if cursor is None else 0,  # ignore offset if cursor used (future implementation)
+            offset=offset if cursor is None else 0,
+            cursor=cursor,
         )
 
         # Simple total (future: separate COUNT query)

@@ -10,6 +10,7 @@ import {
   useLocalFolders,
   getLocalThumbnailBlob,
   setLocalThumbnailBlob,
+  generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
 import { usePersistentState } from './usePersistentState';
@@ -32,6 +33,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     removeFolder,
     refreshFolder,
     adding,
+    scanning,
     error,
     getFileForAsset,
     updateAssetUploadStatus,
@@ -50,6 +52,9 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Preview state
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const loadingPreviewsRef = useRef<Set<string>>(new Set());
+
+  // Track blob URLs for cleanup when they're no longer needed
+  const blobUrlsRef = useRef<Map<string, string>>(new Map());
 
   // Viewer state
   const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
@@ -135,7 +140,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (!asset) return;
 
     // Check if already loaded or currently loading
-    if (loadingPreviewsRef.current.has(asset.key)) return;
+    if (previews[asset.key] || loadingPreviewsRef.current.has(asset.key)) return;
 
     // Mark as loading
     loadingPreviewsRef.current.add(asset.key);
@@ -159,9 +164,17 @@ export function useLocalFoldersController(): LocalFoldersController {
           loadingPreviewsRef.current.delete(asset.key);
           return;
         }
-        url = URL.createObjectURL(file);
-        // Cache original file blob as thumbnail for future sessions
-        void setLocalThumbnailBlob(asset, file);
+
+        // Generate a smaller thumbnail for images (much faster to render)
+        const thumbnail = await generateThumbnail(file);
+        if (thumbnail) {
+          url = URL.createObjectURL(thumbnail);
+          // Cache the smaller thumbnail for future sessions
+          void setLocalThumbnailBlob(asset, thumbnail);
+        } else {
+          // Fallback to original file if thumbnail generation fails
+          url = URL.createObjectURL(file);
+        }
       } catch {
         loadingPreviewsRef.current.delete(asset.key);
         return;
@@ -169,10 +182,36 @@ export function useLocalFoldersController(): LocalFoldersController {
     }
 
     if (url) {
+      // Track the blob URL for later cleanup
+      blobUrlsRef.current.set(asset.key, url);
       setPreviews(p => ({ ...p, [asset.key]: url }));
     }
-    // Keep in loading set - will be cleared on next check since preview exists
-  }, [assetsRecord]);
+    loadingPreviewsRef.current.delete(asset.key);
+  }, [assetsRecord, previews, getFileForAsset]);
+
+  // Revoke blob URLs for assets that are no longer visible (called by UI)
+  const revokePreview = useCallback((assetKey: string) => {
+    const url = blobUrlsRef.current.get(assetKey);
+    if (url) {
+      URL.revokeObjectURL(url);
+      blobUrlsRef.current.delete(assetKey);
+      setPreviews(p => {
+        const next = { ...p };
+        delete next[assetKey];
+        return next;
+      });
+    }
+  }, []);
+
+  // Cleanup all blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+      blobUrlsRef.current.clear();
+    };
+  }, []);
 
   // Open viewer
   const openViewer = async (asset: LocalAsset) => {
@@ -281,6 +320,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     setSelectedFolderPath,
     previews,
     loadPreview,
+    revokePreview,
     viewerAsset,
     openViewer,
     closeViewer,
@@ -292,6 +332,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     uploadOne,
     supported,
     adding,
+    scanning,
     error: error ?? null,
   };
 }
