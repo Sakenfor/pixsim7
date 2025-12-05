@@ -9,6 +9,12 @@ import { apiClient } from '@/lib/api/client';
 import { EditAccountModal } from './EditAccountModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 import { CompactAccountCard } from './CompactAccountCard';
+import {
+  getPixverseSyncDryRun,
+  syncPixverseAssets,
+  refreshAssetLineage,
+  type SyncDryRunResponse,
+} from '@/lib/api/pixverseSync';
 
 interface ProviderSettings {
   provider_id: string;
@@ -457,9 +463,224 @@ export function ProviderSettingsPanel() {
                 No accounts found for this provider
               </div>
             )}
+
+            {/* Pixverse-specific Sync & Lineage Section */}
+            {activeProvider === 'pixverse' && sortedAccounts.length > 0 && (
+              <PixverseSyncSection accounts={sortedAccounts} />
+            )}
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+
+// ============================================================================
+// Pixverse Sync Section Component
+// ============================================================================
+
+interface PixverseSyncSectionProps {
+  accounts: ProviderAccount[];
+}
+
+function PixverseSyncSection({ accounts }: PixverseSyncSectionProps) {
+  const toast = useToast();
+  const [expanded, setExpanded] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
+    accounts[0]?.id ?? null
+  );
+
+  // Scan state
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<SyncDryRunResponse | null>(null);
+
+  // Import state
+  const [importing, setImporting] = useState(false);
+
+  // Lineage rebuild state
+  const [rebuilding, setRebuilding] = useState(false);
+
+  // Keep selectedAccountId in sync with available accounts
+  useEffect(() => {
+    if (selectedAccountId === null && accounts.length > 0) {
+      setSelectedAccountId(accounts[0].id);
+    } else if (accounts.length > 0 && !accounts.find(a => a.id === selectedAccountId)) {
+      setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
+
+  const handleScanLibrary = async () => {
+    if (!selectedAccountId) return;
+
+    setScanning(true);
+    try {
+      const result = await getPixverseSyncDryRun(selectedAccountId, {
+        limit: 200,
+        includeImages: true,
+      });
+      setScanResult(result);
+      toast.success('Library scan complete');
+    } catch (error) {
+      console.error('Scan failed:', error);
+      toast.error(`Scan failed: ${error}`);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleImportMissing = async () => {
+    if (!selectedAccountId) return;
+
+    setImporting(true);
+    try {
+      const result = await syncPixverseAssets(selectedAccountId, {
+        mode: 'both',
+        limit: 200,
+      });
+
+      const totalCreated = result.videos.created + result.images.created;
+      toast.success(`Imported ${result.videos.created} videos, ${result.images.created} images`);
+
+      // Refresh scan results
+      if (totalCreated > 0) {
+        await handleScanLibrary();
+      }
+    } catch (error) {
+      console.error('Import failed:', error);
+      toast.error(`Import failed: ${error}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleRebuildLineage = async () => {
+    setRebuilding(true);
+    try {
+      const result = await refreshAssetLineage({
+        providerId: 'pixverse',
+        clearExisting: true,
+      });
+
+      const totalNewEdges = result.results.reduce((sum, r) => sum + r.new_edges, 0);
+      toast.success(`Rebuilt lineage for ${result.count} assets (${totalNewEdges} edges created)`);
+    } catch (error) {
+      console.error('Lineage rebuild failed:', error);
+      toast.error(`Lineage rebuild failed: ${error}`);
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
+  const missingVideos = scanResult
+    ? scanResult.videos.total_remote - scanResult.videos.existing_count
+    : 0;
+  const missingImages = scanResult?.images
+    ? scanResult.images.total_remote - scanResult.images.existing_count
+    : 0;
+
+  return (
+    <div className="mt-6 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 flex items-center justify-between hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors"
+      >
+        <span className="font-medium text-neutral-800 dark:text-neutral-200">
+          Pixverse Library & Lineage (Manual Tools)
+        </span>
+        <span className="text-neutral-500 dark:text-neutral-400">
+          {expanded ? '▼' : '▶'}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="p-4 space-y-4 bg-white dark:bg-neutral-900">
+          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+            These operations do not run automatically. Trigger them manually when you've added new
+            Pixverse content or want to repair/rebuild lineage data.
+          </p>
+
+          {/* Account selector */}
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Account:
+            </label>
+            <select
+              value={selectedAccountId ?? ''}
+              onChange={(e) => setSelectedAccountId(Number(e.target.value))}
+              className="px-3 py-1.5 text-sm rounded-md border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+            >
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.nickname || acc.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Scan Results */}
+          {scanResult && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Videos</div>
+                <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                  {scanResult.videos.existing_count} / {scanResult.videos.total_remote}
+                </div>
+                <div className="text-xs text-neutral-500">
+                  {missingVideos > 0 ? `${missingVideos} missing` : 'All imported'}
+                </div>
+              </div>
+              {scanResult.images && (
+                <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-lg">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Images</div>
+                  <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                    {scanResult.images.existing_count} / {scanResult.images.total_remote}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {missingImages > 0 ? `${missingImages} missing` : 'All imported'}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleScanLibrary}
+              disabled={scanning || !selectedAccountId}
+            >
+              {scanning ? 'Scanning...' : 'Scan Library'}
+            </Button>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleImportMissing}
+              disabled={importing || !selectedAccountId || (scanResult && missingVideos + missingImages === 0)}
+            >
+              {importing ? 'Importing...' : 'Import Missing Assets'}
+            </Button>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRebuildLineage}
+              disabled={rebuilding}
+            >
+              {rebuilding ? 'Rebuilding...' : 'Rebuild Lineage'}
+            </Button>
+          </div>
+
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            <strong>Scan Library:</strong> Check how many remote items are already imported.{' '}
+            <strong>Import Missing:</strong> Create Asset records for unimported items.{' '}
+            <strong>Rebuild Lineage:</strong> Re-extract parent-child relationships from stored metadata.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

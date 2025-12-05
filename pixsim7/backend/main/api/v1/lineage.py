@@ -1,13 +1,19 @@
 """Lineage and branching API endpoints (debug/admin oriented)."""
+from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.asset import Asset
 from pixsim7.backend.main.domain.asset_lineage import AssetLineage
 from pixsim7.backend.main.services.asset.lineage_service import AssetLineageService
 from pixsim7.backend.main.services.asset.branching_service import AssetBranchingService
+from pixsim7.backend.main.services.asset.lineage_refresh_service import LineageRefreshService
+from pixsim_logging import get_logger
+
+logger = get_logger()
 
 router = APIRouter(prefix="/lineage", tags=["lineage"], include_in_schema=False)
 
@@ -159,3 +165,119 @@ async def list_clips(asset_id: int, db: AsyncSession = Depends(get_db), user=Dep
     svc = AssetBranchingService(db)
     clips = await svc.list_clips(asset_id)
     return {"clips": [{"id": c.id, "start": c.start_time, "end": c.end_time, "name": c.clip_name} for c in clips]}
+
+
+# ============================================================================
+# Lineage Refresh API
+# ============================================================================
+
+
+class LineageRefreshRequest(BaseModel):
+    """Request body for lineage refresh endpoint."""
+    asset_ids: Optional[List[int]] = Field(
+        None,
+        description="Explicit list of asset IDs to refresh lineage for"
+    )
+    provider_id: Optional[str] = Field(
+        None,
+        description="Filter by provider ID (e.g., 'pixverse')"
+    )
+    scope: Optional[str] = Field(
+        "current_user",
+        description="Scope for provider-based refresh: 'current_user'"
+    )
+    clear_existing: bool = Field(
+        True,
+        description="Whether to clear existing lineage before rebuilding"
+    )
+
+
+@router.post("/refresh")
+async def refresh_lineage(
+    body: LineageRefreshRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Rebuild lineage for assets using stored provider metadata.
+
+    This endpoint uses LineageRefreshService to:
+    - Optionally clear existing AssetLineage edges for the specified assets
+    - Re-extract embedded assets and rebuild lineage from media_metadata
+
+    Two modes of operation:
+    1. Explicit asset IDs: Pass `asset_ids` to refresh specific assets
+    2. Provider filter: Pass `provider_id` + `scope="current_user"` to refresh
+       all assets for that provider owned by the current user
+
+    Returns per-asset results with counts of removed and new edges.
+    """
+    service = LineageRefreshService(db)
+
+    asset_ids_to_refresh: List[int] = []
+
+    if body.asset_ids:
+        # Mode 1: Explicit asset IDs
+        # Validate ownership
+        stmt = select(Asset.id).where(
+            Asset.id.in_(body.asset_ids),
+            Asset.user_id == user.id,
+        )
+        result = await db.execute(stmt)
+        owned_ids = {row[0] for row in result.fetchall()}
+
+        # Filter to only owned assets
+        asset_ids_to_refresh = [aid for aid in body.asset_ids if aid in owned_ids]
+
+        if len(asset_ids_to_refresh) < len(body.asset_ids):
+            logger.warning(
+                "lineage_refresh_filtered_assets",
+                requested=len(body.asset_ids),
+                owned=len(asset_ids_to_refresh),
+                user_id=user.id,
+            )
+
+    elif body.provider_id and body.scope == "current_user":
+        # Mode 2: Provider filter for current user
+        stmt = select(Asset.id).where(
+            Asset.provider_id == body.provider_id,
+            Asset.user_id == user.id,
+        )
+        result = await db.execute(stmt)
+        asset_ids_to_refresh = [row[0] for row in result.fetchall()]
+
+        logger.info(
+            "lineage_refresh_by_provider",
+            provider_id=body.provider_id,
+            asset_count=len(asset_ids_to_refresh),
+            user_id=user.id,
+        )
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Must provide either asset_ids or provider_id with scope='current_user'"
+        )
+
+    if not asset_ids_to_refresh:
+        return {
+            "count": 0,
+            "results": [],
+            "message": "No assets found matching the criteria",
+        }
+
+    # Run the refresh
+    refresh_result = await service.refresh_for_assets(
+        asset_ids_to_refresh,
+        provider_id=body.provider_id,
+        clear_existing=body.clear_existing,
+    )
+
+    logger.info(
+        "lineage_refresh_completed",
+        count=refresh_result["count"],
+        user_id=user.id,
+        provider_id=body.provider_id,
+    )
+
+    return refresh_result
