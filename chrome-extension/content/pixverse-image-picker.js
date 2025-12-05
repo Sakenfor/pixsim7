@@ -341,10 +341,12 @@ window.PXS7 = window.PXS7 || {};
       results.push({ input, container, hasImage, priority, containerId });
     });
 
+    // Sort by priority (descending), then by containerId for stable order
+    // Don't sort by hasImage - that would cause slot order to change after adding images
     results.sort((a, b) => {
       if (b.priority !== a.priority) return b.priority - a.priority;
-      if (a.hasImage !== b.hasImage) return a.hasImage ? 1 : -1;
-      return 0;
+      // Stable sort by containerId to maintain consistent slot numbering
+      return (a.containerId || '').localeCompare(b.containerId || '');
     });
 
     return results;
@@ -747,9 +749,14 @@ window.PXS7 = window.PXS7 || {};
       divider.style.cssText = `height: 1px; background: ${COLORS.border}; margin: 4px 0;`;
       menu.appendChild(divider);
 
-      // Add numbered slots (limit to 7 or actual count)
-      const slotCount = Math.min(uploadInputs.length, 7);
+      // Add numbered slots - only show relevant (priority >= 10) slots first, then others
+      const relevantSlots = uploadResults.filter(u => u.priority >= 10);
+      const otherSlots = uploadResults.filter(u => u.priority < 10);
+      const orderedSlots = [...relevantSlots, ...otherSlots];
+      const slotCount = Math.min(orderedSlots.length, 7);
+
       for (let i = 0; i < slotCount; i++) {
+        const slotInfo = orderedSlots[i];
         const item = document.createElement('button');
         item.style.cssText = `
           width: 100%;
@@ -765,21 +772,39 @@ window.PXS7 = window.PXS7 || {};
           gap: 8px;
         `;
 
-        // Check if this slot already has an image (from smart detection)
-        const hasImage = uploadResults[i]?.hasImage || false;
+        // Check if this slot already has an image
+        const hasImage = slotInfo?.hasImage || false;
+        const isRelevant = slotInfo?.priority >= 10;
+
+        // Extract a friendly name from containerId
+        let slotName = `Slot ${i + 1}`;
+        const containerId = slotInfo?.containerId || '';
+        if (containerId.includes('image_text')) slotName = 'Image';
+        else if (containerId.includes('create_image')) slotName = 'Image';
+        else if (containerId.includes('transition')) {
+          // Try to extract number from container id
+          const match = containerId.match(/(\d+)/);
+          slotName = match ? `Transition ${match[1]}` : 'Transition';
+        }
+        else if (containerId.includes('fusion')) {
+          const match = containerId.match(/(\d+)/);
+          slotName = match ? `Image ${match[1]}` : 'Fusion';
+        }
+        else if (containerId.includes('edit')) slotName = 'Edit';
 
         item.innerHTML = `
           <span style="opacity:0.6">${i + 1}</span>
-          <span>Slot ${i + 1}</span>
+          <span>${slotName}</span>
           ${hasImage ? `<span style="font-size:9px;color:${COLORS.warning};margin-left:auto;">●</span>` : ''}
+          ${!isRelevant ? `<span style="font-size:9px;opacity:0.5;margin-left:auto;">⚠</span>` : ''}
         `;
-        item.title = hasImage ? `Slot ${i + 1} (has image - will replace)` : `Slot ${i + 1} (empty)`;
+        item.title = `${slotName}${hasImage ? ' (has image - will replace)' : ' (empty)'}${!isRelevant ? ' - may not match current page' : ''}`;
 
         item.addEventListener('mouseenter', () => item.style.background = COLORS.bgHover);
         item.addEventListener('mouseleave', () => item.style.background = 'transparent');
         item.addEventListener('click', async () => {
           menu.remove();
-          await injectImageToUpload(imageUrl, uploadInputs[i]);
+          await injectImageToUpload(imageUrl, slotInfo.input);
         });
         menu.appendChild(item);
       }
@@ -965,6 +990,18 @@ window.PXS7 = window.PXS7 || {};
       const data = itemDataMap.get(idx);
       if (!data) return;
 
+      // Check how many relevant upload slots exist
+      const uploads = findUploadInputs();
+      const relevantSlots = uploads.filter(u => u.priority >= 10);
+
+      // If 2+ relevant slots, show selection menu instead of auto-inject
+      if (relevantSlots.length >= 2) {
+        const rect = thumb.getBoundingClientRect();
+        showUploadSlotMenu(data.fullUrl, rect.right + 5, rect.top);
+        return;
+      }
+
+      // Single slot or no relevant slots: auto-inject
       thumb.classList.add('pxs7-loading');
       const success = await injectImageToUpload(data.fullUrl);
       thumb.classList.remove('pxs7-loading');
