@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import asyncio
 import uuid
+from urllib.parse import unquote
 from sqlalchemy.orm import object_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,6 +88,13 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
     estimate_video_credit_change,
 )
+
+
+def _decode_pixverse_url(value: Any) -> Any:
+    """Best-effort decode of Pixverse media URLs."""
+    if isinstance(value, str):
+        return unquote(value)
+    return value
 
 class PixverseProvider(
     PixverseSessionMixin,
@@ -219,24 +227,34 @@ class PixverseProvider(
         # === Operation-specific parameters ===
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             if "image_url" in params and params["image_url"] is not None:
-                mapped["image_url"] = params["image_url"]
+                mapped["image_url"] = _decode_pixverse_url(params["image_url"])
 
         elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
             # Image operations use image_urls list
             if "image_urls" in params and params["image_urls"] is not None:
-                mapped["image_urls"] = params["image_urls"]
+                mapped["image_urls"] = [
+                    _decode_pixverse_url(url) if isinstance(url, str) else url
+                    for url in params["image_urls"]
+                ]
             elif "image_url" in params and params["image_url"] is not None:
-                mapped["image_urls"] = [params["image_url"]]
+                mapped["image_urls"] = [
+                    _decode_pixverse_url(params["image_url"])
+                    if isinstance(params["image_url"], str)
+                    else params["image_url"]
+                ]
 
         elif operation_type == OperationType.VIDEO_EXTEND:
             if "video_url" in params and params["video_url"] is not None:
-                mapped["video_url"] = params["video_url"]
+                mapped["video_url"] = _decode_pixverse_url(params["video_url"])
             if "original_video_id" in params and params["original_video_id"] is not None:
                 mapped["original_video_id"] = params["original_video_id"]
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
             if "image_urls" in params and params["image_urls"] is not None:
-                mapped["image_urls"] = params["image_urls"]
+                mapped["image_urls"] = [
+                    _decode_pixverse_url(url) if isinstance(url, str) else url
+                    for url in params["image_urls"]
+                ]
             if "prompts" in params and params["prompts"] is not None:
                 mapped["prompts"] = params["prompts"]
 
