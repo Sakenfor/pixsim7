@@ -1,22 +1,23 @@
 # TASK: Generation Pipeline Concept Drift Audit
 
-This is a one-off analysis task for another AI agent (or a human) to
-check whether core **generation pipeline** concepts have drifted across
-frontend, backend, and provider code.
+This is a **read-only** analysis task for another AI agent (or a human)
+to check whether core **generation pipeline** concepts have drifted
+across frontend, backend, and provider code.
 
-The task is **read-only**: do not modify code; produce a short report.
+The agent must **not modify any code**; the only output is a short
+Markdown report describing current mappings and any drift found.
 
 ---
 
 ## 1. Scope & Goals
 
-Focus only on the generation pipeline:
+Focus only on the unified generation pipeline:
 
-- `generation_type` values and `GenerationNodeConfig`
-- `OperationType` enum and the central mapping registry
-- Pixverse provider mappings (video + image)
-- Quick Generate → `/generations` → provider flow
-- Asset creation (image vs video)
+- `generation_type` values and `GenerationNodeConfig`.
+- `OperationType` enum and the central mapping registry.
+- Pixverse provider mappings (image + video).
+- Quick Generate → `/generations` → provider flow.
+- Asset creation/media type classification (image vs video).
 
 Goal: detect inconsistencies or “drift” where the same concept has
 different meanings or mappings in different layers.
@@ -25,7 +26,7 @@ different meanings or mappings in different layers.
 
 ## 2. Files to Inspect
 
-The agent should inspect at least these files:
+The agent should inspect at least these files.
 
 **Backend**
 
@@ -51,7 +52,7 @@ The agent should inspect at least these files:
 
 ## 3. Checks to Perform
 
-Work through these checks step by step. When the task says “list” or
+Work through these checks step by step. When a step says “list” or
 “dump”, include the actual values and file locations in your report.
 
 ### 3.1 Concept inventory
@@ -72,9 +73,9 @@ Extract the actual values currently used:
    - In `controlCenter.ts`, list all `generation_type` strings returned
      by `mapOperationToGenerationType`.
 
-**Report:** a table like:
+**Report:** include a table like:
 
-| generation_type | OperationType from registry | Used in frontend? (Y/N) |
+| generation_type | OperationType (registry) | Used in frontend? (Y/N) |
 
 ### 3.2 Mapping consistency
 
@@ -87,18 +88,18 @@ Using the inventory above, check:
    - Does the mapped `OperationType` exist in the `OperationType` enum?
    - If Pixverse `supported_operations` includes that `OperationType`,
      is there a corresponding branch in:
-     - `PixverseProvider.map_parameters`
-     - `PixverseOperationsMixin.execute`
+     - `PixverseProvider.map_parameters`.
+     - `PixverseOperationsMixin.execute`.
 3. For each Quick Generate `operationType` (TS string):
    - Show `operationType → generation_type → OperationType` using:
-     - `mapOperationToGenerationType`
-     - `resolve_operation_type` (from `operation_mapping.py`)
+     - `mapOperationToGenerationType` (frontend).
+     - `resolve_operation_type` (from `operation_mapping.py`).
 
-**Report:** list any inconsistencies, e.g.:
+**Report:** list any inconsistencies, for example:
 
 - `generation_type` used in frontend but missing from registry/schema.
 - Registry entry that never appears in frontend or providers.
-- Quick Generate operation that resolves to an unexpected OperationType.
+- Quick Generate operation that resolves to an unexpected `OperationType`.
 
 ### 3.3 IMAGE vs VIDEO semantics
 
@@ -109,8 +110,8 @@ Check how image and video operations are separated:
      to each.
 2. In `_canonicalize_structured_params` in `creation_service.py`:
    - See how `image_url` / `image_urls` are handled for:
-     - `IMAGE_TO_VIDEO`
-     - `IMAGE_TO_IMAGE`
+     - `IMAGE_TO_VIDEO`.
+     - `IMAGE_TO_IMAGE`.
    - Note what ends up in `canonical_params`.
 3. In `PixverseProvider.map_parameters` (`pixverse.py`):
    - Check how `IMAGE_TO_VIDEO` and `IMAGE_TO_IMAGE` are mapped:
@@ -118,13 +119,13 @@ Check how image and video operations are separated:
      - Where do `image_urls` go?
 4. In `PixverseOperationsMixin` (`pixverse_operations.py`):
    - Confirm which SDK calls are used for:
-     - `IMAGE_TO_VIDEO` (video API)
-     - `IMAGE_TO_IMAGE` (image API)
+     - `IMAGE_TO_VIDEO` (video API).
+     - `IMAGE_TO_IMAGE` (image API).
 5. In `AssetCoreService.create_from_submission` (`core_service.py`):
    - See how `media_type` is chosen:
-     - When response has `image_url` / `provider_image_id`, should be
+     - When response has `image_url` / `provider_image_id`, it should be
        `MediaType.IMAGE`.
-     - When `video_url` / `provider_video_id`, should be
+     - When response has `video_url` / `provider_video_id`, it should be
        `MediaType.VIDEO`.
 
 **Report:** note any code paths where:
@@ -138,18 +139,18 @@ Check how image and video operations are separated:
 
 Ensure canonical parameters line up with what providers expect:
 
-1. For each Pixverse operation supported (`supported_operations`):
+1. For each Pixverse operation in `supported_operations`:
    - List the fields it uses in:
-     - `map_parameters`
+     - `map_parameters`.
      - `_generate_*` methods in `pixverse_operations.py`
-       (e.g., `model`, `quality`, `duration`, `image_url(s)`,
+       (e.g. `model`, `quality`, `duration`, `image_url(s)`,
        `video_url`, `fusion_assets`).
 2. Compare this with `_canonicalize_structured_params`:
    - Verify that when a `GenerationNodeConfig` contains the right data,
      `canonical_params` will include the fields Pixverse expects for
      that operation.
 
-**Report:** per operation:
+**Report:** for each operation, list:
 
 - Fields expected by Pixverse but not reliably produced by canonical
   params.
@@ -164,7 +165,7 @@ Trace the flow from Quick Generate to the backend:
    - For each `operationType` (`text_to_video`, `image_to_video`,
      `image_to_image`, `video_extend`, `video_transition`, `fusion`),
      note which fields it sets in `dynamicParams` / `imageUrls` /
-     `prompts` (e.g., `image_url`, `image_urls`, `video_url`).
+     `prompts` (e.g. `image_url`, `image_urls`, `video_url`).
 2. In `controlCenter.ts`:
    - Show how `mapOperationToGenerationType` translates these
      `operationType` values into `generation_type`.
@@ -174,28 +175,28 @@ Trace the flow from Quick Generate to the backend:
    - Confirm how `generation_type` is used to pick `OperationType`
      via `resolve_operation_type`.
 
-**Report:** for each Quick Generate operation:
+**Report:** for each Quick Generate operation, include:
 
 - `operationType → generation_type → OperationType`.
-- Any surprises (e.g., text‑only op ending as IMAGE operation).
+- Any surprises (e.g. a text-only op ending as an image operation).
 
 ### 3.6 Invariants and potential violations
 
 Infer a few simple invariants from the code, for example:
 
-- If `generation.operation_type == IMAGE_TO_IMAGE` then:
-  - `canonical_params.image_urls` is non‑empty.
-- If `generation.operation_type == IMAGE_TO_VIDEO` then:
-  - Inputs contain at least one `seed_image`.
+- If `generation.operation_type == IMAGE_TO_IMAGE` then
+  `canonical_params.image_urls` should be non-empty.
+- If `generation.operation_type == IMAGE_TO_VIDEO` then inputs should
+  contain at least one seed image.
 - If a generation completes and an asset is created:
   - `MediaType.IMAGE` assets come from image operations.
   - `MediaType.VIDEO` assets come from video operations.
 
 Then, based on the inspected code, identify any paths where these
-invariants could be violated (e.g., missing validation, ambiguous media
+invariants could be violated (e.g. missing validation, ambiguous media
 type selection).
 
-**Report:** list invariants and suspected violation paths with file +
+**Report:** list invariants and suspected violation paths with file and
 line references.
 
 ---
@@ -204,7 +205,7 @@ line references.
 
 The agent should produce a Markdown report, for example:
 
-- `docs/GENERATION_DRIFT_AUDIT_REPORT_YYYYMMDD.md`
+- `claude-tasks/NNN-generation-pipeline-drift-report-YYYYMMDD.md`
 
 The report should contain:
 
@@ -213,5 +214,8 @@ The report should contain:
   - Concept name.
   - Description.
   - File and line references.
-- Optional short list of suggested follow‑ups (no code changes).
+- A short list of suggested follow-ups (no code changes in this task).
+
+Optionally, the agent may add a brief summary section to a shared doc
+like `docs/TASK_TRACKING_OVERVIEW.md`, linking to the detailed report.
 
