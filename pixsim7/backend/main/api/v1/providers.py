@@ -1,9 +1,9 @@
 """
 Provider Management API - Provider detection and information
 """
-from typing import Optional
+from typing import Optional, Literal
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from urllib.parse import urlparse
 import json
 from pathlib import Path
@@ -11,6 +11,12 @@ from pathlib import Path
 from pixsim7.backend.main.api.dependencies import CurrentUser
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import Provider
+from pixsim7.backend.main.services.generation.cost_extractor import PROVIDER_PRICING
+from pixsim7.backend.main.services.generation.pixverse_pricing import (
+    get_image_credit_change,
+    estimate_video_credit_change,
+    pixverse_calculate_cost,
+)
 
 router = APIRouter()
 
@@ -62,6 +68,35 @@ class ProviderSettingsUpdate(BaseModel):
     global_password: Optional[str] = None
     auto_reauth_enabled: Optional[bool] = None
     auto_reauth_max_retries: Optional[int] = None
+
+
+class PixverseCostEstimateRequest(BaseModel):
+    """Request body for Pixverse cost estimation (credits + optional USD)."""
+    kind: Literal["video", "image"] = Field(
+        "video",
+        description="What is being generated: 'video' or 'image'."
+    )
+    quality: str = Field("360p", description="Quality preset (e.g. 360p, 720p, 1080p, 2k, 4k)")
+    duration: Optional[int] = Field(
+        None,
+        ge=1,
+        le=60,
+        description="Target duration in seconds (video only)",
+    )
+    model: str = Field("v5", description="Model ID (e.g. v5, v5.5, qwen-image, seedream-4.0)")
+    motion_mode: Optional[str] = Field(
+        None,
+        description="Optional motion_mode hint (e.g. cinematic, dynamic)"
+    )
+    multi_shot: bool = Field(False, description="Whether multi_shot is enabled")
+    audio: bool = Field(False, description="Whether audio generation is enabled")
+    api_method: str = Field("web-api", description="Pixverse API method (web-api or open-api)")
+
+
+class PixverseCostEstimateResponse(BaseModel):
+    """Response body for Pixverse cost estimation."""
+    estimated_credits: float
+    estimated_cost_usd: Optional[float] = None
 
 
 # Provider domain mappings (centralized configuration)
@@ -245,6 +280,7 @@ def extract_provider_capabilities(provider) -> dict:
     # Adapter-specific augmentation
     adapter_name = provider.__class__.__name__.lower()
     if 'pixverse' in adapter_name:
+        # Base presets / hints derived from adapter
         base.update({
             "quality_presets": ["360p", "720p", "1080p"],
             "default_model": "v5",
@@ -257,6 +293,40 @@ def extract_provider_capabilities(provider) -> dict:
                 "FUSION": ["prompt", "fusion_assets", "quality", "duration", "seed"],
             },
         })
+        # Cost hints: prefer exact Pixverse credit calculator when available.
+        cost_hints: dict = {}
+        if pixverse_calculate_cost is not None:
+            try:
+                # Use a simple baseline: 1 second, default model/quality, no extras.
+                credits = pixverse_calculate_cost(
+                    quality="360p",
+                    duration=1,
+                    api_method="web-api",
+                    model="v5",
+                    motion_mode=None,
+                    multi_shot=False,
+                    audio=False,
+                )
+                cost_hints["per_second"] = float(credits)
+                cost_hints["currency"] = "credits"
+                cost_hints["estimation_note"] = (
+                    "Approximate Pixverse credits per second for baseline settings; "
+                    "actual cost may vary by quality/model/options."
+                )
+            except Exception:
+                cost_hints = {}
+        # Fallback: rough USD per-second approximation if credit helper unavailable.
+        if not cost_hints:
+            pixverse_pricing = PROVIDER_PRICING.get("pixverse", {})
+            per_second_usd = pixverse_pricing.get("video", 0.0)
+            if per_second_usd:
+                cost_hints = {
+                    "per_second": per_second_usd,
+                    "currency": "USD",
+                    "estimation_note": "Approximate video cost per second; final credits may vary by model/options.",
+                }
+        if cost_hints:
+            base["cost_hints"] = cost_hints
     elif 'sora' in adapter_name:
         base.update({
             "dimension_defaults": {"width": 480, "height": 480},
@@ -270,6 +340,74 @@ def extract_provider_capabilities(provider) -> dict:
         base["parameter_hints"] = {op: ["prompt"] for op in ops}
 
     return base
+
+
+@router.post(
+    "/providers/pixverse/estimate-cost",
+    response_model=PixverseCostEstimateResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def estimate_pixverse_cost(
+    body: PixverseCostEstimateRequest,
+    user: CurrentUser,
+) -> PixverseCostEstimateResponse:
+    """
+    Estimate Pixverse cost (credits and approximate USD) for given settings.
+
+    This endpoint uses the pixverse-py pricing helper when available so that
+    the UI can show accurate credit estimates based on quality, duration,
+    model, multi_shot, and audio options.
+    """
+    # Image pricing: use static credit table based on model + quality.
+    if body.kind == "image":
+        credits = get_image_credit_change(body.model, body.quality)
+        if credits is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"No image pricing configured for model '{body.model}' "
+                    f"at quality '{body.quality}'."
+                ),
+            )
+        return PixverseCostEstimateResponse(
+            estimated_credits=float(credits),
+            estimated_cost_usd=None,
+        )
+
+    if body.duration is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="duration is required for video cost estimation",
+        )
+
+    # Clamp duration to a reasonable positive integer
+    duration = max(1, int(body.duration))
+
+    credits = estimate_video_credit_change(
+        quality=body.quality,
+        duration=duration,
+        model=body.model,
+        motion_mode=body.motion_mode,
+        multi_shot=body.multi_shot,
+        audio=body.audio,
+    )
+    if credits is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Pixverse pricing helper is not available on the server for video.",
+        )
+
+    # Optional USD approximation based on per-second pricing
+    estimated_usd: float | None = None
+    pixverse_pricing = PROVIDER_PRICING.get("pixverse", {})
+    per_second_usd = pixverse_pricing.get("video", 0.0)
+    if per_second_usd:
+        estimated_usd = per_second_usd * duration
+
+    return PixverseCostEstimateResponse(
+        estimated_credits=float(credits),
+        estimated_cost_usd=estimated_usd,
+    )
 
 
 # ===== PROVIDER SETTINGS =====

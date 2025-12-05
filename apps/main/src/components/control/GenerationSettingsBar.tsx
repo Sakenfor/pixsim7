@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
 import type { ParamSpec } from './DynamicParamForm';
+import { useCostHints } from '@/lib/providers/hooks';
+import { estimatePixverseCost } from '@/lib/api/pixverseCost';
 
 /**
  * Provider option for the provider selector dropdown.
@@ -9,6 +11,10 @@ interface ProviderOption {
   id: string;
   name: string;
 }
+
+// Some sandboxes tree-shake named hooks aggressively. Fall back to React.useEffect
+// when the direct import isn't available at runtime.
+const useEffectHook = typeof useEffect === 'function' ? useEffect : React.useEffect;
 
 /**
  * Props for the GenerationSettingsBar component.
@@ -53,6 +59,8 @@ export interface GenerationSettingsBarProps {
   onToggleSettings: () => void;
   /** Currently active preset ID (shown as a badge) */
   presetId?: string;
+  /** Optional operation type (used for cost estimation heuristics) */
+  operationType?: string;
 }
 
 // Primary: common user-facing options that should be immediately visible
@@ -104,20 +112,118 @@ export function GenerationSettingsBar({
   showSettings,
   onToggleSettings,
   presetId,
+  operationType,
 }: GenerationSettingsBarProps) {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
+  const costHints = useCostHints(providerId);
+  const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
+  const [creditEstimateLoading, setCreditEstimateLoading] = useState(false);
 
-  // Primary params: shown directly in the bar as inline selects (only enums)
+  // Primary params: shown directly in the bar as inline controls.
+  // - Enum-based fields like model/quality/aspect_ratio use selects.
+  // - duration is treated as primary even without an enum (numeric input).
   const primaryParams = useMemo(
-    () => paramSpecs.filter((p) => PRIMARY_PARAM_NAMES.includes(p.name) && p.enum),
+    () =>
+      paramSpecs.filter((p) =>
+        p.name === 'duration' ||
+        (PRIMARY_PARAM_NAMES.includes(p.name) && p.enum && p.name !== 'duration')
+      ),
     [paramSpecs]
   );
 
-  // Advanced params: shown in a popover (non-primary or non-enum types like booleans)
-  const advancedParams = useMemo(
-    () => paramSpecs.filter((p) => !PRIMARY_PARAM_NAMES.includes(p.name) || !p.enum),
-    [paramSpecs]
-  );
+  // Advanced params: all specs that are not primary.
+  const advancedParams = useMemo(() => {
+    const primaryNames = new Set(primaryParams.map((p) => p.name));
+    return paramSpecs.filter((p) => !primaryNames.has(p.name));
+  }, [paramSpecs, primaryParams]);
+
+  // Pixverse-specific credit estimate using pixverse-py pricing helper via backend.
+  useEffectHook(() => {
+    if (providerId !== 'pixverse') {
+      setCreditEstimate(null);
+      return;
+    }
+
+    const quality = (dynamicParams.quality as string) || '';
+    const model = (dynamicParams.model as string) || '';
+
+    // For videos we need a duration; for images we don't.
+    const durationRaw = dynamicParams.duration;
+    const duration = durationRaw !== undefined ? Number(durationRaw) : 0;
+
+    const isVideo =
+      operationType === 'text_to_video' ||
+      operationType === 'image_to_video' ||
+      operationType === 'video_extend' ||
+      operationType === 'video_transition' ||
+      operationType === 'fusion';
+
+    const isImage =
+      operationType === 'text_to_image' || operationType === 'image_to_image';
+
+    // For images we require model + quality; for video we require duration.
+    if (isVideo && (!duration || duration <= 0)) {
+      setCreditEstimate(null);
+      return;
+    }
+    if (isImage && (!quality || !model)) {
+      setCreditEstimate(null);
+      return;
+    }
+
+    const motion_mode = (dynamicParams.motion_mode as string | undefined) || undefined;
+    const multi_shot = !!dynamicParams.multi_shot;
+    const audio = !!dynamicParams.audio;
+
+    let cancelled = false;
+    setCreditEstimateLoading(true);
+    estimatePixverseCost(
+      isImage
+        ? {
+            kind: 'image',
+            quality,
+            duration: 1, // ignored for images
+            model,
+          }
+        : {
+            kind: 'video',
+            quality,
+            duration,
+            model,
+            motion_mode,
+            multi_shot,
+            audio,
+          }
+    )
+      .then((res) => {
+        if (!cancelled) {
+          setCreditEstimate(res.estimated_credits ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCreditEstimate(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCreditEstimateLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    providerId,
+    operationType,
+    dynamicParams.duration,
+    dynamicParams.quality,
+    dynamicParams.model,
+    dynamicParams.motion_mode,
+    dynamicParams.multi_shot,
+    dynamicParams.audio,
+  ]);
 
   function handleChange(name: string, value: any) {
     onChangeParam(name, value);
@@ -153,29 +259,74 @@ export function GenerationSettingsBar({
             ))}
           </select>
 
-          {/* Primary params - shown directly as small selects */}
-          {primaryParams.map((param) => (
-            <select
-              key={param.name}
-              value={dynamicParams[param.name] ?? param.default ?? ''}
-              onChange={(e) => handleChange(param.name, e.target.value)}
-              disabled={generating}
-              className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
-              title={param.name}
-            >
-              {param.enum ? (
-                param.enum.map((opt: string) => (
-                  <option key={opt} value={opt}>
-                    {opt}
+          {/* Primary params - shown directly as small controls */}
+          {primaryParams.map((param) =>
+            param.name === 'duration' && param.type === 'number' ? (
+              <input
+                key={param.name}
+                type="number"
+                value={dynamicParams[param.name] ?? param.default ?? ''}
+                onChange={(e) =>
+                  handleChange(
+                    param.name,
+                    e.target.value ? Number(e.target.value) : ''
+                  )
+                }
+                disabled={generating}
+                min={param.min}
+                max={param.max}
+                placeholder={param.default?.toString()}
+                className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
+                title={param.name}
+              />
+            ) : (
+              <select
+                key={param.name}
+                value={dynamicParams[param.name] ?? param.default ?? ''}
+                onChange={(e) => handleChange(param.name, e.target.value)}
+                disabled={generating}
+                className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
+                title={param.name}
+              >
+                {param.enum ? (
+                  param.enum.map((opt: string) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))
+                ) : (
+                  <option value={dynamicParams[param.name] ?? ''}>
+                    {dynamicParams[param.name] ?? param.name}
                   </option>
-                ))
-              ) : (
-                <option value={dynamicParams[param.name] ?? ''}>
-                  {dynamicParams[param.name] ?? param.name}
-                </option>
-              )}
-            </select>
-          ))}
+                )}
+              </select>
+            )
+          )}
+
+          {/* Cost estimate (Pixverse credits via backend calculator when available, else basic hints) */}
+          {providerId === 'pixverse' && (
+            <span className="ml-1 text-[10px] text-neutral-500">
+              {creditEstimateLoading
+                ? 'Estimating…'
+                : creditEstimate !== null
+                ? `≈${creditEstimate.toFixed(2)} credits`
+                : // For video we can fall back to coarse hints; for images we prefer
+                  // to show nothing rather than a misleading estimate.
+                  (operationType === 'text_to_video' ||
+                  operationType === 'image_to_video' ||
+                  operationType === 'video_extend' ||
+                  operationType === 'video_transition' ||
+                  operationType === 'fusion') &&
+                  costHints?.per_second !== undefined &&
+                  dynamicParams.duration
+                ? `≈${(
+                    Number(dynamicParams.duration || 0) * (costHints.per_second ?? 0)
+                  ).toFixed(2)} ${
+                    costHints.currency === 'credits' ? 'credits' : costHints.currency || ''
+                  }`
+                : null}
+            </span>
+          )}
 
           {/* Advanced params button - only if there are additional params */}
           {advancedParams.length > 0 && (
@@ -270,4 +421,3 @@ export function GenerationSettingsBar({
     </>
   );
 }
-

@@ -8,15 +8,12 @@ from typing import Dict, Any, Optional
 
 from pixsim7.backend.main.shared.schemas.telemetry_schemas import CostData
 from pixsim7.backend.main.domain import OperationType
+from pixsim7.backend.main.services.generation.pixverse_pricing import (
+    estimate_video_credit_change,
+    get_image_credit_change,
+)
 
 logger = logging.getLogger(__name__)
-
-# Optional: use pixverse-py pricing helpers when available so that
-# multi_shot/audio/off_peak are reflected in provider_credits.
-try:  # pragma: no cover - optional dependency
-    from pixverse.pricing import calculate_cost as pixverse_calculate_cost  # type: ignore
-except Exception:  # pragma: no cover
-    pixverse_calculate_cost = None  # type: ignore
 
 # Provider-specific pricing (USD per unit)
 # These should be moved to config/database in production
@@ -31,12 +28,26 @@ PROVIDER_PRICING = {
     },
     "pixverse": {
         # Rough USD approximation when credits are unknown. Real credit-based
-        # pricing uses pixverse_calculate_cost for provider_credits.
+        # pricing now uses pixverse_pricing helpers for provider_credits.
         "video": 0.01  # ~ $0.01 per second of video generated
     },
     "runwayml": {
         "video": 0.05  # $0.05 per second
     },
+}
+
+
+IMAGE_OPERATIONS = {
+    OperationType.TEXT_TO_IMAGE,
+    OperationType.IMAGE_TO_IMAGE,
+}
+
+VIDEO_OPERATIONS = {
+    OperationType.TEXT_TO_VIDEO,
+    OperationType.IMAGE_TO_VIDEO,
+    OperationType.VIDEO_EXTEND,
+    OperationType.VIDEO_TRANSITION,
+    OperationType.FUSION,
 }
 
 
@@ -73,7 +84,11 @@ class CostExtractor:
             elif provider_id.startswith("anthropic"):
                 return CostExtractor._extract_anthropic_cost(provider_response)
             elif provider_id == "pixverse":
-                return CostExtractor._extract_pixverse_cost(provider_response, generation_params)
+                return CostExtractor._extract_pixverse_cost(
+                    provider_response,
+                    generation_params,
+                    operation_type,
+                )
             elif provider_id == "runwayml":
                 return CostExtractor._extract_runwayml_cost(provider_response, generation_params)
             else:
@@ -141,26 +156,25 @@ class CostExtractor:
     @staticmethod
     def _extract_pixverse_cost(
         response: Dict[str, Any],
-        params: Optional[Dict[str, Any]] = None
+        params: Optional[Dict[str, Any]] = None,
+        operation_type: Optional[OperationType] = None,
     ) -> Optional[CostData]:
-        """Extract cost from Pixverse response
-
-        Notes:
-        - Pixverse native units are "credits", not USD.
-        - When pixverse-py is available, we use its pricing helpers to
-          populate provider_credits, including multi_shot/audio/off_peak.
-        - estimated_cost_usd remains a rough per-second approximation.
-        """
-        # Pixverse returns video metadata
+        """Extract cost from Pixverse response"""
         video_info = response.get("video", {})
         duration_seconds = video_info.get("duration", 0)
 
-        # If not in response, try to get from params
         if duration_seconds == 0 and params:
-            duration_range = params.get("duration", {})
-            duration_seconds = duration_range.get("target", duration_range.get("max", 0))
+            duration_value = params.get("duration", {})
+            if isinstance(duration_value, dict):
+                duration_seconds = (
+                    duration_value.get("target")
+                    or duration_value.get("max")
+                    or duration_value.get("min")
+                    or 0
+                )
+            elif isinstance(duration_value, (int, float)):
+                duration_seconds = duration_value
 
-        # Get resolution and quality/model signals
         resolution = video_info.get("resolution", "1920x1080")
         quality = video_info.get("quality") or (params or {}).get("quality", "360p")
         model = video_info.get("model") or (params or {}).get("model", "v5")
@@ -168,32 +182,35 @@ class CostExtractor:
         multi_shot = bool((params or {}).get("multi_shot"))
         audio = bool((params or {}).get("audio"))
 
-        # Calculate rough USD cost (per-second approximation)
         cost_per_second = PROVIDER_PRICING.get("pixverse", {}).get("video", 0.01)
         estimated_cost = duration_seconds * cost_per_second
 
-        # If SDK pricing helper is available, also record provider_credits
         provider_credits: Optional[float] = None
-        if pixverse_calculate_cost is not None and duration_seconds:
+        if operation_type in IMAGE_OPERATIONS:
+            if isinstance(model, str) and isinstance(quality, str):
+                credits = get_image_credit_change(model, quality)
+                if credits is not None:
+                    provider_credits = float(credits)
+        elif operation_type in VIDEO_OPERATIONS and duration_seconds:
             try:
-                credits = pixverse_calculate_cost(
+                credits = estimate_video_credit_change(
                     quality=quality,
                     duration=int(duration_seconds),
-                    api_method="web-api",
                     model=model,
                     motion_mode=motion_mode,
                     multi_shot=multi_shot,
                     audio=audio,
                 )
-                provider_credits = float(credits)
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("pixverse_calculate_cost_failed", error=str(exc))
+                logger.warning("pixverse_credit_estimate_failed", error=str(exc))
+                credits = None
+            if credits is not None:
+                provider_credits = float(credits)
 
-        # Video generation doesn't use tokens, but we track compute time
         compute_seconds = response.get("processing_time", duration_seconds)
 
         return CostData(
-            tokens_used=0,  # Video generation doesn't use tokens
+            tokens_used=0,
             estimated_cost_usd=estimated_cost,
             compute_seconds=compute_seconds,
             video_seconds=duration_seconds,
@@ -247,9 +264,61 @@ class CostExtractor:
             Estimated CostData or None
         """
         try:
-            if provider_id == "pixverse" or provider_id == "runwayml":
-                # Estimate from target duration and, for Pixverse, optionally
-                # include provider_credits via pixverse_calculate_cost.
+            if provider_id == "pixverse":
+                if operation_type in IMAGE_OPERATIONS:
+                    model = params.get("model")
+                    quality = params.get("quality")
+                    if isinstance(model, str) and isinstance(quality, str):
+                        credits = get_image_credit_change(model, quality)
+                        if credits is not None:
+                            return CostData(
+                                tokens_used=0,
+                                estimated_cost_usd=None,
+                                provider_credits=float(credits),
+                            )
+
+                duration_value = params.get("duration", {})
+                target_duration = 0
+                if isinstance(duration_value, dict):
+                    target_duration = duration_value.get("target", 0)
+                elif isinstance(duration_value, (int, float)):
+                    target_duration = int(duration_value)
+
+                if target_duration > 0:
+                    pricing = PROVIDER_PRICING.get(provider_id, {}).get("video", 0)
+                    estimated_usd = target_duration * pricing
+
+                    provider_credits: Optional[float] = None
+                    quality = params.get("quality", "360p")
+                    model = params.get("model", "v5")
+                    motion_mode = params.get("motion_mode")
+                    multi_shot = bool(params.get("multi_shot"))
+                    audio = bool(params.get("audio"))
+
+                    try:
+                        credits = estimate_video_credit_change(
+                            quality=quality,
+                            duration=int(target_duration),
+                            model=model,
+                            motion_mode=motion_mode,
+                            multi_shot=multi_shot,
+                            audio=audio,
+                        )
+                    except Exception as exc:  # pragma: no cover
+                        logger.warning("pixverse_credit_estimate_failed", error=str(exc))
+                        credits = None
+
+                    if credits is not None:
+                        provider_credits = float(credits)
+
+                    return CostData(
+                        tokens_used=0,
+                        estimated_cost_usd=estimated_usd,
+                        video_seconds=target_duration,
+                        provider_credits=provider_credits,
+                    )
+
+            if provider_id == "runwayml":
                 duration_config = params.get("duration", {})
                 target_duration = duration_config.get("target", 0)
 
@@ -257,43 +326,11 @@ class CostExtractor:
                     pricing = PROVIDER_PRICING.get(provider_id, {}).get("video", 0)
                     estimated_usd = target_duration * pricing
 
-                    if provider_id == "pixverse" and pixverse_calculate_cost is not None:
-                        quality = params.get("quality", "360p")
-                        model = params.get("model", "v5")
-                        motion_mode = params.get("motion_mode")
-                        multi_shot = bool(params.get("multi_shot"))
-                        audio = bool(params.get("audio"))
-                        provider_credits: Optional[float] = None
-                        try:
-                            credits = pixverse_calculate_cost(
-                                quality=quality,
-                                duration=int(target_duration),
-                                api_method="web-api",
-                                model=model,
-                                motion_mode=motion_mode,
-                                multi_shot=multi_shot,
-                                audio=audio,
-                            )
-                            provider_credits = float(credits)
-                        except Exception as exc:  # pragma: no cover
-                            logger.warning("pixverse_calculate_cost_failed", error=str(exc))
-
-                        return CostData(
-                            tokens_used=0,
-                            estimated_cost_usd=estimated_usd,
-                            video_seconds=target_duration,
-                            provider_credits=provider_credits,
-                        )
-
-                    # RunwayML or Pixverse without SDK helper: duration-only estimate
                     return CostData(
                         tokens_used=0,
                         estimated_cost_usd=estimated_usd,
                         video_seconds=target_duration,
                     )
-
-            # For LLM providers, we'd need to estimate tokens from prompt length
-            # This is harder and less accurate, so we skip for now
 
             return None
 

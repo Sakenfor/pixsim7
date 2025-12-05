@@ -60,11 +60,15 @@ export function QuickGenerateModule() {
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
-  // For now, treat image_to_image as an alias of image_to_video for
-  // provider parameter specs and presets, since the unified pipeline is
-  // video-first. This avoids sending image-only models to video endpoints.
+  // Prefer native image_to_image specs when the provider exposes them.
+  // Fall back to image_to_video only for providers that don't define
+  // image_to_image in their operation_specs.
+  const hasNativeImageToImageSpec =
+    !!specs?.operation_specs && !!specs.operation_specs['image_to_image'];
   const effectiveOperationType: ControlCenterState['operationType'] =
-    operationType === 'image_to_image' ? 'image_to_video' : operationType;
+    operationType === 'image_to_image' && !hasNativeImageToImageSpec
+      ? 'image_to_video'
+      : operationType;
 
   // Get parameter specs for current operation
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -101,16 +105,63 @@ export function QuickGenerateModule() {
     const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return;
 
-    const paramNames: string[] = opSpec.parameters.map((p: any) => p.name);
-
-    setDynamicParams(prev => {
+    setDynamicParams((prev) => {
       const next = { ...prev };
-      for (const name of paramNames) {
-        if (presetParams[name] !== undefined) {
-          next[name] = presetParams[name];
+      let changed = false;
+
+      for (const param of opSpec.parameters as ParamSpec[]) {
+        const name = param.name;
+        const presetOverride = presetParams[name];
+
+        if (presetOverride !== undefined) {
+          if (next[name] !== presetOverride) {
+            next[name] = presetOverride;
+            changed = true;
+          }
+          continue;
+        }
+
+        let currentValue = next[name];
+
+        if (param.type === 'number' && typeof currentValue === 'string') {
+          if (currentValue.trim() === '') {
+            if (next[name] !== undefined) {
+              delete next[name];
+              changed = true;
+            }
+            continue;
+          }
+
+          const numeric = Number(currentValue);
+          if (!Number.isNaN(numeric) && next[name] !== numeric) {
+            next[name] = numeric;
+            currentValue = numeric;
+            changed = true;
+          }
+        }
+
+        if (currentValue === undefined) {
+          if (param.default !== undefined && next[name] !== param.default) {
+            next[name] = param.default;
+            changed = true;
+          }
+          continue;
+        }
+
+        if (Array.isArray(param.enum) && !param.enum.includes(currentValue)) {
+          if (param.default !== undefined) {
+            if (next[name] !== param.default) {
+              next[name] = param.default;
+              changed = true;
+            }
+          } else {
+            delete next[name];
+            changed = true;
+          }
         }
       }
-      return next;
+
+      return changed ? next : prev;
     });
   }, [presetParams, specs, effectiveOperationType, setDynamicParams]);
 
@@ -272,6 +323,7 @@ export function QuickGenerateModule() {
           showSettings={showSettings}
           onToggleSettings={() => setShowSettings(!showSettings)}
           presetId={presetId}
+          operationType={operationType}
         />
 
         {/* Generate button - compact */}

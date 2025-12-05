@@ -1,0 +1,61 @@
+import { describe, it, expect } from 'vitest';
+import { buildGenerationRequest, type QuickGenerateContext } from '../quickGenerateLogic';
+
+function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGenerateContext {
+  return {
+    operationType: 'text_to_image',
+    prompt: '',
+    presetParams: {},
+    dynamicParams: {},
+    imageUrls: [],
+    prompts: [],
+    ...partial,
+  };
+}
+
+describe('buildGenerationRequest', () => {
+  it('requires a prompt for text-based operations', () => {
+    const result = buildGenerationRequest(createBaseContext());
+
+    expect(result.error).toBeTruthy();
+    expect(result.error).toContain('Please enter a prompt');
+  });
+
+  it('accepts a prompt and trims whitespace for text operations', () => {
+    const result = buildGenerationRequest(
+      createBaseContext({
+        prompt: '   cinematic dusk skyline   ',
+      })
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.params).toBeDefined();
+    expect(result?.params?.prompt).toBe('cinematic dusk skyline');
+  });
+
+  it('requires a prompt for image_to_image even when an image is provided', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: '   ',
+      dynamicParams: { image_url: 'https://example.com/image.png' },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toContain('Please enter a prompt');
+  });
+
+  it('passes validation when image_to_image has prompt and image_url', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Add neon rim light',
+      dynamicParams: { image_url: 'https://example.com/image.png' },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params).toMatchObject({
+      prompt: 'Add neon rim light',
+      image_url: 'https://example.com/image.png',
+    });
+  });
+});
