@@ -6,7 +6,7 @@ Handles video generation, status checking, and uploads.
 import asyncio
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import OperationType, VideoStatus, ProviderAccount
@@ -445,51 +445,27 @@ class PixverseOperationsMixin:
     async def check_status(
         self,
         account: ProviderAccount,
-        provider_job_id: str
+        provider_job_id: str,
+        operation_type: Optional[OperationType] = None,
     ) -> VideoStatusResult:
         """
-        Check video status
+        Check video or image status
 
         Args:
             account: Provider account
-            provider_job_id: Pixverse video ID
+            provider_job_id: Pixverse video or image ID
+            operation_type: Optional operation type to determine if this is an image
 
         Returns:
             VideoStatusResult with current status
 
         Raises:
-            JobNotFoundError: Video not found
+            JobNotFoundError: Video/image not found
         """
+        is_image_operation = operation_type == OperationType.IMAGE_TO_IMAGE
+
         async def _operation(session: PixverseSessionData) -> VideoStatusResult:
             client = self._create_client(account)
-            try:
-                video = await asyncio.to_thread(
-                    client.get_video,
-                    video_id=provider_job_id,
-                )
-            except Exception as exc:
-                log_provider_error(
-                    provider_id="pixverse",
-                    operation="check_status",
-                    stage="provider:status",
-                    account_id=account.id,
-                    email=account.email,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                    extra={"provider_job_id": provider_job_id},
-                )
-                logger.error(
-                    "provider:status",
-                    msg="status_check_failed",
-                    provider_id="pixverse",
-                    provider_job_id=provider_job_id,
-                    error=str(exc),
-                    error_type=exc.__class__.__name__,
-                )
-                # Re-raise so the session manager can classify and handle reauth/retry.
-                raise
-
-            status = self._map_pixverse_status(video)
 
             # Handle both dict and object access (SDK may return either)
             def get_field(obj, *keys, default=None):
@@ -503,16 +479,72 @@ class PixverseOperationsMixin:
                             return getattr(obj, key)
                 return default
 
-            return VideoStatusResult(
-                status=status,
-                video_url=get_field(video, "url"),
-                thumbnail_url=get_field(video, "first_frame", "thumbnail_url"),
-                width=get_field(video, "output_width", "width"),
-                height=get_field(video, "output_height", "height"),
-                duration_sec=get_field(video, "video_duration", "duration"),
-                provider_video_id=str(get_field(video, "video_id", "id")),
-                metadata={"provider_status": get_field(video, "video_status", "status")},
-            )
+            try:
+                if is_image_operation:
+                    # Use get_image for IMAGE_TO_IMAGE operations
+                    result = await asyncio.to_thread(
+                        client.get_image,
+                        image_id=provider_job_id,
+                    )
+                    # Map image status
+                    raw_status = get_field(result, "status", default="processing")
+                    if raw_status == "completed":
+                        status = VideoStatus.COMPLETED
+                    elif raw_status in ("failed", "filtered"):
+                        status = VideoStatus.FAILED
+                    else:
+                        status = VideoStatus.PROCESSING
+
+                    return VideoStatusResult(
+                        status=status,
+                        video_url=get_field(result, "url"),  # Image URL
+                        thumbnail_url=get_field(result, "url"),  # Use image as thumbnail
+                        width=get_field(result, "width"),
+                        height=get_field(result, "height"),
+                        duration_sec=None,  # Images don't have duration
+                        provider_video_id=str(get_field(result, "id", "image_id")),
+                        metadata={"provider_status": raw_status, "is_image": True},
+                    )
+                else:
+                    # Use get_video for video operations
+                    video = await asyncio.to_thread(
+                        client.get_video,
+                        video_id=provider_job_id,
+                    )
+                    status = self._map_pixverse_status(video)
+
+                    return VideoStatusResult(
+                        status=status,
+                        video_url=get_field(video, "url"),
+                        thumbnail_url=get_field(video, "first_frame", "thumbnail_url"),
+                        width=get_field(video, "output_width", "width"),
+                        height=get_field(video, "output_height", "height"),
+                        duration_sec=get_field(video, "video_duration", "duration"),
+                        provider_video_id=str(get_field(video, "video_id", "id")),
+                        metadata={"provider_status": get_field(video, "video_status", "status")},
+                    )
+
+            except Exception as exc:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="check_status",
+                    stage="provider:status",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    extra={"provider_job_id": provider_job_id, "is_image": is_image_operation},
+                )
+                logger.error(
+                    "provider:status",
+                    msg="status_check_failed",
+                    provider_id="pixverse",
+                    provider_job_id=provider_job_id,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                # Re-raise so the session manager can classify and handle reauth/retry.
+                raise
 
         return await self.session_manager.run_with_session(
             account=account,
@@ -723,20 +755,33 @@ class PixverseOperationsMixin:
         return result
 
 
-    async def extract_embedded_assets(self, provider_video_id: str) -> list[Dict[str, Any]]:
+    async def extract_embedded_assets(
+        self,
+        provider_video_id: str,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ) -> list[Dict[str, Any]]:
         """Extract embedded/source assets for a Pixverse video.
 
-        Uses lightweight metadata normalization logic adapted from pixsim6.
-        If full video detail retrieval becomes available in pixverse-py, we
-        should call that here and feed its extra metadata through the
-        extractor. For now, we attempt a best-effort minimal fetch.
+        This implementation is metadata-driven:
+        callers that already have the Pixverse personal video payload (e.g.,
+        from a sync/import job) should pass it as ``extra_metadata`` so the
+        extractor can see fields like ``create_mode``, ``customer_paths``, and
+        per-segment prompts/durations.
+
+        If no metadata is provided, we currently fall back to an empty list
+        (no remote fetch is attempted, since we don't have an associated
+        ProviderAccount here).
         """
         try:
-            # Future: use PixverseClient to fetch video details.
-            extra_metadata = None
             from pixsim7.backend.main.services.asset.embedded_extractors.pixverse_extractor import (
                 build_embedded_from_pixverse_metadata,
             )
+
+            if extra_metadata is None:
+                # Legacy behavior: without metadata we can't reliably discover
+                # embedded assets, so return an empty list.
+                return []
+
             return build_embedded_from_pixverse_metadata(provider_video_id, extra_metadata)
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(

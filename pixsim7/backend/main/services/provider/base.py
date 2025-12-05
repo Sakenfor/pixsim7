@@ -4,7 +4,7 @@ Provider abstraction - clean interface for video generation providers
 CLEAN VERSION: Single execute() method instead of per-operation methods
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -147,7 +147,8 @@ class Provider(ABC):
     async def check_status(
         self,
         account: ProviderAccount,
-        provider_job_id: str
+        provider_job_id: str,
+        operation_type: Optional[OperationType] = None,
     ) -> VideoStatusResult:
         """
         Check job status
@@ -155,6 +156,7 @@ class Provider(ABC):
         Args:
             account: Provider account
             provider_job_id: Provider's job ID (from execute)
+            operation_type: Optional operation type (needed for IMAGE_TO_IMAGE)
 
         Returns:
             VideoStatusResult with current status and URLs
@@ -167,7 +169,8 @@ class Provider(ABC):
 
     async def extract_embedded_assets(
         self,
-        provider_video_id: str
+        provider_video_id: str,
+        extra_metadata: Dict[str, Any] | None = None,
     ) -> list[Dict[str, Any]]:
         """
         Optional hook: extract embedded or source assets used to generate a provider video.
@@ -177,6 +180,10 @@ class Provider(ABC):
 
         Args:
             provider_video_id: Provider's video identifier (e.g., Pixverse video id)
+            extra_metadata: Optional provider-specific metadata for the video
+                (e.g., Pixverse personal-list payload). Callers that already
+                have this payload (such as import/sync jobs) can pass it in to
+                avoid re-fetching from the provider.
 
         Returns:
             List of dicts with keys:
@@ -188,6 +195,7 @@ class Provider(ABC):
                 width/height: optional dimensions
 
         Default implementation returns empty list; providers override when supported.
+        The default ignores extra_metadata.
         """
         return []
 

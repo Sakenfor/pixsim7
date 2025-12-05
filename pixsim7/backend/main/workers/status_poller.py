@@ -122,7 +122,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     try:
                         status_result = await provider_service.check_status(
                             submission=submission,
-                            account=account
+                            account=account,
+                            operation_type=generation.operation_type,
                         )
 
                         logger.debug("generation_status", generation_id=generation.id, status=str(status_result.status), progress=status_result.progress)

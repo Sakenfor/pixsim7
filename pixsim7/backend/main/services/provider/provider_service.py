@@ -3,7 +3,7 @@ ProviderService - orchestrate provider API calls
 
 Clean service for provider interaction and submission tracking
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -163,7 +163,8 @@ class ProviderService:
     async def check_status(
         self,
         submission: ProviderSubmission,
-        account: ProviderAccount
+        account: ProviderAccount,
+        operation_type: Optional[OperationType] = None,
     ) -> VideoStatusResult:
         """
         Check job status on provider
@@ -171,6 +172,7 @@ class ProviderService:
         Args:
             submission: Provider submission to check
             account: Provider account to use
+            operation_type: Optional operation type (needed for IMAGE_TO_IMAGE)
 
         Returns:
             VideoStatusResult with current status
@@ -185,7 +187,8 @@ class ProviderService:
         # Check status via provider
         status_result = await provider.check_status(
             account=account,
-            provider_job_id=submission.provider_job_id
+            provider_job_id=submission.provider_job_id,
+            operation_type=operation_type,
         )
 
         # Update submission response with latest status
