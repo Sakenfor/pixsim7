@@ -21,10 +21,90 @@ window.PXS7 = window.PXS7 || {};
 
   // Module state
   let recentSiteImages = [];
+  let recentlyUsedAssets = [];  // Assets recently injected by user
   let assetsCache = [];
   let assetsTotalCount = 0;
   let assetsLoadedCount = 0;
   let loadAssetsFunction = null;  // Store the loadAssets function for reuse
+
+  // Recently used assets persistence
+  const RECENTLY_USED_KEY = 'pxs7_recently_used_assets';
+  const ASSETS_SORT_KEY = 'pxs7_assets_sort';
+  const MAX_RECENTLY_USED = 50;
+  let assetsSortBy = 'recent'; // 'recent', 'name', 'default'
+
+  function loadRecentlyUsed() {
+    try {
+      const stored = localStorage.getItem(RECENTLY_USED_KEY);
+      if (stored) {
+        recentlyUsedAssets = JSON.parse(stored);
+      }
+      const sort = localStorage.getItem(ASSETS_SORT_KEY);
+      if (sort) {
+        assetsSortBy = sort;
+      }
+    } catch (e) {
+      console.warn('[PixSim7] Failed to load recently used:', e);
+    }
+  }
+
+  function saveRecentlyUsed() {
+    try {
+      localStorage.setItem(RECENTLY_USED_KEY, JSON.stringify(recentlyUsedAssets));
+    } catch (e) {
+      console.warn('[PixSim7] Failed to save recently used:', e);
+    }
+  }
+
+  function saveAssetsSort(sortBy) {
+    assetsSortBy = sortBy;
+    try {
+      localStorage.setItem(ASSETS_SORT_KEY, sortBy);
+    } catch (e) {}
+  }
+
+  function addToRecentlyUsed(url, name = null) {
+    if (!url) return;
+    // Normalize URL for comparison (remove query params)
+    const normalizedUrl = url.split('?')[0];
+    // Remove if already exists (to move to front)
+    recentlyUsedAssets = recentlyUsedAssets.filter(a => a.url.split('?')[0] !== normalizedUrl);
+    // Add to front
+    recentlyUsedAssets.unshift({
+      url,
+      name: name || url.split('/').pop()?.split('?')[0] || 'Image',
+      usedAt: Date.now()
+    });
+    // Limit size
+    if (recentlyUsedAssets.length > MAX_RECENTLY_USED) {
+      recentlyUsedAssets = recentlyUsedAssets.slice(0, MAX_RECENTLY_USED);
+    }
+    // Invalidate lookup cache
+    recentlyUsedMap = null;
+    saveRecentlyUsed();
+  }
+
+  // Cache for recently used lookup (rebuilt when recentlyUsedAssets changes)
+  let recentlyUsedMap = null;
+
+  function buildRecentlyUsedMap() {
+    recentlyUsedMap = new Map();
+    recentlyUsedAssets.forEach((a, idx) => {
+      const normalizedUrl = a.url.split('?')[0];
+      recentlyUsedMap.set(normalizedUrl, idx);
+    });
+  }
+
+  function getRecentlyUsedIndex(url) {
+    if (!url) return -1;
+    if (!recentlyUsedMap) buildRecentlyUsedMap();
+    const normalizedUrl = url.split('?')[0];
+    const idx = recentlyUsedMap.get(normalizedUrl);
+    return idx !== undefined ? idx : -1;
+  }
+
+  // Load on module init
+  loadRecentlyUsed();
 
   // ===== Dev: Pixverse Dry-Run Sync =====
 
@@ -204,18 +284,26 @@ window.PXS7 = window.PXS7 || {};
       const containerId = parentWithId?.id || '';
 
       let priority = 0;
+      // Match container to current page - be specific to avoid cross-matching
       if (isImageTextPage && containerId.includes('image_text')) {
         priority = 10;
-      } else if (isImageGenPage && containerId.includes('image')) {
+      } else if (isImageGenPage && containerId.includes('create_image')) {
+        // Only match create_image containers on image generation page
         priority = 10;
-      } else if (isTransitionPage && (containerId.includes('transition') || containerId.includes('start') || containerId.includes('end'))) {
+      } else if (isTransitionPage && containerId.includes('transition')) {
         priority = 10;
-      } else if (isFusionPage && (containerId.includes('fusion') || containerId.includes('character') || containerId.includes('style'))) {
+      } else if (isFusionPage && containerId.includes('fusion')) {
         priority = 10;
-      } else if (isImageEditPage && containerId.includes('edit')) {
+      } else if (isImageEditPage && (containerId.includes('edit') || containerId.includes('image_edit'))) {
         priority = 10;
-      } else if (containerId.includes('customer') || containerId.includes('main')) {
+      }
+      // Lower priority for generic customer/main containers (fallback)
+      if (priority === 0 && (containerId.includes('customer') || containerId.includes('main'))) {
         priority = 5;
+      }
+      // Exclude video containers from image injection
+      if (containerId.includes('video')) {
+        priority = 0;
       }
 
       let hasImage = false;
@@ -461,6 +549,9 @@ window.PXS7 = window.PXS7 || {};
         fileInput.files = dataTransfer.files;
         fileInput.dispatchEvent(new Event('change', { bubbles: true }));
 
+        // Track as recently used
+        addToRecentlyUsed(imageUrl);
+
         setTimeout(() => { if (showToast) showToast('Image set!', true); }, 300);
         return true;
       }
@@ -532,6 +623,9 @@ window.PXS7 = window.PXS7 || {};
 
       fileInput.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
       fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // Track as recently used
+      addToRecentlyUsed(imageUrl);
 
       setTimeout(() => { if (showToast) showToast('Upload triggered!', true); }, 500);
       return true;
@@ -901,7 +995,7 @@ window.PXS7 = window.PXS7 || {};
           <div style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;">📷</div>
           <div style="font-size: 11px;">No recent images</div>
           <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">
-            Images you upload will appear here
+            Images on this page will appear here
           </div>
         </div>
       `;
@@ -947,28 +1041,76 @@ window.PXS7 = window.PXS7 || {};
   }
 
   function renderAssetsTab(container, panel, loadAssets) {
-    const urls = assetsCache.map(a => ({
+    let urls = assetsCache.map(a => ({
       thumb: a.thumbnail_url || a.remote_url || a.file_url || a.external_url || a.url || a.src,
       full: a.remote_url || a.file_url || a.external_url || a.url || a.src || a.thumbnail_url,
-      name: a.name || a.original_filename || a.filename || a.title || ''
+      name: a.name || a.original_filename || a.filename || a.title || '',
+      createdAt: a.created_at || a.createdAt || ''
     })).filter(u => u.thumb);
 
+    // Sort assets based on current sort preference
+    if (assetsSortBy === 'recent') {
+      // Sort by recently used (used first, then others by original order)
+      urls.sort((a, b) => {
+        const aIdx = getRecentlyUsedIndex(a.full);
+        const bIdx = getRecentlyUsedIndex(b.full);
+        // Both recently used: sort by recency (lower index = more recent)
+        if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+        // Only a is recently used: a comes first
+        if (aIdx >= 0) return -1;
+        // Only b is recently used: b comes first
+        if (bIdx >= 0) return 1;
+        // Neither: keep original order
+        return 0;
+      });
+    } else if (assetsSortBy === 'name') {
+      urls.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+    // 'default' keeps original order
+
     const headerRow = document.createElement('div');
-    headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+    headerRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 6px;';
 
     const countLabel = document.createElement('span');
     countLabel.style.cssText = `font-size: 10px; color: ${COLORS.textMuted};`;
-    // For cursor pagination, show + if there are more to load
     const moreAvailable = assetsTotalCount > assetsLoadedCount;
     const totalText = moreAvailable ? '+' : '';
-    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText} image${urls.length !== 1 ? 's' : ''}` : '';
+    countLabel.textContent = urls.length > 0 ? `${urls.length}${totalText}` : '';
+
+    // Sort buttons
+    const sortGroup = document.createElement('div');
+    sortGroup.style.cssText = 'display: flex; gap: 2px;';
+    const sortOpts = [
+      { id: 'recent', label: '🕐', title: 'Recently used first' },
+      { id: 'name', label: 'AZ', title: 'Sort by name' },
+      { id: 'default', label: '⏱', title: 'Default order' }
+    ];
+    sortOpts.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.textContent = opt.label;
+      btn.title = opt.title;
+      const isActive = assetsSortBy === opt.id;
+      btn.style.cssText = `
+        padding: 3px 6px; font-size: 9px;
+        background: ${isActive ? COLORS.accent : 'transparent'};
+        border: 1px solid ${isActive ? COLORS.accent : COLORS.border};
+        border-radius: 3px; cursor: pointer;
+        color: ${isActive ? 'white' : COLORS.textMuted};
+      `;
+      btn.addEventListener('click', () => {
+        saveAssetsSort(opt.id);
+        renderTabContent('assets', container, panel, loadAssets);
+      });
+      sortGroup.appendChild(btn);
+    });
 
     const refreshBtn = document.createElement('button');
-    refreshBtn.textContent = '↻ Refresh';
+    refreshBtn.textContent = '↻';
+    refreshBtn.title = 'Refresh';
     refreshBtn.style.cssText = `
-      padding: 4px 8px; font-size: 10px;
+      padding: 3px 6px; font-size: 10px;
       background: transparent; border: 1px solid ${COLORS.border};
-      border-radius: 4px; color: ${COLORS.textMuted}; cursor: pointer;
+      border-radius: 3px; color: ${COLORS.textMuted}; cursor: pointer;
     `;
     refreshBtn.addEventListener('click', async () => {
       refreshBtn.textContent = '...';
@@ -977,6 +1119,7 @@ window.PXS7 = window.PXS7 || {};
     });
 
     headerRow.appendChild(countLabel);
+    headerRow.appendChild(sortGroup);
     headerRow.appendChild(refreshBtn);
     container.appendChild(headerRow);
 
@@ -1170,7 +1313,7 @@ window.PXS7 = window.PXS7 || {};
     tabBar.style.cssText = `display: flex; border-bottom: 1px solid ${COLORS.border}; margin: 8px 12px 0;`;
 
     const tabs = [
-      { id: 'recent', label: 'Recent', count: recentSiteImages.length },
+      { id: 'recent', label: 'Page', count: recentSiteImages.length },
       { id: 'assets', label: 'Assets', count: assetsCache.length }
     ];
 

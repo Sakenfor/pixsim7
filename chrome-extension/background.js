@@ -650,30 +650,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'syncAccountCredits') {
-    (async () => {
-      try {
-        const { accountId, providerId } = message;
-        if (!accountId) throw new Error('accountId is required');
-        await backendRequest(`/api/v1/accounts/${accountId}/sync-credits`, {
-          method: 'POST',
-        });
-        try {
-          chrome.runtime.sendMessage({
-            action: 'accountsUpdated',
-            providerId: providerId || null,
-          });
-        } catch (notifyErr) {
-          console.warn('[Background] Failed to notify popup after syncAccountCredits:', notifyErr);
-        }
-        sendResponse({ success: true });
-      } catch (error) {
-        sendResponse({ success: false, error: error.message });
-      }
-    })();
-    return true;
-  }
-
   // Sync credits for an account (best-effort, respects TTL)
   if (message.action === 'syncAccountCredits') {
     (async () => {

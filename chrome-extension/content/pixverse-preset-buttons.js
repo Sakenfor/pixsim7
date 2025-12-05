@@ -67,8 +67,8 @@
         );
         // Sorting done at display time via getSortedAccounts()
 
-        // Prefetch ad status for all accounts in background
-        prefetchAdStatus(accountsCache);
+        // Fetch ad status for selected account only (manual refresh for all via extension popup)
+        fetchSelectedAccountStatus();
 
         return accountsCache;
       }
@@ -78,22 +78,24 @@
     return [];
   }
 
-  // Prefetch ad status for accounts (background, no await)
-  function prefetchAdStatus(accounts) {
-    accounts.forEach(account => {
-      // Skip if recently cached
-      const cached = adStatusCache.get(account.id);
-      if (cached && (Date.now() - cached.time) < 60000) return;
+  // Fetch ad status for selected account only (background, no await)
+  function fetchSelectedAccountStatus() {
+    const selected = getCurrentAccount();
+    if (!selected) return;
 
-      sendMessageWithTimeout({
-        action: 'getPixverseStatus',
-        accountId: account.id
-      }, 5000).then(res => {
-        if (res?.success && res.data) {
-          adStatusCache.set(account.id, { data: res.data, time: Date.now() });
-        }
-      }).catch(() => {});
-    });
+    // Skip if recently cached
+    const cached = adStatusCache.get(selected.id);
+    if (cached && (Date.now() - cached.time) < 60000) return;
+
+    sendMessageWithTimeout({
+      action: 'getPixverseStatus',
+      accountId: selected.id
+    }, 5000).then(res => {
+      if (res?.success && res.data) {
+        adStatusCache.set(selected.id, { data: res.data, time: Date.now() });
+        updateAllAccountButtons();
+      }
+    }).catch(() => {});
   }
 
   // Refresh ad status for a single account (force refresh, ignores cache TTL)
