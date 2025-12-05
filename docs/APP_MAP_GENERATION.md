@@ -16,12 +16,17 @@ The unified generation pipeline provides dynamic content generation for scene tr
 
 **API Endpoints** (`pixsim7/backend/main/api/v1/generations.py`)
 - `POST /api/v1/generations` - Create generation from GenerationNodeConfig
+- `POST /api/v1/generations/simple-image-to-video` - Convenience endpoint for thin clients (Chrome extension)
 - `GET /api/v1/generations` - List generations with filters
 - `GET /api/v1/generations/{id}` - Get generation details
 - `POST /api/v1/generations/{id}/cancel` - Cancel generation
 - `GET /api/v1/generations/telemetry/providers` - Provider health metrics
 - `GET /api/v1/generations/telemetry/providers/{id}` - Specific provider metrics
 - `GET /api/v1/generations/cache/stats` - Cache statistics
+
+> **Note (Task 128):** Structured `generation_config` payloads are required. Legacy flat payloads
+> (top-level prompt, quality, duration) are rejected with a 400 error. Use the `/simple-image-to-video`
+> endpoint for minimal requests from thin clients - it converts flat params to structured internally.
 
 ### Frontend Components
 
@@ -145,6 +150,7 @@ Generation Pipeline
 - Social context preservation
 - Cache key format verification
 - Prompt variable substitution
+- Legacy flat payload rejection (Task 128)
 
 **Run Tests:**
 ```bash

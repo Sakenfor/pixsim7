@@ -108,37 +108,33 @@ class GenerationCreationService:
         if not params:
             raise InvalidOperationError("Generation parameters are required")
 
-        # Check if params use new structured format (from unified generations API)
+        # Check if params use structured format (from unified generations API)
         # Structured format has keys: generation_config, scene_context, player_context, social_context
         is_structured = 'generation_config' in params or 'scene_context' in params
 
-        # Keep a reference to generation_config for strategy/purpose and introspection
-        generation_config_for_cache: Dict[str, Any] = {}
-        if is_structured:
-            # New structured format - validation handled by schema
-            # Just verify we have the necessary context for the operation
-            logger.info(f"Structured params detected for {operation_type.value}")
-            raw_gen_config = params.get("generation_config") or {}
-            if isinstance(raw_gen_config, dict):
-                generation_config_for_cache = raw_gen_config
+        # Reject legacy flat payloads - structured format is required
+        if not is_structured:
+            raise InvalidOperationError(
+                "Structured generation_config is required. "
+                "Legacy flat payload format (top-level prompt, quality, duration) is no longer supported. "
+                "Please use the structured format with generation_config, scene_context, etc. "
+                "See POST /api/v1/generations for the expected schema."
+            )
 
-            # Validate operation-specific required fields for structured params
-            self._validate_structured_params(operation_type, raw_gen_config, params)
-        else:
-            # Legacy flat format - apply operation-specific validation
-            if operation_type == OperationType.TEXT_TO_VIDEO:
-                if 'prompt' not in params:
-                    raise InvalidOperationError("'prompt' is required for text_to_video")
-            elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                if 'prompt' not in params or 'image_url' not in params:
-                    raise InvalidOperationError("'prompt' and 'image_url' are required for image_to_video")
-            elif operation_type == OperationType.VIDEO_EXTEND:
-                if 'video_url' not in params:
-                    raise InvalidOperationError("'video_url' is required for video_extend")
+        # Extract generation_config for strategy/purpose and introspection
+        raw_gen_config = params.get("generation_config") or {}
+        if not isinstance(raw_gen_config, dict):
+            raw_gen_config = {}
+        generation_config_for_cache = raw_gen_config
+
+        logger.info(f"Structured params detected for {operation_type.value}")
+
+        # Validate operation-specific required fields for structured params
+        self._validate_structured_params(operation_type, raw_gen_config, params)
 
         # === PHASE 8: Content Rating Enforcement ===
         # Validate content rating against world/user constraints
-        if is_structured and params.get("social_context"):
+        if params.get("social_context"):
             # Fetch world_meta from database
             player_context = params.get("player_context") or {}
             if not isinstance(player_context, dict):
@@ -219,8 +215,8 @@ class GenerationCreationService:
         else:
             debug.generation(f"force_new=True, skipping dedup")
 
-        # Check cache based on strategy (for structured params, use raw generation_config)
-        generation_config = generation_config_for_cache if is_structured else {}
+        # Check cache based on strategy (use raw generation_config)
+        generation_config = generation_config_for_cache
         strategy = generation_config.get("strategy", "once")
         purpose = generation_config.get("purpose", "unknown")
         debug.generation(f"strategy={strategy}, purpose={purpose}, force_new={force_new}")
@@ -370,71 +366,19 @@ class GenerationCreationService:
         provider_id: str
     ) -> Dict[str, Any]:
         """
-        Canonicalize parameters using parameter mappers
-
-        This extracts common fields and normalizes them into a provider-agnostic format.
-        Handles both legacy flat params and new structured params.
-
-        For structured params (from unified generations API):
-        - Preserves full generation_config for introspection/dev tools
-        - Extracts canonical top-level fields for provider adapters
-        - Provider-specific settings are in style.<provider_id> (e.g., style.pixverse)
-
-        For legacy flat params:
-        - Simple extraction of known fields
-        """
-        # Check if params are already structured (from unified generations API)
-        is_structured = 'generation_config' in params or 'scene_context' in params
-
-        if is_structured:
-            # Structured format - extract canonical fields while preserving full config
-            logger.info("Structured params detected, extracting canonical fields")
-            return self._canonicalize_structured_params(params, operation_type, provider_id)
-
-        # Legacy flat params - canonicalize to common format
-        # Simple canonicalization for now
-        canonical = {
-            "prompt": params.get("prompt"),
-            "negative_prompt": params.get("negative_prompt"),
-            "quality": params.get("quality"),
-            "duration": params.get("duration"),
-            "aspect_ratio": params.get("aspect_ratio"),
-            "seed": params.get("seed"),
-            "model": params.get("model"),
-        }
-
-        # Add operation-specific fields
-        if operation_type == OperationType.IMAGE_TO_VIDEO:
-            canonical["image_url"] = params.get("image_url")
-        elif operation_type == OperationType.VIDEO_EXTEND:
-            canonical["video_url"] = params.get("video_url")
-
-        # Remove None values
-        return {k: v for k, v in canonical.items() if v is not None}
-
-    def _canonicalize_structured_params(
-        self,
-        params: Dict[str, Any],
-        operation_type: OperationType,
-        provider_id: str
-    ) -> Dict[str, Any]:
-        """
-        Canonicalize structured params from unified generations API.
+        Canonicalize structured parameters from unified generations API.
 
         Extracts useful fields from generation_config to top-level canonical fields
         so that provider adapters (e.g., PixverseProvider.map_parameters) can work
         with a consistent interface.
 
-        Provider-specific settings convention:
-        - Settings like model, quality, off_peak, audio are nested under
-          generation_config.style.<provider_id> (e.g., style.pixverse.model)
-        - This method extracts them to top-level canonical fields
+        Features:
+        - Preserves full generation_config for introspection/dev tools
+        - Extracts canonical top-level fields for provider adapters
+        - Provider-specific settings are in style.<provider_id> (e.g., style.pixverse)
 
-        Returns:
-            Canonical params dict with:
-            - All original structured params preserved
-            - generation_config intact for introspection
-            - Top-level canonical fields extracted for provider adapters
+        Note: Only structured params are supported. Legacy flat params were removed in
+        Task 128 (Drop Legacy Generation Payloads).
         """
         canonical: Dict[str, Any] = {}
 
@@ -543,74 +487,50 @@ class GenerationCreationService:
         operation_type: OperationType
     ) -> List[Dict[str, Any]]:
         """
-        Extract input references from params
+        Extract input references from structured params.
 
-        Handles both legacy flat params and new structured params.
+        Extracts scene context information to create input references for
+        deduplication and reproducibility tracking.
+
+        Note: Only structured params are supported. Legacy flat params were removed in
+        Task 128 (Drop Legacy Generation Payloads).
 
         Returns:
             List of input references like:
-            [{"role": "seed_image", "remote_url": "https://..."}]
-            [{"role": "source_video", "asset_id": 123}]
+            [{"role": "from_scene", "scene_id": "...", "metadata": {...}}]
+            [{"role": "seed_image", "scene_id": "...", "metadata": {...}}]
         """
         inputs = []
 
-        # Check if structured format
-        is_structured = 'generation_config' in params or 'scene_context' in params
+        # Extract inputs from scene context
+        scene_context = params.get("scene_context", {})
+        if not isinstance(scene_context, dict):
+            scene_context = {}
 
-        if is_structured:
-            # Extract inputs from scene context
-            scene_context = params.get("scene_context", {})
-            from_scene = scene_context.get("from_scene")
-            to_scene = scene_context.get("to_scene")
+        from_scene = scene_context.get("from_scene")
+        to_scene = scene_context.get("to_scene")
 
-            # For transitions, both scenes are inputs
-            if operation_type == OperationType.VIDEO_TRANSITION:
-                if from_scene:
-                    inputs.append({
-                        "role": "from_scene",
-                        "scene_id": from_scene.get("id"),
-                        "metadata": from_scene
-                    })
-                if to_scene:
-                    inputs.append({
-                        "role": "to_scene",
-                        "scene_id": to_scene.get("id"),
-                        "metadata": to_scene
-                    })
-            # For image_to_video, from_scene might have an asset
-            elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                if from_scene:
-                    inputs.append({
-                        "role": "seed_image",
-                        "scene_id": from_scene.get("id"),
-                        "metadata": from_scene
-                    })
-
-            return inputs
-
-        # Legacy flat params format
-        if operation_type == OperationType.IMAGE_TO_VIDEO:
-            if "image_url" in params:
+        # For transitions, both scenes are inputs
+        if operation_type == OperationType.VIDEO_TRANSITION:
+            if from_scene:
+                inputs.append({
+                    "role": "from_scene",
+                    "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
+                    "metadata": from_scene
+                })
+            if to_scene:
+                inputs.append({
+                    "role": "to_scene",
+                    "scene_id": to_scene.get("id") if isinstance(to_scene, dict) else None,
+                    "metadata": to_scene
+                })
+        # For image_to_video, from_scene might have an asset
+        elif operation_type == OperationType.IMAGE_TO_VIDEO:
+            if from_scene:
                 inputs.append({
                     "role": "seed_image",
-                    "remote_url": params["image_url"]
-                })
-            if "image_asset_id" in params:
-                inputs.append({
-                    "role": "seed_image",
-                    "asset_id": params["image_asset_id"]
-                })
-
-        elif operation_type == OperationType.VIDEO_EXTEND:
-            if "video_url" in params:
-                inputs.append({
-                    "role": "source_video",
-                    "remote_url": params["video_url"]
-                })
-            if "video_asset_id" in params:
-                inputs.append({
-                    "role": "source_video",
-                    "asset_id": params["video_asset_id"]
+                    "scene_id": from_scene.get("id") if isinstance(from_scene, dict) else None,
+                    "metadata": from_scene
                 })
 
         return inputs
