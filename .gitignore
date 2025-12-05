@@ -113,3 +113,4 @@ pixsim7/backend/main/domain/narrative/action_blocks/library/*.json
 tests/scenarios/
 /storage/automation_screenshots
 launcher/gui/launcher.json
+launcher/gui/launcher.json
