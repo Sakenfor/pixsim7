@@ -10,7 +10,7 @@
 const DEFAULT_BACKEND_URL = 'http://10.243.48.125:8001';
 
 // Account health check throttling
-const ACCOUNT_HEALTH_CHECK_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ACCOUNT_HEALTH_CHECK_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const lastAccountHealthCheck = {};
 
 /**

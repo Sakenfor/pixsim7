@@ -478,10 +478,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const settings = await getSettings();
         if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-        // Best-effort: refresh this account's session/credits so that any
-        // Pixverse "logged in elsewhere" errors are handled via backend
-        // auto-reauth before we export cookies.
-        await ensureAccountSessionHealth(accountId);
+        // Get the old session account (if any) before switching
+        let oldAccountId = null;
+        try {
+          const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
+          const sessions = stored[PROVIDER_SESSION_STORAGE_KEY] || {};
+          const oldSession = sessions['pixverse'];
+          if (oldSession?.accountId && oldSession.accountId !== accountId) {
+            oldAccountId = oldSession.accountId;
+          }
+        } catch (e) {
+          console.warn('[Background] Failed to get old session for refresh:', e);
+        }
+
+        // Best-effort: refresh credits for both old and new accounts
+        // Old account: capture latest credit state before switching away
+        // New account: ensure session health and get fresh credits
+        const refreshPromises = [ensureAccountSessionHealth(accountId)];
+        if (oldAccountId) {
+          refreshPromises.push(ensureAccountSessionHealth(oldAccountId));
+        }
+        await Promise.all(refreshPromises);
 
         // Fetch cookies for this account from backend and open a tab using
         // the stored session.
@@ -649,6 +666,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } catch (notifyErr) {
           console.warn('[Background] Failed to notify popup after syncAccountCredits:', notifyErr);
         }
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Sync credits for an account (best-effort, respects TTL)
+  if (message.action === 'syncAccountCredits') {
+    (async () => {
+      try {
+        const { accountId } = message;
+        if (!accountId) throw new Error('accountId is required');
+        await ensureAccountSessionHealth(accountId);
         sendResponse({ success: true });
       } catch (error) {
         sendResponse({ success: false, error: error.message });

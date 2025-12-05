@@ -269,6 +269,9 @@
       return false;
     }
 
+    // Note: Credit sync for both old and new accounts is handled in background.js
+    // via ensureAccountSessionHealth() which calls sync-credits endpoint
+
     // Save current input state before page reloads
     saveInputState();
 
@@ -393,11 +396,16 @@
           isSelected: selected?.id === account.id
         });
         item.addEventListener('click', async () => {
-          // Refresh ads for current account before switching (in background)
+          // Sync credits for both old and new accounts (background, respects 5min TTL)
           const previousAccount = getCurrentAccount();
           if (previousAccount && previousAccount.id !== account.id) {
+            // Sync old account credits and refresh ad status
+            sendMessageWithTimeout({ action: 'syncAccountCredits', accountId: previousAccount.id }, 5000).catch(() => {});
             refreshAccountAdStatus(previousAccount.id);
           }
+          // Sync new account credits and refresh ad status
+          sendMessageWithTimeout({ action: 'syncAccountCredits', accountId: account.id }, 5000).catch(() => {});
+          refreshAccountAdStatus(account.id);
 
           await saveSelectedAccount(account.id);
           menu.remove();
