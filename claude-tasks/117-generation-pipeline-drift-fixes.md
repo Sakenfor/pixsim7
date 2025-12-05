@@ -222,3 +222,10 @@ When this task is complete, you should have:
 4. (Optional) Invariant notes/tests and small registry comments
    documenting the mapping.
 
+---
+
+## See Also
+
+- `claude-tasks/118-plugin-owned-generation-aliases.md` – Finalize plugin ownership of semantic aliases
+- `docs/GENERATION_ALIAS_CONVENTIONS.md` – Guide for adding new generation type aliases
+

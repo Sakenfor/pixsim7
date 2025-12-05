@@ -58,51 +58,57 @@ class OperationSpec:
 
 # Registry of all supported operations with their specifications.
 #
-# NOTE: generation_type_aliases should contain only the "core" aliases
-# that are safe to serialize in generic configs. Plugins can register
-# additional aliases at runtime via register_generation_alias().
+# NOTE: generation_type_aliases lists both canonical and semantic aliases:
+#   - Canonical aliases directly match the OperationType (e.g., "text_to_image")
+#   - Semantic aliases are plugin-owned (e.g., "dialogue", "npc_response")
+#
+# Plugins can register additional semantic aliases at runtime via
+# register_generation_alias().
 OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   OperationType.TEXT_TO_IMAGE: OperationSpec(
     operation_type=OperationType.TEXT_TO_IMAGE,
     output_media="image",
     required_inputs=["prompt"],
-    generation_type_aliases=["text_to_image"],
+    generation_type_aliases=["text_to_image"],  # Canonical
   ),
   OperationType.IMAGE_TO_IMAGE: OperationSpec(
     operation_type=OperationType.IMAGE_TO_IMAGE,
     output_media="image",
     required_inputs=["image_url|image_urls"],  # Either one
-    generation_type_aliases=["image_edit"],
+    generation_type_aliases=["image_edit"],  # Canonical
   ),
   OperationType.TEXT_TO_VIDEO: OperationSpec(
     operation_type=OperationType.TEXT_TO_VIDEO,
     output_media="video",
     required_inputs=["prompt"],
+    # Canonical: (none - direct usage rare)
+    # Semantic: "variation", "dialogue", "environment" (game-dialogue plugin)
     generation_type_aliases=["variation", "dialogue", "environment"],
   ),
   OperationType.IMAGE_TO_VIDEO: OperationSpec(
     operation_type=OperationType.IMAGE_TO_VIDEO,
     output_media="video",
     required_inputs=["image_url"],
+    # Semantic: "npc_response" (game-dialogue plugin)
     generation_type_aliases=["npc_response"],
   ),
   OperationType.VIDEO_EXTEND: OperationSpec(
     operation_type=OperationType.VIDEO_EXTEND,
     output_media="video",
     required_inputs=["video_url|original_video_id"],  # Either one
-    generation_type_aliases=["video_extend"],
+    generation_type_aliases=["video_extend"],  # Canonical
   ),
   OperationType.VIDEO_TRANSITION: OperationSpec(
     operation_type=OperationType.VIDEO_TRANSITION,
     output_media="video",
     required_inputs=["image_urls", "prompts"],
-    generation_type_aliases=["transition"],
+    generation_type_aliases=["transition"],  # Canonical
   ),
   OperationType.FUSION: OperationSpec(
     operation_type=OperationType.FUSION,
     output_media="video",
     required_inputs=["fusion_assets"],
-    generation_type_aliases=["fusion"],
+    generation_type_aliases=["fusion"],  # Canonical
   ),
 }
 
@@ -129,29 +135,51 @@ def get_video_operations() -> Set[OperationType]:
 # This is derived from OPERATION_REGISTRY but kept explicit for clarity,
 # backward compatibility, and so that older configs continue to work
 # even if plugins add new aliases at runtime.
+#
+# ═════════════════════════════════════════════════════════════════════════════
+# ALIAS CLASSIFICATION: CANONICAL vs SEMANTIC
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# Aliases fall into two categories:
+#
+# 1. CANONICAL ALIASES - Core operation labels that directly correspond to
+#    OperationType values. These are generic, provider-agnostic operation names.
+#    - Managed by: Core (operation_mapping.py)
+#    - Examples: "text_to_image", "image_edit", "video_extend", "transition", "fusion"
+#
+# 2. SEMANTIC ALIASES - Game/domain-specific labels that map to canonical
+#    operations but express higher-level concepts.
+#    - Managed by: Plugins via register_generation_alias() in on_load()
+#    - Examples: "npc_response", "dialogue", "environment", "variation"
+#    - Owner metadata tracked in ALIAS_METADATA
+#
+# New semantic aliases should NOT be added to this map directly. Instead,
+# plugins should call register_generation_alias() during startup.
+#
+# ═════════════════════════════════════════════════════════════════════════════
+
 GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
-  # Text to image generation (Quick Generate)
-  "text_to_image": OperationType.TEXT_TO_IMAGE,
+  # -------------------------------------------------------------------------
+  # CANONICAL ALIASES (core operation labels)
+  # -------------------------------------------------------------------------
+  "text_to_image": OperationType.TEXT_TO_IMAGE,  # Quick Generate image
+  "image_edit": OperationType.IMAGE_TO_IMAGE,    # Image transformations
+  "video_extend": OperationType.VIDEO_EXTEND,    # Video extension
+  "transition": OperationType.VIDEO_TRANSITION,  # Scene transitions
+  "fusion": OperationType.FUSION,                # Character-consistent video
 
-  # Scene transitions between images
-  "transition": OperationType.VIDEO_TRANSITION,
-
-  # Generic "prompt to video" variations (Control Center)
-  "variation": OperationType.TEXT_TO_VIDEO,
-  "dialogue": OperationType.TEXT_TO_VIDEO,
-  "environment": OperationType.TEXT_TO_VIDEO,
-
-  # Image → video NPC response clips (legacy/game-oriented alias for IMAGE_TO_VIDEO)
-  "npc_response": OperationType.IMAGE_TO_VIDEO,
-
-  # Image → image edits / transformations
-  "image_edit": OperationType.IMAGE_TO_IMAGE,
-
-  # Video extension (Quick Generate)
-  "video_extend": OperationType.VIDEO_EXTEND,
-
-  # Fusion / character-consistent video
-  "fusion": OperationType.FUSION,
+  # -------------------------------------------------------------------------
+  # SEMANTIC ALIASES (plugin-owned game/domain concepts)
+  # -------------------------------------------------------------------------
+  # These are kept here for backward compatibility with existing configs.
+  # New semantic aliases should be registered via register_generation_alias()
+  # in plugin on_load() hooks rather than being hard-coded here.
+  #
+  # Owner: game-dialogue plugin (registered in manifest.py:on_load())
+  "variation": OperationType.TEXT_TO_VIDEO,      # Generic prompt-to-video
+  "dialogue": OperationType.TEXT_TO_VIDEO,       # Dialogue generation
+  "environment": OperationType.TEXT_TO_VIDEO,    # Environment generation
+  "npc_response": OperationType.IMAGE_TO_VIDEO,  # NPC response clips
 }
 
 
@@ -223,14 +251,32 @@ def list_generation_operation_metadata() -> List[dict]:
 
   This is intended for tooling and UI consumers so they do not need
   to duplicate backend mappings.
+
+  Each entry includes:
+  - generation_type: The alias string (e.g., "text_to_image", "npc_response")
+  - operation_type: The canonical OperationType enum value
+  - owner: Plugin ID that registered this alias (if semantic), or None for canonical
+  - is_semantic_alias: True if plugin-owned, False if canonical core alias
   """
+
+  # Define canonical aliases (directly correspond to OperationType)
+  canonical_aliases = {
+    "text_to_image", "image_edit", "video_extend", "transition", "fusion"
+  }
 
   items: List[dict] = []
   for gen_type, op_type in GENERATION_TYPE_OPERATION_MAP.items():
+    # Check if we have owner metadata from plugin registration
+    alias_meta = ALIAS_METADATA.get(gen_type, {})
+    owner = alias_meta.get("owner")
+    is_semantic = gen_type not in canonical_aliases
+
     items.append(
       {
         "generation_type": gen_type,
         "operation_type": op_type.value,
+        "owner": owner,
+        "is_semantic_alias": is_semantic,
       }
     )
   return items

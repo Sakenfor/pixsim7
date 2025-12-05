@@ -138,3 +138,11 @@ The report should include:
   - File/line references.
 - Optional short list of follow-up suggestions (no code changes).
 
+---
+
+## See Also
+
+- `claude-tasks/117-generation-pipeline-drift-fixes.md` – Implementation of drift fixes
+- `claude-tasks/118-plugin-owned-generation-aliases.md` – Finalize plugin ownership of semantic aliases
+- `docs/GENERATION_ALIAS_CONVENTIONS.md` – Guide for adding new generation type aliases
+
