@@ -70,7 +70,10 @@ class AssetEnrichmentService:
         provider = registry.get(asset.provider_id)
 
         try:
-            embedded = await provider.extract_embedded_assets(asset.provider_asset_id)
+            embedded = await provider.extract_embedded_assets(
+                asset.provider_asset_id,
+                asset.media_metadata or None,
+            )
         except AttributeError as e:
             # Provider doesn't implement extract_embedded_assets method
             logger.debug(
@@ -101,7 +104,7 @@ class AssetEnrichmentService:
             add_asset,
             create_lineage_links,
         )
-        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION
+        from pixsim7.backend.main.domain.relation_types import SOURCE_IMAGE, DERIVATION, TRANSITION_INPUT
         from pixsim7.backend.main.domain.enums import OperationType
 
         for idx, item in enumerate(embedded):
@@ -115,6 +118,8 @@ class AssetEnrichmentService:
             provider_asset_id = item.get("provider_asset_id") or f"{asset.provider_asset_id}_emb_{idx}"
 
             media_type = MediaType.IMAGE if item.get("media_type") == "image" else MediaType.VIDEO
+
+            media_metadata = item.get("media_metadata")
 
             # Canonical direction: video (child) generated from images (parents).
             # Here we're creating the parent image assets AFTER the video exists, so we
@@ -132,15 +137,32 @@ class AssetEnrichmentService:
                 duration_sec=None,
                 sync_status=SyncStatus.REMOTE,
                 source_generation_id=None,
+                media_metadata=media_metadata,
             )
 
-            relation_type = SOURCE_IMAGE if media_type == MediaType.IMAGE else DERIVATION
+            # Relation type: allow explicit override from item metadata first.
+            relation_type = item.get("relation_type")
+            if not relation_type:
+                if media_type == MediaType.IMAGE:
+                    relation_type = SOURCE_IMAGE
+                else:
+                    relation_type = DERIVATION
+
+            # Operation type: default to IMAGE_TO_VIDEO but allow item override.
+            op_type = OperationType.IMAGE_TO_VIDEO
+            op_hint = item.get("operation_type")
+            if isinstance(op_hint, str):
+                try:
+                    op_type = OperationType(op_hint)
+                except ValueError:
+                    pass
+
             await create_lineage_links(
                 self.db,
                 child_asset_id=asset.id,
                 parent_asset_ids=[newly_created.id],
                 relation_type=relation_type,
-                operation_type=OperationType.IMAGE_TO_VIDEO,
+                operation_type=op_type,
             )
 
     async def create_asset_from_paused_frame(
