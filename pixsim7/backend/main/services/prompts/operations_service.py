@@ -400,7 +400,11 @@ class PromptOperationsService:
         PROVIDER_LIMITS = {
             "pixverse": {
                 "prompt_limit": 800,
-                "supported_operations": ["text_to_video", "image_to_video"]
+                "supported_operations": [
+                    "text_to_image", "image_to_image",
+                    "text_to_video", "image_to_video",
+                    "video_extend", "video_transition", "fusion"
+                ]
             },
             "runway": {
                 "prompt_limit": 2000,

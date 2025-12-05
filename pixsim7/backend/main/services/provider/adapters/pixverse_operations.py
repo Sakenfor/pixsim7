@@ -105,7 +105,10 @@ class PixverseOperationsMixin:
 
         try:
             # Route to appropriate method
-            if operation_type == OperationType.TEXT_TO_VIDEO:
+            if operation_type == OperationType.TEXT_TO_IMAGE:
+                video = await self._generate_text_to_image(client, params)
+
+            elif operation_type == OperationType.TEXT_TO_VIDEO:
                 video = await self._generate_text_to_video(client, params)
 
             elif operation_type == OperationType.IMAGE_TO_VIDEO:
@@ -229,6 +232,40 @@ class PixverseOperationsMixin:
         )
 
         return video
+
+
+    async def _generate_text_to_image(
+        self,
+        client: Any,
+        params: Dict[str, Any]
+    ):
+        """Generate text-to-image (Pixverse image API without input images)."""
+        # Use pixverse-py image operations via client.api._image_ops
+        # This requires a JWT (Web API) session.
+        try:
+            image = await asyncio.to_thread(
+                client.api._image_ops.create_image,  # type: ignore[attr-defined]
+                prompt=params.get("prompt", ""),
+                image_urls=[],  # No input images for text-to-image
+                account=client.pool.get_next(),
+                model=params.get("model") or None,
+                quality=params.get("quality") or "720p",
+                aspect_ratio=params.get("aspect_ratio") or "16:9",
+                seed=int(params.get("seed", 0)),
+                create_count=1,
+            )
+        except Exception as exc:  # Let upstream handler classify
+            raise exc
+
+        # Wrap image result in a GenerationResult-compatible object.
+        # Status mapping: treat "processing" vs "completed" similar to videos.
+        status = VideoStatus.PROCESSING
+        if getattr(image, "status", None) == "completed":
+            status = VideoStatus.COMPLETED
+        elif getattr(image, "status", None) in {"failed", "filtered"}:
+            status = VideoStatus.FAILED
+
+        return image
 
 
     async def _generate_image_to_video(
