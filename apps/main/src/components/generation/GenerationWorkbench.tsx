@@ -1,0 +1,333 @@
+import React from 'react';
+import clsx from 'clsx';
+import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
+import { GenerationStatusDisplay } from '../control/GenerationStatusDisplay';
+import { ThemedIcon } from '@/lib/icons';
+import type { ParamSpec } from '../control/DynamicParamForm';
+
+/**
+ * Context provided to render props for accessing workbench state.
+ */
+export interface WorkbenchRenderContext {
+  /** Whether generation is in progress */
+  generating: boolean;
+  /** Current error message, if any */
+  error: string | null;
+  /** Current generation ID being tracked */
+  generationId: number | null;
+}
+
+/**
+ * Props for the GenerationWorkbench component.
+ *
+ * The workbench provides a reusable generation UI with:
+ * - Settings bar (provider selector + parameter controls)
+ * - Generate button
+ * - Error display
+ * - Generation status tracking
+ * - Optional recent prompts
+ *
+ * Callers can customize the layout through render props and toggles.
+ */
+export interface GenerationWorkbenchProps {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Settings Bar Props (passed through to GenerationSettingsBar)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Currently selected provider ID */
+  providerId?: string;
+  /** List of available providers */
+  providers: Array<{ id: string; name: string }>;
+  /** Parameter specifications for the current operation */
+  paramSpecs: ParamSpec[];
+  /** Current dynamic parameter values */
+  dynamicParams: Record<string, any>;
+  /** Callback when a parameter value changes */
+  onChangeParam: (name: string, value: any) => void;
+  /** Callback when provider selection changes */
+  onChangeProvider?: (providerId: string | undefined) => void;
+  /** Whether generation is in progress */
+  generating?: boolean;
+  /** Whether the settings bar is visible */
+  showSettings: boolean;
+  /** Callback to toggle settings visibility */
+  onToggleSettings: () => void;
+  /** Currently active preset ID */
+  presetId?: string;
+  /** Operation type for cost estimation */
+  operationType?: string;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Generation Action
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Callback when generate button is clicked */
+  onGenerate: () => void;
+  /** Whether the generate button should be enabled */
+  canGenerate?: boolean;
+  /** Label for the generate button. Defaults to "Go" */
+  generateButtonLabel?: React.ReactNode;
+  /** Title/tooltip for the generate button */
+  generateButtonTitle?: string;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Error & Status
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Current error message to display */
+  error?: string | null;
+  /** Generation ID to track status for */
+  generationId?: number | null;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Recent Prompts (optional)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** List of recent prompts for quick restore */
+  recentPrompts?: string[];
+  /** Callback when a recent prompt is clicked */
+  onRestorePrompt?: (prompt: string) => void;
+  /** Hide the recent prompts section */
+  hideRecentPrompts?: boolean;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Visibility Toggles
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Hide the error display */
+  hideErrorDisplay?: boolean;
+  /** Hide the generation status display */
+  hideStatusDisplay?: boolean;
+  /** Hide the generate button (useful when caller renders their own) */
+  hideGenerateButton?: boolean;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render Props / Slots
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Render custom content in the header row (left side, before settings bar).
+   * Typically used for operation type selectors, presets, etc.
+   */
+  renderHeader?: (context: WorkbenchRenderContext) => React.ReactNode;
+
+  /**
+   * Render the main content area (prompt input, asset display, etc.).
+   * This is the primary customization point for different generation UIs.
+   */
+  renderContent?: (context: WorkbenchRenderContext) => React.ReactNode;
+
+  /**
+   * Render custom content after the main content area.
+   * Useful for additional controls or information.
+   */
+  renderFooter?: (context: WorkbenchRenderContext) => React.ReactNode;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Styling
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Additional class name for the root container */
+  className?: string;
+  /** Whether to use compact styling */
+  compact?: boolean;
+}
+
+/**
+ * GenerationWorkbench
+ *
+ * A reusable component that encapsulates the common UI patterns for generation:
+ * - Header row with settings bar and generate button
+ * - Main content area (customizable via renderContent)
+ * - Error display
+ * - Generation status tracking
+ * - Optional recent prompts
+ *
+ * This component is designed to be the foundation for QuickGenerateModule,
+ * IntimacySceneComposer's generation panel, and other generation UIs.
+ *
+ * @example
+ * ```tsx
+ * <GenerationWorkbench
+ *   providerId={providerId}
+ *   providers={providers}
+ *   paramSpecs={paramSpecs}
+ *   dynamicParams={dynamicParams}
+ *   onChangeParam={handleParamChange}
+ *   onChangeProvider={setProvider}
+ *   generating={generating}
+ *   showSettings={showSettings}
+ *   onToggleSettings={toggleSettings}
+ *   onGenerate={generate}
+ *   canGenerate={prompt.trim().length > 0}
+ *   error={error}
+ *   generationId={generationId}
+ *   renderHeader={() => <OperationTypeSelector />}
+ *   renderContent={() => <PromptInput value={prompt} onChange={setPrompt} />}
+ * />
+ * ```
+ */
+export function GenerationWorkbench({
+  // Settings bar props
+  providerId,
+  providers,
+  paramSpecs,
+  dynamicParams,
+  onChangeParam,
+  onChangeProvider,
+  generating = false,
+  showSettings,
+  onToggleSettings,
+  presetId,
+  operationType,
+
+  // Generation action
+  onGenerate,
+  canGenerate = true,
+  generateButtonLabel,
+  generateButtonTitle,
+
+  // Error & status
+  error,
+  generationId,
+
+  // Recent prompts
+  recentPrompts,
+  onRestorePrompt,
+  hideRecentPrompts = false,
+
+  // Visibility toggles
+  hideErrorDisplay = false,
+  hideStatusDisplay = false,
+  hideGenerateButton = false,
+
+  // Render props
+  renderHeader,
+  renderContent,
+  renderFooter,
+
+  // Styling
+  className,
+  compact = false,
+}: GenerationWorkbenchProps) {
+  const context: WorkbenchRenderContext = {
+    generating,
+    error: error ?? null,
+    generationId: generationId ?? null,
+  };
+
+  const defaultButtonLabel = (
+    <span className="flex items-center gap-1">
+      <ThemedIcon name="zap" size={12} variant="default" />
+      Go
+    </span>
+  );
+
+  return (
+    <div className={clsx('flex flex-col gap-3', className)}>
+      {/* Header Row: Custom header + Settings bar + Generate button */}
+      <div
+        className={clsx(
+          'flex gap-1.5 items-center flex-shrink-0',
+          !compact && 'pb-2 border-b border-neutral-200 dark:border-neutral-700'
+        )}
+      >
+        {/* Custom header content (operation selector, presets, etc.) */}
+        {renderHeader?.(context)}
+
+        <div className="flex-1" />
+
+        {/* Generation settings bar */}
+        <GenerationSettingsBar
+          providerId={providerId}
+          providers={providers}
+          paramSpecs={paramSpecs}
+          dynamicParams={dynamicParams}
+          onChangeParam={onChangeParam}
+          onChangeProvider={onChangeProvider}
+          generating={generating}
+          showSettings={showSettings}
+          onToggleSettings={onToggleSettings}
+          presetId={presetId}
+          operationType={operationType}
+        />
+
+        {/* Generate button */}
+        {!hideGenerateButton && (
+          <button
+            onClick={onGenerate}
+            disabled={generating || !canGenerate}
+            className={clsx(
+              'px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-all',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
+              generating || !canGenerate
+                ? 'bg-neutral-400'
+                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+            )}
+            title={generateButtonTitle ?? (generating ? 'Generating...' : 'Generate (Enter)')}
+          >
+            {generating ? (
+              <ThemedIcon name="loader" size={14} variant="default" className="animate-spin" />
+            ) : (
+              generateButtonLabel ?? defaultButtonLabel
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Main content area */}
+      {renderContent && (
+        <div className="flex-1 flex flex-col gap-3">{renderContent(context)}</div>
+      )}
+
+      {/* Error display */}
+      {!hideErrorDisplay && error && (
+        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded flex-shrink-0 border border-red-200 dark:border-red-800">
+          <div className="flex items-start gap-2">
+            <ThemedIcon
+              name="alertCircle"
+              size={14}
+              variant="default"
+              className="flex-shrink-0 mt-0.5"
+            />
+            <div>{error}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Generation status */}
+      {!hideStatusDisplay && generationId && (
+        <GenerationStatusDisplay generationId={generationId} />
+      )}
+
+      {/* Custom footer content */}
+      {renderFooter?.(context)}
+
+      {/* Recent prompts */}
+      {!hideRecentPrompts && recentPrompts && recentPrompts.length > 0 && onRestorePrompt && (
+        <div className="flex-shrink-0 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
+          <div className="flex gap-1 flex-wrap">
+            {recentPrompts.slice(0, 5).map((p, i) => (
+              <button
+                key={i}
+                onClick={() => onRestorePrompt(p)}
+                disabled={generating}
+                className="text-xs px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-xs disabled:opacity-50"
+                title={p}
+              >
+                {p.length > 50 ? `${p.slice(0, 50)}...` : p}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Re-export for convenience
+ */
+export { GenerationSettingsBar } from '../control/GenerationSettingsBar';
+export { GenerationStatusDisplay } from '../control/GenerationStatusDisplay';
