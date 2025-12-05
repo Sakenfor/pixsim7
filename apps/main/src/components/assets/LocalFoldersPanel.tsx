@@ -1,141 +1,20 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
 import { TreeFolderView } from './TreeFolderView';
 import { MediaViewerCube } from './MediaViewerCube';
-import { MediaCard } from '../media/MediaCard';
-import { MasonryGrid } from '../layout/MasonryGrid';
+import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '../media/AssetGallery';
 import type { LocalAsset } from '@/stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
-
-/**
- * Simple lazy load hook - loads preview when element enters viewport.
- * Does NOT revoke on scroll out - keeps images stable once loaded.
- * Revocation only happens on folder change or unmount (handled by controller).
- */
-function useLazyLoadPreview(
-  asset: LocalAsset,
-  previewUrl: string | undefined,
-  loadPreview: (asset: LocalAsset) => Promise<void>,
-) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const loadingRef = useRef(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    // Already have preview or already loading - skip
-    if (previewUrl || loadingRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && !previewUrl && !loadingRef.current) {
-            loadingRef.current = true;
-            loadPreview(asset).finally(() => {
-              loadingRef.current = false;
-            });
-            observer.disconnect();
-          }
-        });
-      },
-      { rootMargin: '400px' },
-    );
-
-    observer.observe(el);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [asset, previewUrl, loadPreview]);
-
-  return ref;
-}
-
-type UploadState = 'idle' | 'uploading' | 'success' | 'error';
-
-function getLocalAssetNumericId(asset: LocalAsset): number {
-  let hash = 0;
-  for (let i = 0; i < asset.key.length; i += 1) {
-    const chr = asset.key.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0;
-  }
-  const id = Math.abs(hash);
-  return id || 1;
-}
-
-function uploadStatusToProviderStatus(status: UploadState | undefined) {
-  if (status === 'success') return 'ok' as const;
-  if (status === 'error') return 'local_only' as const;
-  return undefined;
-}
-
-function TreeLazyMediaCard(props: {
-  asset: LocalAsset;
-  previewUrl: string | undefined;
-  loadPreview: (asset: LocalAsset) => Promise<void>;
-  status: UploadState;
-  openViewer: (asset: LocalAsset) => void;
-  uploadOne: (asset: LocalAsset) => Promise<void>;
-}) {
-  const { asset, previewUrl, loadPreview, status, openViewer, uploadOne } = props;
-  const cardRef = useLazyLoadPreview(asset, previewUrl, loadPreview);
-  const providerStatus = uploadStatusToProviderStatus(status);
-
-  return (
-    <div ref={cardRef}>
-      <MediaCard
-        id={getLocalAssetNumericId(asset)}
-        mediaType={asset.kind === 'video' ? 'video' : 'image'}
-        providerId="local"
-        providerAssetId={asset.key}
-        thumbUrl={previewUrl || ''}
-        remoteUrl={previewUrl || ''}
-        width={0}
-        height={0}
-        tags={[asset.relativePath.split('/').slice(0, -1).join('/')]}
-        description={asset.name}
-        createdAt={new Date(asset.lastModified || Date.now()).toISOString()}
-        onOpen={() => openViewer(asset)}
-        providerStatus={providerStatus}
-        uploadState={status}
-        onUploadClick={async () => {
-          await uploadOne(asset);
-        }}
-      />
-    </div>
-  );
-}
 
 interface LocalFoldersPanelProps {
   layout?: 'masonry' | 'grid';
   cardSize?: number;
 }
 
-// Pagination settings for large folders
-const INITIAL_DISPLAY_LIMIT = 50;
-const LOAD_MORE_INCREMENT = 50;
-
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
-
-  // Layout settings (gaps)
-  const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
-
-  // Pagination state - reset when folder changes
-  const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT);
-  const prevFolderPath = useRef(controller.selectedFolderPath);
-
-  // Reset display limit when folder selection changes
-  useEffect(() => {
-    if (prevFolderPath.current !== controller.selectedFolderPath) {
-      setDisplayLimit(INITIAL_DISPLAY_LIMIT);
-      prevFolderPath.current = controller.selectedFolderPath;
-    }
-  }, [controller.selectedFolderPath]);
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -144,139 +23,98 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     }, {} as Record<string, string>);
   }, [controller.folders]);
 
-  const selectedRootFolderId = useMemo(() => {
-    if (controller.selectedFolderPath) {
-      return controller.selectedFolderPath.split('/')[0];
-    }
-    return controller.folders[0]?.id;
-  }, [controller.selectedFolderPath, controller.folders]);
-
-
   // Determine which assets to show based on folder selection
-  const allDisplayAssets = useMemo(() => {
-    // If a folder is selected, show filtered assets for that folder
+  const displayAssets = useMemo(() => {
     if (controller.selectedFolderPath) {
       return controller.filteredAssets;
     }
-    // Otherwise show all assets
     return controller.assets;
   }, [controller.selectedFolderPath, controller.filteredAssets, controller.assets]);
 
-  // Apply pagination limit
-  const displayAssets = useMemo(() => {
-    return allDisplayAssets.slice(0, displayLimit);
-  }, [allDisplayAssets, displayLimit]);
+  // Callbacks for AssetGallery - memoized to prevent re-renders
+  const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
+  const getPreviewUrl = useCallback(
+    (asset: LocalAsset) => controller.previews[asset.key],
+    [controller.previews]
+  );
+  const getMediaType = useCallback(
+    (asset: LocalAsset) => (asset.kind === 'video' ? 'video' : 'image') as const,
+    []
+  );
+  const getDescription = useCallback((asset: LocalAsset) => asset.name, []);
+  const getTags = useCallback(
+    (asset: LocalAsset) => [asset.relativePath.split('/').slice(0, -1).join('/')],
+    []
+  );
+  const getCreatedAt = useCallback(
+    (asset: LocalAsset) => new Date(asset.lastModified || Date.now()).toISOString(),
+    []
+  );
+  const getUploadState = useCallback(
+    (asset: LocalAsset): AssetUploadState => controller.uploadStatus[asset.key] || 'idle',
+    [controller.uploadStatus]
+  );
+  const handleOpen = useCallback(
+    (asset: LocalAsset) => controller.openViewer(asset),
+    [controller.openViewer]
+  );
+  const handleUpload = useCallback(
+    (asset: LocalAsset) => controller.uploadOne(asset),
+    [controller.uploadOne]
+  );
 
-  const hasMore = allDisplayAssets.length > displayLimit;
-  const remainingCount = allDisplayAssets.length - displayLimit;
+  // Empty state for no folders
+  const noFoldersEmptyState = (
+    <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
+      <div className="mb-4 flex justify-center">
+        <Icons.folder size={64} className="text-neutral-400" />
+      </div>
+      <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
+        {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
+      </p>
+      <p className="text-sm text-neutral-500">
+        {controller.folders.length === 0
+          ? 'Click "Add Folder" to get started'
+          : 'Added folders contain no media files'}
+      </p>
+    </div>
+  );
 
-  const loadMore = useCallback(() => {
-    setDisplayLimit(prev => prev + LOAD_MORE_INCREMENT);
-  }, []);
-
-  // Render media cards for gallery layouts
-  const cardItems = displayAssets.map(asset => {
-    const status = controller.uploadStatus[asset.key] || 'idle';
-    const previewUrl = controller.previews[asset.key];
-    return (
-      <TreeLazyMediaCard
-        key={asset.key}
-        asset={asset}
-        previewUrl={previewUrl}
-        loadPreview={controller.loadPreview}
-        status={status}
-        openViewer={controller.openViewer}
-        uploadOne={controller.uploadOne}
-      />
-    );
-  });
+  // Empty state for selected folder with no files
+  const folderEmptyState = (
+    <GalleryEmptyState
+      icon="folder"
+      title="No files in this folder"
+    />
+  );
 
   const renderMainContent = () => {
+    // Show "no folders" empty state
     if (controller.assets.length === 0) {
-      return (
-        <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
-          <div className="mb-4 flex justify-center">
-            <Icons.folder size={64} className="text-neutral-400" />
-          </div>
-          <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
-            {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
-          </p>
-          <p className="text-sm text-neutral-500">
-            {controller.folders.length === 0
-              ? 'Click "Add Folder" to get started'
-              : 'Added folders contain no media files'}
-          </p>
-        </div>
-      );
+      return noFoldersEmptyState;
     }
 
-    // Empty state when folder is selected but no assets in that folder
+    // Show folder-specific empty state when folder is selected but empty
     if (controller.selectedFolderPath && displayAssets.length === 0) {
-      return (
-        <div className="flex items-center justify-center h-[60vh] text-neutral-500">
-          <div className="text-center">
-            <div className="mb-4 flex justify-center">
-              <Icons.folderOpen size={48} className="text-neutral-400" />
-            </div>
-            <p>No files in this folder</p>
-          </div>
-        </div>
-      );
+      return folderEmptyState;
     }
 
-
-    // Load More button component
-    const loadMoreButton = hasMore && (
-      <div className="flex justify-center py-6">
-        <button
-          onClick={loadMore}
-          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-        >
-          <Icons.chevronDown size={16} />
-          Load More ({remainingCount.toLocaleString()} remaining)
-        </button>
-      </div>
-    );
-
-    // Asset count indicator
-    const assetCountIndicator = allDisplayAssets.length > 0 && (
-      <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-        Showing {displayAssets.length.toLocaleString()} of {allDisplayAssets.length.toLocaleString()} files
-      </div>
-    );
-
-    // Render masonry or grid layout
-    if (layout === 'masonry') {
-      return (
-        <>
-          {assetCountIndicator}
-          <MasonryGrid
-            items={cardItems}
-            rowGap={layoutSettings.rowGap}
-            columnGap={layoutSettings.columnGap}
-            minColumnWidth={cardSize}
-          />
-          {loadMoreButton}
-        </>
-      );
-    }
-
-    // Grid layout
     return (
-      <>
-        {assetCountIndicator}
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
-            rowGap: `${layoutSettings.rowGap}px`,
-            columnGap: `${layoutSettings.columnGap}px`,
-          }}
-        >
-          {cardItems}
-        </div>
-        {loadMoreButton}
-      </>
+      <AssetGallery
+        assets={displayAssets}
+        getAssetKey={getAssetKey}
+        getPreviewUrl={getPreviewUrl}
+        loadPreview={controller.loadPreview}
+        getMediaType={getMediaType}
+        getDescription={getDescription}
+        getTags={getTags}
+        getCreatedAt={getCreatedAt}
+        getUploadState={getUploadState}
+        onOpen={handleOpen}
+        onUpload={handleUpload}
+        layout={layout}
+        cardSize={cardSize}
+      />
     );
   };
 
