@@ -56,59 +56,78 @@ function mapOperationToGenerationType(
  * - This keeps the config schema-compliant while allowing provider extensions.
  * - The backend's _canonicalize_params extracts these to top-level canonical fields.
  */
+const CANONICAL_CONFIG_KEYS = new Set([
+  'prompt',
+  'duration',
+  'rating',
+  'image_url',
+  'image_urls',
+  'video_url',
+  'original_video_id',
+  'prompts',
+  'fusion_assets',
+  'pacing',
+]);
+
 function buildGenerationConfig(
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' | 'text_to_image' | 'video_extend',
-  presetParams: Record<string, any>,
-  extraParams: Record<string, any>,
+  generationType:
+    | 'transition'
+    | 'variation'
+    | 'dialogue'
+    | 'environment'
+    | 'npc_response'
+    | 'image_edit'
+    | 'fusion'
+    | 'text_to_image'
+    | 'video_extend',
+  params: Record<string, any>,
   providerId: string = 'pixverse'
 ): Record<string, any> {
-  // Merge params (extra overrides preset)
-  const merged = { ...presetParams, ...extraParams };
+  const merged = { ...params };
 
-  // Extract duration settings
-  const durationTarget = merged.duration ?? 5; // Default 5 seconds
+  // Extract duration settings (only if explicitly provided)
+  const durationTarget = merged.duration;
 
-  // Extract pacing from style hints
-  const pacing = merged.motion_mode === 'dynamic' ? 'fast'
-    : merged.motion_mode === 'steady' ? 'slow'
-    : 'medium';
-
-  // Extract rating constraint
-  const rating = merged.rating ?? 'PG-13';
+  // Extract rating constraint (optional)
+  const rating = merged.rating;
 
   // Build provider-specific settings (placed in style.<providerId>)
   // The backend will extract these for the provider adapter
   const providerSettings: Record<string, any> = {};
-  if (merged.model !== undefined) providerSettings.model = merged.model;
-  if (merged.quality !== undefined) providerSettings.quality = merged.quality;
-  if (merged.off_peak !== undefined) providerSettings.off_peak = merged.off_peak;
-  if (merged.audio !== undefined) providerSettings.audio = merged.audio;
-  if (merged.multi_shot !== undefined) providerSettings.multi_shot = merged.multi_shot;
-  if (merged.aspect_ratio !== undefined) providerSettings.aspect_ratio = merged.aspect_ratio;
-  if (merged.seed !== undefined) providerSettings.seed = merged.seed;
-  if (merged.camera_movement !== undefined) providerSettings.camera_movement = merged.camera_movement;
-  if (merged.negative_prompt !== undefined) providerSettings.negative_prompt = merged.negative_prompt;
-  // Additional provider fields that map_parameters expects
-  if (merged.motion_mode !== undefined) providerSettings.motion_mode = merged.motion_mode;
-  if (merged.style !== undefined) providerSettings.style = merged.style;
-  if (merged.template_id !== undefined) providerSettings.template_id = merged.template_id;
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) continue;
+    if (CANONICAL_CONFIG_KEYS.has(key)) continue;
+    providerSettings[key] = value;
+  }
+
+  // Build style block (generation-level + provider-specific)
+  const style: Record<string, any> = {};
+  if (merged.pacing !== undefined) {
+    style.pacing = merged.pacing;
+  }
+  if (Object.keys(providerSettings).length > 0) {
+    style[providerId] = providerSettings;
+  }
+
+  // Build duration constraints object (schema requires the field, but values are optional)
+  const duration: Record<string, any> = {};
+  if (durationTarget !== undefined) {
+    duration.target = durationTarget;
+  }
+
+  // Build constraints block
+  const constraints: Record<string, any> = {};
+  if (rating !== undefined) {
+    constraints.rating = rating;
+  }
 
   // Build the config object (matches GenerationNodeConfigSchema)
   const config: Record<string, any> = {
     generation_type: generationType,
     purpose: 'gap_fill',
-    style: {
-      pacing,
-      // Provider-specific settings nested under provider key
-      // This is the convention: style.<provider_id> = { provider-specific fields }
-      ...(Object.keys(providerSettings).length > 0 ? { [providerId]: providerSettings } : {}),
-    },
-    duration: {
-      target: durationTarget,
-    },
-    constraints: {
-      rating,
-    },
+    style,
+    duration,
+    constraints,
     strategy: 'once',
     fallback: {
       mode: 'skip',
@@ -184,7 +203,6 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   // so we pass empty object for presetParams to avoid double-merging
   const config = buildGenerationConfig(
     generationType,
-    {},  // presetParams already in extraParams
     { prompt: req.prompt, ...(req.extraParams || {}) },
     providerId
   );

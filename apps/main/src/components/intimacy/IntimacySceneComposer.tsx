@@ -475,6 +475,7 @@ export function IntimacySceneComposer({
                 showSettings={showGenerationSettings}
                 onToggleSettings={() => setShowGenerationSettings(v => !v)}
                 presetId={undefined}
+                operationType={undefined}
               />
             </div>
 
