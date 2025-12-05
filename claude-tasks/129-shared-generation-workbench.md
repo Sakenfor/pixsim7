@@ -1,4 +1,4 @@
-## Task 129 – Extract Shared Generation Workbench
+## Task 129 – Extract Shared Generation Workbench ✅
 
 ### Goal
 Refactor the Control Center’s Quick Generate UI into a reusable “generation workbench” component/hooks so other surfaces (Intimacy Composer, dev tools, future editors) can embed the same experience without duplicating logic.
@@ -29,3 +29,25 @@ Refactor the Control Center’s Quick Generate UI into a reusable “generation 
 ### Out of scope
 - Changes to backend APIs.
 - Major UX redesigns; this task focuses on reuse/composability.
+
+---
+
+### Implementation Summary
+
+**Completed 2025-12-05**
+
+Created the following files:
+- `apps/main/src/components/generation/GenerationWorkbench.tsx` - Main workbench component with render props
+- `apps/main/src/hooks/useGenerationWorkbench.ts` - Shared settings initialization hook
+- `apps/main/src/components/generation/README.md` - Documentation
+- `apps/main/src/components/generation/index.ts` - Exports
+
+Updated:
+- `apps/main/src/components/control/QuickGenerateModule.tsx` - Now wraps GenerationWorkbench
+- `apps/main/src/components/intimacy/IntimacySceneComposer.tsx` - Uses useGenerationWorkbench hook
+
+**Key design decisions:**
+1. Used render props pattern for maximum flexibility in content customization
+2. Created separate hook (`useGenerationWorkbench`) to handle settings initialization/sync
+3. QuickGenerateModule keeps operation-specific layout logic but delegates common UI to workbench
+4. IntimacySceneComposer uses only the hook (not full workbench) since it has custom generation flow
