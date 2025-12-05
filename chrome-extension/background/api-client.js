@@ -61,13 +61,17 @@ async function backendRequest(endpoint, options = {}) {
  * Uses the sync-credits endpoint so that Pixverse session errors
  * (e.g. "logged in elsewhere") flow through the backend's session
  * manager and auto-reauth logic before we export cookies.
+ *
+ * @param {number} accountId - Account ID to sync
+ * @param {Object} options - Options
+ * @param {boolean} options.force - Skip TTL check and force sync (e.g., on login)
  */
-async function ensureAccountSessionHealth(accountId) {
+async function ensureAccountSessionHealth(accountId, { force = false } = {}) {
   if (!accountId) return;
 
   const now = Date.now();
   const last = lastAccountHealthCheck[accountId];
-  if (last && (now - last) < ACCOUNT_HEALTH_CHECK_TTL_MS) {
+  if (!force && last && (now - last) < ACCOUNT_HEALTH_CHECK_TTL_MS) {
     return;
   }
 

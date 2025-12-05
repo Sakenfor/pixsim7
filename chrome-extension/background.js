@@ -494,9 +494,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Best-effort: refresh credits for both old and new accounts
         // Old account: capture latest credit state before switching away
         // New account: ensure session health and get fresh credits
-        const refreshPromises = [ensureAccountSessionHealth(accountId)];
+        // Use force: true on login to bypass TTL and get fresh data
+        const refreshPromises = [ensureAccountSessionHealth(accountId, { force: true })];
         if (oldAccountId) {
-          refreshPromises.push(ensureAccountSessionHealth(oldAccountId));
+          refreshPromises.push(ensureAccountSessionHealth(oldAccountId, { force: true }));
         }
         await Promise.all(refreshPromises);
 
@@ -650,13 +651,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // Sync credits for an account (best-effort, respects TTL)
+  // Sync credits for an account (best-effort, respects TTL unless force=true)
   if (message.action === 'syncAccountCredits') {
     (async () => {
       try {
-        const { accountId } = message;
+        const { accountId, force } = message;
         if (!accountId) throw new Error('accountId is required');
-        await ensureAccountSessionHealth(accountId);
+        await ensureAccountSessionHealth(accountId, { force: !!force });
         sendResponse({ success: true });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
