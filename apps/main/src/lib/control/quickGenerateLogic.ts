@@ -104,6 +104,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         finalPrompt: trimmedPrompt,
       };
     }
+
+    if (!trimmedPrompt) {
+      return {
+        error: 'Please enter a prompt describing how to transform the image.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
   }
 
   if (operationType === 'image_to_video') {
@@ -143,6 +150,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
       return {
         error: 'No image selected. Click "Image to Video" on a gallery image, or paste an image URL in Settings.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
+
+    if (!trimmedPrompt) {
+      return {
+        error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
       };
     }
@@ -242,4 +256,3 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     finalPrompt: trimmedPrompt,
   };
 }
-

@@ -638,6 +638,19 @@ class GenerationCreationService:
         def get_field(field_name: str) -> Any:
             return gen_config.get(field_name) or params.get(field_name)
 
+        # Prompt requirement for most content-generating operations
+        if operation_type in {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+            OperationType.TEXT_TO_VIDEO,
+            OperationType.IMAGE_TO_VIDEO,
+        }:
+            prompt = gen_config.get("prompt") or params.get("prompt")
+            if not prompt or not str(prompt).strip():
+                raise InvalidOperationError(
+                    f"{operation_type.value} operation requires a non-empty 'prompt'"
+                )
+
         # IMAGE_TO_VIDEO requires image_url
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             if not has_field("image_url"):
