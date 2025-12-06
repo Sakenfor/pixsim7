@@ -754,7 +754,7 @@ Future validation features:
 
 **Files**:
 - `packages/game/engine/src/npcs/brain.ts`
-- `docs/NPC_PERSONA_ARCHITECTURE.md`
+- `docs/architecture/subsystems/npc-architecture.md`
 
 **Integration**: `buildNpcBrainState()` includes mood computation, can optionally call preview API
 
@@ -911,7 +911,7 @@ Test scenarios:
 ## See Also
 
 - [RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md) - Relationship mechanics and session data
-- [NPC_PERSONA_ARCHITECTURE.md](./NPC_PERSONA_ARCHITECTURE.md) - NPC personality and brain state
+- [NPC Architecture](./architecture/subsystems/npc-architecture.md) - NPC personality and brain state
 - [APP_MAP.md](./APP_MAP.md) - System architecture overview
 - Task 07: [07-relationship-preview-api-and-metrics.md](../claude-tasks/07-relationship-preview-api-and-metrics.md) - Relationship metrics implementation
 - Task 08: [08-social-metrics-and-npc-systems.md](../claude-tasks/08-social-metrics-and-npc-systems.md) - Social metrics implementation (this system)

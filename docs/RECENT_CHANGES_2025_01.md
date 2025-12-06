@@ -291,8 +291,8 @@ Module initialization is now hot-reload safe:
 
 ## Related Documentation
 
-- `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` - Route plugin system architecture
-- `docs/PLUGIN_SYSTEM_ARCHITECTURE.md` - Frontend plugin system
+- `docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` - Route plugin system architecture (archived)
+- `docs/systems/plugins/PLUGIN_SYSTEM.md` - Frontend plugin system
 - `pixsim7/backend/main/api/v1/websocket.py` - WebSocket endpoints
 - `pixsim7/backend/main/api/v1/logs.py` - Logging API
 

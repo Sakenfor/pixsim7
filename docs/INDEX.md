@@ -31,8 +31,12 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 ### Architecture & Design
 - [Architecture](../ARCHITECTURE.md) - System architecture overview
 - [Architecture Diagrams](../ARCHITECTURE_DIAGRAMS.md) - Visual architecture diagrams
-- [Architecture Simplification Plan](../ARCHITECTURE_SIMPLIFICATION_PLAN.md)
+- [Architecture Documentation Index](architecture/README.md) - Organized architecture docs
 - [Extension Architecture](EXTENSION_ARCHITECTURE.md) - Plugin/extension design
+- [UI Architecture](architecture/subsystems/ui-architecture.md) - Editable UI system
+- [Launcher Architecture](architecture/subsystems/launcher-architecture.md) - Application launcher
+- [NPC Architecture](architecture/subsystems/npc-architecture.md) - NPC persona system
+- [ADR: Gizmo Architecture](ADR-GIZMO-ARCHITECTURE.md) - Gizmo system ADR
 
 ### Plugin System
 - [Plugin System](systems/plugins/PLUGIN_SYSTEM.md) - Main plugin guide
@@ -68,7 +72,6 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 - [World Sessions Issues](../WORLD_SESSIONS_ISSUES.md)
 - [Turn-Based World Mode](TURN_BASED_WORLD_MODE.md)
 - [Simulation Automation](SIMULATION_AUTOMATION.md)
-- [NPC Persona Architecture](NPC_PERSONA_ARCHITECTURE.md)
 - [NPC Dialogue Enhancements](NPC_DIALOGUE_ENHANCEMENTS_STATUS.md)
 - [NPC Response Video Integration](NPC_RESPONSE_VIDEO_INTEGRATION.md)
 - [NPC Interactive Zones Design](NPC_INTERACTIVE_ZONES_DESIGN.md)
@@ -77,7 +80,6 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 ### UI & Components
 - [Components Guide](frontend/COMPONENTS.md)
 - [Frontend Component Guide](FRONTEND_COMPONENT_GUIDE.md)
-- [Editable UI Architecture](EDITABLE_UI_ARCHITECTURE.md)
 - [HUD Layout Designer](../HUD_LAYOUT_DESIGNER.md)
 - [Panel Consolidation Analysis](PANEL_CONSOLIDATION_ANALYSIS.md)
 - [Panel Organization Audit](PANEL_ORGANIZATION_AUDIT.md)
@@ -136,7 +138,6 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 ## 📦 Specific Systems
 
 ### Launcher
-- [Launcher Architecture](LAUNCHER_ARCHITECTURE.md)
 - [Launcher README](../launcher/README.md)
 - [Launcher GUI Integration](../launcher/gui/INTEGRATION_GUIDE.md)
 

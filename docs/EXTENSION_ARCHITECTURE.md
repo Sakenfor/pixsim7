@@ -49,7 +49,7 @@ Later sections go into detail for each.
 
 - **Manifests:** `pixsim7/backend/main/routes/<feature>/manifest.py`
 - **Manifest type:** `PluginManifest(kind="route", ...)`
-- **Discovery:** Auto‑loaded by the plugin manager during startup (see `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`).
+- **Discovery:** Auto‑loaded by the plugin manager during startup (see `docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`).
 
 Typical responsibilities:
 
@@ -115,7 +115,7 @@ You need to intercept or augment behavior across many requests/events, not just 
 
 **Purpose:** Allow safe, user‑installable UI extensions that cannot corrupt game state.
 
-Core pieces (see `docs/PLUGIN_SYSTEM_ARCHITECTURE.md`):
+Core pieces (see `docs/systems/plugins/PLUGIN_SYSTEM.md`):
 
 - `apps/main/src/lib/plugins/PluginManager.ts` – lifecycle, sandbox, permissions.
 - `apps/main/src/lib/plugins/types.ts` – manifest & API types.
@@ -242,8 +242,8 @@ If a proposed change doesn’t fit cleanly into one of the categories above, it 
 ## 8. Related Documentation
 
 - `ARCHITECTURE.md` – overall system architecture and services.
-- `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend plugin auto‑discovery and manifests.
-- `docs/PLUGIN_SYSTEM_ARCHITECTURE.md` – frontend UI plugin system design.
+- `docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend plugin auto‑discovery and manifests (archived).
+- `docs/systems/plugins/PLUGIN_SYSTEM.md` – frontend UI plugin system design.
 - `GRAPH_RENDERER_PLUGINS.md` – graph node renderer plugin architecture.
 - `GAMEPLAY_SYSTEMS.md` – gameplay systems and JSON conventions for session/world state.
 - `docs/APP_MAP.md` – app map, routes, and subsystem entrypoints.

@@ -334,7 +334,7 @@ GET /api/v1/game/dialogue/llm/cache/stats
 
 - `NARRATIVE_ENGINE_USAGE.md` - Prompt program system
 - `NPC_INTEGRATION_SUMMARY.md` - NPC system overview
-- `NPC_PERSONA_ARCHITECTURE.md` - Personality system
+- `architecture/subsystems/npc-architecture.md` - Personality system
 - `NPC_RESPONSE_USAGE.md` - Response graph system
 - `NPC_RESPONSE_VIDEO_INTEGRATION.md` - Video generation
 
