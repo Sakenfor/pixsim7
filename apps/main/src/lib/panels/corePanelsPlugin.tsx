@@ -23,28 +23,16 @@ import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';
 import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
 
-// Game iframe panel (defined inline since it's simple)
-import { useRef, useEffect } from 'react';
-import { previewBridge } from '../preview-bridge';
-
-function GameIframePanel() {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const url = import.meta.env.VITE_GAME_URL || 'http://localhost:5174';
-
-  useEffect(() => {
-    if (iframeRef.current) {
-      previewBridge.setIframe(iframeRef.current);
-    }
-  }, []);
-
+// Archived game iframe panel – now a simple placeholder
+function ArchivedGamePanel() {
   return (
-    <div className="w-full h-full">
-      <iframe
-        ref={iframeRef}
-        src={url}
-        className="w-full h-full border-0"
-        title="Game Frontend"
-      />
+    <div className="w-full h-full flex items-center justify-center px-4 text-sm text-neutral-600 dark:text-neutral-300 text-center">
+      <div>
+        <div className="font-semibold mb-1">Game panel (archived)</div>
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          The legacy game iframe frontend has been archived. Use the Game 2D view and workspace tools instead.
+        </div>
+      </div>
     </div>
   );
 }
@@ -115,11 +103,11 @@ export const corePanelsPlugin: PanelPlugin = {
     {
       id: 'game',
       title: 'Game',
-      component: GameIframePanel,
+      component: ArchivedGamePanel,
       category: 'game',
       tags: ['game', 'preview', 'play'],
       icon: '🎮',
-      description: 'Game preview and testing',
+      description: 'Legacy game iframe frontend (archived)',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

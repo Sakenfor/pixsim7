@@ -26,7 +26,8 @@ import { validateConnection, getValidationMessage } from '@/modules/scene-builde
 import { NodePalette, type NodeType } from '../nodes/NodePalette';
 import { previewBridge } from '@/lib/preview-bridge';
 import { ValidationPanel } from '../panels/tools/ValidationPanel';
-import { WorldContextSelector } from './_archive/WorldContextSelector';
+import { EdgeEffectsPanel } from '../panels/tools/EdgeEffectsPanel';
+import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
 import { GraphTemplatePalette } from '../graph/GraphTemplatePalette';
 import { TemplateWizardPalette } from '../graph/TemplateWizardPalette';
@@ -41,6 +42,12 @@ import { graphClipboard } from '@/lib/graph/clipboard';
 const defaultEdgeOptions = {
   type: 'smoothstep' as const,
   animated: false,
+};
+
+// Stable node type registry to satisfy React Flow error #002
+const nodeTypes: NodeTypes = {
+  scene: SceneNode,
+  group: NodeGroup,
 };
 
 export function GraphPanel() {
@@ -72,15 +79,6 @@ export function GraphPanel() {
   const [showWizardPalette, setShowWizardPalette] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
-
-  // Stable node type registry to satisfy React Flow error #002
-  const nodeTypes = useMemo<NodeTypes>(
-    () => ({
-      scene: SceneNode,
-      group: NodeGroup,
-    }),
-    []
-  );
 
   // Convert current scene to React Flow format (memoized)
   const flowNodes = useMemo(() => toFlowNodes(currentScene), [currentScene]);
@@ -792,6 +790,7 @@ export function GraphPanel() {
         </Button>
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <ValidationPanel />
+        <EdgeEffectsPanel />
         <div className="border-l border-neutral-300 dark:border-neutral-600 h-6 mx-1" />
         <Button size="sm" variant="secondary" onClick={handleExportFile} disabled={!currentScene}>
           ↓ Export
@@ -838,7 +837,7 @@ export function GraphPanel() {
         )}
 
         {/* Canvas */}
-        <div className="flex-1" ref={reactFlowWrapper}>
+        <div className="flex-1 h-full min-h-0" ref={reactFlowWrapper}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -853,6 +852,7 @@ export function GraphPanel() {
             fitView
             minZoom={0.1}
             maxZoom={4}
+            className="w-full h-full"
           >
           <Background />
           <Controls />

@@ -22,28 +22,29 @@ export function WorldContextSelector() {
 
   // Load worlds on mount
   useEffect(() => {
-    loadWorlds();
+    void loadWorlds();
   }, []);
 
   // Load locations when world changes
   useEffect(() => {
     if (worldId !== null) {
-      loadLocations();
+      void loadLocations();
     } else {
       setLocations([]);
       setLocationId(null);
     }
-  }, [worldId]);
+  }, [worldId, setLocationId]);
 
   const loadWorlds = useCallback(async () => {
     setIsLoadingWorlds(true);
     try {
       const data = await listGameWorlds();
-      setWorlds(data);
+      const list = Array.isArray(data) ? data : [];
+      setWorlds(list);
 
       // Auto-select first world if none selected
-      if (data.length > 0 && worldId === null) {
-        setWorldId(data[0].id);
+      if (list.length > 0 && worldId === null) {
+        setWorldId(list[0].id);
       }
     } catch (error) {
       toast.error(`Failed to load worlds: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -59,11 +60,12 @@ export function WorldContextSelector() {
 
       // Filter by world_id if the location meta has it
       // For now, show all locations (can be enhanced with meta.world_id filter)
-      setLocations(data);
+      const list = Array.isArray(data) ? data : [];
+      setLocations(list);
 
       // Auto-select first location if none selected
-      if (data.length > 0 && locationId === null) {
-        setLocationId(data[0].id);
+      if (list.length > 0 && locationId === null) {
+        setLocationId(list[0].id);
       }
     } catch (error) {
       toast.error(
