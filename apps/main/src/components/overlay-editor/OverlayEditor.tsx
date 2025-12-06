@@ -7,13 +7,14 @@
 
 import React, { useState, useMemo } from 'react';
 import type { OverlayConfiguration, OverlayWidget } from '@/lib/overlay';
-import { Panel, Button } from '@pixsim7/shared.ui';
+import { Panel } from '@pixsim7/shared.ui';
 import { WidgetList } from './WidgetList';
 import { WidgetPropertyEditor } from './WidgetPropertyEditor';
 import { PresetSelector } from './PresetSelector';
 import { ValidationPanel } from './ValidationPanel';
 import { getWidget, createWidget } from '@/lib/editing-core/registry/widgetRegistry';
 import type { UnifiedWidgetConfig } from '@/lib/editing-core';
+import { SurfaceWorkbench } from '../surface-workbench';
 
 export interface OverlayEditorProps {
   /** Current overlay configuration */
@@ -179,62 +180,66 @@ export function OverlayEditor({
     setSelectedWidgetId(duplicatedWidget.id);
   };
 
-  return (
-    <div className="flex gap-4 h-full">
-      {/* Left sidebar: Widget list and presets */}
-      <div className="w-64 flex flex-col gap-4">
-        {/* Preset selector */}
-        {presets.length > 0 && (
-          <PresetSelector
-            presets={presets}
-            currentConfigId={configuration.id}
-            onSelect={onPresetSelect}
-          />
-        )}
-
-        {/* Widget list */}
-        <WidgetList
-          widgets={configuration.widgets}
-          selectedWidgetId={selectedWidgetId}
-          onSelectWidget={handleSelectWidget}
-          onRemoveWidget={handleRemoveWidget}
-          onReorderWidgets={handleReorderWidgets}
-          onAddWidget={handleAddWidget}
-          onDuplicateWidget={handleDuplicateWidget}
-          availableWidgetTypes={availableWidgetTypes}
+  const sidebarContent = (
+    <div className="flex flex-col gap-4">
+      {presets.length > 0 && (
+        <PresetSelector
+          presets={presets}
+          currentConfigId={configuration.id}
+          onSelect={onPresetSelect}
         />
-
-        {/* Validation panel */}
-        <ValidationPanel
-          configuration={configuration}
-          onSelectWidget={handleSelectWidget}
-        />
-      </div>
-
-      {/* Center: Preview */}
-      {preview && (
-        <div className="flex-1 flex items-center justify-center bg-neutral-100 dark:bg-neutral-800 rounded-lg p-8">
-          <div className="max-w-md w-full">
-            {preview}
-          </div>
-        </div>
       )}
 
-      {/* Right sidebar: Widget properties */}
-      <div className="w-80">
-        {selectedWidget ? (
-          <WidgetPropertyEditor
-            widget={selectedWidget}
-            onUpdate={(updates) => handleUpdateWidget(selectedWidget.id, updates)}
-          />
-        ) : (
-          <Panel className="h-full flex items-center justify-center">
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Select a widget to edit its properties
-            </p>
-          </Panel>
-        )}
-      </div>
+      <WidgetList
+        widgets={configuration.widgets}
+        selectedWidgetId={selectedWidgetId}
+        onSelectWidget={handleSelectWidget}
+        onRemoveWidget={handleRemoveWidget}
+        onReorderWidgets={handleReorderWidgets}
+        onAddWidget={handleAddWidget}
+        onDuplicateWidget={handleDuplicateWidget}
+        availableWidgetTypes={availableWidgetTypes}
+      />
+
+      <ValidationPanel
+        configuration={configuration}
+        onSelectWidget={handleSelectWidget}
+      />
     </div>
+  );
+
+  const previewContent = preview ? (
+    <div className="flex-1 flex items-center justify-center bg-neutral-100 dark:bg-neutral-800 rounded-lg p-8">
+      <div className="max-w-md w-full">{preview}</div>
+    </div>
+  ) : (
+    <Panel className="flex items-center justify-center h-full">
+      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+        Provide a preview component to visualize widget changes.
+      </p>
+    </Panel>
+  );
+
+  const inspectorContent = selectedWidget ? (
+    <WidgetPropertyEditor
+      widget={selectedWidget}
+      onUpdate={(updates) => handleUpdateWidget(selectedWidget.id, updates)}
+    />
+  ) : (
+    <Panel className="h-full flex items-center justify-center">
+      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+        Select a widget to edit its properties
+      </p>
+    </Panel>
+  );
+
+  return (
+    <SurfaceWorkbench
+      title="Overlay Editor"
+      description="Configure overlay widgets, presets, and layout"
+      sidebar={sidebarContent}
+      preview={previewContent}
+      inspector={inspectorContent}
+    />
   );
 }
