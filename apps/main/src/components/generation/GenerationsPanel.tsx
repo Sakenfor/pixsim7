@@ -4,9 +4,10 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, and provides retry/open actions.
  */
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useGenerationsStore } from '@/stores/generationsStore';
-import { retryGeneration, cancelGeneration, listGenerations, getGeneration, type GenerationResponse } from '@/lib/api/generations';
+import { useRecentGenerations } from '@/hooks/useRecentGenerations';
+import { retryGeneration, cancelGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { Icons, ThemedIcon } from '@/lib/icons';
 import { getGenerationStatusDisplay } from '@/lib/generation/generationAssetMapping';
 
@@ -21,7 +22,9 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch recent generations (shared hook)
+  const { isLoading, refresh: handleRefresh } = useRecentGenerations({ limit: 200 });
 
   // Get generations Map (stable reference)
   const generationsMap = useGenerationsStore(state => state.generations);
@@ -31,42 +34,6 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     () => Array.from(generationsMap.values()),
     [generationsMap]
   );
-
-  // Fetch initial generations on mount
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchInitialGenerations = async () => {
-      try {
-        setIsLoading(true);
-        const response = await listGenerations({
-          limit: 200, // Get recent 200 generations
-          offset: 0
-        });
-
-        if (mounted) {
-          // Batch update - create new Map with all generations at once
-          useGenerationsStore.setState((state) => {
-            const newMap = new Map(state.generations);
-            response.generations.forEach(gen => newMap.set(gen.id, gen));
-            return { generations: newMap };
-          });
-          setIsLoading(false);
-        }
-      } catch (error) {
-        console.error('Failed to fetch initial generations:', error);
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchInitialGenerations();
-
-    return () => {
-      mounted = false;
-    };
-  }, []); // Empty deps - only run on mount
 
   // Get unique providers
   const providers = useMemo(() => {

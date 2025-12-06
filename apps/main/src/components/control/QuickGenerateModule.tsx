@@ -20,7 +20,6 @@ export function QuickGenerateModule() {
     providerId,
     presetId,
     generating,
-    recentPrompts,
     prompt,
     setProvider,
     setOperationType,
@@ -404,9 +403,6 @@ export function QuickGenerateModule() {
         // Error & status
         error={error}
         generationId={generationId}
-        // Recent prompts
-        recentPrompts={recentPrompts}
-        onRestorePrompt={setPrompt}
         // Render props
         renderHeader={renderHeader}
         renderContent={renderContent}

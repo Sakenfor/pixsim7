@@ -4,6 +4,8 @@ import { GenerationSettingsBar } from '../control/GenerationSettingsBar';
 import { GenerationStatusDisplay } from '../control/GenerationStatusDisplay';
 import { ThemedIcon } from '@/lib/icons';
 import type { ParamSpec } from '../control/DynamicParamForm';
+import { useGenerationsStore } from '@/stores/generationsStore';
+import type { GenerationResponse } from '@/lib/api/generations';
 
 /**
  * Context provided to render props for accessing workbench state.
@@ -15,6 +17,8 @@ export interface WorkbenchRenderContext {
   error: string | null;
   /** Current generation ID being tracked */
   generationId: number | null;
+  /** Hook into stored generation entries */
+  generations: Map<number, GenerationResponse>;
 }
 
 /**
@@ -25,7 +29,6 @@ export interface WorkbenchRenderContext {
  * - Generate button
  * - Error display
  * - Generation status tracking
- * - Optional recent prompts
  *
  * Callers can customize the layout through render props and toggles.
  */
@@ -78,17 +81,6 @@ export interface GenerationWorkbenchProps {
   error?: string | null;
   /** Generation ID to track status for */
   generationId?: number | null;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Recent Prompts (optional)
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /** List of recent prompts for quick restore */
-  recentPrompts?: string[];
-  /** Callback when a recent prompt is clicked */
-  onRestorePrompt?: (prompt: string) => void;
-  /** Hide the recent prompts section */
-  hideRecentPrompts?: boolean;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Visibility Toggles
@@ -191,11 +183,6 @@ export function GenerationWorkbench({
   error,
   generationId,
 
-  // Recent prompts
-  recentPrompts,
-  onRestorePrompt,
-  hideRecentPrompts = false,
-
   // Visibility toggles
   hideErrorDisplay = false,
   hideStatusDisplay = false,
@@ -210,10 +197,12 @@ export function GenerationWorkbench({
   className,
   compact = false,
 }: GenerationWorkbenchProps) {
+  const generationsStore = useGenerationsStore((state) => state.generations);
   const context: WorkbenchRenderContext = {
     generating,
     error: error ?? null,
     generationId: generationId ?? null,
+    generations: generationsStore,
   };
 
   const defaultButtonLabel = (
@@ -222,57 +211,60 @@ export function GenerationWorkbench({
       Go
     </span>
   );
+  const headerSlot = renderHeader?.(context);
 
   return (
     <div className={clsx('flex flex-col gap-3', className)}>
       {/* Header Row: Custom header + Settings bar + Generate button */}
       <div
         className={clsx(
-          'flex gap-1.5 items-center flex-shrink-0',
+          'flex flex-wrap gap-1.5 items-center',
           !compact && 'pb-2 border-b border-neutral-200 dark:border-neutral-700'
         )}
       >
         {/* Custom header content (operation selector, presets, etc.) */}
-        {renderHeader?.(context)}
-
-        <div className="flex-1" />
-
-        {/* Generation settings bar */}
-        <GenerationSettingsBar
-          providerId={providerId}
-          providers={providers}
-          paramSpecs={paramSpecs}
-          dynamicParams={dynamicParams}
-          onChangeParam={onChangeParam}
-          onChangeProvider={onChangeProvider}
-          generating={generating}
-          showSettings={showSettings}
-          onToggleSettings={onToggleSettings}
-          presetId={presetId}
-          operationType={operationType}
-        />
-
-        {/* Generate button */}
-        {!hideGenerateButton && (
-          <button
-            onClick={onGenerate}
-            disabled={generating || !canGenerate}
-            className={clsx(
-              'px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-all',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              generating || !canGenerate
-                ? 'bg-neutral-400'
-                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-            )}
-            title={generateButtonTitle ?? (generating ? 'Generating...' : 'Generate (Enter)')}
-          >
-            {generating ? (
-              <ThemedIcon name="loader" size={14} variant="default" className="animate-spin" />
-            ) : (
-              generateButtonLabel ?? defaultButtonLabel
-            )}
-          </button>
+        {headerSlot && (
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">{headerSlot}</div>
         )}
+
+        <div className="flex items-center gap-1.5 flex-wrap ml-auto w-full sm:w-auto justify-end">
+          {/* Generation settings bar */}
+          <GenerationSettingsBar
+            providerId={providerId}
+            providers={providers}
+            paramSpecs={paramSpecs}
+            dynamicParams={dynamicParams}
+            onChangeParam={onChangeParam}
+            onChangeProvider={onChangeProvider}
+            generating={generating}
+            showSettings={showSettings}
+            onToggleSettings={onToggleSettings}
+            presetId={presetId}
+            operationType={operationType}
+          />
+
+          {/* Generate button */}
+          {!hideGenerateButton && (
+            <button
+              onClick={onGenerate}
+              disabled={generating || !canGenerate}
+              className={clsx(
+                'px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-all',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                generating || !canGenerate
+                  ? 'bg-neutral-400'
+                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+              )}
+              title={generateButtonTitle ?? (generating ? 'Generating...' : 'Generate (Enter)')}
+            >
+              {generating ? (
+                <ThemedIcon name="loader" size={14} variant="default" className="animate-spin" />
+              ) : (
+                generateButtonLabel ?? defaultButtonLabel
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main content area */}
@@ -302,26 +294,6 @@ export function GenerationWorkbench({
 
       {/* Custom footer content */}
       {renderFooter?.(context)}
-
-      {/* Recent prompts */}
-      {!hideRecentPrompts && recentPrompts && recentPrompts.length > 0 && onRestorePrompt && (
-        <div className="flex-shrink-0 pt-2 border-t border-neutral-200 dark:border-neutral-700">
-          <div className="text-xs text-neutral-500 font-medium mb-2">Recent prompts:</div>
-          <div className="flex gap-1 flex-wrap">
-            {recentPrompts.slice(0, 5).map((p, i) => (
-              <button
-                key={i}
-                onClick={() => onRestorePrompt(p)}
-                disabled={generating}
-                className="text-xs px-2 py-1 rounded bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 truncate max-w-xs disabled:opacity-50"
-                title={p}
-              >
-                {p.length > 50 ? `${p.slice(0, 50)}...` : p}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
