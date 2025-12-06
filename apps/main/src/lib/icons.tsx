@@ -123,6 +123,7 @@ export const Icons = {
   upload: Upload,
   download: Download,
   refresh: RefreshCw,
+  refreshCw: RefreshCw,  // Alias for consistency
   cut: Scissors,
   clipboard: Clipboard,
   link: Link2,
@@ -176,6 +177,7 @@ export const Icons = {
   error: XCircle,
   warning: AlertCircle,
   alertCircle: AlertCircle,
+  'alert-circle': AlertCircle,  // Kebab-case alias
   alertTriangle: AlertTriangle,
   info: Info,
 

@@ -21,6 +21,7 @@ import { NpcBrainLab } from '../../routes/NpcBrainLab';
 import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
 import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';
+import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
 
 // Game iframe panel (defined inline since it's simple)
 import { useRef, useEffect } from 'react';
@@ -218,6 +219,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['world', 'assets', 'visual', 'binding', 'roles', 'portraits'],
       icon: '🖼️',
       description: 'Bind gallery assets to world visual roles (portraits, POV, backgrounds)',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'generations',
+      title: 'Generations',
+      component: GenerationsPanel,
+      category: 'workspace',
+      tags: ['generations', 'jobs', 'status', 'monitoring', 'tracking'],
+      icon: '⚡',
+      description: 'Track and manage generation jobs',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
