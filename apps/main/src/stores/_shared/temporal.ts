@@ -46,13 +46,6 @@ export interface TemporalConfig<T> {
   equality?: (pastState: Partial<T>, currentState: Partial<T>) => boolean;
 
   /**
-   * Diff algorithm to use:
-   * - 'patch': Store only differences (minimal storage, recommended)
-   * - 'snapshot': Store full state snapshots (more memory, simpler)
-   */
-  diff?: 'patch' | 'snapshot';
-
-  /**
    * Whether to handle set operations manually
    * If true, only explicit handleSet calls create history entries
    */
@@ -100,8 +93,6 @@ export function createTemporalStore<T>(
     limit: config?.limit ?? 50,
     partialize: config?.partialize,
     equality: config?.equality ?? ((a, b) => a === b),
-    // Use patch-based diffing for minimal memory usage
-    diff: config?.diff ?? 'patch',
   });
 }
 

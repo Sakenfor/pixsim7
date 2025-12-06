@@ -83,7 +83,11 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
 
     // Run collision detection after render
     const checkCollisions = () => {
-      const containerRect = containerRef.current!.getBoundingClientRect();
+      const containerEl = containerRef.current;
+      if (!containerEl) {
+        return;
+      }
+      const containerRect = containerEl.getBoundingClientRect();
       const result = handleCollisions(config.widgets, containerRect, widgetRefs.current);
 
       if (result.hasCollisions) {

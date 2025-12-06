@@ -115,6 +115,15 @@ export function useAssetsController() {
     closeFloatingPanel('gallery');
   }, [exitSelectionMode, closeFloatingPanel]);
 
+  // Wrap closeViewer to handle blob cleanup
+  const closeViewer = useCallback(async () => {
+    await closeViewerInternal();
+    if (viewerSrc && viewerSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(viewerSrc);
+    }
+    setViewerSrc(null);
+  }, [closeViewerInternal, viewerSrc]);
+
   // Handle asset deletion
   const handleDeleteAsset = useCallback(async (asset: AssetSummary) => {
     const confirmed = window.confirm(`Delete ${asset.media_type} asset "${asset.id}"? This cannot be undone.`);
@@ -153,15 +162,6 @@ export function useAssetsController() {
     },
     [reset],
   );
-
-  // Wrap closeViewer to handle blob cleanup
-  const closeViewer = useCallback(async () => {
-    await closeViewerInternal();
-    if (viewerSrc && viewerSrc.startsWith('blob:')) {
-      URL.revokeObjectURL(viewerSrc);
-    }
-    setViewerSrc(null);
-  }, [closeViewerInternal, viewerSrc]);
 
   // Load viewer media source (supports backend-relative URLs with auth)
   useEffect(() => {

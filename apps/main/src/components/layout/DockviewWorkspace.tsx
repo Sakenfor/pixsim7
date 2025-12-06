@@ -32,6 +32,14 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   );
 }
 
+function getPanelTitle(id: PanelId): string {
+  const def = panelRegistry.get(id);
+  if (def?.title) {
+    return def.title;
+  }
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
 // Helper to convert tree layout to Dockview panels
 function applyLayoutToDockview(
   api: DockviewReadyEvent['api'],
@@ -144,7 +152,7 @@ export function DockviewWorkspace() {
       id: 'gallery-panel',
       component: 'panel',
       params: { panelId: 'gallery' as PanelId },
-      title: PANEL_TITLES.gallery,
+      title: getPanelTitle('gallery'),
       position: { direction: 'left' },
     });
 
@@ -152,7 +160,7 @@ export function DockviewWorkspace() {
       id: 'health-panel',
       component: 'panel',
       params: { panelId: 'health' as PanelId },
-      title: PANEL_TITLES.health,
+      title: getPanelTitle('health'),
       position: { direction: 'below', referencePanel: 'gallery-panel' },
     });
 
@@ -160,7 +168,7 @@ export function DockviewWorkspace() {
       id: 'graph-panel',
       component: 'panel',
       params: { panelId: 'graph' as PanelId },
-      title: PANEL_TITLES.graph,
+      title: getPanelTitle('graph'),
       position: { direction: 'right' },
     });
 
@@ -168,7 +176,7 @@ export function DockviewWorkspace() {
       id: 'inspector-panel',
       component: 'panel',
       params: { panelId: 'inspector' as PanelId },
-      title: PANEL_TITLES.inspector,
+      title: getPanelTitle('inspector'),
       position: { direction: 'right', referencePanel: 'graph-panel' },
     });
 
@@ -176,7 +184,7 @@ export function DockviewWorkspace() {
       id: 'game-panel',
       component: 'panel',
       params: { panelId: 'game' as PanelId },
-      title: PANEL_TITLES.game,
+      title: getPanelTitle('game'),
       position: { direction: 'below', referencePanel: 'inspector-panel' },
     });
   };
