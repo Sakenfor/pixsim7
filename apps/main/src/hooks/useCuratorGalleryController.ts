@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useAssets, type AssetFilters, type AssetSummary } from './useAssets';
+import { useSelection } from './useSelection';
 
 export interface CuratorFilters extends AssetFilters {}
 
@@ -47,7 +48,9 @@ export function useCuratorGalleryController(): CuratorGalleryController {
 
   const { items, loadMore, loading, error, hasMore } = useAssets({ filters });
 
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  // Selection state
+  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, selectAll: selectAllBase } = useSelection();
+
   const [viewMode, setViewMode] = useState<CuratorViewMode>('grid');
   const [collections, setCollections] = useState<Map<string, Set<string>>>(new Map());
 
@@ -59,26 +62,10 @@ export function useCuratorGalleryController(): CuratorGalleryController {
     setFiltersState(prev => updater(prev));
   }, []);
 
-  const toggleAssetSelection = useCallback((assetId: string | number) => {
-    const idStr = String(assetId);
-    setSelectedAssetIds(prev => {
-      const next = new Set(prev);
-      if (next.has(idStr)) {
-        next.delete(idStr);
-      } else {
-        next.add(idStr);
-      }
-      return next;
-    });
-  }, []);
-
+  // Wrap selectAll to pass items
   const selectAll = useCallback(() => {
-    setSelectedAssetIds(new Set(items.map(a => String(a.id))));
-  }, [items]);
-
-  const clearSelection = useCallback(() => {
-    setSelectedAssetIds(new Set());
-  }, []);
+    selectAllBase(items);
+  }, [items, selectAllBase]);
 
   const addCollection = useCallback((name: string | null) => {
     if (!name || selectedAssetIds.size === 0) return;
@@ -87,8 +74,8 @@ export function useCuratorGalleryController(): CuratorGalleryController {
       next.set(name, new Set(selectedAssetIds));
       return next;
     });
-    setSelectedAssetIds(new Set());
-  }, [selectedAssetIds]);
+    clearSelection();
+  }, [selectedAssetIds, clearSelection]);
 
   return {
     assets: items,

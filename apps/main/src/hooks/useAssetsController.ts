@@ -7,6 +7,10 @@ import { useMediaGenerationActions } from './useMediaGenerationActions';
 import { deleteAsset, uploadAssetToProvider } from '../lib/api/assets';
 import { BACKEND_BASE } from '../lib/api/client';
 import { extractErrorMessage } from '../lib/api/errorHandling';
+import { useFilterPersistence } from './useFilterPersistence';
+import { useSelection } from './useSelection';
+import { useViewer } from './useViewer';
+import { createAssetActions } from '../lib/assets/assetActions';
 
 const SESSION_KEY = 'assets_filters';
 
@@ -34,27 +38,18 @@ export function useAssetsController() {
     queueAutoGenerate,
   } = useMediaGenerationActions();
 
-  // Read initial filters from URL + sessionStorage
-  const params = new URLSearchParams(window.location.search);
-  const persisted = (() => {
-    try {
-      return JSON.parse(sessionStorage.getItem(SESSION_KEY) || '{}');
-    } catch {
-      return {};
-    }
-  })();
-
-  const initialFilters: AssetFilters = {
-    q: params.get('q') || persisted.q || '',
-    tag: params.get('tag') || persisted.tag || undefined,
-    provider_id: params.get('provider_id') || persisted.provider_id || undefined,
-    sort: (params.get('sort') as any) || persisted.sort || 'new',
-    media_type: (params.get('media_type') as any) || persisted.media_type || undefined,
-    provider_status: (params.get('provider_status') as any) || persisted.provider_status || undefined,
-  };
-
-  // Filters state
-  const [filters, setFilters] = useState<AssetFilters>(initialFilters);
+  // Filter persistence
+  const { filters, setFilters } = useFilterPersistence({
+    sessionKey: SESSION_KEY,
+    initialFilters: {
+      q: '',
+      tag: undefined,
+      provider_id: undefined,
+      sort: 'new' as const,
+      media_type: undefined,
+      provider_status: undefined,
+    },
+  });
 
   // Scope state (All, Favorites, Mine, Recent)
   const [scope, setScope] = useState<string>(() => {
@@ -66,38 +61,20 @@ export function useAssetsController() {
   const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
 
   // Viewer state
-  const [viewerAsset, setViewerAsset] = useState<AssetSummary | null>(null);
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);
+  const {
+    viewerItem: viewerAsset,
+    openViewer: openInViewer,
+    closeViewer: closeViewerInternal,
+    navigateViewer
+  } = useViewer({ items });
 
   // Detail panel state
   const [detailAssetId, setDetailAssetId] = useState<number | null>(null);
   const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
-  // Gallery tools: multi-select state
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
-
-  // Update URL and sessionStorage when filters change
-  const updateURL = useCallback((nextFilters: AssetFilters) => {
-    const p = new URLSearchParams();
-    if (nextFilters.q) p.set('q', nextFilters.q);
-    if (nextFilters.tag) p.set('tag', nextFilters.tag);
-    if (nextFilters.provider_id) p.set('provider_id', nextFilters.provider_id);
-    if (nextFilters.sort) p.set('sort', nextFilters.sort);
-    if (nextFilters.media_type) p.set('media_type', nextFilters.media_type);
-    if (nextFilters.provider_status) p.set('provider_status', nextFilters.provider_status);
-    const newUrl = `${window.location.pathname}?${p.toString()}`;
-    window.history.replaceState({}, '', newUrl);
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(nextFilters));
-  }, []);
-
-  // Set filters and persist to URL + sessionStorage
-  const setAndPersistFilters = useCallback((partial: Partial<AssetFilters>) => {
-    setFilters((prev) => {
-      const next = { ...prev, ...partial };
-      updateURL(next);
-      return next;
-    });
-  }, [updateURL]);
+  // Multi-select state
+  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, isSelected } = useSelection();
 
   // Sync scope to URL when it changes
   useEffect(() => {
@@ -144,21 +121,20 @@ export function useAssetsController() {
     if (!confirmed) return;
     try {
       await deleteAsset(asset.id);
-      setSelectedAssetIds((prev) => {
-        const next = new Set(prev);
-        next.delete(String(asset.id));
-        return next;
-      });
+      // Remove from selection if selected
+      if (isSelected(asset.id)) {
+        toggleAssetSelection(String(asset.id));
+      }
+      // Close viewer if viewing this asset
       if (viewerAsset?.id === asset.id) {
-        setViewerAsset(null);
-        setViewerSrc(null);
+        await closeViewer();
       }
       reset();
     } catch (err) {
       console.error('Failed to delete asset:', err);
       alert(extractErrorMessage(err, 'Failed to delete asset'));
     }
-  }, [viewerAsset, reset]);
+  }, [viewerAsset, reset, isSelected, toggleAssetSelection, closeViewer]);
 
   // Handle re-upload for local or multi-provider assets (provider chosen by caller)
   const reuploadAsset = useCallback(
@@ -178,27 +154,14 @@ export function useAssetsController() {
     [reset],
   );
 
-  // Viewer management
-  const openInViewer = useCallback((asset: AssetSummary) => {
-    setViewerAsset(asset);
-  }, []);
-
-  const closeViewer = useCallback(() => {
-    setViewerAsset(null);
+  // Wrap closeViewer to handle blob cleanup
+  const closeViewer = useCallback(async () => {
+    await closeViewerInternal();
     if (viewerSrc && viewerSrc.startsWith('blob:')) {
       URL.revokeObjectURL(viewerSrc);
     }
     setViewerSrc(null);
-  }, [viewerSrc]);
-
-  const navigateViewer = useCallback((direction: 'prev' | 'next') => {
-    if (!viewerAsset) return;
-    const index = items.findIndex((a) => a.id === viewerAsset.id);
-    if (index === -1) return;
-    const nextIndex = direction === 'prev' ? index - 1 : index + 1;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-    setViewerAsset(items[nextIndex]);
-  }, [viewerAsset, items]);
+  }, [closeViewerInternal, viewerSrc]);
 
   // Load viewer media source (supports backend-relative URLs with auth)
   useEffect(() => {
@@ -269,36 +232,16 @@ export function useAssetsController() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewerAsset]);
 
-  // Gallery tools: toggle asset selection
-  const toggleAssetSelection = useCallback((assetId: string) => {
-    setSelectedAssetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(assetId)) {
-        next.delete(assetId);
-      } else {
-        next.add(assetId);
-      }
-      return next;
-    });
-  }, []);
-
-  // Clear all selected assets
-  const clearSelection = useCallback(() => {
-    setSelectedAssetIds(new Set());
-  }, []);
-
-  // Get per-asset actions
-  const getAssetActions = useCallback((asset: AssetSummary) => {
-    return {
-      onOpenDetails: (id: number) => setDetailAssetId(id),
-      onShowMetadata: (id: number) => setDetailAssetId(id),
-      onImageToVideo: () => queueImageToVideo(asset),
-      onVideoExtend: () => queueVideoExtend(asset),
-      onAddToTransition: () => queueAddToTransition(asset),
-      onAddToGenerate: () => queueAutoGenerate(asset),
-      onDelete: () => handleDeleteAsset(asset),
-    };
-  }, [
+  // Asset action handlers
+  const actionHandlers = useMemo(() => ({
+    onOpenDetails: setDetailAssetId,
+    onShowMetadata: setDetailAssetId,
+    onImageToVideo: queueImageToVideo,
+    onVideoExtend: queueVideoExtend,
+    onAddToTransition: queueAddToTransition,
+    onAddToGenerate: queueAutoGenerate,
+    onDelete: handleDeleteAsset,
+  }), [
     queueImageToVideo,
     queueVideoExtend,
     queueAddToTransition,
@@ -306,10 +249,15 @@ export function useAssetsController() {
     handleDeleteAsset,
   ]);
 
+  // Get per-asset actions
+  const getAssetActions = useCallback((asset: AssetSummary) => {
+    return createAssetActions(asset, actionHandlers);
+  }, [actionHandlers]);
+
   return {
     // Filters
     filters,
-    setFilters: setAndPersistFilters,
+    setFilters,
 
     // Scope
     scope,

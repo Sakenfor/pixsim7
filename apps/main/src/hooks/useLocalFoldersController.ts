@@ -14,6 +14,7 @@ import {
   type LocalAsset,
 } from '../stores/localFoldersStore';
 import { usePersistentState } from './usePersistentState';
+import { useViewer } from './useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 
 const LOCAL_SOURCE: SourceInfo = {
@@ -55,9 +56,6 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Track blob URLs for cleanup when they're no longer needed
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
-
-  // Viewer state
-  const [viewerAsset, setViewerAsset] = useState<LocalAsset | null>(null);
 
   // Upload state (persisted provider)
   const [providerId, setProviderId] = usePersistentState<string | undefined>(
@@ -133,6 +131,11 @@ export function useLocalFoldersController(): LocalFoldersController {
       return assetDir === selectedRelPath;
     });
   }, [assetList, selectedFolderPath, viewMode]);
+
+  // Viewer items list (depends on view mode)
+  const viewerItems = useMemo(() => {
+    return viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
+  }, [viewMode, selectedFolderPath, filteredAssets, assetList]);
 
   // Load preview for an asset
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -213,33 +216,29 @@ export function useLocalFoldersController(): LocalFoldersController {
     };
   }, []);
 
-  // Open viewer
-  const openViewer = async (asset: LocalAsset) => {
-    // Ensure preview is loaded
+  // Viewer state with navigation
+  const {
+    viewerItem: viewerAsset,
+    openViewer: openViewerBase,
+    closeViewer,
+    navigateViewer: navigateViewerBase,
+  } = useViewer<LocalAsset>({
+    items: viewerItems,
+    getKey: (asset) => asset.key,
+    onOpen: loadPreview,
+  });
+
+  // Wrap openViewer to ensure preview is loaded
+  const openViewer = useCallback(async (asset: LocalAsset) => {
     await loadPreview(asset);
-    setViewerAsset(asset);
-  };
+    await openViewerBase(asset);
+  }, [loadPreview, openViewerBase]);
 
-  // Close viewer
-  const closeViewer = () => {
-    setViewerAsset(null);
-  };
-
-  // Navigate viewer (prev/next)
-  const navigateViewer = (direction: 'prev' | 'next') => {
-    if (!viewerAsset) return;
-    const sourceList = viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
-
-    const currentIndex = sourceList.findIndex(a => a.key === viewerAsset.key);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex >= 0 && newIndex < sourceList.length) {
-      const newAsset = sourceList[newIndex];
-      loadPreview(newAsset);
-      setViewerAsset(newAsset);
-    }
-  };
+  // Wrap navigateViewer to load preview
+  const navigateViewer = useCallback((direction: 'prev' | 'next') => {
+    navigateViewerBase(direction);
+    // Load preview after navigation (viewerAsset will be updated by hook)
+  }, [navigateViewerBase]);
 
   // Upload one asset
   const uploadOne = async (keyOrAsset: string | LocalAsset) => {

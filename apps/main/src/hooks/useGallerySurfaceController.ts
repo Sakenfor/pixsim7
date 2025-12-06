@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
 import { useMediaGenerationActions } from './useMediaGenerationActions';
+import { useSelection } from './useSelection';
+import { createAssetActions } from '../lib/assets/assetActions';
 
 export interface GallerySurfaceConfig {
   /**
@@ -72,47 +74,28 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
     queueAutoGenerate,
   } = useMediaGenerationActions();
 
-  // Optional: Selection state for multi-select
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
-
-  // Toggle asset selection
-  const toggleAssetSelection = useCallback((assetId: string) => {
-    if (!enableSelection) return;
-    setSelectedAssetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(assetId)) {
-        next.delete(assetId);
-      } else {
-        next.add(assetId);
-      }
-      return next;
-    });
-  }, [enableSelection]);
-
-  // Clear selection
-  const clearSelection = useCallback(() => {
-    setSelectedAssetIds(new Set());
-  }, []);
+  // Selection state
+  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection } = useSelection({
+    enableSelection,
+  });
 
   // Get selected assets
   const selectedAssets = useMemo(() => {
     return displayItems.filter((asset) => selectedAssetIds.has(String(asset.id)));
   }, [displayItems, selectedAssetIds]);
 
+  // Asset action handlers
+  const actionHandlers = useMemo(() => ({
+    onImageToVideo: queueImageToVideo,
+    onVideoExtend: queueVideoExtend,
+    onAddToTransition: queueAddToTransition,
+    onAddToGenerate: queueAutoGenerate,
+  }), [queueImageToVideo, queueVideoExtend, queueAddToTransition, queueAutoGenerate]);
+
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetSummary) => {
-    return {
-      onImageToVideo: () => queueImageToVideo(asset),
-      onVideoExtend: () => queueVideoExtend(asset),
-      onAddToTransition: () => queueAddToTransition(asset),
-      onAddToGenerate: () => queueAutoGenerate(asset),
-    };
-  }, [
-    queueImageToVideo,
-    queueVideoExtend,
-    queueAddToTransition,
-    queueAutoGenerate,
-  ]);
+    return createAssetActions(asset, actionHandlers);
+  }, [actionHandlers]);
 
   // Update filters
   const updateFilters = useCallback((partial: Partial<AssetFilters>) => {
