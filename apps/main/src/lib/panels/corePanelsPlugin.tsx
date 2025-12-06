@@ -23,6 +23,7 @@ import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';
 import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
 import { GameToolsPanel } from '@/components/panels/tools/GameToolsPanel';
+import { SurfaceWorkbenchPanel } from '@/components/panels/tools/SurfaceWorkbenchPanel';
 
 // Archived game iframe panel – now a simple placeholder
 function ArchivedGamePanel() {
@@ -242,6 +243,23 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['game', 'tools', 'catalog', 'world', 'interactions', 'widgets'],
       icon: '🛠️',
       description: 'Browse world tools, interactions, HUD widgets, and dev plugins',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'surface-workbench',
+      title: 'Surface Workbench',
+      component: SurfaceWorkbenchPanel,
+      category: 'tools',
+      tags: ['surfaces', 'hud', 'overlay', 'gizmo', 'editor'],
+      icon: '[]',
+      description: 'Inspect available surfaces (HUD, overlay, gizmo) for the active context',
+      contextLabel: (ctx) =>
+        ctx.scene.title
+          ? `Scene: ${ctx.scene.title}`
+          : ctx.world.id
+            ? `World #${ctx.world.id}`
+            : undefined,
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

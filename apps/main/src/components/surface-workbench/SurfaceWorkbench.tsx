@@ -32,6 +32,8 @@ export interface SurfaceWorkbenchProps {
   mainContent?: React.ReactNode;
   /** Optional custom className applied to the root panel */
   className?: string;
+  /** Hide the built-in header chrome when embedding inside another shell */
+  showHeader?: boolean;
 }
 
 const STATUS_STYLES: Record<StatusType, string> = {
@@ -61,19 +63,22 @@ export function SurfaceWorkbench({
   statusMessages,
   mainContent,
   className,
+  showHeader = true,
 }: SurfaceWorkbenchProps) {
   return (
     <Panel className={clsx('space-y-4 h-full', className)}>
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-200">{title}</h2>
-          {description && (
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-0.5">{description}</p>
-          )}
+      {showHeader && (
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-200">{title}</h2>
+            {description && (
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-0.5">{description}</p>
+            )}
+          </div>
+          {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
         </div>
-        {headerActions && <div className="flex items-center gap-2">{headerActions}</div>}
-      </div>
+      )}
 
       {/* Status messages */}
       {statusMessages?.map((message, idx) => (
