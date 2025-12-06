@@ -93,7 +93,7 @@ pixsim7/backend/main/
 
 docs/
   ├── BACKEND_PLUGIN_MIGRATION.md  ← NEW
-  └── PLUGIN_SYSTEM_ARCHITECTURE.md ← Frontend plugin docs
+  └── systems/plugins/PLUGIN_SYSTEM.md ← Frontend plugin docs
 ```
 
 ---
@@ -389,7 +389,7 @@ After adding new plugin:
 - `infrastructure/plugins/manager.py` - Plugin manager implementation
 
 **Related docs:**
-- `docs/PLUGIN_SYSTEM_ARCHITECTURE.md` - Frontend plugin architecture
+- `docs/systems/plugins/PLUGIN_SYSTEM.md` - Frontend plugin architecture
 - `docs/PLUGIN_DEVELOPER_GUIDE.md` - Frontend plugin API reference
 
 ---

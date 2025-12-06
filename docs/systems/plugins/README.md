@@ -62,7 +62,7 @@ Located in `docs/` root (domain-specific):
 - `CAPABILITY_PLUGIN_INTEGRATION.md` - Capability integration
 - `CONTROL_CENTER_PLUGIN_MIGRATION.md` - Control center migration
 - `NODE_PLUGIN_AUTO_LOADING.md` - Node auto-loading
-- `MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` - Middleware architecture
+- `docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` - Middleware architecture
 
 ### ADRs
 

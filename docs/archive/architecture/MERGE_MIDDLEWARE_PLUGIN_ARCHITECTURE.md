@@ -325,7 +325,7 @@ admin: User = Depends(get_current_admin_user)
 ## Related Documentation
 
 - [PROMPT_VERSIONING_SYSTEM.md](./PROMPT_VERSIONING_SYSTEM.md) - Prompt versioning implementation
-- [PLUGIN_SYSTEM_ARCHITECTURE.md](./PLUGIN_SYSTEM_ARCHITECTURE.md) - Plugin system design
+- [Plugin System Architecture](../plugins/PLUGIN_SYSTEM_ARCHITECTURE_OLD.md) - Plugin system design (archived)
 - [RECENT_CHANGES_2025_01.md](./RECENT_CHANGES_2025_01.md) - Latest system changes and fixes
 
 ---

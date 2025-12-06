@@ -288,4 +288,4 @@ The generation node integrates with the existing jobs/generation system:
 
 - [Dynamic Generation Foundation](./GENERATION_SYSTEM.md)
 - [Node Type System](./NODE_TYPE_SYSTEM.md)
-- [Plugin System](./PLUGIN_SYSTEM.md)
+- [Plugin System](../plugins/PLUGIN_SYSTEM.md)

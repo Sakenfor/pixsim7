@@ -333,7 +333,7 @@ For users who want to create plugins:
 2. **Read Docs**: `docs/PLUGIN_WORKSPACE.md` for API reference
 3. **Study Examples**: Check the default scaffold code
 4. **Experiment**: Create, install, test, iterate
-5. **Reference**: `docs/PLUGIN_SYSTEM.md` for deeper understanding
+5. **Reference**: `docs/systems/plugins/PLUGIN_SYSTEM.md` for deeper understanding
 
 ## ✨ Summary
 
