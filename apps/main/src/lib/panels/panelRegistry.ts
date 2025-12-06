@@ -49,6 +49,14 @@ export type PanelCategory =
   // Legacy/custom
   | 'custom';        // Custom panels from plugins
 
+/**
+ * Core editor role identifies panels as primary editing surfaces.
+ * - 'game-view': The canonical runtime/play viewport (Game2D)
+ * - 'flow-view': The canonical logic/flow editor (Scene Graph)
+ * - 'world-editor': The world/location editor (GameWorld)
+ */
+export type CoreEditorRole = 'game-view' | 'flow-view' | 'world-editor';
+
 export interface PanelDefinition {
   id: PanelId;
   title: string;
@@ -64,6 +72,17 @@ export interface PanelDefinition {
    * If undefined, no context label is shown.
    */
   contextLabel?: ContextLabelStrategy;
+
+  /**
+   * Identifies this panel as a core editor surface.
+   * Core editors are the primary editing surfaces in the workspace:
+   * - game-view: Runtime/play viewport (Game2D)
+   * - flow-view: Logic/flow editor (Scene Graph)
+   * - world-editor: World/location editor (GameWorld)
+   *
+   * Satellite panels (tools, inspectors) should not set this property.
+   */
+  coreEditorRole?: CoreEditorRole;
 
   // Visibility predicates
   showWhen?: (context: WorkspaceContext) => boolean;

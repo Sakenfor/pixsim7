@@ -1,6 +1,6 @@
 # Task: Core Editors & Workspace Modes (Game View + Flow View)
 
-**Status:** draft / not started  
+**Status:** completed  
 **Area:** Frontend – Workspace presets, editor identity, UX structure  
 **Related docs:**  
 - `claude-tasks/game-creator-journey/GAME_CREATOR_JOURNEY.md`  

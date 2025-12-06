@@ -77,6 +77,8 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['graph', 'nodes', 'flow'],
       icon: '🔀',
       description: 'Visual node-based editor',
+      // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
+      coreEditorRole: 'flow-view',
       contextLabel: (ctx) =>
         ctx.scene.title
           ? `Scene: ${ctx.scene.title}${ctx.world.id ? ` • World #${ctx.world.id}` : ''}`
@@ -116,7 +118,9 @@ export const corePanelsPlugin: PanelPlugin = {
       category: 'game',
       tags: ['game', 'preview', 'play'],
       icon: '🎮',
-      description: 'Legacy game iframe frontend (archived)',
+      description: 'Legacy game iframe frontend (archived). Use Game2D route for the core Game View.',
+      // Core Game View: The canonical runtime/play viewport (legacy - see Game2D route for active implementation)
+      coreEditorRole: 'game-view',
       contextLabel: 'session',
       supportsCompactMode: false,
       supportsMultipleInstances: false,

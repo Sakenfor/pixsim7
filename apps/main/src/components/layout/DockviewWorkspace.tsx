@@ -3,44 +3,84 @@ import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
 import 'dockview/dist/styles/dockview.css';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { panelRegistry, type ContextLabelStrategy } from '@/lib/panels/panelRegistry';
+import { panelRegistry, type ContextLabelStrategy, type CoreEditorRole } from '@/lib/panels/panelRegistry';
 import type { PanelHeaderCategory } from '@/components/panels/shared/PanelHeader';
 import { initializePanels } from '@/lib/panels/initializePanels';
 import { initializeWidgets } from '@/lib/widgets/initializeWidgets';
 import { PanelHeader } from '@/components/panels/shared/PanelHeader';
-import { useEditorContext, type EditorContext } from '@/lib/context/editorContext';
+import { useEditorContext, type EditorContext, type EditorMode } from '@/lib/context/editorContext';
+
+/**
+ * Get a human-readable mode label for display in panel headers.
+ */
+function getModeLabel(mode: EditorMode): string | null {
+  switch (mode) {
+    case 'play':
+      return 'Play';
+    case 'edit-flow':
+      return 'Edit Flow';
+    case 'layout':
+      return 'Layout';
+    case 'debug':
+      return 'Debug';
+    default:
+      return null;
+  }
+}
 
 /**
  * Resolve a context label from a strategy and editor context.
+ * For core editors, includes mode information in the label.
  */
 function resolveContextLabel(
   strategy: ContextLabelStrategy | undefined,
-  ctx: EditorContext
+  ctx: EditorContext,
+  coreEditorRole?: CoreEditorRole
 ): string | undefined {
-  if (!strategy) return undefined;
+  let baseLabel: string | undefined;
 
-  if (typeof strategy === 'function') {
-    return strategy(ctx);
+  if (strategy) {
+    if (typeof strategy === 'function') {
+      baseLabel = strategy(ctx);
+    } else {
+      switch (strategy) {
+        case 'scene':
+          baseLabel = ctx.scene.title ?? undefined;
+          break;
+        case 'world':
+          baseLabel = ctx.world.id ? `World #${ctx.world.id}` : undefined;
+          break;
+        case 'session':
+          baseLabel = ctx.runtime.sessionId
+            ? `Session #${ctx.runtime.sessionId}`
+            : ctx.world.id
+              ? `World #${ctx.world.id}`
+              : undefined;
+          break;
+        case 'preset':
+          baseLabel = ctx.workspace.activePresetId
+            ? `Preset: ${ctx.workspace.activePresetId}`
+            : undefined;
+          break;
+      }
+    }
   }
 
-  switch (strategy) {
-    case 'scene':
-      return ctx.scene.title ?? undefined;
-    case 'world':
-      return ctx.world.id ? `World #${ctx.world.id}` : undefined;
-    case 'session':
-      return ctx.runtime.sessionId
-        ? `Session #${ctx.runtime.sessionId}`
-        : ctx.world.id
-          ? `World #${ctx.world.id}`
-          : undefined;
-    case 'preset':
-      return ctx.workspace.activePresetId
-        ? `Preset: ${ctx.workspace.activePresetId}`
-        : undefined;
-    default:
-      return undefined;
+  // For core editors, prefix with mode label if available
+  if (coreEditorRole) {
+    const modeLabel = getModeLabel(ctx.editor.mode);
+
+    // Build enhanced label for core editors
+    // e.g., "Play • Session #1" or "Edit Flow • Scene: intro"
+    if (modeLabel) {
+      if (baseLabel) {
+        return `${modeLabel} • ${baseLabel}`;
+      }
+      return modeLabel;
+    }
   }
+
+  return baseLabel;
 }
 
 // Wrapper for panels to provide data-panel-id and a common header
@@ -63,7 +103,8 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   const Component = panelDef.component;
 
   // Resolve context label from panel definition strategy
-  const contextLabel = resolveContextLabel(panelDef.contextLabel, ctx);
+  // Pass coreEditorRole so core editors get enhanced labels with mode info
+  const contextLabel = resolveContextLabel(panelDef.contextLabel, ctx, panelDef.coreEditorRole);
 
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900" data-panel-id={panelId}>

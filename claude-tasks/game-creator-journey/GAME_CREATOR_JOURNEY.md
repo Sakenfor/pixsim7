@@ -2,7 +2,50 @@
 
 > Living document describing how a creator would build a mixed‑genre game in PixSim7, and which tools/systems are involved at each stage.
 
-This is intentionally broad and “toolbox‑first”: it describes *lenses* on the experience rather than a rigid wizard or single “happy path”. The goal is to keep the design open to different genres (romance, stealth, slice‑of‑life, combat, puzzle, etc.) while still giving creators a clear sense of progression.
+This is intentionally broad and "toolbox‑first": it describes *lenses* on the experience rather than a rigid wizard or single "happy path". The goal is to keep the design open to different genres (romance, stealth, slice‑of‑life, combat, puzzle, etc.) while still giving creators a clear sense of progression.
+
+---
+
+## Core Editors
+
+PixSim7's workspace is panel‑based and flexible (Dockview + panel registry), similar to Blender's editor system. At the center of this system are two **core editors**—the primary surfaces where creators spend most of their time:
+
+### Game View (Core Runtime Viewport)
+
+- **Implementation:** `apps/main/src/routes/Game2D.tsx`
+- **Purpose:** Shows the game as the player sees it—world, HUD, overlays, NPC interactions.
+- **Role:** The canonical runtime/play viewport. When you want to see and test your game, this is where you go.
+- **Panel metadata:** `coreEditorRole: 'game-view'`
+
+### Flow View (Core Logic/Flow Editor)
+
+- **Implementation:** Scene Graph Editor (`apps/main/src/components/legacy/GraphPanel.tsx`, via `GraphEditorHost`)
+- **Purpose:** Design flows—scenes, nodes, choices, transitions, edge effects.
+- **Role:** The canonical logic/flow editor. When you want to design what happens in your game, this is where you go.
+- **Panel metadata:** `coreEditorRole: 'flow-view'`
+
+### Satellite Editors & Tools
+
+Other panels and tools orbit around these core editors:
+
+- **World Editor:** `GameWorld` for locations, hotspots, world metadata
+- **HUD/Overlay Editors:** HUD Designer, HUD Layout Editor, overlay configuration
+- **Tool Panels:** World tools, gizmos, dev tools, health/validation, plugin tools, Game Tools catalog
+
+### Workspace Modes
+
+The `EditorContext` tracks the current editing context:
+
+- **`editor.primaryView`:** Which core editor is active (`'game'`, `'flow'`, `'world'`, or `'none'`)
+- **`editor.mode`:** Current high-level mode (`'play'`, `'edit-flow'`, `'layout'`, `'debug'`, or `null`)
+
+Workspace presets center different core editors:
+
+- **World & Locations** — World editor-centric
+- **Narrative & Flow** — Flow View-centric
+- **Playtest & Tuning** — Game View-centric
+
+See `CORE_EDITORS_AND_WORKSPACES_TASK.md` for implementation details.
 
 ---
 

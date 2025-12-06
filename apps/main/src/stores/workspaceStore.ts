@@ -151,6 +151,96 @@ const defaultPresets: WorkspacePreset[] = [
       splitPercentage: 25,
     },
   },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Core Editor Workspace Presets
+  // These presets center the core editors (Game View, Flow View, World Editor)
+  // and group satellite panels around them.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  {
+    id: 'world-locations',
+    name: 'World & Locations',
+    description: 'World editor-centric layout for managing locations, visual roles, and world theming',
+    icon: '🌍',
+    isDefault: true,
+    // Primary view: 'world', Mode: 'layout'
+    layout: {
+      direction: 'row',
+      first: {
+        direction: 'column',
+        first: 'gallery',
+        second: 'world-visual-roles',
+        splitPercentage: 50,
+      },
+      second: {
+        direction: 'column',
+        first: 'game-theming',
+        second: 'game',
+        splitPercentage: 50,
+      },
+      splitPercentage: 40,
+    },
+  },
+  {
+    id: 'narrative-flow',
+    name: 'Narrative & Flow',
+    description: 'Flow View-centric layout for designing scenes, nodes, choices, and transitions',
+    icon: '🔀',
+    isDefault: true,
+    graphEditorId: 'scene-graph-v2',
+    // Primary view: 'flow', Mode: 'edit-flow'
+    layout: {
+      direction: 'row',
+      first: 'graph',
+      second: {
+        direction: 'column',
+        first: {
+          direction: 'row',
+          first: 'scene',
+          second: 'inspector',
+          splitPercentage: 50,
+        },
+        second: {
+          direction: 'row',
+          first: 'scene-management',
+          second: 'health',
+          splitPercentage: 50,
+        },
+        splitPercentage: 60,
+      },
+      splitPercentage: 55,
+    },
+  },
+  {
+    id: 'playtest-tuning',
+    name: 'Playtest & Tuning',
+    description: 'Game View-centric layout for playtesting, runtime tools, and HUD design',
+    icon: '🎮',
+    isDefault: true,
+    // Primary view: 'game', Mode: 'play' or 'debug'
+    layout: {
+      direction: 'row',
+      first: {
+        direction: 'column',
+        first: 'game-tools',
+        second: 'hud-designer',
+        splitPercentage: 50,
+      },
+      second: {
+        direction: 'column',
+        first: 'game',
+        second: 'dev-tools',
+        splitPercentage: 70,
+      },
+      splitPercentage: 30,
+    },
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Developer Presets
+  // ─────────────────────────────────────────────────────────────────────────────
+
   {
     id: 'dev-default',
     name: 'Dev – Default Debug',

@@ -1,15 +1,79 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { panelRegistry } from '@/lib/panels/panelRegistry';
 import { widgetRegistry } from '@/lib/widgets/widgetRegistry';
 import { worldToolRegistry } from '@/lib/worldTools/registry';
 import { interactionRegistry } from '@/lib/registries';
 import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+import { useEditorContext, type EditorPrimaryView, type EditorMode } from '@/lib/context/editorContext';
 
 type CategoryFilter = 'all' | 'world' | 'flow' | 'interactions' | 'hud' | 'tools' | 'debug';
 
+/**
+ * Get a suggested default filter based on the current editor primary view.
+ * This helps highlight tools relevant to the current editing context.
+ */
+function getDefaultFilterForView(primaryView: EditorPrimaryView): CategoryFilter {
+  switch (primaryView) {
+    case 'flow':
+      return 'flow';
+    case 'world':
+      return 'world';
+    case 'game':
+      return 'interactions';
+    default:
+      return 'all';
+  }
+}
+
+/**
+ * Get mode-specific section ordering.
+ * Returns true if the section should be "pinned" (shown first) for the current mode.
+ */
+function isSectionPinned(section: CategoryFilter, mode: EditorMode, primaryView: EditorPrimaryView): boolean {
+  // In play mode, prioritize interactions and HUD
+  if (mode === 'play') {
+    return section === 'interactions' || section === 'hud';
+  }
+  // In edit-flow mode, prioritize flow/graph tools
+  if (mode === 'edit-flow') {
+    return section === 'flow';
+  }
+  // In layout mode, prioritize HUD and world tools
+  if (mode === 'layout') {
+    return section === 'hud' || section === 'world';
+  }
+  // In debug mode, prioritize debug tools
+  if (mode === 'debug') {
+    return section === 'debug' || section === 'tools';
+  }
+  // Fallback based on primary view
+  if (primaryView === 'flow') return section === 'flow';
+  if (primaryView === 'world') return section === 'world';
+  return false;
+}
+
 export function GameToolsPanel() {
-  const [filter, setFilter] = useState<CategoryFilter>('all');
+  const ctx = useEditorContext();
+  const { primaryView, mode } = ctx.editor;
+
+  // Suggest a default filter based on the current editor context,
+  // but allow user override
+  const suggestedFilter = getDefaultFilterForView(primaryView);
+  const [filter, setFilter] = useState<CategoryFilter>(suggestedFilter);
   const [query, setQuery] = useState('');
+  const [hasUserOverride, setHasUserOverride] = useState(false);
+
+  // Update filter suggestion when context changes (unless user has overridden)
+  useEffect(() => {
+    if (!hasUserOverride) {
+      setFilter(suggestedFilter);
+    }
+  }, [suggestedFilter, hasUserOverride]);
+
+  const handleFilterChange = (newFilter: CategoryFilter) => {
+    setFilter(newFilter);
+    setHasUserOverride(true);
+  };
 
   const panels = useMemo(() => panelRegistry.getAll(), []);
   const widgets = useMemo(() => widgetRegistry.getAll(), []);
@@ -26,8 +90,42 @@ export function GameToolsPanel() {
     return false;
   };
 
+  // Mode label for context indicator
+  const modeLabel = mode
+    ? {
+        play: 'Play Mode',
+        'edit-flow': 'Flow Edit',
+        layout: 'Layout Mode',
+        debug: 'Debug Mode',
+      }[mode]
+    : null;
+
+  const viewLabel = {
+    game: 'Game View',
+    flow: 'Flow View',
+    world: 'World View',
+    none: null,
+  }[primaryView];
+
   return (
     <div className="h-full w-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
+      {/* Context Indicator - shows current editor mode */}
+      {(modeLabel || viewLabel) && (
+        <div className="px-3 py-1.5 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 flex items-center gap-2 text-[10px]">
+          <span className="text-neutral-500 dark:text-neutral-400">Context:</span>
+          {modeLabel && (
+            <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 font-medium">
+              {modeLabel}
+            </span>
+          )}
+          {viewLabel && (
+            <span className="px-1.5 py-0.5 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+              {viewLabel}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 flex items-center gap-2 text-xs">
         <input
@@ -39,7 +137,7 @@ export function GameToolsPanel() {
         />
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value as CategoryFilter)}
+          onChange={(e) => handleFilterChange(e.target.value as CategoryFilter)}
           className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
         >
           <option value="all">All</option>
