@@ -188,11 +188,64 @@ This ensures the header and wrapper APIs are ready without forcing immediate imp
 
 ---
 
+## Extended Context: `editor.primaryView` and `editor.mode`
+
+As part of the **Core Editors & Workspace Modes** task (`CORE_EDITORS_AND_WORKSPACES_TASK.md`), `EditorContext` was extended with an `editor` section that tracks high-level editing context:
+
+```ts
+export interface EditorContext {
+  // ... world, scene, runtime, workspace ...
+  editor: {
+    primaryView: 'game' | 'flow' | 'world' | 'none';
+    mode: 'play' | 'edit-flow' | 'layout' | 'debug' | null;
+  };
+}
+```
+
+### `editor.primaryView`
+
+Indicates which **core editor** is currently the focus:
+
+- **`'game'`**: Game View (Game2D) is primary — runtime/play viewport
+- **`'flow'`**: Flow View (Graph editor) is primary — logic/flow editor
+- **`'world'`**: World editor (GameWorld) is primary — world/location editor
+- **`'none'`**: No clear primary view
+
+This is **derived** from:
+1. Active runtime mode (if game is running, `primaryView` is `'game'`)
+2. Current workspace preset ID (presets hint at their intended primary view)
+3. Active panels in the layout (fallback heuristic)
+
+### `editor.mode`
+
+Indicates the current **high-level editing mode**:
+
+- **`'play'`**: Game is running (Game View focus)
+- **`'edit-flow'`**: Flow editing mode (Flow View focus)
+- **`'layout'`**: HUD/layout/world tools mode
+- **`'debug'`**: Dev tools, inspectors, validation mode
+- **`null`**: No specific mode detected
+
+### Usage in Panels and Headers
+
+- **PanelWrapper** passes `coreEditorRole` to `resolveContextLabel`, allowing core editors to display enhanced context labels that include mode info (e.g., "Edit Flow • Scene: intro")
+- **GameToolsPanel** uses `editor.primaryView` to suggest a default filter and displays a context indicator showing the current mode and view
+
+### Design Notes
+
+- These fields are **derived**, not a new source of truth — all writes still go through underlying stores
+- The derivation rules are intentionally **simple heuristics** that can be refined over time
+- This supports the Blender-like goal of making "modes" visible without hard-coding genre-specific layouts
+
+See `CORE_EDITORS_AND_WORKSPACES_TASK.md` for full implementation details.
+
+---
+
 ## Notes & Extensions
 
-- This task is complementary to `GAME_CREATOR_JOURNEY.md`. EditorContext and PanelHeader are infrastructural steps that make “modes” and “tool families” visible and consistent without rigid layouts.
+- This task is complementary to `GAME_CREATOR_JOURNEY.md`. EditorContext and PanelHeader are infrastructural steps that make "modes" and "tool families" visible and consistent without rigid layouts.
 - Follow‑up tasks can focus on:
-  - A true “switch editor” menu on panel title click, driven by `graphEditorRegistry` and `panelRegistry`.
+  - A true "switch editor" menu on panel title click, driven by `graphEditorRegistry` and `panelRegistry`.
   - Workspace preset refinements (World & Locations, Narrative & Flow, Playtest & Tuning).
-  - A more opinionated “Game Tools” UX (open panel, jump to route, show activation state, etc.).
+  - A more opinionated "Game Tools" UX (open panel, jump to route, show activation state, etc.).
 

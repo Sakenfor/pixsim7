@@ -1,3 +1,25 @@
+/**
+ * Game2D Route - Core Game View
+ *
+ * This is the **canonical runtime/play viewport** for PixSim7.
+ * It shows the game as the player sees it: world, HUD, overlays, interactions.
+ *
+ * Core Editor Role: game-view
+ *
+ * Features:
+ * - World/Location navigation and rendering
+ * - NPC slot assignment and interaction handling
+ * - Scene playback with dialogue UI
+ * - HUD system with configurable widgets
+ * - World time management (turn-based/real-time)
+ *
+ * Related:
+ * - Flow View (Graph editor) is the canonical flow/logic editor
+ * - World editor (GameWorld) is the canonical world/location editor
+ *
+ * @see EditorContext.editor.primaryView for how this integrates with the editor context
+ */
+
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Scene, SessionFlags } from '@pixsim7/shared.types';
