@@ -158,7 +158,7 @@ pytest pixsim7/backend/tests/test_generation_pipeline.py -v
 ```
 
 ## Related Documentation
-- `docs/DYNAMIC_GENERATION_FOUNDATION.md` - System design
+- `docs/systems/generation/GENERATION_SYSTEM.md` - System design
 - `docs/INTIMACY_AND_GENERATION.md` - Social context integration
 - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` - Migration plan
 - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md` - Task overview

@@ -328,7 +328,7 @@ Potential improvements:
 
 ## Related Documentation
 
-- [Plugin System Architecture](./PLUGIN_SYSTEM.md)
+- [Plugin System Architecture](./systems/plugins/PLUGIN_SYSTEM.md)
 - [Frontend Tasks](./FRONTEND_CLAUDE_TASKS.md)
 - [Assets Gallery Design](./ASSETS_GALLERY.md)
 

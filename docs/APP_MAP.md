@@ -80,7 +80,7 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 - `getPluginHealth()` - Plugin health and metadata completeness analysis
 
 **Documentation:**
-- [PLUGIN_SYSTEM.md](./PLUGIN_SYSTEM.md) - Plugin architecture and development guide
+- [Plugin System](./systems/plugins/PLUGIN_SYSTEM.md) - Plugin architecture and development guide
 - [PLUGIN_REFERENCE.md](./PLUGIN_REFERENCE.md) - Plugin API reference
 - [INTERACTION_PLUGIN_MANIFEST.md](./INTERACTION_PLUGIN_MANIFEST.md) - Interaction plugin spec
 - [GALLERY_TOOLS_PLUGIN.md](./GALLERY_TOOLS_PLUGIN.md) - Gallery tool plugin development
@@ -201,7 +201,7 @@ PixSim7 is a plugin-based game/simulation platform with the following major subs
 **Documentation:**
 - [SOCIAL_METRICS.md](./SOCIAL_METRICS.md) - Complete social metrics reference
 - [RELATIONSHIPS_AND_ARCS.md](./RELATIONSHIPS_AND_ARCS.md) - Relationship mechanics and session data
-- [NPC_PERSONA_ARCHITECTURE.md](./NPC_PERSONA_ARCHITECTURE.md) - NPC brain state and personality
+- [NPC Architecture](./architecture/subsystems/npc-architecture.md) - NPC brain state and personality
 
 **Related Systems:**
 - Relationship system (session data source)
