@@ -291,20 +291,28 @@ Located in [docs/decisions/](decisions/):
 
 When creating new documentation, follow these conventions:
 
-**Naming**:
+**System Documentation Naming**:
 - `SYSTEM_NAME.md` - Main guide
 - `SYSTEM_NAME_ARCHITECTURE.md` - Architecture details
 - `SYSTEM_NAME_GUIDE.md` - Developer guide
 - `SYSTEM_NAME_REFERENCE.md` - API/usage reference
+
+**Component Documentation**:
+- See [Component Documentation Standards](COMPONENT_DOCUMENTATION_STANDARDS.md) for guidelines
+- Use [Component README Template](../apps/main/docs/COMPONENT_README_TEMPLATE.md) for new components
+- READMEs for complex components needing context (150+ lines)
+- INTEGRATION_GUIDE.md for complex integration scenarios
 
 **Placement**:
 - Root: Only essential entry points (README, ARCHITECTURE, DEVELOPMENT_GUIDE)
 - docs/: All system documentation
 - docs/archive/: Completed/historical work
 - claude-tasks/: Multi-phase roadmaps
-- Component READMEs: Complex components needing context
+- apps/main/src/{component}/: Component-specific documentation
 
-**See**: [Documentation Lifecycle ADR](decisions/20251122-documentation-lifecycle.md)
+**See Also**:
+- [Documentation Lifecycle ADR](decisions/20251122-documentation-lifecycle.md)
+- [Component Documentation Standards](COMPONENT_DOCUMENTATION_STANDARDS.md)
 
 ---
 
