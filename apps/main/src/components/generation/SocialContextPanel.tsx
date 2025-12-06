@@ -7,7 +7,7 @@
  * @status REFERENCE_IMPLEMENTATION
  * This component is not yet integrated into the generation node editor.
  * It serves as documentation and reference for future UI integration.
- * See docs/DYNAMIC_GENERATION_FOUNDATION.md for generation system roadmap.
+ * See docs/systems/generation/GENERATION_SYSTEM.md for generation system roadmap.
  */
 
 import React from 'react';

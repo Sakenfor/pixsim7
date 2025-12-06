@@ -10,7 +10,7 @@ This directory contains all generation system documentation for PixSim7's conten
   - Foundation and architecture
   - Pipeline overview
   - Generation modes and workflows
-  - Originally: `DYNAMIC_GENERATION_FOUNDATION.md`
+  - Originally: `GENERATION_SYSTEM.md`
 
 - **[GENERATION_GUIDE.md](GENERATION_GUIDE.md)** - Developer guide for generation
   - Action block generation

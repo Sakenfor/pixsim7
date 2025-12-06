@@ -17,7 +17,7 @@
  * This is the canonical request builder. All new generation work MUST use
  * this builder to ensure consistent request structure and social context.
  * Direct manual construction of GenerateContentRequest is DEPRECATED.
- * See docs/DYNAMIC_GENERATION_FOUNDATION.md for usage guidelines.
+ * See docs/systems/generation/GENERATION_SYSTEM.md for usage guidelines.
  */
 
 import type {
@@ -194,7 +194,7 @@ export function buildSocialContext(
 /**
  * Compute cache key for generation request
  *
- * Cache key format (from DYNAMIC_GENERATION_FOUNDATION.md):
+ * Cache key format (from docs/systems/generation/GENERATION_SYSTEM.md):
  * [type]|[purpose]|[fromSceneId]|[toSceneId]|[strategy]|[seed]|[version]
  *
  * For relationship-aware generation, we may want to include intimacy band

@@ -759,7 +759,7 @@ This document provides a **single source of truth** for what's been completed an
 - `docs/SYSTEM_OVERVIEW.md` - Backend architecture
 - `docs/RELATIONSHIPS_AND_ARCS.md` - Relationship system conventions
 - `docs/SOCIAL_METRICS.md` - Social metrics and preview APIs
-- `docs/DYNAMIC_GENERATION_FOUNDATION.md` - Generation system design
+- `docs/systems/generation/GENERATION_SYSTEM.md` - Generation system design
 
 ### Specific Systems
 - `docs/INTIMACY_AND_GENERATION.md` - Intimacy-aware generation

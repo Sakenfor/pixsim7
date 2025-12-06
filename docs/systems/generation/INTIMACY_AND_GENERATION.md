@@ -3,7 +3,7 @@
 > Relationship-aware content generation with explicit rating controls and user consent
 
 > **For Agents**
-> - Use this together with `RELATIONSHIPS_AND_ARCS.md` and `DYNAMIC_GENERATION_FOUNDATION.md` when working on intimacy‑aware generation.
+> - Use this together with `RELATIONSHIPS_AND_ARCS.md` and `GENERATION_SYSTEM.md` when working on intimacy‑aware generation.
 > - `GenerationSocialContext` (in `packages/types/src/generation.ts`) and `buildGenerationSocialContext` (in `packages/game/engine/src/relationships/socialContext.ts`) define how relationship state flows into generation.
 > - Backend generation services should treat `social_context` as input for prompts and safety; do not hard‑code rating/relationship logic in random places.
 > - Related tasks (roadmap/status):  
@@ -361,7 +361,7 @@ npm test packages/game/engine
 - `apps/main/src/components/generation/SocialContextPanel.tsx` - UI components
 
 ### Docs
-- `docs/DYNAMIC_GENERATION_FOUNDATION.md` - Generation system foundation
+- `docs/GENERATION_SYSTEM.md` - Generation system foundation
 - `docs/RELATIONSHIPS_AND_ARCS.md` - Relationship data model
 
 ---

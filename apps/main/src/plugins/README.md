@@ -145,7 +145,7 @@ useEffect(() => {
 
 ## Examples
 
-See the [PixSim7 Plugin System documentation](../../PLUGIN_SYSTEM.md) for comprehensive examples and best practices.
+See the [PixSim7 Plugin System documentation](../../../docs/systems/plugins/PLUGIN_SYSTEM.md) for comprehensive examples and best practices.
 
 Also check:
 - `frontend/src/lib/game/customHelpers.ts` - Example helper registration
@@ -205,4 +205,4 @@ When creating new plugins:
 4. Test thoroughly
 5. Submit a pull request with a clear description
 
-For questions or issues, check the main [PLUGIN_SYSTEM.md](../../PLUGIN_SYSTEM.md) documentation.
+For questions or issues, check the main [PLUGIN_SYSTEM.md](../../../docs/systems/plugins/PLUGIN_SYSTEM.md) documentation.

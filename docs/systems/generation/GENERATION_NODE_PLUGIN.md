@@ -286,6 +286,6 @@ The generation node integrates with the existing jobs/generation system:
 
 ## Related Documentation
 
-- [Dynamic Generation Foundation](./DYNAMIC_GENERATION_FOUNDATION.md)
+- [Dynamic Generation Foundation](./GENERATION_SYSTEM.md)
 - [Node Type System](./NODE_TYPE_SYSTEM.md)
 - [Plugin System](./PLUGIN_SYSTEM.md)

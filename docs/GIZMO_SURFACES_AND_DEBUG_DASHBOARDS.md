@@ -404,7 +404,7 @@ const isEnabled = useIsSurfaceEnabled('game-2d', 'rings-gizmo');
 
 - [ADR: Gizmo Architecture](./ADR-GIZMO-ARCHITECTURE.md)
 - [Gizmo Component Usage](../apps/main/src/components/gizmos/README.md)
-- [Plugin System Guide](./PLUGIN_SYSTEM.md)
+- [Plugin System Guide](./systems/plugins/PLUGIN_SYSTEM.md)
 - [Dev Tools Guide](./DEV_TOOLS.md)
 
 ## Future Enhancements

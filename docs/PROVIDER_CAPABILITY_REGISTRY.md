@@ -532,7 +532,7 @@ describe('ProviderCapabilityRegistry', () => {
 ## Related Documentation
 
 - [MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md](./MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md) - Backend plugin architecture
-- [DYNAMIC_GENERATION_FOUNDATION.md](./DYNAMIC_GENERATION_FOUNDATION.md) - Generation system design
+- [systems/generation/GENERATION_SYSTEM.md](./systems/generation/GENERATION_SYSTEM.md) - Generation system design
 - [PLUGIN_SYSTEM_ARCHITECTURE.md](./PLUGIN_SYSTEM_ARCHITECTURE.md) - Plugin system overview
 
 ---

@@ -305,6 +305,6 @@ version: 2  # In generation config
 - Monitor latency
 
 ## Further Reading
-- `docs/DYNAMIC_GENERATION_FOUNDATION.md` - Overall system design
+- `docs/systems/generation/GENERATION_SYSTEM.md` - Overall system design
 - `docs/APP_MAP_GENERATION.md` - Complete API reference
 - `claude-tasks/10-unified-generation-pipeline-progress.md` - Implementation details

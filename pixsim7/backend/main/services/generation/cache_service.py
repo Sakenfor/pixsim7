@@ -67,7 +67,7 @@ class GenerationCacheService:
         """
         Compute cache key for generation
 
-        Format (from DYNAMIC_GENERATION_FOUNDATION.md):
+        Format (from docs/systems/generation/GENERATION_SYSTEM.md):
             [type]|[purpose]|[fromSceneId]|[toSceneId]|[strategy]|[seed]|[version]
 
         Args:

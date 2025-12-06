@@ -1960,7 +1960,7 @@ await saveScene(scene);
 ### Documentation
 - `docs/INTIMACY_AND_GENERATION.md` - Generation system integration
 - `docs/RELATIONSHIPS_AND_ARCS.md` - Relationship data model
-- `docs/DYNAMIC_GENERATION_FOUNDATION.md` - Generation pipeline
+- `docs/systems/generation/GENERATION_SYSTEM.md` - Generation pipeline
 - `docs/INTIMACY_SCENE_COMPOSER.md` - This document
 
 ---

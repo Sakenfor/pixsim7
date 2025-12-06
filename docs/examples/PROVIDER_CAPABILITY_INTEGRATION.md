@@ -496,4 +496,4 @@ await providerCapabilityRegistry.fetchCapabilities();
 ## See Also
 
 - [PROVIDER_CAPABILITY_REGISTRY.md](../PROVIDER_CAPABILITY_REGISTRY.md) - Full documentation
-- [DYNAMIC_GENERATION_FOUNDATION.md](../DYNAMIC_GENERATION_FOUNDATION.md) - Generation system design
+- [systems/generation/GENERATION_SYSTEM.md](../systems/generation/GENERATION_SYSTEM.md) - Generation system design
