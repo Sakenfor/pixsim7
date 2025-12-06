@@ -11,7 +11,7 @@
  *
  * For more examples, see:
  * - frontend/src/lib/game/interactions/ (built-in interactions)
- * - PLUGIN_SYSTEM.md documentation
+ * - docs/systems/plugins/PLUGIN_SYSTEM.md documentation
  */
 
 import type { InteractionPlugin, InteractionContext, InteractionResult } from '@/lib/registries';

@@ -3,7 +3,7 @@
  *
  * Replaces polling with WebSocket for more efficient real-time updates.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useGenerationsStore } from '../stores/generationsStore';
 import type { GenerationResponse } from '../lib/api/generations';
 import { parseWebSocketMessage } from '../types/websocket';
@@ -14,6 +14,7 @@ export function useGenerationWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
+  const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     let isConnecting = false;
@@ -32,6 +33,7 @@ export function useGenerationWebSocket() {
         ws.onopen = () => {
           console.log('[WebSocket] Connected to generation updates');
           isConnecting = false;
+          setIsConnected(true);
 
           // Send ping every 30 seconds to keep connection alive
           const pingInterval = setInterval(() => {
@@ -74,11 +76,13 @@ export function useGenerationWebSocket() {
         ws.onerror = (error) => {
           console.error('[WebSocket] Error:', error);
           isConnecting = false;
+          setIsConnected(false);
         };
 
         ws.onclose = () => {
           console.log('[WebSocket] Disconnected, will attempt to reconnect in 5s...');
           isConnecting = false;
+          setIsConnected(false);
 
           // Attempt to reconnect after 5 seconds
           if (reconnectTimeoutRef.current) {
@@ -116,6 +120,6 @@ export function useGenerationWebSocket() {
   }, [addOrUpdateGeneration]);
 
   return {
-    isConnected: wsRef.current?.readyState === WebSocket.OPEN,
+    isConnected,
   };
 }

@@ -6,7 +6,22 @@
       "Bash(git checkout:*)",
       "Bash(git reset:*)",
       "Bash(git push)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm exec tsc:*)",
+      "Bash(pnpm run build)",
+      "Bash(ls:*)",
+      "Bash(test:*)",
+      "Bash(git mv:*)",
+      "Bash(wc:*)",
+      "Bash(rg:*)",
+      "Bash(for:*)",
+      "Bash(find:*)",
+      "Bash(do:*)",
+      "Bash(done)",
+      "Bash(git diff:*)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

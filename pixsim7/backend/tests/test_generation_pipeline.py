@@ -244,7 +244,7 @@ def test_cache_key_format():
     """
     Verify cache key format matches spec
 
-    Expected format from DYNAMIC_GENERATION_FOUNDATION.md:
+    Expected format from systems/generation/GENERATION_SYSTEM.md:
         [type]|[purpose]|[fromSceneId]|[toSceneId]|[strategy]|[seed]|[version]
 
     Regression anchor: Cache key format must remain stable
