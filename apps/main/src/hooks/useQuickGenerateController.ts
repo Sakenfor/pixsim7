@@ -7,6 +7,7 @@ import { extractFrame } from '../lib/api/assets';
 import { logEvent } from '../lib/logging';
 import { buildGenerationRequest } from '../lib/control/quickGenerateLogic';
 import { useQuickGenerateBindings } from './useQuickGenerateBindings';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 /**
  * Hook: useQuickGenerateController
@@ -154,8 +155,8 @@ export function useQuickGenerateController() {
         providerId: providerId || 'pixverse',
         status: result.status || 'pending',
       });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to generate asset');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to generate asset'));
     } finally {
       setGenerating(false);
     }

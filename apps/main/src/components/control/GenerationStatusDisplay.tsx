@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { useGenerationsStore, isGenerationTerminal } from '@/stores/generationsStore';
 import { logEvent } from '@/lib/logging';
 import { getStatusContainerClasses } from '@/lib/generation/generationStatusConfig';
+import { extractErrorMessage } from '@/lib/api/errorHandling';
 
 /** Polling interval for backup status checks (ms) */
 const POLL_INTERVAL = 5000;
@@ -70,9 +71,9 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
           newId: newGeneration.id,
         });
       }, 1000);
-    } catch (err: any) {
+    } catch (err) {
       console.error(`Failed to retry generation ${generationId}:`, err);
-      alert(err.response?.data?.detail || 'Failed to retry generation');
+      alert(extractErrorMessage(err, 'Failed to retry generation'));
     } finally {
       setRetrying(false);
     }

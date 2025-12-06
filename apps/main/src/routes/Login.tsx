@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../lib/auth/authService';
 import { useAuthStore } from '../stores/authStore';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 export function Login() {
   const [login, setLogin] = useState('');
@@ -12,17 +13,6 @@ export function Login() {
 
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
-
-  function formatError(err: any): string {
-    // Axios error shape: err.response?.data?.detail may be string or array
-    const detail = err?.response?.data?.detail ?? err?.message ?? err;
-    if (typeof detail === 'string') return detail;
-    if (Array.isArray(detail)) {
-      // FastAPI validation errors
-      return detail.map((d) => d.msg || JSON.stringify(d)).join('\n');
-    }
-    try { return JSON.stringify(detail); } catch { return 'Request failed'; }
-  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -38,8 +28,8 @@ export function Login() {
       }
       setUser(response.user);
       navigate('/');
-    } catch (err: any) {
-      setError(formatError(err) || 'Login failed. Please try again.');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }

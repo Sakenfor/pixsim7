@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getGeneration } from '../lib/api/generations';
 import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
 import { pollUntil } from '../lib/polling/pollUntil';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 export interface UseGenerationStatusOptions {
   /** Base polling interval in ms (default: 3000) */
@@ -69,10 +70,7 @@ export function useGenerationStatus(
           setError(null);
         },
         onError: (err: unknown) => {
-          const errorMsg =
-            (err as any).response?.data?.detail ||
-            (err instanceof Error ? err.message : 'Failed to fetch generation');
-          setError(errorMsg);
+          setError(extractErrorMessage(err, 'Failed to fetch generation'));
           setLoading(false);
         },
       }

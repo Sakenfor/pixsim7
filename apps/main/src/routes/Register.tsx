@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authService } from '../lib/auth/authService';
 import { useAuthStore } from '../stores/authStore';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 export function Register() {
   const [username, setUsername] = useState('');
@@ -14,13 +15,6 @@ export function Register() {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
 
-  function formatError(err: any): string {
-    const detail = err?.response?.data?.detail ?? err?.message ?? err;
-    if (typeof detail === 'string') return detail;
-    if (Array.isArray(detail)) return detail.map((d) => d.msg || JSON.stringify(d)).join('\n');
-    try { return JSON.stringify(detail); } catch { return 'Request failed'; }
-  }
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -30,8 +24,8 @@ export function Register() {
       const response = await authService.register({ username, email, password });
       setUser(response.user);
       navigate('/');
-    } catch (err: any) {
-      setError(formatError(err) || 'Registration failed. Please try again.');
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {
       setLoading(false);
     }

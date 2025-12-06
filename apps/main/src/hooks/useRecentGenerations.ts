@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { listGenerations } from '../lib/api/generations';
 import { useGenerationsStore } from '../stores/generationsStore';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 export interface UseRecentGenerationsOptions {
   /** Number of generations to fetch (default: 50) */
@@ -61,10 +62,7 @@ export function useRecentGenerations(
       }
     } catch (err) {
       if (mountedRef.current) {
-        const errorMsg =
-          (err as any).response?.data?.detail ||
-          (err instanceof Error ? err.message : 'Failed to fetch generations');
-        setError(errorMsg);
+        setError(extractErrorMessage(err, 'Failed to fetch generations'));
         setIsLoading(false);
       }
     }

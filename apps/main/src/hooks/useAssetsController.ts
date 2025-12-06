@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { AxiosError } from 'axios';
 import { useAssets, type AssetSummary, type AssetFilters } from './useAssets';
 import { useAsset } from './useAsset';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
@@ -7,6 +6,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useMediaGenerationActions } from './useMediaGenerationActions';
 import { deleteAsset, uploadAssetToProvider } from '../lib/api/assets';
 import { BACKEND_BASE } from '../lib/api/client';
+import { extractErrorMessage } from '../lib/api/errorHandling';
 
 const SESSION_KEY = 'assets_filters';
 
@@ -156,10 +156,7 @@ export function useAssetsController() {
       reset();
     } catch (err) {
       console.error('Failed to delete asset:', err);
-      const message =
-        (err as AxiosError)?.response?.data?.detail ||
-        (err instanceof Error ? err.message : 'Failed to delete asset');
-      alert(message);
+      alert(extractErrorMessage(err, 'Failed to delete asset'));
     }
   }, [viewerAsset, reset]);
 
@@ -175,10 +172,7 @@ export function useAssetsController() {
         reset();
       } catch (err) {
         console.error('Failed to re-upload asset:', err);
-        const message =
-          (err as any)?.response?.data?.detail ||
-          (err instanceof Error ? err.message : 'Failed to re-upload asset');
-        alert(message);
+        alert(extractErrorMessage(err, 'Failed to re-upload asset'));
       }
     },
     [reset],
