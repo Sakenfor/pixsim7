@@ -61,15 +61,15 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 
 ### Relationship & Stats System
 - [Relationships and Arcs](RELATIONSHIPS_AND_ARCS.md) - Relationship system overview
-- [Relationship Migration Guide](../RELATIONSHIP_MIGRATION_GUIDE.md)
-- [Abstract Stat System](../ABSTRACT_STAT_SYSTEM.md)
-- [Stat System Integration Plan](../STAT_SYSTEM_INTEGRATION_PLAN.md)
-- [Entity Stats Examples](../ENTITY_STATS_EXAMPLES.md)
+- [Relationship Migration Guide](./RELATIONSHIP_MIGRATION_GUIDE.md)
+- [Abstract Stat System](./ABSTRACT_STAT_SYSTEM.md)
+- [Stat System Integration Plan](./STAT_SYSTEM_INTEGRATION_PLAN.md)
+- [Entity Stats Examples](./ENTITY_STATS_EXAMPLES.md)
 - [Social Metrics](SOCIAL_METRICS.md)
 
 ### Game & Simulation
-- [Gameplay Systems](../GAMEPLAY_SYSTEMS.md)
-- [World Sessions Issues](../WORLD_SESSIONS_ISSUES.md)
+- [Gameplay Systems](./GAMEPLAY_SYSTEMS.md)
+- [World Sessions Issues](./WORLD_SESSIONS_ISSUES.md)
 - [Turn-Based World Mode](TURN_BASED_WORLD_MODE.md)
 - [Simulation Automation](SIMULATION_AUTOMATION.md)
 - [NPC Dialogue Enhancements](NPC_DIALOGUE_ENHANCEMENTS_STATUS.md)
@@ -80,15 +80,15 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 ### UI & Components
 - [Components Guide](frontend/COMPONENTS.md)
 - [Frontend Component Guide](FRONTEND_COMPONENT_GUIDE.md)
-- [HUD Layout Designer](../HUD_LAYOUT_DESIGNER.md)
+- [HUD Layout Designer](./HUD_LAYOUT_DESIGNER.md)
 - [Panel Consolidation Analysis](PANEL_CONSOLIDATION_ANALYSIS.md)
 - [Panel Organization Audit](PANEL_ORGANIZATION_AUDIT.md)
 - [Workspace Panel System](claude-tasks/50-workspace-panel-system-enhancement.md)
 
 ### Graph & Node Systems
 - [Graph System](GRAPH_SYSTEM.md)
-- [Graph Renderer Plugins](../GRAPH_RENDERER_PLUGINS.md)
-- [Dynamic Node Types](../DYNAMIC_NODE_TYPES.md)
+- [Graph Renderer Plugins](./GRAPH_RENDERER_PLUGINS.md)
+- [Dynamic Node Types](./DYNAMIC_NODE_TYPES.md)
 - [Node Editor Development](NODE_EDITOR_DEVELOPMENT.md)
 
 ### Overlay & Widgets
@@ -148,14 +148,14 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 - [Sora Support](../chrome-extension/SORA_SUPPORT.md)
 
 ### Asset Management
-- [Cross-Provider Assets](../CROSS_PROVIDER_ASSETS.md)
+- [Cross-Provider Assets](./CROSS_PROVIDER_ASSETS.md)
 - [Asset Roles and Resolver](ASSET_ROLES_AND_RESOLVER.md)
 - [Gallery Surfaces](../apps/main/src/lib/gallery/GALLERY_SURFACES.md)
 
 ### Prompt System
 - [Prompt System Review](PROMPT_SYSTEM_REVIEW.md)
 - [Prompt Versioning System](PROMPT_VERSIONING_SYSTEM.md)
-- [Semantic Packs Implementation](../SEMANTIC_PACKS_IMPLEMENTATION.md)
+- [Semantic Packs Implementation](./SEMANTIC_PACKS_IMPLEMENTATION.md)
 - [Prompts Git Features](PROMPTS_GIT_FEATURES.md)
 
 ### Character & NPC Systems
@@ -195,7 +195,7 @@ Moved to [docs/archive/task-summaries/](archive/task-summaries/)
 - [Database](DATABASE.md) - Database schema and design
 - [Caching Guide](CACHING_GUIDE.md)
 - [Port Configuration](PORT_CONFIGURATION.md)
-- [Logging Structure](../LOGGING_STRUCTURE.md)
+- [Logging Structure](./LOGGING_STRUCTURE.md)
 - [Log Filtering and Settings](LOG_FILTERING_AND_SETTINGS.md)
 
 ### Scripts & Tools
