@@ -12,6 +12,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { debugFlags } from '@/lib/debugFlags';
 import type {
   GameSessionDTO,
   GameWorldDetail,
@@ -84,7 +85,7 @@ export class WorldToolRegistry {
     }
 
     this.tools.set(tool.id, tool);
-    console.log(`✓ Registered world tool: ${tool.id}`);
+    debugFlags.log('registry', `✓ Registered world tool: ${tool.id}`);
   }
 
   /**

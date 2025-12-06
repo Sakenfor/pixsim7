@@ -10,6 +10,8 @@
 
 import * as React from 'react';
 import { create } from 'zustand';
+import { debugFlags } from '@/lib/debugFlags';
+import { logEvent } from '@/lib/logging';
 
 // Re-export modules
 export * from './routeConstants';
@@ -202,7 +204,8 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
       return { features };
     });
     get().notify();
-    console.log(`[Capabilities] Registered feature: ${feature.name}`);
+    debugFlags.log('registry', `[Capabilities] Registered feature: ${feature.name}`);
+    logEvent('DEBUG', 'capability_feature_registered', { featureId: feature.id, name: feature.name });
   },
 
   unregisterFeature: (id) => {
@@ -236,7 +239,8 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
       return { routes };
     });
     get().notify();
-    console.log(`[Capabilities] Registered route: ${route.path}`);
+    debugFlags.log('registry', `[Capabilities] Registered route: ${route.path}`);
+    logEvent('DEBUG', 'capability_route_registered', { path: route.path });
   },
 
   unregisterRoute: (path) => {
@@ -268,7 +272,8 @@ export const useCapabilityStore = create<CapabilityStore>((set, get) => ({
       return { actions };
     });
     get().notify();
-    console.log(`[Capabilities] Registered action: ${action.name}`);
+    debugFlags.log('registry', `[Capabilities] Registered action: ${action.name}`);
+    logEvent('DEBUG', 'capability_action_registered', { actionId: action.id, name: action.name });
   },
 
   unregisterAction: (id) => {

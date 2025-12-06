@@ -9,6 +9,7 @@
 
 import type { ComponentType } from 'react';
 import { BaseRegistry } from '../core/BaseRegistry';
+import { debugFlags } from '@/lib/debugFlags';
 
 /**
  * Control Center Module Definition
@@ -74,7 +75,7 @@ class ControlCenterModuleRegistry extends BaseRegistry<ControlCenterModule> {
     }
 
     this.items.set(module.id, module);
-    console.log(`[CC Module Registry] Registered: ${module.label} (${module.id})`);
+    debugFlags.log('registry', `[CC Module Registry] Registered: ${module.label} (${module.id})`);
     this.notifyListeners();
   }
 
@@ -84,7 +85,7 @@ class ControlCenterModuleRegistry extends BaseRegistry<ControlCenterModule> {
   unregister(id: string): boolean {
     const wasDeleted = super.unregister(id);
     if (wasDeleted) {
-      console.log(`[CC Module Registry] Unregistered: ${id}`);
+      debugFlags.log('registry', `[CC Module Registry] Unregistered: ${id}`);
     }
     return wasDeleted;
   }

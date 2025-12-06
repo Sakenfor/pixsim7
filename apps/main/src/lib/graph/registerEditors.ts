@@ -8,6 +8,7 @@
 import { graphEditorRegistry } from './editorRegistry';
 import { GraphPanelWithProvider } from '../../components/legacy/GraphPanel';
 import { ArcGraphPanel } from '../../components/arc-graph/ArcGraphPanel';
+import { debugFlags } from '@/lib/debugFlags';
 
 /**
  * Register all built-in graph editors
@@ -44,5 +45,5 @@ export function registerGraphEditors(): void {
     defaultRoute: '/arc-graph',
   });
 
-  console.log('[Graph Editor Registry] Registered graph editors:', graphEditorRegistry.getStats());
+  debugFlags.log('registry', '[Graph Editor Registry] Registered graph editors:', graphEditorRegistry.getStats());
 }

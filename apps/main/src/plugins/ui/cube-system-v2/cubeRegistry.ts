@@ -5,6 +5,8 @@
  * Allows any part of the app to register cubes and their behaviors.
  */
 
+import { debugFlags } from '@/lib/debugFlags';
+
 export interface CubeFace {
   label: string;
   icon?: string;
@@ -69,7 +71,7 @@ class CubeRegistry {
   register(cube: CubeDefinition) {
     this.cubes.set(cube.id, cube);
     this.notifyListeners();
-    console.log(`[CubeRegistry] Registered cube: ${cube.name}`);
+    debugFlags.log('registry', `[CubeRegistry] Registered cube: ${cube.name}`);
   }
 
   /**
@@ -78,7 +80,7 @@ class CubeRegistry {
   unregister(id: string) {
     this.cubes.delete(id);
     this.notifyListeners();
-    console.log(`[CubeRegistry] Unregistered cube: ${id}`);
+    debugFlags.log('registry', `[CubeRegistry] Unregistered cube: ${id}`);
   }
 
   /**

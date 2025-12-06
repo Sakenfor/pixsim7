@@ -21,6 +21,8 @@ import type {
 } from './index';
 import { useCapabilityStore } from './index';
 import type { PluginPermission } from '../plugins/types';
+import { debugFlags } from '@/lib/debugFlags';
+import { logEvent } from '@/lib/logging';
 
 /**
  * Simplified types for plugin registration (no execute functions, etc.)
@@ -99,7 +101,8 @@ export class PluginCapabilityAdapter {
     useCapabilityStore.getState().registerFeature(capability);
     this.registeredFeatureIds.add(fullId);
 
-    console.log(`[PluginAdapter] Registered feature: ${fullId} (plugin: ${this.pluginId})`);
+    debugFlags.log('registry', `[PluginAdapter] Registered feature: ${fullId} (plugin: ${this.pluginId})`);
+    logEvent('DEBUG', 'plugin_feature_registered', { featureId: fullId, pluginId: this.pluginId });
   }
 
   /**
@@ -122,7 +125,8 @@ export class PluginCapabilityAdapter {
     useCapabilityStore.getState().registerRoute(capability);
     this.registeredRoutes.add(route.path);
 
-    console.log(`[PluginAdapter] Registered route: ${route.path} (plugin: ${this.pluginId})`);
+    debugFlags.log('registry', `[PluginAdapter] Registered route: ${route.path} (plugin: ${this.pluginId})`);
+    logEvent('DEBUG', 'plugin_route_registered', { path: route.path, pluginId: this.pluginId });
   }
 
   /**
@@ -142,7 +146,8 @@ export class PluginCapabilityAdapter {
     useCapabilityStore.getState().registerAction(capability);
     this.registeredActionIds.add(fullId);
 
-    console.log(`[PluginAdapter] Registered action: ${fullId} (plugin: ${this.pluginId})`);
+    debugFlags.log('registry', `[PluginAdapter] Registered action: ${fullId} (plugin: ${this.pluginId})`);
+    logEvent('DEBUG', 'plugin_action_registered', { actionId: fullId, pluginId: this.pluginId });
   }
 
   /**

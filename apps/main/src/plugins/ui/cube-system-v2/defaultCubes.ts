@@ -6,6 +6,7 @@
  */
 
 import { cubeRegistry } from './cubeRegistry';
+import { debugFlags } from '@/lib/debugFlags';
 
 /**
  * Register default cubes
@@ -240,5 +241,5 @@ export function registerDefaultCubes() {
     },
   });
 
-  console.log('[CubeRegistry] Registered 5 default cubes');
+  debugFlags.log('registry', '[CubeRegistry] Registered 5 default cubes');
 }

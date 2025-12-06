@@ -11,11 +11,12 @@
  *
  * For more examples, see:
  * - frontend/src/lib/game/customHelpers.ts
- * - PLUGIN_SYSTEM.md documentation
+ * - docs/systems/plugins/PLUGIN_SYSTEM.md documentation
  */
 
 import { sessionHelperRegistry, generateHelper } from '@/lib/registries';
 import type { GameSessionDTO } from '@pixsim7/shared.types';
+import { debugFlags } from '@/lib/debugFlags';
 
 /**
  * Registration function - automatically called by the plugin loader
@@ -24,7 +25,7 @@ import type { GameSessionDTO } from '@pixsim7/shared.types';
 export function registerExampleHelper() {
   // Avoid duplicate registration under hot-reload or repeated plugin loads
   if (sessionHelperRegistry.get('exampleHelper')) {
-    console.debug('[PixSim7] Example helper plugin already registered, skipping');
+    debugFlags.log('registry', '[PixSim7] Example helper plugin already registered, skipping');
     return;
   }
   // Example 1: Manual helper registration with metadata
@@ -100,7 +101,7 @@ export function registerExampleHelper() {
     operation: 'set',
   });
 
-  console.log('✓ Registered example helper plugin');
+  debugFlags.log('registry', '✓ Registered example helper plugin');
 }
 
 /**

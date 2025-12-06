@@ -3,6 +3,7 @@ import { nodeRendererRegistry, type NodeRendererProps } from './nodeRendererRegi
 import { nodeTypeRegistry } from '@pixsim7/shared.types';
 import { registerRenderer } from '../plugins/registryBridge';
 import { pluginCatalog } from '../plugins/pluginSystem';
+import { debugFlags } from '@/lib/debugFlags';
 
 /**
  * Auto-wire renderers from node type definitions
@@ -142,7 +143,7 @@ export function registerRenderersFromNodeTypes(options: {
     if (nodeRendererRegistry.has(nodeType.id)) {
       skippedCount++;
       if (verbose) {
-        console.log(`  ⏭️  Skipped ${nodeType.id} (renderer already registered)`);
+        debugFlags.log('registry', `  ⏭️  Skipped ${nodeType.id} (renderer already registered)`);
       }
       continue;
     }
@@ -188,7 +189,7 @@ export function registerRenderersFromNodeTypes(options: {
     registeredCount++;
 
     if (verbose) {
-      console.log(`  ✓ Auto-registered renderer for "${nodeType.id}" → ${rendererName} (origin: ${origin})`);
+      debugFlags.log('registry', `  ✓ Auto-registered renderer for "${nodeType.id}" → ${rendererName} (origin: ${origin})`);
     }
   }
 

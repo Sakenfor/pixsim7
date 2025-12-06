@@ -1,9 +1,17 @@
 import { apiClient } from './client';
 
 export interface DebugPreferences {
+  // Backend debug (server/worker logs)
   generation?: boolean; // Generation pipeline debug (dedup, cache, params)
   provider?: boolean; // Provider API calls and responses
   worker?: boolean; // Worker job processing
+
+  // Frontend debug (browser console)
+  persistence?: boolean; // localStorage read/write operations
+  rehydration?: boolean; // Store rehydration from localStorage
+  stores?: boolean; // Store initialization and creation
+  backend?: boolean; // Backend API synchronization
+  registry?: boolean; // Plugin/feature/route registration logs
 }
 
 export interface UserPreferences {
