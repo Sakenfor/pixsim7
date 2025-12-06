@@ -46,29 +46,33 @@ The codebase has accumulated **427 documentation files**:
 
 **Current state**: 19 files spread across root and docs/
 
-**Proposed structure**:
+**Target folder structure**:
 ```
-docs/PLUGIN_SYSTEM.md          - Main guide + quickstart
-docs/PLUGIN_ARCHITECTURE.md    - Architecture + loader internals
-docs/PLUGIN_DEVELOPER_GUIDE.md - Building plugins
-docs/PLUGIN_REFERENCE.md       - API reference
-docs/PLUGIN_CATALOG.md         - Available plugins
-docs/PLUGIN_WORKSPACE.md       - Workspace plugin specifics
+docs/systems/plugins/
+  ├── PLUGIN_SYSTEM.md          - Main guide + quickstart
+  ├── PLUGIN_ARCHITECTURE.md    - Architecture + loader internals
+  ├── PLUGIN_DEVELOPER_GUIDE.md - Building plugins
+  ├── PLUGIN_REFERENCE.md       - API reference
+  ├── PLUGIN_CATALOG.md         - Available plugins
+  └── PLUGIN_WORKSPACE.md       - Workspace plugin specifics
+
+docs/archive/plugins/
+  └── [Historical implementation docs]
 ```
 
 **Files to consolidate/archive**:
-- Multiple `PLUGIN_WORKSPACE_*` docs → merge into one
-- `PLUGIN_LOADER.md` → merge into ARCHITECTURE
-- Root `PLUGIN_SYSTEM.md` duplicate → delete
-- Implementation completion docs → archive
+- Multiple `PLUGIN_WORKSPACE_*` docs → merge into `docs/systems/plugins/PLUGIN_WORKSPACE.md`
+- `PLUGIN_LOADER.md` → merge into `docs/systems/plugins/PLUGIN_ARCHITECTURE.md`
+- Root `PLUGIN_SYSTEM.md` duplicate → delete (content merged)
+- Implementation completion docs → `docs/archive/plugins/`
 
-**Impact**: Reduce from 19 → 6 files, clearer navigation
+**Impact**: Reduce from 19 → 6 files, clearer navigation, single location
 
 ---
 
 ### 3. Consolidate Generation Documentation (12 files → 5 files) 🎬
 
-**Current state**: 12 files about generation across docs/
+**Current state**: 12 files about generation across docs/ and root
 
 **Key files**:
 - `GENERATION_PIPELINE_REFACTOR_PLAN.md`
@@ -83,16 +87,21 @@ docs/PLUGIN_WORKSPACE.md       - Workspace plugin specifics
 - `EXAMPLE_GENERATION_API_SPLIT.md`
 - Plus more...
 
-**Proposed structure**:
+**Target folder structure**:
 ```
-docs/GENERATION_SYSTEM.md       - Overview + architecture
-docs/GENERATION_GUIDE.md        - Usage guide for developers
-docs/GENERATION_CONVENTIONS.md  - Aliases, config patterns
-docs/GENERATION_PLUGINS.md      - Plugin integration points
-docs/archive/generation/        - Historical refactor plans
+docs/systems/generation/
+  ├── GENERATION_SYSTEM.md       - Overview + architecture
+  ├── GENERATION_GUIDE.md        - Usage guide for developers
+  ├── GENERATION_CONVENTIONS.md  - Aliases, config patterns
+  ├── GENERATION_PLUGINS.md      - Plugin integration points
+  └── GENERATION_STATUS.md       - Status integration (from apps/main/docs)
+
+docs/archive/generation/
+  ├── refactor-plans/            - Historical refactor plans
+  └── evolution/                 - Config evolution history
 ```
 
-**Impact**: Reduce from 12+ → 5 files, single source of truth
+**Impact**: Reduce from 12+ → 5 files, single source of truth, clear organization
 
 ---
 
@@ -111,19 +120,32 @@ docs/archive/generation/        - Historical refactor plans
 - `NPC_PERSONA_ARCHITECTURE.md`
 - Plus archived architecture docs
 
-**Proposed structure**:
+**Target folder structure**:
 ```
-ARCHITECTURE.md              - High-level system architecture
-docs/ARCHITECTURE_DIAGRAMS.md - Visual diagrams + explanations
-docs/subsystems/             - Subsystem-specific architecture
-  - plugin-architecture.md
-  - launcher-architecture.md
-  - ui-architecture.md
-  - npc-architecture.md
-docs/archive/architecture/   - Historical plans
+ARCHITECTURE.md                      - High-level system architecture (stays in root)
+
+docs/architecture/
+  ├── ARCHITECTURE_DIAGRAMS.md       - Visual diagrams + explanations
+  └── subsystems/
+      ├── plugin-architecture.md     - Plugin system architecture
+      ├── launcher-architecture.md   - Launcher architecture
+      ├── ui-architecture.md         - UI/frontend architecture
+      └── npc-architecture.md        - NPC system architecture
+
+docs/archive/architecture/
+  ├── simplification-plans/          - Historical simplification plans
+  └── evolution/                     - Architecture evolution docs
 ```
 
-**Impact**: Reduce overlap, clearer hierarchy
+**Files to consolidate**:
+- `PLUGIN_SYSTEM_ARCHITECTURE.md` → `docs/architecture/subsystems/plugin-architecture.md`
+- `LAUNCHER_ARCHITECTURE.md` → `docs/architecture/subsystems/launcher-architecture.md`
+- `EDITABLE_UI_ARCHITECTURE.md` → `docs/architecture/subsystems/ui-architecture.md`
+- `NPC_PERSONA_ARCHITECTURE.md` → `docs/architecture/subsystems/npc-architecture.md`
+- `EXTENSION_ARCHITECTURE.md` → merge into plugin-architecture.md
+- `ARCHITECTURE_SIMPLIFICATION_PLAN.md` → `docs/archive/architecture/simplification-plans/`
+
+**Impact**: Reduce overlap, clearer hierarchy, subsystems organized
 
 ---
 
@@ -266,30 +288,145 @@ Archive documentation when:
 
 ## Implementation Plan
 
-### Phase 1: Quick Wins (1-2 hours)
-- [ ] Move TASK_*_SUMMARY.md to docs/archive/task-summaries/
-- [ ] Delete empty component READMEs
-- [ ] Create docs/INDEX.md
+### Phase 1: Quick Wins ✅ COMPLETED
 
-### Phase 2: Plugin Consolidation (3-4 hours)
-- [ ] Merge plugin docs as described
+**Effort**: 1-2 hours | **Owner**: Documentation team | **Status**: ✅ Done
+
+**Acceptance Criteria**:
+- [x] 5 TASK summaries moved to docs/archive/task-summaries/
+- [x] Component READMEs audited (result: all kept as valuable)
+- [x] docs/INDEX.md created with comprehensive navigation
+- [x] Root directory reduced from 30 → 26 markdown files
+- [x] Changes committed
+
+**Dependencies**: None
+
+---
+
+### Phase 2: Plugin Consolidation
+
+**Effort**: 3-4 hours | **Owner**: Documentation team | **Status**: 🔄 In Progress
+
+**Dependencies**:
+- Phase 1 complete
+- Familiarity with plugin system architecture
+
+**Tasks**:
+- [ ] Create `docs/systems/plugins/` directory
+- [ ] Merge plugin docs into 6 consolidated files
+- [ ] Update cross-references in codebase
+- [ ] Archive superseded docs to `docs/archive/plugins/`
+- [ ] Run link validation (check for broken links)
+- [ ] Update docs/INDEX.md to reflect new structure
+- [ ] Commit changes
+
+**Acceptance Criteria**:
+- [ ] Plugin docs reduced from 19 → 6 files
+- [ ] All 6 files live in `docs/systems/plugins/`
+- [ ] Historical docs archived to `docs/archive/plugins/`
+- [ ] No broken links to old locations
+- [ ] docs/INDEX.md updated
+- [ ] Cross-references in code updated
+
+---
+
+### Phase 3: Generation Consolidation
+
+**Effort**: 2-3 hours | **Owner**: Documentation team + generation experts
+
+**Dependencies**:
+- Phase 1 complete
+- Understanding of generation pipeline
+
+**Tasks**:
+- [ ] Create `docs/systems/generation/` directory
+- [ ] Merge generation docs into 5 consolidated files
+- [ ] Move `apps/main/docs/generation-status-integration.md` to main docs
 - [ ] Update cross-references
-- [ ] Archive superseded docs
+- [ ] Archive refactor plans to `docs/archive/generation/refactor-plans/`
+- [ ] Run link validation
+- [ ] Update docs/INDEX.md
+- [ ] Commit changes
 
-### Phase 3: Generation Consolidation (2-3 hours)
-- [ ] Merge generation docs
-- [ ] Create clear guide structure
-- [ ] Archive refactor plans
+**Acceptance Criteria**:
+- [ ] Generation docs reduced from 12+ → 5 files
+- [ ] All files live in `docs/systems/generation/`
+- [ ] Historical plans archived properly
+- [ ] No broken links
+- [ ] docs/INDEX.md updated
 
-### Phase 4: Architecture Cleanup (2-3 hours)
-- [ ] Consolidate architecture docs
-- [ ] Create subsystem architecture folder
-- [ ] Update diagrams doc
+---
 
-### Phase 5: Component README Audit (2-3 hours)
-- [ ] Review all 21 component READMEs
-- [ ] Update, merge, or delete as appropriate
+### Phase 4: Architecture Cleanup
+
+**Effort**: 2-3 hours | **Owner**: Architecture team
+
+**Dependencies**:
+- Phase 1 complete
+- Phase 2 complete (plugin architecture)
+
+**Tasks**:
+- [ ] Create `docs/architecture/subsystems/` directory
+- [ ] Move subsystem architecture docs to new location
+- [ ] Consolidate overlapping content
+- [ ] Archive simplification plans
+- [ ] Update cross-references
+- [ ] Run link validation
+- [ ] Update docs/INDEX.md
+- [ ] Commit changes
+
+**Acceptance Criteria**:
+- [ ] Architecture docs reduced from 11 → 4-5 files
+- [ ] Subsystem docs organized in `docs/architecture/subsystems/`
+- [ ] Root ARCHITECTURE.md remains as entry point
+- [ ] Historical plans archived
+- [ ] No broken links
+- [ ] docs/INDEX.md updated
+
+---
+
+### Phase 5: Component README Audit
+
+**Effort**: 2-3 hours | **Owner**: Component owners + documentation team
+
+**Dependencies**:
+- Phase 1 audit results (all READMEs kept)
+- Ongoing component development
+
+**Tasks**:
+- [ ] Review component READMEs for accuracy
+- [ ] Update outdated information
 - [ ] Document component documentation standards
+- [ ] Create template for new component READMEs
+- [ ] Commit changes
+
+**Acceptance Criteria**:
+- [ ] All 21 component READMEs reviewed and accurate
+- [ ] Component README template created
+- [ ] Standards documented in DEVELOPMENT_GUIDE.md
+- [ ] No outdated or incorrect information
+
+---
+
+### Link Validation & Index Maintenance
+
+**After each phase**, run these validation steps:
+
+```bash
+# Check for broken markdown links (install markdown-link-check if needed)
+find . -name "*.md" -not -path "*/node_modules/*" -exec markdown-link-check {} \;
+
+# Or use ripgrep to find references to moved files
+rg "PLUGIN_SYSTEM\.md" --type md  # Example for checking old references
+
+# Regenerate documentation inventory
+find . -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*" | wc -l
+```
+
+**Update docs/INDEX.md** to reflect:
+- New file locations
+- Archived documents
+- Updated categories
 
 ---
 
@@ -308,3 +445,91 @@ Archive documentation when:
 This plan builds on the previous `DOCUMENTATION_CLEANUP_PLAN.md` (Nov 2025) which identified similar issues. Some cleanup was done (obsolete UI analysis files removed), but significant opportunities remain.
 
 The focus is on **consolidation without loss** - merge overlapping docs, archive completed work, but preserve valuable historical context and implementation details.
+
+---
+
+## Appendix: Documentation Inventory Tooling
+
+### Regenerating the Inventory
+
+The counts in this plan (427 total files, 19 plugin files, etc.) were generated using these commands:
+
+```bash
+# Total documentation count
+find . -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*" | wc -l
+
+# By category
+echo "Claude tasks:" && find ./claude-tasks -name "*.md" 2>/dev/null | wc -l
+echo "Active docs/:" && find ./docs -name "*.md" -not -path "*/archive/*" 2>/dev/null | wc -l
+echo "Archived:" && find ./docs/archive -name "*.md" 2>/dev/null | wc -l
+echo "Root-level:" && find . -maxdepth 1 -name "*.md" 2>/dev/null | wc -l
+
+# Find files by topic (e.g., plugin, generation, architecture)
+find ./docs -name "*PLUGIN*.md" -not -path "*/archive/*" | wc -l
+find ./docs -name "*GENERATION*.md" -not -path "*/archive/*" | wc -l
+find . -maxdepth 2 -name "*ARCHITECTURE*.md" -not -path "*/node_modules/*" | wc -l
+
+# Component READMEs
+find ./apps/main/src -name "README.md" | wc -l
+
+# Detailed file sizes
+for file in $(find ./apps/main/src -name "README.md"); do
+  lines=$(wc -l < "$file" 2>/dev/null || echo 0)
+  echo "$lines lines: $file"
+done | sort -n
+```
+
+### Automated Documentation Audit Script
+
+Consider creating `scripts/docs_audit.sh` for reusable analysis:
+
+```bash
+#!/bin/bash
+# scripts/docs_audit.sh - Documentation inventory and analysis
+
+set -e
+
+echo "=== Documentation Inventory Report ==="
+echo "Generated: $(date)"
+echo ""
+
+# Total counts
+total=$(find . -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*" | wc -l)
+echo "Total documentation files: $total"
+echo ""
+
+# Category breakdown
+echo "## By Category"
+echo "Claude tasks: $(find ./claude-tasks -name "*.md" 2>/dev/null | wc -l)"
+echo "Active docs/: $(find ./docs -name "*.md" -not -path "*/archive/*" 2>/dev/null | wc -l)"
+echo "Archived: $(find ./docs/archive -name "*.md" 2>/dev/null | wc -l)"
+echo "Root-level: $(find . -maxdepth 1 -name "*.md" 2>/dev/null | wc -l)"
+echo "Component READMEs: $(find ./apps/main/src -name "README.md" | wc -l)"
+echo ""
+
+# Topic analysis
+echo "## By Topic"
+echo "Plugin-related: $(find . -name "*PLUGIN*.md" -not -path "*/node_modules/*" -not -path "*/archive/*" | wc -l)"
+echo "Generation-related: $(find . -name "*GENERATION*.md" -not -path "*/node_modules/*" -not -path "*/archive/*" | wc -l)"
+echo "Architecture-related: $(find . -name "*ARCHITECTURE*.md" -not -path "*/node_modules/*" -not -path "*/archive/*" | wc -l)"
+echo ""
+
+# Size distribution
+echo "## Size Distribution (component READMEs)"
+find ./apps/main/src -name "README.md" -exec wc -l {} \; | sort -n | awk '{print $1 " lines: " $2}'
+echo ""
+
+# Recent changes
+echo "## Recently Modified (last 7 days)"
+find . -name "*.md" -not -path "*/node_modules/*" -mtime -7 | head -20
+echo ""
+
+echo "=== End of Report ==="
+```
+
+Usage:
+```bash
+bash scripts/docs_audit.sh > docs-inventory-$(date +%Y%m%d).txt
+```
+
+This provides a reproducible baseline for measuring cleanup progress.
