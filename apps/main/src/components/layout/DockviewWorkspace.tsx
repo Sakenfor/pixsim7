@@ -6,17 +6,20 @@ import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/works
 import { panelRegistry } from '@/lib/panels/panelRegistry';
 import { initializePanels } from '@/lib/panels/initializePanels';
 import { initializeWidgets } from '@/lib/widgets/initializeWidgets';
+import { PanelHeader } from '@/components/panels/shared/PanelHeader';
+import { useEditorContext } from '@/lib/context/editorContext';
 
-// Wrapper for panels to provide data-panel-id
+// Wrapper for panels to provide data-panel-id and a common header
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   const { params } = props;
   const panelId = params?.panelId;
+
+  const ctx = useEditorContext();
 
   if (!panelId) {
     return <div className="p-4 text-red-500">Error: No panel ID</div>;
   }
 
-  // Get panel from registry
   const panelDef = panelRegistry.get(panelId);
 
   if (!panelDef) {
@@ -25,9 +28,48 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
 
   const Component = panelDef.component;
 
+  const categoryMap: Record<string, any> = {
+    workspace: 'workspace',
+    scene: 'scene',
+    game: 'game',
+    dev: 'dev',
+    tools: 'tools',
+    utilities: 'utilities',
+    system: 'system',
+    custom: 'custom',
+  };
+
+  let contextLabel: string | undefined;
+  if (panelId === 'graph') {
+    contextLabel = ctx.scene.title
+      ? `Scene: ${ctx.scene.title}${ctx.world.id ? ` • World #${ctx.world.id}` : ''}`
+      : ctx.world.id
+      ? `World #${ctx.world.id}`
+      : undefined;
+  } else if (panelId === 'scene-management' || panelDef.category === 'scene') {
+    contextLabel = ctx.scene.title ?? undefined;
+  } else if (panelId === 'game' || panelDef.category === 'game') {
+    contextLabel = ctx.runtime.sessionId
+      ? `Session #${ctx.runtime.sessionId}`
+      : ctx.world.id
+      ? `World #${ctx.world.id}`
+      : undefined;
+  } else if (panelId === 'health') {
+    contextLabel = ctx.workspace.activePresetId
+      ? `Preset: ${ctx.workspace.activePresetId}`
+      : undefined;
+  }
+
   return (
-    <div className="h-full w-full overflow-auto bg-white dark:bg-neutral-900" data-panel-id={panelId}>
-      <Component />
+    <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900" data-panel-id={panelId}>
+      <PanelHeader
+        title={panelDef.title}
+        category={categoryMap[panelDef.category]}
+        contextLabel={contextLabel}
+      />
+      <div className="flex-1 min-h-0 overflow-auto">
+        <Component />
+      </div>
     </div>
   );
 }
