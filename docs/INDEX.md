@@ -35,13 +35,13 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 - [Extension Architecture](EXTENSION_ARCHITECTURE.md) - Plugin/extension design
 
 ### Plugin System
-- [Plugin System](PLUGIN_SYSTEM.md) - Main plugin guide
-- [Plugin Developer Guide](PLUGIN_DEVELOPER_GUIDE.md) - Building plugins
-- [Plugin Reference](PLUGIN_REFERENCE.md) - API reference
-- [Plugin Loader](PLUGIN_LOADER.md) - Plugin loading mechanism
-- [Plugin Catalog](PLUGIN_CATALOG.md) - Available plugins
-- [Plugin Workspace](PLUGIN_WORKSPACE.md) - Workspace plugin specifics
-- [Unified Plugin System](UNIFIED_PLUGIN_SYSTEM.md)
+- [Plugin System](systems/plugins/PLUGIN_SYSTEM.md) - Main plugin guide
+- [Unified Plugin System](systems/plugins/UNIFIED_PLUGIN_SYSTEM.md) - Cross-family plugin system
+- [Plugin Developer Guide](systems/plugins/PLUGIN_DEVELOPER_GUIDE.md) - Building plugins
+- [Plugin Reference](systems/plugins/PLUGIN_REFERENCE.md) - API reference
+- [Plugin Architecture](systems/plugins/PLUGIN_ARCHITECTURE.md) - Plugin loading & architecture
+- [Plugin Catalog](systems/plugins/PLUGIN_CATALOG.md) - Available plugins
+- [Plugin Workspace](systems/plugins/PLUGIN_WORKSPACE.md) - Workspace plugin specifics
 - [Backend Plugin Capabilities](decisions/20251121-backend-plugin-auto-discovery.md)
 
 ### Generation System
