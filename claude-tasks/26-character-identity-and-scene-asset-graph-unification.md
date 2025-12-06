@@ -13,7 +13,7 @@
 >   - `pixsim7/backend/main/infrastructure/database/migrations/20251118_1200_add_character_registry.py`  
 >   - `pixsim7/backend/main/infrastructure/database/migrations/20251118_1300_add_character_integrations.py`  
 >   - `docs/INTIMACY_SCENE_COMPOSER.md` and scene graph docs  
->   - Generation model docs (`docs/DYNAMIC_GENERATION_FOUNDATION.md`).
+>   - Generation model docs (`docs/systems/generation/GENERATION_SYSTEM.md`).
 
 ---
 

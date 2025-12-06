@@ -9,7 +9,7 @@
 >   - `docs/HOTSPOT_ACTIONS_2D.md` – 2D hotspots, interaction schema, and actions  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationship tiers, arcs, and session flags  
 >   - `docs/INTIMACY_AND_GENERATION.md` – intimacy + generation social context  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation nodes and pipeline  
+>   - `docs/systems/generation/GENERATION_SYSTEM.md` – generation nodes and pipeline  
 >   - `docs/GRAPH_UI_LIFE_SIM_PHASES.md` – how world/life‑sim integrates with graph editor  
 >   - `claude-tasks/13-npc-behavior-system-activities-and-routine-graphs.md` – NPC behavior, activities, and routine graphs  
 >   - `claude-tasks/12-intimacy-scene-composer-and-progression-editor.md` – intimacy scene/progression tooling.

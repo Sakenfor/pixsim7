@@ -176,7 +176,7 @@ pattern instead of re‑introducing hard‑coded aliases.
 
 ### 4.1 Update or add a short doc section
 
-Suggested file: `docs/DYNAMIC_GENERATION_FOUNDATION.md` or a new small doc,
+Suggested file: `docs/systems/generation/GENERATION_SYSTEM.md` or a new small doc,
 e.g. `docs/GENERATION_ALIAS_CONVENTIONS.md`.
 
 Document briefly:

@@ -5,7 +5,7 @@ They are meant to be shared across multiple AI agents / developers, not one‑of
 
 > **For Agents**
 > - These files are **roadmaps/status trackers**, not primary specifications.  
-> - Always start from `docs/APP_MAP.md` and the relevant system docs (e.g. `SYSTEM_OVERVIEW.md`, `RELATIONSHIPS_AND_ARCS.md`, `DYNAMIC_GENERATION_FOUNDATION.md`) to understand behavior and data shapes.
+> - Always start from `docs/APP_MAP.md` and the relevant system docs (e.g. `SYSTEM_OVERVIEW.md`, `RELATIONSHIPS_AND_ARCS.md`, `systems/generation/GENERATION_SYSTEM.md`) to understand behavior and data shapes.
 > - Use the task files to coordinate multi‑phase work and record what’s been done, with links back to code and docs.
 
 Each `NN-*.md` file:

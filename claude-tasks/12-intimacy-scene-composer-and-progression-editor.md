@@ -11,7 +11,7 @@
 > - Read these first for authoritative behavior and data shapes:  
 >   - `docs/INTIMACY_AND_GENERATION.md` (intimacy + generation)  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship tiers / arcs)  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` (generation nodes and pipeline).
+>   - `docs/systems/generation/GENERATION_SYSTEM.md` (generation nodes and pipeline).
 > - When you start implementing any phase here, design around existing preview APIs, generation types, interaction presets, and simulation tools; don’t re‑invent those systems.
 > - Update the checklist as phases land, and add notes pointing back to concrete files/PRs.
 
@@ -141,7 +141,7 @@ This task creates an **Intimacy Scene Composer** and **Relationship Progression 
   - `docs/INTIMACY_SCENE_COMPOSER.md` – **NEW**: Complete usage guide for this feature
   - `docs/INTIMACY_AND_GENERATION.md` – Intimacy + generation integration
   - `docs/RELATIONSHIPS_AND_ARCS.md` – Relationship tiers/arcs
-  - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – Generation nodes/pipeline
+  - `docs/systems/generation/GENERATION_SYSTEM.md` – Generation nodes/pipeline
 
 - **Types (Phase 1 - IMPLEMENTED):**
   - `packages/types/src/intimacy.ts` – All intimacy/progression type definitions

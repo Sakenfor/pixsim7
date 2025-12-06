@@ -9,7 +9,7 @@
 >   - `ARCHITECTURE.md` – backend architecture overview
 >   - `docs/APP_MAP.md` – where backend services live and how they’re started
 >   - `docs/EXAMPLE_GENERATION_API_SPLIT.md` – target state for shared backend between main/generation services
->   - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – route/domain plugin system
+>   - `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – route/domain plugin system
 
 ---
 

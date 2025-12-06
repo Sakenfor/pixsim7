@@ -205,4 +205,4 @@ When creating new plugins:
 4. Test thoroughly
 5. Submit a pull request with a clear description
 
-For questions or issues, check the main [PLUGIN_SYSTEM.md](../../../docs/systems/plugins/PLUGIN_SYSTEM.md) documentation.
+For questions or issues, check the main [Plugin System guide](../../../docs/systems/plugins/PLUGIN_SYSTEM.md).

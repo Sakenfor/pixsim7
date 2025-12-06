@@ -14,7 +14,7 @@
 >   - `ARCHITECTURE.md` – overall system structure and services
 >   - `docs/EXTENSION_ARCHITECTURE.md` – extension/plugin surfaces (backend, frontend, graph, game JSON)
 >   - `docs/APP_MAP.md` – app map and critical routes
->   - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend plugin auto-discovery
+>   - `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend plugin auto-discovery
 >   - `docs/PLUGIN_SYSTEM_ARCHITECTURE.md` – frontend plugin system
 
 ---

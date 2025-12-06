@@ -3,7 +3,7 @@
 **Context**
 - The project has a unified generation domain in `pixsim7/backend/main/domain/generation.py` with a modern `Generation`/`GenerationArtifact` model.
 - Dynamic generation has a clear design via:
-  - `docs/DYNAMIC_GENERATION_FOUNDATION.md`
+  - `docs/systems/generation/GENERATION_SYSTEM.md`
   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`
   - `docs/PROMPT_VERSIONING_SYSTEM.md`, `NARRATIVE_PROMPT_ENGINE_SPEC.md`, etc.
 - Frontend/editor integration is partially implemented via:
@@ -130,7 +130,7 @@ Make sure Generation Nodes in the editor actually drive requests to the unified 
    - The React Flow node components for generation.
    - Any generation API client in `apps/main/src/lib/api` or similar.
 2. Update the frontend client to:
-   - Call the unified generation endpoint (per `DYNAMIC_GENERATION_FOUNDATION.md` / refactor plan).
+   - Call the unified generation endpoint (per `systems/generation/GENERATION_SYSTEM.md` / refactor plan).
    - Ensure requests are mapped to `GenerationService` (unified path).
 3. Remove or wrap any usage of older “job” endpoints so new work only hits the unified generation path.
 
@@ -213,7 +213,7 @@ Finalize how caching and determinism work for generations.
 1. Ensure `Generation.compute_hash` (or equivalent) is used consistently to derive deterministic keys from:
    - `canonical_params`.
    - `inputs`.
-2. Align cache key patterns with `DYNAMIC_GENERATION_FOUNDATION.md`:
+2. Align cache key patterns with `systems/generation/GENERATION_SYSTEM.md`:
    - `[type]|[purpose]|[fromSceneId]|[toSceneId]|[strategy]|[seed]|[version]`, etc.
 3. Implement or confirm:
    - In‑memory and Redis cache layers.

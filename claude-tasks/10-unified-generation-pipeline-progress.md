@@ -6,7 +6,7 @@
 > **For Agents (How to use this file)**
 > - This file is an **implementation progress log** for Task 10, not a spec.
 > - For behavior and data contracts, read:  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md`  
+>   - `docs/systems/generation/GENERATION_SYSTEM.md`  
 >   - `docs/INTIMACY_AND_GENERATION.md`  
 >   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`  
 >   - `claude-tasks/10-unified-generation-pipeline-and-dev-tools.md` (task overview).
@@ -163,7 +163,7 @@ async def _resolve_prompt_config(
 - Persist in `canonical_params` or dedicated field
 
 ### Phase 5 - Validation & Health Panel
-- Implement validation rules from `DYNAMIC_GENERATION_FOUNDATION.md`
+- Implement validation rules from `systems/generation/GENERATION_SYSTEM.md`
 - Duration constraints, fallback validation
 - Strategy viability warnings
 - Node health UI badges

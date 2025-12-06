@@ -3,7 +3,7 @@
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document** for consolidating generation paths; it’s not the primary specification.
 > - Read these first for authoritative behavior and data shapes:  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation system design  
+>   - `docs/systems/generation/GENERATION_SYSTEM.md` – generation system design  
 >   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` – backend migration plan  
 >   - `docs/INTIMACY_AND_GENERATION.md` – social context and ratings.
 > - Treat `packages/types/src/generation.ts`, `packages/game/engine/src/generation/*`, and backend `GenerationService` + `/api/v1/generations` as the **canonical** path for new work.
@@ -142,7 +142,7 @@ Define the single canonical request shape and API path for generation.
    - Backend request schemas in `pixsim7/backend/main/shared/schemas/generation_schemas.py`.
 2. Confirm canonical entrypoint:
    - `POST /api/v1/generations` (and any related validation endpoints).
-3. Document in this file and/or `DYNAMIC_GENERATION_FOUNDATION.md` that **new work must use**:
+3. Document in this file and/or `systems/generation/GENERATION_SYSTEM.md` that **new work must use**:
    - `GenerationNodeConfig` → `buildGenerateContentRequest()` → `/api/v1/generations`.
 
 **Status**: ✅ COMPLETED
@@ -564,7 +564,7 @@ No dead code to remove. Legacy job infrastructure never existed in the codebase:
 **Related Docs & Files**
 
 - Docs:  
-  - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation system overview  
+  - `docs/systems/generation/GENERATION_SYSTEM.md` – generation system overview  
   - `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md` – migration details  
   - `docs/INTIMACY_AND_GENERATION.md` – social context and ratings
 - Backend:  

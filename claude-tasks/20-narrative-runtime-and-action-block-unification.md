@@ -4,7 +4,7 @@
 > - This is a **large, multi-phase refactor** to unify dialogue, action blocks, and generation-driven narrative into a single narrative runtime.
 > - Only start this once Tasks 09–10 (intimacy & generation), 13 (behavior), 17 (interaction layer), and 19 (NPC ECS components) are reasonably stable.
 > - Read these first for context and constraints:  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation nodes & pipeline  
+>   - `docs/systems/generation/GENERATION_SYSTEM.md` – generation nodes & pipeline  
 >   - `docs/INTIMACY_AND_GENERATION.md` – intimacy + social context  
 >   - `docs/behavior_system/README.md` – NPC behavior overview  
 >   - `docs/INTERACTION_AUTHORING_GUIDE.md` – authoring interactions & chains  

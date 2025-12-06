@@ -12,7 +12,7 @@
 >   - `ARCHITECTURE.md` – overall system architecture and services
 >   - `docs/APP_MAP.md` – app map and frontend/backend boundaries
 >   - `GAMEPLAY_SYSTEMS.md` – game session flags/relationships, world/NPC conventions
->   - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin system
+>   - `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin system
 >   - `docs/PLUGIN_SYSTEM_ARCHITECTURE.md` – frontend UI plugin system
 >   - `GRAPH_RENDERER_PLUGINS.md` – graph node renderer plugin architecture
 
@@ -126,7 +126,7 @@ Create the canonical extension & plugin architecture doc and link it into the ma
 2. Add brief “Extension & Plugins” section to:
    - `ARCHITECTURE.md` (with a link to the new doc).
    - `GAMEPLAY_SYSTEMS.md` (for how game systems extend via JSON + plugins).
-3. Ensure examples in `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`, `docs/PLUGIN_SYSTEM_ARCHITECTURE.md`, and `GRAPH_RENDERER_PLUGINS.md` are referenced and consistent with the new terminology.
+3. Ensure examples in `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`, `docs/PLUGIN_SYSTEM_ARCHITECTURE.md`, and `GRAPH_RENDERER_PLUGINS.md` are referenced and consistent with the new terminology.
 
 **Status:** `[ ]` Not started
 

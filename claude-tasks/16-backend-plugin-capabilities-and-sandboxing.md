@@ -12,7 +12,7 @@
 > - Treat the **plugin manifest + capabilities** defined here as the canonical way for plugins to touch world/session/behavior state. Avoid grabbing raw DB sessions or internal services directly from plugins.
 >
 > **Doc references:**
-> - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin auto-discovery and manifest patterns
+> - `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` – backend route/domain plugin auto-discovery and manifest patterns
 > - `ARCHITECTURE.md` – how backend plugins fit into the overall system
 > - `docs/EXTENSION_ARCHITECTURE.md` – unified extension/plugin map
 

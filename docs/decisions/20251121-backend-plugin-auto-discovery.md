@@ -102,7 +102,7 @@ We treat this plugin system as the **canonical way** to add backend routes and d
 Mitigations:
 
 - Plugin health checks and fail-fast behavior for “required” plugins (see `claude-tasks/31-critical-surface-guardrails-and-ci-checks.md`).
-- Central documentation in `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` and `docs/EXTENSION_ARCHITECTURE.md`.
+- Central documentation in `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md` and `docs/EXTENSION_ARCHITECTURE.md`.
 
 ---
 
@@ -117,7 +117,7 @@ Mitigations:
   - `pixsim7/backend/main/main.py`
 - Docs:
   - `ARCHITECTURE.md`
-  - `docs/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`
+  - `docs/archive/architecture/docs/archive/architecture/MERGE_MIDDLEWARE_PLUGIN_ARCHITECTURE.md`
   - `docs/EXTENSION_ARCHITECTURE.md`
   - `docs/APP_MAP.md`
   - `claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md`

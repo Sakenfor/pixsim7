@@ -6,7 +6,7 @@
 > **For Agents (How to use this file)**
 > - This file is a **roadmap/status document**, not the primary specification.
 > - Read these first for authoritative behavior and data shapes:  
->   - `docs/DYNAMIC_GENERATION_FOUNDATION.md` (generation system)  
+>   - `docs/systems/generation/GENERATION_SYSTEM.md` (generation system)  
 >   - `docs/INTIMACY_AND_GENERATION.md` (intimacy/social context)  
 >   - `docs/RELATIONSHIPS_AND_ARCS.md` (relationship data conventions).
 > - When editing social‑context logic, keep `packages/types/src/generation.ts`, `packages/game/engine/src/relationships/socialContext.ts`, `packages/game/engine/src/generation/*`, and backend generation APIs in sync.
@@ -18,7 +18,7 @@
   - Per‑world schemas in `GameWorld.meta.relationship_schemas` and `intimacy_schema`.
 - The dynamic generation system is defined in:
   - `packages/types/src/generation.ts` (`GenerationNodeConfig`, `GenerateContentRequest/Response`, etc.).
-  - `docs/DYNAMIC_GENERATION_FOUNDATION.md` and `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`.
+  - `docs/systems/generation/GENERATION_SYSTEM.md` and `docs/GENERATION_PIPELINE_REFACTOR_PLAN.md`.
 - Generation Nodes are used to request content (e.g. transitions, clips) via a backend generation service with clear data contracts.
 - As we add **relationship preview APIs** (Task 07) and **social metrics** (Task 08), we want:
   - A consistent way to **inject intimacy/relationship context** into `GenerationNodeConfig` and `GenerateContentRequest`.
@@ -81,7 +81,7 @@ All 10 phases have a reference implementation in place. This section summarizes 
 **Related Docs & Files**
 
 - Docs:  
-  - `docs/DYNAMIC_GENERATION_FOUNDATION.md` – generation system design  
+  - `docs/systems/generation/GENERATION_SYSTEM.md` – generation system design  
   - `docs/INTIMACY_AND_GENERATION.md` – intimacy/social context integration  
   - `docs/RELATIONSHIPS_AND_ARCS.md` – relationship/session conventions
 - Backend:  
