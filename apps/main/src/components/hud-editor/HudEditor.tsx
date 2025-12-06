@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Panel, Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
+import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
 import type { GameWorldDetail } from '@/lib/api/game';
 import { updateGameWorldMeta } from '@/lib/api/game';
 import { worldToolRegistry } from '@/lib/worldTools/registry';
@@ -23,7 +23,6 @@ import type {
 } from '@/lib/worldTools/types';
 import { getHudConfig } from '@/lib/worldTools/hudLayout';
 import {
-  loadPresets,
   createPreset,
   deletePreset,
   exportPreset,
@@ -50,6 +49,7 @@ import {
   fromHudToolPlacements,
   toHudToolPlacements,
 } from '@/lib/gameplay-ui-core';
+import { SurfaceWorkbench, type SurfaceWorkbenchStatus } from '../surface-workbench';
 
 export interface HudLayoutEditorProps {
   worldDetail: GameWorldDetail;
@@ -118,6 +118,42 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   // Validation warnings
   const [warnings, setWarnings] = useState<string[]>([]);
+
+  const statusMessages = useMemo<SurfaceWorkbenchStatus[]>(() => {
+    const messages: SurfaceWorkbenchStatus[] = [];
+
+    if (error) {
+      messages.push({
+        type: 'error',
+        content: error,
+      });
+    }
+
+    if (successMessage) {
+      messages.push({
+        type: 'success',
+        content: successMessage,
+      });
+    }
+
+    if (warnings.length > 0) {
+      messages.push({
+        type: 'warning',
+        content: (
+          <div>
+            <div className="font-semibold text-sm mb-1">Layout warnings</div>
+            <ul className="list-disc pl-5 text-sm space-y-1">
+              {warnings.map((warning, index) => (
+                <li key={index}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ),
+      });
+    }
+
+    return messages;
+  }, [error, successMessage, warnings]);
 
   // Get all available tools
   const availableTools = useMemo(() => worldToolRegistry.getAll(), []);
@@ -756,616 +792,602 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
     input.click();
   };
 
-  return (
-    <Panel className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-neutral-800 dark:text-neutral-200">
-            HUD Layout Editor
-          </h2>
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            Configure the HUD layout for world: {worldDetail.name}
-          </p>
-        </div>
-        {onClose && (
-          <Button size="sm" variant="ghost" onClick={onClose}>
-            ✕
-          </Button>
-        )}
-      </div>
+  const headerActions = onClose ? (
+    <Button size="sm" variant="ghost" onClick={onClose}>
+      Close
+    </Button>
+  ) : undefined;
 
-      {error && (
-        <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-sm text-red-800 dark:text-red-200">
-          {error}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="p-3 bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded text-sm text-green-800 dark:text-green-200">
-          {successMessage}
-        </div>
-      )}
-
-      {warnings.length > 0 && (
-        <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 rounded">
-          <h4 className="font-semibold text-sm text-yellow-800 dark:text-yellow-200 mb-1">
-            ⚠️ Layout Warnings
-          </h4>
-          <ul className="list-disc pl-5 text-sm text-yellow-800 dark:text-yellow-200 space-y-1">
-            {warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Phase 6: Profile and View Mode Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded">
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            HUD Profile
-          </label>
-          <Select
-            value={selectedProfile}
-            onChange={(e) => setSelectedProfile(e.target.value)}
-            className="w-full"
-          >
-            {availableProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.icon} {profile.name}
-              </option>
-            ))}
-          </Select>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400">
-            Choose which profile's layout to edit
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            View Mode (Optional)
-          </label>
-          <Select
-            value={selectedViewMode}
-            onChange={(e) => setSelectedViewMode(e.target.value as any)}
-            className="w-full"
-          >
-            <option value="all">All View Modes</option>
-            <option value="cinematic">Cinematic</option>
-            <option value="hud-heavy">HUD Heavy</option>
-            <option value="debug">Debug</option>
-          </Select>
-          <p className="text-xs text-neutral-600 dark:text-neutral-400">
-            Customize layout for specific view mode
-          </p>
-        </div>
-      </div>
-
-      {/* Undo/Redo Controls (Task 101: Using editing-core useUndoRedo) */}
-      <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={undo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
+  const profileSelectors = (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded">
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+          HUD Profile
+        </label>
+        <Select
+          value={selectedProfile}
+          onChange={(e) => setSelectedProfile(e.target.value)}
+          className="w-full"
         >
-          ↶ Undo
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={redo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
-        >
-          ↷ Redo
-        </Button>
-        <span className="ml-auto">
-          💡 Tip: Use Ctrl+S to save, Ctrl+Z to undo
-        </span>
+          {availableProfiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.icon} {profile.name}
+            </option>
+          ))}
+        </Select>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          Choose which profile's layout to edit
+        </p>
       </div>
 
-      <div className="space-y-4">
-        {/* Tool Placement Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="border-b border-neutral-300 dark:border-neutral-700">
-              <tr className="text-left">
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Tool</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Region</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Order</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Size</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Options</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Visibility</th>
-                <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+          View Mode (Optional)
+        </label>
+        <Select
+          value={selectedViewMode}
+          onChange={(e) => setSelectedViewMode(e.target.value as any)}
+          className="w-full"
+        >
+          <option value="all">All View Modes</option>
+          <option value="cinematic">Cinematic</option>
+          <option value="hud-heavy">HUD Heavy</option>
+          <option value="debug">Debug</option>
+        </Select>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400">
+          Customize layout for specific view mode
+        </p>
+      </div>
+    </div>
+  );
+
+  const undoRedoControls = (
+    <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={undo}
+        disabled={!canUndo}
+        title="Undo (Ctrl+Z)"
+      >
+        Undo
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={redo}
+        disabled={!canRedo}
+        title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+      >
+        Redo
+      </Button>
+      <span className="ml-auto">
+        Tip: Use Ctrl+S to save, Ctrl+Z to undo
+      </span>
+    </div>
+  );
+
+  const toolPlacementTable = (
+    <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-neutral-300 dark:border-neutral-700">
+            <tr className="text-left">
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Tool</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Region</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Order</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Size</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Options</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Visibility</th>
+              <th className="pb-2 font-semibold text-neutral-700 dark:text-neutral-300">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+            {placements.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="py-4 text-center text-neutral-500 dark:text-neutral-400">
+                  No tools in layout. Click "Add Tool" to add one.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {placements.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-4 text-center text-neutral-500 dark:text-neutral-400">
-                    No tools in layout. Click "Add Tool" to add one.
-                  </td>
-                </tr>
-              ) : (
-                placements.map((placement) => (
-                  <tr key={placement.toolId} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                    <td className="py-2">
-                      <div className="flex items-center gap-2">
-                        {placement.icon && <span className="text-lg">{placement.icon}</span>}
-                        <div>
-                          <div className="font-medium text-neutral-800 dark:text-neutral-200">
-                            {placement.name}
-                          </div>
-                          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                            {placement.description}
-                          </div>
+            ) : (
+              placements.map((placement) => (
+                <tr key={placement.toolId} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
+                      {placement.icon && <span className="text-lg">{placement.icon}</span>}
+                      <div>
+                        <div className="font-medium text-neutral-800 dark:text-neutral-200">
+                          {placement.name}
+                        </div>
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                          {placement.description}
                         </div>
                       </div>
-                    </td>
-                    <td className="py-2">
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <Select
+                      size="sm"
+                      value={placement.region}
+                      onChange={(e) => handleRegionChange(placement.toolId, e.target.value as HudRegion)}
+                      title={REGION_DESCRIPTIONS[placement.region]}
+                    >
+                      {REGIONS.map((region) => (
+                        <option key={region.value} value={region.value}>
+                          {region.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="py-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={placement.order || 0}
+                      onChange={(e) => handleOrderChange(placement.toolId, parseInt(e.target.value, 10))}
+                      className="w-20 px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+                    />
+                  </td>
+                  <td className="py-2">
+                    <Select
+                      size="sm"
+                      value={placement.size || ''}
+                      onChange={(e) => handleSizeChange(placement.toolId, e.target.value)}
+                      title="Tool size variant"
+                    >
+                      {TOOL_SIZES.map((size) => (
+                        <option key={size.value} value={size.value}>
+                          {size.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="py-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="flex items-center gap-1 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={placement.defaultCollapsed || false}
+                          onChange={(e) => handleCollapsedChange(placement.toolId, e.target.checked)}
+                          className="cursor-pointer"
+                        />
+                        <span>Start collapsed</span>
+                      </label>
+                      {placement.region === 'overlay' && (
+                        <input
+                          type="number"
+                          placeholder="Z-index"
+                          value={placement.zIndex || ''}
+                          onChange={(e) => handleZIndexChange(placement.toolId, parseInt(e.target.value, 10))}
+                          className="w-20 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                          title="Stacking order (higher = on top)"
+                        />
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <div className="space-y-1">
                       <Select
                         size="sm"
-                        value={placement.region}
-                        onChange={(e) => handleRegionChange(placement.toolId, e.target.value as HudRegion)}
-                        title={REGION_DESCRIPTIONS[placement.region]}
+                        value={placement.visibleWhen?.kind || ''}
+                        onChange={(e) => handleConditionKindChange(placement.toolId, e.target.value)}
+                        title="Visibility condition"
                       >
-                        {REGIONS.map((region) => (
-                          <option key={region.value} value={region.value}>
-                            {region.label}
+                        {VISIBILITY_CONDITION_KINDS.map((kind) => (
+                          <option key={kind.value} value={kind.value}>
+                            {kind.label}
                           </option>
                         ))}
                       </Select>
-                    </td>
-                    <td className="py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={placement.order || 0}
-                        onChange={(e) => handleOrderChange(placement.toolId, parseInt(e.target.value, 10))}
-                        className="w-20 px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
-                      />
-                    </td>
-                    <td className="py-2">
-                      <Select
-                        size="sm"
-                        value={placement.size || ''}
-                        onChange={(e) => handleSizeChange(placement.toolId, e.target.value)}
-                        title="Tool size variant"
-                      >
-                        {TOOL_SIZES.map((size) => (
-                          <option key={size.value} value={size.value}>
-                            {size.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </td>
-                    <td className="py-2">
-                      <div className="flex flex-col gap-1">
-                        <label className="flex items-center gap-1 text-xs cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={placement.defaultCollapsed || false}
-                            onChange={(e) => handleCollapsedChange(placement.toolId, e.target.checked)}
-                            className="cursor-pointer"
-                          />
-                          <span>Start collapsed</span>
-                        </label>
-                        {placement.region === 'overlay' && (
-                          <input
-                            type="number"
-                            placeholder="Z-index"
-                            value={placement.zIndex || ''}
-                            onChange={(e) => handleZIndexChange(placement.toolId, parseInt(e.target.value, 10))}
-                            className="w-20 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                            title="Stacking order (higher = on top)"
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2">
-                      <div className="space-y-1">
-                        <Select
-                          size="sm"
-                          value={placement.visibleWhen?.kind || ''}
-                          onChange={(e) => handleConditionKindChange(placement.toolId, e.target.value)}
-                          title="Visibility condition"
-                        >
-                          {VISIBILITY_CONDITION_KINDS.map((kind) => (
-                            <option key={kind.value} value={kind.value}>
-                              {kind.label}
-                            </option>
-                          ))}
-                        </Select>
-                        {/* Condition-specific inputs */}
-                        {placement.visibleWhen && placement.visibleWhen.kind === 'location' && (
-                          <input
-                            type="text"
-                            placeholder="Location IDs (e.g., 1,3,5)"
-                            value={placement.visibleWhen.id || ''}
-                            onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                      {placement.visibleWhen && placement.visibleWhen.kind === 'location' && (
+                        <input
+                          type="text"
+                          placeholder="Location IDs (e.g., 1,3,5)"
+                          value={placement.visibleWhen.id || ''}
+                          onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                          title="Comma-separated location IDs"
+                        />
+                      )}
+                      {placement.visibleWhen && placement.visibleWhen.kind === 'time' && (
+                        <>
+                          <select
+                            value={placement.visibleWhen.dayOfWeek || 'any'}
+                            onChange={(e) => handleTimeConditionChange(placement.toolId, 'dayOfWeek', e.target.value)}
                             className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                            title="Comma-separated location IDs"
-                          />
-                        )}
-                        {placement.visibleWhen && placement.visibleWhen.kind === 'time' && (
-                          <>
-                            <select
-                              value={placement.visibleWhen.dayOfWeek || 'any'}
-                              onChange={(e) => handleTimeConditionChange(placement.toolId, 'dayOfWeek', e.target.value)}
-                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                            >
-                              <option value="any">Any Day</option>
-                              <option value="1">Monday</option>
-                              <option value="2">Tuesday</option>
-                              <option value="3">Wednesday</option>
-                              <option value="4">Thursday</option>
-                              <option value="5">Friday</option>
-                              <option value="6">Saturday</option>
-                              <option value="0">Sunday</option>
-                            </select>
-                            <div className="flex gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                max="23"
-                                placeholder="Start hour"
-                                value={placement.visibleWhen.hourRange?.[0] || ''}
-                                onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourStart', e.target.value)}
-                                className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                              />
-                              <span className="text-xs">to</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="23"
-                                placeholder="End hour"
-                                value={placement.visibleWhen.hourRange?.[1] || ''}
-                                onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourEnd', e.target.value)}
-                                className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                              />
-                            </div>
-                          </>
-                        )}
-                        {placement.visibleWhen && placement.visibleWhen.kind === 'quest' && (
-                          <input
-                            type="text"
-                            placeholder="Quest ID"
-                            value={placement.visibleWhen.id || ''}
-                            onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
-                            className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                          />
-                        )}
-                        {placement.visibleWhen && placement.visibleWhen.kind === 'relationship' && (
-                          <>
-                            <input
-                              type="text"
-                              placeholder="NPC ID"
-                              value={placement.visibleWhen.id || ''}
-                              onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
-                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
-                            />
+                          >
+                            <option value="any">Any Day</option>
+                            <option value="1">Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                            <option value="6">Saturday</option>
+                            <option value="0">Sunday</option>
+                          </select>
+                          <div className="flex gap-1">
                             <input
                               type="number"
                               min="0"
-                              max="100"
-                              placeholder="Min level (0-100)"
-                              value={placement.visibleWhen.minRelationship || ''}
-                              onChange={(e) => handleRelationshipConditionChange(placement.toolId, parseInt(e.target.value, 10))}
-                              className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                              max="23"
+                              placeholder="Start hour"
+                              value={placement.visibleWhen.hourRange?.[0] || ''}
+                              onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourStart', e.target.value)}
+                              className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
                             />
-                          </>
-                        )}
-                        {placement.visibleWhen && (placement.visibleWhen.kind === 'flag' || placement.visibleWhen.kind === 'capability') && (
+                            <span className="text-xs">to</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="23"
+                              placeholder="End hour"
+                              value={placement.visibleWhen.hourRange?.[1] || ''}
+                              onChange={(e) => handleTimeConditionChange(placement.toolId, 'hourEnd', e.target.value)}
+                              className="w-16 px-1 py-0.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                            />
+                          </div>
+                        </>
+                      )}
+                      {placement.visibleWhen && placement.visibleWhen.kind === 'quest' && (
+                        <input
+                          type="text"
+                          placeholder="Quest ID"
+                          value={placement.visibleWhen.id || ''}
+                          onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                        />
+                      )}
+                      {placement.visibleWhen && placement.visibleWhen.kind === 'relationship' && (
+                        <>
                           <input
                             type="text"
-                            placeholder={
-                              placement.visibleWhen.kind === 'flag'
-                                ? 'e.g., world.mode'
-                                : 'e.g., game'
-                            }
+                            placeholder="NPC ID"
                             value={placement.visibleWhen.id || ''}
                             onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
                             className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
                           />
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleRemoveTool(placement.toolId)}
-                        title="Remove tool from layout"
-                      >
-                        Remove
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            placeholder="Min level (0-100)"
+                            value={placement.visibleWhen.minRelationship || ''}
+                            onChange={(e) => handleRelationshipConditionChange(placement.toolId, parseInt(e.target.value, 10))}
+                            className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                          />
+                        </>
+                      )}
+                      {placement.visibleWhen && (placement.visibleWhen.kind === 'flag' || placement.visibleWhen.kind === 'capability') && (
+                        <input
+                          type="text"
+                          placeholder={
+                            placement.visibleWhen.kind === 'flag'
+                              ? 'e.g., world.mode'
+                              : 'e.g., game'
+                          }
+                          value={placement.visibleWhen.id || ''}
+                          onChange={(e) => handleConditionIdChange(placement.toolId, e.target.value)}
+                          className="w-full px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800"
+                        />
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveTool(placement.toolId)}
+                      title="Remove tool from layout"
+                    >
+                      Remove
+                    </Button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" variant="secondary" onClick={handleAddTool}>
+          Add Tool
+        </Button>
+      </div>
+    </div>
+  );
 
-        {/* Add Tool Button */}
+  const presetManagement = (
+    <div className="space-y-3 pt-4 border-t border-neutral-300 dark:border-neutral-700">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+          Layout Presets
+        </h3>
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={handleAddTool}>
-            Add Tool
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setShowPresetModal(true)}
+            title="Save current layout as a reusable preset"
+          >
+            Save as Preset
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleImportPreset}
+            title="Import preset from JSON (legacy format)"
+          >
+            Import Legacy
           </Button>
         </div>
+      </div>
 
-        {/* Preset Management */}
-        <div className="space-y-3 pt-4 border-t border-neutral-300 dark:border-neutral-700">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-              Layout Presets
-            </h3>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowPresetModal(true)}
-                title="Save current layout as a reusable preset"
-              >
-                Save as Preset
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleImportPreset}
-                title="Import preset from JSON (legacy format)"
-              >
-                Import Legacy
-              </Button>
-            </div>
-          </div>
-
-          {/* Phase 2 (Task 101): Unified Export/Import using HudSurfaceConfig */}
-          <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-700 rounded">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <div className="text-sm font-semibold text-purple-800 dark:text-purple-200">
-                  📦 Unified Format (HudSurfaceConfig)
-                </div>
-                <div className="text-xs text-purple-600 dark:text-purple-400">
-                  New format compatible with editing-core architecture
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleExportUnified}
-                  title="Export layout as HudSurfaceConfig JSON (unified format)"
-                >
-                  📥 Export
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleImportUnified}
-                  title="Import HudSurfaceConfig JSON (unified format)"
-                >
-                  📤 Import
-                </Button>
-              </div>
+      <div className="p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-300 dark:border-purple-700 rounded">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <div className="text-sm font-semibold text-purple-800 dark:text-purple-200">
+              Unified Format (HudSurfaceConfig)
             </div>
             <div className="text-xs text-purple-600 dark:text-purple-400">
-              Includes profile, view mode, and world context. Compatible with future overlay/HUD sharing.
+              New format compatible with editing-core architecture
             </div>
           </div>
-
-          {presets.length === 0 ? (
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
-              No presets saved yet. Save your current layout to create a preset.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {presets.map((preset) => {
-                const isWorld = preset.scope === 'world';
-                const isLocal = !isWorld;
-
-                return (
-                  <div
-                    key={preset.id}
-                    className={`flex items-center justify-between p-2 border rounded ${
-                      isWorld
-                        ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30'
-                        : 'border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50'
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <div className="font-medium text-sm text-neutral-800 dark:text-neutral-200">
-                          {preset.name}
-                        </div>
-                        <span
-                          className={`text-xs px-1.5 py-0.5 rounded ${
-                            isWorld
-                              ? 'bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200'
-                              : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
-                          }`}
-                        >
-                          {isWorld ? '🌍 World' : '💾 Local'}
-                        </span>
-                      </div>
-                      {preset.description && (
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                          {preset.description}
-                        </div>
-                      )}
-                      <div className="text-xs text-neutral-400 dark:text-neutral-500">
-                        {preset.placements.length} tools
-                      </div>
-                    </div>
-                    <div className="flex gap-1 flex-wrap justify-end">
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleLoadPreset(preset.id)}
-                        title="Load this preset"
-                      >
-                        Load
-                      </Button>
-                      {isLocal && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handlePublishToWorld(preset.id)}
-                          title="Publish to world (share with all users)"
-                        >
-                          Publish
-                        </Button>
-                      )}
-                      {isWorld && (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleCopyToLocal(preset.id)}
-                          title="Copy to local presets"
-                        >
-                          Copy
-                        </Button>
-                      )}
-                      {isLocal && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleExportPreset(preset.id)}
-                          title="Export to clipboard"
-                        >
-                          Export
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeletePreset(preset.id)}
-                        title="Delete this preset"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleExportUnified}
+              title="Export layout as HudSurfaceConfig JSON (unified format)"
+            >
+              Export
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleImportUnified}
+              title="Import HudSurfaceConfig JSON (unified format)"
+            >
+              Import
+            </Button>
+          </div>
         </div>
+        <div className="text-xs text-purple-600 dark:text-purple-400">
+          Includes profile, view mode, and world context. Compatible with future overlay/HUD sharing.
+        </div>
+      </div>
 
-        {/* Save Preset Modal */}
-        <Modal
-          isOpen={showPresetModal}
-          onClose={() => {
+      {presets.length === 0 ? (
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
+          No presets saved yet. Save your current layout to create a preset.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {presets.map((preset) => {
+            const isWorld = preset.scope === 'world';
+            const isLocal = !isWorld;
+
+            return (
+              <div
+                key={preset.id}
+                className={`flex items-center justify-between p-2 border rounded ${
+                  isWorld
+                    ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30'
+                    : 'border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50'
+                }`}
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-sm text-neutral-800 dark:text-neutral-200">
+                      {preset.name}
+                    </div>
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded ${
+                        isWorld
+                          ? 'bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200'
+                          : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
+                      }`}
+                    >
+                      {isWorld ? 'World' : 'Local'}
+                    </span>
+                  </div>
+                  {preset.description && (
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {preset.description}
+                    </div>
+                  )}
+                  <div className="text-xs text-neutral-400 dark:text-neutral-500">
+                    {preset.placements.length} tools
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-wrap justify-end">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => handleLoadPreset(preset.id)}
+                    title="Load this preset"
+                  >
+                    Load
+                  </Button>
+                  {isLocal && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handlePublishToWorld(preset.id)}
+                      title="Publish to world (share with all users)"
+                    >
+                      Publish
+                    </Button>
+                  )}
+                  {isWorld && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleCopyToLocal(preset.id)}
+                      title="Copy to local presets"
+                    >
+                      Copy
+                    </Button>
+                  )}
+                  {isLocal && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleExportPreset(preset.id)}
+                      title="Export to clipboard"
+                    >
+                      Export
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeletePreset(preset.id)}
+                    title="Delete this preset"
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const presetModal = (
+    <Modal
+      isOpen={showPresetModal}
+      onClose={() => {
+        setShowPresetModal(false);
+        setPresetName('');
+        setPresetDescription('');
+      }}
+      title="Save Layout as Preset"
+      size="sm"
+    >
+      <div className="space-y-4">
+        <FormField label="Preset Name" required size="md">
+          <Input
+            type="text"
+            size="md"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="e.g., Minimal HUD"
+          />
+        </FormField>
+
+        <FormField label="Description" optional size="md">
+          <textarea
+            value={presetDescription}
+            onChange={(e) => setPresetDescription(e.target.value)}
+            placeholder="Describe this layout..."
+            rows={3}
+            className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+          />
+        </FormField>
+      </div>
+
+      <div className="flex gap-2 justify-end mt-4">
+        <Button
+          variant="secondary"
+          onClick={() => {
             setShowPresetModal(false);
             setPresetName('');
             setPresetDescription('');
           }}
-          title="Save Layout as Preset"
-          size="sm"
         >
-          <div className="space-y-4">
-            <FormField label="Preset Name" required size="md">
-              <Input
-                type="text"
-                size="md"
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                placeholder="e.g., Minimal HUD"
-              />
-            </FormField>
-
-            <FormField label="Description" optional size="md">
-              <textarea
-                value={presetDescription}
-                onChange={(e) => setPresetDescription(e.target.value)}
-                placeholder="Describe this layout..."
-                rows={3}
-                className="w-full px-3 py-2 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
-              />
-            </FormField>
-          </div>
-
-          <div className="flex gap-2 justify-end mt-4">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowPresetModal(false);
-                setPresetName('');
-                setPresetDescription('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={handleSaveAsPreset}>
-              Save Preset
-            </Button>
-          </div>
-        </Modal>
-
-        {/* Region Preview */}
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-            Preview by Region
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {REGIONS.map((region) => {
-              const tools = placementsByRegion.get(region.value) || [];
-              return (
-                <div
-                  key={region.value}
-                  className="p-3 border border-neutral-300 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800/50"
-                >
-                  <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200 mb-1">
-                    {region.label}
-                  </div>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                    {REGION_DESCRIPTIONS[region.value]}
-                  </div>
-                  {tools.length === 0 ? (
-                    <div className="text-xs text-neutral-400 dark:text-neutral-500 italic">
-                      No tools
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {tools.map((tool, index) => (
-                        <div
-                          key={tool.toolId}
-                          className="text-xs flex items-center gap-1 text-neutral-700 dark:text-neutral-300"
-                        >
-                          <span className="text-neutral-400 dark:text-neutral-500">
-                            {index + 1}.
-                          </span>
-                          {tool.icon && <span>{tool.icon}</span>}
-                          <span>{tool.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Save Button */}
-        <div className="flex gap-2 pt-2 border-t border-neutral-300 dark:border-neutral-700">
-          <Button
-            variant="primary"
-            onClick={handleSave}
-            disabled={isSaving}
-          >
-            {isSaving ? 'Saving...' : 'Save HUD Layout'}
-          </Button>
-          {onClose && (
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-          )}
-        </div>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={handleSaveAsPreset}>
+          Save Preset
+        </Button>
       </div>
-    </Panel>
+    </Modal>
+  );
+
+  const regionPreview = (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+        Preview by Region
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {REGIONS.map((region) => {
+        const tools = placementsByRegion.get(region.value) || [];
+          return (
+            <div
+              key={region.value}
+              className="p-3 border border-neutral-300 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800/50"
+            >
+              <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200 mb-1">
+                {region.label}
+              </div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                {REGION_DESCRIPTIONS[region.value]}
+              </div>
+              {tools.length === 0 ? (
+                <div className="text-xs text-neutral-400 dark:text-neutral-500 italic">
+                  No tools
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {tools.map((tool, index) => (
+                    <div
+                      key={tool.toolId}
+                      className="text-xs flex items-center gap-1 text-neutral-700 dark:text-neutral-300"
+                    >
+                      <span className="text-neutral-400 dark:text-neutral-500">
+                        {index + 1}.
+                      </span>
+                    {tool.icon && <span>{tool.icon}</span>}
+                      <span>{tool.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const footerContent = (
+    <div className="flex gap-2 flex-wrap">
+      <Button
+        variant="primary"
+        onClick={handleSave}
+        disabled={isSaving}
+      >
+        {isSaving ? 'Saving...' : 'Save HUD Layout'}
+      </Button>
+      {onClose && (
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+      )}
+    </div>
+  );
+
+  const mainContent = (
+    <div className="space-y-4">
+      {profileSelectors}
+      {undoRedoControls}
+      {toolPlacementTable}
+      {presetManagement}
+      {presetModal}
+      {regionPreview}
+    </div>
+  );
+
+  return (
+    <SurfaceWorkbench
+      title="HUD Layout Editor"
+      description={`Configure the HUD layout for world: ${worldDetail.name}`}
+      headerActions={headerActions}
+      statusMessages={statusMessages}
+      mainContent={mainContent}
+      footer={footerContent}
+    />
   );
 }
