@@ -6,6 +6,7 @@
  */
 import type { GenerationResponse } from '../api/generations';
 import { isGenerationActive, isGenerationTerminal, type GenerationStatus } from '@/stores/generationsStore';
+import { getStatusConfig, getStatusTextColor } from './generationStatusConfig';
 
 export interface GenerationStatusInfo {
   generationId: number;
@@ -89,50 +90,13 @@ export function getGenerationStatusDisplay(
   color: string;
   description: string;
 } {
-  switch (status) {
-    case 'pending':
-      return {
-        label: 'Pending',
-        icon: 'clock',
-        color: 'text-yellow-600 dark:text-yellow-400',
-        description: 'Waiting to start',
-      };
-    case 'queued':
-      return {
-        label: 'Queued',
-        icon: 'layers',
-        color: 'text-blue-600 dark:text-blue-400',
-        description: 'In queue',
-      };
-    case 'processing':
-      return {
-        label: 'Processing',
-        icon: 'loader',
-        color: 'text-blue-600 dark:text-blue-400',
-        description: 'Generation in progress',
-      };
-    case 'completed':
-      return {
-        label: 'Completed',
-        icon: 'check-circle',
-        color: 'text-green-600 dark:text-green-400',
-        description: 'Generation complete',
-      };
-    case 'failed':
-      return {
-        label: 'Failed',
-        icon: 'alert-circle',
-        color: 'text-red-600 dark:text-red-400',
-        description: 'Generation failed',
-      };
-    case 'cancelled':
-      return {
-        label: 'Cancelled',
-        icon: 'x-circle',
-        color: 'text-neutral-600 dark:text-neutral-400',
-        description: 'Generation cancelled',
-      };
-  }
+  const config = getStatusConfig(status);
+  return {
+    label: config.label,
+    icon: config.icon,
+    color: getStatusTextColor(status),
+    description: config.description,
+  };
 }
 
 // Re-export for backwards compatibility

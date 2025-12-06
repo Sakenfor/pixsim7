@@ -8,15 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useGenerationsStore, isGenerationTerminal } from '@/stores/generationsStore';
 import { logEvent } from '@/lib/logging';
-
-/** Status color mapping */
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300',
-  processing: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300',
-  completed: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300',
-  failed: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300',
-  cancelled: 'bg-gray-50 dark:bg-gray-950/30 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300',
-};
+import { getStatusContainerClasses } from '@/lib/generation/generationStatusConfig';
 
 /** Polling interval for backup status checks (ms) */
 const POLL_INTERVAL = 5000;
@@ -94,7 +86,7 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
     );
   }
 
-  const statusColor = STATUS_COLORS[generation.status] || STATUS_COLORS.pending;
+  const statusColor = getStatusContainerClasses(generation.status);
   const canRetry = generation.status === 'failed' && generation.retry_count < MAX_RETRIES;
 
   return (

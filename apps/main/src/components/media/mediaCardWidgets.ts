@@ -16,6 +16,7 @@ import {
 } from '@/lib/overlay';
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
+import { getStatusConfig, getStatusBadgeClasses } from '@/lib/generation/generationStatusConfig';
 
 export interface MediaCardOverlayData {
   id: number;
@@ -439,53 +440,15 @@ export function createGenerationStatusWidget(props: MediaCardProps): OverlayWidg
     return null;
   }
 
-  // Determine badge appearance based on status
-  const statusConfig = {
-    pending: {
-      icon: 'clock' as const,
-      color: 'yellow' as const,
-      label: 'Pending',
-      className: '!bg-yellow-500/90 text-white',
-      tooltip: 'Generation pending',
-    },
-    queued: {
-      icon: 'layers' as const,
-      color: 'blue' as const,
-      label: 'Queued',
-      className: '!bg-blue-500/90 text-white',
-      tooltip: 'Generation queued',
-    },
-    processing: {
-      icon: 'loader' as const,
-      color: 'blue' as const,
-      label: 'Processing',
-      className: '!bg-blue-600/90 text-white animate-spin',
-      tooltip: 'Generation in progress',
-    },
-    completed: {
-      icon: 'checkCircle' as const,
-      color: 'green' as const,
-      label: 'Done',
-      className: '!bg-green-500/90 text-white',
-      tooltip: 'Generation completed',
-    },
-    failed: {
-      icon: 'alertCircle' as const,
-      color: 'red' as const,
-      label: 'Failed',
-      className: '!bg-red-500/90 text-white',
-      tooltip: generationError || 'Generation failed',
-    },
-    cancelled: {
-      icon: 'xCircle' as const,
-      color: 'gray' as const,
-      label: 'Cancelled',
-      className: '!bg-neutral-500/90 text-white',
-      tooltip: 'Generation cancelled',
-    },
+  // Get status configuration
+  const statusCfg = getStatusConfig(generationStatus);
+  const config = {
+    icon: statusCfg.icon as any,
+    color: statusCfg.color,
+    label: statusCfg.label,
+    className: getStatusBadgeClasses(generationStatus) + (generationStatus === 'processing' ? ' animate-spin' : ''),
+    tooltip: generationStatus === 'failed' ? (generationError || statusCfg.description) : statusCfg.description,
   };
-
-  const config = statusConfig[generationStatus];
 
   // Position below the provider badge (or top-right if no provider badge)
   const offsetY = badgeConfig?.showFooterProvider ? 88 : 48;
