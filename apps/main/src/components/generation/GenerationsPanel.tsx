@@ -5,7 +5,7 @@
  * Shows status, allows filtering, and provides retry/open actions.
  */
 import { useMemo, useState, useCallback } from 'react';
-import { useGenerationsStore } from '@/stores/generationsStore';
+import { useGenerationsStore, isGenerationActive } from '@/stores/generationsStore';
 import { useRecentGenerations } from '@/hooks/useRecentGenerations';
 import { retryGeneration, cancelGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { Icons, ThemedIcon } from '@/lib/icons';
@@ -47,7 +47,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
     // Status filter
     if (statusFilter === 'active') {
-      filtered = filtered.filter(g => ['pending', 'queued', 'processing'].includes(g.status));
+      filtered = filtered.filter(g => isGenerationActive(g.status));
     } else if (statusFilter === 'failed') {
       filtered = filtered.filter(g => g.status === 'failed');
     } else if (statusFilter === 'completed') {
@@ -79,7 +79,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   const statusCounts = useMemo(() => {
     return {
       all: allGenerations.length,
-      active: allGenerations.filter(g => ['pending', 'queued', 'processing'].includes(g.status)).length,
+      active: allGenerations.filter(g => isGenerationActive(g.status)).length,
       failed: allGenerations.filter(g => g.status === 'failed').length,
       completed: allGenerations.filter(g => g.status === 'completed').length,
     };
@@ -219,7 +219,7 @@ function GenerationItem({ generation, onRetry, onCancel, onOpenAsset }: Generati
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const statusDisplay = getGenerationStatusDisplay(generation.status);
-  const isActive = ['pending', 'queued', 'processing'].includes(generation.status);
+  const isActive = isGenerationActive(generation.status);
   const canRetry = generation.status === 'failed';
   const canCancel = isActive;
 

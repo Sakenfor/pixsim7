@@ -5,6 +5,7 @@
  * surfacing generation status in media galleries.
  */
 import type { GenerationResponse } from '../api/generations';
+import { isGenerationActive, isGenerationTerminal, type GenerationStatus } from '@/stores/generationsStore';
 
 export interface GenerationStatusInfo {
   generationId: number;
@@ -49,11 +50,10 @@ export function mapAssetToGeneration(
 export function getAssetsWithActiveGenerations(
   generations: GenerationResponse[]
 ): Set<number> {
-  const activeStatuses = new Set(['pending', 'queued', 'processing']);
   const assetIds = new Set<number>();
 
   for (const gen of generations) {
-    if (gen.asset_id && activeStatuses.has(gen.status)) {
+    if (gen.asset_id && isGenerationActive(gen.status)) {
       assetIds.add(gen.asset_id);
     }
   }
@@ -135,11 +135,6 @@ export function getGenerationStatusDisplay(
   }
 }
 
-/**
- * Check if generation status is terminal (won't change anymore)
- */
-export function isGenerationStatusTerminal(
-  status: GenerationStatusInfo['status']
-): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
+// Re-export for backwards compatibility
+// Prefer importing directly from '@/stores/generationsStore'
+export { isGenerationTerminal as isGenerationStatusTerminal } from '@/stores/generationsStore';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAssetsController } from '../hooks/useAssetsController';
-import { useJobsSocket } from '../hooks/useJobsSocket';
+import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { Modal } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useWorkspaceStore } from '../stores/workspaceStore';
@@ -23,7 +23,7 @@ export function AssetsRoute() {
   const navigate = useNavigate();
   const location = useLocation();
   const controller = useAssetsController();
-  const jobsSocket = useJobsSocket({ autoConnect: true });
+  const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   // Shared layout state for all sources
@@ -221,35 +221,30 @@ export function AssetsRoute() {
               setCardSize={setCardSize}
             />
 
-            {/* Jobs feed indicator */}
+            {/* Generation WebSocket indicator */}
             <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
               <button
                 type="button"
                 onClick={() => {
-                  if (jobsSocket.connected) {
+                  if (generationWsConnected) {
                     useWorkspaceStore.getState().openFloatingPanel('generation-dev', { width: 800, height: 600 });
                   } else {
-                    alert('Jobs feed is offline.');
+                    alert('Generation feed is offline.');
                   }
                 }}
                 className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] transition-all hover:shadow-md ${
-                  jobsSocket.connected
+                  generationWsConnected
                     ? 'border-green-500 text-green-600 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 cursor-pointer'
                     : 'border-amber-500 text-amber-600 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 cursor-help'
                 }`}
               >
                 <span
                   className={`w-2 h-2 rounded-full mr-1 ${
-                    jobsSocket.connected ? 'bg-green-500 animate-pulse-subtle' : 'bg-amber-500'
+                    generationWsConnected ? 'bg-green-500 animate-pulse-subtle' : 'bg-amber-500'
                   }`}
                 />
-                Jobs feed: {jobsSocket.connected ? 'live' : 'offline'}
+                Generation feed: {generationWsConnected ? 'live' : 'offline'}
               </button>
-              {jobsSocket.error && (
-                <span className="text-[10px] text-red-500 dark:text-red-400">
-                  ({jobsSocket.error})
-                </span>
-              )}
             </div>
           </div>
         </div>

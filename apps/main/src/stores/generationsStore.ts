@@ -63,7 +63,26 @@ export const generationsSelectors = {
       : undefined,
 };
 
-// Helper function to check if generation is in terminal state
+// ============================================================================
+// Generation Status Helpers
+// Centralized status checking - import these instead of inline checks
+// ============================================================================
+
+/** All possible generation statuses */
+export type GenerationStatus = 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+
+/** Statuses that indicate the generation is still in progress */
+export const ACTIVE_STATUSES: readonly GenerationStatus[] = ['pending', 'queued', 'processing'] as const;
+
+/** Statuses that indicate the generation is done (won't change) */
+export const TERMINAL_STATUSES: readonly GenerationStatus[] = ['completed', 'failed', 'cancelled'] as const;
+
+/** Check if generation status is terminal (won't change anymore) */
 export function isGenerationTerminal(status: string): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/** Check if generation status is active (still in progress) */
+export function isGenerationActive(status: string): boolean {
+  return status === 'pending' || status === 'queued' || status === 'processing';
 }

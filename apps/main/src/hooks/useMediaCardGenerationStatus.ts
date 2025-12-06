@@ -6,7 +6,7 @@
  * the props and widgets needed.
  */
 import { useMemo } from 'react';
-import { useGenerationsStore, generationsSelectors } from '@/stores/generationsStore';
+import { useGenerationsStore, generationsSelectors, isGenerationActive } from '@/stores/generationsStore';
 import { mapAssetToGeneration } from '@/lib/generation/generationAssetMapping';
 import { createGenerationStatusWidget } from '@/components/media/mediaCardWidgets';
 import type { MediaCardProps } from '@/components/media/MediaCard';
@@ -86,7 +86,7 @@ export function useMediaCardGenerationStatus(assetId: number): GenerationStatusR
 
   // Helper flags
   const isGenerating = generationInfo?.status
-    ? ['pending', 'queued', 'processing'].includes(generationInfo.status)
+    ? isGenerationActive(generationInfo.status)
     : false;
 
   const hasFailed = generationInfo?.status === 'failed';
@@ -162,7 +162,7 @@ export function useMediaCardGenerationStatusBatch(
       resultMap.set(assetId, {
         generationStatusProps,
         generationWidget,
-        isGenerating: ['pending', 'queued', 'processing'].includes(generationInfo.status),
+        isGenerating: isGenerationActive(generationInfo.status),
         hasFailed: generationInfo.status === 'failed',
       });
     }
