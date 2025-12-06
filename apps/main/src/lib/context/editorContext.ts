@@ -9,12 +9,15 @@ export interface EditorContext {
   world: {
     id: number | null;
     locationId: number | null;
+    /** @future Will be populated from world cache */
     name?: string | null;
+    /** @future Will be populated from location cache */
     locationName?: string | null;
   };
   scene: {
     id: string | null;
     title?: string | null;
+    /** @future Will indicate active graph editor surface (e.g., 'scene-graph-v2', 'arc-graph') */
     editorId?: string | null;
     selection: string[];
   };
@@ -40,6 +43,7 @@ export function useEditorContext(): EditorContext {
     dockviewLayout: s.dockviewLayout,
   }));
 
+  // Derive active panels from dockview layout
   const activePanels = useMemo(() => {
     const panels: string[] = [];
     if (dockviewLayout?.panels && Array.isArray(dockviewLayout.panels)) {
@@ -52,28 +56,49 @@ export function useEditorContext(): EditorContext {
     return panels;
   }, [dockviewLayout]);
 
-  return {
-    world: {
-      id: worldId,
+  // Extract primitives for stable memoization
+  const sceneTitle = currentScene?.title ?? null;
+  const sessionId = gameContext?.sessionId ?? null;
+  const worldTimeSeconds = gameContext?.worldTimeSeconds ?? null;
+  const mode = gameContext?.mode ?? null;
+
+  // Memoize the entire context object to prevent unnecessary re-renders
+  return useMemo<EditorContext>(
+    () => ({
+      world: {
+        id: worldId,
+        locationId,
+        name: null,
+        locationName: null,
+      },
+      scene: {
+        id: currentSceneId,
+        title: sceneTitle,
+        editorId: null,
+        selection: selectedNodeIds,
+      },
+      runtime: {
+        sessionId,
+        worldTimeSeconds,
+        mode,
+      },
+      workspace: {
+        activePresetId,
+        activePanels,
+      },
+    }),
+    [
+      worldId,
       locationId,
-      name: null,
-      locationName: null,
-    },
-    scene: {
-      id: currentSceneId,
-      title: currentScene?.title ?? null,
-      editorId: null,
-      selection: selectedNodeIds,
-    },
-    runtime: {
-      sessionId: gameContext?.sessionId ?? null,
-      worldTimeSeconds: gameContext?.worldTimeSeconds ?? null,
-      mode: gameContext?.mode ?? null,
-    },
-    workspace: {
+      currentSceneId,
+      sceneTitle,
+      selectedNodeIds,
+      sessionId,
+      worldTimeSeconds,
+      mode,
       activePresetId,
       activePanels,
-    },
-  };
+    ]
+  );
 }
 

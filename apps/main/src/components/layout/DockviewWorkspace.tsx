@@ -3,11 +3,45 @@ import { DockviewReact } from 'dockview';
 import type { DockviewReadyEvent, IDockviewPanelProps } from 'dockview-core';
 import 'dockview/dist/styles/dockview.css';
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
-import { panelRegistry } from '@/lib/panels/panelRegistry';
+import { panelRegistry, type ContextLabelStrategy } from '@/lib/panels/panelRegistry';
+import type { PanelHeaderCategory } from '@/components/panels/shared/PanelHeader';
 import { initializePanels } from '@/lib/panels/initializePanels';
 import { initializeWidgets } from '@/lib/widgets/initializeWidgets';
 import { PanelHeader } from '@/components/panels/shared/PanelHeader';
-import { useEditorContext } from '@/lib/context/editorContext';
+import { useEditorContext, type EditorContext } from '@/lib/context/editorContext';
+
+/**
+ * Resolve a context label from a strategy and editor context.
+ */
+function resolveContextLabel(
+  strategy: ContextLabelStrategy | undefined,
+  ctx: EditorContext
+): string | undefined {
+  if (!strategy) return undefined;
+
+  if (typeof strategy === 'function') {
+    return strategy(ctx);
+  }
+
+  switch (strategy) {
+    case 'scene':
+      return ctx.scene.title ?? undefined;
+    case 'world':
+      return ctx.world.id ? `World #${ctx.world.id}` : undefined;
+    case 'session':
+      return ctx.runtime.sessionId
+        ? `Session #${ctx.runtime.sessionId}`
+        : ctx.world.id
+          ? `World #${ctx.world.id}`
+          : undefined;
+    case 'preset':
+      return ctx.workspace.activePresetId
+        ? `Preset: ${ctx.workspace.activePresetId}`
+        : undefined;
+    default:
+      return undefined;
+  }
+}
 
 // Wrapper for panels to provide data-panel-id and a common header
 function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
@@ -28,43 +62,14 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
 
   const Component = panelDef.component;
 
-  const categoryMap: Record<string, any> = {
-    workspace: 'workspace',
-    scene: 'scene',
-    game: 'game',
-    dev: 'dev',
-    tools: 'tools',
-    utilities: 'utilities',
-    system: 'system',
-    custom: 'custom',
-  };
-
-  let contextLabel: string | undefined;
-  if (panelId === 'graph') {
-    contextLabel = ctx.scene.title
-      ? `Scene: ${ctx.scene.title}${ctx.world.id ? ` • World #${ctx.world.id}` : ''}`
-      : ctx.world.id
-      ? `World #${ctx.world.id}`
-      : undefined;
-  } else if (panelId === 'scene-management' || panelDef.category === 'scene') {
-    contextLabel = ctx.scene.title ?? undefined;
-  } else if (panelId === 'game' || panelDef.category === 'game') {
-    contextLabel = ctx.runtime.sessionId
-      ? `Session #${ctx.runtime.sessionId}`
-      : ctx.world.id
-      ? `World #${ctx.world.id}`
-      : undefined;
-  } else if (panelId === 'health') {
-    contextLabel = ctx.workspace.activePresetId
-      ? `Preset: ${ctx.workspace.activePresetId}`
-      : undefined;
-  }
+  // Resolve context label from panel definition strategy
+  const contextLabel = resolveContextLabel(panelDef.contextLabel, ctx);
 
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900" data-panel-id={panelId}>
       <PanelHeader
         title={panelDef.title}
-        category={categoryMap[panelDef.category]}
+        category={panelDef.category as PanelHeaderCategory}
         contextLabel={contextLabel}
       />
       <div className="flex-1 min-h-0 overflow-auto">
@@ -74,13 +79,9 @@ function PanelWrapper(props: IDockviewPanelProps<{ panelId: PanelId }>) {
   );
 }
 
-function getPanelTitle(id: PanelId): string {
-  const def = panelRegistry.get(id);
-  if (def?.title) {
-    return def.title;
-  }
-  return id.charAt(0).toUpperCase() + id.slice(1);
-}
+/** Get panel title from registry, with id as fallback */
+const getPanelTitle = (id: PanelId): string =>
+  panelRegistry.get(id)?.title ?? id;
 
 // Helper to convert tree layout to Dockview panels
 function applyLayoutToDockview(

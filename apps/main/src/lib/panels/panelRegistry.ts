@@ -8,6 +8,22 @@
 import type { PanelId } from '../../stores/workspaceStore';
 import type { ComponentType } from 'react';
 import { BaseRegistry } from '../core/BaseRegistry';
+import type { EditorContext } from '../context/editorContext';
+
+/**
+ * Context label strategy for panel headers.
+ * - 'scene': Shows "Scene: {title}" when available
+ * - 'world': Shows "World #{id}" when available
+ * - 'session': Shows "Session #{id}" or falls back to world
+ * - 'preset': Shows "Preset: {id}" when available
+ * - function: Custom derivation from EditorContext
+ */
+export type ContextLabelStrategy =
+  | 'scene'
+  | 'world'
+  | 'session'
+  | 'preset'
+  | ((ctx: EditorContext) => string | undefined);
 
 export interface WorkspaceContext {
   currentSceneId?: string | null;
@@ -42,6 +58,12 @@ export interface PanelDefinition {
   icon?: string;
   description?: string;
   defaultSettings?: Record<string, any>;
+
+  /**
+   * Strategy for deriving the context label shown in the panel header.
+   * If undefined, no context label is shown.
+   */
+  contextLabel?: ContextLabelStrategy;
 
   // Visibility predicates
   showWhen?: (context: WorkspaceContext) => boolean;

@@ -17,7 +17,10 @@ export type PanelId =
   | 'game-theming'
   | 'scene-management'
   | 'dev-tools'
-  | 'hud-designer';
+  | 'hud-designer'
+  | 'world-visual-roles'
+  | 'generations'
+  | 'game-tools';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;

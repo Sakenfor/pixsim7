@@ -22,6 +22,7 @@ import { DevToolsPanel } from '@/components/panels/dev/DevToolsPanel';
 import { HudDesignerPanel } from '../../components/panels/HudDesignerPanel';
 import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRolesPanel';
 import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
+import { GameToolsPanel } from '@/components/panels/tools/GameToolsPanel';
 
 // Archived game iframe panel – now a simple placeholder
 function ArchivedGamePanel() {
@@ -64,6 +65,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['scene', 'builder', 'editor'],
       icon: '🎬',
       description: 'Build and edit individual scenes',
+      contextLabel: 'scene',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -75,6 +77,12 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['graph', 'nodes', 'flow'],
       icon: '🔀',
       description: 'Visual node-based editor',
+      contextLabel: (ctx) =>
+        ctx.scene.title
+          ? `Scene: ${ctx.scene.title}${ctx.world.id ? ` • World #${ctx.world.id}` : ''}`
+          : ctx.world.id
+            ? `World #${ctx.world.id}`
+            : undefined,
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -97,6 +105,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['health', 'monitoring', 'validation', 'diagnostics'],
       icon: '❤️',
       description: 'System health and validation',
+      contextLabel: 'preset',
       supportsCompactMode: true,
       supportsMultipleInstances: false,
     },
@@ -108,6 +117,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['game', 'preview', 'play'],
       icon: '🎮',
       description: 'Legacy game iframe frontend (archived)',
+      contextLabel: 'session',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -163,6 +173,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['theming', 'customization', 'appearance'],
       icon: '🎨',
       description: 'Game theme and appearance customization',
+      contextLabel: 'world',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -174,6 +185,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['scene', 'management', 'workflow', 'organization'],
       icon: '📚',
       description: 'Unified scene workflow management',
+      contextLabel: 'scene',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -207,6 +219,7 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['world', 'assets', 'visual', 'binding', 'roles', 'portraits'],
       icon: '🖼️',
       description: 'Bind gallery assets to world visual roles (portraits, POV, backgrounds)',
+      contextLabel: 'world',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -218,6 +231,17 @@ export const corePanelsPlugin: PanelPlugin = {
       tags: ['generations', 'jobs', 'status', 'monitoring', 'tracking'],
       icon: '⚡',
       description: 'Track and manage generation jobs',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'game-tools',
+      title: 'Game Tools',
+      component: GameToolsPanel,
+      category: 'tools',
+      tags: ['game', 'tools', 'catalog', 'world', 'interactions', 'widgets'],
+      icon: '🛠️',
+      description: 'Browse world tools, interactions, HUD widgets, and dev plugins',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
