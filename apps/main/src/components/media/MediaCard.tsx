@@ -89,6 +89,11 @@ export interface MediaCardProps {
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
 
+  // Generation status (separate from provider status)
+  generationStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  generationId?: number;
+  generationError?: string;
+
   /**
    * Optional overlay configuration to customize or replace default widgets.
    * When provided, these widgets are added to (or replace) the default set.
@@ -268,6 +273,10 @@ export function MediaCard(props: MediaCardProps) {
     durationSec: props.durationSec,
     // Actions (for MenuWidget callbacks)
     actions: props.actions,
+    // Generation status (for GenerationStatusWidget)
+    generationStatus: props.generationStatus,
+    generationId: props.generationId,
+    generationError: props.generationError,
   };
 
   return (

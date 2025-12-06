@@ -30,6 +30,10 @@ export interface MediaCardOverlayData {
   remoteUrl: string;
   durationSec?: number;
   actions?: MediaCardProps['actions'];
+  // Generation status
+  generationStatus?: MediaCardProps['generationStatus'];
+  generationId?: number;
+  generationError?: string;
 }
 
 /**
@@ -411,6 +415,96 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
 }
 
 /**
+ * Create generation status badge widget (top-right, below provider badge)
+ * Shows when an asset is being generated (pending/processing) or failed
+ *
+ * Usage:
+ * ```tsx
+ * <MediaCard
+ *   customWidgets={[createGenerationStatusWidget(props)]}
+ *   generationStatus="processing"
+ *   generationId={123}
+ * />
+ * ```
+ */
+export function createGenerationStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+  const { generationStatus, generationError, badgeConfig } = props;
+
+  if (!generationStatus) {
+    return null;
+  }
+
+  // Only show for non-completed states (or failed)
+  if (generationStatus === 'completed' && !badgeConfig?.showGenerationBadge) {
+    return null;
+  }
+
+  // Determine badge appearance based on status
+  const statusConfig = {
+    pending: {
+      icon: 'clock' as const,
+      color: 'yellow' as const,
+      label: 'Pending',
+      className: '!bg-yellow-500/90 text-white',
+      tooltip: 'Generation pending',
+    },
+    queued: {
+      icon: 'layers' as const,
+      color: 'blue' as const,
+      label: 'Queued',
+      className: '!bg-blue-500/90 text-white',
+      tooltip: 'Generation queued',
+    },
+    processing: {
+      icon: 'loader' as const,
+      color: 'blue' as const,
+      label: 'Processing',
+      className: '!bg-blue-600/90 text-white animate-spin',
+      tooltip: 'Generation in progress',
+    },
+    completed: {
+      icon: 'checkCircle' as const,
+      color: 'green' as const,
+      label: 'Done',
+      className: '!bg-green-500/90 text-white',
+      tooltip: 'Generation completed',
+    },
+    failed: {
+      icon: 'alertCircle' as const,
+      color: 'red' as const,
+      label: 'Failed',
+      className: '!bg-red-500/90 text-white',
+      tooltip: generationError || 'Generation failed',
+    },
+    cancelled: {
+      icon: 'xCircle' as const,
+      color: 'gray' as const,
+      label: 'Cancelled',
+      className: '!bg-neutral-500/90 text-white',
+      tooltip: 'Generation cancelled',
+    },
+  };
+
+  const config = statusConfig[generationStatus];
+
+  // Position below the provider badge (or top-right if no provider badge)
+  const offsetY = badgeConfig?.showFooterProvider ? 88 : 48;
+
+  return createBadgeWidget({
+    id: 'generation-status',
+    position: { anchor: 'top-right', offset: { x: -8, y: offsetY } },
+    visibility: { trigger: 'always' },
+    variant: 'icon',
+    icon: config.icon,
+    color: config.color,
+    shape: 'circle',
+    tooltip: config.tooltip,
+    className: `${config.className} backdrop-blur-md`,
+    priority: 18,
+  });
+}
+
+/**
  * Create default widget set for MediaCard
  */
 export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWidget<MediaCardOverlayData>[] {
@@ -421,6 +515,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
   const widgets = [
     createPrimaryIconWidget(props),
     createStatusWidget(props),
+    // Note: Generation status widget is opt-in via customWidgets or overlay config
     createDurationWidget(props),
     createProviderWidget(props),
     createVideoScrubber(props),
