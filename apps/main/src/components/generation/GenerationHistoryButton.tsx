@@ -51,7 +51,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
       trigger={
         <button
           className="text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center gap-1"
-          title="Recent jobs & prompts"
+          title="Recent generations"
         >
           <ThemedIcon name="listPlus" size={12} variant="default" />
           <span className="hidden sm:inline">Recents</span>

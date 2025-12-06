@@ -36,9 +36,6 @@ export const ccSelectors = {
   /** Selected preset ID */
   presetId: (s: ControlCenterState) => s.presetId,
 
-  /** Recent prompts history */
-  recentPrompts: (s: ControlCenterState) => s.recentPrompts,
-
   /** Dock open/pinned state */
   dockState: (s: ControlCenterState) => ({
     open: s.open,

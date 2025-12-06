@@ -26,14 +26,12 @@ export function useQuickGenerateController() {
   const presetId = useControlCenterStore(ccSelectors.presetId);
   const presetParams = useControlCenterStore(ccSelectors.presetParams);
   const generating = useControlCenterStore(ccSelectors.generating);
-  const recentPrompts = useControlCenterStore(ccSelectors.recentPrompts);
 
   const setProvider = useControlCenterStore(s => s.setProvider);
   const setOperationType = useControlCenterStore(s => s.setOperationType);
   const setGenerating = useControlCenterStore(s => s.setGenerating);
   const prompt = useControlCenterStore(s => s.prompt);
   const setPrompt = useControlCenterStore(s => s.setPrompt);
-  const pushPrompt = useControlCenterStore(s => s.pushPrompt);
 
   // Bindings to active asset and queues
   const bindings = useQuickGenerateBindings(operationType, setOperationType);
@@ -104,10 +102,6 @@ export function useQuickGenerateController() {
 
       const finalPrompt = buildResult.finalPrompt;
 
-      if (finalPrompt) {
-        pushPrompt(finalPrompt);
-      }
-
       const result = await generateAsset({
         prompt: finalPrompt,
         providerId,
@@ -174,7 +168,6 @@ export function useQuickGenerateController() {
     presetId,
     presetParams,
     generating,
-    recentPrompts,
     prompt,
 
     // Mutators

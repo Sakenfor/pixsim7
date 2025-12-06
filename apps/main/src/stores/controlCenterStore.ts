@@ -41,7 +41,6 @@ export interface ControlCenterState {
   enabledModules: Record<string, boolean>; // module preferences
   operationType: 'text_to_image' | 'image_to_image' | 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
   prompt: string;
-  recentPrompts: string[];
   providerId?: string;      // selected provider
   presetId?: string;        // selected preset
   presetParams: Record<string, any>; // resolved params from selected preset
@@ -63,7 +62,6 @@ export interface ControlCenterActions {
   setModuleEnabled: (moduleId: string, enabled: boolean) => void;
   setOperationType: (op: ControlCenterState['operationType']) => void;
   setPrompt: (value: string) => void;
-  pushPrompt: (p: string) => void;
   setProvider: (id?: string) => void;
   setPreset: (id?: string) => void;
   setPresetParams: (params: Record<string, any>) => void;
@@ -90,7 +88,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         enabledModules: {}, // Empty = all enabled by default
         operationType: 'text_to_video',
         prompt: '',
-        recentPrompts: [],
         providerId: undefined,
         presetId: undefined,
         presetParams: {},
@@ -163,7 +160,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (get().prompt === value) return;
         set({ prompt: value });
       },
-      pushPrompt: (p) => set(s => ({ recentPrompts: [p, ...s.recentPrompts.slice(0, 19)] })),
       setProvider: (id) => {
         if (get().providerId === id) return;
         set({ providerId: id });
@@ -190,7 +186,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         enabledModules: {},
         operationType: 'text_to_video',
         prompt: '',
-        recentPrompts: [],
         providerId: undefined,
         presetId: undefined,
         presetParams: {},
@@ -215,7 +210,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         enabledModules: s.enabledModules,
         operationType: s.operationType,
         prompt: s.prompt,
-        recentPrompts: s.recentPrompts,
         providerId: s.providerId,
         presetId: s.presetId,
         presetParams: s.presetParams,
