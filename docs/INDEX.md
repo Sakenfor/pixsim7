@@ -45,18 +45,15 @@ Quick reference guide to all PixSim7 documentation. This index organizes 400+ do
 - [Backend Plugin Capabilities](decisions/20251121-backend-plugin-auto-discovery.md)
 
 ### Generation System
-- [Dynamic Generation Foundation](../DYNAMIC_GENERATION_FOUNDATION.md)
-- [Generation Pipeline Refactor Plan](GENERATION_PIPELINE_REFACTOR_PLAN.md)
-- [Generation Service Split](GENERATION_SERVICE_SPLIT.md)
-- [Generation Config Evolution](GENERATION_CONFIG_EVOLUTION.md)
-- [Generation Alias Conventions](GENERATION_ALIAS_CONVENTIONS.md)
-- [Generation Node Plugin](GENERATION_NODE_PLUGIN.md)
-- [Generation System Issues](GENERATION_SYSTEM_ISSUES.md)
+- [Generation System](systems/generation/GENERATION_SYSTEM.md) - Overview & architecture
+- [Generation Guide](systems/generation/GENERATION_GUIDE.md) - Developer guide
+- [Generation Alias Conventions](systems/generation/GENERATION_ALIAS_CONVENTIONS.md) - Naming conventions
+- [Generation Status](systems/generation/GENERATION_STATUS.md) - Status integration
+- [Realtime Video Generation](systems/generation/REALTIME_VIDEO_GENERATION.md) - Streaming generation
+- [Intimacy and Generation](systems/generation/INTIMACY_AND_GENERATION.md) - Context-aware generation
+- [Generation Node Plugin](systems/generation/GENERATION_NODE_PLUGIN.md) - Plugin nodes
+- [Action Blocks Unified System](ACTION_BLOCKS_UNIFIED_SYSTEM.md) - Action blocks
 - [Smart MediaCard Generate Button](SMART_MEDIACARD_GENERATE_BUTTON.md)
-- [Realtime Video Generation](REALTIME_VIDEO_GENERATION.md)
-- [Action Block Generation Guide](ACTION_BLOCK_GENERATION_GUIDE.md)
-- [Action Blocks Unified System](ACTION_BLOCKS_UNIFIED_SYSTEM.md)
-- [Generation Status Integration](../apps/main/docs/generation-status-integration.md)
 
 ### Relationship & Stats System
 - [Relationships and Arcs](RELATIONSHIPS_AND_ARCS.md) - Relationship system overview
