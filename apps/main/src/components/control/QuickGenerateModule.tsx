@@ -674,7 +674,7 @@ export function QuickGenerateModule() {
       generating={generating}
       showSettings={workbench.showSettings}
       onToggleSettings={workbench.toggleSettings}
-      presetId={presetId}
+      presetId={workbench.presetId}
       operationType={operationType}
       // Generation action - hidden since we have inline Go button
       onGenerate={generate}
