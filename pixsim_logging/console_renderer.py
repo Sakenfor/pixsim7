@@ -104,7 +104,7 @@ class CleanConsoleRenderer:
 
             # Format value
             if isinstance(value, (dict, list)):
-                val_str = json.dumps(value, separators=(',', ':'))
+                val_str = json.dumps(value, separators=(',', ':'), ensure_ascii=False)
             elif isinstance(value, bool):
                 val_str = "true" if value else "false"
             elif value is None:

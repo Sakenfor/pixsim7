@@ -42,7 +42,7 @@ class JSONFormatter(logging.Formatter):
         if hasattr(record, "request_id"):
             log_data["request_id"] = record.request_id
 
-        return json.dumps(log_data)
+        return json.dumps(log_data, ensure_ascii=False)
 
 
 class ColoredConsoleFormatter(logging.Formatter):
