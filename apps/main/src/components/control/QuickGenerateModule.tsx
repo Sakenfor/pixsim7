@@ -211,13 +211,25 @@ export function QuickGenerateModule() {
     }
   }, [displayAssets.length, selectedTransitionIndex]);
 
-  // Filter out duration from settings bar when in video_transition mode
-  // (we have per-transition duration controls inline)
+  // Filter params based on operation type:
+  // - video_transition: hide duration (we have per-transition duration controls inline)
+  // - image_to_video: hide aspect_ratio (follows source image dimensions)
   const filteredParamSpecs = useMemo(() => {
+    const hideParams = new Set<string>();
+
     if (operationType === 'video_transition') {
-      return workbench.paramSpecs.filter(p => p.name !== 'duration');
+      hideParams.add('duration');
     }
-    return workbench.paramSpecs;
+
+    if (operationType === 'image_to_video') {
+      hideParams.add('aspect_ratio');
+    }
+
+    if (hideParams.size === 0) {
+      return workbench.paramSpecs;
+    }
+
+    return workbench.paramSpecs.filter(p => !hideParams.has(p.name));
   }, [operationType, workbench.paramSpecs]);
 
   // Get duration presets from param specs metadata (per-model presets)
