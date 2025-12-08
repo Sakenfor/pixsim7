@@ -621,3 +621,136 @@ This would give us:
    - Currently: `SHA256(canonical_params + inputs)` where prompt is inside canonical_params
    - Should be: `SHA256(prompt_version_id + operation_type + normalized_inputs + canonical_params_subset)`
    - This way, updating a PromptVersion creates a new version with new hash; existing generations stay tied to old version.
+
+---
+
+## Related Systems Inventory
+
+This section documents all existing systems that relate to prompt blocks, tags, and classification. **Consult this before adding new infrastructure.**
+
+### Tagging Systems (Already Exist)
+
+| System | File | Purpose | Key Functions |
+|--------|------|---------|---------------|
+| **ActionBlock tagging** | `services/action_blocks/tagging.py` | Normalize block tags to ontology IDs | `normalize_tags()`, `extract_ontology_ids_from_tags()` |
+| **Asset tagging** | `services/assets/tags.py` | Extract tags from generation metadata | `tag_asset_from_metadata()` |
+
+**Key Pattern**: Both systems:
+- Call `load_ontology()` and `match_keywords()`
+- Produce `ontology_ids` list in the output
+- Use prefix patterns: `part:`, `act:`, `state:`, `mood:`, `cam:`, `intensity:`, `speed:`, etc.
+
+### ActionBlock System
+
+| Component | File | What It Does |
+|-----------|------|--------------|
+| **ActionBlockDB** | `domain/action_block.py` | SQLModel with `tags: Dict[str, Any]`, compatibility, complexity |
+| **ActionBlockTags** | `domain/narrative/action_blocks/types.py` | Pydantic model: location, pose, intimacy_level, mood, intensity, custom |
+| **ActionBlockService** | `services/action_blocks/action_block_service.py` | CRUD, search, filtering |
+| **ActionEngine** | `domain/narrative/action_blocks/engine.py` | Runtime selection and resolution |
+| **ConceptLibrary** | `domain/narrative/action_blocks/concepts.py` | CreatureType, MovementType, BodyArea, ActionVocabulary |
+
+**ActionBlockDB.tags example:**
+```json
+{
+  "location": "bench_park",
+  "pose": "sitting_close",
+  "intimacy_level": "intensity:medium",
+  "mood": "mood:playful",
+  "intensity": "intensity:soft",
+  "ontology_ids": ["intensity:medium", "mood:playful"]
+}
+```
+
+### Semantic Packs
+
+| Component | File | What It Does |
+|-----------|------|--------------|
+| **SemanticPackDB** | `domain/semantic_pack.py` | Pack with `parser_hints`, block refs, family refs |
+| **ParserHintProvider** | `services/prompt_parser/hints.py` | Merges pack hints into SimplePromptParser |
+
+**parser_hints format:**
+```json
+{
+  "role:character": ["minotaur", "werecow"],
+  "act:sit_closer": ["scoots", "slides closer"]
+}
+```
+
+### Character System
+
+| Component | File | What It Does |
+|-----------|------|--------------|
+| **Character** | `domain/character.py` | Reusable templates with visual/personality/behavioral traits |
+| **CharacterInstance** | `domain/character_integrations.py` | World-specific character versions |
+| **CharacterUsage** | `domain/character.py` | Tracks character usage in prompts/blocks |
+| **CharacterService** | `services/characters/character_service.py` | CRUD, versioning, relationships |
+
+### Parser System
+
+| Component | File | What It Does |
+|-----------|------|--------------|
+| **SimplePromptParser** | `services/prompt_parser/simple.py` | Sentence-level parser, returns `ParsedBlock` with `metadata["ontology_ids"]` |
+| **ParsedRole** | `services/prompt_parser/simple.py` | Enum: character, action, setting, mood, romance, other |
+| **ROLE_KEYWORDS** | `services/prompt_parser/ontology.py` | Keyword lists for role classification |
+
+**ParsedBlock.metadata includes:**
+- `has_{role}_keywords` counts
+- `has_verb` boolean
+- `ontology_ids` list (from `ontology.match_keywords()`)
+
+### Ontology System
+
+| Component | File | What It Does |
+|-----------|------|--------------|
+| **Ontology** | `shared/ontology.py` | Loads and queries ontology.yaml |
+| **ontology.yaml** | `shared/ontology.yaml` | Source of truth for IDs (part:, act:, cam:, etc.) |
+
+**Core ID prefixes:**
+- `part:` — anatomy parts (part:shaft, part:hand)
+- `act:` — actions (act:hand_motion, act:sit_closer)
+- `state:` — states (state:erect, state:relaxed)
+- `mood:` — moods (mood:playful, mood:nervous)
+- `cam:` — camera (cam:pov, cam:zoom_in)
+- `intensity:` — intensity scale (intensity:soft, intensity:high)
+- `speed:` — speed scale (speed:slow, speed:fast)
+- `rel:` — spatial relations (rel:between_legs, rel:at_crotch)
+- `space:` — spatial locations (space:from_left)
+
+### How PromptBlock Fits In
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    RAW ANALYSIS LAYER                           │
+│  PromptBlock (new)                                              │
+│  - role: ParsedRole (from SimplePromptParser)                   │
+│  - category: str (LLM-driven, human label)                      │
+│  - tags: {ontology_ids: [...], camera_view: "cam:pov", ...}     │
+│  - analyzer_id: "parser:simple" or "llm:claude-3"               │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ "promote" (manual curation)
+                            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    CURATED LAYER                                │
+│  ActionBlockDB (existing)                                       │
+│  - tags: {location, pose, intimacy_level, mood, ontology_ids}   │
+│  - compatible_next/prev (chaining)                              │
+│  - package_name (library organization)                          │
+│  - source_type: "ai_extracted" if from PromptBlock              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Flow:**
+1. User imports wild prompt → `analyze_prompt()` → `PromptVersion.prompt_analysis`
+2. Parser extracts blocks → `PromptBlock` rows with `tags["ontology_ids"]`
+3. Curator reviews blocks → "promote" to `ActionBlockDB` for reuse
+4. Semantic packs bundle blocks → `parser_hints` flow back to parser
+
+### Implementation Checklist
+
+Before implementing PromptBlock, ensure:
+
+- [ ] `PromptBlock.tags` uses same `ontology_ids` key as ActionBlockDB and Asset tagging
+- [ ] Tag normalization uses `services/action_blocks/tagging.py` patterns or new bridge module
+- [ ] `analyzer_id` distinguishes parser vs LLM extraction
+- [ ] "Promote" flow creates ActionBlockDB with `source_type = "ai_extracted"`
