@@ -49,98 +49,120 @@ The `SimplePromptParser` is **keyword-based and sentence-level**. It cannot:
 
 ## Remaining Work (Phases 2-3)
 
-### Phase 2: Block-Level Persistence (Not Started)
+### Phase 2: Unified ActionBlockDB Approach (Recommended)
 
-Create a `PromptBlock` table for individual blocks that can be:
-- Queried across prompts ("find all entrance blocks")
-- Tagged and categorized independently
-- Linked to semantic packs
+**Decision: No separate PromptBlock table.** Instead, extend ActionBlockDB to handle both raw and curated blocks.
 
-**Why a table, not just JSON?**
-Keeping blocks as JSON in `PromptVersion.prompt_analysis` works for simple cases, but a real `PromptBlock` table makes queries like "find all entrance blocks across all prompts" or "all hand_motion blocks used in this world" cheap and composable.
+**Why unified?**
+- ActionBlockDB already has `prompt`, `tags`, `compatible_*`, `package_name`, usage tracking
+- Already has `source_type` and `extracted_from_prompt_version` for provenance
+- Avoids schema drift, separate "promotion" pathway, query confusion
+- One query surface for the whole system
 
-**Schema:**
+**Two-tier storage model:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PromptVersion.prompt_analysis (JSON)                           │
+│  - Cheap storage for ALL parsed blocks (every sentence)         │
+│  - No filtering, just raw analysis output                       │
+│  - Fast to write, slow to query across prompts                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ (heuristics OR user picks block)
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  ActionBlockDB                                                  │
+│  - Only MEANINGFUL blocks (not every sentence)                  │
+│  - Indexed, queryable across all prompts                        │
+│  - Full lifecycle: raw → reviewed → curated                     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**When to create ActionBlockDB rows:**
+- ❌ NOT for every parsed sentence (bloat)
+- ✅ Heuristics: action blocks with ontology tags we care about
+- ✅ User explicitly picks a phrase to save as block
+- ✅ Import from external block libraries
+
+**New fields to add to ActionBlockDB:**
 
 ```python
-from pixsim7.backend.main.services.prompt_parser import ParsedRole
+# Add to ActionBlockDB model:
 
-class PromptBlock(SQLModel, table=True):
-    """Individual block extracted from a prompt"""
-    __tablename__ = "prompt_blocks"
+role: Optional[ParsedRole] = Field(
+    default=None,
+    sa_column=Column(SAEnum(ParsedRole, native_enum=False), index=True),
+    description="Coarse classification: character, action, setting, mood, romance, other"
+)
 
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    prompt_version_id: UUID = Field(foreign_key="prompt_versions.id", index=True)
+category: Optional[str] = Field(
+    default=None,
+    max_length=64,
+    index=True,
+    description="Fine-grained label for UI: entrance, hand_motion, camera_pov"
+)
 
-    # Classification
-    role: ParsedRole = Field(
-        sa_column=Column(SAEnum(ParsedRole, native_enum=False), index=True),
-        description="Parser-driven, stable (character, action, setting, mood, romance, other)"
-    )
-    category: Optional[str] = Field(
-        default=None,
-        max_length=64,
-        index=True,
-        description="LLM-driven, experimental (entrance, hand_motion, camera_pov, etc.)"
-    )
+analyzer_id: Optional[str] = Field(
+    default=None,
+    max_length=64,
+    description="Who extracted: 'parser:simple', 'llm:claude-3', NULL for manual"
+)
 
-    # Content
-    text: str = Field(description="Original text span from prompt")
-
-    # Structured metadata (like ActionBlockDB.tags)
-    # See "Ontology Integration" section for documented keys
-    tags: Dict[str, Any] = Field(
-        default_factory=dict,
-        sa_column=Column(JSON),
-        description="Ontology-backed tags: {ontology_ids: [...], camera_view: 'cam:pov', motion_type: 'act:...'}"
-    )
-
-    # Provenance
-    analyzer_id: str = Field(
-        max_length=64,
-        default="parser:simple",
-        description="Which analyzer produced this: 'parser:simple', 'ai_hub:v1', 'llm:claude-3'"
-    )
-
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-
-    __table_args__ = (
-        Index("idx_block_version_role", "prompt_version_id", "role"),
-        Index("idx_block_category", "category"),
-    )
+curation_status: str = Field(
+    default="curated",
+    max_length=20,
+    index=True,
+    description="raw | reviewed | curated"
+)
 ```
 
-**Optional: Asset-specific overrides**
-
-If LLM extraction is run only for specific assets (not all uses of a prompt), add a join table:
+**New indexes:**
 
 ```python
-class AssetPromptBlock(SQLModel, table=True):
-    """Asset-specific block overrides or additions"""
-    __tablename__ = "asset_prompt_blocks"
-
-    id: int = Field(primary_key=True)
-    asset_id: int = Field(foreign_key="assets.id", index=True)
-    prompt_block_id: int = Field(foreign_key="prompt_blocks.id", index=True)
-
-    # Override metadata (if different from base block)
-    override_metadata: Optional[Dict[str, Any]] = Field(sa_column=Column(JSON))
-
-    created_at: datetime
+__table_args__ = (
+    # ... existing indexes ...
+    Index("idx_action_block_role_category_status", "role", "category", "curation_status"),
+    Index("idx_action_block_source_extracted", "source_type", "extracted_from_prompt_version"),
+)
 ```
 
-**Relationship diagram:**
+**Curation matrix:**
 
+| source_type | curation_status | Meaning |
+|-------------|-----------------|---------|
+| `ai_extracted` | `raw` | Machine-suggested, not reviewed |
+| `ai_extracted` | `reviewed` | Machine-found, human-reviewed |
+| `ai_extracted` | `curated` | Machine-found, human-approved + enhanced |
+| `user_created` | `curated` | Hand-authored by user |
+| `library` | `curated` | From block library/import |
+
+**Query patterns:**
+
+```sql
+-- Curator tools: show raw + reviewed blocks
+SELECT * FROM action_blocks
+WHERE curation_status IN ('raw', 'reviewed');
+
+-- Production/gameplay: only curated + library
+SELECT * FROM action_blocks
+WHERE curation_status = 'curated' OR source_type = 'library';
+
+-- Find all entrance blocks
+SELECT * FROM action_blocks
+WHERE category = 'entrance' AND curation_status = 'curated';
+
+-- Find blocks from a specific prompt
+SELECT * FROM action_blocks
+WHERE extracted_from_prompt_version = '<uuid>';
 ```
-PromptVersion (1)
-    │
-    ├── prompt_analysis (JSON summary)
-    │
-    └── PromptBlock (N)
-            │
-            └── AssetPromptBlock (optional, for per-asset overrides)
-                    │
-                    └── Asset
-```
+
+**Semantic anchoring (critical):**
+- `role` = ParsedRole enum (stable, for logic)
+- `category` = string label (for UI, can change)
+- `tags["ontology_ids"]` = canonical IDs (for actual semantics)
+
+Changing `category` from "hand_motion" to "hand_move" doesn't break anything — queries that need stability use `tags["ontology_ids"]`.
 
 ### Phase 3: Fine-Grained Extraction (Research Needed)
 
@@ -313,7 +335,7 @@ New Asset linked to same prompt_version
 
 **Asset.prompt_analysis**: Treat as a **denormalized cache only**. PromptVersion remains the source of truth. New code should always read from PromptVersion first; Asset.prompt_analysis exists for query convenience and offline access.
 
-**Block persistence**: Attach `PromptBlock` rows to **PromptVersion**, not per-Asset. One PromptVersion → many PromptBlock rows. This avoids duplicating the same blocks every time a prompt is reused. For per-asset overrides (e.g., LLM extraction differs), use a lightweight `AssetPromptBlockOverride` join table.
+**Block persistence**: No separate PromptBlock table. Use unified ActionBlockDB with `curation_status` field. `PromptVersion.prompt_analysis` holds all parsed blocks as JSON; only meaningful blocks become ActionBlockDB rows (via heuristics or user selection). This avoids table bloat and query confusion.
 
 **Block classification**: Reuse existing systems instead of hard-coding new enums:
 
@@ -717,40 +739,39 @@ This section documents all existing systems that relate to prompt blocks, tags, 
 - `rel:` — spatial relations (rel:between_legs, rel:at_crotch)
 - `space:` — spatial locations (space:from_left)
 
-### How PromptBlock Fits In
+### Unified Block Model (No Separate PromptBlock)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    RAW ANALYSIS LAYER                           │
-│  PromptBlock (new)                                              │
-│  - role: ParsedRole (from SimplePromptParser)                   │
-│  - category: str (LLM-driven, human label)                      │
-│  - tags: {ontology_ids: [...], camera_view: "cam:pov", ...}     │
-│  - analyzer_id: "parser:simple" or "llm:claude-3"               │
+│  PromptVersion.prompt_analysis (JSON)                           │
+│  - ALL parsed blocks (every sentence)                           │
+│  - Cheap, ephemeral, no filtering                               │
+│  - {blocks: [{role, text, tags: {ontology_ids}}], tags}         │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ "promote" (manual curation)
+                            │ heuristics OR user picks
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    CURATED LAYER                                │
-│  ActionBlockDB (existing)                                       │
-│  - tags: {location, pose, intimacy_level, mood, ontology_ids}   │
-│  - compatible_next/prev (chaining)                              │
-│  - package_name (library organization)                          │
-│  - source_type: "ai_extracted" if from PromptBlock              │
+│  ActionBlockDB (unified)                                        │
+│  - Only MEANINGFUL blocks                                       │
+│  - role, category, analyzer_id (new fields)                     │
+│  - curation_status: raw → reviewed → curated                    │
+│  - tags: {ontology_ids, location, pose, mood, ...}              │
+│  - compatible_next/prev (for curated blocks)                    │
+│  - package_name, source_type, extracted_from_prompt_version     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Flow:**
 1. User imports wild prompt → `analyze_prompt()` → `PromptVersion.prompt_analysis`
-2. Parser extracts blocks → `PromptBlock` rows with `tags["ontology_ids"]`
-3. Curator reviews blocks → "promote" to `ActionBlockDB` for reuse
-4. Semantic packs bundle blocks → `parser_hints` flow back to parser
+2. Heuristics identify good candidates OR user picks a block
+3. ActionBlockDB created with `source_type = "ai_extracted"`, `curation_status = "raw"`
+4. Curator reviews → sets `curation_status = "curated"`, adds `compatible_*`
+5. Semantic packs bundle curated blocks → `parser_hints` flow back to parser
 
 ### Implementation Checklist
 
-Before implementing PromptBlock, ensure:
-
-- [ ] `PromptBlock.tags` uses same `ontology_ids` key as ActionBlockDB and Asset tagging
-- [ ] Tag normalization uses `services/action_blocks/tagging.py` patterns or new bridge module
-- [ ] `analyzer_id` distinguishes parser vs LLM extraction
-- [ ] "Promote" flow creates ActionBlockDB with `source_type = "ai_extracted"`
+- [ ] Add `role`, `category`, `analyzer_id`, `curation_status` to ActionBlockDB
+- [ ] Add indexes: `(role, category, curation_status)`, `(source_type, extracted_from_prompt_version)`
+- [ ] `tags["ontology_ids"]` remains canonical (same as existing Asset tagging)
+- [ ] Update ActionBlockService to handle raw/curated lifecycle
+- [ ] Update UI to filter by `curation_status` (curator vs production views)
