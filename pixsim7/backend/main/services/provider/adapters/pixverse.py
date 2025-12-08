@@ -600,6 +600,7 @@ class PixverseProvider(
                     image_url,
                     image_model,
                     image_quality,
+                    aspect_ratio,
                     seed,
                     style,
                     negative_prompt,
