@@ -478,28 +478,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const settings = await getSettings();
         if (!settings.pixsim7Token) throw new Error('Not logged in');
 
-        // Get the old session account (if any) before switching
-        let oldAccountId = null;
-        try {
-          const stored = await chrome.storage.local.get(PROVIDER_SESSION_STORAGE_KEY);
-          const sessions = stored[PROVIDER_SESSION_STORAGE_KEY] || {};
-          const oldSession = sessions['pixverse'];
-          if (oldSession?.accountId && oldSession.accountId !== accountId) {
-            oldAccountId = oldSession.accountId;
-          }
-        } catch (e) {
-          console.warn('[Background] Failed to get old session for refresh:', e);
-        }
-
-        // Best-effort: refresh credits for both old and new accounts
-        // Old account: capture latest credit state before switching away
-        // New account: ensure session health and get fresh credits
-        // Use force: true on login to bypass TTL and get fresh data
-        const refreshPromises = [ensureAccountSessionHealth(accountId, { force: true })];
-        if (oldAccountId) {
-          refreshPromises.push(ensureAccountSessionHealth(oldAccountId, { force: true }));
-        }
-        await Promise.all(refreshPromises);
+        // Note: No credit sync here - dropdown open already triggers batch sync
+        // which handles TTL and exhausted-today skip logic. Login just injects cookies.
 
         // Fetch cookies for this account from backend and open a tab using
         // the stored session.
@@ -659,6 +639,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!accountId) throw new Error('accountId is required');
         await ensureAccountSessionHealth(accountId, { force: !!force });
         sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Batch sync credits for multiple accounts (backend handles TTL + exhausted skip)
+  if (message.action === 'batchSyncCredits') {
+    (async () => {
+      try {
+        const { accountIds, providerId, force } = message;
+        const body = {};
+        if (accountIds && accountIds.length > 0) {
+          body.account_ids = accountIds;
+        }
+        if (force) {
+          body.force = true;
+        }
+        const endpoint = providerId
+          ? `/api/v1/accounts/sync-all-credits?provider_id=${providerId}`
+          : '/api/v1/accounts/sync-all-credits';
+        const data = await backendRequest(endpoint, {
+          method: 'POST',
+          body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+          headers: Object.keys(body).length > 0 ? { 'Content-Type': 'application/json' } : undefined,
+        });
+        sendResponse({ success: true, data });
       } catch (error) {
         sendResponse({ success: false, error: error.message });
       }

@@ -305,6 +305,20 @@
   function showAccountMenu(btn, onSelect) {
     closeMenus();
 
+    // Trigger batch sync for all pixverse accounts (backend handles TTL + exhausted skip)
+    // Fire-and-forget - accounts will refresh in background
+    sendMessageWithTimeout({
+      action: 'batchSyncCredits',
+      providerId: 'pixverse'
+    }, 15000).then(res => {
+      if (res?.success && res.data?.synced > 0) {
+        // Reload accounts to get updated credits and refresh UI
+        loadAccounts().then(() => {
+          updateAllAccountButtons();
+        });
+      }
+    }).catch(() => {});
+
     const menu = document.createElement('div');
     menu.className = MENU_CLASS;
 
@@ -398,15 +412,8 @@
           isSelected: selected?.id === account.id
         });
         item.addEventListener('click', async () => {
-          // Sync credits for both old and new accounts (background, respects 5min TTL)
-          const previousAccount = getCurrentAccount();
-          if (previousAccount && previousAccount.id !== account.id) {
-            // Sync old account credits and refresh ad status
-            sendMessageWithTimeout({ action: 'syncAccountCredits', accountId: previousAccount.id }, 5000).catch(() => {});
-            refreshAccountAdStatus(previousAccount.id);
-          }
-          // Sync new account credits and refresh ad status
-          sendMessageWithTimeout({ action: 'syncAccountCredits', accountId: account.id }, 5000).catch(() => {});
+          // No sync needed here - dropdown open already triggered batch sync
+          // Just refresh ad status for display
           refreshAccountAdStatus(account.id);
 
           await saveSelectedAccount(account.id);

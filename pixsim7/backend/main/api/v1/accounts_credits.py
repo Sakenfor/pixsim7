@@ -6,6 +6,7 @@ Handles credit synchronization, batch updates, and provider-specific status quer
 from typing import Optional, Dict, Any, List
 import logging
 import asyncio
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,58 @@ from pixsim7.backend.main.services.provider import registry, RateLimitError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# TTL for credit sync (skip if synced within this time)
+CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes
+
+
+def should_skip_credit_sync(account, force: bool = False) -> tuple[bool, str]:
+    """
+    Check if credit sync should be skipped for this account.
+
+    Returns (should_skip, reason) tuple.
+
+    Skip conditions:
+    1. If force=True, never skip
+    2. If synced within TTL, skip
+    3. If exhausted (0 credits) and synced today, skip
+    """
+    if force:
+        return False, ""
+
+    metadata = account.provider_metadata or {}
+    credits_synced_at_str = metadata.get("credits_synced_at")
+
+    if not credits_synced_at_str:
+        return False, ""  # Never synced, don't skip
+
+    try:
+        credits_synced_at = datetime.fromisoformat(credits_synced_at_str.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return False, ""  # Invalid timestamp, don't skip
+
+    now = datetime.now(timezone.utc)
+    time_since_sync = (now - credits_synced_at).total_seconds()
+
+    # Check TTL
+    if time_since_sync < CREDIT_SYNC_TTL_SECONDS:
+        return True, "synced_recently"
+
+    # Check if exhausted today
+    total_credits = account.get_total_credits()
+    if total_credits == 0:
+        # Check if synced today (same UTC date)
+        if credits_synced_at.date() == now.date():
+            return True, "exhausted_today"
+
+    return False, ""
+
+
+def update_sync_timestamp(account) -> None:
+    """Update the credits_synced_at timestamp in provider_metadata."""
+    metadata = account.provider_metadata or {}
+    metadata["credits_synced_at"] = datetime.now(timezone.utc).isoformat()
+    account.provider_metadata = metadata
 
 
 # ===== SCHEMAS =====
@@ -26,10 +79,23 @@ class SyncCreditsResponse(BaseModel):
     message: str
 
 
+class BatchSyncCreditsRequest(BaseModel):
+    """Request for batch credit sync"""
+    account_ids: Optional[List[int]] = Field(
+        default=None,
+        description="Specific account IDs to sync. If None, syncs all user accounts."
+    )
+    force: bool = Field(
+        default=False,
+        description="Force sync even if recently synced or exhausted"
+    )
+
+
 class BatchSyncCreditsResponse(BaseModel):
     """Response from batch credit sync"""
     success: bool
     synced: int
+    skipped: int = 0
     failed: int
     total: int
     details: List[Dict[str, Any]] = Field(default_factory=list)
@@ -50,29 +116,65 @@ async def sync_all_account_credits(
     user: CurrentUser,
     account_service: AccountSvc,
     db: DatabaseSession,
+    request: Optional[BatchSyncCreditsRequest] = None,
     provider_id: Optional[str] = None
 ):
-    """Sync credits for all user accounts in one batch operation.
+    """Sync credits for user accounts in one batch operation.
 
-    This is more efficient than calling sync-credits for each account individually.
-    Optionally filter by provider_id to sync only accounts for a specific provider.
+    Smart skip logic:
+    - Skips accounts synced within TTL (5 minutes)
+    - Skips accounts with 0 credits that were synced today (daily credits don't reset mid-day)
+    - Use force=True to bypass skip logic
 
-    Returns summary of successful and failed syncs.
+    Optionally filter by provider_id or specific account_ids.
+
+    Returns summary of successful, skipped, and failed syncs.
     """
-    # Get all user accounts (optionally filtered by provider)
-    accounts = await account_service.list_accounts(
-        user_id=user.id,
-        provider_id=provider_id,
-        include_shared=False  # Only sync user's own accounts
-    )
+    req = request or BatchSyncCreditsRequest()
+    force = req.force
+    account_ids = req.account_ids
+
+    # Get accounts to sync
+    if account_ids:
+        # Fetch specific accounts
+        accounts = []
+        for aid in account_ids:
+            try:
+                acc = await account_service.get_account(aid)
+                # Only allow syncing own accounts (unless admin)
+                if acc.user_id == user.id or user.is_admin():
+                    accounts.append(acc)
+            except ResourceNotFoundError:
+                pass
+    else:
+        # Get all user accounts (optionally filtered by provider)
+        accounts = await account_service.list_accounts(
+            user_id=user.id,
+            provider_id=provider_id,
+            include_shared=False  # Only sync user's own accounts
+        )
 
     synced = 0
+    skipped = 0
     failed = 0
     details = []
 
     for account in accounts:
         account_id = account.id
         account_email = account.email
+
+        # Check if should skip
+        should_skip, skip_reason = should_skip_credit_sync(account, force=force)
+        if should_skip:
+            skipped += 1
+            details.append({
+                "account_id": account_id,
+                "email": account_email,
+                "status": "skipped",
+                "reason": skip_reason
+            })
+            continue
+
         try:
             # Get provider and sync credits
             from pixsim7.backend.main.domain import ProviderCredit
@@ -145,6 +247,9 @@ async def sync_all_account_credits(
                             logger.warning(f"Failed to update {clean_type} for {account_email}: {e}")
 
                 if updated_credits:
+                    # Update sync timestamp
+                    update_sync_timestamp(account)
+                    db.add(account)
                     await db.commit()
                     await db.refresh(account)
 
@@ -153,7 +258,7 @@ async def sync_all_account_credits(
                         "account_id": account_id,
                         "email": account_email,
                         "credits": updated_credits,
-                        "success": True
+                        "status": "synced"
                     })
                 else:
                     failed += 1
@@ -209,6 +314,7 @@ async def sync_all_account_credits(
     return BatchSyncCreditsResponse(
         success=True,
         synced=synced,
+        skipped=skipped,
         failed=failed,
         total=len(accounts),
         details=details
@@ -220,17 +326,22 @@ async def sync_account_credits(
     account_id: int,
     user: CurrentUser,
     account_service: AccountSvc,
-    db: DatabaseSession
+    db: DatabaseSession,
+    force: bool = False
 ):
     """Sync credits from provider API (via getUserInfo or equivalent).
 
     Fetches current credits from the provider and updates the account.
-    Useful after login or when credits need to be refreshed.
+
+    Smart skip logic (unless force=True):
+    - Skips if synced within TTL (5 minutes)
+    - Skips if 0 credits and synced today
     """
     logger.info(
         "sync_credits_requested",
         account_id=account_id,
         user_id=user.id,
+        force=force,
     )
     try:
         account = await account_service.get_account(account_id)
@@ -239,6 +350,24 @@ async def sync_account_credits(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot sync credits for system accounts")
         if account.user_id != user.id and not user.is_admin():
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to sync this account's credits")
+
+        # Check if should skip
+        should_skip, skip_reason = should_skip_credit_sync(account, force=force)
+        if should_skip:
+            logger.info(
+                "sync_credits_skipped",
+                account_id=account_id,
+                reason=skip_reason,
+            )
+            # Return current cached credits
+            credits = {}
+            for c in account.credits:
+                credits[c.credit_type] = c.amount
+            return SyncCreditsResponse(
+                success=True,
+                credits=credits,
+                message=f"Skipped: {skip_reason}"
+            )
 
         # Get provider and call dedicated credit fetch function
         from pixsim7.backend.main.domain import ProviderCredit
@@ -340,6 +469,9 @@ async def sync_account_credits(
                     except Exception as e:
                         logger.warning(f"Failed to update credits {clean_type} for {account.email}: {e}")
 
+            # Update sync timestamp
+            update_sync_timestamp(account)
+            db.add(account)
             await db.commit()
             await db.refresh(account)
             return SyncCreditsResponse(
