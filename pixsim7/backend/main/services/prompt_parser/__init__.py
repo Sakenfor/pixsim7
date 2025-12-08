@@ -12,6 +12,7 @@ Main components:
 
 from .simple import SimplePromptParser, ParsedPrompt, ParsedBlock, ParsedRole
 from .llm_analyzer import analyze_prompt_with_llm
+from .registry import analyzer_registry, AnalyzerInfo, AnalyzerKind
 
 __all__ = [
     "SimplePromptParser",
@@ -19,4 +20,7 @@ __all__ = [
     "ParsedBlock",
     "ParsedRole",
     "analyze_prompt_with_llm",
+    "analyzer_registry",
+    "AnalyzerInfo",
+    "AnalyzerKind",
 ]

@@ -3,9 +3,11 @@
  *
  * Configure prompt analysis, block extraction, and curation workflows.
  */
+import { useEffect, useState } from 'react';
 import { Select, Switch } from '@pixsim7/shared.ui';
 import { settingsRegistry } from '@/lib/settingsRegistry';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
+import { listAnalyzers, type AnalyzerInfo } from '@/lib/api/analyzers';
 
 export function PromptsSettings() {
   const {
@@ -20,6 +22,26 @@ export function PromptsSettings() {
     setExtractionThreshold,
     setDefaultCurationStatus,
   } = usePromptSettingsStore();
+
+  // Fetch available analyzers from backend
+  const [analyzers, setAnalyzers] = useState<AnalyzerInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listAnalyzers()
+      .then((res) => {
+        setAnalyzers(res.analyzers);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch analyzers:', err);
+        // Fallback to hardcoded default
+        setAnalyzers([
+          { id: 'parser:simple', name: 'Simple Parser', description: 'Fast, keyword-based', kind: 'parser', enabled: true, is_default: true },
+        ]);
+        setLoading(false);
+      });
+  }, []);
 
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
@@ -56,14 +78,20 @@ export function PromptsSettings() {
             </div>
             <Select
               value={defaultAnalyzer}
-              onChange={(e) =>
-                setDefaultAnalyzer(e.target.value as 'parser:simple' | 'llm:claude')
-              }
+              onChange={(e) => setDefaultAnalyzer(e.target.value)}
               size="sm"
               className="text-[11px]"
+              disabled={loading}
             >
-              <option value="parser:simple">Simple Parser (fast, keyword-based)</option>
-              <option value="llm:claude">LLM (Claude) - deeper semantic analysis</option>
+              {loading ? (
+                <option>Loading...</option>
+              ) : (
+                analyzers.map((analyzer) => (
+                  <option key={analyzer.id} value={analyzer.id}>
+                    {analyzer.name} - {analyzer.description}
+                  </option>
+                ))
+              )}
             </Select>
           </div>
         </div>

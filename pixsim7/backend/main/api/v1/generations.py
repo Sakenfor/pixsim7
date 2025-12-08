@@ -120,6 +120,7 @@ async def create_generation(
             parent_generation_id=request.parent_generation_id,
             prompt_version_id=request.prompt_version_id,
             force_new=request.force_new,
+            analyzer_id=request.analyzer_id,
         )
 
         # Update generation with prompt_config if we have one

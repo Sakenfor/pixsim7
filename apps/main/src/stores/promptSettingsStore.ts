@@ -9,7 +9,7 @@ import { persist } from 'zustand/middleware';
 export interface PromptSettings {
   // Analysis settings
   autoAnalyze: boolean;
-  defaultAnalyzer: 'parser:simple' | 'llm:claude';
+  defaultAnalyzer: string;  // Dynamic - see GET /api/v1/analyzers
 
   // Block extraction settings
   autoExtractBlocks: boolean;
@@ -20,7 +20,7 @@ export interface PromptSettings {
 interface PromptSettingsStore extends PromptSettings {
   // Actions
   setAutoAnalyze: (value: boolean) => void;
-  setDefaultAnalyzer: (value: PromptSettings['defaultAnalyzer']) => void;
+  setDefaultAnalyzer: (value: string) => void;
   setAutoExtractBlocks: (value: boolean) => void;
   setExtractionThreshold: (value: number) => void;
   setDefaultCurationStatus: (value: PromptSettings['defaultCurationStatus']) => void;

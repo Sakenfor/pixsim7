@@ -146,6 +146,7 @@ class GenerationCreationService:
         parent_generation_id: Optional[int] = None,
         prompt_version_id: Optional[UUID] = None,
         force_new: bool = False,
+        analyzer_id: Optional[str] = None,
     ) -> Generation:
         """
         Create new generation with canonicalization and prompt versioning
@@ -352,6 +353,7 @@ class GenerationCreationService:
                 prompt_version, created = await self.find_or_create_prompt_version(
                     prompt_text=prompt_text,
                     author=f"user:{user.id}",
+                    analyzer_id=analyzer_id,
                 )
                 prompt_version_id = prompt_version.id
                 final_prompt = prompt_version.prompt_text

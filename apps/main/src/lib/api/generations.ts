@@ -5,6 +5,7 @@
  * Replaces legacy jobs API.
  */
 import { apiClient } from './client';
+import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 
 // Re-export types from @pixsim7/types for convenience
 export type {
@@ -100,17 +101,30 @@ export interface CreateGenerationRequest {
 
   // Deduplication control
   force_new?: boolean;
+
+  // Prompt analysis settings (see GET /api/v1/analyzers for available options)
+  analyzer_id?: string;
 }
 
 // ===== API FUNCTIONS =====
 
 /**
  * Create a new generation
+ *
+ * Automatically includes analyzer_id from prompt settings if not explicitly provided.
  */
 export async function createGeneration(
   request: CreateGenerationRequest
 ): Promise<GenerationResponse> {
-  const res = await apiClient.post<GenerationResponse>('/generations?_=new', request);
+  // Auto-include analyzer_id from settings if not provided and auto-analyze is enabled
+  const settings = usePromptSettingsStore.getState();
+  const enrichedRequest = { ...request };
+
+  if (!enrichedRequest.analyzer_id && settings.autoAnalyze) {
+    enrichedRequest.analyzer_id = settings.defaultAnalyzer;
+  }
+
+  const res = await apiClient.post<GenerationResponse>('/generations?_=new', enrichedRequest);
   return res.data;
 }
 

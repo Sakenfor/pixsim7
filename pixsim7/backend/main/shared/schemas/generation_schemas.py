@@ -170,6 +170,12 @@ class CreateGenerationRequest(BaseModel):
     # Deduplication control
     force_new: bool = Field(False, description="Skip dedup and cache, always create new generation")
 
+    # Prompt analysis settings (validated against analyzer registry)
+    analyzer_id: Optional[str] = Field(
+        None,
+        description="Analyzer ID for prompt parsing (e.g., 'parser:simple', 'llm:claude'). See GET /api/v1/analyzers for available options."
+    )
+
     class Config:
         json_schema_extra = {
             "example": {
