@@ -11,13 +11,13 @@ try:
     from .config import service_env, ROOT, check_tool_available
     from .logger import launcher_logger as _launcher_logger
     from .status import HealthStatus
-    from .docker_utils import compose_up_detached, compose_down
+    from .docker_utils import compose_up_detached, compose_down, compose_logs
 except ImportError:
     from services import ServiceDef
     from config import service_env, ROOT, check_tool_available
     from logger import launcher_logger as _launcher_logger
     from status import HealthStatus
-    from docker_utils import compose_up_detached, compose_down
+    from docker_utils import compose_up_detached, compose_down, compose_logs
 
 
 try:
@@ -169,6 +169,46 @@ class ServiceProcess:
             self._log_monitor_timer.stop()
             self._log_monitor_timer = None
 
+    def _fetch_docker_logs(self):
+        """Fetch logs from Docker containers for db service."""
+        if self.defn.key != 'db' or not self.running:
+            return
+
+        try:
+            compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
+            ok, logs = compose_logs(compose_file, tail=50, since='30s')
+            if ok and logs:
+                # Parse docker-compose logs format: "container_name  | log line"
+                from datetime import datetime
+                timestamp = datetime.now().strftime('%H:%M:%S')
+
+                for line in logs.strip().split('\n'):
+                    if not line.strip():
+                        continue
+                    # Format: add timestamp prefix for consistency
+                    formatted = f"[{timestamp}] [OUT] {line}"
+                    # Only add if not already in buffer (avoid duplicates)
+                    if formatted not in self.log_buffer[-20:]:
+                        self._append_log_buffer(formatted)
+                        self._persist_log_line(formatted, sanitized=True)
+        except Exception as e:
+            if _launcher_logger:
+                try:
+                    _launcher_logger.warning("docker_logs_fetch_failed", error=str(e))
+                except Exception:
+                    pass
+
+    def _start_docker_log_monitor(self):
+        """Start monitoring Docker container logs."""
+        if self._log_monitor_timer:
+            self._log_monitor_timer.stop()
+
+        self._log_monitor_timer = QTimer()
+        self._log_monitor_timer.timeout.connect(self._fetch_docker_logs)
+        self._log_monitor_timer.start(5000)  # Fetch every 5 seconds
+        # Fetch immediately
+        self._fetch_docker_logs()
+
     def clear_logs(self):
         """Clear both in-memory buffer and persisted log file."""
         self.log_buffer.clear()
@@ -251,6 +291,8 @@ class ServiceProcess:
                 self.running = True
                 self.health_status = HealthStatus.STARTING
                 self.last_error_line = ''
+                # Start monitoring Docker container logs
+                self._start_docker_log_monitor()
                 return True
             except Exception as e:
                 self.last_error_line = str(e)
@@ -404,6 +446,7 @@ class ServiceProcess:
                     pass
 
         if self.defn.key == 'db':
+            self._stop_log_monitor()
             try:
                 compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
                 ok, _ = compose_down(compose_file)
