@@ -35,6 +35,8 @@ STRUCTURED_LOG_REGEX = re.compile(r'^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})[^\
 # Level can be: DEBUG, INFO, WARN, ERROR, CRIT, WARNING, CRITICAL
 # This handles both our custom format and standard structlog format with variable spacing
 CLEAN_LOG_REGEX = re.compile(r'^\[(\d{2}:\d{2}:\d{2})\]\s+(DEBUG|INFO|WARN(?:ING)?|ERROR|CRIT(?:ICAL)?)\s+(.+)$', re.IGNORECASE)
+# Match ARQ worker format: HH:MM:SS: message (no brackets, colon after time)
+ARQ_TIMESTAMP_REGEX = re.compile(r'^(\d{2}:\d{2}:\d{2}):\s+(.+)$')
 
 
 def convert_utc_to_local_time(timestamp_str: str) -> str | None:
@@ -391,17 +393,24 @@ def format_console_log_html_enhanced(log_lines) -> str:
                         tag = None
                         content = iso_match.group(4).strip() or line_clean
                     else:
-                        # Try level prefix format
-                        prefix_match = LEVEL_PREFIX_REGEX.match(line_clean)
-                        if prefix_match:
-                            possible_level = prefix_match.group(1).upper()
-                            if not line_level:
-                                line_level = "WARNING" if possible_level == "WARN" else possible_level
-                            time = None
+                        # Try ARQ worker format: HH:MM:SS: message
+                        arq_match = ARQ_TIMESTAMP_REGEX.match(line_clean)
+                        if arq_match:
+                            time = arq_match.group(1)
                             tag = None
-                            content = prefix_match.group(2) or line_clean
+                            content = arq_match.group(2)
                         else:
-                            time, tag, content = None, None, line_clean
+                            # Try level prefix format
+                            prefix_match = LEVEL_PREFIX_REGEX.match(line_clean)
+                            if prefix_match:
+                                possible_level = prefix_match.group(1).upper()
+                                if not line_level:
+                                    line_level = "WARNING" if possible_level == "WARN" else possible_level
+                                time = None
+                                tag = None
+                                content = prefix_match.group(2) or line_clean
+                            else:
+                                time, tag, content = None, None, line_clean
 
         time_display = time or '--:--:--'
 
@@ -410,13 +419,17 @@ def format_console_log_html_enhanced(log_lines) -> str:
         content_text = content or ""
         if content_text:
             parts = content_text.split(None, 1)
-            first = parts[0]
-            # Heuristic: treat first token as service/logger name if it's a short identifier
-            if re.match(r"^[A-Za-z][A-Za-z0-9_.:-]{0,15}$", first):
-                service_label = first
-                content_body = parts[1] if len(parts) > 1 else ""
+            # Handle whitespace-only content (split returns empty list)
+            if parts:
+                first = parts[0]
+                # Heuristic: treat first token as service/logger name if it's a short identifier
+                if re.match(r"^[A-Za-z][A-Za-z0-9_.:-]{0,15}$", first):
+                    service_label = first
+                    content_body = parts[1] if len(parts) > 1 else ""
+                else:
+                    content_body = content_text
             else:
-                content_body = content_text
+                content_body = ""
         else:
             content_body = ""
 
