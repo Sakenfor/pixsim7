@@ -59,6 +59,9 @@ export function QuickGenerateModule() {
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
+  // UI state for advanced params dropdown
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // Credit estimation for Go button
   const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
   const [creditLoading, setCreditLoading] = useState(false);
@@ -417,6 +420,80 @@ export function QuickGenerateModule() {
             </select>
           );
         })}
+
+      {/* Advanced params dropdown */}
+      {(() => {
+        // Collect advanced params that aren't shown inline
+        const advancedParams = filteredParamSpecs.filter(p =>
+          // Skip already-shown params
+          !['model', 'quality', 'duration', 'aspect_ratio', 'motion_mode', 'image_url', 'image_urls', 'prompt'].includes(p.name) &&
+          // Include string params without enum (like negative_prompt, seed)
+          (p.type === 'string' && !p.enum) ||
+          p.type === 'boolean' ||
+          p.name === 'seed'
+        );
+
+        if (advancedParams.length === 0) return null;
+
+        return (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className={clsx(
+                'w-full px-2 py-1.5 text-[11px] rounded-lg transition-colors flex items-center justify-between',
+                showAdvanced
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-700'
+              )}
+            >
+              <span>Advanced</span>
+              <span className="text-[9px]">{showAdvanced ? '▲' : '▼'}</span>
+            </button>
+            {showAdvanced && (
+              <div className="mt-1 p-2 rounded-lg bg-white dark:bg-neutral-800 shadow-lg border border-neutral-200 dark:border-neutral-700 space-y-2">
+                {advancedParams.map(param => (
+                  <div key={param.name} className="flex flex-col gap-1">
+                    <label className="text-[9px] text-neutral-500 dark:text-neutral-400">
+                      {param.name.replace(/_/g, ' ')}
+                    </label>
+                    {param.type === 'boolean' ? (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={!!workbench.dynamicParams[param.name]}
+                          onChange={(e) => workbench.handleParamChange(param.name, e.target.checked)}
+                          disabled={generating}
+                          className="w-3.5 h-3.5 rounded"
+                        />
+                        <span className="text-[10px] text-neutral-600 dark:text-neutral-300">Enable</span>
+                      </label>
+                    ) : param.name === 'seed' ? (
+                      <input
+                        type="number"
+                        value={workbench.dynamicParams[param.name] ?? ''}
+                        onChange={(e) => workbench.handleParamChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
+                        disabled={generating}
+                        placeholder="Random"
+                        className="w-full px-2 py-1 text-[10px] rounded bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-600"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        value={workbench.dynamicParams[param.name] ?? ''}
+                        onChange={(e) => workbench.handleParamChange(param.name, e.target.value || undefined)}
+                        disabled={generating}
+                        placeholder={param.default?.toString() || `Enter ${param.name.replace(/_/g, ' ')}`}
+                        className="w-full px-2 py-1 text-[10px] rounded bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-600"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Go button with cost */}
       <button
