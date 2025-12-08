@@ -10,7 +10,8 @@ Features:
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).resolve().parent.parent
+# Go up 3 levels: data/launcher/db_browser_widget.py -> data/launcher -> data -> project_root
+project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import asyncio
