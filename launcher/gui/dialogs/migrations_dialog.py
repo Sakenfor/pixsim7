@@ -10,12 +10,14 @@ try:
         parse_heads, merge_heads, get_pending_migrations, validate_revision_ids,
         parse_migration_history, get_pending_migrations_detailed
     )
+    from .. import theme
 except ImportError:
     from migration_tools import (
         get_current_revision, get_heads, get_history, upgrade_head, downgrade_one, stamp_head,
         parse_heads, merge_heads, get_pending_migrations, validate_revision_ids,
         parse_migration_history, get_pending_migrations_detailed
     )
+    import theme
 
 
 def show_migrations_dialog(parent):
@@ -23,63 +25,44 @@ def show_migrations_dialog(parent):
     dlg.setWindowTitle('Database Migrations Manager')
     dlg.setMinimumWidth(700)
     dlg.setMinimumHeight(550)
-    dlg.setStyleSheet("""
-        QDialog {
-            background-color: #f5f5f5;
-        }
-        QLabel {
-            color: #1a1a1a;
-            font-size: 10pt;
-        }
-        QTextEdit {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+    dlg.setStyleSheet(
+        theme.get_dialog_stylesheet() +
+        theme.get_button_stylesheet() +
+        theme.get_scrollbar_stylesheet() +
+        f"""
+        QTextEdit {{
+            background-color: {theme.BG_TERTIARY};
+            color: {theme.TEXT_PRIMARY};
             font-family: 'Consolas', 'Courier New', monospace;
             font-size: 9pt;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        QPushButton {
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-weight: bold;
-            min-height: 32px;
-        }
-        QPushButton:hover {
-            background-color: #1976D2;
-        }
-        QPushButton:pressed {
-            background-color: #0D47A1;
-        }
-        QPushButton:disabled {
-            background-color: #cccccc;
-            color: #888888;
-        }
-        QGroupBox {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
+        }}
+        QGroupBox {{
+            background-color: {theme.BG_SECONDARY};
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
             margin-top: 12px;
             padding-top: 12px;
             font-weight: bold;
-        }
-        QGroupBox::title {
+            color: {theme.TEXT_PRIMARY};
+        }}
+        QGroupBox::title {{
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 5px;
-        }
-    """)
+            color: {theme.ACCENT_PRIMARY};
+        }}
+        """
+    )
 
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
     layout.setContentsMargins(20, 20, 20, 20)
 
     # Header with explanation
-    header = QLabel('📊 Database Schema Version Control')
-    header.setStyleSheet("font-size: 14pt; font-weight: bold; color: #333; margin-bottom: 8px;")
+    header = QLabel('Database Schema Version Control')
+    header.setStyleSheet(f"font-size: 14pt; font-weight: bold; color: {theme.TEXT_PRIMARY}; margin-bottom: 8px;")
     layout.addWidget(header)
 
     help_text = QLabel(
@@ -87,23 +70,23 @@ def show_migrations_dialog(parent):
         "Always backup your database before applying migrations!"
     )
     help_text.setWordWrap(True)
-    help_text.setStyleSheet("color: #666; font-size: 9pt; margin-bottom: 8px;")
+    help_text.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-bottom: 8px;")
     layout.addWidget(help_text)
 
     # Status indicator
     status_frame = QFrame()
     status_frame.setFrameShape(QFrame.StyledPanel)
-    status_frame.setStyleSheet("background-color: white; border: 1px solid #ddd; border-radius: 6px; padding: 12px;")
+    status_frame.setStyleSheet(f"background-color: {theme.BG_TERTIARY}; border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 6px; padding: 12px;")
     status_layout = QVBoxLayout(status_frame)
     status_layout.setContentsMargins(12, 12, 12, 12)
 
-    status_label = QLabel('🔄 Checking status...')
-    status_label.setStyleSheet("font-size: 11pt; font-weight: bold;")
+    status_label = QLabel('Checking status...')
+    status_label.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.TEXT_PRIMARY};")
     status_layout.addWidget(status_label)
 
     status_detail = QLabel('')
     status_detail.setWordWrap(True)
-    status_detail.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    status_detail.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY}; margin-top: 4px;")
     status_layout.addWidget(status_detail)
 
     layout.addWidget(status_frame)
@@ -111,43 +94,43 @@ def show_migrations_dialog(parent):
     # Branch conflict warning card (initially hidden)
     branch_warning_frame = QFrame()
     branch_warning_frame.setFrameShape(QFrame.StyledPanel)
-    branch_warning_frame.setStyleSheet("""
-        QFrame {
-            background-color: #fff3cd;
-            border: 2px solid #ff9800;
+    branch_warning_frame.setStyleSheet(f"""
+        QFrame {{
+            background-color: {theme.BG_TERTIARY};
+            border: 2px solid {theme.ACCENT_WARNING};
             border-radius: 6px;
             padding: 12px;
-        }
+        }}
     """)
     branch_warning_frame.setVisible(False)
     branch_warning_layout = QVBoxLayout(branch_warning_frame)
     branch_warning_layout.setContentsMargins(12, 12, 12, 12)
 
-    branch_warning_header = QLabel('⚠️ Multiple Migration Branches Detected')
-    branch_warning_header.setStyleSheet("font-size: 11pt; font-weight: bold; color: #f57c00;")
+    branch_warning_header = QLabel('Multiple Migration Branches Detected')
+    branch_warning_header.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_WARNING};")
     branch_warning_layout.addWidget(branch_warning_header)
 
     branch_warning_text = QLabel()
     branch_warning_text.setWordWrap(True)
-    branch_warning_text.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    branch_warning_text.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY}; margin-top: 4px;")
     branch_warning_layout.addWidget(branch_warning_text)
 
     branch_heads_list = QLabel()
-    branch_heads_list.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt; color: #333; margin: 8px 0;")
+    branch_heads_list.setStyleSheet(f"font-family: 'Consolas', monospace; font-size: 9pt; color: {theme.TEXT_PRIMARY}; margin: 8px 0;")
     branch_warning_layout.addWidget(branch_heads_list)
 
-    branch_merge_btn = QPushButton('🔀 Auto-Merge Branches')
+    branch_merge_btn = QPushButton('Auto-Merge Branches')
     branch_merge_btn.setToolTip('Automatically create a merge migration to unify the branches')
-    branch_merge_btn.setStyleSheet("""
-        QPushButton {
-            background-color: #ff9800;
+    branch_merge_btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {theme.ACCENT_WARNING};
             color: white;
             font-weight: bold;
             padding: 8px 16px;
-        }
-        QPushButton:hover {
-            background-color: #fb8c00;
-        }
+        }}
+        QPushButton:hover {{
+            background-color: #e8a730;
+        }}
     """)
     branch_warning_layout.addWidget(branch_merge_btn)
 
@@ -156,46 +139,46 @@ def show_migrations_dialog(parent):
     # Revision ID validation warning (initially hidden)
     revid_warning_frame = QFrame()
     revid_warning_frame.setFrameShape(QFrame.StyledPanel)
-    revid_warning_frame.setStyleSheet("""
-        QFrame {
-            background-color: #ffebee;
-            border: 2px solid #f44336;
+    revid_warning_frame.setStyleSheet(f"""
+        QFrame {{
+            background-color: {theme.BG_TERTIARY};
+            border: 2px solid {theme.ACCENT_ERROR};
             border-radius: 6px;
             padding: 12px;
-        }
+        }}
     """)
     revid_warning_frame.setVisible(False)
     revid_warning_layout = QVBoxLayout(revid_warning_frame)
     revid_warning_layout.setContentsMargins(12, 12, 12, 12)
 
-    revid_warning_header = QLabel('🚨 Revision ID Length Issue Detected')
-    revid_warning_header.setStyleSheet("font-size: 11pt; font-weight: bold; color: #d32f2f;")
+    revid_warning_header = QLabel('Revision ID Length Issue Detected')
+    revid_warning_header.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_ERROR};")
     revid_warning_layout.addWidget(revid_warning_header)
 
     revid_warning_text = QLabel()
     revid_warning_text.setWordWrap(True)
-    revid_warning_text.setStyleSheet("font-size: 9pt; color: #555; margin-top: 4px;")
+    revid_warning_text.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY}; margin-top: 4px;")
     revid_warning_layout.addWidget(revid_warning_text)
 
     revid_list = QLabel()
-    revid_list.setStyleSheet("font-family: 'Consolas', monospace; font-size: 9pt; color: #333; margin: 8px 0;")
+    revid_list.setStyleSheet(f"font-family: 'Consolas', monospace; font-size: 9pt; color: {theme.TEXT_PRIMARY}; margin: 8px 0;")
     revid_warning_layout.addWidget(revid_list)
 
     layout.addWidget(revid_warning_frame)
 
     # Pending Migrations List (initially hidden)
-    pending_group = QGroupBox("⏳ Pending Migrations")
+    pending_group = QGroupBox("Pending Migrations")
     pending_group.setVisible(False)
     pending_layout = QVBoxLayout(pending_group)
 
     pending_scroll = QScrollArea()
     pending_scroll.setWidgetResizable(True)
     pending_scroll.setMaximumHeight(200)
-    pending_scroll.setStyleSheet("""
-        QScrollArea {
+    pending_scroll.setStyleSheet(f"""
+        QScrollArea {{
             border: none;
             background-color: transparent;
-        }
+        }}
     """)
 
     pending_container = QWidget()
@@ -209,18 +192,18 @@ def show_migrations_dialog(parent):
     layout.addWidget(pending_group)
 
     # Migration Timeline (initially hidden)
-    timeline_group = QGroupBox("📊 Migration Timeline")
+    timeline_group = QGroupBox("Migration Timeline")
     timeline_group.setVisible(False)
     timeline_layout = QVBoxLayout(timeline_group)
 
     timeline_scroll = QScrollArea()
     timeline_scroll.setWidgetResizable(True)
     timeline_scroll.setMaximumHeight(250)
-    timeline_scroll.setStyleSheet("""
-        QScrollArea {
+    timeline_scroll.setStyleSheet(f"""
+        QScrollArea {{
             border: none;
             background-color: transparent;
-        }
+        }}
     """)
 
     timeline_container = QWidget()
@@ -259,61 +242,62 @@ def show_migrations_dialog(parent):
 
     # Main action buttons row
     main_row = QHBoxLayout()
-    btn_upgrade = QPushButton('⬆️ Apply Updates')
+    btn_upgrade = QPushButton('Apply Updates')
     btn_upgrade.setToolTip('Apply all pending migrations to update database schema')
-    btn_upgrade.setStyleSheet("""
-        QPushButton {
-            background-color: #4CAF50;
+    btn_upgrade.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {theme.ACCENT_SUCCESS};
             font-size: 11pt;
-        }
-        QPushButton:hover {
-            background-color: #45a049;
-        }
-        QPushButton:disabled {
-            background-color: #cccccc;
-        }
+        }}
+        QPushButton:hover {{
+            background-color: #56d364;
+        }}
+        QPushButton:disabled {{
+            background-color: {theme.BG_TERTIARY};
+            color: {theme.TEXT_DISABLED};
+        }}
     """)
     main_row.addWidget(btn_upgrade)
     actions_layout.addLayout(main_row)
 
     # Advanced buttons row (initially hidden)
     advanced_row = QHBoxLayout()
-    btn_downgrade = QPushButton('⬇️ Rollback One')
-    btn_downgrade.setToolTip('⚠️ ADVANCED: Undo the last migration (may lose data)')
-    btn_downgrade.setStyleSheet("""
-        QPushButton {
-            background-color: #ff9800;
+    btn_downgrade = QPushButton('Rollback One')
+    btn_downgrade.setToolTip('ADVANCED: Undo the last migration (may lose data)')
+    btn_downgrade.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {theme.ACCENT_WARNING};
             font-size: 9pt;
-        }
-        QPushButton:hover {
-            background-color: #fb8c00;
-        }
+        }}
+        QPushButton:hover {{
+            background-color: #e8a730;
+        }}
     """)
-    btn_stamp = QPushButton('🏷️ Mark as Updated')
-    btn_stamp.setToolTip('⚠️ ADVANCED: Mark database as current without running migrations')
-    btn_stamp.setStyleSheet("""
-        QPushButton {
-            background-color: #9E9E9E;
+    btn_stamp = QPushButton('Mark as Updated')
+    btn_stamp.setToolTip('ADVANCED: Mark database as current without running migrations')
+    btn_stamp.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {theme.TEXT_SECONDARY};
             font-size: 9pt;
-        }
-        QPushButton:hover {
-            background-color: #757575;
-        }
+        }}
+        QPushButton:hover {{
+            background-color: {theme.TEXT_DISABLED};
+        }}
     """)
     advanced_row.addWidget(btn_downgrade)
     advanced_row.addWidget(btn_stamp)
     advanced_row.addStretch()
     actions_layout.addLayout(advanced_row)
 
-    advanced_warning = QLabel('⚠️ Advanced options may cause data loss - use only if you know what you\'re doing!')
-    advanced_warning.setStyleSheet("color: #f44336; font-size: 8pt; font-style: italic;")
+    advanced_warning = QLabel('Advanced options may cause data loss - use only if you know what you\'re doing!')
+    advanced_warning.setStyleSheet(f"color: {theme.ACCENT_ERROR}; font-size: 8pt; font-style: italic;")
     actions_layout.addWidget(advanced_warning)
 
     layout.addWidget(actions_group)
 
     # Close button
     btn_close = QPushButton('Close')
-    btn_close.setStyleSheet("background-color: #757575;")
+    btn_close.setStyleSheet(f"background-color: {theme.BG_TERTIARY};")
     layout.addWidget(btn_close)
 
     def update_pending_migrations():
@@ -336,14 +320,14 @@ def show_migrations_dialog(parent):
             # Create migration card
             card = QFrame()
             card.setFrameShape(QFrame.StyledPanel)
-            card.setStyleSheet("""
-                QFrame {
-                    background-color: #fff8e1;
-                    border-left: 4px solid #ffa726;
+            card.setStyleSheet(f"""
+                QFrame {{
+                    background-color: {theme.BG_TERTIARY};
+                    border-left: 4px solid {theme.ACCENT_WARNING};
                     border-radius: 4px;
                     padding: 8px;
                     margin: 2px 0;
-                }
+                }}
             """)
             card_layout = QHBoxLayout(card)
             card_layout.setContentsMargins(8, 8, 8, 8)
@@ -358,22 +342,22 @@ def show_migrations_dialog(parent):
 
             # Revision ID
             rev_label = QLabel(f"<b>{migration.short_revision}</b>")
-            rev_label.setStyleSheet("font-size: 10pt; color: #333;")
+            rev_label.setStyleSheet(f"font-size: 10pt; color: {theme.TEXT_PRIMARY};")
             info_layout.addWidget(rev_label)
 
             # Description
             if migration.description:
                 desc_label = QLabel(migration.description)
                 desc_label.setWordWrap(True)
-                desc_label.setStyleSheet("font-size: 9pt; color: #666;")
+                desc_label.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_SECONDARY};")
                 info_layout.addWidget(desc_label)
 
             card_layout.addLayout(info_layout, 1)
 
             # Status badge
             status_badge = QLabel(migration.status_text)
-            status_badge.setStyleSheet("""
-                background-color: #ffa726;
+            status_badge.setStyleSheet(f"""
+                background-color: {theme.ACCENT_WARNING};
                 color: white;
                 padding: 4px 8px;
                 border-radius: 4px;
@@ -409,16 +393,16 @@ def show_migrations_dialog(parent):
             item = QFrame()
             item.setFrameShape(QFrame.NoFrame)
 
-            # Color code based on status
+            # Color code based on status (dark theme compatible)
             if migration.is_current:
-                bg_color = "#e3f2fd"
-                border_color = "#2196F3"
+                bg_color = theme.BG_TERTIARY
+                border_color = theme.ACCENT_PRIMARY
             elif migration.is_applied:
-                bg_color = "#f1f8e9"
-                border_color = "#4CAF50"
+                bg_color = theme.BG_SECONDARY
+                border_color = theme.ACCENT_SUCCESS
             else:
-                bg_color = "#fafafa"
-                border_color = "#9E9E9E"
+                bg_color = theme.BG_PRIMARY
+                border_color = theme.TEXT_DISABLED
 
             item.setStyleSheet(f"""
                 QFrame {{
@@ -446,13 +430,13 @@ def show_migrations_dialog(parent):
             # Revision with badges
             rev_layout = QHBoxLayout()
             rev_label = QLabel(f"<b>{migration.short_revision}</b>")
-            rev_label.setStyleSheet("font-size: 9pt; color: #333;")
+            rev_label.setStyleSheet(f"font-size: 9pt; color: {theme.TEXT_PRIMARY};")
             rev_layout.addWidget(rev_label)
 
             # Add badges for special statuses
             if migration.is_head:
                 badge = QLabel("HEAD")
-                badge.setStyleSheet("background-color: #2196F3; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
+                badge.setStyleSheet(f"background-color: {theme.ACCENT_PRIMARY}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
                 rev_layout.addWidget(badge)
 
             if migration.is_mergepoint:
@@ -462,7 +446,7 @@ def show_migrations_dialog(parent):
 
             if migration.is_branchpoint:
                 badge = QLabel("BRANCH")
-                badge.setStyleSheet("background-color: #FF9800; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
+                badge.setStyleSheet(f"background-color: {theme.ACCENT_WARNING}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 7pt; font-weight: bold;")
                 rev_layout.addWidget(badge)
 
             rev_layout.addStretch()
@@ -471,7 +455,7 @@ def show_migrations_dialog(parent):
             # Description
             if migration.description:
                 desc_label = QLabel(migration.description[:80] + ('...' if len(migration.description) > 80 else ''))
-                desc_label.setStyleSheet("font-size: 8pt; color: #666;")
+                desc_label.setStyleSheet(f"font-size: 8pt; color: {theme.TEXT_SECONDARY};")
                 info_layout.addWidget(desc_label)
 
             item_layout.addLayout(info_layout, 1)
@@ -560,21 +544,21 @@ def show_migrations_dialog(parent):
         status_label.setText(f'{icon} {message}')
 
         if state == 'up_to_date':
-            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #4CAF50;")
+            status_label.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_SUCCESS};")
             status_detail.setText('Your database schema is current. No action needed.')
             btn_upgrade.setEnabled(False)
-            btn_upgrade.setText('✅ Already Up-to-Date')
+            btn_upgrade.setText('Already Up-to-Date')
         elif state == 'pending':
-            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #ff9800;")
+            status_label.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_WARNING};")
             status_detail.setText('New migrations are available. Click "Apply Updates" to update your database schema.')
             btn_upgrade.setEnabled(True)
-            btn_upgrade.setText('⬆️ Apply Updates')
+            btn_upgrade.setText('Apply Updates')
         elif state == 'error':
-            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #f44336;")
+            status_label.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_ERROR};")
             status_detail.setText('Cannot connect to database or check migrations. Ensure backend is running.')
             btn_upgrade.setEnabled(False)
         else:
-            status_label.setStyleSheet("font-size: 11pt; font-weight: bold; color: #2196F3;")
+            status_label.setStyleSheet(f"font-size: 11pt; font-weight: bold; color: {theme.ACCENT_PRIMARY};")
             status_detail.setText('Check details below for current migration status.')
             btn_upgrade.setEnabled(True)
 
