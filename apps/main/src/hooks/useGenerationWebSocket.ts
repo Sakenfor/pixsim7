@@ -60,10 +60,28 @@ export function useGenerationWebSocket() {
               console.log('[WebSocket] Welcome:', (message as any).message);
             } else if (message.type?.startsWith('job:')) {
               // Generation status update
-              const generationData = message.data as GenerationResponse;
-              if (generationData) {
-                console.log('[WebSocket] Generation update:', message.type, generationData.id);
-                addOrUpdateGeneration(generationData);
+              const rawData = message.data as any;
+              const generationId = rawData?.generation_id ?? rawData?.job_id ?? rawData?.id;
+              console.log('[WebSocket] Generation update:', message.type, generationId);
+
+              if (generationId) {
+                // Fetch full generation data from API to get complete info
+                import('../lib/api/generations').then(({ getGeneration }) => {
+                  getGeneration(generationId).then(fullGeneration => {
+                    console.log('[WebSocket] Fetched full generation:', fullGeneration.id, fullGeneration.status);
+                    addOrUpdateGeneration(fullGeneration);
+                  }).catch(err => {
+                    console.warn('[WebSocket] Failed to fetch generation:', err);
+                    // Fallback: use partial data from WebSocket
+                    if (rawData) {
+                      const generationData: GenerationResponse = {
+                        ...rawData,
+                        id: generationId,
+                      };
+                      addOrUpdateGeneration(generationData);
+                    }
+                  });
+                });
               }
             } else {
               console.log('[WebSocket] Message:', message);

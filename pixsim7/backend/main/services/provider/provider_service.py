@@ -211,16 +211,32 @@ class ProviderService:
         if submission.response is None:
             submission.response = {}
 
-        submission.response.update({
+        existing_video_url = submission.response.get("video_url") or submission.response.get("asset_url")
+        existing_thumbnail = submission.response.get("thumbnail_url")
+        existing_provider_id = submission.response.get("provider_video_id") or submission.response.get("provider_asset_id")
+
+        video_url = status_result.video_url or existing_video_url
+        thumbnail_url = status_result.thumbnail_url or existing_thumbnail
+        provider_video_id = status_result.provider_video_id or existing_provider_id or submission.provider_job_id
+
+        # Update response - use assignment to ensure SQLAlchemy detects the change
+        updated_response = {
+            **submission.response,
             "status": status_result.status.value,
-            "video_url": status_result.video_url,
-            "thumbnail_url": status_result.thumbnail_url,
+            "video_url": video_url,
+            "thumbnail_url": thumbnail_url,
             "progress": status_result.progress,
             "width": status_result.width,
             "height": status_result.height,
             "duration_sec": status_result.duration_sec,
-            "provider_video_id": status_result.provider_video_id,
-        })
+            "provider_video_id": provider_video_id,
+            "provider_asset_id": provider_video_id,
+        }
+        if video_url:
+            updated_response["asset_url"] = video_url
+
+        # Assign new dict to trigger SQLAlchemy change detection for JSON column
+        submission.response = updated_response
 
         await self.db.commit()
         await self.db.refresh(submission)

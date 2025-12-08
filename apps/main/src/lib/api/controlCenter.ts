@@ -214,10 +214,12 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   }
 
   // Create generation request
+  // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
   const generationRequest: CreateGenerationRequest = {
     config,
     provider_id: providerId,
     name: `Quick generation: ${req.prompt.slice(0, 50)}`,
+    force_new: true,
   };
 
   // Call new unified generations API

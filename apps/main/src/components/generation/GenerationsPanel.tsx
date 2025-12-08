@@ -7,7 +7,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { useGenerationsStore, isGenerationActive } from '@/stores/generationsStore';
 import { useRecentGenerations } from '@/hooks/useRecentGenerations';
-import { retryGeneration, cancelGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
+import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration, type GenerationResponse } from '@/lib/api/generations';
 import { Icons, ThemedIcon } from '@/lib/icons';
 import { getGenerationStatusDisplay } from '@/lib/generation/generationAssetMapping';
 
@@ -29,9 +29,9 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
   // Get generations Map (stable reference)
   const generationsMap = useGenerationsStore(state => state.generations);
 
-  // Convert to array only when Map changes
+  // Convert to array only when Map changes, filter out any with invalid ids
   const allGenerations = useMemo(
-    () => Array.from(generationsMap.values()),
+    () => Array.from(generationsMap.values()).filter(g => g && g.id != null),
     [generationsMap]
   );
 
@@ -104,6 +104,22 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     } catch (error) {
       console.error('Failed to cancel generation:', error);
       alert('Failed to cancel generation');
+    }
+  }, []);
+
+  const handleDelete = useCallback(async (id: number) => {
+    if (!id) {
+      console.error('Cannot delete generation: invalid id', id);
+      return;
+    }
+    if (!confirm('Delete this generation permanently?')) return;
+    try {
+      await deleteGeneration(id);
+      // Remove from store
+      useGenerationsStore.getState().remove(id);
+    } catch (error) {
+      console.error('Failed to delete generation:', error);
+      alert('Failed to delete generation');
     }
   }, []);
 
@@ -196,6 +212,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
                 generation={generation}
                 onRetry={handleRetry}
                 onCancel={handleCancel}
+                onDelete={handleDelete}
                 onOpenAsset={handleOpenAsset}
               />
             ))}
@@ -210,18 +227,22 @@ interface GenerationItemProps {
   generation: GenerationResponse;
   onRetry: (id: number) => void;
   onCancel: (id: number) => void;
+  onDelete: (id: number) => void;
   onOpenAsset: (assetId: number) => void;
 }
 
-function GenerationItem({ generation, onRetry, onCancel, onOpenAsset }: GenerationItemProps) {
+function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
-  const canRetry = generation.status === 'failed';
+  const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
+  const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
   const canCancel = isActive;
+  const canDelete = isTerminal;
 
   // Manual refresh for debugging stuck generations
   const handleRefresh = useCallback(async () => {
@@ -255,6 +276,16 @@ function GenerationItem({ generation, onRetry, onCancel, onOpenAsset }: Generati
       setIsCancelling(false);
     }
   }, [generation.id, onCancel]);
+
+  // Delete with loading state
+  const handleDeleteClick = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(generation.id);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [generation.id, onDelete]);
 
   // Truncate prompt
   const promptPreview = generation.final_prompt
@@ -382,6 +413,20 @@ function GenerationItem({ generation, onRetry, onCancel, onOpenAsset }: Generati
                 name="x"
                 size={14}
                 className={`text-red-600 dark:text-red-400 ${isCancelling ? 'opacity-50' : ''}`}
+              />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+              className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
+              title="Delete generation"
+            >
+              <ThemedIcon
+                name="trash"
+                size={14}
+                className={`text-neutral-500 dark:text-neutral-500 ${isDeleting ? 'opacity-50' : ''}`}
               />
             </button>
           )}

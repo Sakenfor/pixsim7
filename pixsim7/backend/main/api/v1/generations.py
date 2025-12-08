@@ -396,6 +396,35 @@ async def retry_generation(
         raise HTTPException(status_code=500, detail=f"Failed to retry generation: {str(e)}")
 
 
+# ===== DELETE GENERATION =====
+
+@router.delete("/generations/{generation_id}", status_code=204)
+async def delete_generation(
+    generation_id: int,
+    user: CurrentUser,
+    generation_service: GenerationSvc
+):
+    """
+    Delete a generation
+
+    Permanently removes a generation from the database.
+    Only terminal generations (completed, failed, cancelled) can be deleted.
+    Active generations must be cancelled first.
+
+    Only the generation owner or admin can delete.
+    """
+    try:
+        await generation_service.delete_generation(generation_id, user)
+        return None
+    except ResourceNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to delete generation {generation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete generation: {str(e)}")
+
+
 # ===== VALIDATE GENERATION CONFIG =====
 
 @router.post("/generations/validate")

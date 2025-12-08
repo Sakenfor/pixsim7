@@ -136,6 +136,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                         # Handle status
                         if status_result.status == VideoStatus.COMPLETED:
+                            # Refresh submission to get updated response from check_status
+                            await db.refresh(submission)
                             # Create asset from submission
                             asset = await asset_service.create_from_submission(
                                 submission=submission,

@@ -156,6 +156,16 @@ export async function retryGeneration(id: number): Promise<GenerationResponse> {
 }
 
 /**
+ * Delete a generation
+ *
+ * Permanently removes a generation from the database.
+ * Only terminal generations (completed, failed, cancelled) can be deleted.
+ */
+export async function deleteGeneration(id: number): Promise<void> {
+  await apiClient.delete(`/generations/${id}?_=delete`);
+}
+
+/**
  * Validate a generation config without creating it
  */
 export async function validateGenerationConfig(

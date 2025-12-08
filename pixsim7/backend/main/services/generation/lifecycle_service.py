@@ -7,7 +7,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
 from pixsim7.backend.main.domain import (
     Generation,
@@ -222,6 +222,41 @@ class GenerationLifecycleService:
                 # Continue with local cancellation even if provider cancel fails
 
         return await self.update_status(generation_id, GenerationStatus.CANCELLED)
+
+    async def delete_generation(self, generation_id: int, user: User) -> None:
+        """
+        Delete generation permanently
+
+        Args:
+            generation_id: Generation ID
+            user: User requesting deletion
+
+        Raises:
+            ResourceNotFoundError: Generation not found
+            InvalidOperationError: Cannot delete (wrong user or still active)
+        """
+        generation = await self._get_generation(generation_id)
+
+        # Check authorization
+        if generation.user_id != user.id and not user.is_admin():
+            raise InvalidOperationError("Cannot delete other users' generations")
+
+        # Only allow deleting terminal generations
+        if not generation.is_terminal:
+            raise InvalidOperationError(
+                f"Cannot delete active generation (status: {generation.status.value}). Cancel it first."
+            )
+
+        # Delete associated submissions first
+        await self.db.execute(
+            delete(ProviderSubmission).where(ProviderSubmission.generation_id == generation_id)
+        )
+
+        # Delete the generation
+        await self.db.delete(generation)
+        await self.db.commit()
+
+        logger.info(f"Generation {generation_id} deleted by user {user.id}")
 
     # ===== PRIVATE HELPERS =====
 

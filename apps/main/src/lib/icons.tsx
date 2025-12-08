@@ -58,6 +58,7 @@ import {
   Scissors,
   Clipboard,
   Link2,
+  ExternalLink,
   Gamepad2,
   Clapperboard,
   Bot,
@@ -127,6 +128,7 @@ export const Icons = {
   cut: Scissors,
   clipboard: Clipboard,
   link: Link2,
+  externalLink: ExternalLink,
   listPlus: ListPlus,
 
   // Playback
@@ -174,10 +176,14 @@ export const Icons = {
   loading: Loader,
   loader: Loader,
   success: CheckCircle,
+  checkCircle: CheckCircle,
+  'check-circle': CheckCircle,
   error: XCircle,
+  xCircle: XCircle,
+  'x-circle': XCircle,  // Kebab-case alias
   warning: AlertCircle,
   alertCircle: AlertCircle,
-  'alert-circle': AlertCircle,  // Kebab-case alias
+  'alert-circle': AlertCircle,
   alertTriangle: AlertTriangle,
   info: Info,
 
@@ -188,6 +194,8 @@ export const Icons = {
   chevronDown: ChevronDown,
   arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
+  'arrow-left': ArrowLeft,
+  'arrow-right': ArrowRight,
 
   // Misc
   folderTree: FolderTree,

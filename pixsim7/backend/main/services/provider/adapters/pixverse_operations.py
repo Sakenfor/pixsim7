@@ -424,22 +424,28 @@ class PixverseOperationsMixin:
     ):
         """Generate transition between images"""
         # Build kwargs for transition (use TransitionOptions if available, else direct kwargs)
+        durations = params.get("durations")
+        duration_value = params.get("duration", 5)
+
         if TransitionOptions is not None:
             transition_options = TransitionOptions(
                 prompts=params["prompts"],  # Required
                 image_urls=params["image_urls"],  # Required
                 quality=params.get("quality", "360p"),
-                duration=int(params.get("duration", 5)),
+                durations=durations if durations else int(duration_value),
             )
-            kwargs = transition_options.__dict__
+            kwargs = transition_options.model_dump()
         else:
             # Fallback: build kwargs directly
             kwargs = {
                 "prompts": params["prompts"],
                 "image_urls": params["image_urls"],
                 "quality": params.get("quality", "360p"),
-                "duration": int(params.get("duration", 5)),
             }
+            if durations:
+                kwargs["durations"] = durations
+            else:
+                kwargs["duration"] = int(duration_value)
 
         # Call pixverse-py
         video = await asyncio.to_thread(
@@ -489,16 +495,17 @@ class PixverseOperationsMixin:
         Raises:
             JobNotFoundError: Video/image not found
         """
-        # Guard against missing provider_job_id (stale submission from incomplete flow)
+        # Guard against missing provider_job_id (submission still in progress)
+        # Don't fail - return PROCESSING so poller skips and checks again later
         if not provider_job_id:
             logger.warning(
                 "provider:status",
-                msg="missing_provider_job_id",
+                msg="missing_provider_job_id_waiting",
                 operation_type=operation_type.value if operation_type else None,
             )
             return VideoStatusResult(
-                status=VideoStatus.FAILED,
-                error_message="No provider job ID - submission may be incomplete",
+                status=VideoStatus.PROCESSING,  # Keep waiting, don't fail
+                error_message=None,
             )
 
         # Use the shared operation registry to determine which
@@ -531,22 +538,25 @@ class PixverseOperationsMixin:
                         image_id=provider_job_id,
                     )
                     # Map image status
-                    raw_status = get_field(result, "status", default="processing")
-                    if raw_status == "completed":
+                    # Pixverse returns image_status as int: 1=completed, 0=processing, -1=failed
+                    raw_status = get_field(result, "image_status", "status", default=0)
+                    image_url = get_field(result, "image_url", "url")
+                    # Map numeric status to enum
+                    if raw_status == 1 or raw_status == "completed":
                         status = VideoStatus.COMPLETED
-                    elif raw_status in ("failed", "filtered"):
+                    elif raw_status == -1 or raw_status in ("failed", "filtered"):
                         status = VideoStatus.FAILED
                     else:
                         status = VideoStatus.PROCESSING
 
                     return VideoStatusResult(
                         status=status,
-                        video_url=get_field(result, "url"),  # Image URL
-                        thumbnail_url=get_field(result, "url"),  # Use image as thumbnail
+                        video_url=image_url,  # Image URL
+                        thumbnail_url=image_url,  # Use image as thumbnail
                         width=get_field(result, "width"),
                         height=get_field(result, "height"),
                         duration_sec=None,  # Images don't have duration
-                        provider_video_id=str(get_field(result, "id", "image_id")),
+                        provider_video_id=str(get_field(result, "image_id", "id")),
                         metadata={"provider_status": raw_status, "is_image": True},
                     )
                 else:

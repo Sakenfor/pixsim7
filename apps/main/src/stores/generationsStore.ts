@@ -27,6 +27,11 @@ export const useGenerationsStore = create<GenerationsState>((set) => ({
 
   addOrUpdate: (generation) =>
     set((state) => {
+      // Guard against invalid generations
+      if (!generation || generation.id == null) {
+        console.warn('[GenerationsStore] Attempted to add generation with invalid id:', generation);
+        return state;
+      }
       const newMap = new Map(state.generations);
       newMap.set(generation.id, generation);
       return { generations: newMap };

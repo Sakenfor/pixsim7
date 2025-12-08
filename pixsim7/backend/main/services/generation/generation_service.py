@@ -120,6 +120,10 @@ class GenerationService:
         """Delegate to lifecycle service"""
         return await self._lifecycle.cancel_generation(generation_id, user)
 
+    async def delete_generation(self, generation_id: int, user: User) -> None:
+        """Delegate to lifecycle service"""
+        return await self._lifecycle.delete_generation(generation_id, user)
+
     # ===== QUERY METHODS =====
 
     async def get_generation(self, generation_id: int) -> Generation:
