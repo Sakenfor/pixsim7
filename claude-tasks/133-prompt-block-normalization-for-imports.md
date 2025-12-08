@@ -87,10 +87,11 @@ class PromptBlock(SQLModel, table=True):
     text: str = Field(description="Original text span from prompt")
 
     # Structured metadata (like ActionBlockDB.tags)
+    # See "Ontology Integration" section for documented keys
     tags: Dict[str, Any] = Field(
         default_factory=dict,
         sa_column=Column(JSON),
-        description="Normalized details: {motion: 'hand', direction: 'from_left'}"
+        description="Ontology-backed tags: {ontology_ids: [...], camera_view: 'cam:pov', motion_type: 'act:...'}"
     )
 
     # Provenance
@@ -320,14 +321,139 @@ New Asset linked to same prompt_version
 
 - **`category`** (string): Analysis/LLM-driven, experimental. Free-form for fine-grained extraction (entrance, hand_motion, camera_pov, etc.). Treat as a hint — put structured details in `tags`. Extensible without migrations.
 
-- **`tags`** (Dict[str, Any]): Follows `ActionBlockDB.tags` pattern. Normalized details like:
+- **`tags`** (Dict[str, Any]): Follows `ActionBlockDB.tags` pattern. Contains **ontology IDs as canonical values**:
   ```json
-  {"motion": "hand", "direction": "from_left", "body_part": "hair"}
-  {"entrance_direction": "camera_left", "speed": "slow"}
+  {"ontology_ids": ["act:hand_motion", "part:hand"], "motion_type": "act:brush_hair"}
+  {"ontology_ids": ["space:from_left"], "entrance_direction": "space:from_left"}
   ```
-  This is where semantics live — can later bridge to ActionBlockTags or ontology lookups.
+  See **Ontology Integration** section below for the three-layer model and documented keys.
 
 **Relationship to ActionBlockDB**: PromptBlock is lean and analysis-focused. ActionBlockDB is the curated, human-edited layer. The bridge is "promote" — when a block is deemed reusable, create an ActionBlockDB from that PromptBlock, copying text and relevant tags. No hard FK needed yet.
+
+---
+
+## Ontology Integration: Canonical IDs vs Labels
+
+### The Problem with String-Based Categories
+
+Using `category = "hand_motion"` as the canonical identifier creates brittleness:
+- If we rename "hand_motion" to "hand_movement", all queries break
+- Different analyzers might use slightly different strings
+- No consistency between PromptBlock.category and ActionBlockDB.tags
+
+### Solution: Ontology IDs as the Canonical Layer
+
+We already have infrastructure for this:
+
+| Component | Location | What It Provides |
+|-----------|----------|------------------|
+| `ontology.yaml` | `shared/ontology.yaml` | Source of truth for IDs like `part:shaft`, `act:hand_motion`, `cam:pov` |
+| `Ontology.match_keywords()` | `shared/ontology.py` | Returns list of ontology IDs from text |
+| `SimplePromptParser` | `prompt_parser/simple.py:207` | Already calls `match_keywords()` and stores in `metadata["ontology_ids"]` |
+
+### Three-Layer Classification Model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Layer 1: role (ParsedRole enum)                                 │
+│   → Stable, coarse. Parser-driven.                              │
+│   → character, action, setting, mood, romance, other            │
+│   → Safe to branch on in core logic                             │
+├─────────────────────────────────────────────────────────────────┤
+│ Layer 2: category (string)                                      │
+│   → Flexible human label for UI/debugging                       │
+│   → "hand_motion", "entrance", "camera_pov"                     │
+│   → Can change freely — don't key logic on this                 │
+├─────────────────────────────────────────────────────────────────┤
+│ Layer 3: tags["ontology_ids"] (List[str])                       │
+│   → Canonical, stable IDs from ontology.yaml                    │
+│   → ["act:hand_motion", "part:hand", "space:from_left"]         │
+│   → This is what logic should key on                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### PromptBlock.tags Schema
+
+Following `ActionBlockDB.tags` pattern, but with documented keys:
+
+```json
+{
+  "ontology_ids": ["act:hand_motion", "part:hand"],
+  "camera_view": "cam:pov",
+  "motion_type": "act:walk_slow",
+  "body_part": "part:hand",
+  "entrance_direction": "space:from_left",
+  "intensity": "intensity:soft",
+  "speed": "speed:slow"
+}
+```
+
+Key rules:
+- **`ontology_ids`**: Always populated from parser's `metadata["ontology_ids"]`
+- **Typed keys** (`camera_view`, `motion_type`, etc.): Values are ontology IDs, not strings
+- **Labels** (`category`): Human-readable, can change without breaking queries
+
+### Implementation: Ontology Bridge
+
+Create a small bridge module to centralize the mapping:
+
+```python
+# services/prompt_ontology_bridge.py
+
+from pixsim7.backend.main.shared.ontology import load_ontology
+
+def annotate_prompt_block(block: PromptBlock) -> PromptBlock:
+    """
+    Enrich a PromptBlock with ontology IDs.
+
+    Called when persisting blocks to ensure ontology_ids are always populated.
+    """
+    ontology = load_ontology()
+    ontology_ids = ontology.match_keywords(block.text.lower())
+
+    if ontology_ids:
+        block.tags["ontology_ids"] = ontology_ids
+
+        # Optionally, extract typed keys from IDs
+        for oid in ontology_ids:
+            if oid.startswith("cam:"):
+                block.tags["camera_view"] = oid
+            elif oid.startswith("act:"):
+                if "motion_type" not in block.tags:
+                    block.tags["motion_type"] = oid
+            elif oid.startswith("space:"):
+                block.tags["entrance_direction"] = oid
+
+    return block
+```
+
+Use this bridge in:
+- `prompt_dsl_adapter.analyze_prompt()` when building prompt_analysis
+- LLM extractors (so LLM outputs get normalized to ontology IDs)
+- Block persistence when creating PromptBlock rows
+
+### LLM Extraction with Ontology
+
+When adding LLM-based extraction (Phase 3), have the LLM output candidate ontology labels:
+
+```json
+// LLM output
+{
+  "hand_motion": ["act:brush_hair", "part:hand"],
+  "camera": ["cam:zoom_in", "cam:slow"]
+}
+```
+
+Then run through the bridge to validate/normalize. Invalid IDs get logged but not stored.
+
+### Benefits
+
+| Benefit | Why |
+|---------|-----|
+| **Rename-safe** | Changing "hand_motion" → "hand_movement" only changes label, not queries |
+| **Consistent** | Same ontology IDs in PromptBlock and ActionBlockDB |
+| **Query-friendly** | `WHERE 'act:hand_motion' = ANY(tags->'ontology_ids')` |
+| **LLM-validated** | LLM outputs normalized against known vocabulary |
 
 ### Implementation Touchpoints
 
