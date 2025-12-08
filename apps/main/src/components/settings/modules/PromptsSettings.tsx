@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Select, Switch } from '@pixsim7/shared.ui';
 import { settingsRegistry } from '@/lib/settingsRegistry';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
-import { listAnalyzers, type AnalyzerInfo } from '@/lib/api/analyzers';
+import { listPromptAnalyzers, type AnalyzerInfo } from '@/lib/api/analyzers';
 
 export function PromptsSettings() {
   const {
@@ -28,7 +28,7 @@ export function PromptsSettings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listAnalyzers()
+    listPromptAnalyzers()
       .then((res) => {
         setAnalyzers(res.analyzers);
         setLoading(false);
@@ -37,7 +37,7 @@ export function PromptsSettings() {
         console.error('Failed to fetch analyzers:', err);
         // Fallback to hardcoded default
         setAnalyzers([
-          { id: 'parser:simple', name: 'Simple Parser', description: 'Fast, keyword-based', kind: 'parser', enabled: true, is_default: true },
+          { id: 'prompt:simple', name: 'Simple Parser', description: 'Fast, keyword-based', kind: 'parser', target: 'prompt', enabled: true, is_default: true },
         ]);
         setLoading(false);
       });
