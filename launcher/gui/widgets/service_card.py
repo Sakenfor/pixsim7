@@ -200,13 +200,10 @@ class ServiceCard(QFrame):
         """Update title label to reflect external management state."""
         base_title = self.service_def.title
         if getattr(self.service_process, "externally_managed", False):
-            # Add a subtle visual marker for externally managed services
-            title = f"◇ {base_title}"
             self.title_label.setToolTip(f"{base_title} (running outside launcher)")
         else:
-            title = base_title
             self.title_label.setToolTip(base_title)
-        self.title_label.setText(title)
+        self.title_label.setText(base_title)
 
     def update_status(self, status: HealthStatus):
         # Determine running state from health status
