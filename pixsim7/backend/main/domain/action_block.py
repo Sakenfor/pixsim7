@@ -2,12 +2,19 @@
 
 This replaces JSON file storage with PostgreSQL while maintaining backward compatibility.
 Action blocks can be simple (200-300 chars) or complex (1000+ chars).
+
+Supports unified block lifecycle:
+- PromptVersion.prompt_analysis = all parsed blocks (cheap JSON storage)
+- ActionBlockDB = meaningful blocks only (indexed, queryable)
+- curation_status tracks lifecycle: raw → reviewed → curated
 """
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Text
+from sqlalchemy import JSON, Text, Enum as SAEnum
 from uuid import UUID, uuid4
+
+from pixsim7.backend.main.services.prompt_parser.simple import ParsedRole
 
 
 class ActionBlockDB(SQLModel, table=True):
@@ -154,7 +161,34 @@ class ActionBlockDB(SQLModel, table=True):
         description="If extracted from a prompt version, link to it"
     )
 
-    # NEW: Composition Support
+    # Block Classification (for unified lifecycle)
+    role: Optional[ParsedRole] = Field(
+        default=None,
+        sa_column=Column(SAEnum(ParsedRole, native_enum=False), index=True),
+        description="Coarse classification: character, action, setting, mood, romance, other"
+    )
+
+    category: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="Fine-grained label for UI: entrance, hand_motion, camera_pov, etc."
+    )
+
+    analyzer_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Who extracted: 'parser:simple', 'llm:claude-3', NULL for manual"
+    )
+
+    curation_status: str = Field(
+        default="curated",
+        max_length=20,
+        index=True,
+        description="Block lifecycle: raw | reviewed | curated"
+    )
+
+    # Composition Support
     is_composite: bool = Field(
         default=False,
         description="Is this block composed of smaller blocks?"
@@ -265,6 +299,9 @@ class ActionBlockDB(SQLModel, table=True):
         Index("idx_action_block_package_public", "package_name", "is_public"),
         Index("idx_action_block_source_type", "source_type"),
         Index("idx_action_block_created", "created_at"),
+        # New indexes for unified lifecycle
+        Index("idx_action_block_role_category_status", "role", "category", "curation_status"),
+        Index("idx_action_block_source_extracted", "source_type", "extracted_from_prompt_version"),
     )
 
     def __repr__(self) -> str:
