@@ -29,7 +29,7 @@ interface PromptSettingsStore extends PromptSettings {
 
 const DEFAULT_SETTINGS: PromptSettings = {
   autoAnalyze: true,
-  defaultAnalyzer: 'parser:simple',
+  defaultAnalyzer: 'prompt:simple',
   autoExtractBlocks: false,
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',

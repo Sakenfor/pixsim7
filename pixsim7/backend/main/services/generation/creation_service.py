@@ -9,7 +9,6 @@ prompt_version_id, the service will find an existing PromptVersion by hash or cr
 a new one with prompt analysis.
 """
 import logging
-import hashlib
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +31,6 @@ from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
 from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
-from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
 from pixsim7.backend.main.shared.debug import DebugLogger
 
 logger = logging.getLogger(__name__)
@@ -64,73 +62,24 @@ class GenerationCreationService:
         """
         Find existing PromptVersion by hash or create new one with analysis.
 
-        This implements the PromptVersion-as-source-of-truth pattern:
-        - Same prompt text → same PromptVersion (by hash)
-        - Analysis computed once per unique prompt
-        - One-off prompts have family_id = NULL
+        Delegates to PromptAnalysisService for the actual work.
 
         Args:
             prompt_text: The prompt text to find or create
             author: Optional author identifier
-            analyzer_id: Which analyzer to use:
-                - "parser:simple" (default): Fast keyword-based parser
-                - "llm:claude": Claude-based semantic analysis
-                - "llm:openai": OpenAI-based semantic analysis
+            analyzer_id: Analyzer ID (default: prompt:simple)
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
         """
-        # Normalize and hash the prompt
-        normalized = prompt_text.strip()
-        prompt_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+        from pixsim7.backend.main.services.prompt_analysis import PromptAnalysisService
 
-        # Try to find existing by hash
-        result = await self.db.execute(
-            select(PromptVersion).where(PromptVersion.prompt_hash == prompt_hash)
-        )
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            logger.debug(f"Found existing PromptVersion {existing.id} for hash {prompt_hash[:16]}...")
-            return existing, False
-
-        # Create new PromptVersion with analysis
-        logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (analyzer={analyzer_id or 'parser:simple'})")
-
-        # Analyze the prompt
-        try:
-            analysis = await analyze_prompt(normalized, analyzer_id=analyzer_id)
-            prompt_analysis = {
-                "prompt": analysis.get("prompt", normalized),
-                "blocks": analysis.get("blocks", []),
-                "tags": analysis.get("tags", []),
-                "analyzer_id": analyzer_id or "parser:simple",
-            }
-        except Exception as e:
-            logger.warning(f"Failed to analyze prompt: {e}")
-            prompt_analysis = {
-                "prompt": normalized,
-                "blocks": [],
-                "tags": [],
-                "analyzer_id": "error",
-            }
-
-        # Create new version (one-off, no family)
-        new_version = PromptVersion(
-            prompt_text=normalized,
-            prompt_hash=prompt_hash,
-            prompt_analysis=prompt_analysis,
-            family_id=None,  # One-off prompt
-            version_number=None,  # No version tracking for one-offs
+        service = PromptAnalysisService(self.db)
+        return await service.analyze_and_attach_version(
+            text=prompt_text,
+            analyzer_id=analyzer_id,
             author=author,
-            created_at=datetime.utcnow(),
         )
-
-        self.db.add(new_version)
-        await self.db.flush()  # Get the ID without committing
-
-        logger.info(f"Created PromptVersion {new_version.id} with {len(prompt_analysis.get('blocks', []))} blocks")
-        return new_version, True
 
     async def create_generation(
         self,

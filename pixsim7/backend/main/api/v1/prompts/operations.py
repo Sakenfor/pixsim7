@@ -409,3 +409,51 @@ async def validate_version(
         )
 
     return result
+
+
+# ===== Prompt Analysis (Preview) =====
+
+
+class AnalyzePromptRequest(BaseModel):
+    """Request for prompt analysis preview."""
+    text: str = Field(..., min_length=1, max_length=10000, description="Prompt text to analyze")
+    analyzer_id: Optional[str] = Field(None, description="Analyzer ID (default: prompt:simple)")
+
+
+class AnalyzePromptResponse(BaseModel):
+    """Response from prompt analysis."""
+    analysis: Dict[str, Any] = Field(..., description="Analysis result with blocks, tags, ontology_ids")
+    analyzer_id: str = Field(..., description="Analyzer used")
+
+
+@router.post("/analyze", response_model=AnalyzePromptResponse)
+async def analyze_prompt(
+    request: AnalyzePromptRequest,
+    user = Depends(get_current_user),
+):
+    """
+    Analyze a prompt without storage (preview only).
+
+    Use this for:
+    - Quick Generate preview
+    - Prompt Lab highlighting
+    - Dev tools inspection
+
+    Does NOT create a PromptVersion - use generation/import flows for persistence.
+
+    Returns analysis with:
+    - blocks: Parsed semantic blocks with roles and categories
+    - tags: Derived tags (has:character, tone:soft, etc.)
+    - ontology_ids: Matched ontology keywords
+    """
+    from pixsim7.backend.main.services.prompt_analysis import PromptAnalysisService
+
+    service = PromptAnalysisService()  # No DB needed for preview
+
+    analyzer_id = request.analyzer_id or "prompt:simple"
+    analysis = await service.analyze(request.text, analyzer_id)
+
+    return AnalyzePromptResponse(
+        analysis=analysis,
+        analyzer_id=analysis.get("analyzer_id", analyzer_id),
+    )
