@@ -11,10 +11,12 @@ Main components:
 """
 
 from .simple import SimplePromptParser, ParsedPrompt, ParsedBlock, ParsedRole
+from .llm_analyzer import analyze_prompt_with_llm
 
 __all__ = [
     "SimplePromptParser",
     "ParsedPrompt",
     "ParsedBlock",
     "ParsedRole",
+    "analyze_prompt_with_llm",
 ]

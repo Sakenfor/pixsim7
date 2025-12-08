@@ -59,6 +59,7 @@ class GenerationCreationService:
         self,
         prompt_text: str,
         author: Optional[str] = None,
+        analyzer_id: Optional[str] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find existing PromptVersion by hash or create new one with analysis.
@@ -71,6 +72,10 @@ class GenerationCreationService:
         Args:
             prompt_text: The prompt text to find or create
             author: Optional author identifier
+            analyzer_id: Which analyzer to use:
+                - "parser:simple" (default): Fast keyword-based parser
+                - "llm:claude": Claude-based semantic analysis
+                - "llm:openai": OpenAI-based semantic analysis
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
@@ -90,15 +95,16 @@ class GenerationCreationService:
             return existing, False
 
         # Create new PromptVersion with analysis
-        logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}...")
+        logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}... (analyzer={analyzer_id or 'parser:simple'})")
 
         # Analyze the prompt
         try:
-            analysis = await analyze_prompt(normalized)
+            analysis = await analyze_prompt(normalized, analyzer_id=analyzer_id)
             prompt_analysis = {
                 "prompt": analysis.get("prompt", normalized),
                 "blocks": analysis.get("blocks", []),
                 "tags": analysis.get("tags", []),
+                "analyzer_id": analyzer_id or "parser:simple",
             }
         except Exception as e:
             logger.warning(f"Failed to analyze prompt: {e}")
@@ -106,6 +112,7 @@ class GenerationCreationService:
                 "prompt": normalized,
                 "blocks": [],
                 "tags": [],
+                "analyzer_id": "error",
             }
 
         # Create new version (one-off, no family)

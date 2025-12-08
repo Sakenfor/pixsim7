@@ -63,9 +63,7 @@ export function PromptsSettings() {
               className="text-[11px]"
             >
               <option value="parser:simple">Simple Parser (fast, keyword-based)</option>
-              <option value="llm:claude" disabled>
-                LLM (Claude) - Coming soon
-              </option>
+              <option value="llm:claude">LLM (Claude) - deeper semantic analysis</option>
             </Select>
           </div>
         </div>

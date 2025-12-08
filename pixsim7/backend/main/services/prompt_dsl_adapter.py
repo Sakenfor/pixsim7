@@ -119,7 +119,10 @@ def _derive_tags_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
     return sorted(role_tags) + sorted(keyword_tags)
 
 
-async def analyze_prompt(text: str) -> Dict[str, Any]:
+async def analyze_prompt(
+    text: str,
+    analyzer_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Generic, source-agnostic prompt analysis.
 
@@ -128,6 +131,10 @@ async def analyze_prompt(text: str) -> Dict[str, Any]:
 
     Args:
         text: Raw prompt text from any source (UI, files, external systems).
+        analyzer_id: Which analyzer to use:
+            - "parser:simple" (default): Fast keyword-based parser
+            - "llm:claude": Claude-based semantic analysis
+            - "llm:openai": OpenAI-based semantic analysis
 
     Returns:
         {
@@ -136,6 +143,27 @@ async def analyze_prompt(text: str) -> Dict[str, Any]:
           "tags": ["has:character", "tone:soft", ...]
         }
     """
+    # Default to simple parser
+    if not analyzer_id:
+        analyzer_id = "parser:simple"
+
+    # Dispatch to appropriate analyzer
+    if analyzer_id.startswith("llm:"):
+        from pixsim7.backend.main.services.prompt_parser import analyze_prompt_with_llm
+
+        # Map analyzer_id to provider
+        provider_map = {
+            "llm:claude": "anthropic-llm",
+            "llm:openai": "openai-llm",
+        }
+        provider_id = provider_map.get(analyzer_id, "anthropic-llm")
+
+        return await analyze_prompt_with_llm(
+            text=text,
+            provider_id=provider_id,
+        )
+
+    # Default: use simple parser
     blocks_result = await parse_prompt_to_blocks(text)
     blocks: List[Dict[str, Any]] = blocks_result.get("blocks", [])
     tags = _derive_tags_from_blocks(blocks)
