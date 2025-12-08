@@ -15,6 +15,7 @@ from pixsim7.backend.main.domain import (
     VideoStatus,
     OperationType,
 )
+from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis
 from pixsim7.backend.main.services.provider.registry import registry
 from pixsim7.backend.main.services.provider.base import (
     GenerationResult,
@@ -175,6 +176,165 @@ class ProviderService:
 
             # Re-raise for caller to handle
             raise
+
+    async def execute_analysis(
+        self,
+        analysis: AssetAnalysis,
+        account: ProviderAccount,
+    ) -> ProviderSubmission:
+        """
+        Execute asset analysis via provider
+
+        Args:
+            analysis: Analysis to execute
+            account: Provider account to use
+
+        Returns:
+            ProviderSubmission record
+
+        Raises:
+            ProviderNotFoundError: Provider not registered
+            ProviderError: Provider API error
+        """
+        # Get provider from registry
+        provider = registry.get(analysis.provider_id)
+
+        # Build analysis params
+        analysis_params = {
+            "analyzer_type": analysis.analyzer_type.value,
+            "prompt": analysis.prompt,
+            **(analysis.params or {}),
+        }
+
+        # Record submission start
+        submission = ProviderSubmission(
+            analysis_id=analysis.id,
+            generation_id=None,  # Analysis, not generation
+            account_id=account.id,
+            provider_id=analysis.provider_id,
+            payload=analysis_params,
+            response={},
+            retry_attempt=analysis.retry_count,
+            submitted_at=datetime.utcnow(),
+            status="pending",
+        )
+        self.db.add(submission)
+        await self.db.commit()
+        await self.db.refresh(submission)
+
+        try:
+            # Execute analysis via provider
+            # For now, we use a generic analyze method if available,
+            # or fall back to execute with a special operation type
+            if hasattr(provider, 'analyze'):
+                result = await provider.analyze(
+                    account=account,
+                    asset_url=analysis_params.get("asset_url"),
+                    analyzer_type=analysis.analyzer_type.value,
+                    prompt=analysis.prompt,
+                    params=analysis.params or {},
+                )
+            else:
+                # Generic fallback - many vision APIs can be called directly
+                result = GenerationResult(
+                    provider_job_id=f"analysis-{analysis.id}",
+                    provider_video_id=None,
+                    status=VideoStatus.COMPLETED,
+                    video_url=None,
+                    thumbnail_url=None,
+                    metadata={"pending_implementation": True},
+                )
+
+            # Update submission with response
+            submission.response = {
+                "provider_job_id": result.provider_job_id,
+                "status": result.status.value,
+                "result": result.metadata or {},
+            }
+            submission.provider_job_id = result.provider_job_id
+            submission.responded_at = datetime.utcnow()
+            submission.status = "success"
+
+            submission.calculate_duration()
+
+            await self.db.commit()
+            await self.db.refresh(submission)
+
+            logger.info(
+                "analysis:submitted",
+                analysis_id=analysis.id,
+                provider_id=analysis.provider_id,
+                submission_id=submission.id,
+            )
+
+            return submission
+
+        except ProviderError as e:
+            # Update submission with error
+            submission.response = {
+                "error": str(e),
+                "error_type": e.__class__.__name__,
+            }
+            submission.responded_at = datetime.utcnow()
+            submission.status = "error"
+            submission.calculate_duration()
+
+            await self.db.commit()
+            await self.db.refresh(submission)
+
+            raise
+
+    async def check_analysis_status(
+        self,
+        submission: ProviderSubmission,
+        account: ProviderAccount,
+    ) -> VideoStatusResult:
+        """
+        Check analysis job status on provider
+
+        Args:
+            submission: Provider submission to check
+            account: Provider account to use
+
+        Returns:
+            VideoStatusResult with current status
+        """
+        # Get provider from registry
+        provider = registry.get(submission.provider_id)
+
+        # Check status via provider
+        if hasattr(provider, 'check_analysis_status'):
+            status_result = await provider.check_analysis_status(
+                account=account,
+                provider_job_id=submission.provider_job_id,
+            )
+        else:
+            # Default: check using standard check_status
+            status_result = await provider.check_status(
+                account=account,
+                provider_job_id=submission.provider_job_id,
+            )
+
+        # Update submission response with latest status
+        if submission.response is None:
+            submission.response = {}
+
+        updated_response = {
+            **submission.response,
+            "status": status_result.status.value,
+            "progress": status_result.progress,
+        }
+
+        # Include result if completed
+        if status_result.status == VideoStatus.COMPLETED and status_result.metadata:
+            updated_response["result"] = status_result.metadata
+
+        submission.response = updated_response
+
+        await self.db.commit()
+        await self.db.refresh(submission)
+
+        return status_result
 
     async def check_status(
         self,

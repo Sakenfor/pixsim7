@@ -7,18 +7,25 @@ Purpose:
 Core Models:
     - PromptFamily: Groups related prompt versions (e.g., "bench kiss variants")
     - PromptVersion: Individual version of a prompt (like a Git commit)
+    - PromptBlock: Individual extracted block from a prompt (for queryability)
 
 Design Philosophy:
-    - Families group concepts/scenes
+    - Families group concepts/scenes (optional for one-off prompts)
     - Versions are immutable snapshots
-    - Loose coupling with jobs/artifacts via optional linkage
-    - Analytics tracked separately for performance
+    - PromptVersion is the single source of truth for prompt text + analysis
+    - Blocks enable cross-prompt queries ("find all entrance blocks")
+
+Block Classification:
+    - role: Reuses ParsedRole from prompt_parser (character, action, setting, mood, romance, other)
+    - category: Free-form string for fine-grained LLM extraction (entrance, hand_motion, camera, etc.)
+      Not an enum — extensible without schema changes.
 """
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 from uuid import UUID, uuid4
+import hashlib
 
 
 class PromptFamily(SQLModel, table=True):
@@ -141,16 +148,32 @@ class PromptVersion(SQLModel, table=True):
         description="Unique version identifier"
     )
 
-    # Family relationship
-    family_id: UUID = Field(
+    # Family relationship (nullable for one-off prompts)
+    family_id: Optional[UUID] = Field(
+        default=None,
         foreign_key="prompt_families.id",
         index=True,
-        description="Parent family this version belongs to"
+        description="Parent family (NULL for one-off prompts not in library)"
     )
 
-    # Version tracking (Git-like)
-    version_number: int = Field(
-        description="Auto-incrementing version within family (1, 2, 3...)"
+    # Deduplication hash
+    prompt_hash: str = Field(
+        max_length=64,
+        index=True,
+        description="SHA256 of normalized prompt_text for dedup"
+    )
+
+    # Structured analysis (source of truth)
+    prompt_analysis: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Analyzed prompt: {blocks: [{role, text}], tags: [...]}"
+    )
+
+    # Version tracking (Git-like, nullable for one-off prompts)
+    version_number: Optional[int] = Field(
+        default=None,
+        description="Auto-incrementing version within family (NULL for one-off prompts)"
     )
     parent_version_id: Optional[UUID] = Field(
         default=None,

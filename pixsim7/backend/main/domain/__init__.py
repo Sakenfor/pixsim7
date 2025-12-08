@@ -90,6 +90,9 @@ from .prompt_versioning import PromptFamily, PromptVersion, PromptVariantFeedbac
 # AI interactions (AI Hub)
 from .ai_interaction import AiInteraction
 
+# Asset analysis
+from .asset_analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
+
 __all__ = [
     # Enums
     "MediaType",
@@ -133,4 +136,8 @@ __all__ = [
     "PromptVariantFeedback",
     # AI interactions
     "AiInteraction",
+    # Asset analysis
+    "AssetAnalysis",
+    "AnalysisStatus",
+    "AnalyzerType",
 ]

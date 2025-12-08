@@ -23,6 +23,10 @@ from pixsim7.backend.main.shared.errors import (
 from pixsim7.backend.main.shared.schemas.media_metadata import RecognitionMetadata
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
 from pixsim7.backend.main.services.user.user_service import UserService
+from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AssetCoreService:
@@ -121,6 +125,15 @@ class AssetCoreService:
         height = response.get("height") or metadata.get("height")
         duration_sec = response.get("duration_sec") or metadata.get("duration_sec")
 
+        # Analyze prompt if available (for block extraction and tagging)
+        prompt_analysis_result = None
+        prompt_text = self._extract_prompt_from_generation(generation, submission)
+        if prompt_text:
+            try:
+                prompt_analysis_result = await analyze_prompt(prompt_text)
+            except Exception as e:
+                logger.warning(f"Failed to analyze prompt for generation {generation.id}: {e}")
+
         # Check for duplicate (by provider_asset_id scoped to user)
         result = await self.db.execute(
             select(Asset).where(
@@ -162,6 +175,9 @@ class AssetCoreService:
             if metadata and not existing.media_metadata:
                 existing.media_metadata = metadata
                 updated = True
+            if prompt_analysis_result and not existing.prompt_analysis:
+                existing.prompt_analysis = prompt_analysis_result
+                updated = True
             if updated:
                 existing.last_accessed_at = datetime.utcnow()
                 await self.db.commit()
@@ -184,6 +200,7 @@ class AssetCoreService:
             source_generation_id=generation.id,
             provider_uploads={submission.provider_id: provider_asset_id},
             media_metadata=metadata or None,
+            prompt_analysis=prompt_analysis_result,
             created_at=datetime.utcnow(),
         )
 
@@ -547,3 +564,42 @@ class AssetCoreService:
 
         await self.db.delete(asset)
         await self.db.commit()
+
+    # ===== PROMPT EXTRACTION HELPER =====
+
+    def _extract_prompt_from_generation(self, generation, submission: ProviderSubmission) -> Optional[str]:
+        """
+        Extract prompt text from generation or submission.
+
+        Tries multiple sources in order of preference:
+        1. generation.final_prompt (post-substitution)
+        2. generation.canonical_params.prompt
+        3. generation.raw_params.prompt
+        4. submission.payload.prompt
+
+        Returns:
+            Prompt text if found, None otherwise
+        """
+        # Try final_prompt first (post-substitution, most accurate)
+        if hasattr(generation, 'final_prompt') and generation.final_prompt:
+            return generation.final_prompt
+
+        # Try canonical_params.prompt
+        if hasattr(generation, 'canonical_params') and generation.canonical_params:
+            prompt = generation.canonical_params.get('prompt')
+            if prompt:
+                return prompt
+
+        # Try raw_params.prompt
+        if hasattr(generation, 'raw_params') and generation.raw_params:
+            prompt = generation.raw_params.get('prompt')
+            if prompt:
+                return prompt
+
+        # Fall back to submission payload
+        if submission.payload:
+            prompt = submission.payload.get('prompt')
+            if prompt:
+                return prompt
+
+        return None

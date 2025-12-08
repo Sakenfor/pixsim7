@@ -30,8 +30,20 @@ class ProviderSubmission(SQLModel, table=True):
     # Primary key
     id: Optional[int] = Field(default=None, primary_key=True)
 
-    # ===== GENERATION LINK =====
-    generation_id: int = Field(foreign_key="generations.id", index=True)
+    # ===== JOB LINKS =====
+    # Either generation_id OR analysis_id should be set, not both
+    generation_id: Optional[int] = Field(
+        default=None,
+        foreign_key="generations.id",
+        index=True,
+        description="Link to generation (mutually exclusive with analysis_id)"
+    )
+    analysis_id: Optional[int] = Field(
+        default=None,
+        foreign_key="asset_analyses.id",
+        index=True,
+        description="Link to asset analysis (mutually exclusive with generation_id)"
+    )
 
     # ===== ACCOUNT =====
     # Track which account was used for this submission

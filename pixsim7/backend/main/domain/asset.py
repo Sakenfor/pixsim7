@@ -181,6 +181,15 @@ class Asset(SQLModel, table=True):
         description="Media-specific metadata (3D, audio, etc.)"
     )
 
+    # ===== PROMPT ANALYSIS =====
+    # Structured analysis of the generation prompt (blocks, tags, etc.)
+    # Populated from analyze_prompt() during asset creation
+    prompt_analysis: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Parsed prompt structure: {prompt, blocks: [{role, text}], tags: [...]}"
+    )
+
     # ===== STATE =====
     sync_status: SyncStatus = Field(
         default=SyncStatus.REMOTE,

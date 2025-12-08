@@ -14,7 +14,9 @@ from sqlalchemy import select
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation, ProviderSubmission, ProviderAccount
 from pixsim7.backend.main.domain.enums import GenerationStatus, VideoStatus
+from pixsim7.backend.main.domain.asset_analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService
+from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.user import UserService
@@ -54,10 +56,17 @@ async def poll_job_statuses(ctx: dict) -> dict:
     _init_poller_debug_flags()
     worker_debug = get_global_debug_logger()
     worker_debug.worker("poll_start")
+    # Generation stats
     checked = 0
     completed = 0
     failed = 0
     still_processing = 0
+
+    # Analysis stats
+    analyses_checked = 0
+    analyses_completed = 0
+    analyses_failed = 0
+    analyses_still_processing = 0
 
     async for db in get_db():
         try:
@@ -194,6 +203,130 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     )
                     # Continue with next generation
 
+            # ===== POLL ANALYSES =====
+            analysis_service = AnalysisService(db)
+
+            result = await db.execute(
+                select(AssetAnalysis)
+                .where(AssetAnalysis.status == AnalysisStatus.PROCESSING)
+                .order_by(AssetAnalysis.started_at)
+            )
+            processing_analyses = list(result.scalars().all())
+
+            if processing_analyses:
+                logger.info("poll_found_analyses", count=len(processing_analyses))
+                worker_debug.worker("poll_found_analyses", count=len(processing_analyses))
+
+            for analysis in processing_analyses:
+                analyses_checked += 1
+
+                try:
+                    # Get latest submission for this analysis
+                    submission_result = await db.execute(
+                        select(ProviderSubmission)
+                        .where(ProviderSubmission.analysis_id == analysis.id)
+                        .order_by(ProviderSubmission.submitted_at.desc())
+                    )
+                    submission = submission_result.scalar_one_or_none()
+
+                    if not submission:
+                        logger.warning("no_analysis_submission", analysis_id=analysis.id)
+                        await analysis_service.mark_failed(
+                            analysis.id,
+                            "No provider submission found"
+                        )
+                        analyses_failed += 1
+                        continue
+
+                    account = await db.get(ProviderAccount, submission.account_id)
+                    if not account:
+                        logger.error("analysis_account_not_found", account_id=submission.account_id)
+                        await analysis_service.mark_failed(analysis.id, "Account not found")
+                        analyses_failed += 1
+                        continue
+
+                    # Check timeout (analyses > 30 min = stuck)
+                    ANALYSIS_TIMEOUT_MINUTES = 30
+                    analysis_timeout_threshold = datetime.utcnow() - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
+
+                    if analysis.started_at and analysis.started_at < analysis_timeout_threshold:
+                        logger.warning("analysis_timeout", analysis_id=analysis.id, started_at=str(analysis.started_at))
+                        await analysis_service.mark_failed(
+                            analysis.id,
+                            f"Analysis timed out after {ANALYSIS_TIMEOUT_MINUTES} minutes"
+                        )
+
+                        # Decrement account's concurrent job count
+                        if account.current_processing_jobs > 0:
+                            account.current_processing_jobs -= 1
+
+                        analyses_failed += 1
+                        continue
+
+                    try:
+                        status_result = await provider_service.check_analysis_status(
+                            submission=submission,
+                            account=account,
+                        )
+
+                        logger.debug(
+                            "analysis_status",
+                            analysis_id=analysis.id,
+                            status=str(status_result.status),
+                            progress=status_result.progress
+                        )
+
+                        # Handle status
+                        if status_result.status == VideoStatus.COMPLETED:
+                            # Extract result from submission response
+                            await db.refresh(submission)
+                            result_data = submission.response.get("result", {})
+
+                            await analysis_service.mark_completed(analysis.id, result_data)
+                            logger.info("analysis_completed", analysis_id=analysis.id)
+
+                            # Decrement account's concurrent job count
+                            if account.current_processing_jobs > 0:
+                                account.current_processing_jobs -= 1
+
+                            analyses_completed += 1
+
+                        elif status_result.status == VideoStatus.FAILED:
+                            logger.warning(
+                                "analysis_failed_provider",
+                                analysis_id=analysis.id,
+                                error=status_result.error_message
+                            )
+                            await analysis_service.mark_failed(
+                                analysis.id,
+                                status_result.error_message or "Provider reported failure"
+                            )
+
+                            # Decrement account's concurrent job count
+                            if account.current_processing_jobs > 0:
+                                account.current_processing_jobs -= 1
+
+                            analyses_failed += 1
+
+                        elif status_result.status == VideoStatus.PROCESSING:
+                            analyses_still_processing += 1
+
+                        else:
+                            logger.debug("analysis_pending", analysis_id=analysis.id)
+                            analyses_still_processing += 1
+
+                    except ProviderError as e:
+                        logger.error("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
+                        analyses_still_processing += 1
+
+                except Exception as e:
+                    logger.error("poll_analysis_error", analysis_id=analysis.id, error=str(e), exc_info=True)
+                    worker_debug.worker(
+                        "poll_analysis_error",
+                        analysis_id=analysis.id,
+                        error=str(e),
+                    )
+
             await db.commit()
 
             stats = {
@@ -201,20 +334,29 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 "completed": completed,
                 "failed": failed,
                 "still_processing": still_processing,
+                "analyses_checked": analyses_checked,
+                "analyses_completed": analyses_completed,
+                "analyses_failed": analyses_failed,
+                "analyses_still_processing": analyses_still_processing,
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            if checked > 0:
-                logger.info("poll_complete", checked=checked, completed=completed, failed=failed, still_processing=still_processing)
-                worker_debug.worker(
+            total_checked = checked + analyses_checked
+            if total_checked > 0:
+                logger.info(
                     "poll_complete",
-                    checked=checked,
-                    completed=completed,
-                    failed=failed,
-                    still_processing=still_processing,
+                    generations_checked=checked,
+                    generations_completed=completed,
+                    generations_failed=failed,
+                    generations_still_processing=still_processing,
+                    analyses_checked=analyses_checked,
+                    analyses_completed=analyses_completed,
+                    analyses_failed=analyses_failed,
+                    analyses_still_processing=analyses_still_processing,
                 )
+                worker_debug.worker("poll_complete", **stats)
             else:
-                logger.debug("poll_complete_idle", msg="No generations to process")
+                logger.debug("poll_complete_idle", msg="No jobs to process")
 
             return stats
 

@@ -22,6 +22,7 @@ from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.generation import GenerationService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
+from pixsim7.backend.main.services.analysis import AnalysisService
 from pixsim7.backend.main.services.game import GameSessionService, GameLocationService, NpcExpressionService, GameWorldService
 
 # Narrative engine imports (lazy-loaded)
@@ -78,6 +79,11 @@ def get_asset_service(
 ) -> AssetService:
     """Get AssetService instance"""
     return AssetService(db, user_service)
+
+
+def get_analysis_service(db: AsyncSession = Depends(get_database)) -> AnalysisService:
+    """Get AnalysisService instance"""
+    return AnalysisService(db)
 
 
 async def get_redis_client() -> Optional[Redis]:
@@ -339,6 +345,7 @@ AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
+AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 NpcExpressionSvc = Annotated[NpcExpressionService, Depends(get_npc_expression_service)]
