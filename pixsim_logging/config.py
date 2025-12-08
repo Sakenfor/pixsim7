@@ -113,7 +113,8 @@ def configure_logging(service_name: str, *, json: bool | None = None) -> structl
         processors.append(http_handler)
 
     if json:
-        processors.append(structlog.processors.JSONRenderer())
+        # Use ensure_ascii=False to preserve unicode characters like → instead of \u2192
+        processors.append(structlog.processors.JSONRenderer(serializer=lambda obj, **kw: __import__('json').dumps(obj, ensure_ascii=False, **kw)))
     else:
         from .console_renderer import CleanConsoleRenderer
         processors.append(CleanConsoleRenderer(colors=True))
