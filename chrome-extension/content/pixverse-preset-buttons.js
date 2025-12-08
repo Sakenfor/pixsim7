@@ -212,11 +212,17 @@
       assetsLoadedCount = assetsCache.length;
 
       // For cursor-based pagination, we don't know the true total
-      // Set a high number if there's a next cursor, otherwise use loaded count
-      if (nextCursor) {
-        assetsTotalCount = assetsLoadedCount + 1; // Signal there's more
-      } else {
+      // Only hide "Load More" when we're CERTAIN there are no more items:
+      // - We got fewer items than requested (limit), AND
+      // - No next_cursor was returned
+      // This prevents the button from disappearing prematurely
+      const gotFullPage = newImages.length >= limit;
+      const definitelyNoMore = !gotFullPage && !nextCursor;
+
+      if (definitelyNoMore) {
         assetsTotalCount = assetsLoadedCount; // No more to load
+      } else {
+        assetsTotalCount = assetsLoadedCount + 1; // Signal there might be more
       }
 
       console.log('[PixSim7] Loaded assets:', {
@@ -225,6 +231,8 @@
         assetsLoadedCount,
         assetsTotalCount,
         hasNextCursor: !!assetsNextCursor,
+        gotFullPage,
+        definitelyNoMore,
         append
       });
 
@@ -891,6 +899,14 @@
 
     // Show buttons immediately, load data in background
     processTaskElements();
+
+    // Create and store loadAssets wrapper early so it's available for image picker
+    // even if opened via restore panel before Assets button is clicked
+    const loadAssetsWrapper = async (forceRefresh = false, append = false) => {
+      await loadAssets(forceRefresh, append);
+      syncModuleCaches();
+    };
+    imagePicker.setLoadAssetsFunction(loadAssetsWrapper);
 
     // Load data in background (don't block)
     Promise.all([
