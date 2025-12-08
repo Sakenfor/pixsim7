@@ -15,6 +15,7 @@ import { useControlCenterStore } from '../stores/controlCenterStore';
 import type { GalleryPanelSettings } from '../stores/panelConfigStore';
 import { getAssetSource, getAllAssetSources, type AssetSourceId } from '../lib/gallery/assetSources';
 import { registerAssetSources } from '../lib/gallery/registerAssetSources';
+import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
 
 // Register all sources once
 registerAssetSources();
@@ -250,8 +251,8 @@ export function AssetsRoute() {
         </div>
       </div>
 
-      {/* Scrollable source component */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden px-6 pb-6 relative">
+      {/* Scrollable source component with asset viewer */}
+      <div className="flex-1 overflow-hidden px-6 pb-6 relative">
         {/* Loading overlay during transition */}
         {isTransitioning && (
           <div className="absolute inset-0 bg-white/50 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center z-10 transition-opacity duration-150">
@@ -262,82 +263,17 @@ export function AssetsRoute() {
           </div>
         )}
 
-        {/* Source component with fade transition */}
-        <div className={`h-full transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
-          <SourceComponent
-            layout={layout}
-            cardSize={cardSize}
-            overlayPresetId={currentOverlayPresetId}
-          />
-        </div>
-      </div>
-
-      {/* Fullscreen viewer for remote assets */}
-      {controller.viewerAsset && controller.viewerSrc && (
-        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="relative max-w-6xl max-h-[90vh] w-full flex flex-col gap-4">
-            <div className="bg-black rounded-lg overflow-hidden shadow-2xl flex-1 flex items-center justify-center">
-              {controller.viewerAsset.media_type === 'video' ? (
-                <video
-                  src={controller.viewerSrc}
-                  className="w-full h-full object-contain"
-                  controls
-                  autoPlay
-                />
-              ) : (
-                <img
-                  src={controller.viewerSrc}
-                  alt={controller.viewerAsset.description || `asset-${controller.viewerAsset.id}`}
-                  className="w-full h-full object-contain"
-                />
-              )}
-            </div>
-
-            <div className="flex items-center justify-between text-sm text-neutral-200">
-              <div className="flex flex-col gap-1">
-                <div className="text-lg font-semibold truncate">
-                  {controller.viewerAsset.description || `Asset #${controller.viewerAsset.id}`}
-                </div>
-                <div className="flex gap-3 text-xs text-neutral-400">
-                  <span>{controller.viewerAsset.media_type}</span>
-                  <span>{controller.viewerAsset.provider_id}</span>
-                  <span>
-                    {new Date(controller.viewerAsset.created_at).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => controller.navigateViewer('prev')}
-                  disabled={controller.assets.findIndex((a) => a.id === controller.viewerAsset?.id) <= 0}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
-                >
-                  <ThemedIcon name="chevronLeft" size={14} variant="default" />
-                  Prev
-                </button>
-                <button
-                  type="button"
-                  onClick={() => controller.navigateViewer('next')}
-                  disabled={controller.assets.findIndex((a) => a.id === controller.viewerAsset?.id) >= controller.assets.length - 1}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 disabled:opacity-40 text-xs flex items-center gap-1"
-                >
-                  Next
-                  <ThemedIcon name="chevronRight" size={14} variant="default" />
-                </button>
-                <button
-                  type="button"
-                  onClick={controller.closeViewer}
-                  className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-xs flex items-center gap-1"
-                >
-                  <ThemedIcon name="close" size={14} variant="default" />
-                  Close
-                </button>
-              </div>
-            </div>
+        {/* Source component with side-push viewer layout */}
+        <AssetViewerLayout>
+          <div className={`h-full overflow-y-auto transition-opacity duration-200 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}>
+            <SourceComponent
+              layout={layout}
+              cardSize={cardSize}
+              overlayPresetId={currentOverlayPresetId}
+            />
           </div>
-        </div>
-      )}
+        </AssetViewerLayout>
+      </div>
 
       {/* Floating asset detail window */}
       {controller.detailAssetId !== null && (

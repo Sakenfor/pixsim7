@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useProviders } from '@/hooks/useProviders';
 import { useAssetsController } from '@/hooks/useAssetsController';
+import { useAssetViewer } from '@/hooks/useAssetViewer';
 import { MediaCard } from '../media/MediaCard';
 import { MasonryGrid } from '../layout/MasonryGrid';
 import { GalleryToolsPanel } from '../gallery/panels/GalleryToolsPanel';
@@ -27,6 +28,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
   const controller = useAssetsController();
   const { providers } = useProviders();
   const location = useLocation();
+  const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
 
   // Layout settings (gaps)
   const [layoutSettings, setLayoutSettings] = useState({ rowGap: 16, columnGap: 16 });
@@ -223,7 +225,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               createdAt={a.created_at}
               status={a.sync_status}
               providerStatus={a.provider_status}
-              onOpen={() => controller.openInViewer(a)}
+              onOpen={() => openGalleryAsset(a, controller.assets)}
               actions={actions}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}

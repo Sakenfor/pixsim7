@@ -1,8 +1,8 @@
 import { useMemo, useCallback } from 'react';
 import { useLocalFoldersController } from '@/hooks/useLocalFoldersController';
 import { useProviders } from '@/hooks/useProviders';
+import { useAssetViewer } from '@/hooks/useAssetViewer';
 import { TreeFolderView } from './TreeFolderView';
-import { MediaViewerCube } from './MediaViewerCube';
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '../media/AssetGallery';
 import type { LocalAsset } from '@/stores/localFoldersStore';
 import { Icons } from '@/lib/icons';
@@ -15,6 +15,7 @@ interface LocalFoldersPanelProps {
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
+  const { openLocalAsset } = useAssetViewer({ source: 'local' });
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -55,8 +56,11 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     [controller.uploadStatus]
   );
   const handleOpen = useCallback(
-    (asset: LocalAsset) => controller.openViewer(asset),
-    [controller.openViewer]
+    (asset: LocalAsset) => {
+      const previewUrl = controller.previews[asset.key];
+      openLocalAsset(asset, previewUrl, displayAssets, controller.previews);
+    },
+    [openLocalAsset, displayAssets, controller.previews]
   );
   const handleUpload = useCallback(
     (asset: LocalAsset) => controller.uploadOne(asset),
@@ -218,17 +222,6 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
           {renderMainContent()}
         </div>
       </div>
-
-      {/* Media Viewer Cube */}
-      {controller.viewerAsset && (
-        <MediaViewerCube
-          asset={controller.viewerAsset}
-          assetUrl={controller.previews[controller.viewerAsset.key]}
-          allAssets={controller.assets}
-          onClose={controller.closeViewer}
-          onNavigate={controller.navigateViewer}
-        />
-      )}
     </div>
   );
 }
