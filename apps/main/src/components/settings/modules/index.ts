@@ -9,6 +9,7 @@
 import './GeneralSettings';
 import './UISettings';
 import './PanelsSettings';
+import './PromptsSettings';
 import './ProfilesSettings';
 import './MediaSettings';
 import './DebugSettings';
