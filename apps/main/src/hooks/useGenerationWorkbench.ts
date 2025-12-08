@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useControlCenterStore, type ControlCenterState } from '../stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
 import { useProviders } from './useProviders';
@@ -55,9 +55,9 @@ export interface GenerationWorkbenchState {
   handleParamChange: (name: string, value: any) => void;
   /** Whether the settings bar should be visible */
   showSettings: boolean;
+  /** Set settings visibility */
+  setShowSettings: (show: boolean) => void;
   /** Toggle settings visibility */
-  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
-  /** Toggle settings visibility (convenience) */
   toggleSettings: () => void;
   /** Current preset ID */
   presetId: string | undefined;
@@ -110,16 +110,30 @@ export function useGenerationWorkbench(
   const operationType = options.operationType ?? storeOperationType;
   const providerId = options.providerId ?? storeProviderId;
 
-  // Settings visibility state
-  const [showSettings, setShowSettings] = useState(false);
+  // Dynamic params and settings visibility from settings store
+  const dynamicParams = useGenerationSettingsStore(s => s.params);
+  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
+  const showSettings = useGenerationSettingsStore(s => s.showSettings);
+  const setShowSettings = useGenerationSettingsStore(s => s.setShowSettings);
+  const toggleSettings = useGenerationSettingsStore(s => s.toggleSettings);
+  const hasHydrated = useGenerationSettingsStore(s => s._hasHydrated);
+
+  const resolvedProviderId = useMemo(() => {
+    if (providerId) {
+      return providerId;
+    }
+    const modelValue = dynamicParams?.model;
+    if (typeof modelValue === 'string' && isPixverseModel(modelValue)) {
+      return 'pixverse';
+    }
+    // Default to pixverse when no provider is explicitly selected
+    // This ensures specs are always available for the UI
+    return 'pixverse';
+  }, [providerId, dynamicParams?.model]);
 
   // Provider and specs
   const { providers } = useProviders();
-  const { specs } = useProviderSpecs(providerId);
-
-  // Dynamic params from settings store
-  const dynamicParams = useGenerationSettingsStore(s => s.params);
-  const setDynamicParams = useGenerationSettingsStore(s => s.setDynamicParams);
+  const { specs } = useProviderSpecs(resolvedProviderId);
 
   // Handle provider changes - use store or allow override
   const setProvider = (id: string | undefined) => {
@@ -148,15 +162,23 @@ export function useGenerationWorkbench(
   }, [specs, effectiveOperationType, excludeParams]);
 
   // Auto-show settings for operations with visible options
+  // Only auto-show on first load, not on every render (respect user's persisted preference)
   const hasVisibleOptions = paramSpecs.length > 0 || operationType === 'image_to_image';
   useEffect(() => {
-    if (autoShowSettings && hasVisibleOptions) {
-      setShowSettings(true);
+    // Wait for hydration before auto-showing to respect persisted preference
+    if (!hasHydrated) return;
+    // Only auto-show if settings are currently hidden and we have options
+    // This respects the user's choice if they previously collapsed settings
+    if (autoShowSettings && hasVisibleOptions && !showSettings) {
+      // Don't auto-show - let user control visibility after first hydration
+      // setShowSettings(true);
     }
-  }, [autoShowSettings, hasVisibleOptions, operationType]);
+  }, [autoShowSettings, hasVisibleOptions, operationType, hasHydrated, showSettings]);
 
   // Keep primary dynamic params in sync with preset parameters
   useEffect(() => {
+    // Wait for hydration before syncing defaults to avoid overwriting persisted values
+    if (!hasHydrated) return;
     if (!specs?.operation_specs) return;
     const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return;
@@ -219,14 +241,12 @@ export function useGenerationWorkbench(
 
       return changed ? next : prev;
     });
-  }, [presetParams, specs, effectiveOperationType, setDynamicParams]);
+  }, [hasHydrated, presetParams, specs, effectiveOperationType, setDynamicParams]);
 
   // Handler for dynamic param changes
   const handleParamChange = (name: string, value: any) => {
     setDynamicParams(prev => ({ ...prev, [name]: value }));
   };
-
-  const toggleSettings = () => setShowSettings(prev => !prev);
 
   return {
     providerId,
@@ -243,4 +263,14 @@ export function useGenerationWorkbench(
     generating,
     effectiveOperationType,
   };
+}
+
+function isPixverseModel(value: string): boolean {
+  const normalized = value.toLowerCase();
+  const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
+  const PIXVERSE_IMAGE_MODELS = ['qwen-image', 'gemini-3.0', 'gemini-2.5-flash', 'seedream-4.0'];
+  return (
+    PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix)) ||
+    PIXVERSE_IMAGE_MODELS.includes(normalized)
+  );
 }

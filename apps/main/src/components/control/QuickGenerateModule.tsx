@@ -9,7 +9,20 @@ import { useQuickGenerateController } from '@/hooks/useQuickGenerateController';
 import { useGenerationWorkbench } from '@/hooks/useGenerationWorkbench';
 import { CompactAssetCard } from './CompactAssetCard';
 import { ThemedIcon } from '@/lib/icons';
+import { estimatePixverseCost } from '@/lib/api/pixverseCost';
 import { GenerationWorkbench } from '../generation/GenerationWorkbench';
+
+/** Operation type categories for layout and behavior */
+const OPERATION_CONFIG = {
+  // Single asset input operations (requires asset)
+  singleAsset: new Set(['video_extend']),
+  // Multi-asset transition operations
+  transition: new Set(['video_transition']),
+  // Text-only operations (no asset input)
+  textOnly: new Set(['fusion']),
+  // Flexible operations (works with or without asset)
+  flexible: new Set(['image_to_video', 'image_to_image']),
+} as const;
 
 export function QuickGenerateModule() {
   // Connect to WebSocket for real-time updates
@@ -18,7 +31,6 @@ export function QuickGenerateModule() {
   const {
     operationType,
     providerId,
-    presetId,
     generating,
     prompt,
     setProvider,
@@ -33,6 +45,8 @@ export function QuickGenerateModule() {
     clearTransitionQueue,
     prompts,
     setPrompts,
+    transitionDurations,
+    setTransitionDurations,
     generate,
     cycleQueue,
   } = useQuickGenerateController();
@@ -40,12 +54,99 @@ export function QuickGenerateModule() {
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
-  const setPreset = useControlCenterStore(s => s.setPreset);
-  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
   const updateLockedTimestamp = useGenerationQueueStore(s => s.updateLockedTimestamp);
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
+
+  // Credit estimation for Go button
+  const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+
+  // Infer pixverse provider from model
+  const inferredProviderId = useMemo(() => {
+    if (providerId) return providerId;
+    const model = workbench.dynamicParams?.model;
+    if (typeof model === 'string') {
+      const normalized = model.toLowerCase();
+      const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
+      const PIXVERSE_IMAGE_MODELS = ['qwen-image', 'gemini-3.0', 'gemini-2.5-flash', 'seedream-4.0'];
+      if (
+        PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix)) ||
+        PIXVERSE_IMAGE_MODELS.includes(normalized)
+      ) {
+        return 'pixverse';
+      }
+    }
+    return undefined;
+  }, [providerId, workbench.dynamicParams?.model]);
+
+  // Fetch credit estimate when params change
+  useEffect(() => {
+    if (inferredProviderId !== 'pixverse') {
+      setCreditEstimate(null);
+      return;
+    }
+
+    const quality = (workbench.dynamicParams.quality as string) || '';
+    const model = (workbench.dynamicParams.model as string) || '';
+    const durationRaw = workbench.dynamicParams.duration;
+    const duration = durationRaw !== undefined ? Number(durationRaw) : 0;
+
+    const isVideo =
+      operationType === 'text_to_video' ||
+      operationType === 'image_to_video' ||
+      operationType === 'video_extend' ||
+      operationType === 'video_transition' ||
+      operationType === 'fusion';
+
+    const isImage =
+      operationType === 'text_to_image' || operationType === 'image_to_image';
+
+    // Basic validation - backend returns null gracefully if pricing unavailable
+    if (isVideo && !model) {
+      setCreditEstimate(null);
+      return;
+    }
+    if (isImage && !model) {
+      setCreditEstimate(null);
+      return;
+    }
+
+    const motion_mode = (workbench.dynamicParams.motion_mode as string | undefined) || undefined;
+    const multi_shot = !!workbench.dynamicParams.multi_shot;
+    const audio = !!workbench.dynamicParams.audio;
+
+    let cancelled = false;
+    setCreditLoading(true);
+    estimatePixverseCost(
+      isImage
+        ? { kind: 'image', quality, duration: 1, model }
+        : { kind: 'video', quality, duration, model, motion_mode, multi_shot, audio }
+    )
+      .then((res) => {
+        if (!cancelled) setCreditEstimate(res.estimated_credits ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCreditEstimate(null);
+      })
+      .finally(() => {
+        if (!cancelled) setCreditLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    inferredProviderId,
+    operationType,
+    workbench.dynamicParams.duration,
+    workbench.dynamicParams.quality,
+    workbench.dynamicParams.model,
+    workbench.dynamicParams.motion_mode,
+    workbench.dynamicParams.multi_shot,
+    workbench.dynamicParams.audio,
+  ]);
 
   const maxChars = resolvePromptLimit(providerId);
   const promptRequiredOps = new Set<ControlCenterState['operationType']>([
@@ -58,52 +159,6 @@ export function QuickGenerateModule() {
   const requiresPrompt = promptRequiredOps.has(operationType);
   const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
 
-  // Build dynamic presets from provider specs
-  const availablePresets = useMemo(() => {
-    const opSpec = workbench.paramSpecs.length > 0 ? true : false;
-    if (!opSpec) return [];
-
-    // Quick presets: extract first few quality/aspect/model combos
-    const getEnum = (name: string) => {
-      const param = workbench.paramSpecs.find(p => p.name === name && Array.isArray(p.enum));
-      return param?.enum as string[] | undefined;
-    };
-
-    const qualities = getEnum('quality') || [];
-    const aspects = getEnum('aspect_ratio') || [];
-
-    const presets: Array<{ id: string; name: string; params: Record<string, any> }> = [];
-
-    // Create simple combos
-    if (qualities.length && aspects.length) {
-      const topQualities = qualities.slice(0, 2);
-      const topAspects = aspects.slice(0, 2);
-      for (const q of topQualities) {
-        for (const a of topAspects) {
-          presets.push({
-            id: `${q}_${a}`,
-            name: `${q} • ${a}`,
-            params: { quality: q, aspect_ratio: a },
-          });
-        }
-      }
-    } else if (qualities.length) {
-      qualities.slice(0, 3).forEach(q => {
-        presets.push({
-          id: q,
-          name: q,
-          params: { quality: q },
-        });
-      });
-    }
-
-    return presets;
-  }, [workbench.paramSpecs]);
-
-  function applyPreset(preset: { id: string; name: string; params: Record<string, any> }) {
-    setPreset(preset.id);
-    setPresetParams(preset.params);
-  }
 
   // Get the asset to display based on operation type
   const getDisplayAssets = () => {
@@ -136,8 +191,17 @@ export function QuickGenerateModule() {
   };
 
   const displayAssets = getDisplayAssets();
-  // Operations where we use side-by-side layout (asset + prompt)
-  const isSingleAssetOperation = operationType === 'image_to_video' || operationType === 'image_to_image' || operationType === 'video_extend';
+  const isSingleAssetOperation = OPERATION_CONFIG.singleAsset.has(operationType);
+  const isFlexibleOperation = OPERATION_CONFIG.flexible.has(operationType);
+  const showAssetPanel = isSingleAssetOperation || isFlexibleOperation;
+
+  const handleTransitionDurationChange = (segmentIndex: number, seconds: number) => {
+    setTransitionDurations(prev => {
+      const next = [...prev];
+      next[segmentIndex] = seconds;
+      return next;
+    });
+  };
 
   // Reset selected transition when assets change to avoid out-of-bounds
   useEffect(() => {
@@ -147,102 +211,304 @@ export function QuickGenerateModule() {
     }
   }, [displayAssets.length, selectedTransitionIndex]);
 
-  // Render the header row with operation selector and presets
-  const renderHeader = () => (
-    <>
+  // Filter out duration from settings bar when in video_transition mode
+  // (we have per-transition duration controls inline)
+  const filteredParamSpecs = useMemo(() => {
+    if (operationType === 'video_transition') {
+      return workbench.paramSpecs.filter(p => p.name !== 'duration');
+    }
+    return workbench.paramSpecs;
+  }, [operationType, workbench.paramSpecs]);
+
+  // Get duration presets from param specs metadata (per-model presets)
+  const durationOptions = useMemo(() => {
+    const spec = workbench.paramSpecs.find((p) => p.name === 'duration');
+    const metadata = spec?.metadata;
+    if (!metadata) return null;
+
+    const normalizeList = (values: unknown): number[] => {
+      if (!Array.isArray(values)) return [];
+      const unique = new Set<number>();
+      for (const v of values) {
+        const num = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : null;
+        if (num !== null && Number.isFinite(num)) unique.add(num);
+      }
+      return Array.from(unique).sort((a, b) => a - b);
+    };
+
+    const basePresets = normalizeList(
+      metadata.presets ?? metadata.duration_presets ?? metadata.options
+    );
+
+    if (!basePresets.length && !metadata.per_model_presets && !metadata.perModelPresets) {
+      return null;
+    }
+
+    let options = basePresets;
+    const perModelPresets =
+      (metadata.per_model_presets as Record<string, unknown[]>) ||
+      (metadata.perModelPresets as Record<string, unknown[]>);
+
+    const modelValue = workbench.dynamicParams?.model;
+    if (perModelPresets && typeof modelValue === 'string') {
+      const normalizedModel = modelValue.toLowerCase();
+      const matchEntry = Object.entries(perModelPresets).find(
+        ([key]) => key.toLowerCase() === normalizedModel
+      );
+      if (matchEntry) {
+        const perModelOptions = normalizeList(matchEntry[1]);
+        if (perModelOptions.length) {
+          options = perModelOptions;
+        }
+      }
+    }
+
+    return options.length > 0 ? options : null;
+  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
+
+  // Get quality options filtered by model (for image operations)
+  const getQualityOptionsForModel = useMemo(() => {
+    const spec = workbench.paramSpecs.find((p) => p.name === 'quality');
+    if (!spec) return null;
+
+    const metadata = spec.metadata;
+    const perModelOptions = metadata?.per_model_options as Record<string, string[]> | undefined;
+    const modelValue = workbench.dynamicParams?.model;
+
+    if (perModelOptions && typeof modelValue === 'string') {
+      const normalizedModel = modelValue.toLowerCase();
+      const matchEntry = Object.entries(perModelOptions).find(
+        ([key]) => key.toLowerCase() === normalizedModel
+      );
+      if (matchEntry) {
+        return matchEntry[1];
+      }
+    }
+
+    // Fall back to enum from spec
+    return spec.enum ?? null;
+  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
+
+  // Reset quality when model changes and current quality is invalid for new model
+  useEffect(() => {
+    if (!getQualityOptionsForModel) return;
+    const currentQuality = workbench.dynamicParams?.quality;
+    if (currentQuality && !getQualityOptionsForModel.includes(currentQuality)) {
+      // Current quality not valid for this model, reset to first valid option
+      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
+    } else if (!currentQuality && getQualityOptionsForModel.length > 0) {
+      // No quality set, set default
+      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
+    }
+  }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
+
+  // Render the settings panel (right side) - used by all operation types
+  const renderSettingsPanel = () => (
+    <div className="flex-shrink-0 w-36 flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl overflow-y-auto">
+      {/* Operation type */}
       <select
         value={operationType}
         onChange={(e) => setOperationType(e.target.value as ControlCenterState['operationType'])}
         disabled={generating}
-        className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 min-w-0"
+        className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
       >
-        <option value="text_to_image">Text → Img</option>
-        <option value="image_to_image">Img → Img</option>
-        <option value="text_to_video">Text → Vid</option>
-        <option value="image_to_video">Img → Vid</option>
+        <option value="image_to_image">→ Image</option>
+        <option value="image_to_video">→ Video</option>
         <option value="video_extend">Extend</option>
         <option value="video_transition">Transition</option>
         <option value="fusion">Fusion</option>
       </select>
 
-      {/* Presets dropdown */}
-      {availablePresets.length > 0 && (
-        <select
-          value={presetId || ''}
-          onChange={(e) => {
-            const selected = availablePresets.find(p => p.id === e.target.value);
-            if (selected) {
-              applyPreset(selected);
-            } else {
-              setPreset(undefined);
-              setPresetParams({});
-            }
-          }}
-          disabled={generating}
-          className="p-1.5 border rounded bg-white dark:bg-neutral-900 text-xs disabled:opacity-50 max-w-[100px] min-w-0"
-          title="Quick presets"
-        >
-          <option value="">Preset</option>
-          {availablePresets.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-      )}
-    </>
+      {/* Provider */}
+      <select
+        value={providerId || ''}
+        onChange={(e) => setProvider(e.target.value || undefined)}
+        disabled={generating}
+        className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+        title="Provider"
+      >
+        <option value="">Auto</option>
+        {workbench.providers.map(p => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+
+      {/* Dynamic params - filter out non-UI params */}
+      {filteredParamSpecs
+        .filter(p => !['image_url', 'image_urls', 'negative_prompt', 'prompt'].includes(p.name))
+        .map(param => {
+          if (param.type === 'boolean') return null;
+          // Skip string params without enum (like negative_prompt) - they need text input
+          if (param.type === 'string' && !param.enum) return null;
+
+          // Duration with preset buttons
+          if (param.name === 'duration' && param.type === 'number' && durationOptions) {
+            const currentDuration = Number(workbench.dynamicParams[param.name]) || durationOptions[0];
+            return (
+              <div key="duration" className="flex flex-wrap gap-1">
+                {durationOptions.map((seconds) => (
+                  <button
+                    type="button"
+                    key={seconds}
+                    onClick={() => workbench.handleParamChange('duration', seconds)}
+                    disabled={generating}
+                    className={clsx(
+                      'px-2 py-1 rounded-lg text-[11px] font-medium transition-colors',
+                      currentDuration === seconds
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-blue-50 dark:hover:bg-neutral-700'
+                    )}
+                    title={`${seconds} seconds`}
+                  >
+                    {seconds}s
+                  </button>
+                ))}
+              </div>
+            );
+          }
+
+          const COMMON_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'];
+          // Use model-specific quality options when available
+          const options = param.name === 'quality' && getQualityOptionsForModel
+            ? getQualityOptionsForModel
+            : param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
+
+          if (param.type === 'number' && !options) {
+            return (
+              <input
+                key={param.name}
+                type="number"
+                value={workbench.dynamicParams[param.name] ?? param.default ?? ''}
+                onChange={(e) => workbench.handleParamChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
+                disabled={generating}
+                placeholder={param.name}
+                className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+                title={param.name}
+              />
+            );
+          }
+
+          if (!options) return null;
+
+          return (
+            <select
+              key={param.name}
+              value={workbench.dynamicParams[param.name] ?? param.default ?? ''}
+              onChange={(e) => workbench.handleParamChange(param.name, e.target.value)}
+              disabled={generating}
+              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+              title={param.name}
+            >
+              {options.map((opt: string) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          );
+        })}
+
+      {/* Go button with cost */}
+      <button
+        onClick={generate}
+        disabled={generating || !canGenerate}
+        className={clsx(
+          'w-full mt-auto px-2 py-2 rounded-lg text-xs font-semibold text-white transition-all',
+          'disabled:opacity-50 disabled:cursor-not-allowed',
+          generating || !canGenerate
+            ? 'bg-neutral-400'
+            : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+        )}
+      >
+        {generating ? (
+          '...'
+        ) : creditLoading ? (
+          'Go ⚡'
+        ) : creditEstimate !== null ? (
+          <span className="flex items-center justify-center gap-1">
+            Go ⚡ <span className="text-amber-200 text-[10px]">◆{Math.round(creditEstimate)}</span>
+          </span>
+        ) : (
+          'Go ⚡'
+        )}
+      </button>
+    </div>
   );
 
   // Render the main content area based on operation type
   const renderContent = () => {
     if (operationType === 'video_transition') {
-      // Transition mode: horizontal assets with prompt on right
-      return (
-        <div className="flex gap-3 flex-1 min-h-0">
-          {/* Left: Asset sequence */}
-          <div className="flex-shrink-0 flex flex-col gap-1 min-w-0">
-            {transitionQueue.length > 0 && (
-              <div className="flex items-center gap-2 text-[10px] text-neutral-500">
-                <span>{transitionQueue.length} images</span>
-                <button
-                  onClick={clearTransitionQueue}
-                  className="text-red-500 hover:text-red-600"
-                  disabled={generating}
-                  title="Clear all"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
+      // Transition mode: assets with hover overlay for transition controls
+      const isLastAsset = (idx: number) => idx === displayAssets.length - 1;
 
+      return (
+        <div className="flex gap-3 flex-1 min-h-[180px]">
+          {/* Left: Asset sequence - hover shows badge overlay */}
+          <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {transitionQueue.map((queueItem, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5">
-                    <div className="flex-shrink-0 w-20">
+              <div className="flex items-stretch gap-1.5">
+                {transitionQueue.map((queueItem, idx) => {
+                  const hasOutgoingTransition = !isLastAsset(idx);
+                  const isSelected = selectedTransitionIndex === idx;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={clsx(
+                        'group relative flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 transition-colors cursor-pointer',
+                        isSelected && hasOutgoingTransition
+                          ? 'border-blue-500'
+                          : 'border-transparent hover:border-neutral-300 dark:hover:border-neutral-600'
+                      )}
+                      onClick={() => hasOutgoingTransition && setSelectedTransitionIndex(idx)}
+                    >
                       <CompactAssetCard
                         asset={queueItem.asset}
-                        label={`${idx + 1}`}
                         showRemoveButton
                         onRemove={() => removeFromQueue(queueItem.asset.id, 'transition')}
                         lockedTimestamp={queueItem.lockedTimestamp}
                         onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'transition')}
+                        hideFooter
+                        fillHeight
                       />
+                      {/* Hover badge overlay for transition controls */}
+                      {hasOutgoingTransition && (
+                        <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-4">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] text-white/80">→{idx + 2}</span>
+                            <select
+                              value={transitionDurations[idx] ?? 5}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleTransitionDurationChange(idx, Number(e.target.value));
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={generating}
+                              className="px-1 py-0.5 text-[10px] rounded bg-white/90 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 disabled:opacity-50"
+                            >
+                              {[1, 2, 3, 4, 5].map(s => (
+                                <option key={s} value={s}>{s}s</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTransitionIndex(idx);
+                              }}
+                              className={clsx(
+                                'px-1.5 py-0.5 rounded text-[10px] transition-colors',
+                                isSelected
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-white/90 text-neutral-700 hover:bg-white'
+                              )}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {idx < displayAssets.length - 1 && (
-                      <button
-                        onClick={() => setSelectedTransitionIndex(idx)}
-                        className={clsx(
-                          'flex-shrink-0 p-1.5 rounded transition-colors',
-                          selectedTransitionIndex === idx
-                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500'
-                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                        )}
-                        title={`Transition ${idx + 1} → ${idx + 2}`}
-                      >
-                        <ThemedIcon name="arrowRight" size={14} variant="default" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
@@ -251,7 +517,7 @@ export function QuickGenerateModule() {
             )}
           </div>
 
-          {/* Right: Prompt for selected transition */}
+          {/* Center: Prompt for selected transition */}
           <div className="flex-1 flex flex-col min-w-0">
             {displayAssets.length > 1 ? (
               <textarea
@@ -261,9 +527,9 @@ export function QuickGenerateModule() {
                   newPrompts[selectedTransitionIndex] = e.target.value;
                   setPrompts(newPrompts);
                 }}
-                placeholder={`Transition ${selectedTransitionIndex + 1} → ${selectedTransitionIndex + 2}: Describe the motion...`}
+                placeholder="Describe the motion..."
                 disabled={generating}
-                className="flex-1 min-h-[80px] px-3 py-2 text-sm border rounded bg-white dark:bg-neutral-900 disabled:opacity-50 resize-y focus:ring-2 focus:ring-blue-500/40 outline-none"
+                className="flex-1 min-h-[60px] px-4 py-3 text-sm border border-neutral-200 dark:border-neutral-700 rounded-2xl bg-white dark:bg-neutral-900 disabled:opacity-50 resize-none focus:ring-2 focus:ring-blue-500/40 focus:border-transparent outline-none shadow-sm"
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
@@ -271,70 +537,74 @@ export function QuickGenerateModule() {
               </div>
             )}
           </div>
+
+          {/* Right: Settings */}
+          {renderSettingsPanel()}
         </div>
       );
     }
 
-    if (isSingleAssetOperation) {
-      // Single asset mode: side-by-side (asset left, prompt right)
+    if (showAssetPanel) {
+      // Asset + prompt mode: [Asset (optional for flexible)] [Prompt] [Settings]
+      const hasAsset = displayAssets.length > 0;
       return (
         <div className="flex gap-3 flex-1 min-h-0">
-          {/* Left: Asset */}
-          <div className="flex-shrink-0 w-36">
-            {displayAssets.length > 0 ? (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1">
-                  {mainQueue.length > 1 && (
+          {/* Left: Asset (optional for flexible operations like image_to_video) */}
+          <div className="flex-shrink-0 w-32">
+            {hasAsset ? (
+              <div className="flex flex-col gap-1 h-full">
+                <CompactAssetCard
+                  asset={displayAssets[0]}
+                  showRemoveButton={mainQueue.length > 0}
+                  onRemove={() =>
+                    mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')
+                  }
+                  lockedTimestamp={
+                    mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined
+                  }
+                  onLockTimestamp={
+                    mainQueue.length > 0
+                      ? (timestamp) =>
+                          updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
+                      : undefined
+                  }
+                  hideFooter
+                  fillHeight
+                />
+                {/* Navigation arrows below asset */}
+                {mainQueue.length > 1 && (
+                  <div className="flex items-center justify-center gap-2">
                     <button
                       type="button"
                       onClick={() => cycleQueue('main', 'prev')}
-                      className="p-1 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                      title="Previous queued asset"
+                      className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                      title="Previous"
                     >
                       <ThemedIcon name="chevronLeft" size={12} variant="default" />
                     </button>
-                  )}
-                  <CompactAssetCard
-                    asset={displayAssets[0]}
-                    showRemoveButton={mainQueue.length > 0}
-                    onRemove={() =>
-                      mainQueue.length > 0 && removeFromQueue(mainQueue[0].asset.id, 'main')
-                    }
-                    lockedTimestamp={
-                      mainQueue.length > 0 ? mainQueue[0].lockedTimestamp : undefined
-                    }
-                    onLockTimestamp={
-                      mainQueue.length > 0
-                        ? (timestamp) =>
-                            updateLockedTimestamp(mainQueue[0].asset.id, timestamp, 'main')
-                        : undefined
-                    }
-                  />
-                  {mainQueue.length > 1 && (
+                    <span className="text-[10px] text-neutral-500">
+                      {mainQueue.length}
+                    </span>
                     <button
                       type="button"
                       onClick={() => cycleQueue('main', 'next')}
-                      className="p-1 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                      title="Next queued asset"
+                      className="p-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                      title="Next"
                     >
                       <ThemedIcon name="chevronRight" size={12} variant="default" />
                     </button>
-                  )}
-                </div>
-                {mainQueue.length > 1 && (
-                  <div className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/30 px-2 py-0.5 rounded text-center">
-                    +{mainQueue.length - 1} queued
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700 text-center h-full flex items-center justify-center">
-                {operationType === 'video_extend' ? 'Select video' : 'Select image'}
+              <div className="text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 text-center h-full flex items-center justify-center">
+                {operationType === 'video_extend' ? 'Select video' :
+                 isFlexibleOperation ? '+ Image (optional)' : 'Select image'}
               </div>
             )}
           </div>
 
-          {/* Right: Prompt */}
+          {/* Center: Prompt */}
           <div className="flex-1 min-w-0">
             <PromptInput
               value={prompt}
@@ -346,67 +616,77 @@ export function QuickGenerateModule() {
               minHeight={100}
               placeholder={
                 operationType === 'image_to_video'
-                  ? 'Describe the motion and action...'
+                  ? (hasAsset ? 'Describe the motion...' : 'Describe the video...')
                   : operationType === 'image_to_image'
-                  ? 'Describe the transformation...'
+                  ? (hasAsset ? 'Describe the transformation...' : 'Describe the image...')
                   : 'Describe how to continue the video...'
               }
               className="h-full"
             />
           </div>
+
+          {/* Right: Settings */}
+          {renderSettingsPanel()}
         </div>
       );
     }
 
-    // Text-only mode (text_to_image, text_to_video, fusion): full-width prompt
+    // Text-only mode (text_to_image, text_to_video, fusion): prompt + settings
     return (
-      <div className="flex-1 min-h-0">
-        <PromptInput
-          value={prompt}
-          onChange={setPrompt}
-          maxChars={maxChars}
-          disabled={generating}
-          variant="compact"
-          resizable
-          minHeight={120}
-          placeholder={
-            operationType === 'text_to_image'
-              ? 'Describe the image you want to create...'
-              : operationType === 'text_to_video'
-              ? 'Describe the video you want to create...'
-              : 'Describe the fusion...'
-          }
-          className="h-full"
-        />
+      <div className="flex gap-3 flex-1 min-h-0">
+        {/* Left: Prompt */}
+        <div className="flex-1 min-w-0">
+          <PromptInput
+            value={prompt}
+            onChange={setPrompt}
+            maxChars={maxChars}
+            disabled={generating}
+            variant="compact"
+            resizable
+            minHeight={120}
+            placeholder={
+              operationType === 'text_to_image'
+                ? 'Describe the image you want to create...'
+                : operationType === 'text_to_video'
+                ? 'Describe the video you want to create...'
+                : 'Describe the fusion...'
+            }
+            className="h-full"
+          />
+        </div>
+
+        {/* Right: Settings */}
+        {renderSettingsPanel()}
       </div>
     );
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <GenerationWorkbench
-        // Settings bar props
-        providerId={providerId}
-        providers={workbench.providers}
-        paramSpecs={workbench.paramSpecs}
-        dynamicParams={workbench.dynamicParams}
-        onChangeParam={workbench.handleParamChange}
-        onChangeProvider={setProvider}
-        generating={generating}
-        showSettings={workbench.showSettings}
-        onToggleSettings={workbench.toggleSettings}
-        presetId={presetId}
-        operationType={operationType}
-        // Generation action
-        onGenerate={generate}
-        canGenerate={canGenerate}
-        // Error & status
-        error={error}
-        generationId={generationId}
-        // Render props
-        renderHeader={renderHeader}
-        renderContent={renderContent}
-      />
-    </div>
+    <GenerationWorkbench
+      className="h-full"
+      // Settings bar props - hidden since we have inline settings panel
+      providerId={providerId}
+      providers={workbench.providers}
+      paramSpecs={filteredParamSpecs}
+      dynamicParams={workbench.dynamicParams}
+      onChangeParam={workbench.handleParamChange}
+      onChangeProvider={setProvider}
+      generating={generating}
+      showSettings={workbench.showSettings}
+      onToggleSettings={workbench.toggleSettings}
+      presetId={presetId}
+      operationType={operationType}
+      // Generation action - hidden since we have inline Go button
+      onGenerate={generate}
+      canGenerate={canGenerate}
+      // Error & status
+      error={error}
+      generationId={generationId}
+      hideStatusDisplay
+      hideSettingsBar
+      hideGenerateButton
+      // Render props - no header, just content with inline settings
+      renderContent={renderContent}
+    />
   );
 }

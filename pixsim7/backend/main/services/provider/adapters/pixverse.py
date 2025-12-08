@@ -212,10 +212,10 @@ class PixverseProvider(
             if "duration" in params and params["duration"] is not None:
                 mapped["duration"] = params["duration"]
 
-            # Style/mode parameters (omit nulls)
+            # Style/mode parameters (omit nulls and "none" sentinel)
             for field in ['motion_mode', 'negative_prompt', 'camera_movement', 'style', 'template_id']:
                 value = params.get(field)
-                if value is not None:
+                if value is not None and value != "none":
                     mapped[field] = value
 
             # Video options (multi_shot, audio, off_peak)
@@ -257,6 +257,12 @@ class PixverseProvider(
                 ]
             if "prompts" in params and params["prompts"] is not None:
                 mapped["prompts"] = params["prompts"]
+            durations = params.get("durations")
+            if durations is not None:
+                expected_segments = len(mapped.get("prompts") or []) or None
+                sanitized = self._normalize_transition_durations(durations, expected_segments)
+                if sanitized:
+                    mapped["durations"] = sanitized
 
         elif operation_type == OperationType.FUSION:
             if "fusion_assets" in params and params["fusion_assets"] is not None:
@@ -350,9 +356,33 @@ class PixverseProvider(
             "name": "quality", "type": "enum", "required": False, "default": "720p",
             "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
         }
+        advanced_duration_models = [
+            model
+            for model in video_model_enum
+            if isinstance(model, str)
+            and (
+                model.lower().startswith("v5.5")
+                or model.lower().startswith("v6")
+                or "5.5" in model
+            )
+        ]
+        duration_metadata: dict[str, Any] = {
+            "kind": "duration_presets",
+            "source": "pixverse",
+            "presets": [5, 8],
+            "note": "Pixverse video clips typically run for 5 or 8 seconds.",
+        }
+        if advanced_duration_models:
+            duration_metadata["per_model_presets"] = {
+                model: [5, 8, 10] for model in advanced_duration_models
+            }
+            duration_metadata[
+                "note"
+            ] = "Pixverse v5.5+ models support 10 second clips; older models support 5 or 8 seconds."
         duration = {
             "name": "duration", "type": "number", "required": False, "default": 5,
-            "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 20
+            "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 20,
+            "metadata": duration_metadata,
         }
         seed = {
             "name": "seed",
@@ -382,7 +412,7 @@ class PixverseProvider(
         }
         motion_mode = {
             "name": "motion_mode", "type": "enum", "required": False, "default": None,
-            "enum": ["cinematic", "dynamic", "steady"], "description": "Camera/motion style", "group": "style"
+            "enum": ["normal", "fast"], "description": "Motion speed (OpenAPI only)", "group": "advanced"
         }
         style = {
             "name": "style", "type": "string", "required": False, "default": None,
@@ -417,19 +447,19 @@ class PixverseProvider(
             "enum": None, "description": "Assets used for fusion consistency", "group": "source"
         }
         # Camera movements (only for image_to_video - requires image input)
-        # Derived from SDK's CameraMovement.ALL
-        camera_movement_enum: list[str] = []
+        # Derived from SDK's CameraMovement.ALL, with "none" as default
+        camera_movement_enum: list[str] = ["none"]
         if CameraMovement is not None and getattr(CameraMovement, "ALL", None):
-            camera_movement_enum = list(CameraMovement.ALL)
+            camera_movement_enum.extend(list(CameraMovement.ALL))
         else:
             # Fallback if SDK doesn't have CameraMovement yet
-            camera_movement_enum = ["zoom_in", "zoom_out"]
+            camera_movement_enum.extend(["zoom_in", "zoom_out"])
 
         camera_movement = {
             "name": "camera_movement",
             "type": "enum",
             "required": False,
-            "default": None,
+            "default": "none",
             "enum": camera_movement_enum,
             "description": "Camera movement preset (image_to_video only)",
             "group": "style",
@@ -444,14 +474,24 @@ class PixverseProvider(
             "description": "Image generation model",
             "group": "core",
         }
+        # Per-model quality options for image generation
+        image_quality_per_model = {
+            "qwen-image": ["720p", "1080p"],
+            "gemini-3.0": ["1080p", "2k", "4k"],  # nano-banana-pro
+            "gemini-2.5-flash": ["1080p"],  # nano-banana
+            "seedream-4.0": ["1080p", "2k", "4k"],
+        }
         image_quality = {
             "name": "quality",
             "type": "enum",
             "required": False,
-            "default": image_quality_enum[0] if image_quality_enum else None,
-            "enum": image_quality_enum or None,
+            "default": "1080p",
+            "enum": image_quality_enum or ["720p", "1080p", "2k", "4k"],
             "description": "Image quality preset",
             "group": "render",
+            "metadata": {
+                "per_model_options": image_quality_per_model,
+            },
         }
         strength = {
             "name": "strength", "type": "number", "required": False, "default": 0.7,
@@ -509,15 +549,37 @@ class PixverseProvider(
             Resolve GenerationOptions fields for a given operation using
             pixverse-py's get_video_operation_fields when available, falling
             back to the local list for backward compatibility.
+
+            Note: Certain fields from the fallback (like aspect_ratio) are always
+            included if present, even if the SDK doesn't return them.
             """
+            # Fields we always want if they're in the fallback, regardless of SDK
+            always_include = {"aspect_ratio", "audio", "off_peak"}
+
             field_names: list[str] = fallback
             if get_video_operation_fields is not None:  # type: ignore[truthy-function]
                 try:
-                    field_names = list(get_video_operation_fields(operation))  # type: ignore[call-arg]
+                    sdk_fields = list(get_video_operation_fields(operation))  # type: ignore[call-arg]
+                    # Merge SDK fields with always-include fields from fallback
+                    extra_fields = [f for f in fallback if f in always_include and f not in sdk_fields]
+                    field_names = sdk_fields + extra_fields
                 except Exception:
                     # If the SDK raises for a new/unknown operation, stick to fallback.
                     field_names = fallback
             return [video_field_specs[name] for name in field_names if name in video_field_specs]
+
+        transition_duration = {
+            **duration,
+            "metadata": {
+                "kind": "duration_presets",
+                "source": "pixverse",
+                "presets": [1, 2, 3, 4, 5],
+                "note": "Transitions support 1-5 seconds per segment between images.",
+            },
+            "min": 1,
+            "max": 5,
+            "description": "Transition duration per image segment (1-5 seconds)",
+        }
 
         spec = {
             # Image generation uses ImageModel / QUALITIES / ASPECT_RATIOS from SDK
@@ -538,7 +600,6 @@ class PixverseProvider(
                     image_url,
                     image_model,
                     image_quality,
-                    strength,
                     seed,
                     style,
                     negative_prompt,
@@ -565,7 +626,7 @@ class PixverseProvider(
                     ],
                 )
             },
-            # Image-to-video: aspect ratio follows source image, so we do NOT expose it
+            # Image-to-video: aspect ratio can override source image framing
             "image_to_video": {
                 "parameters": [base_prompt, image_url]
                 + _fields_for(
@@ -574,6 +635,7 @@ class PixverseProvider(
                         "model",
                         "quality",
                         "duration",
+                        "aspect_ratio",
                         "seed",
                         "camera_movement",
                         "motion_mode",
@@ -593,6 +655,7 @@ class PixverseProvider(
                         "model",
                         "quality",
                         "duration",
+                        "aspect_ratio",
                         "seed",
                         "multi_shot",
                         "audio",
@@ -600,10 +663,54 @@ class PixverseProvider(
                     ],
                 )
             },
-            "video_transition": {"parameters": [image_urls, prompts, quality, duration]},
-            "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, seed]},
+            # video_transition: aspect ratio is determined by source images
+            "video_transition": {"parameters": [image_urls, prompts, quality, transition_duration]},
+            "fusion": {"parameters": [base_prompt, fusion_assets, quality, duration, aspect_ratio, seed]},
         }
         return spec
+
+    def _normalize_transition_durations(
+        self,
+        durations: Any,
+        expected_count: int | None = None,
+    ) -> list[int]:
+        """
+        Coerce transition durations to Pixverse's expected 1-5 second ints.
+        Accepts either a single int/float or list of numbers.
+        """
+        if durations is None:
+            return []
+
+        if isinstance(durations, (int, float)):
+            raw_values = [durations]
+        elif isinstance(durations, (list, tuple)):
+            raw_values = list(durations)
+        else:
+            return []
+
+        if not raw_values:
+            return []
+
+        count = expected_count if expected_count is not None else len(raw_values)
+        if count <= 0:
+            count = len(raw_values)
+
+        sanitized: list[int] = []
+        for idx in range(count):
+            if idx < len(raw_values):
+                candidate = raw_values[idx]
+            else:
+                candidate = raw_values[-1]
+
+            try:
+                numeric = int(round(float(candidate)))
+            except (TypeError, ValueError):
+                numeric = 5
+
+            numeric = max(1, min(5, numeric))
+            sanitized.append(numeric)
+
+        return sanitized
 
     def _has_openapi_credentials(self, account: ProviderAccount) -> bool:
         """

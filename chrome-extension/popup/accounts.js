@@ -67,14 +67,12 @@ async function syncCreditsThrottled(reason, options = {}) {
 
 async function refreshAdStatusForVisibleAccounts() {
   try {
-    // Prefer the currently detected provider_id (e.g. "pixverse") for backend filtering.
-    const providerFilter = currentProvider && currentProvider.provider_id
-      ? currentProvider.provider_id
-      : null;
+    // Respect showAllProviders toggle for consistency with main account list
+    const effectiveProviderId = showAllProviders ? null : (currentProvider?.provider_id || null);
 
     const accounts = await chrome.runtime.sendMessage({
       action: 'getAccounts',
-      providerId: providerFilter || undefined,
+      providerId: effectiveProviderId || undefined,
     });
 
     if (!accounts || !accounts.success || !Array.isArray(accounts.data)) {
@@ -299,7 +297,9 @@ async function handleReauthMissingJwt() {
 
     if (res && res.success) {
       showToast('success', `Re-auth triggered for ${targetAccountIds.length} account(s).`);
-      clearAccountsCache(currentProvider?.provider_id || null).catch(() => {});
+      // Clear both provider-specific and all-accounts cache
+      const effectiveProviderId = showAllProviders ? null : (currentProvider?.provider_id || null);
+      clearAccountsCache(effectiveProviderId).catch(() => {});
       loadAccounts();
     } else {
       const errorMsg = res?.error || 'Re-auth failed';
@@ -319,7 +319,9 @@ async function loadAccounts() {
   const accountsLoading = document.getElementById('accountsLoading');
   const accountsError = document.getElementById('accountsError');
 
-  const cacheKey = getAccountsCacheKey(currentProvider?.provider_id || null);
+  // Determine effective provider filter (respect showAllProviders toggle)
+  const effectiveProviderId = showAllProviders ? null : (currentProvider?.provider_id || null);
+  const cacheKey = getAccountsCacheKey(effectiveProviderId);
   const cachedEntry = await readAccountsCache(cacheKey);
 
   accountsError.classList.add('hidden');
@@ -337,10 +339,10 @@ async function loadAccounts() {
   accountsError.classList.add('hidden');
 
   try {
-    // Request accounts from backend (filtered by provider if detected)
+    // Request accounts from backend (filtered by provider unless showAllProviders)
     const response = await chrome.runtime.sendMessage({
       action: 'getAccounts',
-      providerId: currentProvider?.provider_id || null,
+      providerId: effectiveProviderId,
     });
 
     if (requestId !== accountsRequestSeq) {
@@ -381,23 +383,83 @@ function displayAccounts(accounts, options = {}) {
   accountJwtHealth = analyzeAccountJwt(accounts);
   updateJwtBanner(accountJwtHealth);
 
-  accountCount.textContent = `(${accounts.length})`;
   accountsList.innerHTML = '';
 
+  // Filter accounts first so we can show accurate counts
+  let filtered = [...accounts];
+  if (hideZeroCredits) {
+    filtered = filtered.filter(a => (a.total_credits || 0) > 0);
+  }
+
+  // Update header count to show filtered/total when filters active
+  const hasActiveFilters = hideZeroCredits || (currentProvider && !showAllProviders);
+  if (hasActiveFilters && filtered.length !== accounts.length) {
+    accountCount.textContent = `(${filtered.length}/${accounts.length})`;
+  } else {
+    accountCount.textContent = `(${accounts.length})`;
+  }
+
   if (accounts.length === 0) {
+    const providerNote = (currentProvider && !showAllProviders)
+      ? ` for ${currentProvider.name}`
+      : '';
     accountsList.innerHTML = `
       <div class="info-box">
-        No accounts found${currentProvider ? ` for ${currentProvider.name}` : ''}.
-        Add accounts via the PixSim7 backend.
+        No accounts found${providerNote}.
+        ${currentProvider && !showAllProviders ? '<br><button class="btn-secondary" style="margin-top:8px;font-size:11px;padding:6px 10px;" data-action="showAll">Show All Providers</button>' : ''}
       </div>
     `;
+    // Attach handler for "Show All" button in empty state
+    const showAllBtn = accountsList.querySelector('[data-action="showAll"]');
+    if (showAllBtn) {
+      showAllBtn.addEventListener('click', async () => {
+        showAllProviders = true;
+        await saveFilterState();
+        loadAccounts();
+      });
+    }
     return;
+  }
+
+  // Active filters banner (shown when provider filter or hideZero is active)
+  const activeFilters = [];
+  if (currentProvider && !showAllProviders) {
+    activeFilters.push(`Provider: ${currentProvider.name}`);
+  }
+  if (hideZeroCredits) {
+    activeFilters.push('Hiding empty');
+  }
+
+  if (activeFilters.length > 0) {
+    const filterBanner = document.createElement('div');
+    filterBanner.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:6px 8px; margin-bottom:6px; background:linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(245,158,11,0.15) 100%); border:1px solid rgba(251,191,36,0.4); border-radius:6px; font-size:10px; color:#fbbf24;';
+    filterBanner.innerHTML = `
+      <span>🔍 ${activeFilters.join(' • ')}</span>
+      <button class="sort-btn" data-action="clearFilters" style="background:rgba(251,191,36,0.2);color:#fbbf24;border:1px solid rgba(251,191,36,0.4);padding:2px 6px;">Clear</button>
+    `;
+    filterBanner.querySelector('[data-action="clearFilters"]').addEventListener('click', async () => {
+      hideZeroCredits = false;
+      showAllProviders = true;
+      await saveFilterState();
+      loadAccounts();
+    });
+    accountsList.appendChild(filterBanner);
   }
 
   // Add sort and filter controls
   const sortControls = document.createElement('div');
   sortControls.className = 'sort-controls';
+
+  // Build provider toggle button (only show if on a provider site)
+  const providerToggleHtml = currentProvider ? `
+    <button class="sort-btn ${showAllProviders ? '' : 'active'}" data-filter="providerToggle" title="${showAllProviders ? 'Showing all providers' : 'Filtered to ' + currentProvider.name}">
+      ${showAllProviders ? '🌐 All' : '🔍 ' + currentProvider.name}
+    </button>
+    <span style="font-size: 9px; color: #4b5563; margin: 0 3px;">•</span>
+  ` : '';
+
   sortControls.innerHTML = `
+    ${providerToggleHtml}
     <button class="sort-btn ${accountsSortBy === 'credits' ? 'active' : ''}" data-sort="credits">
       ${accountsSortBy === 'credits' ? (accountsSortDesc ? '↓' : '↑') : ''} Credits
     </button>
@@ -413,8 +475,9 @@ function displayAccounts(accounts, options = {}) {
     </button>
   `;
 
+  // Sort button handlers
   sortControls.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const sortKey = btn.getAttribute('data-sort');
       if (accountsSortBy === sortKey) {
         accountsSortDesc = !accountsSortDesc;
@@ -422,14 +485,27 @@ function displayAccounts(accounts, options = {}) {
         accountsSortBy = sortKey;
         accountsSortDesc = true;
       }
-      displayAccounts(accounts);
+      await saveFilterState();
+      displayAccounts(accounts, options);
     });
   });
 
-  sortControls.querySelector('[data-filter="hideZero"]').addEventListener('click', () => {
+  // Hide empty filter handler
+  sortControls.querySelector('[data-filter="hideZero"]').addEventListener('click', async () => {
     hideZeroCredits = !hideZeroCredits;
-    displayAccounts(accounts);
+    await saveFilterState();
+    displayAccounts(accounts, options);
   });
+
+  // Provider toggle handler
+  const providerToggleBtn = sortControls.querySelector('[data-filter="providerToggle"]');
+  if (providerToggleBtn) {
+    providerToggleBtn.addEventListener('click', async () => {
+      showAllProviders = !showAllProviders;
+      await saveFilterState();
+      loadAccounts(); // Need to reload from backend with new filter
+    });
+  }
 
   accountsList.appendChild(sortControls);
 
@@ -440,12 +516,6 @@ function displayAccounts(accounts, options = {}) {
     refreshInfo.style.color = isStale ? '#fbbf24' : '#6b7280';
     refreshInfo.textContent = `${formatRelativeTime(lastUpdatedAt)}${isStale ? ' ⚠' : ''}`;
     accountsList.appendChild(refreshInfo);
-  }
-
-  // Filter accounts
-  let filtered = [...accounts];
-  if (hideZeroCredits) {
-    filtered = filtered.filter(a => (a.total_credits || 0) > 0);
   }
 
   // Sort accounts
@@ -466,14 +536,6 @@ function displayAccounts(accounts, options = {}) {
     }
     return accountsSortDesc ? -cmp : cmp;
   });
-
-  // Show filtered count if filter is active
-  if (hideZeroCredits && filtered.length < accounts.length) {
-    const filterInfo = document.createElement('div');
-    filterInfo.style.cssText = 'font-size: 9px; color: #6b7280; padding: 3px 6px; text-align: center; opacity: 0.8;';
-    filterInfo.textContent = `${filtered.length}/${accounts.length} shown`;
-    accountsList.appendChild(filterInfo);
-  }
 
   sorted.forEach(account => {
     const card = createAccountCard(account);

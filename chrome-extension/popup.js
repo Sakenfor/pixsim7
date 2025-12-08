@@ -26,6 +26,8 @@ const pixverseStatusCache = new Map();
 const DEVICE_SELECTION_STORAGE_KEY = 'pixsim7SelectedDeviceId';
 const PRESET_SELECTION_STORAGE_KEY = 'pixsim7SelectedPresetId';
 const LOOP_SELECTION_STORAGE_KEY = 'pixsim7SelectedLoopId';
+const FILTER_STATE_STORAGE_KEY = 'pixsim7FilterState';
+let showAllProviders = false; // When true, ignore currentProvider filter
 let accountJwtHealth = {
   missing: [],
   expired: [],
@@ -43,6 +45,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load settings
   await loadSettings();
+
+  // Restore filter state (sort, hide empty, etc.)
+  await loadFilterState();
 
   // Restore cached Pixverse ad status (if any) so we can show
   // previously-fetched values without hitting the API on every popup open.
@@ -224,6 +229,9 @@ function switchTab(tabId) {
   if (tabId === 'accounts' && currentUser) {
     showAutomationToolbar(true);
     loadAutomationOptions();
+    // Clear cache to force fresh fetch on tab entry
+    const effectiveProviderId = showAllProviders ? null : (currentProvider?.provider_id || null);
+    clearAccountsCache(effectiveProviderId).catch(() => {});
     loadAccounts();
   }
 
@@ -382,6 +390,37 @@ function getTimeAgo(date) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// ===== FILTER STATE PERSISTENCE =====
+
+async function loadFilterState() {
+  try {
+    const stored = await chrome.storage.local.get(FILTER_STATE_STORAGE_KEY);
+    const state = stored[FILTER_STATE_STORAGE_KEY] || {};
+    hideZeroCredits = state.hideZeroCredits ?? false;
+    accountsSortBy = state.accountsSortBy ?? 'lastUsed';
+    accountsSortDesc = state.accountsSortDesc ?? true;
+    showAllProviders = state.showAllProviders ?? false;
+    console.log('[Popup] Loaded filter state:', { hideZeroCredits, accountsSortBy, accountsSortDesc, showAllProviders });
+  } catch (e) {
+    console.warn('[Popup] Failed to load filter state:', e);
+  }
+}
+
+async function saveFilterState() {
+  try {
+    await chrome.storage.local.set({
+      [FILTER_STATE_STORAGE_KEY]: {
+        hideZeroCredits,
+        accountsSortBy,
+        accountsSortDesc,
+        showAllProviders,
+      }
+    });
+  } catch (e) {
+    console.warn('[Popup] Failed to save filter state:', e);
+  }
 }
 
 // ===== UTILITIES =====

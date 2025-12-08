@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
+import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
+import { debugFlags } from '../lib/debugFlags';
 import type { PanelId } from './workspaceStore';
 import { pluginCatalog } from '../lib/plugins/pluginSystem';
 import type { MediaCardBadgeConfig } from '../components/media/MediaCard';
@@ -355,3 +357,16 @@ export const usePanelConfigStore = create<PanelConfigState & PanelConfigActions>
     }
   )
 );
+
+// Manual rehydration workaround for async storage (see zustandPersistWorkaround.ts)
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    debugFlags.log('rehydration', '[PanelConfigStore] Triggering manual rehydration');
+    manuallyRehydrateStore(
+      usePanelConfigStore,
+      'panel-config_local',
+      'PanelConfigStore'
+    );
+    exposeStoreForDebugging(usePanelConfigStore, 'PanelConfig');
+  }, 50);
+}

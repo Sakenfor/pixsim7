@@ -399,10 +399,10 @@ export function CubeFormationControlCenter() {
           onClick={() => setExpandedModule(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+            className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-white dark:bg-neutral-900 border-b px-6 py-4 flex items-center justify-between">
+            <div className="flex-shrink-0 bg-white dark:bg-neutral-900 border-b px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold">
                 {MODULES.find((m) => m.id === expandedModule)?.label}
               </h2>
@@ -413,7 +413,7 @@ export function CubeFormationControlCenter() {
                 Close
               </button>
             </div>
-            <div className="p-6">{renderModuleContent()}</div>
+            <div className="flex-1 p-6 overflow-y-auto min-h-0">{renderModuleContent()}</div>
           </div>
         </div>
       )}

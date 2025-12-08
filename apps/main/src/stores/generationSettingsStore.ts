@@ -12,6 +12,17 @@ export interface GenerationSettingsState {
   params: Record<string, any>;
 
   /**
+   * Whether the settings bar is expanded/visible.
+   */
+  showSettings: boolean;
+
+  /**
+   * Whether the store has been hydrated from persistence.
+   * Use this to avoid overwriting persisted values with defaults.
+   */
+  _hasHydrated: boolean;
+
+  /**
    * React-style setter for params. Accepts either a new object or an updater
    * function that receives the previous value and returns the next one.
    */
@@ -25,6 +36,12 @@ export interface GenerationSettingsState {
   setParam: (name: string, value: any) => void;
 
   /**
+   * Toggle or set settings visibility.
+   */
+  setShowSettings: (show: boolean) => void;
+  toggleSettings: () => void;
+
+  /**
    * Reset all dynamic parameters.
    */
   reset: () => void;
@@ -36,6 +53,8 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>()(
   persist(
     (set, get) => ({
       params: {},
+      showSettings: true,
+      _hasHydrated: false,
 
       setDynamicParams: (updater) =>
         set((prev) => ({
@@ -50,16 +69,26 @@ export const useGenerationSettingsStore = create<GenerationSettingsState>()(
           params: { ...prev.params, [name]: value },
         })),
 
-      reset: () => set({ params: {} }),
+      setShowSettings: (show) => set({ showSettings: show }),
+      toggleSettings: () => set((prev) => ({ showSettings: !prev.showSettings })),
+
+      reset: () => set({ params: {}, showSettings: true, _hasHydrated: true }),
     }),
     {
       name: STORAGE_KEY,
       storage: createBackendStorage('generationSettings'),
-      // Only persist parameter values; methods are recreated by the store
       partialize: (state) => ({
         params: state.params,
+        showSettings: state.showSettings,
+        // Note: _hasHydrated is intentionally not persisted
       }),
-      version: 1,
+      version: 2,
+      migrate: (persisted: any, version: number) => {
+        if (version < 2) {
+          return { ...persisted, showSettings: true };
+        }
+        return persisted;
+      },
     }
   )
 );
@@ -73,6 +102,8 @@ if (typeof window !== 'undefined') {
       'generationSettings_local',
       'GenerationSettingsStore'
     );
+    // Mark hydration complete so effects don't overwrite persisted values
+    useGenerationSettingsStore.setState({ _hasHydrated: true });
     exposeStoreForDebugging(useGenerationSettingsStore, 'GenerationSettings');
   }, 50);
 }
