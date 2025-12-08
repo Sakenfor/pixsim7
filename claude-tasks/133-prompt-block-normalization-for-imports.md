@@ -62,35 +62,49 @@ Keeping blocks as JSON in `PromptVersion.prompt_analysis` works for simple cases
 **Schema:**
 
 ```python
+from pixsim7.backend.main.services.prompt_parser import ParsedRole
+
 class PromptBlock(SQLModel, table=True):
     """Individual block extracted from a prompt"""
     __tablename__ = "prompt_blocks"
 
-    id: int = Field(primary_key=True)
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     prompt_version_id: UUID = Field(foreign_key="prompt_versions.id", index=True)
 
-    # Classification (strings, not enums — extensible)
-    role: str = Field(index=True)      # ParsedRole value: "character", "action", "setting", etc.
-    category: Optional[str] = Field(index=True)  # Fine-grained: "entrance", "hand_motion", "camera", etc.
+    # Classification
+    role: ParsedRole = Field(
+        sa_column=Column(SAEnum(ParsedRole, native_enum=False), index=True),
+        description="Parser-driven, stable (character, action, setting, mood, romance, other)"
+    )
+    category: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        index=True,
+        description="LLM-driven, experimental (entrance, hand_motion, camera_pov, etc.)"
+    )
 
     # Content
-    text: str  # The extracted phrase
+    text: str = Field(description="Original text span from prompt")
+
+    # Structured metadata (like ActionBlockDB.tags)
+    tags: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON),
+        description="Normalized details: {motion: 'hand', direction: 'from_left'}"
+    )
 
     # Provenance
-    analyzer: str  # "simple_parser", "ai_hub:v2", "llm:claude-3"
-    confidence: Optional[float]  # 0.0-1.0 (NULL for deterministic parsers)
+    analyzer_id: str = Field(
+        max_length=64,
+        default="parser:simple",
+        description="Which analyzer produced this: 'parser:simple', 'ai_hub:v1', 'llm:claude-3'"
+    )
 
-    # Metadata
-    tags: List[str] = Field(sa_column=Column(JSON))
-    metadata: Dict[str, Any] = Field(sa_column=Column(JSON))
-    # metadata includes: spans, source_sentence_index, keyword_matches, etc.
-
-    created_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
     __table_args__ = (
-        Index("idx_block_role", "role"),
-        Index("idx_block_category", "category"),
         Index("idx_block_version_role", "prompt_version_id", "role"),
+        Index("idx_block_category", "category"),
     )
 ```
 
@@ -301,26 +315,19 @@ New Asset linked to same prompt_version
 **Block persistence**: Attach `PromptBlock` rows to **PromptVersion**, not per-Asset. One PromptVersion → many PromptBlock rows. This avoids duplicating the same blocks every time a prompt is reused. For per-asset overrides (e.g., LLM extraction differs), use a lightweight `AssetPromptBlockOverride` join table.
 
 **Block classification**: Reuse existing systems instead of hard-coding new enums:
-- **`role`**: Reuse `ParsedRole` from `services/prompt_parser/simple.py` (character, action, setting, mood, romance, other) — what SimplePromptParser already produces
-- **`category`**: Free-form string field (not enum) for fine-grained LLM extraction (entrance, hand_motion, camera, etc.) — extensible without schema changes
 
-```python
-# Existing - reuse this
-from pixsim7.backend.main.services.prompt_parser import ParsedRole
+- **`role`** (ParsedRole enum): Parser-driven, stable. Reuses `ParsedRole` from `services/prompt_parser/simple.py` (character, action, setting, mood, romance, other). What SimplePromptParser already produces. Safe to branch on in core logic.
 
-class PromptBlock:
-    role: str           # ParsedRole value: "character", "action", etc.
-    category: str       # Free-form: "entrance", "hand_motion", "camera", etc.
-```
+- **`category`** (string): Analysis/LLM-driven, experimental. Free-form for fine-grained extraction (entrance, hand_motion, camera_pov, etc.). Treat as a hint — put structured details in `tags`. Extensible without migrations.
 
-This aligns with how `ActionBlockDB.tags` works — flexible dict rather than rigid enum.
+- **`tags`** (Dict[str, Any]): Follows `ActionBlockDB.tags` pattern. Normalized details like:
+  ```json
+  {"motion": "hand", "direction": "from_left", "body_part": "hair"}
+  {"entrance_direction": "camera_left", "speed": "slow"}
+  ```
+  This is where semantics live — can later bridge to ActionBlockTags or ontology lookups.
 
-**Analyzer provenance**: Store which analyzer produced each block:
-```python
-class PromptBlock:
-    analyzer: str  # "simple_parser", "ai_hub:v2", "llm:claude-3"
-    confidence: float  # 0.0-1.0
-```
+**Relationship to ActionBlockDB**: PromptBlock is lean and analysis-focused. ActionBlockDB is the curated, human-edited layer. The bridge is "promote" — when a block is deemed reusable, create an ActionBlockDB from that PromptBlock, copying text and relevant tags. No hard FK needed yet.
 
 ### Implementation Touchpoints
 
