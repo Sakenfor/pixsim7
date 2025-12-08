@@ -16,6 +16,11 @@ from PySide6.QtGui import QFont
 import subprocess
 import os
 
+try:
+    from .. import theme
+except ImportError:
+    import theme
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 
@@ -243,6 +248,12 @@ class SimpleGitDialog(QDialog):
         self.setWindowTitle("Git Workflow")
         self.setMinimumSize(700, 600)
         self.worker = None
+        # Apply dark theme
+        self.setStyleSheet(
+            theme.get_dialog_stylesheet() +
+            theme.get_button_stylesheet() +
+            theme.get_scrollbar_stylesheet()
+        )
         self._setup_ui()
         self._refresh_status()
 
@@ -265,7 +276,7 @@ class SimpleGitDialog(QDialog):
         status_layout = QVBoxLayout(status_group)
 
         self.status_label = QLabel("Checking status...")
-        self.status_label.setStyleSheet("font-family: 'Consolas', monospace; padding: 10px;")
+        self.status_label.setStyleSheet(f"font-family: 'Consolas', monospace; padding: 10px; color: {theme.TEXT_PRIMARY};")
         status_layout.addWidget(self.status_label)
 
         refresh_btn = QPushButton("🔄 Refresh Status")
@@ -307,8 +318,8 @@ class SimpleGitDialog(QDialog):
         actions_layout.addLayout(workflow2)
 
         # One-click sync
-        sync_all_btn = QPushButton("⚡ Full Sync (Commit → Push → Pull → Cleanup)")
-        sync_all_btn.setStyleSheet("background-color: #4CAF50; font-weight: bold; padding: 12px;")
+        sync_all_btn = QPushButton("Full Sync (Commit -> Push -> Pull -> Cleanup)")
+        sync_all_btn.setStyleSheet(f"background-color: {theme.ACCENT_SUCCESS}; font-weight: bold; padding: 12px;")
         sync_all_btn.setToolTip("Do everything: commit, push, pull/merge, cleanup")
         sync_all_btn.clicked.connect(self._sync_all)
         actions_layout.addWidget(sync_all_btn)
@@ -321,16 +332,16 @@ class SimpleGitDialog(QDialog):
 
         self.output = QTextEdit()
         self.output.setReadOnly(True)
-        self.output.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+        self.output.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {theme.BG_TERTIARY};
+                color: {theme.TEXT_PRIMARY};
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 10pt;
-                border: 1px solid #ccc;
-                border-radius: 4px;
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_MD}px;
                 padding: 8px;
-            }
+            }}
         """)
         layout.addWidget(self.output)
 
@@ -342,42 +353,23 @@ class SimpleGitDialog(QDialog):
         self._apply_styles()
 
     def _apply_styles(self):
-        """Apply stylesheet to dialog."""
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #f5f5f5;
-            }
-            QGroupBox {
+        """Apply stylesheet to dialog - uses centralized theme from __init__."""
+        # Additional group box styling for dark theme
+        self.setStyleSheet(self.styleSheet() + f"""
+            QGroupBox {{
                 font-weight: bold;
-                border: 2px solid #ddd;
-                border-radius: 6px;
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_MD}px;
                 margin-top: 12px;
                 padding-top: 12px;
-            }
-            QGroupBox::title {
+                color: {theme.TEXT_PRIMARY};
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
-            }
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-                min-height: 32px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            QPushButton:disabled {
-                background-color: #ccc;
-                color: #888;
-            }
+                color: {theme.ACCENT_PRIMARY};
+            }}
         """)
 
     def _log(self, message):

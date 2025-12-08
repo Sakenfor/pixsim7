@@ -6,8 +6,10 @@ from PySide6.QtCore import Qt
 
 try:
     from ..git_tools import GROUPS, dry_run as git_dry_run, commit_groups as git_commit_groups, count_changes as git_count_changes
+    from .. import theme
 except ImportError:
     from git_tools import GROUPS, dry_run as git_dry_run, commit_groups as git_commit_groups, count_changes as git_count_changes
+    import theme
 
 try:
     from ..logger import launcher_logger as _launcher_logger
@@ -23,78 +25,40 @@ def show_git_tools_dialog(parent):
     dlg.setWindowTitle('Git Commit Groups')
     dlg.setMinimumWidth(600)
     dlg.setMinimumHeight(500)
-    dlg.setStyleSheet("""
-        QDialog {
-            background-color: #f9f9f9;
-        }
-        QLabel {
-            color: #1a1a1a;
-            font-size: 10pt;
-        }
-        QLineEdit {
-            background-color: white;
-            color: #1a1a1a;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 6px;
-        }
-        QLineEdit:focus {
-            border: 1px solid #2196F3;
-        }
-        QTextEdit {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+    dlg.setStyleSheet(
+        theme.get_dialog_stylesheet() +
+        theme.get_input_stylesheet() +
+        theme.get_scrollbar_stylesheet() +
+        f"""
+        QTextEdit {{
+            background-color: {theme.BG_TERTIARY};
+            color: {theme.TEXT_PRIMARY};
             font-family: 'Consolas', 'Courier New', monospace;
             font-size: 9pt;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        QListWidget {
-            background-color: white;
-            color: #1a1a1a;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        QListWidget::item {
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
+        }}
+        QListWidget {{
+            background-color: {theme.BG_TERTIARY};
+            color: {theme.TEXT_PRIMARY};
+            border: 1px solid {theme.BORDER_DEFAULT};
+            border-radius: {theme.RADIUS_MD}px;
+        }}
+        QListWidget::item {{
             padding: 4px;
-        }
-        QListWidget::item:selected {
-            background-color: #2196F3;
-            color: white;
-        }
-        QCheckBox {
-            color: #1a1a1a;
-            spacing: 6px;
-        }
-        QSpinBox {
-            background-color: white;
-            color: #1a1a1a;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 4px;
-        }
-        QPushButton {
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-weight: bold;
-            min-height: 28px;
-        }
-        QPushButton:hover {
-            background-color: #1976D2;
-        }
-        QPushButton:pressed {
-            background-color: #0D47A1;
-        }
-    """)
+        }}
+        QListWidget::item:selected {{
+            background-color: {theme.ACCENT_PRIMARY};
+            color: {theme.TEXT_INVERSE};
+        }}
+        """
+    )
     layout = QVBoxLayout(dlg)
     layout.setSpacing(12)
     layout.setContentsMargins(20, 20, 20, 20)
     info = QLabel('Structured commit helper. Select groups, Dry Run to preview, Commit to apply. No remote push.')
     info.setWordWrap(True)
-    info.setStyleSheet("color: #555; font-weight: 500;")
+    info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-weight: 500;")
     layout.addWidget(info)
 
     listw = QListWidget()
