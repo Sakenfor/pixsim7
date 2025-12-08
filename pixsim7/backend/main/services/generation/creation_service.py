@@ -3,9 +3,14 @@ GenerationCreationService - Generation creation, validation, and canonicalizatio
 
 Handles all generation creation logic including parameter validation, content rating
 enforcement, prompt resolution, and ARQ job queueing.
+
+Supports PromptVersion find-or-create: when a prompt is provided without an explicit
+prompt_version_id, the service will find an existing PromptVersion by hash or create
+a new one with prompt analysis.
 """
 import logging
-from typing import Optional, Dict, Any, List
+import hashlib
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -17,6 +22,7 @@ from pixsim7.backend.main.domain import (
     OperationType,
     User,
 )
+from pixsim7.backend.main.domain.prompt_versioning import PromptVersion
 from pixsim7.backend.main.shared.errors import (
     QuotaError,
     InvalidOperationError,
@@ -26,6 +32,7 @@ from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.social_context_builder import RATING_ORDER
 from pixsim7.backend.main.services.generation.cache_service import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
+from pixsim7.backend.main.services.prompt_dsl_adapter import analyze_prompt
 from pixsim7.backend.main.shared.debug import DebugLogger
 
 logger = logging.getLogger(__name__)
@@ -47,6 +54,76 @@ class GenerationCreationService:
         self.db = db
         self.users = user_service
         self.cache = GenerationCacheService()
+
+    async def find_or_create_prompt_version(
+        self,
+        prompt_text: str,
+        author: Optional[str] = None,
+    ) -> Tuple[PromptVersion, bool]:
+        """
+        Find existing PromptVersion by hash or create new one with analysis.
+
+        This implements the PromptVersion-as-source-of-truth pattern:
+        - Same prompt text → same PromptVersion (by hash)
+        - Analysis computed once per unique prompt
+        - One-off prompts have family_id = NULL
+
+        Args:
+            prompt_text: The prompt text to find or create
+            author: Optional author identifier
+
+        Returns:
+            Tuple of (PromptVersion, created) where created is True if new
+        """
+        # Normalize and hash the prompt
+        normalized = prompt_text.strip()
+        prompt_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+        # Try to find existing by hash
+        result = await self.db.execute(
+            select(PromptVersion).where(PromptVersion.prompt_hash == prompt_hash)
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            logger.debug(f"Found existing PromptVersion {existing.id} for hash {prompt_hash[:16]}...")
+            return existing, False
+
+        # Create new PromptVersion with analysis
+        logger.info(f"Creating new PromptVersion for hash {prompt_hash[:16]}...")
+
+        # Analyze the prompt
+        try:
+            analysis = await analyze_prompt(normalized)
+            prompt_analysis = {
+                "prompt": analysis.get("prompt", normalized),
+                "blocks": analysis.get("blocks", []),
+                "tags": analysis.get("tags", []),
+            }
+        except Exception as e:
+            logger.warning(f"Failed to analyze prompt: {e}")
+            prompt_analysis = {
+                "prompt": normalized,
+                "blocks": [],
+                "tags": [],
+            }
+
+        # Create new version (one-off, no family)
+        new_version = PromptVersion(
+            prompt_text=normalized,
+            prompt_hash=prompt_hash,
+            prompt_analysis=prompt_analysis,
+            family_id=None,  # One-off prompt
+            version_number=None,  # No version tracking for one-offs
+            author=author,
+            created_at=datetime.utcnow(),
+        )
+
+        self.db.add(new_version)
+        await self.db.flush()  # Get the ID without committing
+
+        logger.info(f"Created PromptVersion {new_version.id} with {len(prompt_analysis.get('blocks', []))} blocks")
+        return new_version, True
 
     async def create_generation(
         self,
@@ -255,10 +332,27 @@ class GenerationCreationService:
                         debug.generation(f"Cache HIT! Returning cached generation {cached_generation_id}")
                         return cached_generation
 
-        # Resolve prompt if version provided
+        # Resolve or create prompt version
         final_prompt = None
         if prompt_version_id:
+            # Explicit version provided - resolve it
             final_prompt = await self._resolve_prompt(prompt_version_id, params)
+        else:
+            # No version provided - find or create from prompt text
+            prompt_text = canonical_params.get("prompt")
+            if prompt_text and isinstance(prompt_text, str) and prompt_text.strip():
+                # Find or create PromptVersion by hash
+                prompt_version, created = await self.find_or_create_prompt_version(
+                    prompt_text=prompt_text,
+                    author=f"user:{user.id}",
+                )
+                prompt_version_id = prompt_version.id
+                final_prompt = prompt_version.prompt_text
+
+                if created:
+                    debug.generation(f"Created new PromptVersion {prompt_version_id}")
+                else:
+                    debug.generation(f"Reusing existing PromptVersion {prompt_version_id}")
 
         # Create generation
         generation = Generation(
