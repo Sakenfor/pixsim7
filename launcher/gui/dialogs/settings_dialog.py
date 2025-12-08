@@ -6,8 +6,10 @@ from PySide6.QtCore import Qt
 
 try:
     from ..config import UIState, save_ui_state
+    from .. import theme
 except Exception:
     from config import UIState, save_ui_state
+    import theme
 
 
 def show_settings_dialog(parent, ui_state: UIState) -> UIState | None:
@@ -25,99 +27,8 @@ class SettingsDialog(QDialog):
         self._state = ui_state
         self.setMinimumWidth(550)
         self.setMinimumHeight(500)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #f9f9f9;
-            }
-            QLabel {
-                color: #1a1a1a;
-                font-size: 10pt;
-            }
-            QGroupBox {
-                color: #1a1a1a;
-                border: 2px solid #ddd;
-                border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 12px;
-                font-weight: bold;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #2196F3;
-            }
-            QCheckBox {
-                color: #1a1a1a;
-                font-size: 10pt;
-                spacing: 8px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #ccc;
-                border-radius: 3px;
-                background-color: white;
-            }
-            QCheckBox::indicator:checked {
-                background-color: #2196F3;
-                border-color: #2196F3;
-            }
-            QSpinBox, QDoubleSpinBox, QComboBox {
-                background-color: white;
-                color: #1a1a1a;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                padding: 4px 8px;
-                min-height: 24px;
-            }
-            QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
-                border: 2px solid #2196F3;
-            }
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-                min-height: 32px;
-            }
-            QPushButton:hover {
-                background-color: #1976D2;
-            }
-            QPushButton:pressed {
-                background-color: #0D47A1;
-            }
-            QPushButton#cancelButton {
-                background-color: #757575;
-            }
-            QPushButton#cancelButton:hover {
-                background-color: #616161;
-            }
-            QTabWidget::pane {
-                border: 1px solid #ddd;
-                background-color: white;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                background-color: #e0e0e0;
-                color: #1a1a1a;
-                padding: 8px 16px;
-                border: 1px solid #ccc;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: white;
-                color: #2196F3;
-                font-weight: bold;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #f5f5f5;
-            }
-        """)
+        # Use centralized dark theme
+        self.setStyleSheet(theme.get_dialog_stylesheet() + theme.get_scrollbar_stylesheet())
         self._init_ui()
 
     def _init_ui(self):
@@ -127,7 +38,7 @@ class SettingsDialog(QDialog):
 
         # Header
         header = QLabel("⚙️ Launcher Settings")
-        header.setStyleSheet("color: #1a1a1a; font-size: 16pt; font-weight: bold; margin-bottom: 8px;")
+        header.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 16pt; font-weight: bold; margin-bottom: 8px;")
         layout.addWidget(header)
 
         # Tabs for better organization
@@ -145,7 +56,7 @@ class SettingsDialog(QDialog):
 
         # Info label
         info_label = QLabel("💾 Settings are saved automatically to launcher.json")
-        info_label.setStyleSheet("color: #666; font-size: 9pt; font-style: italic; margin-top: 8px;")
+        info_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; font-style: italic; margin-top: 8px;")
         layout.addWidget(info_label)
 
         # Buttons
@@ -292,7 +203,7 @@ class SettingsDialog(QDialog):
             "💡 Tip: Lower intervals = more responsive UI but higher CPU usage.\n"
             "   Recommended: Enable adaptive mode for best balance."
         )
-        info.setStyleSheet("color: #666; font-size: 9pt; margin-top: 8px;")
+        info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt; margin-top: 8px;")
         info.setWordWrap(True)
         health_layout.addWidget(info)
 

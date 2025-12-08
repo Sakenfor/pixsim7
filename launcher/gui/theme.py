@@ -325,3 +325,213 @@ def get_checkbox_stylesheet():
             border: 1px solid {ACCENT_PRIMARY};
         }}
     """
+
+def get_splitter_stylesheet():
+    """Get stylesheet for QSplitter divider handles."""
+    return f"""
+        QSplitter::handle {{
+            background-color: {BORDER_DEFAULT};
+        }}
+        QSplitter::handle:horizontal {{
+            width: 4px;
+            margin: 2px 0px;
+        }}
+        QSplitter::handle:vertical {{
+            height: 4px;
+            margin: 0px 2px;
+        }}
+        QSplitter::handle:hover {{
+            background-color: {ACCENT_PRIMARY};
+        }}
+        QSplitter::handle:pressed {{
+            background-color: {ACCENT_HOVER};
+        }}
+    """
+
+def get_scrollbar_stylesheet():
+    """Get stylesheet for scrollbars to match dark theme."""
+    return f"""
+        QScrollBar:vertical {{
+            background-color: {BG_SECONDARY};
+            width: 12px;
+            margin: 0px;
+            border-radius: 6px;
+        }}
+        QScrollBar::handle:vertical {{
+            background-color: {BORDER_DEFAULT};
+            min-height: 30px;
+            border-radius: 6px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background-color: {TEXT_SECONDARY};
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+            background: none;
+        }}
+        QScrollBar:horizontal {{
+            background-color: {BG_SECONDARY};
+            height: 12px;
+            margin: 0px;
+            border-radius: 6px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background-color: {BORDER_DEFAULT};
+            min-width: 30px;
+            border-radius: 6px;
+            margin: 2px;
+        }}
+        QScrollBar::handle:horizontal:hover {{
+            background-color: {TEXT_SECONDARY};
+        }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            width: 0px;
+        }}
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+            background: none;
+        }}
+    """
+
+def get_menu_stylesheet():
+    """Get stylesheet for context menus."""
+    return f"""
+        QMenu {{
+            background-color: {BG_SECONDARY};
+            border: 1px solid {BORDER_DEFAULT};
+            border-radius: {RADIUS_MD}px;
+            padding: {SPACING_XS}px;
+        }}
+        QMenu::item {{
+            background-color: transparent;
+            color: {TEXT_PRIMARY};
+            padding: {SPACING_SM}px {SPACING_LG}px;
+            border-radius: {RADIUS_SM}px;
+        }}
+        QMenu::item:selected {{
+            background-color: {ACCENT_PRIMARY};
+            color: {TEXT_INVERSE};
+        }}
+        QMenu::item:disabled {{
+            color: {TEXT_DISABLED};
+        }}
+        QMenu::separator {{
+            height: 1px;
+            background-color: {BORDER_DEFAULT};
+            margin: {SPACING_XS}px {SPACING_SM}px;
+        }}
+    """
+
+def get_tooltip_stylesheet():
+    """Get stylesheet for tooltips."""
+    return f"""
+        QToolTip {{
+            background-color: {BG_TERTIARY};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_DEFAULT};
+            border-radius: {RADIUS_SM}px;
+            padding: {SPACING_SM}px {SPACING_MD}px;
+            font-size: {FONT_SIZE_SM};
+        }}
+    """
+
+def get_dialog_stylesheet():
+    """Get stylesheet for dialog windows (dark theme)."""
+    return f"""
+        QDialog {{
+            background-color: {BG_PRIMARY};
+            color: {TEXT_PRIMARY};
+        }}
+        QDialog QLabel {{
+            color: {TEXT_PRIMARY};
+            font-size: {FONT_SIZE_MD};
+        }}
+        QDialog QGroupBox {{
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_DEFAULT};
+            border-radius: {RADIUS_MD}px;
+            margin-top: 12px;
+            padding-top: 12px;
+            font-weight: bold;
+        }}
+        QDialog QGroupBox::title {{
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px;
+            color: {ACCENT_PRIMARY};
+        }}
+        QDialog QCheckBox {{
+            color: {TEXT_PRIMARY};
+            font-size: {FONT_SIZE_MD};
+            spacing: 8px;
+        }}
+        QDialog QCheckBox::indicator {{
+            width: 18px;
+            height: 18px;
+            border: 1px solid {BORDER_DEFAULT};
+            border-radius: {RADIUS_SM}px;
+            background-color: {BG_TERTIARY};
+        }}
+        QDialog QCheckBox::indicator:checked {{
+            background-color: {ACCENT_PRIMARY};
+            border-color: {ACCENT_PRIMARY};
+        }}
+        QDialog QSpinBox, QDialog QDoubleSpinBox, QDialog QComboBox {{
+            background-color: {BG_TERTIARY};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_DEFAULT};
+            border-radius: {RADIUS_SM}px;
+            padding: 4px 8px;
+            min-height: 24px;
+        }}
+        QDialog QSpinBox:focus, QDialog QDoubleSpinBox:focus, QDialog QComboBox:focus {{
+            border: 1px solid {ACCENT_PRIMARY};
+        }}
+        QDialog QPushButton {{
+            background-color: {ACCENT_PRIMARY};
+            color: {TEXT_INVERSE};
+            border: none;
+            border-radius: {RADIUS_MD}px;
+            padding: 8px 16px;
+            font-weight: bold;
+            min-height: 32px;
+        }}
+        QDialog QPushButton:hover {{
+            background-color: {ACCENT_HOVER};
+        }}
+        QDialog QPushButton:pressed {{
+            background-color: #3a7fa4;
+        }}
+        QDialog QPushButton#cancelButton {{
+            background-color: {BG_TERTIARY};
+            color: {TEXT_PRIMARY};
+            border: 1px solid {BORDER_DEFAULT};
+        }}
+        QDialog QPushButton#cancelButton:hover {{
+            background-color: {BG_HOVER};
+        }}
+        QDialog QTabWidget::pane {{
+            border: 1px solid {BORDER_DEFAULT};
+            background-color: {BG_SECONDARY};
+            border-radius: {RADIUS_MD}px;
+        }}
+        QDialog QTabBar::tab {{
+            background-color: {BG_TERTIARY};
+            color: {TEXT_PRIMARY};
+            padding: 8px 16px;
+            border: 1px solid {BORDER_DEFAULT};
+            border-bottom: none;
+            border-top-left-radius: {RADIUS_MD}px;
+            border-top-right-radius: {RADIUS_MD}px;
+        }}
+        QDialog QTabBar::tab:selected {{
+            background-color: {ACCENT_PRIMARY};
+            color: {TEXT_INVERSE};
+            font-weight: bold;
+        }}
+        QDialog QTabBar::tab:hover:!selected {{
+            background-color: {BG_HOVER};
+        }}
+    """

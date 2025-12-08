@@ -5,8 +5,10 @@ from PySide6.QtWidgets import (
 
 try:
     from ..config import read_env_file
+    from .. import theme
 except ImportError:
     from config import read_env_file
+    import theme
 
 
 def show_env_editor(parent) -> dict | None:
@@ -15,44 +17,12 @@ def show_env_editor(parent) -> dict | None:
     dlg.setModal(True)
     dlg.setMinimumWidth(600)
     dlg.setMinimumHeight(400)
-    dlg.setStyleSheet("""
-        QDialog {
-            background-color: #f9f9f9;
-        }
-        QLabel {
-            color: #1a1a1a;
-            font-size: 10pt;
-        }
-        QLineEdit {
-            background-color: white;
-            color: #1a1a1a;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 6px;
-        }
-        QLineEdit:focus {
-            border: 1px solid #2196F3;
-        }
-        QPushButton {
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-weight: bold;
-            min-height: 28px;
-        }
-        QPushButton:hover {
-            background-color: #1976D2;
-        }
-        QPushButton:pressed {
-            background-color: #0D47A1;
-        }
-        QScrollArea {
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-    """)
+    # Use centralized dark theme
+    dlg.setStyleSheet(
+        theme.get_dialog_stylesheet() +
+        theme.get_input_stylesheet() +
+        theme.get_scrollbar_stylesheet()
+    )
 
     env_vars = read_env_file()
     result_env: dict = {}
@@ -62,7 +32,7 @@ def show_env_editor(parent) -> dict | None:
     layout.setContentsMargins(20, 20, 20, 20)
 
     info = QLabel('Edit environment variables in .env file:')
-    info.setStyleSheet("color: #555; padding: 5px; font-weight: 500;")
+    info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 5px; font-weight: 500;")
     layout.addWidget(info)
 
     scroll = QScrollArea(); scroll.setWidgetResizable(True)

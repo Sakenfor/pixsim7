@@ -1,5 +1,5 @@
 from typing import Optional
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu, QSizePolicy
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
 from datetime import datetime
@@ -55,6 +55,7 @@ class ServiceCard(QFrame):
         title_font = QFont(); title_font.setPointSize(9); title_font.setBold(True)
         self.title_label.setFont(title_font)
         self.title_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        self.title_label.setMinimumWidth(60)
         info_layout.addWidget(self.title_label)
 
         status_info = STATUS_TEXT[self.service_process.health_status]
@@ -70,60 +71,49 @@ class ServiceCard(QFrame):
         status_font = QFont(); status_font.setPointSize(7)
         self.status_label.setFont(status_font)
         self.status_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY};")
+        self.status_label.setMinimumWidth(40)
         info_layout.addWidget(self.status_label)
 
         layout.addLayout(info_layout, stretch=1)
 
         btn_layout = QHBoxLayout(); btn_layout.setSpacing(4)
 
-        self.start_btn = QPushButton("Start")
-        self.start_btn.setFixedSize(45, theme.BUTTON_HEIGHT_MD)
-        self.start_btn.setToolTip("Start service")
-        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
-        self.start_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {theme.ACCENT_SUCCESS};
-                color: white;
-                font-size: {theme.FONT_SIZE_XS};
-                font-weight: 600;
-                border: none;
-                border-radius: {theme.RADIUS_SM}px;
-            }}
-            QPushButton:hover {{
-                background-color: #56d364;
-            }}
-            QPushButton:disabled {{
-                background-color: {theme.BG_SECONDARY};
-                color: {theme.TEXT_DISABLED};
-            }}
-        """)
-        btn_layout.addWidget(self.start_btn)
+        # Helper to create flexible buttons
+        def make_btn(text, min_width, tooltip, bg_color, hover_color, stretch=1):
+            btn = QPushButton(text)
+            btn.setMinimumWidth(min_width)
+            btn.setFixedHeight(theme.BUTTON_HEIGHT_MD)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setToolTip(tooltip)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {bg_color};
+                    color: white;
+                    font-size: {theme.FONT_SIZE_XS};
+                    font-weight: 600;
+                    border: none;
+                    border-radius: {theme.RADIUS_SM}px;
+                }}
+                QPushButton:hover {{
+                    background-color: {hover_color};
+                }}
+                QPushButton:disabled {{
+                    background-color: {theme.BG_SECONDARY};
+                    color: {theme.TEXT_DISABLED};
+                }}
+            """)
+            return btn
 
-        self.stop_btn = QPushButton("Stop")
-        self.stop_btn.setFixedSize(45, theme.BUTTON_HEIGHT_MD)
-        self.stop_btn.setToolTip("Stop service gracefully")
+        self.start_btn = make_btn("Start", 36, "Start service", theme.ACCENT_SUCCESS, "#56d364")
+        self.start_btn.setEnabled(not self.service_process.running and self.service_process.tool_available)
+        btn_layout.addWidget(self.start_btn, stretch=1)
+
+        self.stop_btn = make_btn("Stop", 36, "Stop service gracefully", theme.ACCENT_ERROR, "#ff6b6b")
         self.stop_btn.setEnabled(self.service_process.running)
-        self.stop_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {theme.ACCENT_ERROR};
-                color: white;
-                font-size: {theme.FONT_SIZE_XS};
-                font-weight: 600;
-                border: none;
-                border-radius: {theme.RADIUS_SM}px;
-            }}
-            QPushButton:hover {{
-                background-color: #ff6b6b;
-            }}
-            QPushButton:disabled {{
-                background-color: {theme.BG_SECONDARY};
-                color: {theme.TEXT_DISABLED};
-            }}
-        """)
-        btn_layout.addWidget(self.stop_btn)
+        btn_layout.addWidget(self.stop_btn, stretch=1)
 
         self.force_stop_btn = QPushButton("⚠")
-        self.force_stop_btn.setFixedSize(28, theme.BUTTON_HEIGHT_MD)
+        self.force_stop_btn.setFixedSize(24, theme.BUTTON_HEIGHT_MD)
         self.force_stop_btn.setToolTip("Force stop service (kill all processes)")
         self.force_stop_btn.setEnabled(self.service_process.running)
         self.force_stop_btn.setStyleSheet(f"""
@@ -145,46 +135,12 @@ class ServiceCard(QFrame):
         """)
         btn_layout.addWidget(self.force_stop_btn)
 
-        self.restart_btn = QPushButton("Restart")
-        self.restart_btn.setFixedSize(52, theme.BUTTON_HEIGHT_MD)
-        self.restart_btn.setToolTip("Restart service")
+        self.restart_btn = make_btn("↻", 28, "Restart service", theme.ACCENT_WARNING, "#e8a730")
         self.restart_btn.setEnabled(self.service_process.running)
-        self.restart_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {theme.ACCENT_WARNING};
-                color: white;
-                font-size: {theme.FONT_SIZE_XS};
-                font-weight: 600;
-                border: none;
-                border-radius: {theme.RADIUS_SM}px;
-            }}
-            QPushButton:hover {{
-                background-color: #e8a730;
-            }}
-            QPushButton:disabled {{
-                background-color: {theme.BG_SECONDARY};
-                color: {theme.TEXT_DISABLED};
-            }}
-        """)
-        btn_layout.addWidget(self.restart_btn)
+        btn_layout.addWidget(self.restart_btn, stretch=1)
 
         if service_def.url:
-            self.open_btn = QPushButton("Open")
-            self.open_btn.setFixedSize(42, theme.BUTTON_HEIGHT_MD)
-            self.open_btn.setToolTip(f"Open {service_def.url}")
-            self.open_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {theme.ACCENT_PRIMARY};
-                    color: white;
-                    font-size: {theme.FONT_SIZE_XS};
-                    font-weight: 600;
-                    border: none;
-                    border-radius: {theme.RADIUS_SM}px;
-                }}
-                QPushButton:hover {{
-                    background-color: {theme.ACCENT_HOVER};
-                }}
-            """)
+            self.open_btn = make_btn("↗", 24, f"Open {service_def.url}", theme.ACCENT_PRIMARY, theme.ACCENT_HOVER)
             btn_layout.addWidget(self.open_btn)
         else:
             self.open_btn = None

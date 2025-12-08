@@ -52,7 +52,7 @@ class ConsoleTab:
         log_service_font = QFont()
         log_service_font.setPointSize(10)
         launcher.log_service_label.setFont(log_service_font)
-        launcher.log_service_label.setStyleSheet("color: #555; padding-left: 10px; font-weight: 500;")
+        launcher.log_service_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding-left: 10px; font-weight: 500;")
         console_header_layout.addWidget(launcher.log_service_label)
 
         # Quick navigation into DB logs for the same service

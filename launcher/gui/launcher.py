@@ -177,7 +177,11 @@ class LauncherWindow(QWidget):
             theme.get_base_stylesheet() +
             theme.get_button_stylesheet() +
             theme.get_input_stylesheet() +
-            theme.get_checkbox_stylesheet()
+            theme.get_checkbox_stylesheet() +
+            theme.get_splitter_stylesheet() +
+            theme.get_scrollbar_stylesheet() +
+            theme.get_menu_stylesheet() +
+            theme.get_tooltip_stylesheet()
         )
         self.setStyleSheet(combined_styles)
 
@@ -289,14 +293,18 @@ class LauncherWindow(QWidget):
 
     def _init_ui(self):
         root = QHBoxLayout(self)
-        splitter = QSplitter(Qt.Horizontal)
-        root.addWidget(splitter)
+        root.setContentsMargins(0, 0, 0, 0)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(6)  # Make handle wide enough to grab
+        self.splitter.setChildrenCollapsible(False)  # Prevent panels from collapsing
+        root.addWidget(self.splitter)
 
         # Left panel: service cards & controls
         left = QWidget()
+        left.setMinimumWidth(280)  # Minimum width for services panel
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
-        splitter.addWidget(left)
+        self.splitter.addWidget(left)
 
         # Header
         header = QLabel("Services")
@@ -372,9 +380,13 @@ class LauncherWindow(QWidget):
 
         # Right panel: main tab widget for all tools
         right = QWidget()
+        right.setMinimumWidth(400)  # Minimum width for console/tabs panel
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
-        splitter.addWidget(right)
+        self.splitter.addWidget(right)
+
+        # Set initial splitter sizes (left panel ~30%, right panel ~70%)
+        self.splitter.setSizes([350, 850])
 
         # Create main tab widget with dark theme
         self.main_tabs = QTabWidget()

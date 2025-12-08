@@ -2,8 +2,10 @@ from PySide6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox,
 
 try:
     from ..config import Ports
+    from .. import theme
 except ImportError:
     from config import Ports
+    import theme
 
 
 def show_ports_dialog(parent, current_ports: Ports) -> Ports | None:
@@ -11,40 +13,8 @@ def show_ports_dialog(parent, current_ports: Ports) -> Ports | None:
     dlg.setWindowTitle('Edit Ports')
     dlg.setModal(True)
     dlg.setMinimumWidth(400)
-    dlg.setStyleSheet("""
-        QDialog {
-            background-color: #f9f9f9;
-        }
-        QLabel {
-            color: #1a1a1a;
-            font-size: 10pt;
-        }
-        QLineEdit {
-            background-color: white;
-            color: #1a1a1a;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            padding: 6px;
-        }
-        QLineEdit:focus {
-            border: 1px solid #2196F3;
-        }
-        QPushButton {
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-weight: bold;
-            min-height: 28px;
-        }
-        QPushButton:hover {
-            background-color: #1976D2;
-        }
-        QPushButton:pressed {
-            background-color: #0D47A1;
-        }
-    """)
+    # Use centralized dark theme
+    dlg.setStyleSheet(theme.get_dialog_stylesheet() + theme.get_input_stylesheet())
 
     layout = QFormLayout(dlg)
     layout.setSpacing(12)
