@@ -21,6 +21,27 @@ class StatAxis(BaseModel):
     - Relationship axis: affinity (0-100)
     - Skill axis: strength (0-100)
     - Resource axis: health (0-maxHealth)
+
+    Semantic Types:
+    Axes can declare a semantic_type to enable automatic derivation between
+    packages that don't know about each other. Standard semantic types include:
+
+    Sentiment:
+    - "positive_sentiment": Affinity, liking, approval, reputation
+    - "negative_sentiment": Dislike, tension, disapproval, hostility
+
+    Arousal/Energy:
+    - "arousal_source": Chemistry, excitement, stimulation
+    - "calming_source": Comfort, relaxation, peace
+
+    Resources:
+    - "energy_resource": Energy, stamina (depletable)
+    - "stress_indicator": Stress, anxiety, pressure
+
+    Personality:
+    - "extraversion_trait": Social energy, outgoingness
+    - "openness_trait": Curiosity, creativity
+    - "agreeableness_trait": Cooperation, empathy
     """
 
     name: str = Field(description="Unique name for this axis (e.g., 'affinity', 'strength')")
@@ -29,6 +50,16 @@ class StatAxis(BaseModel):
     default_value: float = Field(default=0.0, description="Default starting value")
     display_name: Optional[str] = Field(default=None, description="Human-readable name")
     description: Optional[str] = Field(default=None, description="Axis description for tooltips")
+
+    # Semantic type for automatic derivation discovery
+    semantic_type: Optional[str] = Field(
+        default=None,
+        description="Semantic type for cross-package derivation (e.g., 'positive_sentiment')"
+    )
+    semantic_weight: float = Field(
+        default=1.0,
+        description="Weight when combining multiple axes of same semantic type (0.0-1.0)"
+    )
 
     @field_validator('name')
     @classmethod

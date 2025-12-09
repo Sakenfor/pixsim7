@@ -32,7 +32,6 @@ def register_core_relationships_package() -> None:
     register_stat_package(pkg)
 
 
-# Register package at import time so it is always available in the
-# registry for tools and plugins that query it.
-register_core_relationships_package()
+# NOTE: Package is registered via register_core_stat_packages() in __init__.py
+# This allows plugin system to control when packages are loaded.
 

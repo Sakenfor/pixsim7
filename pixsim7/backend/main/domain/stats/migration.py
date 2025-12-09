@@ -324,7 +324,9 @@ def get_default_relationship_definition() -> StatDefinition:
                 max_value=100.0,
                 default_value=0.0,
                 display_name="Affinity",
-                description="Overall fondness and attraction"
+                description="Overall fondness and attraction",
+                semantic_type="positive_sentiment",
+                semantic_weight=1.0,
             ),
             StatAxis(
                 name="trust",
@@ -332,7 +334,9 @@ def get_default_relationship_definition() -> StatDefinition:
                 max_value=100.0,
                 default_value=0.0,
                 display_name="Trust",
-                description="Reliability and confidence"
+                description="Reliability and confidence",
+                semantic_type="trust_indicator",
+                semantic_weight=1.0,
             ),
             StatAxis(
                 name="chemistry",
@@ -340,7 +344,9 @@ def get_default_relationship_definition() -> StatDefinition:
                 max_value=100.0,
                 default_value=0.0,
                 display_name="Chemistry",
-                description="Physical and emotional compatibility"
+                description="Physical and emotional compatibility",
+                semantic_type="arousal_source",
+                semantic_weight=1.0,
             ),
             StatAxis(
                 name="tension",
@@ -348,7 +354,9 @@ def get_default_relationship_definition() -> StatDefinition:
                 max_value=100.0,
                 default_value=0.0,
                 display_name="Tension",
-                description="Unresolved emotional energy"
+                description="Unresolved emotional energy",
+                semantic_type="negative_sentiment",
+                semantic_weight=1.0,
             ),
         ],
         tiers=[
