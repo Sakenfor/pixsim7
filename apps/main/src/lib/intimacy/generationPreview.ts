@@ -18,6 +18,7 @@ import type {
 import type { SimulatedRelationshipState } from './gateChecking';
 import { deriveSocialContext } from './socialContextDerivation';
 import { createGeneration, getGeneration, type GenerationResponse } from '../api/generations';
+import { normalizeProviderParams } from '@/lib/generation/normalizeProviderParams';
 
 /**
  * Preview generation request for intimacy scenes
@@ -148,7 +149,7 @@ export async function generateIntimacyPreview(
       version: 1,
       socialContext,
       // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
-      provider_params: generationParams || {},
+      provider_params: normalizeProviderParams(generationParams || {}),
     },
     provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,
@@ -255,7 +256,7 @@ export async function startIntimacyPreview(
       version: 1,
       socialContext,
       // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
-      provider_params: generationParams || {},
+      provider_params: normalizeProviderParams(generationParams || {}),
     },
     provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,

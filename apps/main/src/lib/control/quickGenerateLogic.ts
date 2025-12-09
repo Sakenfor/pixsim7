@@ -1,8 +1,10 @@
-import type { ControlCenterState } from '../../stores/controlCenterStore';
 import type { SelectedAsset } from '../../stores/assetSelectionStore';
 import type { QueuedAsset } from '../../stores/generationQueueStore';
+import { normalizeProviderParams } from '@/lib/generation/normalizeProviderParams';
+import type { OperationType } from '@/types/operations';
 
-export type OperationType = ControlCenterState['operationType'];
+// Re-export for backwards compatibility
+export type { OperationType };
 
 export interface QuickGenerateContext {
   operationType: OperationType;
@@ -11,6 +13,7 @@ export interface QuickGenerateContext {
   dynamicParams: Record<string, any>;
   imageUrls: string[];
   prompts: string[];
+  transitionDurations?: number[];
   activeAsset?: SelectedAsset;
   mainQueueFirst?: QueuedAsset;
 }
@@ -204,6 +207,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     }
   }
 
+  let transitionDurations: number[] | undefined;
   if (operationType === 'video_transition') {
     const validImages = imageUrls.map(s => s.trim()).filter(Boolean);
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
@@ -236,6 +240,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         finalPrompt: trimmedPrompt,
       };
     }
+
+    if (expectedPrompts > 0) {
+      transitionDurations = sanitizeTransitionDurations(
+        context.transitionDurations,
+        expectedPrompts
+      );
+    }
   }
 
   // Build params - merge preset params, dynamic params, and operation-specific params
@@ -247,12 +258,38 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   // Add array fields for video_transition
   if (operationType === 'video_transition') {
-    params.image_urls = imageUrls.map(s => s.trim()).filter(Boolean);
-    params.prompts = prompts.map(s => s.trim()).filter(Boolean);
+    params.image_urls = imageUrls.map((s) => s.trim()).filter(Boolean);
+    params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
+    if (transitionDurations && transitionDurations.length) {
+      params.durations = transitionDurations;
+    }
   }
 
+  const normalizedParams = normalizeProviderParams(params);
+
   return {
-    params,
+    params: normalizedParams,
     finalPrompt: trimmedPrompt,
   };
+}
+
+function sanitizeTransitionDurations(
+  durations: number[] | undefined,
+  expectedCount: number
+): number[] {
+  const result: number[] = [];
+  const source = Array.isArray(durations) ? durations : [];
+
+  for (let i = 0; i < expectedCount; i += 1) {
+    const raw = source[i];
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) {
+      const clamped = Math.min(5, Math.max(1, Math.round(numeric)));
+      result.push(clamped);
+    } else {
+      result.push(5);
+    }
+  }
+
+  return result;
 }

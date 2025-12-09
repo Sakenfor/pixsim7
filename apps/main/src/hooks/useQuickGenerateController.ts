@@ -91,6 +91,7 @@ export function useQuickGenerateController() {
         dynamicParams: modifiedDynamicParams,
         imageUrls: modifiedImageUrls,
         prompts: bindings.prompts,
+        transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
         mainQueueFirst: bindings.mainQueue[0],
       });
@@ -103,11 +104,22 @@ export function useQuickGenerateController() {
 
       const finalPrompt = buildResult.finalPrompt;
 
+      // For flexible operations: switch to text-based operation if no image provided
+      let effectiveOperationType = operationType;
+      const hasImage = buildResult.params.image_url || modifiedImageUrls.length > 0;
+      if (!hasImage) {
+        if (operationType === 'image_to_video') {
+          effectiveOperationType = 'text_to_video';
+        } else if (operationType === 'image_to_image') {
+          effectiveOperationType = 'text_to_image';
+        }
+      }
+
       const result = await generateAsset({
         prompt: finalPrompt,
         providerId,
         presetId,
-        operationType,
+        operationType: effectiveOperationType,
         extraParams: buildResult.params,
         presetParams,
       });
@@ -187,4 +199,3 @@ export function useQuickGenerateController() {
     generate,
   };
 }
-

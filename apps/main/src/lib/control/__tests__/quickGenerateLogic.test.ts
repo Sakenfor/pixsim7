@@ -58,4 +58,50 @@ describe('buildGenerationRequest', () => {
       image_url: 'https://example.com/image.png',
     });
   });
+
+  it('normalizes toggle params to ints and drops disabled ones', () => {
+    const context = createBaseContext({
+      prompt: 'waves',
+      dynamicParams: {
+        audio: true,
+        multi_shot: 'true',
+        off_peak: 'false',
+      },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params).toMatchObject({
+      audio: 1,
+      multi_shot: 1,
+    });
+    expect(result.params).not.toHaveProperty('off_peak');
+  });
+
+  it('rounds duration values to integers', () => {
+    const context = createBaseContext({
+      prompt: 'waves',
+      dynamicParams: {
+        duration: '12.6',
+      },
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.duration).toBe(13);
+  });
+
+  it('includes sanitized transition durations per segment', () => {
+    const context = createBaseContext({
+      operationType: 'video_transition',
+      prompt: 'make it seamless',
+      imageUrls: ['https://img/1', 'https://img/2', 'https://img/3'],
+      prompts: ['fade', 'sparkle'],
+      transitionDurations: [1.2, 9],
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.durations).toEqual([1, 5]);
+  });
 });

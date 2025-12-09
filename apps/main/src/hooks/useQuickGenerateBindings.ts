@@ -5,10 +5,11 @@ import {
   type GenerationQueueState,
   type QueuedAsset,
 } from '../stores/generationQueueStore';
-import type { ControlCenterState } from '../stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
+import type { OperationType } from '@/types/operations';
 
-export type OperationType = ControlCenterState['operationType'];
+// Re-export for backwards compatibility
+export type { OperationType };
 
 export interface QuickGenerateBindings {
   lastSelectedAsset?: SelectedAsset;
@@ -20,6 +21,8 @@ export interface QuickGenerateBindings {
   setImageUrls: Dispatch<SetStateAction<string[]>>;
   prompts: string[];
   setPrompts: Dispatch<SetStateAction<string[]>>;
+  transitionDurations: number[];
+  setTransitionDurations: Dispatch<SetStateAction<number[]>>;
   consumeFromQueue: GenerationQueueState['consumeFromQueue'];
   removeFromQueue: GenerationQueueState['removeFromQueue'];
   clearTransitionQueue: () => void;
@@ -62,6 +65,7 @@ export function useQuickGenerateBindings(
   // Operation-specific array fields for video_transition
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [prompts, setPrompts] = useState<string[]>([]);
+  const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
   // Function to use active asset explicitly (e.g., "Use Asset" button)
   const useActiveAsset = () => {
@@ -109,7 +113,12 @@ export function useQuickGenerateBindings(
 
   // Auto-fill transition queue
   useEffect(() => {
-    if (transitionQueue.length === 0) return;
+    if (transitionQueue.length === 0) {
+      setImageUrls([]);
+      setPrompts([]);
+      setTransitionDurations([]);
+      return;
+    }
 
     // Set operation to video_transition
     setOperationType('video_transition');
@@ -129,6 +138,13 @@ export function useQuickGenerateBindings(
       // Trim if we have more prompts than transitions
       return newPrompts.slice(0, numTransitions);
     });
+    setTransitionDurations(prev => {
+      const next = [...prev];
+      while (next.length < numTransitions) {
+        next.push(5);
+      }
+      return next.slice(0, numTransitions);
+    });
   }, [transitionQueue, setOperationType]);
 
   const clearTransitionQueue = () => {
@@ -145,6 +161,8 @@ export function useQuickGenerateBindings(
     setImageUrls,
     prompts,
     setPrompts,
+    transitionDurations,
+    setTransitionDurations,
     consumeFromQueue,
     removeFromQueue,
     clearTransitionQueue,
