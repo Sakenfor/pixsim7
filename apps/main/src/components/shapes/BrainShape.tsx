@@ -35,6 +35,13 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
   const [glowIntensity, setGlowIntensity] = useState(0.5);
   const [neuralActivity, setNeuralActivity] = useState(0.5);
 
+  const personalityStats = brainState.stats['personality'];
+  const relationshipsStats = brainState.stats['relationships'];
+  const moodStats = brainState.stats['mood'];
+  const logicStrategies = (brainState.derived['logic_strategies'] as string[] | undefined) ?? [];
+  const instincts = (brainState.derived['instincts'] as string[] | undefined) ?? [];
+  const memories = (brainState.derived['memories'] as any[] | undefined) ?? [];
+
   // Update visual behaviors based on state
   useEffect(() => {
     setPulseRate(brainShape.behaviors.pulseRate(brainState));
@@ -71,7 +78,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Cortex - Top */}
         <BrainLobe
           face="cortex"
-          data={brainState.traits}
+          itemCount={Object.keys(personalityStats?.axes ?? {}).length}
           position={{ x: 0, y: -30, z: 0 }}
           rotation={{ x: -30, y: 0, z: 0 }}
           active={activeFace === 'cortex'}
@@ -84,7 +91,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Memory - Back */}
         <BrainLobe
           face="memory"
-          data={brainState.memories}
+          itemCount={memories.length}
           position={{ x: 0, y: 0, z: -30 }}
           rotation={{ x: 0, y: 180, z: 0 }}
           active={activeFace === 'memory'}
@@ -97,7 +104,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Emotion - Right */}
         <BrainLobe
           face="emotion"
-          data={brainState.mood}
+          itemCount={Object.keys(moodStats?.axes ?? {}).length}
           position={{ x: 30, y: 0, z: 0 }}
           rotation={{ x: 0, y: 90, z: 0 }}
           active={activeFace === 'emotion'}
@@ -110,7 +117,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Logic - Left */}
         <BrainLobe
           face="logic"
-          data={brainState.logic}
+          itemCount={logicStrategies.length}
           position={{ x: -30, y: 0, z: 0 }}
           rotation={{ x: 0, y: -90, z: 0 }}
           active={activeFace === 'logic'}
@@ -123,7 +130,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Instinct - Bottom */}
         <BrainLobe
           face="instinct"
-          data={brainState.instincts}
+          itemCount={instincts.length}
           position={{ x: 0, y: 30, z: 0 }}
           rotation={{ x: 30, y: 0, z: 0 }}
           active={activeFace === 'instinct'}
@@ -136,7 +143,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
         {/* Social - Front */}
         <BrainLobe
           face="social"
-          data={brainState.social}
+          itemCount={Object.keys(relationshipsStats?.axes ?? {}).length}
           position={{ x: 0, y: 0, z: 30 }}
           rotation={{ x: 0, y: 0, z: 0 }}
           active={activeFace === 'social'}
@@ -163,7 +170,7 @@ export const BrainShape: React.FC<BrainShapeProps> = ({
 // Individual brain lobe component
 interface BrainLobeProps {
   face: BrainFace;
-  data: any;
+  itemCount: number;
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number };
   active: boolean;
@@ -175,7 +182,7 @@ interface BrainLobeProps {
 
 const BrainLobe: React.FC<BrainLobeProps> = ({
   face,
-  data,
+  itemCount,
   position,
   rotation,
   active,
@@ -185,12 +192,7 @@ const BrainLobe: React.FC<BrainLobeProps> = ({
   style,
 }) => {
   const faceConfig = brainShape.faces[face];
-  const dataCount =
-    typeof data === 'object'
-      ? Array.isArray(data)
-        ? data.length
-        : Object.keys(data).length
-      : 0;
+  const dataCount = itemCount;
 
   return (
     <div

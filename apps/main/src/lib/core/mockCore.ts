@@ -7,14 +7,21 @@ import {
   PixSim7Core,
   GameSession,
   NpcRelationshipState,
-  NpcBrainState,
   CoreEventMap,
-  NpcMemory,
 } from './types';
+import type { BrainState, BrainStatSnapshot } from '@pixsim7/shared.types';
 
 type EventHandler<K extends keyof CoreEventMap> = (
   payload: CoreEventMap[K]
 ) => void;
+
+type MockMemory = {
+  id: string;
+  timestamp: string;
+  summary: string;
+  tags: string[];
+  source?: 'scene' | 'event' | 'flag';
+};
 
 export class MockPixSim7Core implements PixSim7Core {
   private session: GameSession | null = null;
@@ -132,7 +139,7 @@ export class MockPixSim7Core implements PixSim7Core {
     }
   }
 
-  getNpcBrainState(npcId: number): NpcBrainState | null {
+  getNpcBrainState(npcId: number): BrainState | null {
     const npc = this.mockNpcs.get(npcId);
     const relationship = this.getNpcRelationship(npcId);
 
@@ -141,62 +148,108 @@ export class MockPixSim7Core implements PixSim7Core {
     // Derive mood from relationship state
     const mood = this.deriveMood(relationship);
 
-    // Generate mock memories
     const memories = this.generateMockMemories(npcId, relationship);
 
-    return {
-      // Cortex
-      traits: npc.personality.traits || {},
-      personaTags: npc.personality.tags || [],
-      conversationStyle: npc.personality.conversation_style,
+    const stats: Record<string, BrainStatSnapshot> = {};
+    const derived: Record<string, unknown> = {};
 
-      // Memory
-      memories,
-
-      // Emotion
-      mood,
-
-      // Logic (derived from personality)
-      logic: {
-        strategies: this.deriveStrategies(npc.personality.traits),
-      },
-
-      // Instinct (derived from tags)
-      instincts: this.deriveInstincts(npc.personality.tags),
-
-      // Social
-      social: relationship || {
-        affinity: 0,
-        trust: 0,
-        chemistry: 0,
-        tension: 0,
-        flags: [],
-      },
+    // Personality stats (scale traits 0-1 to 0-100)
+    const rawTraits = (npc.personality.traits || {}) as Record<
+      string,
+      number
+    >;
+    const personalityAxes: Record<string, number> = {};
+    Object.entries(rawTraits).forEach(([key, value]) => {
+      personalityAxes[key] = Math.round((value ?? 0) * 100);
+    });
+    stats['personality'] = {
+      axes: personalityAxes,
+      tiers: {},
+      levelId: undefined,
+      levelIds: [],
     };
-  }
 
-  applyNpcBrainEdit(npcId: number, edit: Partial<NpcBrainState>): void {
-    // Update relationship if social changed
-    if (edit.social) {
-      this.updateNpcRelationship(npcId, edit.social);
+    const personaTags: string[] = npc.personality.tags || [];
+    if (personaTags.length > 0) {
+      derived['persona_tags'] = personaTags;
+    }
+    if (npc.personality.conversation_style) {
+      derived['conversation_style'] = npc.personality.conversation_style;
     }
 
-    // Update NPC personality if traits changed
-    if (edit.traits || edit.personaTags || edit.conversationStyle) {
-      const npc = this.mockNpcs.get(npcId);
-      if (npc) {
-        npc.personality = {
-          ...npc.personality,
-          ...(edit.traits && { traits: edit.traits }),
-          ...(edit.personaTags && { tags: edit.personaTags }),
-          ...(edit.conversationStyle && {
-            conversation_style: edit.conversationStyle,
-          }),
-        };
+    // Relationship stats
+    if (relationship) {
+      stats['relationships'] = {
+        axes: {
+          affinity: relationship.affinity,
+          trust: relationship.trust,
+          chemistry: relationship.chemistry,
+          tension: relationship.tension,
+        },
+        tiers: {},
+        levelId: relationship.tierId,
+        levelIds: relationship.tierId ? [relationship.tierId] : [],
+      };
+
+      if (relationship.intimacyLevelId) {
+        derived['intimacy_level'] = relationship.intimacyLevelId;
+      }
+
+      if (relationship.flags && relationship.flags.length > 0) {
+        derived['relationship_flags'] = relationship.flags;
       }
     }
 
-    // Emit brain change
+    // Mood stat + derived mood
+    stats['mood'] = {
+      axes: {
+        valence: mood.valence,
+        arousal: mood.arousal,
+      },
+      tiers: {},
+      levelId: mood.label,
+      levelIds: mood.label ? [mood.label] : [],
+    };
+    derived['mood'] = { ...mood, source: 'mock' };
+
+    // Logic strategies
+    const strategies = this.deriveStrategies(rawTraits);
+    if (strategies.length > 0) {
+      derived['logic_strategies'] = strategies;
+    }
+
+    // Instincts
+    const instincts = this.deriveInstincts(personaTags);
+    if (instincts.length > 0) {
+      derived['instincts'] = instincts;
+    }
+
+    // Memories
+    if (memories.length > 0) {
+      derived['memories'] = memories;
+    }
+
+    return {
+      npcId,
+      worldId: 1,
+      stats,
+      derived,
+      computedAt: Date.now(),
+      sourcePackages: ['mock.personality', 'mock.relationships', 'mock.mood'],
+    };
+  }
+
+  applyNpcBrainEdit(_npcId: number, _edit: Partial<BrainState>): void {
+    // Mock implementation: BrainState is derived from internal session/personality,
+    // so edits are not persisted. Emit current brain state for listeners.
+    const npcIds = Array.from(this.mockNpcs.keys());
+    npcIds.forEach((npcId) => {
+      const brain = this.getNpcBrainState(npcId);
+      if (brain) {
+        this.emit('npcBrainChanged', { npcId, brain });
+      }
+    });
+  }
     const brain = this.getNpcBrainState(npcId);
     if (brain) {
       this.emit('npcBrainChanged', { npcId, brain });
@@ -230,28 +283,31 @@ export class MockPixSim7Core implements PixSim7Core {
 
   // Helper methods for deriving brain state
 
-  private deriveMood(relationship: NpcRelationshipState | null): {
-    valence: number;
-    arousal: number;
-    label?: string;
-  } {
+  private deriveMood(
+    relationship: NpcRelationshipState | null
+  ): { valence: number; arousal: number; label?: string } {
     if (!relationship) {
-      return { valence: 0, arousal: 0, label: 'neutral' };
+      return { valence: 50, arousal: 50, label: 'neutral' };
     }
 
-    // Valence: positive/negative based on affinity and tension
-    const valence = (relationship.affinity - relationship.tension) / 100;
+    // Valence: 0-100, positive when affinity is high and tension is low
+    const valence = Math.max(
+      0,
+      Math.min(100, relationship.affinity - relationship.tension * 0.5)
+    );
 
-    // Arousal: excitement based on chemistry
-    const arousal = relationship.chemistry / 100;
+    // Arousal: 0-100, increases with chemistry and tension
+    const arousal = Math.max(
+      0,
+      Math.min(100, relationship.chemistry * 0.7 + relationship.tension * 0.3)
+    );
 
-    // Derive label
+    // Derive label from valence/arousal quadrants
     let label = 'neutral';
-    if (valence > 0.5 && arousal > 0.5) label = 'excited';
-    else if (valence > 0.5 && arousal < 0.3) label = 'content';
-    else if (valence < -0.3 && arousal > 0.5) label = 'angry';
-    else if (valence < -0.3 && arousal < 0.3) label = 'sad';
-    else if (arousal > 0.7) label = 'anxious';
+    if (valence >= 60 && arousal >= 60) label = 'excited';
+    else if (valence >= 60 && arousal < 40) label = 'content';
+    else if (valence < 40 && arousal >= 60) label = 'anxious';
+    else if (valence < 40 && arousal < 40) label = 'down';
 
     return { valence, arousal, label };
   }
@@ -282,8 +338,8 @@ export class MockPixSim7Core implements PixSim7Core {
   private generateMockMemories(
     npcId: number,
     relationship: NpcRelationshipState | null
-  ): NpcMemory[] {
-    const memories: NpcMemory[] = [];
+  ): MockMemory[] {
+    const memories: MockMemory[] = [];
 
     if (!relationship) return memories;
 

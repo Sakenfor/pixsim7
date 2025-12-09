@@ -6,7 +6,8 @@
 import { useState, useEffect } from 'react';
 import { BrainShape } from '../shapes/BrainShape';
 import { mockCore } from '@/lib/core/mockCore';
-import type { NpcBrainState } from '@pixsim7/game.engine';
+import type { BrainState } from '@pixsim7/shared.types';
+import { getMood, getDerived } from '@pixsim7/shared.types';
 import { BrainFace } from '@pixsim7/scene.shapes';
 import { sciFiTheme } from '@/lib/theme/scifi-tokens';
 import './BrainShapeExample.css';
@@ -21,7 +22,7 @@ import './BrainShapeExample.css';
  */
 export const BrainShapeExample: React.FC = () => {
   const [selectedNpc, setSelectedNpc] = useState<number>(1);
-  const [brainState, setBrainState] = useState<NpcBrainState | null>(null);
+  const [brainState, setBrainState] = useState<BrainState | null>(null);
   const [activeFace, setActiveFace] = useState<BrainFace>('cortex');
   const [hoveredFace, setHoveredFace] = useState<BrainFace | null>(null);
   const [visualStyle, setVisualStyle] = useState<'holographic' | 'organic' | 'circuit'>('holographic');
@@ -151,23 +152,23 @@ export const BrainShapeExample: React.FC = () => {
 
           <div className="inspector-content">
             {activeFace === 'cortex' && (
-              <PersonalityInspector traits={brainState.traits} tags={brainState.personaTags} />
+              <PersonalityInspector brain={brainState} />
             )}
             {activeFace === 'memory' && (
-              <MemoryInspector memories={brainState.memories} />
+              <MemoryInspector brain={brainState} />
             )}
             {activeFace === 'emotion' && (
-              <MoodInspector mood={brainState.mood} />
+              <MoodInspector brain={brainState} />
             )}
             {activeFace === 'logic' && (
-              <LogicInspector logic={brainState.logic} />
+              <LogicInspector brain={brainState} />
             )}
             {activeFace === 'instinct' && (
-              <InstinctInspector instincts={brainState.instincts} />
+              <InstinctInspector brain={brainState} />
             )}
             {activeFace === 'social' && (
               <SocialInspector
-                social={brainState.social}
+                brain={brainState}
                 onUpdate={(updates) => {
                   mockCore.updateNpcRelationship(selectedNpc, updates);
                 }}
@@ -179,20 +180,34 @@ export const BrainShapeExample: React.FC = () => {
 
       {/* Status Bar */}
       <div className="status-bar">
+        {(() => {
+          const mood = getMood(brainState);
+          const relStats = brainState.stats['relationships'];
+          return (
+            <>
         <div className="status-item">
           <span className="status-label">Neural Activity:</span>
-          <span className="status-value">{Math.round(brainState.mood.arousal * 100)}%</span>
+          <span className="status-value">
+            {mood ? Math.round(mood.arousal) : '—'}%
+          </span>
         </div>
         <div className="status-item">
           <span className="status-label">Emotional Valence:</span>
           <span className="status-value">
-            {brainState.mood.valence > 0 ? '+' : ''}{(brainState.mood.valence * 100).toFixed(0)}
+            {mood
+              ? `${mood.valence >= 50 ? '+' : ''}${mood.valence.toFixed(0)}`
+              : '—'}
           </span>
         </div>
         <div className="status-item">
           <span className="status-label">Relationship Tier:</span>
-          <span className="status-value">{brainState.social.tierId || 'Stranger'}</span>
+          <span className="status-value">
+            {relStats?.levelId || 'Stranger'}
+          </span>
         </div>
+            </>
+          );
+        })()}
       </div>
     </div>
   );
@@ -203,9 +218,13 @@ export const BrainShapeExample: React.FC = () => {
 // ============================================================================
 
 const PersonalityInspector: React.FC<{
-  traits: Record<string, number>;
-  tags: string[];
-}> = ({ traits, tags }) => (
+  brain: BrainState;
+}> = ({ brain }) => {
+  const personality = brain.stats['personality'];
+  const traits = personality?.axes ?? {};
+  const tags = getDerived<string[]>(brain, 'persona_tags', []);
+
+  return (
   <div className="inspector-section">
     <h3>Personality Traits</h3>
     {Object.entries(traits).map(([trait, value]) => (
@@ -214,10 +233,10 @@ const PersonalityInspector: React.FC<{
         <div className="trait-bar">
           <div
             className="trait-fill"
-            style={{ width: `${value * 100}%` }}
+            style={{ width: `${value}%` }}
           />
         </div>
-        <span className="trait-value">{(value * 100).toFixed(0)}%</span>
+        <span className="trait-value">{value.toFixed(0)}%</span>
       </div>
     ))}
 
@@ -229,10 +248,14 @@ const PersonalityInspector: React.FC<{
     </div>
   </div>
 );
+};
 
 const MemoryInspector: React.FC<{
-  memories: any[];
-}> = ({ memories }) => (
+  brain: BrainState;
+}> = ({ brain }) => {
+  const memories = getDerived<any[]>(brain, 'memories', []);
+
+  return (
   <div className="inspector-section">
     <h3>Recent Memories</h3>
     <div className="memory-list">
@@ -255,11 +278,24 @@ const MemoryInspector: React.FC<{
       )}
     </div>
   </div>
-);
+  );
+};
 
 const MoodInspector: React.FC<{
-  mood: any;
-}> = ({ mood }) => (
+  brain: BrainState;
+}> = ({ brain }) => {
+  const mood = getMood(brain);
+
+  if (!mood) {
+    return (
+      <div className="inspector-section">
+        <h3>Current Mood: Neutral</h3>
+        <p className="text-sm text-neutral-500">No mood data available.</p>
+      </div>
+    );
+  }
+
+  return (
   <div className="inspector-section">
     <h3>Current Mood: {mood.label || 'Neutral'}</h3>
 
@@ -269,7 +305,7 @@ const MoodInspector: React.FC<{
         <div className="axis-bar">
           <div
             className="axis-indicator"
-            style={{ left: `${(mood.valence + 1) * 50}%` }}
+            style={{ left: `${mood.valence}%` }}
           />
         </div>
         <div className="axis-labels">
@@ -283,7 +319,7 @@ const MoodInspector: React.FC<{
         <div className="axis-bar">
           <div
             className="axis-indicator"
-            style={{ left: `${mood.arousal * 100}%` }}
+            style={{ left: `${mood.arousal}%` }}
           />
         </div>
         <div className="axis-labels">
@@ -293,15 +329,23 @@ const MoodInspector: React.FC<{
       </div>
     </div>
   </div>
-);
+  );
+};
 
 const LogicInspector: React.FC<{
-  logic: any;
-}> = ({ logic }) => (
+  brain: BrainState;
+}> = ({ brain }) => {
+  const strategies = getDerived<string[]>(
+    brain,
+    'logic_strategies',
+    []
+  );
+
+  return (
   <div className="inspector-section">
     <h3>Decision Strategies</h3>
     <div className="strategy-list">
-      {logic.strategies.map((strategy: string) => (
+      {strategies.map((strategy) => (
         <div key={strategy} className="strategy-item">
           <span className="strategy-icon">⚡</span>
           <span className="strategy-name">{strategy}</span>
@@ -309,11 +353,15 @@ const LogicInspector: React.FC<{
       ))}
     </div>
   </div>
-);
+  );
+};
 
 const InstinctInspector: React.FC<{
-  instincts: string[];
-}> = ({ instincts }) => (
+  brain: BrainState;
+}> = ({ brain }) => {
+  const instincts = getDerived<string[]>(brain, 'instincts', []);
+
+  return (
   <div className="inspector-section">
     <h3>Base Instincts</h3>
     <div className="instinct-list">
@@ -325,12 +373,27 @@ const InstinctInspector: React.FC<{
       ))}
     </div>
   </div>
-);
+  );
+};
 
 const SocialInspector: React.FC<{
-  social: any;
+  brain: BrainState;
   onUpdate: (updates: any) => void;
-}> = ({ social, onUpdate }) => (
+}> = ({ brain, onUpdate }) => {
+  const rel = brain.stats['relationships'];
+  const flags = getDerived<string[]>(brain, 'relationship_flags', []);
+  const intimacy = getDerived<string | null>(brain, 'intimacy_level', null);
+
+  if (!rel) {
+    return (
+      <div className="inspector-section">
+        <h3>Relationship Status</h3>
+        <p className="text-sm text-neutral-500">No relationship data.</p>
+      </div>
+    );
+  }
+
+  return (
   <div className="inspector-section">
     <h3>Relationship Status</h3>
 
@@ -341,7 +404,7 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={social.affinity}
+          value={rel.axes.affinity}
           onChange={(e) => onUpdate({ affinity: Number(e.target.value) })}
           className="metric-slider affinity"
         />
@@ -354,7 +417,7 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={social.trust}
+          value={rel.axes.trust}
           onChange={(e) => onUpdate({ trust: Number(e.target.value) })}
           className="metric-slider trust"
         />
@@ -367,7 +430,7 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={social.chemistry}
+          value={rel.axes.chemistry}
           onChange={(e) => onUpdate({ chemistry: Number(e.target.value) })}
           className="metric-slider chemistry"
         />
@@ -380,7 +443,7 @@ const SocialInspector: React.FC<{
           type="range"
           min="0"
           max="100"
-          value={social.tension}
+          value={rel.axes.tension}
           onChange={(e) => onUpdate({ tension: Number(e.target.value) })}
           className="metric-slider tension"
         />
@@ -391,19 +454,19 @@ const SocialInspector: React.FC<{
     <div className="relationship-info">
       <div className="info-row">
         <span>Tier:</span>
-        <span className="info-value">{social.tierId || 'Stranger'}</span>
+        <span className="info-value">{rel.levelId || 'Stranger'}</span>
       </div>
       <div className="info-row">
         <span>Intimacy:</span>
-        <span className="info-value">{social.intimacyLevelId || 'None'}</span>
+        <span className="info-value">{intimacy || 'None'}</span>
       </div>
     </div>
 
-    {social.flags.length > 0 && (
+    {flags.length > 0 && (
       <>
         <h4>Relationship Flags</h4>
         <div className="flag-list">
-          {social.flags.map((flag: string) => (
+          {flags.map((flag) => (
             <span key={flag} className="relationship-flag">{flag}</span>
           ))}
         </div>
@@ -411,3 +474,4 @@ const SocialInspector: React.FC<{
     )}
   </div>
 );
+};

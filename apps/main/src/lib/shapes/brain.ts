@@ -3,7 +3,8 @@
  * This is UI-agnostic and describes the contract for the brain shape
  */
 
-import { NpcBrainState } from '../core/types';
+import type { BrainState } from '@pixsim7/shared.types';
+import { getMood } from '@pixsim7/shared.types';
 
 export type BrainFace =
   | 'cortex'
@@ -17,7 +18,6 @@ export interface BrainFaceDefinition {
   id: BrainFace;
   label: string;
   description: string;
-  dataKey: keyof NpcBrainState;
   color: string; // Primary color for this face
   icon?: string; // Icon name/path
   interactions: string[]; // Available interactions for this face
@@ -40,9 +40,9 @@ export interface BrainShapeDefinition {
 
   // Shape-specific behaviors (UI-agnostic formulas)
   behaviors: {
-    pulseRate: (state: NpcBrainState) => number; // BPM
-    glowIntensity: (state: NpcBrainState) => number; // 0-1
-    neuralActivity: (state: NpcBrainState) => number; // 0-1
+    pulseRate: (state: BrainState) => number; // BPM
+    glowIntensity: (state: BrainState) => number; // 0-1
+    neuralActivity: (state: BrainState) => number; // 0-1
   };
 }
 
@@ -138,22 +138,23 @@ export const brainShape: BrainShapeDefinition = {
   ],
 
   behaviors: {
-    pulseRate: (state: NpcBrainState) => {
-      // Base rate 60 BPM, increases with tension
-      return 60 + state.social.tension * 2;
+    pulseRate: (state: BrainState) => {
+      // Base rate 60 BPM, increases with relationship tension (0-100)
+      const rel = state.stats['relationships'];
+      const tension = rel?.axes.tension ?? 0;
+      return 60 + tension * 0.8;
     },
-    glowIntensity: (state: NpcBrainState) => {
-      // Stronger relationships = brighter glow
-      return Math.min(1, state.social.affinity / 100);
+    glowIntensity: (state: BrainState) => {
+      // Stronger positive relationships = brighter glow
+      const rel = state.stats['relationships'];
+      const affinity = rel?.axes.affinity ?? 0;
+      return Math.min(1, affinity / 100);
     },
-    neuralActivity: (state: NpcBrainState) => {
-      // Activity based on arousal and number of recent memories
-      const recentMemories = state.memories.filter((m) => {
-        const hoursSince =
-          (Date.now() - new Date(m.timestamp).getTime()) / (1000 * 60 * 60);
-        return hoursSince < 24;
-      }).length;
-      return Math.min(1, (state.mood.arousal + recentMemories / 10) / 2);
+    neuralActivity: (state: BrainState) => {
+      // Activity based on mood arousal (0-100)
+      const mood = getMood(state);
+      const arousal = mood?.arousal ?? 50;
+      return Math.min(1, arousal / 100);
     },
   },
 };

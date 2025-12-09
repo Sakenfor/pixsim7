@@ -3,7 +3,6 @@
  * Beyond basic geometry - shapes with meaning and purpose
  */
 
-import { NpcBrainState } from '../core/types';
 import { brainShape, BrainShapeDefinition } from './brain';
 
 // ============================================================================

@@ -6,6 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
+import { getDerived, hasDerived } from '@pixsim7/shared.types';
 
 export const instinctTool: BrainToolPlugin = {
   id: 'npc-instinct',
@@ -14,8 +15,9 @@ export const instinctTool: BrainToolPlugin = {
   icon: '⚡',
   category: 'debug',
 
-  // Visible when brain state is available
-  whenVisible: (ctx) => !!ctx.brainState,
+  // Visible when we have derived instincts
+  whenVisible: (ctx) =>
+    !!ctx.brainState && hasDerived(ctx.brainState, 'instincts'),
 
   render: (ctx) => {
     if (!ctx.brainState) {
@@ -26,7 +28,7 @@ export const instinctTool: BrainToolPlugin = {
       );
     }
 
-    const { instincts } = ctx.brainState;
+    const instincts = getDerived<string[]>(ctx.brainState, 'instincts', []);
 
     return (
       <div className="space-y-3">

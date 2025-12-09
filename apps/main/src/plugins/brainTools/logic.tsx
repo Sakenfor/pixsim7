@@ -6,6 +6,7 @@
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { Badge } from '@pixsim7/shared.ui';
+import { getDerived, hasDerived } from '@pixsim7/shared.types';
 
 export const logicTool: BrainToolPlugin = {
   id: 'npc-logic',
@@ -14,8 +15,9 @@ export const logicTool: BrainToolPlugin = {
   icon: '🧩',
   category: 'debug',
 
-  // Visible when brain state is available
-  whenVisible: (ctx) => !!ctx.brainState,
+  // Visible when we have derived logic strategies
+  whenVisible: (ctx) =>
+    !!ctx.brainState && hasDerived(ctx.brainState, 'logic_strategies'),
 
   render: (ctx) => {
     if (!ctx.brainState) {
@@ -26,13 +28,17 @@ export const logicTool: BrainToolPlugin = {
       );
     }
 
-    const { logic } = ctx.brainState;
+    const strategies = getDerived<string[]>(
+      ctx.brainState,
+      'logic_strategies',
+      []
+    );
 
     return (
       <div className="space-y-3">
         <h3 className="text-sm font-semibold">Decision Strategies</h3>
         <div className="space-y-2">
-          {logic.strategies.map((strategy: string) => (
+          {strategies.map((strategy) => (
             <div
               key={strategy}
               className="flex items-center gap-2 p-2 bg-neutral-50 dark:bg-neutral-800 rounded"
