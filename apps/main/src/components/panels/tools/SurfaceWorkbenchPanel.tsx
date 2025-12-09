@@ -38,6 +38,31 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 function deriveContext(ctx: ReturnType<typeof useEditorContext>): GizmoSurfaceContext {
+  const { primaryView, mode } = ctx.editor;
+
+  // Prefer editor.primaryView/mode as the primary signal
+  if (primaryView === 'game') {
+    if (mode === 'layout') {
+      return 'hud';
+    }
+    return 'game-2d';
+  }
+
+  if (primaryView === 'flow') {
+    if (ctx.scene.id) {
+      return 'scene-editor';
+    }
+    return 'workspace';
+  }
+
+  if (primaryView === 'world') {
+    if (mode === 'layout') {
+      return 'hud';
+    }
+    return 'workspace';
+  }
+
+  // Fallback to runtime mode and presets for legacy flows
   if (ctx.runtime.mode === 'playtest' || ctx.runtime.mode === 'game-2d') {
     return 'game-2d';
   }
@@ -50,6 +75,7 @@ function deriveContext(ctx: ReturnType<typeof useEditorContext>): GizmoSurfaceCo
   if (ctx.scene.id) {
     return 'scene-editor';
   }
+
   return 'workspace';
 }
 
@@ -74,6 +100,8 @@ export function SurfaceWorkbenchPanel() {
   const derivedContext = useMemo(
     () => deriveContext(editorContext),
     [
+      editorContext.editor.primaryView,
+      editorContext.editor.mode,
       editorContext.runtime.mode,
       editorContext.scene.id,
       editorContext.workspace.activePresetId,
@@ -134,9 +162,11 @@ export function SurfaceWorkbenchPanel() {
       : editorContext.scene.id
         ? `Scene ID: ${editorContext.scene.id}`
         : 'No scene selected';
-    const runtimeText = editorContext.runtime.mode
-      ? `Mode: ${editorContext.runtime.mode}`
-      : 'No runtime mode';
+    const runtimeText = editorContext.editor.mode
+      ? `Editor mode: ${editorContext.editor.mode}`
+      : editorContext.runtime.mode
+        ? `Runtime: ${editorContext.runtime.mode}`
+        : 'No active mode';
 
     const messages: SurfaceWorkbenchStatus[] = [
       {
@@ -146,8 +176,10 @@ export function SurfaceWorkbenchPanel() {
             <div className="font-semibold text-neutral-800 dark:text-neutral-100">
               Context Snapshot
             </div>
-            <div className="text-neutral-700 dark:text-neutral-300">
-              {worldText} · {sceneText} · {runtimeText}
+            <div className="text-neutral-700 dark:text-neutral-300 space-y-0.5">
+              <div>{worldText}</div>
+              <div>{sceneText}</div>
+              <div>{runtimeText}</div>
             </div>
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
               Viewing surfaces for {contextLabel}
@@ -162,7 +194,7 @@ export function SurfaceWorkbenchPanel() {
         type: 'warning',
         content: (
           <div className="text-sm">
-            No surfaces match the current context and filter. Try enabling “show all contexts”
+            No surfaces match the current context and filter. Try enabling "Show all contexts"
             or choosing a different surface type.
           </div>
         ),
@@ -172,6 +204,7 @@ export function SurfaceWorkbenchPanel() {
     return messages;
   }, [
     contextLabel,
+    editorContext.editor.mode,
     editorContext.runtime.mode,
     editorContext.scene.id,
     editorContext.scene.title,
@@ -329,3 +362,4 @@ export function SurfaceWorkbenchPanel() {
     />
   );
 }
+

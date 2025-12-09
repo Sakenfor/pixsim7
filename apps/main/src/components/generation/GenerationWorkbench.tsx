@@ -92,6 +92,8 @@ export interface GenerationWorkbenchProps {
   hideStatusDisplay?: boolean;
   /** Hide the generate button (useful when caller renders their own) */
   hideGenerateButton?: boolean;
+  /** Hide the settings bar from header (when rendering settings elsewhere) */
+  hideSettingsBar?: boolean;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render Props / Slots
@@ -187,6 +189,7 @@ export function GenerationWorkbench({
   hideErrorDisplay = false,
   hideStatusDisplay = false,
   hideGenerateButton = false,
+  hideSettingsBar = false,
 
   // Render props
   renderHeader,
@@ -212,36 +215,36 @@ export function GenerationWorkbench({
     </span>
   );
   const headerSlot = renderHeader?.(context);
+  const showHeaderRow = headerSlot || !hideSettingsBar || !hideGenerateButton;
 
   return (
     <div className={clsx('flex flex-col gap-3', className)}>
-      {/* Header Row: Custom header + Settings bar + Generate button */}
-      <div
-        className={clsx(
-          'flex flex-wrap gap-1.5 items-center',
-          !compact && 'pb-2 border-b border-neutral-200 dark:border-neutral-700'
-        )}
-      >
-        {/* Custom header content (operation selector, presets, etc.) */}
-        {headerSlot && (
-          <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">{headerSlot}</div>
-        )}
+      {/* Header Row: Unified compact control bar */}
+      {showHeaderRow && (
+        <div className="flex items-center gap-2 px-2 py-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 rounded-xl">
+          {/* Custom header content (operation selector, presets, etc.) */}
+          {headerSlot && (
+            <div className="flex items-center gap-1">{headerSlot}</div>
+          )}
 
-        <div className="flex items-center gap-1.5 flex-wrap ml-auto w-full sm:w-auto justify-end">
+          <div className="flex-1" />
+
           {/* Generation settings bar */}
-          <GenerationSettingsBar
-            providerId={providerId}
-            providers={providers}
-            paramSpecs={paramSpecs}
-            dynamicParams={dynamicParams}
-            onChangeParam={onChangeParam}
-            onChangeProvider={onChangeProvider}
-            generating={generating}
-            showSettings={showSettings}
-            onToggleSettings={onToggleSettings}
-            presetId={presetId}
-            operationType={operationType}
-          />
+          {!hideSettingsBar && (
+            <GenerationSettingsBar
+              providerId={providerId}
+              providers={providers}
+              paramSpecs={paramSpecs}
+              dynamicParams={dynamicParams}
+              onChangeParam={onChangeParam}
+              onChangeProvider={onChangeProvider}
+              generating={generating}
+              showSettings={showSettings}
+              onToggleSettings={onToggleSettings}
+              presetId={presetId}
+              operationType={operationType}
+            />
+          )}
 
           {/* Generate button */}
           {!hideGenerateButton && (
@@ -249,7 +252,7 @@ export function GenerationWorkbench({
               onClick={onGenerate}
               disabled={generating || !canGenerate}
               className={clsx(
-                'px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-all',
+                'px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-all',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
@@ -265,7 +268,7 @@ export function GenerationWorkbench({
             </button>
           )}
         </div>
-      </div>
+      )}
 
       {/* Main content area */}
       {renderContent && (
