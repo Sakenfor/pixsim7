@@ -12,6 +12,10 @@ export interface CompactAssetCardProps {
   label?: string;
   lockedTimestamp?: number; // Locked frame timestamp in seconds
   onLockTimestamp?: (timestamp: number | undefined) => void; // Callback to lock/unlock frame
+  selected?: boolean; // Whether this card is selected (for transition selection)
+  onSelect?: () => void; // Callback when card is clicked for selection
+  hideFooter?: boolean; // Hide the footer with asset ID/URL
+  fillHeight?: boolean; // Fill parent height instead of using aspect ratio
 }
 
 /**
@@ -28,6 +32,10 @@ export function CompactAssetCard({
   label,
   lockedTimestamp,
   onLockTimestamp,
+  selected = false,
+  onSelect,
+  hideFooter = false,
+  fillHeight = false,
 }: CompactAssetCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -63,7 +71,7 @@ export function CompactAssetCard({
 
   return (
     <div
-      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${className}`}
+      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -75,7 +83,9 @@ export function CompactAssetCard({
 
       <div
         ref={hover.containerRef}
-        className={`relative ${asset.media_type === 'video' ? 'aspect-video' : 'aspect-square'} bg-neutral-100 dark:bg-neutral-800`}
+        className={`relative bg-neutral-100 dark:bg-neutral-800 ${
+          fillHeight ? 'h-full' : (asset.media_type === 'video' ? 'aspect-video' : 'aspect-square')
+        }`}
         onMouseEnter={asset.media_type === 'video' ? hover.onMouseEnter : undefined}
         onMouseLeave={asset.media_type === 'video' ? hover.onMouseLeave : undefined}
         onMouseMove={asset.media_type === 'video' ? hover.onMouseMove : undefined}
@@ -99,17 +109,6 @@ export function CompactAssetCard({
             />
           )
         )}
-
-        {/* Media type icon */}
-        <div className="absolute left-1.5 top-1.5">
-          <div className="w-6 h-6 rounded-full bg-white/90 dark:bg-neutral-800/90 flex items-center justify-center text-xs">
-            <ThemedIcon
-              name={asset.media_type === 'video' ? 'video' : 'image'}
-              size={12}
-              variant="default"
-            />
-          </div>
-        </div>
 
         {/* Status indicator */}
         {isLocalOnly && (
@@ -154,25 +153,27 @@ export function CompactAssetCard({
           </button>
         )}
 
-        {/* Remove button */}
+        {/* Remove button - top right, tiny */}
         {showRemoveButton && onRemove && (
           <button
-            onClick={onRemove}
-            className="absolute right-1.5 bottom-1.5 w-6 h-6 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-10"
-            title="Remove asset"
+            onClick={(e) => { e.stopPropagation(); onRemove(); }}
+            className="absolute right-1 top-1 w-4 h-4 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-20 opacity-70 hover:opacity-100"
+            title="Remove"
           >
-            <ThemedIcon name="close" size={12} variant="default" className="text-white" />
+            <ThemedIcon name="close" size={8} variant="default" className="text-white" />
           </button>
         )}
       </div>
 
       {/* Footer with basic info */}
-      <div className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700">
-        <div className="truncate font-medium">{asset.provider_asset_id || `ID: ${asset.id}`}</div>
-        {isLocalOnly && (
-          <div className="text-amber-600 dark:text-amber-400 text-[9px]">⚠ Not synced to provider</div>
-        )}
-      </div>
+      {!hideFooter && (
+        <div className="px-2 py-1 text-[10px] text-neutral-600 dark:text-neutral-400 border-t border-neutral-200 dark:border-neutral-700">
+          <div className="truncate font-medium">{asset.provider_asset_id || `ID: ${asset.id}`}</div>
+          {isLocalOnly && (
+            <div className="text-amber-600 dark:text-amber-400 text-[9px]">⚠ Not synced to provider</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

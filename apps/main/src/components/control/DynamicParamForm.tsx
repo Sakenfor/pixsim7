@@ -11,6 +11,7 @@ export interface ParamSpec {
   group?: string;
   min?: number;
   max?: number;
+  metadata?: Record<string, any>;
 }
 
 export interface DynamicParamFormProps {

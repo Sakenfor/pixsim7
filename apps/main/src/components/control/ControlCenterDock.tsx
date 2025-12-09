@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { Rnd } from 'react-rnd';
 import { useControlCenterStore, type ControlModule } from '@/stores/controlCenterStore';
@@ -32,11 +32,19 @@ export function ControlCenterDock() {
 
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
+  const [registryVersion, setRegistryVersion] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = controlCenterModuleRegistry.subscribe(() => {
+      setRegistryVersion((version) => version + 1);
+    });
+    return unsubscribe;
+  }, []);
 
   // Get enabled modules from registry
   const modules = useMemo(() => {
     return controlCenterModuleRegistry.getEnabled(enabledModules);
-  }, [enabledModules]);
+  }, [enabledModules, registryVersion]);
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
   const { dragging, startResize } = useDockBehavior({

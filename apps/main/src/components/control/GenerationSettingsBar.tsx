@@ -75,6 +75,98 @@ const PRIMARY_PARAM_NAMES = [
   'resolution',
 ];
 
+type DurationOptionConfig = {
+  options: number[];
+  note?: string;
+};
+
+const PIXVERSE_VIDEO_MODELS = ['v3.5', 'v4', 'v5', 'v5.5', 'v6'];
+
+function isPixverseModel(model: unknown): boolean {
+  if (typeof model !== 'string') return false;
+  const normalized = model.toLowerCase();
+  return PIXVERSE_VIDEO_MODELS.some((prefix) => normalized.startsWith(prefix));
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function normalizePresetList(values: unknown): number[] {
+  if (!Array.isArray(values)) return [];
+  const unique = new Set<number>();
+  for (const value of values) {
+    const coerced = coerceNumber(value);
+    if (coerced !== null) {
+      unique.add(coerced);
+    }
+  }
+  return Array.from(unique).sort((a, b) => a - b);
+}
+
+function getDurationOptionsFromSpecs(
+  paramSpecs: ParamSpec[],
+  modelValue: unknown
+): DurationOptionConfig | null {
+  const spec = paramSpecs.find((p) => p.name === 'duration');
+  const metadata = spec?.metadata;
+  if (!metadata) {
+    return null;
+  }
+
+  const note: string | undefined =
+    metadata.duration_note ||
+    metadata.note ||
+    metadata.presetNote;
+  const basePresets = normalizePresetList(
+    metadata.presets ?? metadata.duration_presets ?? metadata.options
+  );
+
+  if (!basePresets.length && !metadata.per_model_presets && !metadata.perModelPresets) {
+    return null;
+  }
+
+  let options = basePresets;
+  const perModelPresets =
+    (metadata.per_model_presets as Record<string, unknown[]>) ||
+    (metadata.perModelPresets as Record<string, unknown[]>);
+
+  if (perModelPresets && typeof modelValue === 'string') {
+    const normalizedModel = modelValue.toLowerCase();
+    const matchEntry = Object.entries(perModelPresets).find(
+      ([key]) => key.toLowerCase() === normalizedModel
+    );
+    if (matchEntry) {
+      const perModelOptions = normalizePresetList(matchEntry[1]);
+      if (perModelOptions.length) {
+        options = perModelOptions;
+      }
+    }
+  }
+
+  if (!options.length) {
+    options = basePresets;
+  }
+
+  if (!options.length) {
+    return null;
+  }
+
+  return {
+    options,
+    note,
+  };
+}
+
 /**
  * GenerationSettingsBar
  *
@@ -113,20 +205,27 @@ export function GenerationSettingsBar({
   onToggleSettings,
   presetId,
   operationType,
-}: GenerationSettingsBarProps) {
+  }: GenerationSettingsBarProps) {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
-  const costHints = useCostHints(providerId);
+  const inferredProviderId =
+    providerId || (isPixverseModel(dynamicParams.model) ? 'pixverse' : undefined);
+  const costHints = useCostHints(inferredProviderId);
   const [creditEstimate, setCreditEstimate] = useState<number | null>(null);
   const [creditEstimateLoading, setCreditEstimateLoading] = useState(false);
+  const durationOptions = useMemo(
+    () => getDurationOptionsFromSpecs(paramSpecs, dynamicParams.model),
+    [paramSpecs, dynamicParams.model]
+  );
 
   // Primary params: shown directly in the bar as inline controls.
-  // - Enum-based fields like model/quality/aspect_ratio use selects.
-  // - duration is treated as primary even without an enum (numeric input).
+  // - Enum-based fields like model/quality use selects.
+  // - duration and aspect_ratio are always primary (even without enum).
+  const ALWAYS_PRIMARY = ['duration', 'aspect_ratio'];
   const primaryParams = useMemo(
     () =>
       paramSpecs.filter((p) =>
-        p.name === 'duration' ||
-        (PRIMARY_PARAM_NAMES.includes(p.name) && p.enum && p.name !== 'duration')
+        ALWAYS_PRIMARY.includes(p.name) ||
+        (PRIMARY_PARAM_NAMES.includes(p.name) && p.enum && !ALWAYS_PRIMARY.includes(p.name))
       ),
     [paramSpecs]
   );
@@ -139,7 +238,7 @@ export function GenerationSettingsBar({
 
   // Pixverse-specific credit estimate using pixverse-py pricing helper via backend.
   useEffectHook(() => {
-    if (providerId !== 'pixverse') {
+    if (inferredProviderId !== 'pixverse') {
       setCreditEstimate(null);
       return;
     }
@@ -161,8 +260,8 @@ export function GenerationSettingsBar({
     const isImage =
       operationType === 'text_to_image' || operationType === 'image_to_image';
 
-    // For images we require model + quality; for video we require duration.
-    if (isVideo && (!duration || duration <= 0)) {
+    // For images we require model + quality; for video we require duration + model.
+    if (isVideo && (!duration || duration <= 0 || !model)) {
       setCreditEstimate(null);
       return;
     }
@@ -215,7 +314,7 @@ export function GenerationSettingsBar({
       cancelled = true;
     };
   }, [
-    providerId,
+    inferredProviderId,
     operationType,
     dynamicParams.duration,
     dynamicParams.quality,
@@ -224,6 +323,16 @@ export function GenerationSettingsBar({
     dynamicParams.multi_shot,
     dynamicParams.audio,
   ]);
+
+  useEffectHook(() => {
+    if (!durationOptions || durationOptions.options.length === 0) {
+      return;
+    }
+    const currentValue = Number(dynamicParams.duration);
+    if (!durationOptions.options.includes(currentValue)) {
+      onChangeParam('duration', durationOptions.options[0]);
+    }
+  }, [durationOptions, dynamicParams.duration, onChangeParam]);
 
   function handleChange(name: string, value: any) {
     onChangeParam(name, value);
@@ -242,13 +351,13 @@ export function GenerationSettingsBar({
     <>
       {/* Settings bar - expands left horizontally */}
       {showSettings && (
-        <div className="flex items-center gap-1 px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-l-md border-r-0 animate-in slide-in-from-right-2 duration-150">
+        <div className="flex items-center gap-1 animate-in slide-in-from-right-2 duration-150">
           {/* Provider selector - inline */}
           <select
             value={providerId ?? ''}
             onChange={(e) => handleProviderChange(e.target.value || undefined)}
             disabled={generating}
-            className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer"
+            className="px-2 py-1 text-[11px] rounded-lg bg-white dark:bg-neutral-900 shadow-sm border-0 disabled:opacity-50 cursor-pointer"
             title="Provider"
           >
             <option value="">Auto</option>
@@ -260,36 +369,76 @@ export function GenerationSettingsBar({
           </select>
 
           {/* Primary params - shown directly as small controls */}
-          {primaryParams.map((param) =>
-            param.name === 'duration' && param.type === 'number' ? (
-              <input
-                key={param.name}
-                type="number"
-                value={dynamicParams[param.name] ?? param.default ?? ''}
-                onChange={(e) =>
-                  handleChange(
-                    param.name,
-                    e.target.value ? Number(e.target.value) : ''
-                  )
+          {primaryParams.map((param) => {
+            if (param.name === 'duration' && param.type === 'number') {
+              if (durationOptions && durationOptions.options.length > 0) {
+                const currentDuration = Number(dynamicParams[param.name]) || durationOptions.options[0];
+                return (
+                  <div key="duration-options" className="flex flex-col items-start gap-0.5">
+                    <div className="flex gap-1">
+                      {durationOptions.options.map((seconds) => (
+                        <button
+                          type="button"
+                          key={seconds}
+                          onClick={() => handleChange(param.name, seconds)}
+                          disabled={generating}
+                          className={clsx(
+                            'px-1.5 py-0.5 rounded border text-[10px] transition-colors',
+                            currentDuration === seconds
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                              : 'bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 border-neutral-200 dark:border-neutral-600 hover:border-blue-400 dark:hover:border-blue-400'
+                          )}
+                          title={`${seconds} seconds`}
+                        >
+                          {seconds}s
+                        </button>
+                      ))}
+                    </div>
+                      {operationType === 'video_transition' && (
+                        <span className="text-[9px] text-neutral-500 dark:text-neutral-400">
+                          Duration applies to each transition prompt (1-5s per segment)
+                        </span>
+                      )}
+                    </div>
+                  );
                 }
-                disabled={generating}
-                min={param.min}
-                max={param.max}
-                placeholder={param.default?.toString()}
-                className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
-                title={param.name}
-              />
-            ) : (
+
+              return (
+                <input
+                  key={param.name}
+                  type="number"
+                  value={dynamicParams[param.name] ?? param.default ?? ''}
+                  onChange={(e) =>
+                    handleChange(
+                      param.name,
+                      e.target.value ? Number(e.target.value) : ''
+                    )
+                  }
+                  disabled={generating}
+                  min={param.min}
+                  max={param.max}
+                  placeholder={param.default?.toString()}
+                  className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
+                  title={param.name}
+                />
+              );
+            }
+
+            // Common aspect ratios fallback when no enum provided
+            const COMMON_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'];
+            const options = param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
+
+            return (
               <select
                 key={param.name}
                 value={dynamicParams[param.name] ?? param.default ?? ''}
                 onChange={(e) => handleChange(param.name, e.target.value)}
                 disabled={generating}
-                className="px-1.5 py-1 text-[10px] rounded bg-white dark:bg-neutral-700 border-0 disabled:opacity-50 cursor-pointer max-w-[80px]"
+                className="px-2 py-1 text-[11px] rounded-lg bg-white dark:bg-neutral-900 shadow-sm border-0 disabled:opacity-50 cursor-pointer"
                 title={param.name}
               >
-                {param.enum ? (
-                  param.enum.map((opt: string) => (
+                {options ? (
+                  options.map((opt: string) => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>
@@ -300,31 +449,31 @@ export function GenerationSettingsBar({
                   </option>
                 )}
               </select>
-            )
-          )}
+            );
+          })}
 
-          {/* Cost estimate (Pixverse credits via backend calculator when available, else basic hints) */}
-          {providerId === 'pixverse' && (
-            <span className="ml-1 text-[10px] text-neutral-500">
-              {creditEstimateLoading
-                ? 'Estimating…'
-                : creditEstimate !== null
-                ? `≈${creditEstimate.toFixed(2)} credits`
-                : // For video we can fall back to coarse hints; for images we prefer
-                  // to show nothing rather than a misleading estimate.
-                  (operationType === 'text_to_video' ||
+          {/* Cost estimate - compact icon + number */}
+          {inferredProviderId === 'pixverse' && (
+            <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400" title="Estimated credits">
+              {creditEstimateLoading ? (
+                <span className="text-neutral-400">…</span>
+              ) : creditEstimate !== null ? (
+                <>
+                  <span>◆</span>
+                  <span>{creditEstimate.toFixed(1)}</span>
+                </>
+              ) : (operationType === 'text_to_video' ||
                   operationType === 'image_to_video' ||
                   operationType === 'video_extend' ||
                   operationType === 'video_transition' ||
                   operationType === 'fusion') &&
                   costHints?.per_second !== undefined &&
-                  dynamicParams.duration
-                ? `≈${(
-                    Number(dynamicParams.duration || 0) * (costHints.per_second ?? 0)
-                  ).toFixed(2)} ${
-                    costHints.currency === 'credits' ? 'credits' : costHints.currency || ''
-                  }`
-                : null}
+                  dynamicParams.duration ? (
+                <>
+                  <span>◆</span>
+                  <span>{(Number(dynamicParams.duration || 0) * (costHints.per_second ?? 0)).toFixed(1)}</span>
+                </>
+              ) : null}
             </span>
           )}
 
@@ -409,14 +558,14 @@ export function GenerationSettingsBar({
           setExpandedSetting(null);
         }}
         className={clsx(
-          'p-1.5 rounded transition-colors',
+          'text-sm transition-opacity',
           showSettings
-            ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-100'
-            : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800'
+            ? 'opacity-100'
+            : 'opacity-50 hover:opacity-80'
         )}
         title="Generation settings"
       >
-        <span className="text-[11px]">⚙</span>
+        ⚙
       </button>
     </>
   );
