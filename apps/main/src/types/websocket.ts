@@ -66,7 +66,7 @@ export function isWebSocketMessage(data: unknown): data is WebSocketMessage {
     typeof data === 'object' &&
     data !== null &&
     'type' in data &&
-    typeof (data as any).type === 'string'
+    typeof (data as Record<string, unknown>).type === 'string'
   );
 }
 

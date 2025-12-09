@@ -40,8 +40,8 @@ export function CompactAssetCard({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Try thumbnail_url first (from AssetSummary), fall back to thumb_url for compatibility
-  const thumbUrl = (asset as any).thumbnail_url || (asset as any).thumb_url;
+  // Use thumbnail_url from AssetSummary
+  const thumbUrl = asset.thumbnail_url;
 
   // Shared hooks from MediaCard
   const thumbSrc = useMediaThumbnail(thumbUrl);

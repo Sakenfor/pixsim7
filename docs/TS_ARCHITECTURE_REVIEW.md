@@ -834,8 +834,13 @@ Add runtime validation for API responses to catch backend schema changes early.
 
 ### Phase 5: Cleanup (ongoing)
 
-- [ ] Remove remaining hardcoded operation type strings from components
-- [ ] Replace `as any` casts with proper types
+- [x] Remove remaining hardcoded operation type strings from components
+  - Verified: `OPERATION_TYPES` only defined once in `types/operations.ts`
+  - String comparisons are type-safe (variables typed as `OperationType`)
+- [x] Replace `as any` casts with proper types (partial)
+  - Fixed: `websocket.ts` type guard, `CompactAssetCard.tsx` thumbnail
+  - Remaining: ~43 casts across 20 files (mostly library workarounds, dynamic metadata)
+  - ESLint warning will flag new occurrences
 - [x] Add ESLint rule to warn on `any` in new code
 - [x] Document type conventions (see below)
 
