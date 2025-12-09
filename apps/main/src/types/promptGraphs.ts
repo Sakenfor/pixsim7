@@ -2,28 +2,28 @@
  * Prompt & Action Block Graph Types
  *
  * Dev-only graph visualization types for:
- * - Prompt Block Graph: Visualizes parsed prompt structure
+ * - Prompt Segment Graph: Visualizes parsed prompt structure
  * - Action Block Graph: Visualizes ActionBlocks and their relationships
  *
  * Part of Task 81 - Prompt & Action Block Graph Surfaces
  */
 
 // Re-export prompt types from canonical source
-export type { PromptBlock, ParsedBlock, PromptBlockRole } from './prompts';
-import type { PromptBlockRole } from './prompts';
+export type { PromptSegment, PromptSegmentRole, PromptParseResult } from './prompts';
+import type { PromptSegmentRole } from './prompts';
 
-// ===== Prompt Block Graph Types =====
+// ===== Prompt Segment Graph Types =====
 
-export type PromptGraphNodeKind = 'prompt' | 'block' | 'role';
+export type PromptGraphNodeKind = 'prompt' | 'segment' | 'role';
 export type PromptGraphEdgeKind = 'next' | 'contains' | 'role-group';
 
 export interface PromptGraphNode {
-  id: string;                     // e.g., "prompt:{versionId}", "block:{idx}", "role:action"
+  id: string;                     // e.g., "prompt:{versionId}", "seg:{idx}", "role:action"
   kind: PromptGraphNodeKind;
   label: string;                  // short label for node
-  role?: PromptBlockRole;         // for block nodes (character/action/setting/...)
-  versionId?: string;             // prompt version UUID (for prompt/block nodes)
-  blockIndex?: number;            // for block nodes
+  role?: PromptSegmentRole;       // for segment nodes (character/action/setting/...)
+  versionId?: string;             // prompt version UUID (for prompt/segment nodes)
+  segmentIndex?: number;          // for segment nodes
   text?: string;                  // full text for tooltips
 }
 

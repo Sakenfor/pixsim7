@@ -18,8 +18,8 @@ from pixsim7.backend.main.shared.ontology import load_ontology
 
 # ===== TYPES =====
 
-class ParsedRole(str, Enum):
-    """Coarse role classification for parsed blocks."""
+class PromptSegmentRole(str, Enum):
+    """Coarse role classification for prompt segments."""
     CHARACTER = "character"
     ACTION = "action"
     SETTING = "setting"
@@ -28,9 +28,13 @@ class ParsedRole(str, Enum):
     OTHER = "other"
 
 
-class ParsedBlock(BaseModel):
-    """A single parsed block from a prompt."""
-    role: ParsedRole
+# Legacy alias
+ParsedRole = PromptSegmentRole
+
+
+class PromptSegment(BaseModel):
+    """A single segment parsed from a prompt."""
+    role: PromptSegmentRole
     text: str
     start_pos: int
     end_pos: int
@@ -38,10 +42,18 @@ class ParsedBlock(BaseModel):
     metadata: Dict[str, Any] = {}
 
 
-class ParsedPrompt(BaseModel):
-    """Complete parsed prompt with all blocks."""
+# Legacy alias
+ParsedBlock = PromptSegment
+
+
+class PromptParseResult(BaseModel):
+    """Complete result of parsing a prompt into segments."""
     text: str
-    blocks: List[ParsedBlock]
+    segments: List[PromptSegment]
+
+
+# Legacy alias
+ParsedPrompt = PromptParseResult
 
 
 # ===== PARSER =====
@@ -101,16 +113,16 @@ class SimplePromptParser:
                 if w not in existing:
                     self.role_keywords[role].append(w)
 
-    async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> ParsedPrompt:
+    async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> PromptParseResult:
         """
-        Parse prompt text into classified blocks.
+        Parse prompt text into classified segments.
 
         Args:
             text: Raw prompt text
             hints: Optional parser hints to use for this parse (overrides init hints)
 
         Returns:
-            ParsedPrompt with classified blocks
+            PromptParseResult with classified segments
         """
         # If hints provided at parse time, create a temporary parser with those hints
         if hints:
@@ -121,11 +133,11 @@ class SimplePromptParser:
         sentences = self._split_sentences(text)
 
         # Classify each sentence
-        blocks: List[ParsedBlock] = []
+        segments: List[PromptSegment] = []
         for idx, (sentence_text, start_pos, end_pos) in enumerate(sentences):
             role, metadata = self._classify_sentence(sentence_text)
 
-            block = ParsedBlock(
+            segment = PromptSegment(
                 role=role,
                 text=sentence_text.strip(),
                 start_pos=start_pos,
@@ -133,9 +145,9 @@ class SimplePromptParser:
                 sentence_index=idx,
                 metadata=metadata,
             )
-            blocks.append(block)
+            segments.append(segment)
 
-        return ParsedPrompt(text=text, blocks=blocks)
+        return PromptParseResult(text=text, segments=segments)
 
     def _split_sentences(self, text: str) -> List[tuple[str, int, int]]:
         """
@@ -175,7 +187,7 @@ class SimplePromptParser:
 
         return sentences
 
-    def _classify_sentence(self, text: str) -> tuple[ParsedRole, Dict[str, Any]]:
+    def _classify_sentence(self, text: str) -> tuple[PromptSegmentRole, Dict[str, Any]]:
         """
         Classify a sentence into a role using keyword heuristics.
 
@@ -215,46 +227,46 @@ class SimplePromptParser:
         # Special handling for camera
         if "camera" in found_roles:
             metadata["has_camera_word"] = True
-            # Camera blocks are marked as OTHER
-            return (ParsedRole.OTHER, metadata)
+            # Camera segments are marked as OTHER
+            return (PromptSegmentRole.OTHER, metadata)
 
         # Classification priority (from task spec):
         # 1. Romance (if romance keywords found)
         if "romance" in found_roles:
-            return (ParsedRole.ROMANCE, metadata)
+            return (PromptSegmentRole.ROMANCE, metadata)
 
         # 2. Mood (if emotion keywords found)
         if "mood" in found_roles:
-            return (ParsedRole.MOOD, metadata)
+            return (PromptSegmentRole.MOOD, metadata)
 
         # 3. Setting (if setting keywords found and no strong action indicators)
         if "setting" in found_roles:
             # If also has character and verb, prefer ACTION
             if "character" in found_roles and has_verb:
-                return (ParsedRole.ACTION, metadata)
-            return (ParsedRole.SETTING, metadata)
+                return (PromptSegmentRole.ACTION, metadata)
+            return (PromptSegmentRole.SETTING, metadata)
 
         # 4. Character + Action (character with verb)
         if "character" in found_roles and has_verb:
             # Mark as ACTION but note character presence
             metadata["character_action"] = True
-            return (ParsedRole.ACTION, metadata)
+            return (PromptSegmentRole.ACTION, metadata)
 
         # 5. Character alone
         if "character" in found_roles:
-            return (ParsedRole.CHARACTER, metadata)
+            return (PromptSegmentRole.CHARACTER, metadata)
 
         # 6. Action (if has verb)
         if has_verb or "action" in found_roles:
-            return (ParsedRole.ACTION, metadata)
+            return (PromptSegmentRole.ACTION, metadata)
 
         # 7. Fallback to OTHER
-        return (ParsedRole.OTHER, metadata)
+        return (PromptSegmentRole.OTHER, metadata)
 
 
 # ===== CONVENIENCE FUNCTION =====
 
-async def parse_prompt(text: str) -> ParsedPrompt:
+async def parse_prompt(text: str) -> PromptParseResult:
     """
     Convenience function to parse a prompt.
 
@@ -262,7 +274,7 @@ async def parse_prompt(text: str) -> ParsedPrompt:
         text: Prompt text to parse
 
     Returns:
-        ParsedPrompt with classified blocks
+        PromptParseResult with classified segments
     """
     parser = SimplePromptParser()
     return await parser.parse(text)

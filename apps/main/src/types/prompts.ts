@@ -1,19 +1,19 @@
 /**
  * Prompt Types
  *
- * Canonical type definitions for parsed prompts and blocks.
+ * Canonical type definitions for parsed prompt segments.
  * Mirrors backend `services/prompt_parser/simple.py` types.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Prompt Block Roles
+// Prompt Segment Roles
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Coarse role classification for parsed blocks.
- * Matches backend `ParsedRole` enum in `services/prompt_parser/simple.py`.
+ * Coarse role classification for prompt segments.
+ * Matches backend `PromptSegmentRole` enum in `services/prompt_parser/simple.py`.
  */
-export const PROMPT_BLOCK_ROLES = [
+export const PROMPT_SEGMENT_ROLES = [
   'character',
   'action',
   'setting',
@@ -22,28 +22,28 @@ export const PROMPT_BLOCK_ROLES = [
   'other',
 ] as const;
 
-export type PromptBlockRole = typeof PROMPT_BLOCK_ROLES[number];
+export type PromptSegmentRole = typeof PROMPT_SEGMENT_ROLES[number];
 
 /**
- * Check if a string is a valid PromptBlockRole
+ * Check if a string is a valid PromptSegmentRole
  */
-export function isValidPromptBlockRole(value: string): value is PromptBlockRole {
-  return PROMPT_BLOCK_ROLES.includes(value as PromptBlockRole);
+export function isValidPromptSegmentRole(value: string): value is PromptSegmentRole {
+  return PROMPT_SEGMENT_ROLES.includes(value as PromptSegmentRole);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Parsed Block (Full Backend Shape)
+// Prompt Segment (Full Backend Shape)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * A single parsed block from a prompt.
- * Mirrors backend `ParsedBlock` in `services/prompt_parser/simple.py`.
+ * A single segment parsed from a prompt.
+ * Mirrors backend `PromptSegment` in `services/prompt_parser/simple.py`.
  *
  * Contains full position information for text highlighting and metadata
  * for ontology-based classification hints.
  */
-export interface ParsedBlock {
-  role: PromptBlockRole;
+export interface PromptSegment {
+  role: PromptSegmentRole;
   text: string;
   start_pos: number;
   end_pos: number;
@@ -51,44 +51,15 @@ export interface ParsedBlock {
   metadata?: Record<string, unknown>;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt Parse Result
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Complete parsed prompt with all blocks.
- * Mirrors backend `ParsedPrompt` in `services/prompt_parser/simple.py`.
+ * Complete result of parsing a prompt into segments.
+ * Mirrors backend `PromptParseResult` in `services/prompt_parser/simple.py`.
  */
-export interface ParsedPrompt {
+export interface PromptParseResult {
   text: string;
-  blocks: ParsedBlock[];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UI Alias (Thin Display Type)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Lightweight block type for UI display.
- * Derived from ParsedBlock - use when positions/metadata aren't needed.
- *
- * The optional `component_type` field is for UI-specific categorization
- * (e.g., grouping blocks by visual component in the viewer).
- */
-export type PromptBlock = Pick<ParsedBlock, 'role' | 'text'> & {
-  component_type?: string;
-};
-
-/**
- * Convert a ParsedBlock to a PromptBlock for UI display.
- */
-export function toPromptBlock(parsed: ParsedBlock, componentType?: string): PromptBlock {
-  return {
-    role: parsed.role,
-    text: parsed.text,
-    component_type: componentType,
-  };
-}
-
-/**
- * Convert an array of ParsedBlocks to PromptBlocks.
- */
-export function toPromptBlocks(parsed: ParsedBlock[]): PromptBlock[] {
-  return parsed.map((block) => toPromptBlock(block));
+  segments: PromptSegment[];
 }

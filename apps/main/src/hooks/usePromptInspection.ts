@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useApi } from './useApi';
-import type { PromptBlock } from '@/types/prompts';
+import type { PromptSegment } from '@/types/prompts';
 
 export interface UsePromptInspectionOptions {
   assetId?: number;
@@ -16,7 +16,7 @@ export interface UsePromptInspectionOptions {
 
 export interface PromptInspectionState {
   prompt: string | null;
-  blocks: PromptBlock[];
+  segments: PromptSegment[];
   loading: boolean;
   error: string | null;
 }
@@ -29,7 +29,7 @@ export function usePromptInspection(
 
   const [state, setState] = useState<PromptInspectionState>({
     prompt: null,
-    blocks: [],
+    segments: [],
     loading: false,
     error: null,
   });
@@ -39,7 +39,7 @@ export function usePromptInspection(
     if (!assetId && !jobId) {
       setState({
         prompt: null,
-        blocks: [],
+        segments: [],
         loading: false,
         error: null,
       });
@@ -50,7 +50,7 @@ export function usePromptInspection(
     if (assetId && jobId) {
       setState({
         prompt: null,
-        blocks: [],
+        segments: [],
         loading: false,
         error: 'Please provide only one of assetId or jobId, not both',
       });
@@ -75,21 +75,21 @@ export function usePromptInspection(
           params.set('job_id', String(jobId));
         }
 
-        // Call API
+        // Call API - backend returns { prompt, blocks }
         const response = await api.get(`/dev/prompt-inspector?${params.toString()}`);
 
         setState({
           prompt: response.prompt,
-          blocks: response.blocks || [],
+          segments: response.blocks || [], // Backend still calls them "blocks"
           loading: false,
           error: null,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         setState({
           prompt: null,
-          blocks: [],
+          segments: [],
           loading: false,
-          error: err.message || 'Failed to fetch prompt inspection',
+          error: err instanceof Error ? err.message : 'Failed to fetch prompt inspection',
         });
       }
     };

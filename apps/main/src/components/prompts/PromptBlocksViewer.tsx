@@ -1,27 +1,27 @@
 /**
- * PromptBlocksViewer Component
+ * PromptSegmentsViewer Component
  *
- * Reusable UI for displaying prompt text and parsed blocks.
+ * Reusable UI for displaying prompt text and parsed segments.
  * Pure presentational component - no data fetching.
  */
 
 import { useState } from 'react';
 import { Panel } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
-import type { PromptBlock, PromptBlockRole } from '@/types/prompts';
+import type { PromptSegment, PromptSegmentRole } from '@/types/prompts';
 
-// Re-export for backwards compatibility
-export type { PromptBlock } from '@/types/prompts';
+// Re-export for convenience
+export type { PromptSegment, PromptSegmentRole } from '@/types/prompts';
 
-export interface PromptBlocksViewerProps {
+export interface PromptSegmentsViewerProps {
   prompt: string;
-  blocks: PromptBlock[];
+  segments: PromptSegment[];
   collapsible?: boolean;   // default false
   initialOpen?: boolean;   // default true
 }
 
 // Role colors for visual distinction
-const roleColors: Record<PromptBlockRole, string> = {
+const roleColors: Record<PromptSegmentRole, string> = {
   character: 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700',
   action: 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700',
   setting: 'bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700',
@@ -30,22 +30,22 @@ const roleColors: Record<PromptBlockRole, string> = {
   other: 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700',
 };
 
-export function PromptBlocksViewer({
+export function PromptSegmentsViewer({
   prompt,
-  blocks,
+  segments,
   collapsible = false,
   initialOpen = true,
-}: PromptBlocksViewerProps) {
+}: PromptSegmentsViewerProps) {
   const [isOpen, setIsOpen] = useState(initialOpen);
 
-  // Group blocks by role
-  const groupedBlocks = blocks.reduce((acc, block) => {
-    if (!acc[block.role]) {
-      acc[block.role] = [];
+  // Group segments by role
+  const groupedSegments = segments.reduce((acc, segment) => {
+    if (!acc[segment.role]) {
+      acc[segment.role] = [];
     }
-    acc[block.role].push(block);
+    acc[segment.role].push(segment);
     return acc;
-  }, {} as Partial<Record<PromptBlockRole, PromptBlock[]>>);
+  }, {} as Partial<Record<PromptSegmentRole, PromptSegment[]>>);
 
   // If collapsible, render with header
   if (collapsible) {
@@ -69,7 +69,7 @@ export function PromptBlocksViewer({
         {/* Collapsible Content */}
         {isOpen && (
           <div className="p-4 space-y-4">
-            <PromptBlocksContent prompt={prompt} groupedBlocks={groupedBlocks} />
+            <PromptSegmentsContent prompt={prompt} groupedSegments={groupedSegments} />
           </div>
         )}
       </div>
@@ -79,18 +79,21 @@ export function PromptBlocksViewer({
   // Non-collapsible render
   return (
     <div className="grid grid-cols-2 gap-6">
-      <PromptBlocksContent prompt={prompt} groupedBlocks={groupedBlocks} />
+      <PromptSegmentsContent prompt={prompt} groupedSegments={groupedSegments} />
     </div>
   );
 }
 
-interface PromptBlocksContentProps {
+// Legacy alias for backwards compatibility
+export const PromptBlocksViewer = PromptSegmentsViewer;
+
+interface PromptSegmentsContentProps {
   prompt: string;
-  groupedBlocks: Partial<Record<PromptBlockRole, PromptBlock[]>>;
+  groupedSegments: Partial<Record<PromptSegmentRole, PromptSegment[]>>;
 }
 
-function PromptBlocksContent({ prompt, groupedBlocks }: PromptBlocksContentProps) {
-  const totalBlocks = Object.values(groupedBlocks).reduce((sum, arr) => sum + arr.length, 0);
+function PromptSegmentsContent({ prompt, groupedSegments }: PromptSegmentsContentProps) {
+  const totalSegments = Object.values(groupedSegments).reduce((sum, arr) => sum + arr.length, 0);
 
   return (
     <>
@@ -104,39 +107,34 @@ function PromptBlocksContent({ prompt, groupedBlocks }: PromptBlocksContentProps
         />
       </Panel>
 
-      {/* Right: Parsed Blocks */}
+      {/* Right: Parsed Segments */}
       <Panel className="p-6">
         <h2 className="text-lg font-semibold mb-4">
-          Parsed Components ({totalBlocks})
+          Parsed Segments ({totalSegments})
         </h2>
         <div className="space-y-4 overflow-y-auto h-96">
-          {(Object.entries(groupedBlocks) as [PromptBlockRole, PromptBlock[]][]).map(([role, blocks]) => (
+          {(Object.entries(groupedSegments) as [PromptSegmentRole, PromptSegment[]][]).map(([role, segs]) => (
             <div key={role}>
               <h3 className="text-sm font-semibold capitalize mb-2 flex items-center gap-2">
                 <span className={`inline-block w-3 h-3 rounded-full ${roleColors[role]}`} />
-                {role} ({blocks.length})
+                {role} ({segs.length})
               </h3>
               <div className="space-y-2 ml-5">
-                {blocks.map((block, idx) => (
+                {segs.map((segment, idx) => (
                   <div
                     key={idx}
                     className={`p-3 border rounded ${roleColors[role]}`}
                   >
-                    <div className="font-medium text-sm">{block.text}</div>
-                    {block.component_type && (
-                      <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
-                        {block.component_type}
-                      </div>
-                    )}
+                    <div className="font-medium text-sm">{segment.text}</div>
                   </div>
                 ))}
               </div>
             </div>
           ))}
 
-          {totalBlocks === 0 && (
+          {totalSegments === 0 && (
             <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
-              No components parsed
+              No segments parsed
             </div>
           )}
         </div>

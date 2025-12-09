@@ -9,16 +9,16 @@ import { useState, useEffect } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
 import { DevPromptImporter } from './DevPromptImporter';
-import { PromptBlocksViewer } from '../components/prompts/PromptBlocksViewer';
+import { PromptSegmentsViewer } from '../components/prompts/PromptBlocksViewer';
 import { PromptBlockGraphSurface } from '../components/graph/PromptBlockGraphSurface';
 import { useApi } from '../hooks/useApi';
-import type { PromptBlock } from '../types/prompts';
+import type { PromptSegment } from '../types/prompts';
 
 // ===== Types =====
 
 interface PromptAnalysis {
   prompt: string;
-  blocks: PromptBlock[];
+  segments: PromptSegment[];
   tags: string[];
 }
 
@@ -48,7 +48,7 @@ interface DevPromptVersionDetail {
   provider_hints: Record<string, any>;
   prompt_analysis?: {
     prompt: string;
-    blocks: PromptBlock[];
+    segments: PromptSegment[];
     tags: string[];
   };
 }
@@ -329,7 +329,7 @@ function AnalyzeTab({ onSendToImport, onSendToCategories }: AnalyzeTabProps) {
             )}
 
             {/* Blocks */}
-            <PromptBlocksViewer prompt={analysis.prompt} blocks={analysis.blocks} />
+            <PromptSegmentsViewer prompt={analysis.prompt} segments={analysis.segments} />
           </>
         ) : (
           <Panel className="p-12 text-center">
@@ -410,7 +410,7 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
   const [versionError, setVersionError] = useState<string | null>(null);
 
   // View mode for version detail
-  const [versionViewMode, setVersionViewMode] = useState<'blocks' | 'graph'>('blocks');
+  const [versionViewMode, setVersionViewMode] = useState<'segments' | 'graph'>('segments');
 
   // Test Fit state
   const [testFitAssetId, setTestFitAssetId] = useState('');
@@ -682,14 +682,14 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
             {/* View Mode Toggle */}
             <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-2">
               <button
-                onClick={() => setVersionViewMode('blocks')}
+                onClick={() => setVersionViewMode('segments')}
                 className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                  versionViewMode === 'blocks'
+                  versionViewMode === 'segments'
                     ? 'bg-blue-500 text-white'
                     : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
                 }`}
               >
-                Blocks View
+                Segments View
               </button>
               <button
                 onClick={() => setVersionViewMode('graph')}
@@ -705,10 +705,10 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
 
             {versionViewMode === 'graph' ? (
               /* Graph View */
-              selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.blocks ? (
+              selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.segments ? (
                 <Panel className="p-0 h-[700px]">
                   <PromptBlockGraphSurface
-                    blocks={selectedVersion.prompt_analysis.blocks}
+                    blocks={selectedVersion.prompt_analysis.segments}
                     versionId={selectedVersion.version.id}
                     promptTitle={selectedFamily?.title || 'Prompt'}
                     includeRoleGroups={false}
@@ -823,9 +823,9 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
                   </Panel>
                 )}
 
-                <PromptBlocksViewer
+                <PromptSegmentsViewer
                   prompt={selectedVersion.prompt_analysis.prompt}
-                  blocks={selectedVersion.prompt_analysis.blocks}
+                  segments={selectedVersion.prompt_analysis.segments}
                 />
               </>
             )}

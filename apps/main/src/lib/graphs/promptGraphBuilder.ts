@@ -1,7 +1,7 @@
 /**
- * Prompt Block Graph Builder
+ * Prompt Segment Graph Builder
  *
- * Utility functions to build PromptBlockGraph from prompt analysis data.
+ * Utility functions to build PromptSegmentGraph from prompt analysis data.
  * Part of Task 81 - Prompt & Action Block Graph Surfaces
  */
 
@@ -9,8 +9,8 @@ import type {
   PromptBlockGraph,
   PromptGraphNode,
   PromptGraphEdge,
-  PromptBlock,
-  PromptBlockRole,
+  PromptSegment,
+  PromptSegmentRole,
 } from '../../types/promptGraphs';
 
 export interface BuildPromptGraphOptions {
@@ -20,10 +20,10 @@ export interface BuildPromptGraphOptions {
 }
 
 /**
- * Build a PromptBlockGraph from parsed prompt blocks
+ * Build a PromptBlockGraph from parsed prompt segments
  */
-export function buildPromptBlockGraph(
-  blocks: PromptBlock[],
+export function buildPromptSegmentGraph(
+  segments: PromptSegment[],
   options: BuildPromptGraphOptions = {}
 ): PromptBlockGraph {
   const {
@@ -45,46 +45,46 @@ export function buildPromptBlockGraph(
   });
 
   // Track role groups if enabled
-  const roleGroups = new Set<string>();
+  const roleGroups = new Set<PromptSegmentRole>();
 
-  // Create block nodes
-  blocks.forEach((block, index) => {
-    const blockNodeId = `block:${index}`;
-    const truncatedText = block.text.length > 50
-      ? block.text.substring(0, 50) + '...'
-      : block.text;
+  // Create segment nodes
+  segments.forEach((segment, index) => {
+    const segmentNodeId = `seg:${index}`;
+    const truncatedText = segment.text.length > 50
+      ? segment.text.substring(0, 50) + '...'
+      : segment.text;
 
     nodes.push({
-      id: blockNodeId,
-      kind: 'block',
+      id: segmentNodeId,
+      kind: 'segment',
       label: truncatedText,
-      role: block.role,
+      role: segment.role,
       versionId,
-      blockIndex: index,
-      text: block.text,
+      segmentIndex: index,
+      text: segment.text,
     });
 
-    // Add contains edge from prompt to block
+    // Add contains edge from prompt to segment
     edges.push({
       id: `e-contains-${index}`,
       kind: 'contains',
       from: promptNodeId,
-      to: blockNodeId,
+      to: segmentNodeId,
     });
 
-    // Add next edge to previous block
+    // Add next edge to previous segment
     if (index > 0) {
       edges.push({
         id: `e-next-${index - 1}-${index}`,
         kind: 'next',
-        from: `block:${index - 1}`,
-        to: blockNodeId,
+        from: `seg:${index - 1}`,
+        to: segmentNodeId,
       });
     }
 
     // Track roles for role grouping
-    if (includeRoleGroups && block.role) {
-      roleGroups.add(block.role);
+    if (includeRoleGroups && segment.role) {
+      roleGroups.add(segment.role);
     }
   });
 
@@ -99,14 +99,14 @@ export function buildPromptBlockGraph(
         role,
       });
 
-      // Add role-group edges to matching blocks
-      blocks.forEach((block, index) => {
-        if (block.role === role) {
+      // Add role-group edges to matching segments
+      segments.forEach((segment, index) => {
+        if (segment.role === role) {
           edges.push({
             id: `e-role-${role}-${index}`,
             kind: 'role-group',
             from: roleNodeId,
-            to: `block:${index}`,
+            to: `seg:${index}`,
           });
         }
       });
@@ -116,14 +116,17 @@ export function buildPromptBlockGraph(
   return { nodes, edges };
 }
 
+// Legacy alias
+export const buildPromptBlockGraph = buildPromptSegmentGraph;
+
 /**
  * Get node color based on role
  */
-export function getNodeColorByRole(role?: PromptBlockRole): string {
+export function getNodeColorByRole(role?: PromptSegmentRole): string {
   if (!role) return '#94a3b8'; // neutral-400
 
-  // Canonical role colors matching PromptBlockRole
-  const roleColors: Record<PromptBlockRole, string> = {
+  // Canonical role colors matching PromptSegmentRole
+  const roleColors: Record<PromptSegmentRole, string> = {
     character: '#3b82f6', // blue-500
     action: '#10b981',    // green-500
     setting: '#a855f7',   // purple-500
