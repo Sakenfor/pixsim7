@@ -18,7 +18,8 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
-    "@pixsim7/game.engine": "workspace:*"
+    "@pixsim7/game.engine": "workspace:*",
+    "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

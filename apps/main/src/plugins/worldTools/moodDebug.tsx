@@ -2,15 +2,12 @@
  * Mood Debug World Tool Plugin
  *
  * Displays NPC mood and time-of-day debug information.
+ * Uses data-driven BrainState for mood derivation.
  */
 
 import type { WorldToolPlugin } from '../../lib/worldTools/types';
 import { Badge } from '@pixsim7/shared.ui';
-import {
-  parseNpcKey,
-  getNpcRelationshipState,
-  buildNpcBrainState,
-} from '@pixsim7/game.engine';
+import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
 import { useUnifiedMood } from '../../hooks/useUnifiedMood';
 
 export const moodDebugTool: WorldToolPlugin = {
@@ -35,6 +32,7 @@ export const moodDebugTool: WorldToolPlugin = {
     }
 
     // Extract NPC moods from relationships
+    // Mood is now derived locally using simple formulas
     const npcMoods: Array<{
       npcId: number;
       mood: { valence: number; arousal: number; label?: string };
@@ -48,15 +46,25 @@ export const moodDebugTool: WorldToolPlugin = {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
         const relState = getNpcRelationshipState(session, npcId);
-        const brainState = buildNpcBrainState({
-          npcId,
-          session,
-          relationship: relState,
-        });
+
+        // Derive mood from relationship values
+        const affinity = relState?.affinity ?? 50;
+        const chemistry = relState?.chemistry ?? 50;
+        const tension = relState?.tension ?? 20;
+
+        const valence = affinity * 0.6 + chemistry * 0.4;
+        const arousal = chemistry * 0.5 + tension * 0.5;
+
+        // Derive mood label
+        let label = 'neutral';
+        if (valence >= 50 && arousal >= 50) label = 'excited';
+        else if (valence >= 50 && arousal < 50) label = 'content';
+        else if (valence < 50 && arousal >= 50) label = 'anxious';
+        else if (valence < 50 && arousal < 50) label = 'calm';
 
         npcMoods.push({
           npcId,
-          mood: brainState.mood,
+          mood: { valence, arousal, label },
           flags: relState?.flags || {},
           relationship: relState,
           sessionId: session.id,

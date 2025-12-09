@@ -11,13 +11,33 @@ export type {
   PixSim7CoreConfig,
   CoreEventMap,
   NpcRelationshipState,
-  NpcBrainState,
-  NpcMemory,
   ApiClient,
   StorageProvider,
   AuthProvider,
   NpcPersonaProvider,
 } from './core/types';
+
+// Re-export BrainState types from shared.types
+export type {
+  BrainState,
+  BrainStatSnapshot,
+  DerivedMood,
+  DerivedBehaviorUrgency,
+} from '@pixsim7/shared.types';
+
+// Re-export brain helper functions
+export {
+  getBrainStat,
+  hasStat,
+  hasDerived,
+  getDerived,
+  getMood,
+  getBehaviorUrgency,
+  getConversationStyle,
+  getAxisValue,
+  getAxisTier,
+  isInCriticalState,
+} from '@pixsim7/shared.types';
 
 // ===== Relationships =====
 
@@ -342,7 +362,6 @@ export {
 } from './user/contentPreferences';
 
 // ===== NPCs =====
-export { buildNpcBrainState } from './npcs/brain';
 export type { NpcPersona } from './npcs/brain';
 
 // ===== Scene Runtime =====

@@ -1,5 +1,55 @@
 import type { GameSessionDTO, UnifiedMoodState } from '@pixsim7/shared.types';
-import type { NpcBrainState, NpcRelationshipState } from '../core/types';
+import type { NpcRelationshipState } from '../core/types';
+
+/**
+ * @deprecated Use BrainState from @pixsim7/shared.types instead.
+ * This legacy type is kept for backwards compatibility with existing code.
+ */
+export interface NpcBrainState {
+  traits: Record<string, number>;
+  personaTags: string[];
+  conversationStyle?: string;
+  memories: NpcMemory[];
+  mood: {
+    valence: number;
+    arousal: number;
+    label?: string;
+    intimacyMood?: {
+      moodId: string;
+      intensity: number;
+    };
+    activeEmotion?: {
+      emotionType: string;
+      intensity: number;
+      trigger?: string;
+      expiresAt?: string;
+    };
+  };
+  logic: {
+    strategies: string[];
+  };
+  instincts: string[];
+  social: {
+    affinity: number;
+    trust: number;
+    chemistry: number;
+    tension: number;
+    tierId?: string;
+    intimacyLevelId?: string | null;
+    flags: string[];
+  };
+}
+
+/**
+ * NPC memory entry
+ */
+export interface NpcMemory {
+  id: string;
+  timestamp: string;
+  summary: string;
+  tags: string[];
+  source?: 'scene' | 'event' | 'flag';
+}
 
 /**
  * NPC persona data structure
@@ -172,29 +222,23 @@ function getDefaultTags(): string[] {
  * @param params.unifiedMood - Optional pre-computed unified mood state from backend
  * @returns Complete NPC brain state with traits, mood, social, and memories
  *
+ * @deprecated Use the data-driven BrainState from @pixsim7/shared.types instead.
+ *             Brain state is now computed via PixSim7Core.getNpcBrainState() which returns
+ *             a BrainState object with brain.stats[statDefId] and brain.derived[key].
+ *             This legacy function will be removed in a future release.
+ *
  * @example
  * ```ts
- * const persona: NpcPersona = {
- *   traits: { openness: 75, extraversion: 80 },
- *   tags: ['playful', 'romantic'],
- *   conversation_style: 'warm'
- * };
+ * // NEW approach (recommended)
+ * import { BrainState, getMood, getAxisValue } from '@pixsim7/shared.types';
+ * const brain = core.getNpcBrainState(npcId);
+ * const mood = getMood(brain);
+ * const affinity = getAxisValue(brain, 'relationships', 'affinity');
  *
- * const relationship = getNpcRelationshipState(session, 12);
- *
- * // With unified mood (preferred)
- * const unifiedMood = await previewUnifiedMood({ worldId: 1, npcId: 12, sessionId: session.id });
- * const brain = buildNpcBrainState({
- *   npcId: 12,
- *   session,
- *   relationship,
- *   persona,
- *   unifiedMood
- * });
- *
- * console.log(brain.mood.label); // e.g., "excited"
- * console.log(brain.mood.intimacyMood?.moodId); // e.g., "passionate"
- * console.log(brain.social.tierId); // e.g., "close_friend"
+ * // OLD approach (deprecated)
+ * const brain = buildNpcBrainState({ npcId, session, relationship, persona });
+ * console.log(brain.mood.label);
+ * console.log(brain.social.affinity);
  * ```
  */
 export function buildNpcBrainState(params: {

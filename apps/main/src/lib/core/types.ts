@@ -1,7 +1,14 @@
 /**
  * Core type definitions for the headless@pixsim7/game.engine
  * These types define the contract between the core and any frontend (React/CLI/Discord/etc)
+ *
+ * Note: BrainState is now imported from @pixsim7/shared.types
  */
+
+import type { BrainState } from '@pixsim7/shared.types';
+
+// Re-export BrainState for convenience
+export type { BrainState } from '@pixsim7/shared.types';
 
 // ============================================================================
 // Event System
@@ -16,7 +23,7 @@ export type CoreEventMap = {
   };
   npcBrainChanged: {
     npcId: number;
-    brain: NpcBrainState;
+    brain: BrainState;
   };
 };
 
@@ -91,56 +98,12 @@ export interface NpcRelationshipState {
 }
 
 // ============================================================================
-// NPC Brain System (Semantic View Model)
+// NPC Brain System
 // ============================================================================
 
-/**
- * NPC Brain State - A semantic projection of NPC data for the brain shape
- * This combines personality, relationships, and derived state into a unified view
- */
-export interface NpcBrainState {
-  // CORTEX: Personality & Traits
-  traits: Record<string, number>; // e.g., { openness: 0.7, boldness: 0.5, kindness: 0.8 }
-  personaTags: string[]; // e.g., ["teasing", "confident", "protective"]
-  conversationStyle?: string; // e.g., "teasing", "soft", "formal"
-
-  // MEMORY: Notable Past Interactions
-  memories: NpcMemory[];
-
-  // EMOTION: Current Mood
-  mood: {
-    valence: number; // -1 (negative) to 1 (positive)
-    arousal: number; // 0 (calm) to 1 (excited)
-    label?: string; // e.g., "content", "jealous", "excited"
-  };
-
-  // LOGIC: Decision-Making Strategies
-  logic: {
-    strategies: string[]; // e.g., ["cautious", "impulsive", "calculating"]
-  };
-
-  // INSTINCT: Base Drives & Archetypes
-  instincts: string[]; // e.g., ["protective", "curious", "competitive"]
-
-  // SOCIAL: Relationship Summary
-  social: {
-    affinity: number;
-    trust: number;
-    chemistry: number;
-    tension: number;
-    tierId?: string;
-    intimacyLevelId?: string | null;
-    flags: string[];
-  };
-}
-
-export interface NpcMemory {
-  id: string;
-  timestamp: string;
-  summary: string;
-  tags: string[]; // e.g., ["first_kiss", "conflict", "gift"]
-  source?: 'scene' | 'event' | 'flag';
-}
+// BrainState is now data-driven and imported from @pixsim7/shared.types
+// See BrainState, BrainStatSnapshot, getMood, getAxisValue, etc.
+// Old NpcBrainState with hardcoded fields has been removed.
 
 // ============================================================================
 // Core Interface
@@ -162,9 +125,9 @@ export interface PixSim7Core {
     patch: Partial<NpcRelationshipState>
   ): void;
 
-  // ===== NPC Brain Projection =====
-  getNpcBrainState(npcId: number): NpcBrainState | null;
-  applyNpcBrainEdit(npcId: number, edit: Partial<NpcBrainState>): void;
+  // ===== NPC Brain Projection (data-driven BrainState) =====
+  getNpcBrainState(npcId: number): BrainState | null;
+  applyNpcBrainEdit(npcId: number, edit: Partial<BrainState>): void;
 
   // ===== Event System =====
   on<K extends keyof CoreEventMap>(

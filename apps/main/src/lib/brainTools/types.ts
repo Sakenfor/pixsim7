@@ -8,14 +8,19 @@
  * - Memory browser
  * - Social relationship analysis
  * - Custom brain state analyzers
+ *
+ * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
  */
 
 import type { ReactNode } from 'react';
-import type { NpcBrainState } from '@pixsim7/game.engine';
+import type { BrainState } from '@pixsim7/shared.types';
 import type { GameSessionDTO } from '../api/game';
 
 /**
  * Brain tool context available to plugins
+ *
+ * brainState is now data-driven - access stats via brain.stats[statDefId]
+ * and derived values via brain.derived[key]
  */
 export interface BrainToolContext {
   /** Selected NPC ID (may be null if no NPC selected) */
@@ -24,8 +29,8 @@ export interface BrainToolContext {
   /** Current game session (may be null if no session loaded) */
   session: GameSessionDTO | null;
 
-  /** Brain state for selected NPC (may be null if not loaded) */
-  brainState: NpcBrainState | null;
+  /** Data-driven brain state for selected NPC (may be null if not loaded) */
+  brainState: BrainState | null;
 }
 
 /**

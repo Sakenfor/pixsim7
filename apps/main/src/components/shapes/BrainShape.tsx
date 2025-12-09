@@ -1,16 +1,18 @@
 /**
  * BrainShape Component - 3D brain visualization with interactive faces
  * Represents NPC brain state through spatial/semantic UI
+ *
+ * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
  */
 
 import { useEffect, useState } from 'react';
-import type { NpcBrainState } from '@pixsim7/game.engine';
+import type { BrainState } from '@pixsim7/shared.types';
 import { BrainFace, brainShape } from '@pixsim7/scene.shapes';
 import './BrainShape.css';
 
 export interface BrainShapeProps {
   npcId: number;
-  brainState: NpcBrainState;
+  brainState: BrainState;
   onFaceClick: (face: BrainFace) => void;
   onFaceHover?: (face: BrainFace | null) => void;
   activeFace?: BrainFace;
@@ -216,7 +218,7 @@ const BrainLobe: React.FC<BrainLobeProps> = ({
 // Neural connections visualization
 interface NeuralConnectionsProps {
   connections: typeof brainShape.connections;
-  brainState: NpcBrainState;
+  brainState: BrainState;
   style: 'holographic' | 'organic' | 'circuit';
   size: number;
 }
@@ -227,16 +229,19 @@ const NeuralConnections: React.FC<NeuralConnectionsProps> = ({
   style,
   size,
 }) => {
-  // Calculate connection strengths based on brain state
+  // Calculate connection strengths based on brain state (data-driven)
   const getConnectionStrength = (from: BrainFace, to: BrainFace): number => {
+    const moodStats = brainState.stats['mood'];
+    const relStats = brainState.stats['relationships'];
+
     if (from === 'memory' && to === 'emotion') {
-      return brainState.mood.arousal;
+      return moodStats?.axes.arousal ?? 50;
     }
     if (from === 'emotion' && to === 'logic') {
-      return Math.abs(brainState.mood.valence);
+      return Math.abs((moodStats?.axes.valence ?? 50) - 50) / 50;
     }
     if (from === 'social' && to === 'cortex') {
-      return brainState.social.affinity / 100;
+      return (relStats?.axes.affinity ?? 50) / 100;
     }
     return 0.5; // Default strength
   };

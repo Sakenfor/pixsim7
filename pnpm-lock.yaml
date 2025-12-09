@@ -287,6 +287,9 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../game/engine
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
     devDependencies:
       typescript:
         specifier: ^5.4.0

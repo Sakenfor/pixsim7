@@ -1,9 +1,12 @@
 /**
  * Brain Shape Definition - Semantic shape for NPC neural visualization
  * This is UI-agnostic and describes the contract for the brain shape
+ *
+ * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
  */
 
-import type { NpcBrainState } from '@pixsim7/game.engine';
+import type { BrainState } from '@pixsim7/shared.types';
+import { getMood, getAxisValue, hasStat } from '@pixsim7/shared.types';
 
 export type BrainFace =
   | 'cortex'
@@ -17,7 +20,8 @@ export interface BrainFaceDefinition {
   id: BrainFace;
   label: string;
   description: string;
-  dataKey: keyof NpcBrainState;
+  /** Stat definition ID to look up in brain.stats */
+  statDefId: string;
   color: string; // Primary color for this face
   icon?: string; // Icon name/path
   interactions: string[]; // Available interactions for this face
@@ -40,9 +44,9 @@ export interface BrainShapeDefinition {
 
   // Shape-specific behaviors (UI-agnostic formulas)
   behaviors: {
-    pulseRate: (state: NpcBrainState) => number; // BPM
-    glowIntensity: (state: NpcBrainState) => number; // 0-1
-    neuralActivity: (state: NpcBrainState) => number; // 0-1
+    pulseRate: (state: BrainState) => number; // BPM
+    glowIntensity: (state: BrainState) => number; // 0-1
+    neuralActivity: (state: BrainState) => number; // 0-1
   };
 }
 
@@ -57,7 +61,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'cortex',
       label: 'Personality',
       description: 'Core traits and character attributes',
-      dataKey: 'traits',
+      statDefId: 'personality',
       color: 'purple',
       icon: 'brain',
       interactions: ['edit-traits', 'randomize-personality', 'view-stats'],
@@ -66,7 +70,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'memory',
       label: 'Memories',
       description: 'Past interactions and significant events',
-      dataKey: 'memories',
+      statDefId: 'memories', // Would be a custom stat package for memories
       color: 'blue',
       icon: 'clock-history',
       interactions: ['view-timeline', 'add-memory', 'forget', 'search'],
@@ -75,7 +79,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'emotion',
       label: 'Mood',
       description: 'Current emotional state',
-      dataKey: 'mood',
+      statDefId: 'mood',
       color: 'red',
       icon: 'heart',
       interactions: ['adjust-mood', 'trigger-emotion', 'view-history'],
@@ -84,7 +88,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'logic',
       label: 'Logic',
       description: 'Decision-making strategies',
-      dataKey: 'logic',
+      statDefId: 'behavior_urgency', // Maps to behavior urgency for decision-making
       color: 'green',
       icon: 'cpu',
       interactions: ['edit-strategies', 'test-scenario', 'view-decisions'],
@@ -93,7 +97,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'instinct',
       label: 'Instincts',
       description: 'Base drives and archetypes',
-      dataKey: 'instincts',
+      statDefId: 'drives',
       color: 'orange',
       icon: 'zap',
       interactions: ['set-archetype', 'adjust-drives', 'view-patterns'],
@@ -102,7 +106,7 @@ export const brainShape: BrainShapeDefinition = {
       id: 'social',
       label: 'Relationships',
       description: 'Social connections and relationship state',
-      dataKey: 'social',
+      statDefId: 'relationships',
       color: 'cyan',
       icon: 'users',
       interactions: ['view-network', 'adjust-relationship', 'view-flags'],
@@ -138,22 +142,21 @@ export const brainShape: BrainShapeDefinition = {
   ],
 
   behaviors: {
-    pulseRate: (state: NpcBrainState) => {
+    pulseRate: (state: BrainState) => {
       // Base rate 60 BPM, increases with tension
-      return 60 + state.social.tension * 2;
+      const tension = getAxisValue(state, 'relationships', 'tension', 0);
+      return 60 + tension * 2;
     },
-    glowIntensity: (state: NpcBrainState) => {
+    glowIntensity: (state: BrainState) => {
       // Stronger relationships = brighter glow
-      return Math.min(1, state.social.affinity / 100);
+      const affinity = getAxisValue(state, 'relationships', 'affinity', 0);
+      return Math.min(1, affinity / 100);
     },
-    neuralActivity: (state: NpcBrainState) => {
-      // Activity based on arousal and number of recent memories
-      const recentMemories = state.memories.filter((m) => {
-        const hoursSince =
-          (Date.now() - new Date(m.timestamp).getTime()) / (1000 * 60 * 60);
-        return hoursSince < 24;
-      }).length;
-      return Math.min(1, (state.mood.arousal + recentMemories / 10) / 2);
+    neuralActivity: (state: BrainState) => {
+      // Activity based on arousal
+      const mood = getMood(state);
+      const arousal = mood?.arousal ?? 50;
+      return Math.min(1, arousal / 100);
     },
   },
 };
@@ -173,4 +176,12 @@ export function getBrainConnections(face?: BrainFace): BrainConnection[] {
   return brainShape.connections.filter(
     (conn) => conn.from === face || conn.to === face
   );
+}
+
+/**
+ * Check if a brain face has data available
+ */
+export function hasBrainFaceData(state: BrainState, face: BrainFace): boolean {
+  const faceDefn = brainShape.faces[face];
+  return hasStat(state, faceDefn.statDefId);
 }

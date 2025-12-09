@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { parseNpcKey } from '@pixsim7/game.engine';
-import type { NpcBrainState } from '@pixsim7/game.engine';
+import type { BrainState } from '@pixsim7/shared.types';
 import type { BrainFace } from '@pixsim7/scene.shapes';
 import { usePixSim7Core } from '../lib/game/usePixSim7Core';
 import { getGameSession, listGameSessions, type GameSessionSummary } from '../lib/api/game';
@@ -37,7 +37,7 @@ export function NpcBrainLab({ npcId: contextNpcId, sessionId: contextSessionId }
   const [sessions, setSessions] = useState<GameSessionSummary[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [selectedNpcId, setSelectedNpcId] = useState<number | null>(null);
-  const [brainState, setBrainState] = useState<NpcBrainState | null>(null);
+  const [brainState, setBrainState] = useState<BrainState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [activeFace, setActiveFace] = useState<BrainFace>('cortex');

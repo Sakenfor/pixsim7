@@ -3,7 +3,6 @@
  * Beyond basic geometry - shapes with meaning and purpose
  */
 
-import type { NpcBrainState } from '@pixsim7/game.engine';
 import { brainShape, BrainShapeDefinition } from './brain';
 
 // ============================================================================

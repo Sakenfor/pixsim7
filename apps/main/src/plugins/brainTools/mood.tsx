@@ -2,10 +2,12 @@
  * Mood Brain Tool Plugin
  *
  * Displays NPC mood state (valence/arousal).
+ * Uses data-driven BrainState - accesses mood via brain.stats['mood'] or brain.derived['mood']
  */
 
 import type { BrainToolPlugin } from '../../lib/brainTools/types';
 import { ProgressBar } from '@pixsim7/shared.ui';
+import { getMood } from '@pixsim7/shared.types';
 
 export const moodTool: BrainToolPlugin = {
   id: 'npc-mood',
@@ -14,8 +16,12 @@ export const moodTool: BrainToolPlugin = {
   icon: '😊',
   category: 'mood',
 
-  // Visible when brain state is available
-  whenVisible: (ctx) => !!ctx.brainState,
+  // Visible when brain state has mood data
+  whenVisible: (ctx) => {
+    if (!ctx.brainState) return false;
+    const mood = getMood(ctx.brainState);
+    return mood !== undefined;
+  },
 
   render: (ctx) => {
     if (!ctx.brainState) {
@@ -26,7 +32,16 @@ export const moodTool: BrainToolPlugin = {
       );
     }
 
-    const { mood } = ctx.brainState;
+    // Get mood using helper (checks both stats and derived)
+    const mood = getMood(ctx.brainState);
+
+    if (!mood) {
+      return (
+        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+          No mood data available
+        </p>
+      );
+    }
 
     return (
       <div className="space-y-4">

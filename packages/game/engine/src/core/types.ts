@@ -2,6 +2,7 @@ import type {
   GameSessionDTO,
   RelationshipTierId,
   IntimacyLevelId,
+  BrainState,
 } from '@pixsim7/shared.types';
 import type { NpcPersona } from '../npcs/brain';
 
@@ -19,7 +20,7 @@ export type CoreEventMap = {
 
   npcBrainChanged: {
     npcId: number;
-    brain: NpcBrainState;
+    brain: BrainState;
   };
 
   'persona:loaded': {
@@ -113,60 +114,6 @@ export interface NpcRelationshipState {
 }
 
 /**
- * NPC memory entry
- */
-export interface NpcMemory {
-  id: string;
-  timestamp: string;
-  summary: string;
-  tags: string[];
-  source?: 'scene' | 'event' | 'flag';
-}
-
-/**
- * NPC brain state - combines personality, relationship state, and mood
- */
-export interface NpcBrainState {
-  traits: Record<string, number>;
-  personaTags: string[];
-  conversationStyle?: string;
-
-  memories: NpcMemory[];
-
-  mood: {
-    valence: number;
-    arousal: number;
-    label?: string;
-    intimacyMood?: {
-      moodId: string;
-      intensity: number;
-    };
-    activeEmotion?: {
-      emotionType: string;
-      intensity: number;
-      trigger?: string;
-      expiresAt?: string;
-    };
-  };
-
-  logic: {
-    strategies: string[];
-  };
-
-  instincts: string[];
-
-  social: {
-    affinity: number;
-    trust: number;
-    chemistry: number;
-    tension: number;
-    tierId?: string;
-    intimacyLevelId?: string | null;
-    flags: string[];
-  };
-}
-
-/**
  * Configuration for PixSim7Core
  */
 export interface PixSim7CoreConfig {
@@ -191,11 +138,11 @@ export interface PixSim7Core {
     patch: Partial<NpcRelationshipState>
   ): void;
 
-  // npc brain projection
-  getNpcBrainState(npcId: number): NpcBrainState | null;
+  // npc brain projection (data-driven BrainState)
+  getNpcBrainState(npcId: number): BrainState | null;
   applyNpcBrainEdit(
     npcId: number,
-    edit: Partial<NpcBrainState>
+    edit: Partial<BrainState>
   ): void;
 
   // npc persona management

@@ -17,10 +17,10 @@ import {
   addFavoriteTool,
   removeFavoriteTool,
 } from '@/lib/game/npcPreferences';
-import { buildNpcBrainState, type NpcBrainState, type NpcPersona } from '@pixsim7/game.engine';
+import type { NpcPersona } from '@pixsim7/game.engine';
+import type { BrainState, BrainStatSnapshot } from '@pixsim7/shared.types';
 import { BrainShape } from './shapes/BrainShape';
 import type { BrainFace } from '@pixsim7/scene.shapes';
-import type { GameSessionDTO } from '@pixsim7/shared.types';
 
 interface NpcPreferencesEditorProps {
   npc: GameNpcDetail;
@@ -35,7 +35,7 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
 
   // Live brain preview state
   const [livePreview, setLivePreview] = useState(false);
-  const [brainState, setBrainState] = useState<NpcBrainState | null>(null);
+  const [brainState, setBrainState] = useState<BrainState | null>(null);
   const [activeFace, setActiveFace] = useState<BrainFace>('cortex');
 
   // Update brain state when preferences change (for live preview)
@@ -55,53 +55,46 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
       conversation_style: 'warm',
     };
 
-    // Create mock session with preferences in flags
-    const mockSession: GameSessionDTO = {
-      id: 0,
-      user_id: 0,
-      scene_id: 0,
-      current_node_id: null,
-      world_time: 0,
-      flags: {
-        npcs: {
-          [`npc:${npc.id}`]: {
-            personality: {
-              traits: basePersona.traits,
-              tags: basePersona.tags,
-              conversation_style: basePersona.conversation_style,
-            },
-            preferences,
-          },
-        },
-      },
-      relationships: {
-        [`npc:${npc.id}`]: {
-          affinity: npc.relationshipLevel || 50,
-          trust: 50,
-          chemistry: 50,
-          tension: 20,
-        },
-      },
+    // Build data-driven brain state for preview
+    const stats: Record<string, BrainStatSnapshot> = {};
+
+    // Add personality stats
+    stats['personality'] = {
+      axes: basePersona.traits,
+      tiers: Object.fromEntries(
+        Object.entries(basePersona.traits).map(([k, v]) => [k, v >= 50 ? 'moderate' : 'low'])
+      ),
     };
 
-    // Create mock relationship state
-    const relationshipState = {
-      affinity: npc.relationshipLevel || 50,
-      trust: 50,
-      chemistry: 50,
-      tension: 20,
-      flags: [],
-      tierId: 'acquaintance',
-      intimacyLevelId: '0',
+    // Add relationship stats
+    const affinity = npc.relationshipLevel || 50;
+    stats['relationships'] = {
+      axes: { affinity, trust: 50, chemistry: 50, tension: 20 },
+      tiers: { affinity: 'moderate', trust: 'moderate', chemistry: 'moderate', tension: 'low' },
+      levelId: 'acquaintance',
     };
 
-    // Build brain state with current preferences
-    const brain = buildNpcBrainState({
+    // Derive mood
+    const valence = affinity * 0.6 + 50 * 0.4;
+    const arousal = 50 * 0.5 + 20 * 0.5;
+    stats['mood'] = {
+      axes: { valence, arousal },
+      tiers: { valence: 'moderate', arousal: 'moderate' },
+      levelId: valence >= 50 ? 'content' : 'neutral',
+    };
+
+    const brain: BrainState = {
       npcId: npc.id,
-      session: mockSession,
-      relationship: relationshipState,
-      persona: basePersona,
-    });
+      worldId: 0,
+      stats,
+      derived: {
+        persona_tags: basePersona.tags,
+        conversation_style: basePersona.conversation_style,
+        mood: { valence, arousal, label: valence >= 50 ? 'content' : 'neutral' },
+      },
+      computedAt: Date.now(),
+      sourcePackages: ['core.personality', 'core.relationships', 'core.mood'],
+    };
 
     setBrainState(brain);
   }, [preferences, livePreview, npc.id, npc.relationshipLevel]);
