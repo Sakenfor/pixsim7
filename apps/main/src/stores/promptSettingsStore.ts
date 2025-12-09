@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_PROMPT_ANALYZER_ID } from '@/lib/analyzers/constants';
 
 export interface PromptSettings {
   // Analysis settings
@@ -29,7 +30,7 @@ interface PromptSettingsStore extends PromptSettings {
 
 const DEFAULT_SETTINGS: PromptSettings = {
   autoAnalyze: true,
-  defaultAnalyzer: 'prompt:simple',
+  defaultAnalyzer: DEFAULT_PROMPT_ANALYZER_ID,
   autoExtractBlocks: false,
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',

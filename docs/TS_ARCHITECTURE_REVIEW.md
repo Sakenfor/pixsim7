@@ -33,7 +33,7 @@
 |------|--------|---------------|
 | Providers | Good | Minor duplication in hooks |
 | Generation/Jobs | Improved | ~~Heavy `any` usage~~, ~~operation type fragmentation~~ - Fixed 2024-12-09 |
-| Analyzers | Good | Magic string IDs (Phase 4 pending) |
+| Analyzers | Improved | ~~Magic string IDs~~ - Consolidated to constants (Phase 4 done) |
 | Panels/Workspace | Improved | ~~4 different category definitions~~ - Consolidated 2024-12-09 |
 | Prompts | Improved | `PromptBlock` consolidated to `types/prompts.ts` (Phase 3 done) |
 | API Client | Improved | ~~38~~ ~30 `any` occurrences (reduced in generations.ts) |
@@ -825,12 +825,12 @@ Add runtime validation for API responses to catch backend schema changes early.
 - [x] Update `types/promptGraphs.ts` to re-export and use `PromptBlockRole`
 - [x] Update `promptGraphBuilder.ts` to use typed roles
 
-### Phase 4: Analyzer Constants (30 min)
+### Phase 4: Analyzer Constants - COMPLETED 2024-12-09
 
-- [ ] Create `lib/analyzers/constants.ts`
-- [ ] Define `ANALYZER_IDS` and `DEFAULT_ANALYZER_ID`
-- [ ] Update `promptSettingsStore.ts` to use constant
-- [ ] Update `PromptsSettings.tsx` fallback
+- [x] Create `lib/analyzers/constants.ts`
+- [x] Define `PROMPT_ANALYZER_IDS`, `DEFAULT_PROMPT_ANALYZER_ID`, `FALLBACK_PROMPT_ANALYZERS`
+- [x] Update `promptSettingsStore.ts` to use constant
+- [x] Update `PromptsSettings.tsx` fallback to use constants
 
 ### Phase 5: Cleanup (ongoing)
 

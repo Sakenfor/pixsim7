@@ -8,6 +8,7 @@ import { Select, Switch } from '@pixsim7/shared.ui';
 import { settingsRegistry } from '@/lib/settingsRegistry';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
 import { listPromptAnalyzers, type AnalyzerInfo } from '@/lib/api/analyzers';
+import { FALLBACK_PROMPT_ANALYZERS } from '@/lib/analyzers/constants';
 
 export function PromptsSettings() {
   const {
@@ -35,10 +36,8 @@ export function PromptsSettings() {
       })
       .catch((err) => {
         console.error('Failed to fetch analyzers:', err);
-        // Fallback to hardcoded default
-        setAnalyzers([
-          { id: 'prompt:simple', name: 'Simple Parser', description: 'Fast, keyword-based', kind: 'parser', target: 'prompt', enabled: true, is_default: true },
-        ]);
+        // Fallback to constants when API unavailable
+        setAnalyzers(FALLBACK_PROMPT_ANALYZERS);
         setLoading(false);
       });
   }, []);
