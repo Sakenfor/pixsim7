@@ -56,7 +56,7 @@ class PixverseCreditsMixin:
             web_total = 0
             try:
                 web_data = await asyncio.wait_for(
-                    asyncio.to_thread(api.get_credits, temp_account),
+                    api.get_credits(temp_account),
                     timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
                 )
                 if isinstance(web_data, dict):
@@ -102,7 +102,7 @@ class PixverseCreditsMixin:
             if "openapi_key" in session:
                 try:
                     openapi_data = await asyncio.wait_for(
-                        asyncio.to_thread(api.get_openapi_credits, temp_account),
+                        api.get_openapi_credits(temp_account),
                         timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
                     )
                     if isinstance(openapi_data, dict):
@@ -176,7 +176,7 @@ class PixverseCreditsMixin:
             web_total = 0
             try:
                 web_data = await asyncio.wait_for(
-                    asyncio.to_thread(api.get_credits, temp_account),
+                    api.get_credits(temp_account),
                     timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
                 )
                 if isinstance(web_data, dict):
@@ -220,7 +220,7 @@ class PixverseCreditsMixin:
             if "openapi_key" in session:
                 try:
                     openapi_data = await asyncio.wait_for(
-                        asyncio.to_thread(api.get_openapi_credits, temp_account),
+                        api.get_openapi_credits(temp_account),
                         timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
                     )
                     if isinstance(openapi_data, dict):

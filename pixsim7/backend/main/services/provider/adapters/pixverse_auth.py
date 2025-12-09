@@ -20,7 +20,7 @@ logger = get_logger()
 class PixverseAuthMixin:
     """Mixin for Pixverse authentication operations"""
 
-    def get_user_info(self, jwt_token: str, cookies: dict = None) -> dict:
+    async def get_user_info(self, jwt_token: str, cookies: dict = None) -> dict:
         """
         Get user info from Pixverse API (like pixsim6)
 
@@ -65,7 +65,7 @@ class PixverseAuthMixin:
             try:
                 # Note: Can't use cached API here as we don't have full account object, just JWT
                 api = PixverseAPI()
-                user_info_data = api.get_user_info(temp_account)
+                user_info_data = await api.get_user_info(temp_account)
             except Exception as e:  # pragma: no cover - defensive fallback
                 # No account ID/email here, but still record a normalized provider error.
                 log_provider_error(
@@ -294,11 +294,8 @@ class PixverseAuthMixin:
         provider_metadata = None
 
         try:
-            # Call getUserInfo API (run in thread pool to avoid blocking async event loop)
-            import asyncio
-            from functools import partial
-            loop = asyncio.get_event_loop()
-            user_info = await loop.run_in_executor(None, partial(self.get_user_info, ai_token, cookies))
+            # Call getUserInfo API (now natively async via httpx)
+            user_info = await self.get_user_info(ai_token, cookies)
             email = user_info['email']
             username = user_info.get('username')
             nickname = user_info.get('nickname')

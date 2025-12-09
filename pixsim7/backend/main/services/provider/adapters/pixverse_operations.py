@@ -243,9 +243,8 @@ class PixverseOperationsMixin:
                     kwargs[field] = params[field]
             kwargs.update(_extract_video_options(params))
 
-        # Call pixverse-py (synchronous) in thread
-        video = await asyncio.to_thread(
-            client.create,
+        # Call pixverse-py (now async with httpx)
+        video = await client.create(
             prompt=params.get("prompt", ""),
             **kwargs
         )
@@ -262,8 +261,7 @@ class PixverseOperationsMixin:
         # Use pixverse-py image operations via client.api._image_ops
         # This requires a JWT (Web API) session.
         try:
-            image = await asyncio.to_thread(
-                client.api._image_ops.create_image,  # type: ignore[attr-defined]
+            image = await client.api._image_ops.create_image(  # type: ignore[attr-defined]
                 prompt=params.get("prompt", ""),
                 image_urls=[],  # No input images for text-to-image
                 account=client.pool.get_next(),
@@ -333,9 +331,8 @@ class PixverseOperationsMixin:
         # Add required image_url
         kwargs["image_url"] = params["image_url"]
 
-        # Call pixverse-py
-        video = await asyncio.to_thread(
-            client.create,
+        # Call pixverse-py (now async with httpx)
+        video = await client.create(
             prompt=params.get("prompt", ""),
             **kwargs
         )
@@ -361,8 +358,7 @@ class PixverseOperationsMixin:
         # Use pixverse-py image operations via client.api._image_ops
         # This requires a JWT (Web API) session.
         try:
-            image = await asyncio.to_thread(
-                client.api._image_ops.create_image,  # type: ignore[attr-defined]
+            image = await client.api._image_ops.create_image(  # type: ignore[attr-defined]
                 prompt=params.get("prompt", ""),
                 image_urls=image_urls,
                 account=client.pool.get_next(),
@@ -408,9 +404,8 @@ class PixverseOperationsMixin:
         # Video options (multi_shot, audio, off_peak, etc.)
         kwargs.update(_extract_video_options(params))
 
-        # Call pixverse-py extend method
-        video = await asyncio.to_thread(
-            client.extend,
+        # Call pixverse-py extend method (now async)
+        video = await client.extend(
             **kwargs
         )
 
@@ -447,9 +442,8 @@ class PixverseOperationsMixin:
             else:
                 kwargs["duration"] = int(duration_value)
 
-        # Call pixverse-py
-        video = await asyncio.to_thread(
-            client.transition,
+        # Call pixverse-py (now async)
+        video = await client.transition(
             **kwargs
         )
 
@@ -462,9 +456,8 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate fusion (character consistency)"""
-        # Call pixverse-py fusion method
-        video = await asyncio.to_thread(
-            client.fusion,
+        # Call pixverse-py fusion method (now async)
+        video = await client.fusion(
             prompt=params.get("prompt", ""),
             fusion_assets=params["fusion_assets"],  # Required
             quality=params.get("quality", "360p"),
@@ -532,9 +525,8 @@ class PixverseOperationsMixin:
 
             try:
                 if is_image_operation:
-                    # Use get_image for IMAGE_TO_IMAGE operations
-                    result = await asyncio.to_thread(
-                        client.get_image,
+                    # Use get_image for IMAGE_TO_IMAGE operations (now async)
+                    result = await client.get_image(
                         image_id=provider_job_id,
                     )
                     # Map image status
@@ -560,9 +552,8 @@ class PixverseOperationsMixin:
                         metadata={"provider_status": raw_status, "is_image": True},
                     )
                 else:
-                    # Use get_video for video operations
-                    video = await asyncio.to_thread(
-                        client.get_video,
+                    # Use get_video for video operations (now async)
+                    video = await client.get_video(
                         video_id=provider_job_id,
                     )
                     status = self._map_pixverse_status(video)
@@ -644,16 +635,15 @@ class PixverseOperationsMixin:
             # Try SDK's upload_media method (available in SDK v1.0.0+)
             response = None
             if hasattr(client, 'upload_media'):
-                # Use official SDK method
-                response = await asyncio.to_thread(client.upload_media, file_path)
+                # Use official SDK method (now async)
+                response = await client.upload_media(file_path)
             elif hasattr(client, 'api') and hasattr(client.api, 'upload_media'):
-                # Direct API access (alternative)
-                response = await asyncio.to_thread(client.api.upload_media, file_path, client.pool.get_next())
+                # Direct API access (alternative, now async)
+                response = await client.api.upload_media(file_path, client.pool.get_next())
             else:
                 # Legacy fallback for older SDK versions
                 if self._has_openapi_credentials(account):
-                    response = await asyncio.to_thread(
-                        self._upload_via_openapi,
+                    response = await self._upload_via_openapi(
                         client,
                         account,
                         file_path
@@ -737,7 +727,7 @@ class PixverseOperationsMixin:
                 raise ProviderError(f"Pixverse upload failed: {e}")
 
 
-    def _upload_via_openapi(
+    async def _upload_via_openapi(
         self,
         client: Any,
         account: ProviderAccount,
@@ -761,8 +751,8 @@ class PixverseOperationsMixin:
         )
 
         pix_api = getattr(client, "api", None)
-        if not pix_api or not hasattr(pix_api, "session"):
-            raise ProviderError("Pixverse SDK API client missing HTTP session.")
+        if not pix_api:
+            raise ProviderError("Pixverse SDK API client missing.")
 
         base_url = getattr(pix_api, "base_url", "https://app-api.pixverse.ai").rstrip("/")
         upload_url = f"{base_url}/openapi/v2/image/upload"
@@ -772,12 +762,14 @@ class PixverseOperationsMixin:
         }
 
         try:
+            # Get the async httpx client
+            http_client = await pix_api._get_client()
             with open(file_path, "rb") as file_obj:
-                resp = pix_api.session.post(
+                resp = await http_client.post(
                     upload_url,
                     headers=headers,
                     files={"image": file_obj},
-                    timeout=60
+                    timeout=60.0
                 )
         except Exception as exc:
             raise ProviderError(f"Pixverse OpenAPI upload request failed: {exc}")
