@@ -24,20 +24,9 @@ import { WorldVisualRolesPanel } from '@/components/game/panels/WorldVisualRoles
 import { GenerationsPanel } from '@/components/generation/GenerationsPanel';
 import { GameToolsPanel } from '@/components/panels/tools/GameToolsPanel';
 import { SurfaceWorkbenchPanel } from '@/components/panels/tools/SurfaceWorkbenchPanel';
-
-// Archived game iframe panel – now a simple placeholder
-function ArchivedGamePanel() {
-  return (
-    <div className="w-full h-full flex items-center justify-center px-4 text-sm text-neutral-600 dark:text-neutral-300 text-center">
-      <div>
-        <div className="font-semibold mb-1">Game panel (archived)</div>
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          The legacy game iframe frontend has been archived. Use the Game 2D view and workspace tools instead.
-        </div>
-      </div>
-    </div>
-  );
-}
+import { GameViewPanel } from '@/components/game/panels/GameViewPanel';
+import { WorldContextPanel } from '@/components/game/panels/WorldContextPanel';
+import { EdgeEffectsPanel } from '@/components/panels/tools/EdgeEffectsPanel';
 
 export const corePanelsPlugin: PanelPlugin = {
   id: 'core-panels',
@@ -76,7 +65,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: GraphEditorHost,
       category: 'workspace',
       tags: ['graph', 'nodes', 'flow'],
-      icon: '🔀',
+      icon: '🕸️',
       description: 'Visual node-based editor',
       // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
       coreEditorRole: 'flow-view',
@@ -115,12 +104,12 @@ export const corePanelsPlugin: PanelPlugin = {
     {
       id: 'game',
       title: 'Game',
-      component: ArchivedGamePanel,
+      component: GameViewPanel,
       category: 'game',
       tags: ['game', 'preview', 'play'],
       icon: '🎮',
-      description: 'Legacy game iframe frontend (archived). Use Game2D route for the core Game View.',
-      // Core Game View: The canonical runtime/play viewport (legacy - see Game2D route for active implementation)
+      description: 'Core Game View (Game2D) embedded in the workspace.',
+      // Core Game View: The canonical runtime/play viewport (Game2D)
       coreEditorRole: 'game-view',
       contextLabel: 'session',
       supportsCompactMode: false,
@@ -132,7 +121,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: ProviderSettingsPanel,
       category: 'system',
       tags: ['providers', 'api', 'settings'],
-      icon: '🔌',
+      icon: '⚙️',
       description: 'API provider settings and configuration',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -143,7 +132,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: SettingsPanel,
       category: 'utilities',
       tags: ['settings', 'configuration', 'preferences'],
-      icon: '⚙️',
+      icon: '🔧',
       description: 'Application settings and preferences',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -188,7 +177,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: SceneManagementPanel,
       category: 'scene',
       tags: ['scene', 'management', 'workflow', 'organization'],
-      icon: '📚',
+      icon: '🗂️',
       description: 'Unified scene workflow management',
       contextLabel: 'scene',
       supportsCompactMode: false,
@@ -200,7 +189,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: DevToolsPanel,
       category: 'dev',
       tags: ['dev', 'debug', 'tools', 'diagnostics', 'developer'],
-      icon: '🧰',
+      icon: '🛠️',
       description: 'Developer tools and diagnostics',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -211,7 +200,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: HudDesignerPanel,
       category: 'tools',
       tags: ['hud', 'designer', 'layout', 'ui', 'widgets'],
-      icon: '🎨',
+      icon: '🧩',
       description: 'Design HUD layouts using widget compositions',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -222,10 +211,22 @@ export const corePanelsPlugin: PanelPlugin = {
       component: WorldVisualRolesPanel,
       category: 'game',
       tags: ['world', 'assets', 'visual', 'binding', 'roles', 'portraits'],
-      icon: '🖼️',
+      icon: '🌍',
       description: 'Bind gallery assets to world visual roles (portraits, POV, backgrounds)',
       contextLabel: 'world',
       supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'world-context',
+      title: 'World Context',
+      component: WorldContextPanel,
+      category: 'game',
+      tags: ['world', 'location', 'context'],
+      icon: '🧭',
+      description: 'Select active world and location for the editor context.',
+      contextLabel: 'world',
+      supportsCompactMode: true,
       supportsMultipleInstances: false,
     },
     {
@@ -234,7 +235,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: GenerationsPanel,
       category: 'workspace',
       tags: ['generations', 'jobs', 'status', 'monitoring', 'tracking'],
-      icon: '⚡',
+      icon: '📈',
       description: 'Track and manage generation jobs',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -245,7 +246,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: GameToolsPanel,
       category: 'tools',
       tags: ['game', 'tools', 'catalog', 'world', 'interactions', 'widgets'],
-      icon: '🛠️',
+      icon: '🧰',
       description: 'Browse world tools, interactions, HUD widgets, and dev plugins',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
@@ -256,7 +257,7 @@ export const corePanelsPlugin: PanelPlugin = {
       component: SurfaceWorkbenchPanel,
       category: 'tools',
       tags: ['surfaces', 'hud', 'overlay', 'gizmo', 'editor'],
-      icon: '[]',
+      icon: '🧊',
       description: 'Inspect available surfaces (HUD, overlay, gizmo) for the active context',
       contextLabel: (ctx) =>
         ctx.scene.title
@@ -264,6 +265,18 @@ export const corePanelsPlugin: PanelPlugin = {
           : ctx.world.id
             ? `World #${ctx.world.id}`
             : undefined,
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'edge-effects',
+      title: 'Edge Effects',
+      component: EdgeEffectsPanel,
+      category: 'scene',
+      tags: ['scene', 'edges', 'effects', 'relationships', 'quests', 'inventory'],
+      icon: '✨',
+      description: 'Inspect and edit edge effects for the active scene graph.',
+      contextLabel: 'scene',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },
@@ -285,3 +298,4 @@ export const corePanelsPlugin: PanelPlugin = {
     // Cleanup is handled by the plugin manager
   },
 };
+
