@@ -6,9 +6,7 @@
  */
 import { apiClient } from './client';
 import { usePromptSettingsStore } from '@/stores/promptSettingsStore';
-
-// Re-export types from @pixsim7/types for convenience
-export type {
+import type {
   GenerationNodeConfig,
   GenerateContentRequest,
   GenerateContentResponse,
@@ -16,6 +14,16 @@ export type {
   SceneRef,
   PlayerContextSnapshot,
 } from '@pixsim7/shared.types';
+
+// Re-export types from @pixsim7/shared.types for convenience
+export type {
+  GenerationNodeConfig,
+  GenerateContentRequest,
+  GenerateContentResponse,
+  GenerationSocialContext,
+  SceneRef,
+  PlayerContextSnapshot,
+};
 
 // Backend response types (match backend schemas)
 export interface GenerationResponse {
@@ -68,26 +76,45 @@ export interface GenerationListResponse {
   offset: number;
 }
 
+/**
+ * Extended config type for generation requests.
+ *
+ * Extends GenerationNodeConfig with additional fields used by the control center
+ * that aren't in the strict schema (prompt, image_url, video_url, etc.).
+ * These extra fields are passed through to the provider adapter.
+ */
+export interface GenerationConfig extends Partial<GenerationNodeConfig> {
+  // Provider-specific params (passed through to adapter)
+  prompt?: string;
+  image_url?: string;
+  image_urls?: string[];
+  video_url?: string;
+  original_video_id?: string;
+  prompts?: string[];
+  fusion_assets?: string[];
+  [key: string]: unknown;
+}
+
 // Request type for creating generations (matches backend schema)
 export interface CreateGenerationRequest {
   // Required
-  config: any; // GenerationNodeConfig
+  config: GenerationConfig;
   provider_id: string;
 
   // Scene context
-  from_scene?: any; // SceneRef
-  to_scene?: any; // SceneRef
+  from_scene?: SceneRef;
+  to_scene?: SceneRef;
 
   // Player context
-  player_context?: any; // PlayerContextSnapshot
+  player_context?: PlayerContextSnapshot;
 
   // Social context
-  social_context?: any; // GenerationSocialContext
+  social_context?: GenerationSocialContext;
 
   // Prompt versioning
   prompt_version_id?: string;
   template_id?: string;
-  template_variables?: Record<string, any>;
+  template_variables?: Record<string, unknown>;
 
   // Workspace and metadata
   workspace_id?: number;
@@ -202,7 +229,7 @@ export async function buildSocialContext(params: {
   session_id?: number;
   npc_id?: string;
   user_max_rating?: string;
-}): Promise<any> {
-  const res = await apiClient.post('/generations/social-context/build', null, { params: { ...params, _: 'social' } });
+}): Promise<GenerationSocialContext> {
+  const res = await apiClient.post<GenerationSocialContext>('/generations/social-context/build', null, { params: { ...params, _: 'social' } });
   return res.data;
 }
