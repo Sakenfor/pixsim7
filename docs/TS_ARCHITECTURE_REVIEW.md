@@ -35,7 +35,7 @@
 | Generation/Jobs | Improved | ~~Heavy `any` usage~~, ~~operation type fragmentation~~ - Fixed 2024-12-09 |
 | Analyzers | Good | Magic string IDs (Phase 4 pending) |
 | Panels/Workspace | Improved | ~~4 different category definitions~~ - Consolidated 2024-12-09 |
-| Prompts | Poor | `PromptBlock` defined 4 times (Phase 3 pending) |
+| Prompts | Improved | `PromptBlock` consolidated to `types/prompts.ts` (Phase 3 done) |
 | API Client | Improved | ~~38~~ ~30 `any` occurrences (reduced in generations.ts) |
 
 ### Statistics (as of initial scan)
@@ -46,7 +46,7 @@
 | `Record<string, any>` total | 69 | ~65 (some converted to `unknown`) |
 | Duplicated `OperationType` definitions | 5+ | 1 (canonical in types/operations.ts) |
 | Duplicated `PanelCategory` definitions | 4 | 1 (canonical in panelConstants.ts) |
-| Duplicated `PromptBlock` definitions | 4 | 4 (Phase 3 pending) |
+| Duplicated `PromptBlock` definitions | 4 | 1 (canonical in types/prompts.ts) |
 | Files with hardcoded operation string comparisons | 8 | ~6 (Phase 5 pending) |
 
 ### Top 5 High-Leverage Improvements
@@ -55,7 +55,7 @@
 2. ~~**Fix `any` in `lib/api/generations.ts`** - Import existing shared types~~ DONE
 3. ~~**Consolidate `PanelCategory`** - Single source of truth for 4 definitions~~ DONE
 4. **Consolidate `GenerationStatus`** - Already centralized, just export properly
-5. **Create canonical `PromptBlock`** - Fix 4 scattered definitions
+5. **Create canonical `PromptBlock`** - DONE: Consolidated to `types/prompts.ts`
 
 ---
 
@@ -450,55 +450,43 @@ export type PanelId = typeof PANEL_IDS[keyof typeof PANEL_IDS];
 
 > **Important:** `PromptBlock` is a **frontend/analysis type only**. It represents parsed prompt segments for UI display and analysis. Persisted block data lives in `ActionBlockDB` on the backend. Do not confuse this UI type with database models.
 
-### Critical Issue: PromptBlock Defined 4 Times
+### ~~Critical Issue: PromptBlock Defined 4 Times~~ RESOLVED
 
-| Location | `role` Type | Exported | Status |
-|----------|-------------|----------|--------|
-| `types/promptGraphs.ts` | `string` | Yes | Generic |
-| `components/prompts/PromptBlocksViewer.tsx` | `'character'\|'action'\|...` | Yes | Specific literals |
-| `routes/PromptLabDev.tsx` | `string` | No (local) | Duplicate |
-| `routes/PromptLabDev.tsx` (2nd) | implicit | No | In `PromptAnalysis` |
+**Fixed 2024-12-09:** Consolidated to `apps/main/src/types/prompts.ts`
 
-### Import Inconsistency
+| Location | Status |
+|----------|--------|
+| `types/prompts.ts` | **Canonical source** - `ParsedBlock` + `PromptBlock` UI alias |
+| `types/promptGraphs.ts` | Re-exports from `types/prompts.ts` |
+| `components/prompts/PromptBlocksViewer.tsx` | Imports from `types/prompts.ts` |
+| `routes/PromptLabDev.tsx` | Imports from `types/prompts.ts` |
+| `hooks/usePromptInspection.ts` | Imports from `types/prompts.ts` |
 
-```typescript
-// hooks/usePromptInspection.ts - imports from component!
-import { PromptBlock } from '../components/prompts/PromptBlocksViewer';
-
-// Should import from centralized types
-```
-
-### Recommended Consolidation
+### Implementation
 
 ```typescript
-// NEW FILE: packages/shared/types/src/prompts.ts
+// apps/main/src/types/prompts.ts
 
 export const PROMPT_BLOCK_ROLES = [
-  'character',
-  'action',
-  'setting',
-  'mood',
-  'romance',
-  'other',
+  'character', 'action', 'setting', 'mood', 'romance', 'other',
 ] as const;
 
 export type PromptBlockRole = typeof PROMPT_BLOCK_ROLES[number];
 
-/**
- * Frontend/analysis type for parsed prompt segments.
- * NOT a database model - persisted blocks use ActionBlockDB on the backend.
- */
-export interface PromptBlock {
+// Full backend shape (mirrors services/prompt_parser/simple.py)
+export interface ParsedBlock {
   role: PromptBlockRole;
   text: string;
-  component_type?: string;
+  start_pos: number;
+  end_pos: number;
+  sentence_index: number;
+  metadata?: Record<string, unknown>;
 }
 
-export interface PromptAnalysis {
-  prompt: string;
-  blocks: PromptBlock[];
-  tags: string[];
-}
+// Thin UI alias
+export type PromptBlock = Pick<ParsedBlock, 'role' | 'text'> & {
+  component_type?: string;
+};
 ```
 
 ### PromptVersion Type
@@ -762,13 +750,13 @@ export { GenerationStatus, ACTIVE_STATUSES, TERMINAL_STATUSES };
 import { GenerationStatus } from '@/stores/generationsStore';
 ```
 
-#### 5. Create Canonical PromptBlock
+#### 5. ~~Create Canonical PromptBlock~~ DONE
 
 **Effort:** Medium
 **Impact:** Medium
-**Files to change:** 4
+**Files changed:** 6
 
-Create `types/prompts.ts` or `packages/shared/types/src/prompts.ts`
+Created `types/prompts.ts` with `ParsedBlock` + `PromptBlock` UI alias. See Phase 3.
 
 #### 6. Create Analyzer Constants
 
@@ -825,14 +813,17 @@ Add runtime validation for API responses to catch backend schema changes early.
 - [x] Update `PanelHeader.tsx` category type
 - [x] Update `AddPanelDropdown.tsx` to use constants
 
-### Phase 3: Prompt Types (1-2 hours)
+### Phase 3: Prompt Types - COMPLETED 2024-12-09
 
-- [ ] Create `types/prompts.ts` with canonical `PromptBlock`
-- [ ] Define `PROMPT_BLOCK_ROLES` constant
-- [ ] Update `PromptBlocksViewer.tsx` to import from types
-- [ ] Update `usePromptInspection.ts` import
-- [ ] Remove duplicate definitions from `PromptLabDev.tsx`
-- [ ] Update `types/promptGraphs.ts` to use shared type
+- [x] Create `types/prompts.ts` with canonical `ParsedBlock` (mirrors backend)
+- [x] Define `PROMPT_BLOCK_ROLES` constant and `PromptBlockRole` type
+- [x] Add `PromptBlock` as thin UI alias: `Pick<ParsedBlock, 'role' | 'text'> & { component_type?: }`
+- [x] Add `toPromptBlock()` / `toPromptBlocks()` conversion helpers
+- [x] Update `PromptBlocksViewer.tsx` to import from types (re-exports for compat)
+- [x] Update `usePromptInspection.ts` import
+- [x] Remove duplicate definition from `PromptLabDev.tsx`
+- [x] Update `types/promptGraphs.ts` to re-export and use `PromptBlockRole`
+- [x] Update `promptGraphBuilder.ts` to use typed roles
 
 ### Phase 4: Analyzer Constants (30 min)
 

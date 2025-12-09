@@ -10,6 +10,7 @@ import type {
   PromptGraphNode,
   PromptGraphEdge,
   PromptBlock,
+  PromptBlockRole,
 } from '../../types/promptGraphs';
 
 export interface BuildPromptGraphOptions {
@@ -118,21 +119,20 @@ export function buildPromptBlockGraph(
 /**
  * Get node color based on role
  */
-export function getNodeColorByRole(role?: string): string {
+export function getNodeColorByRole(role?: PromptBlockRole): string {
   if (!role) return '#94a3b8'; // neutral-400
 
-  const roleColors: Record<string, string> = {
+  // Canonical role colors matching PromptBlockRole
+  const roleColors: Record<PromptBlockRole, string> = {
     character: '#3b82f6', // blue-500
     action: '#10b981',    // green-500
-    setting: '#f59e0b',   // amber-500
-    narrator: '#8b5cf6',  // violet-500
-    system: '#ef4444',    // red-500
-    user: '#06b6d4',      // cyan-500
-    assistant: '#ec4899', // pink-500
-    description: '#f97316', // orange-500
+    setting: '#a855f7',   // purple-500
+    mood: '#eab308',      // yellow-500
+    romance: '#ec4899',   // pink-500
+    other: '#64748b',     // slate-500
   };
 
-  return roleColors[role.toLowerCase()] || '#64748b'; // slate-500
+  return roleColors[role];
 }
 
 /**

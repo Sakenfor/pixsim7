@@ -12,14 +12,9 @@ import { DevPromptImporter } from './DevPromptImporter';
 import { PromptBlocksViewer } from '../components/prompts/PromptBlocksViewer';
 import { PromptBlockGraphSurface } from '../components/graph/PromptBlockGraphSurface';
 import { useApi } from '../hooks/useApi';
+import type { PromptBlock } from '../types/prompts';
 
 // ===== Types =====
-
-interface PromptBlock {
-  role: string;
-  text: string;
-  component_type?: string;
-}
 
 interface PromptAnalysis {
   prompt: string;

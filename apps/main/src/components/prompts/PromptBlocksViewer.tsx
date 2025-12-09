@@ -8,12 +8,10 @@
 import { useState } from 'react';
 import { Panel } from '@pixsim7/shared.ui';
 import { Icon } from '@/lib/icons';
+import type { PromptBlock, PromptBlockRole } from '@/types/prompts';
 
-export interface PromptBlock {
-  role: 'character' | 'action' | 'setting' | 'mood' | 'romance' | 'other';
-  text: string;
-  component_type?: string;
-}
+// Re-export for backwards compatibility
+export type { PromptBlock } from '@/types/prompts';
 
 export interface PromptBlocksViewerProps {
   prompt: string;
@@ -23,7 +21,7 @@ export interface PromptBlocksViewerProps {
 }
 
 // Role colors for visual distinction
-const roleColors: Record<string, string> = {
+const roleColors: Record<PromptBlockRole, string> = {
   character: 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700',
   action: 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700',
   setting: 'bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700',
@@ -47,7 +45,7 @@ export function PromptBlocksViewer({
     }
     acc[block.role].push(block);
     return acc;
-  }, {} as Record<string, PromptBlock[]>);
+  }, {} as Partial<Record<PromptBlockRole, PromptBlock[]>>);
 
   // If collapsible, render with header
   if (collapsible) {
@@ -88,7 +86,7 @@ export function PromptBlocksViewer({
 
 interface PromptBlocksContentProps {
   prompt: string;
-  groupedBlocks: Record<string, PromptBlock[]>;
+  groupedBlocks: Partial<Record<PromptBlockRole, PromptBlock[]>>;
 }
 
 function PromptBlocksContent({ prompt, groupedBlocks }: PromptBlocksContentProps) {
@@ -112,7 +110,7 @@ function PromptBlocksContent({ prompt, groupedBlocks }: PromptBlocksContentProps
           Parsed Components ({totalBlocks})
         </h2>
         <div className="space-y-4 overflow-y-auto h-96">
-          {Object.entries(groupedBlocks).map(([role, blocks]) => (
+          {(Object.entries(groupedBlocks) as [PromptBlockRole, PromptBlock[]][]).map(([role, blocks]) => (
             <div key={role}>
               <h3 className="text-sm font-semibold capitalize mb-2 flex items-center gap-2">
                 <span className={`inline-block w-3 h-3 rounded-full ${roleColors[role]}`} />

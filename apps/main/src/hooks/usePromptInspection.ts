@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useApi } from './useApi';
-import { PromptBlock } from '../components/prompts/PromptBlocksViewer';
+import type { PromptBlock } from '@/types/prompts';
 
 export interface UsePromptInspectionOptions {
   assetId?: number;

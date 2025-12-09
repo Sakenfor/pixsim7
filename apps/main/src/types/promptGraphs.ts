@@ -8,6 +8,10 @@
  * Part of Task 81 - Prompt & Action Block Graph Surfaces
  */
 
+// Re-export prompt types from canonical source
+export type { PromptBlock, ParsedBlock, PromptBlockRole } from './prompts';
+import type { PromptBlockRole } from './prompts';
+
 // ===== Prompt Block Graph Types =====
 
 export type PromptGraphNodeKind = 'prompt' | 'block' | 'role';
@@ -17,7 +21,7 @@ export interface PromptGraphNode {
   id: string;                     // e.g., "prompt:{versionId}", "block:{idx}", "role:action"
   kind: PromptGraphNodeKind;
   label: string;                  // short label for node
-  role?: string;                  // for block nodes (character/action/setting/...)
+  role?: PromptBlockRole;         // for block nodes (character/action/setting/...)
   versionId?: string;             // prompt version UUID (for prompt/block nodes)
   blockIndex?: number;            // for block nodes
   text?: string;                  // full text for tooltips
@@ -63,12 +67,6 @@ export interface ActionBlockGraph {
 }
 
 // ===== Helper Types =====
-
-export interface PromptBlock {
-  role: string;
-  text: string;
-  component_type?: string;
-}
 
 export interface ActionBlock {
   id: string;
