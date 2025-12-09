@@ -63,11 +63,25 @@ export interface GameLocationDetail {
 // NPC Types
 // ===================
 
+/**
+ * NPC summary for list views
+ *
+ * Note: This is the legacy DTO format from the backend.
+ * For the unified actor system, see NpcActor which extends Actor.
+ * These types will be aligned in a future refactor.
+ */
 export interface GameNpcSummary {
   id: number;
   name: string;
 }
 
+/**
+ * NPC detail for single NPC views
+ *
+ * Note: This is the legacy DTO format from the backend.
+ * For the unified actor system, see NpcActor which extends Actor.
+ * These types will be aligned in a future refactor.
+ */
 export interface GameNpcDetail extends GameNpcSummary {
   /** NPC metadata including preferences, traits, etc. */
   meta?: Record<string, unknown> | null;
@@ -441,6 +455,252 @@ export interface GameProfile {
    * - 'heavy': Frequent narrative programs, branching sequences
    */
   narrativeProfile?: NarrativeProfile;
+}
+
+// ===================
+// Actor System Types
+// ===================
+
+/**
+ * Actor type discriminator
+ * - 'npc': AI-controlled entity (schedule, brain, persona)
+ * - 'player': Human-controlled entity (local or remote)
+ * - 'agent': Script/AI-controlled entity (bots, AI companions, test agents)
+ */
+export type ActorType = 'npc' | 'player' | 'agent';
+
+/**
+ * Control source for player actors
+ */
+export interface PlayerControlBinding {
+  /** Control type */
+  type: 'local' | 'remote';
+  /** User ID (from auth system) */
+  userId: string;
+  /** Multiplayer session ID (for remote players) */
+  multiplayerSessionId?: string;
+  /** Connection status (for remote players) */
+  connectionStatus?: 'connected' | 'disconnected' | 'reconnecting';
+}
+
+/**
+ * Control source for agent actors (bots, AI companions)
+ */
+export interface AgentControlBinding {
+  /** Agent script/behavior ID */
+  agentId: string;
+  /** Agent type */
+  agentType: 'companion' | 'test' | 'bot';
+  /** Configuration for the agent */
+  config?: Record<string, unknown>;
+}
+
+/**
+ * Inventory slot for actors
+ */
+export interface InventorySlot {
+  /** Item ID */
+  itemId: string;
+  /** Stack quantity */
+  quantity: number;
+  /** Slot index (for ordered inventories) */
+  slotIndex?: number;
+  /** Item metadata (durability, enchantments, etc.) */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Actor - base entity type for all entities that can act in the world
+ *
+ * This is the foundation for NPCs, players, and agent-controlled entities.
+ * All actors share common properties but differ in how they're controlled.
+ *
+ * Design notes:
+ * - Supports multiplayer (multiple player actors per world)
+ * - Genre-agnostic (stats/inventory are optional)
+ * - Control source determines behavior (AI, human, script)
+ */
+export interface Actor {
+  /** Unique actor ID */
+  id: number;
+  /** Actor type discriminator */
+  type: ActorType;
+  /** Display name */
+  name: string;
+
+  // ---- Location ----
+  /** World this actor belongs to */
+  worldId: number;
+  /** Current location within the world (null = not placed) */
+  locationId: number | null;
+
+  // ---- Optional systems (enabled per-game/actor) ----
+  /**
+   * Dynamic stats (energy, hunger, health, etc.)
+   * Schema is defined per-world in meta.statSchemas
+   */
+  stats?: Record<string, number>;
+
+  /**
+   * Inventory slots
+   * Only present if the game uses inventory system
+   */
+  inventory?: InventorySlot[];
+
+  /**
+   * Relationships to other actors (by actor ID)
+   * Uses the same RelationshipCoreComponent structure
+   */
+  relationships?: Record<number, RelationshipCoreComponent>;
+
+  // ---- Generic flags ----
+  /**
+   * Arbitrary flags for game-specific state
+   * Can store unlocks, story progress, preferences, etc.
+   */
+  flags: Record<string, unknown>;
+
+  // ---- Metadata ----
+  /** Creation timestamp */
+  createdAt?: string;
+  /** Last update timestamp */
+  updatedAt?: string;
+  /** Additional metadata */
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * NPC Actor - AI-controlled entity
+ *
+ * Extends Actor with NPC-specific fields for AI control,
+ * scheduling, and brain/persona integration.
+ */
+export interface NpcActor extends Actor {
+  type: 'npc';
+
+  // ---- AI Control ----
+  /** Persona ID for brain/dialogue system */
+  personaId?: string;
+  /** Schedule/routine graph ID */
+  scheduleId?: string;
+  /** Current brain state snapshot */
+  brainState?: {
+    currentActivity?: string;
+    mood?: string;
+    lastMemoryId?: string;
+    [key: string]: unknown;
+  };
+
+  // ---- NPC-specific state ----
+  /** Current expression/emotion state */
+  expressionState?: string;
+  /** Default portrait asset ID */
+  portraitAssetId?: number;
+  /** Role in the world (shopkeeper, guard, etc.) */
+  role?: string;
+  /** Tags for filtering/categorization */
+  tags?: string[];
+}
+
+/**
+ * Player Actor - human-controlled entity
+ *
+ * Extends Actor with player-specific fields for input handling,
+ * camera control, and multiplayer support.
+ */
+export interface PlayerActor extends Actor {
+  type: 'player';
+
+  // ---- Control binding ----
+  /** Who controls this actor */
+  controlledBy: PlayerControlBinding;
+
+  // ---- Player-specific state ----
+  /**
+   * Camera target/focus
+   * Used by the renderer to position camera
+   */
+  cameraTarget?: {
+    type: 'actor' | 'location' | 'position';
+    targetId?: number | string;
+    position?: { x: number; y: number; z?: number };
+  };
+
+  /**
+   * Current input state (for multiplayer sync)
+   * Tracks what inputs the player is currently giving
+   */
+  inputState?: {
+    moveDirection?: { x: number; y: number };
+    interactTarget?: number | string;
+    [key: string]: unknown;
+  };
+
+  /**
+   * Player preferences (keybindings, UI settings, etc.)
+   * Synced from user profile but can be overridden per-session
+   */
+  preferences?: Record<string, unknown>;
+}
+
+/**
+ * Agent Actor - script/AI-controlled entity (bots, companions)
+ *
+ * Extends Actor with agent-specific fields for automated control.
+ * Useful for AI companions, test bots, or scripted entities.
+ */
+export interface AgentActor extends Actor {
+  type: 'agent';
+
+  // ---- Control binding ----
+  /** Agent control configuration */
+  controlledBy: AgentControlBinding;
+
+  // ---- Agent-specific state ----
+  /** Current objective/goal */
+  currentObjective?: string;
+  /** Agent behavior state */
+  behaviorState?: Record<string, unknown>;
+}
+
+/**
+ * Union type for any actor
+ */
+export type AnyActor = NpcActor | PlayerActor | AgentActor;
+
+/**
+ * Player slot for multiplayer sessions
+ * Defines who can join and which actor they control
+ */
+export interface PlayerSlot {
+  /** Unique slot ID */
+  slotId: string;
+  /** User ID occupying this slot (null = open) */
+  userId: string | null;
+  /** Actor ID this slot controls (null = not assigned) */
+  actorId: number | null;
+  /** Slot role */
+  role: 'host' | 'guest';
+  /** Slot status */
+  status: 'open' | 'occupied' | 'reserved';
+  /** Join permissions */
+  permissions?: {
+    canSpawn?: boolean;
+    canPossess?: boolean;
+    isSpectator?: boolean;
+  };
+}
+
+/**
+ * Actor presence - where an actor is at a given time
+ * Extends NpcPresenceDTO concept to all actors
+ */
+export interface ActorPresence {
+  actorId: number;
+  actorType: ActorType;
+  locationId: number;
+  worldTimeSeconds: number;
+  state: Record<string, unknown>;
 }
 
 // ===================
