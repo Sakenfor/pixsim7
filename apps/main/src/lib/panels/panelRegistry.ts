@@ -9,6 +9,11 @@ import type { PanelId } from '../../stores/workspaceStore';
 import type { ComponentType } from 'react';
 import { BaseRegistry } from '../core/BaseRegistry';
 import type { EditorContext } from '../context/editorContext';
+import type { PanelCategory } from './panelConstants';
+
+// Re-export PanelCategory for backwards compatibility
+export type { PanelCategory } from './panelConstants';
+export { PANEL_CATEGORIES, CATEGORY_LABELS, CATEGORY_ORDER } from './panelConstants';
 
 /**
  * Context label strategy for panel headers.
@@ -27,27 +32,8 @@ export type ContextLabelStrategy =
 
 export interface WorkspaceContext {
   currentSceneId?: string | null;
-  [key: string]: any;
+  [key: string]: unknown;
 }
-
-export type PanelCategory =
-  // Core workspace
-  | 'workspace'      // Gallery, Graph, Inspector
-
-  // Domain-specific
-  | 'scene'          // Scene Builder, Scene Management, Scene Library, etc.
-  | 'game'           // Game Theming, Game iframe, etc.
-
-  // Development & tools
-  | 'dev'            // Dev Tools panel (launcher)
-  | 'tools'          // Gizmo Lab, NPC Brain Lab, HUD Designer
-  | 'utilities'      // Export/Import, Validation, Settings
-
-  // System
-  | 'system'         // Health, Provider Settings
-
-  // Legacy/custom
-  | 'custom';        // Custom panels from plugins
 
 /**
  * Core editor role identifies panels as primary editing surfaces.

@@ -6,6 +6,7 @@ import { debugFlags } from '../lib/debugFlags';
 import type { PanelId } from './workspaceStore';
 import { pluginCatalog } from '../lib/plugins/pluginSystem';
 import type { MediaCardBadgeConfig } from '../components/media/MediaCard';
+import type { PanelCategory } from '../lib/panels/panelConstants';
 
 /**
  * Panel Configuration Store
@@ -17,8 +18,8 @@ import type { MediaCardBadgeConfig } from '../components/media/MediaCard';
 export interface PanelConfig {
   id: PanelId;
   enabled: boolean;
-  settings: Record<string, any>; // Panel-specific settings
-  category?: 'core' | 'development' | 'game' | 'tools' | 'custom';
+  settings: Record<string, unknown>; // Panel-specific settings
+  category?: PanelCategory;
   tags?: string[];
   description?: string;
   icon?: string;
@@ -27,7 +28,7 @@ export interface PanelConfig {
 export interface PanelInstance {
   panelId: PanelId;
   instanceId: string; // Unique per instance
-  state: Record<string, any>; // Instance-specific state
+  state: Record<string, unknown>; // Instance-specific state
   position: 'docked' | 'floating';
   config: PanelConfig;
 }

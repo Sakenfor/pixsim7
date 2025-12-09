@@ -1,28 +1,7 @@
 import { useWorkspaceStore, type PanelId, type LayoutNode } from '@/stores/workspaceStore';
 import { Icon } from '@/lib/icons';
-import { panelRegistry, type PanelCategory } from '@/lib/panels/panelRegistry';
-
-const CATEGORY_LABELS: Record<PanelCategory, string> = {
-  workspace: 'Workspace',
-  scene: 'Scene',
-  game: 'Game',
-  dev: 'Development',
-  tools: 'Tools',
-  utilities: 'Utilities',
-  system: 'System',
-  custom: 'Custom',
-};
-
-const CATEGORY_ORDER: PanelCategory[] = [
-  'workspace',
-  'scene',
-  'game',
-  'dev',
-  'tools',
-  'utilities',
-  'system',
-  'custom',
-];
+import { panelRegistry } from '@/lib/panels/panelRegistry';
+import { CATEGORY_LABELS, CATEGORY_ORDER } from '@/lib/panels/panelConstants';
 
 interface AddPanelDropdownProps {
   onRestorePanel: (panelId: PanelId) => void;

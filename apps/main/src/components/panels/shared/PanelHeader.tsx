@@ -1,15 +1,8 @@
 import type { ReactNode } from 'react';
+import type { PanelCategory } from '@/lib/panels/panelConstants';
 
-export type PanelHeaderCategory =
-  | 'workspace'
-  | 'scene'
-  | 'world'
-  | 'game'
-  | 'tools'
-  | 'dev'
-  | 'system'
-  | 'utilities'
-  | 'custom';
+// Re-export for backwards compatibility
+export type PanelHeaderCategory = PanelCategory;
 
 export interface PanelHeaderProps {
   /** Main panel title (e.g., "Scene Graph", "Game World") */
@@ -19,7 +12,7 @@ export interface PanelHeaderProps {
   icon?: ReactNode;
 
   /** High-level category to visually group panels */
-  category?: PanelHeaderCategory;
+  category?: PanelCategory;
 
   /** Optional contextual label (e.g., "World #3", "Scene: intro") */
   contextLabel?: string;
