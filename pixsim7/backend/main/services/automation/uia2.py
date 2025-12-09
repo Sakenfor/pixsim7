@@ -5,13 +5,14 @@ Provides element finding and interaction using uiautomator2 library,
 which is more reliable than raw ADB + uiautomator dump commands.
 """
 import asyncio
-import logging
 from typing import Optional, Dict, Any, List
 from functools import partial
 
 import uiautomator2 as u2
 
-logger = logging.getLogger(__name__)
+from pixsim7.backend.main.shared.logging import get_backend_logger
+
+logger = get_backend_logger("automation.uia2")
 
 
 class UIA2:
@@ -20,12 +21,27 @@ class UIA2:
     _devices: Dict[str, u2.Device] = {}
 
     @classmethod
-    def get_device(cls, serial: str) -> u2.Device:
-        """Get or create a u2 device connection."""
-        if serial not in cls._devices:
-            logger.info("uia2_connect", serial=serial)
+    def get_device(cls, serial: str, retry: bool = True) -> u2.Device:
+        """Get or create a u2 device connection with automatic reconnect on failure."""
+        if serial in cls._devices:
+            # Verify existing connection is still valid
+            try:
+                # Quick health check - if this fails, connection is stale
+                cls._devices[serial].info
+                return cls._devices[serial]
+            except Exception as e:
+                logger.warning("uia2_connection_stale", serial=serial, error=str(e))
+                del cls._devices[serial]
+
+        # Create new connection
+        logger.info("uia2_connect", serial=serial)
+        try:
             cls._devices[serial] = u2.connect(serial)
-        return cls._devices[serial]
+            return cls._devices[serial]
+        except Exception as e:
+            # If connection fails, ensure we don't cache a bad state
+            cls._devices.pop(serial, None)
+            raise
 
     @classmethod
     def disconnect(cls, serial: str) -> None:

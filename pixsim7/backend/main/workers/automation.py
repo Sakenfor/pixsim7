@@ -91,8 +91,27 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
             if not device:
                 raise RuntimeError("No device available for automation execution")
 
-            # Mark device BUSY to avoid concurrent use
+            # Pre-flight check: verify device is actually reachable via ADB
+            from pixsim7.backend.main.services.automation.adb import ADB
             from pixsim7.backend.main.domain.automation import DeviceStatus
+            adb = ADB()
+            adb_devices = await adb.devices()
+            adb_serials = {serial for serial, state in adb_devices if state == "device"}
+
+            if device.adb_id not in adb_serials:
+                # Device not reachable - update status and fail
+                logger.warning(
+                    "device_not_reachable",
+                    execution_id=execution_id,
+                    device_id=device.id,
+                    adb_id=device.adb_id,
+                    available_devices=list(adb_serials)
+                )
+                device.status = DeviceStatus.OFFLINE
+                await db.commit()
+                raise RuntimeError(f"Device {device.adb_id} not reachable via ADB. Available: {list(adb_serials)}")
+
+            # Mark device BUSY to avoid concurrent use
             prev_status = device.status
             try:
                 device.status = DeviceStatus.BUSY
