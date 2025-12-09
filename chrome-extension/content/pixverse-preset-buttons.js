@@ -626,71 +626,82 @@
     accountBtn.className = `${BTN_CLASS} ${BTN_CLASS}--account`;
     updateAccountButton(accountBtn);
 
+    // Lock to prevent concurrent wheel events from racing
+    let wheelProcessing = false;
+
     // Shared wheel handler for cycling through accounts (works on any button in the group)
     const handleAccountWheel = async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      // Reload session from storage first (in case it changed externally)
-      await loadCurrentSessionAccount();
+      // Prevent concurrent wheel events from interfering with each other
+      if (wheelProcessing) return;
+      wheelProcessing = true;
 
-      // Load accounts if not loaded
-      if (accountsCache.length === 0) {
-        await loadAccounts();
-      }
+      try {
+        // Reload session from storage first (in case it changed externally)
+        await loadCurrentSessionAccount();
 
-      if (accountsCache.length === 0) return;
+        // Load accounts if not loaded
+        if (accountsCache.length === 0) {
+          await loadAccounts();
+        }
 
-      // Sync caches to ensure storage.state has current account data
-      syncModuleCaches();
+        if (accountsCache.length === 0) return;
 
-      // Build sorted account list matching the menu order:
-      // 1. Session account at top (if exists and in cache)
-      // 2. Other accounts sorted by user preference
-      const sessionId = storage.state.currentSessionAccountId;
-      const sessionAccount = sessionId ? accountsCache.find(a => a.id === sessionId) : null;
-      const otherAccounts = sessionAccount
-        ? accountsCache.filter(a => a.id !== sessionId)
-        : accountsCache;
-      const sortedOthers = getSortedAccounts(otherAccounts);
-      const sortedAccounts = sessionAccount
-        ? [sessionAccount, ...sortedOthers]
-        : sortedOthers;
+        // Sync caches to ensure storage.state has current account data
+        syncModuleCaches();
 
-      if (sortedAccounts.length === 0) return;
+        // Build sorted account list matching the menu order:
+        // 1. Session account at top (if exists and in cache)
+        // 2. Other accounts sorted by user preference
+        const sessionId = storage.state.currentSessionAccountId;
+        const sessionAccount = sessionId ? accountsCache.find(a => a.id === sessionId) : null;
+        const otherAccounts = sessionAccount
+          ? accountsCache.filter(a => a.id !== sessionId)
+          : accountsCache;
+        const sortedOthers = getSortedAccounts(otherAccounts);
+        const sortedAccounts = sessionAccount
+          ? [sessionAccount, ...sortedOthers]
+          : sortedOthers;
 
-      // Find current account index
-      // Priority: selected account > session account > first account
-      const selectedId = storage.state.selectedAccountId;
-      let currentIndex = -1;
+        if (sortedAccounts.length === 0) return;
 
-      if (selectedId) {
-        currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
-      }
-      if (currentIndex === -1 && sessionId) {
-        currentIndex = sortedAccounts.findIndex(a => a.id === sessionId);
-      }
-      if (currentIndex === -1) {
-        currentIndex = 0;
-      }
+        // Find current account index
+        // Priority: selected account > session account > first account
+        const selectedId = storage.state.selectedAccountId;
+        let currentIndex = -1;
 
-      // Scroll up = previous, scroll down = next
-      let newIndex;
-      if (e.deltaY < 0) {
-        // Scroll up - go to previous account
-        newIndex = currentIndex - 1;
-        if (newIndex < 0) newIndex = sortedAccounts.length - 1; // wrap to last
-      } else {
-        // Scroll down - go to next account
-        newIndex = currentIndex + 1;
-        if (newIndex >= sortedAccounts.length) newIndex = 0; // wrap to first
-      }
+        if (selectedId) {
+          currentIndex = sortedAccounts.findIndex(a => a.id === selectedId);
+        }
+        if (currentIndex === -1 && sessionId) {
+          currentIndex = sortedAccounts.findIndex(a => a.id === sessionId);
+        }
+        if (currentIndex === -1) {
+          currentIndex = 0;
+        }
 
-      // Select the new account
-      const newAccount = sortedAccounts[newIndex];
-      if (newAccount) {
-        await saveSelectedAccount(newAccount.id);
-        updateAccountButton(accountBtn);
+        // Scroll up = previous, scroll down = next
+        let newIndex;
+        if (e.deltaY < 0) {
+          // Scroll up - go to previous account
+          newIndex = currentIndex - 1;
+          if (newIndex < 0) newIndex = sortedAccounts.length - 1; // wrap to last
+        } else {
+          // Scroll down - go to next account
+          newIndex = currentIndex + 1;
+          if (newIndex >= sortedAccounts.length) newIndex = 0; // wrap to first
+        }
+
+        // Select the new account
+        const newAccount = sortedAccounts[newIndex];
+        if (newAccount) {
+          await saveSelectedAccount(newAccount.id);
+          updateAccountButton(accountBtn);
+        }
+      } finally {
+        wheelProcessing = false;
       }
     };
 
