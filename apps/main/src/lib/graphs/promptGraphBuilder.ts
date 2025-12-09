@@ -116,9 +116,6 @@ export function buildPromptSegmentGraph(
   return { nodes, edges };
 }
 
-// Legacy alias
-export const buildPromptBlockGraph = buildPromptSegmentGraph;
-
 /**
  * Get node color based on role
  */

@@ -16,7 +16,7 @@ Design:
 - Returns plain dicts/strings only
 """
 from typing import Dict, Any, List, Set, Optional
-from pixsim7.backend.main.services.prompt_parser import SimplePromptParser, ParsedRole
+from pixsim7.backend.main.services.prompt_parser import SimplePromptParser, PromptSegmentRole
 
 
 # ===== ADAPTER API =====
@@ -70,14 +70,14 @@ async def parse_prompt_to_blocks(text: str, model_id: Optional[str] = None) -> D
     # Parse the prompt using selected parser
     parsed = await parser.parse(text)
 
-    # Convert ParsedBlocks to PixSim7 blocks
+    # Convert PromptSegments to PixSim7 blocks
     blocks: List[Dict[str, Any]] = []
 
-    for parsed_block in parsed.blocks:
+    for segment in parsed.segments:
         # Build block (plain dict, no parser objects)
         block = {
-            "role": parsed_block.role.value,
-            "text": parsed_block.text,
+            "role": segment.role.value,
+            "text": segment.text,
         }
 
         blocks.append(block)

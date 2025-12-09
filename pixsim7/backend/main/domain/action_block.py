@@ -14,7 +14,7 @@ from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, Text, Enum as SAEnum
 from uuid import UUID, uuid4
 
-from pixsim7.backend.main.services.prompt_parser.simple import ParsedRole
+from pixsim7.backend.main.services.prompt_parser.simple import PromptSegmentRole
 
 
 class ActionBlockDB(SQLModel, table=True):
@@ -162,9 +162,9 @@ class ActionBlockDB(SQLModel, table=True):
     )
 
     # Block Classification (for unified lifecycle)
-    role: Optional[ParsedRole] = Field(
+    role: Optional[PromptSegmentRole] = Field(
         default=None,
-        sa_column=Column(SAEnum(ParsedRole, native_enum=False), index=True),
+        sa_column=Column(SAEnum(PromptSegmentRole, native_enum=False), index=True),
         description="Coarse classification: character, action, setting, mood, romance, other"
     )
 

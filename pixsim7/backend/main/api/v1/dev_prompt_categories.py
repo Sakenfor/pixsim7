@@ -152,7 +152,7 @@ async def discover_prompt_categories(
         })
 
     # For now, we don't have ontology_ids in the basic analysis
-    # They would come from ParsedBlock.metadata if we had access to the raw parsed blocks
+    # They would come from PromptSegment.metadata if we had access to the raw parsed segments
     # We'll get them from the AI suggestions instead
 
     # Step 3: Build context for AI Hub

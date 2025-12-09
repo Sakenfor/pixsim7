@@ -16,7 +16,7 @@ Design Philosophy:
     - Blocks enable cross-prompt queries ("find all entrance blocks")
 
 Block Classification:
-    - role: Reuses ParsedRole from prompt_parser (character, action, setting, mood, romance, other)
+    - role: Reuses PromptSegmentRole from prompt_parser (character, action, setting, mood, romance, other)
     - category: Free-form string for fine-grained LLM extraction (entrance, hand_motion, camera, etc.)
       Not an enum — extensible without schema changes.
 """

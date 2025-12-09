@@ -8,7 +8,7 @@ Produces output compatible with SimplePromptParser for unified processing.
 import logging
 from typing import Dict, Any, List, Optional
 
-from .simple import ParsedRole
+from .simple import PromptSegmentRole
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ def _clean_json_response(response: str) -> str:
 
 def _normalize_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Normalize and validate blocks from LLM response."""
-    valid_roles = {r.value for r in ParsedRole}
+    valid_roles = {r.value for r in PromptSegmentRole}
     normalized = []
 
     for block in blocks:

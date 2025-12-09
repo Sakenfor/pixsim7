@@ -28,10 +28,6 @@ class PromptSegmentRole(str, Enum):
     OTHER = "other"
 
 
-# Legacy alias
-ParsedRole = PromptSegmentRole
-
-
 class PromptSegment(BaseModel):
     """A single segment parsed from a prompt."""
     role: PromptSegmentRole
@@ -42,18 +38,10 @@ class PromptSegment(BaseModel):
     metadata: Dict[str, Any] = {}
 
 
-# Legacy alias
-ParsedBlock = PromptSegment
-
-
 class PromptParseResult(BaseModel):
     """Complete result of parsing a prompt into segments."""
     text: str
     segments: List[PromptSegment]
-
-
-# Legacy alias
-ParsedPrompt = PromptParseResult
 
 
 # ===== PARSER =====

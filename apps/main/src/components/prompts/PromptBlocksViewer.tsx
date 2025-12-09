@@ -84,9 +84,6 @@ export function PromptSegmentsViewer({
   );
 }
 
-// Legacy alias for backwards compatibility
-export const PromptBlocksViewer = PromptSegmentsViewer;
-
 interface PromptSegmentsContentProps {
   prompt: string;
   groupedSegments: Partial<Record<PromptSegmentRole, PromptSegment[]>>;

@@ -20,7 +20,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { PromptBlocksViewer } from '../prompts/PromptBlocksViewer';
+import { PromptSegmentsViewer } from '../prompts/PromptBlocksViewer';
 import { usePromptInspection } from '@/hooks/usePromptInspection';
 import { usePromptAiEdit } from '@/hooks/usePromptAiEdit';
 import { useAiProviders } from '@/hooks/useAiProviders';
@@ -304,7 +304,7 @@ interface PromptInspectorSectionProps {
 
 function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
   // Use the hook to fetch prompt inspection data
-  const { prompt, blocks, loading, error } = usePromptInspection({
+  const { prompt, segments, loading, error } = usePromptInspection({
     jobId: generationId,
   });
 
@@ -430,9 +430,9 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
       )}
 
       {prompt && (
-        <PromptBlocksViewer
+        <PromptSegmentsViewer
           prompt={prompt}
-          blocks={blocks}
+          segments={segments}
           collapsible={true}
           initialOpen={false}
         />

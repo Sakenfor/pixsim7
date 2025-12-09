@@ -11,7 +11,7 @@ import os
 # Add the backend to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pixsim7", "backend"))
 
-from main.services.prompt_parser import SimplePromptParser, ParsedRole
+from main.services.prompt_parser import SimplePromptParser, PromptSegmentRole
 from main.services.prompt_dsl_adapter import parse_prompt_to_blocks, analyze_prompt
 
 
@@ -38,11 +38,11 @@ async def test_parser():
         parser = SimplePromptParser()
         parsed = await parser.parse(prompt_text)
 
-        print(f"Blocks found: {len(parsed.blocks)}")
-        for block in parsed.blocks:
-            print(f"  - [{block.role.value}] {block.text}")
-            if block.metadata:
-                print(f"    Metadata: {block.metadata}")
+        print(f"Segments found: {len(parsed.segments)}")
+        for segment in parsed.segments:
+            print(f"  - [{segment.role.value}] {segment.text}")
+            if segment.metadata:
+                print(f"    Metadata: {segment.metadata}")
 
         # Test adapter
         adapter_result = await parse_prompt_to_blocks(prompt_text)

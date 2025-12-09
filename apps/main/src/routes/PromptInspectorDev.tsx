@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
 import { Icon } from '../lib/icons';
-import { PromptBlocksViewer } from '../components/prompts/PromptBlocksViewer';
+import { PromptSegmentsViewer } from '../components/prompts/PromptBlocksViewer';
 import { usePromptInspection } from '../hooks/usePromptInspection';
 
 export function PromptInspectorDev() {
@@ -24,7 +24,7 @@ export function PromptInspectorDev() {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Use the hook for data fetching
-  const { prompt, blocks, loading, error } = usePromptInspection({
+  const { prompt, segments, loading, error } = usePromptInspection({
     assetId: activeAssetId,
     jobId: activeJobId,
   });
@@ -120,9 +120,9 @@ export function PromptInspectorDev() {
 
       {/* Results Section */}
       {prompt && (
-        <PromptBlocksViewer
+        <PromptSegmentsViewer
           prompt={prompt}
-          blocks={blocks}
+          segments={segments}
         />
       )}
 

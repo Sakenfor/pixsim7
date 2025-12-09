@@ -19,7 +19,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add role column (ParsedRole enum stored as string)
+    # Add role column (PromptSegmentRole enum stored as string)
     op.add_column(
         'action_blocks',
         sa.Column('role', sa.String(20), nullable=True, index=True)
