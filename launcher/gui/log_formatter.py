@@ -10,11 +10,13 @@ try:
         LEVEL_COLORS, SERVICE_COLORS, DEFAULT_LEVEL_COLOR,
         DEFAULT_SERVICE_COLOR, get_status_color, COMPONENT_COLORS
     )
+    from .clickable_fields import get_registry, get_field
 except ImportError:
     from log_styles import (
         LEVEL_COLORS, SERVICE_COLORS, DEFAULT_LEVEL_COLOR,
         DEFAULT_SERVICE_COLOR, get_status_color, COMPONENT_COLORS
     )
+    from clickable_fields import get_registry, get_field
 
 
 ANSI_ESCAPE_RE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
@@ -162,30 +164,45 @@ def format_http_request(method, path, status_code=None):
 
 
 def format_clickable_id(field_name, value, label=None):
-    """Format a clickable ID field for filtering."""
+    """Format a clickable ID field using the registry for styling and behavior."""
     if not value:
         return ''
 
-    colors = {
-        'job_id': COMPONENT_COLORS['job_id'],
-        'request_id': COMPONENT_COLORS['request_id'],
-        'user_id': COMPONENT_COLORS['user_id']
-    }
+    # Get field definition from registry
+    field_def = get_field(field_name)
 
-    color = colors.get(field_name, '#FFB74D')
-    display_label = label or f"{field_name.replace('_id', '')}:{value}"
+    if field_def:
+        color = field_def.color
+        prefix = field_def.short_prefix
+        truncate = field_def.truncate_length
+        display_name = field_def.display_name
 
-    # Shorten long IDs
-    if field_name == 'request_id' and len(str(value)) > 8:
-        display_value = str(value)[:8]
-        tooltip = f' title="Click to filter by {field_name} ({value})"'
+        # Build display value with truncation
+        str_value = str(value)
+        if truncate > 0 and len(str_value) > truncate:
+            display_value = str_value[:truncate]
+            full_value_note = f" ({str_value})"
+        else:
+            display_value = str_value
+            full_value_note = ""
+
+        # Build tooltip from registry or default
+        if field_def.tooltip_template:
+            tooltip_text = field_def.tooltip_template.format(value=value)
+        else:
+            tooltip_text = f"{display_name}: {value} - click for actions"
+        tooltip = f' title="{escape_html(tooltip_text)}{full_value_note}"'
+
+        display_text = label or f"{prefix}:{display_value}"
+
     else:
-        display_value = value
+        # Fallback for unregistered fields
+        color = COMPONENT_COLORS.get(field_name, '#FFB74D')
+        display_text = label or f"{field_name.replace('_id', '')}:{value}"
         tooltip = f' title="Click to filter by {field_name}"'
 
-    display_text = display_label.replace(str(value), str(display_value))
-
-    return f' | <a href="filter://{field_name}/{value}" class="clickable-id" style="color: {color};"{tooltip}>{display_text}</a>'
+    # Use click:// scheme to trigger action popup
+    return f' | <a href="click://{field_name}/{value}" class="clickable-id" style="color: {color};"{tooltip}>{escape_html(display_text)}</a>'
 
 
 def format_error(error_msg):
@@ -389,14 +406,13 @@ def format_log_line_html(log, idx=0, is_expanded=False, row_key=None):
     if inline_extras:
         line_content += ' | ' + ' | '.join(inline_extras)
 
-    # Clickable IDs
+    # Clickable IDs (using registry for formatting)
     if job_id:
-        line_content += format_clickable_id('job_id', job_id, f'job:{job_id}')
+        line_content += format_clickable_id('job_id', job_id)
     if request_id:
-        req_short = str(request_id)[:8] if len(str(request_id)) > 8 else request_id
-        line_content += format_clickable_id('request_id', request_id, f'req:{req_short}')
+        line_content += format_clickable_id('request_id', request_id)
     if user_id:
-        line_content += format_clickable_id('user_id', user_id, f'user:{user_id}')
+        line_content += format_clickable_id('user_id', user_id)
 
     # Duration
     duration_ms = log.get('duration_ms') or (extra.get('duration_ms') if isinstance(extra, dict) else None)

@@ -19,11 +19,13 @@ try:
     from .log_styles import LOG_ROW_STYLES
     from .field_metadata import get_field_metadata, discover_fields
     from .log_view_widget import LogViewWidget
+    from .clickable_fields import get_registry, get_field, ActionType
 except ImportError:
     from log_formatter import format_log_line_html
     from log_styles import LOG_ROW_STYLES
     from field_metadata import get_field_metadata, discover_fields
     from log_view_widget import LogViewWidget
+    from clickable_fields import get_registry, get_field, ActionType
 
 
 class LogFetchWorker(QThread):
@@ -694,8 +696,8 @@ class DatabaseLogViewer(QWidget):
         return f"hash-{digest}"
 
     def _on_log_link_clicked(self, url: QUrl):
-        """Handle clicks on log links to filter or expand rows."""
-        scheme = url.scheme()  # e.g., "service", "filter", "expand"
+        """Handle clicks on log links to filter, expand rows, or show action menu."""
+        scheme = url.scheme()  # e.g., "service", "filter", "expand", "click"
 
         if scheme == "expand":
             # Handle row expansion toggle
@@ -719,23 +721,17 @@ class DatabaseLogViewer(QWidget):
                 self.level_combo.setCurrentIndex(idx)
                 self.refresh_logs()
 
+        elif scheme == "click":
+            # Handle click://field_name/value - show action popup
+            field_name = url.host()
+            field_value = url.path()[1:]  # Remove leading /
+            self._show_field_action_popup(field_name, field_value)
+
         elif scheme == "filter":
-            # Handle filter://field_name/value
+            # Handle filter://field_name/value (legacy, direct filter)
             field_name = url.host()
             filter_value = url.path()[1:]  # Remove leading /
-
-            # Set the dynamic filter input if it exists
-            if field_name in self.dynamic_filter_inputs:
-                widget = self.dynamic_filter_inputs[field_name]
-                widget.setText(str(filter_value))
-                widget.setFocus()
-                # Trigger contextual filter update if needed
-                self._update_contextual_filters()
-                self.refresh_logs()
-            else:
-                # Field doesn't exist yet, but might appear after service selection
-                # Try to infer service and select it first
-                pass
+            self._apply_field_filter(field_name, filter_value)
 
     def _toggle_row_expansion(self, row_idx):
         """Toggle expansion state of a log row and re-render."""
@@ -752,6 +748,168 @@ class DatabaseLogViewer(QWidget):
             self._render_logs(self._last_logs_data)
         else:
             return
+
+    def _show_field_action_popup(self, field_name: str, field_value: str):
+        """Show popup menu with actions for a clickable field."""
+        field_def = get_field(field_name)
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #2d2d2d;
+                color: #e0e0e0;
+                border: 1px solid #555;
+                padding: 4px;
+            }
+            QMenu::item {
+                padding: 6px 20px 6px 10px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #5a9fd4;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #555;
+                margin: 4px 8px;
+            }
+        """)
+
+        if field_def:
+            # Add header with field info
+            display_name = field_def.display_name
+            truncated = field_value[:20] + "..." if len(field_value) > 20 else field_value
+            header_action = QAction(f"{display_name}: {truncated}", self)
+            header_action.setEnabled(False)
+            header_font = header_action.font()
+            header_font.setBold(True)
+            header_action.setFont(header_font)
+            menu.addAction(header_action)
+            menu.addSeparator()
+
+            # Add actions from registry
+            for action_def in field_def.actions:
+                icon = action_def.icon + " " if action_def.icon else ""
+                action = QAction(f"{icon}{action_def.label}", self)
+
+                if action_def.tooltip:
+                    action.setToolTip(action_def.tooltip)
+
+                # Connect based on action type
+                if action_def.action_type == ActionType.FILTER:
+                    action.triggered.connect(
+                        lambda checked, fn=field_name, fv=field_value:
+                        self._apply_field_filter(fn, fv)
+                    )
+                elif action_def.action_type == ActionType.TRACE:
+                    action.triggered.connect(
+                        lambda checked, fn=field_name, fv=field_value, cfg=action_def.trace_config:
+                        self._apply_trace_action(fn, fv, cfg)
+                    )
+                elif action_def.action_type == ActionType.COPY:
+                    action.triggered.connect(
+                        lambda checked, v=field_value:
+                        self._copy_to_clipboard(v)
+                    )
+                elif action_def.action_type == ActionType.OPEN_URL:
+                    if action_def.url_template:
+                        url = action_def.url_template.format(value=field_value)
+                        action.triggered.connect(
+                            lambda checked, u=url: self._open_url(u)
+                        )
+
+                menu.addAction(action)
+        else:
+            # Fallback for unregistered fields
+            filter_action = QAction(f"🔍 Filter by {field_name}", self)
+            filter_action.triggered.connect(
+                lambda: self._apply_field_filter(field_name, field_value)
+            )
+            menu.addAction(filter_action)
+
+            copy_action = QAction(f"📋 Copy value", self)
+            copy_action.triggered.connect(
+                lambda: self._copy_to_clipboard(field_value)
+            )
+            menu.addAction(copy_action)
+
+        # Show menu at cursor position
+        from PySide6.QtGui import QCursor
+        menu.exec_(QCursor.pos())
+
+    def _apply_field_filter(self, field_name: str, field_value: str):
+        """Apply a filter for a specific field value."""
+        # Set the dynamic filter input if it exists
+        if field_name in self.dynamic_filter_inputs:
+            widget = self.dynamic_filter_inputs[field_name]
+            widget.setText(str(field_value))
+            widget.setFocus()
+            self._update_contextual_filters()
+            self.refresh_logs()
+        else:
+            # Field filter doesn't exist in current service view
+            # Try setting it in search instead
+            current_search = self.search_input.text().strip()
+            new_search = f"{field_name}:{field_value}"
+            if current_search and new_search not in current_search:
+                self.search_input.setText(f"{current_search} {new_search}")
+            else:
+                self.search_input.setText(new_search)
+            self.refresh_logs()
+
+    def _apply_trace_action(self, field_name: str, field_value: str, trace_config: dict):
+        """Apply trace action - shows full trace across services/time."""
+        if not trace_config:
+            trace_config = {}
+
+        # Apply trace configuration
+        if trace_config.get("service"):
+            idx = self.service_combo.findText(trace_config["service"])
+            if idx >= 0:
+                self.service_combo.setCurrentIndex(idx)
+
+        if trace_config.get("level"):
+            idx = self.level_combo.findText(trace_config["level"])
+            if idx >= 0:
+                self.level_combo.setCurrentIndex(idx)
+
+        if trace_config.get("time_range"):
+            idx = self.time_combo.findText(trace_config["time_range"])
+            if idx >= 0:
+                self.time_combo.setCurrentIndex(idx)
+
+        if trace_config.get("search"):
+            self.search_input.setText(trace_config["search"])
+
+        # Clear other filters if requested
+        if trace_config.get("clear_other_filters"):
+            for fname, widget in self.dynamic_filter_inputs.items():
+                if fname != field_name:
+                    widget.clear()
+
+        # Set the field filter
+        if field_name in self.dynamic_filter_inputs:
+            self.dynamic_filter_inputs[field_name].setText(str(field_value))
+        else:
+            # Add to search if no dedicated input
+            current_search = self.search_input.text().strip()
+            field_search = f"{field_name}:{field_value}"
+            if field_search not in current_search:
+                if current_search:
+                    self.search_input.setText(f"{current_search} {field_search}")
+                else:
+                    self.search_input.setText(field_search)
+
+        self._update_contextual_filters()
+        self.refresh_logs()
+
+        # Update status to indicate trace mode
+        self.status_label.setText(f"Showing trace for {field_name}={field_value[:12]}...")
+
+    def _open_url(self, url: str):
+        """Open URL in system browser."""
+        from PySide6.QtGui import QDesktopServices
+        QDesktopServices.openUrl(QUrl(url))
 
     def _show_context_menu(self, position):
         """Show context menu on right-click with smart actions based on selection."""
@@ -804,7 +962,7 @@ class DatabaseLogViewer(QWidget):
                 display_value = id_value if len(id_value) <= 12 else f"{id_value[:12]}..."
 
                 filter_action = QAction(f"Filter by {display_name}: {display_value}", self)
-                filter_action.triggered.connect(lambda checked, f=field_name, v=id_value: self._filter_by_field(f, v))
+                filter_action.triggered.connect(lambda checked, f=field_name, v=id_value: self._apply_field_filter(f, v))
                 menu.addAction(filter_action)
 
                 copy_action = QAction(f"Copy {display_name} ({id_value})", self)
@@ -854,7 +1012,7 @@ class DatabaseLogViewer(QWidget):
             op_type = op_match.group(1)
             menu.addSeparator()
             filter_op_action = QAction(f"Filter by Operation: {op_type}", self)
-            filter_op_action.triggered.connect(lambda: self._filter_by_field('operation_type', op_type))
+            filter_op_action.triggered.connect(lambda checked, ot=op_type: self._apply_field_filter('operation_type', ot))
             menu.addAction(filter_op_action)
 
         menu.exec_(self.log_display.mapToGlobal(position))
@@ -864,18 +1022,6 @@ class DatabaseLogViewer(QWidget):
         from PySide6.QtWidgets import QApplication
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
-
-    def _filter_by_field(self, field_name, value):
-        """Apply filter by field value."""
-        if field_name in self.dynamic_filter_inputs:
-            widget = self.dynamic_filter_inputs[field_name]
-            widget.setText(str(value))
-            widget.setFocus()
-            self._update_contextual_filters()
-            self.refresh_logs()
-        else:
-            # Field filter doesn't exist yet - could show message or auto-select service
-            pass
 
     def _on_logs_received(self, data, generation):
         """Handle logs received from worker thread."""
