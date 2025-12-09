@@ -770,8 +770,126 @@ This section documents all existing systems that relate to prompt blocks, tags, 
 
 ### Implementation Checklist
 
-- [ ] Add `role`, `category`, `analyzer_id`, `curation_status` to ActionBlockDB
-- [ ] Add indexes: `(role, category, curation_status)`, `(source_type, extracted_from_prompt_version)`
-- [ ] `tags["ontology_ids"]` remains canonical (same as existing Asset tagging)
+- [x] Add `role`, `category`, `analyzer_id`, `curation_status` to ActionBlockDB
+- [x] Add indexes: `(role, category, curation_status)`, `(source_type, extracted_from_prompt_version)`
+- [x] `tags["ontology_ids"]` remains canonical (same as existing Asset tagging)
 - [ ] Update ActionBlockService to handle raw/curated lifecycle
 - [ ] Update UI to filter by `curation_status` (curator vs production views)
+
+---
+
+## Future: Analyzer Presets (User-Configurable Analysis)
+
+### Motivation
+
+Users want to create custom analysis configurations:
+- "Motion Analyzer" — focus on action/movement ontology
+- "Character Extract" — prioritize character descriptions
+- "Camera Director" — specialized for cinematography terms
+- "Romance Classifier" — tuned for intimacy content
+
+Rather than hardcoding these, let users create and share presets.
+
+### Domain Model (MVP)
+
+```python
+class AnalyzerPreset(SQLModel, table=True):
+    id: UUID
+    slug: str                      # unique, URL-safe
+    name: str
+    description: Optional[str]
+    base_analyzer_id: str          # must exist in AnalyzerRegistry
+    config: Dict[str, Any]         # JSON for customization
+    is_public: bool                # shareable with others
+    owner_id: int                  # FK User
+    tags: List[str]                # for discovery
+    created_at: datetime
+    updated_at: datetime
+```
+
+### Config Keys (v1)
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `focus_ontology` | `List[str]` | Prioritize these prefixes/IDs (e.g., `["act:*", "cam:*"]`) |
+| `ignore_ontology` | `List[str]` | Skip these (e.g., `["mood:*"]`) |
+| `llm_system_prompt` | `str` | Override for LLM analyzers |
+| `llm_temperature` | `float` | LLM temperature (0.0-1.0) |
+
+### Example Presets
+
+| Name | Base | Config | Use Case |
+|------|------|--------|----------|
+| Motion Analyzer | prompt:claude | `{focus: ["act:*", "manner:*"]}` | Action scenes |
+| Character Extract | prompt:simple | `{focus: ["character", "part:*"]}` | Character sheets |
+| Camera Director | prompt:claude | `{focus: ["cam:*"], llm_system_prompt: "Focus on cinematography..."}` | Direction notes |
+| Romance Classifier | prompt:claude | `{focus: ["romance", "state:*"]}` | Intimacy content |
+| Quick Parse | prompt:simple | `{}` | Fast, general |
+
+### API
+
+```
+GET  /api/v1/analyzer-presets              → list presets (public + own)
+POST /api/v1/analyzer-presets              → create preset
+GET  /api/v1/analyzer-presets/{id}         → get preset
+PUT  /api/v1/analyzer-presets/{id}         → update preset
+DELETE /api/v1/analyzer-presets/{id}       → delete preset
+
+# Usage in analysis
+POST /api/v1/prompts/analyze { text, preset_id }    → uses preset
+POST /api/v1/prompts/analyze { text, analyzer_id }  → uses raw analyzer
+```
+
+### Integration with PromptAnalysisService
+
+```python
+async def analyze(
+    self,
+    text: str,
+    analyzer_id: Optional[str] = None,
+    preset_id: Optional[UUID] = None,
+) -> Dict[str, Any]:
+    """
+    If preset_id provided:
+    1. Load preset from DB
+    2. Set analyzer_id = preset.base_analyzer_id
+    3. Pass preset.config to underlying analyzer
+    4. Apply focus/ignore ontology filtering in post-processing
+    """
+```
+
+### Hierarchy
+
+```
+AnalyzerRegistry (system, immutable)
+  └── prompt:simple, prompt:claude, prompt:openai
+  └── [future] asset:faces, asset:scene
+
+AnalyzerPreset (user-created, shareable)
+  └── references base_analyzer_id + custom config
+  └── stored in DB, owned by users
+```
+
+### Frontend Integration
+
+- **Settings → Prompts → "My Presets" tab**: Create/manage personal presets
+- **Quick Generate**: Preset dropdown (advanced option)
+- **Prompt Lab**: Preset selector with live preview
+- **Dev-only initially**: Keep `prompt:simple` default everywhere
+
+### Reproducibility Benefit
+
+When analyzing, record both:
+- `analyzer_id` — base analyzer used
+- `preset_id` — preset applied (if any)
+
+This allows reproducing exact analysis later, even if preset config changes.
+
+### Implementation Checklist (Future)
+
+- [ ] Create `AnalyzerPreset` domain model and migration
+- [ ] Add `preset_id` support to `PromptAnalysisService.analyze()`
+- [ ] Create preset CRUD API endpoints
+- [ ] Add ontology filtering post-processing
+- [ ] Frontend: preset selector in Prompt Lab
+- [ ] Frontend: "My Presets" tab in Settings
