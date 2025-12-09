@@ -30,6 +30,13 @@ export interface DurationParams {
 // Operation-Specific Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface TextToImageParams extends QualityParams, AspectParams {
+  kind: 'text_to_image';
+  prompt: string;
+  negative_prompt?: string;
+  seed?: number;
+}
+
 export interface TextToVideoParams extends QualityParams, AspectParams, MotionParams, DurationParams {
   kind: 'text_to_video';
   prompt: string;
@@ -82,6 +89,7 @@ export interface FusionParams extends QualityParams, DurationParams {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type OperationParams =
+  | TextToImageParams
   | TextToVideoParams
   | ImageToVideoParams
   | ImageToImageParams
@@ -94,6 +102,7 @@ export type OperationParams =
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const OPERATION_TYPES = [
+  'text_to_image',
   'text_to_video',
   'image_to_video',
   'image_to_image',
@@ -104,36 +113,43 @@ export const OPERATION_TYPES = [
 
 export type OperationType = typeof OPERATION_TYPES[number];
 
+/**
+ * Check if a string is a valid OperationType
+ */
+export function isValidOperationType(value: string): value is OperationType {
+  return OPERATION_TYPES.includes(value as OperationType);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Type Guards
 // ─────────────────────────────────────────────────────────────────────────────
 
+export function isTextToImage(params: unknown): params is TextToImageParams {
+  return (params as OperationParams)?.kind === 'text_to_image';
+}
+
 export function isTextToVideo(params: unknown): params is TextToVideoParams {
-  return (params as any)?.kind === 'text_to_video' || (params as any)?.prompt !== undefined;
+  return (params as OperationParams)?.kind === 'text_to_video';
 }
 
 export function isImageToVideo(params: unknown): params is ImageToVideoParams {
-  return (params as any)?.kind === 'image_to_video';
+  return (params as OperationParams)?.kind === 'image_to_video';
 }
 
 export function isImageToImage(params: unknown): params is ImageToImageParams {
-  return (params as any)?.kind === 'image_to_image';
+  return (params as OperationParams)?.kind === 'image_to_image';
 }
 
 export function isVideoExtend(params: unknown): params is VideoExtendParams {
-  return (
-    (params as any)?.kind === 'video_extend' ||
-    (params as any)?.video_url !== undefined ||
-    (params as any)?.original_video_id !== undefined
-  );
+  return (params as OperationParams)?.kind === 'video_extend';
 }
 
 export function isVideoTransition(params: unknown): params is VideoTransitionParams {
-  return (params as any)?.kind === 'video_transition' || (params as any)?.image_urls !== undefined;
+  return (params as OperationParams)?.kind === 'video_transition';
 }
 
 export function isFusion(params: unknown): params is FusionParams {
-  return (params as any)?.kind === 'fusion' || (params as any)?.fusion_assets !== undefined;
+  return (params as OperationParams)?.kind === 'fusion';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -150,22 +166,37 @@ export function getActivePresetParamKeys(presetParams: Record<string, any>): str
 /**
  * Check if operation requires a prompt
  */
-export function operationRequiresPrompt(operationType: string): boolean {
-  return operationType === 'text_to_video' || operationType === 'image_to_image';
+export function operationRequiresPrompt(operationType: OperationType): boolean {
+  return operationType === 'text_to_image' || operationType === 'text_to_video' || operationType === 'image_to_image';
 }
 
 /**
  * Check if operation supports optional prompt
  */
-export function operationSupportsPrompt(operationType: string): boolean {
-  return ['text_to_video', 'image_to_video', 'image_to_image', 'video_extend', 'fusion'].includes(operationType);
+export function operationSupportsPrompt(operationType: OperationType): boolean {
+  const supportsPrompt: OperationType[] = ['text_to_image', 'text_to_video', 'image_to_video', 'image_to_image', 'video_extend', 'fusion'];
+  return supportsPrompt.includes(operationType);
+}
+
+/**
+ * Check if operation requires an image input
+ */
+export function operationRequiresImage(operationType: OperationType): boolean {
+  return operationType === 'image_to_video' || operationType === 'image_to_image';
+}
+
+/**
+ * Check if operation requires a video input
+ */
+export function operationRequiresVideo(operationType: OperationType): boolean {
+  return operationType === 'video_extend';
 }
 
 /**
  * Validate operation parameters and return list of error messages.
  * Used for optional dev-time validation.
  */
-export function validateOperationParams(params: Partial<Record<string, any>>): string[] {
+export function validateOperationParams(params: Partial<OperationParams>): string[] {
   const errors: string[] = [];
 
   if (!params.kind) {
@@ -174,6 +205,12 @@ export function validateOperationParams(params: Partial<Record<string, any>>): s
   }
 
   switch (params.kind) {
+    case 'text_to_image':
+      if (!params.prompt || typeof params.prompt !== 'string') {
+        errors.push('text_to_image requires a prompt (string)');
+      }
+      break;
+
     case 'text_to_video':
       if (!params.prompt || typeof params.prompt !== 'string') {
         errors.push('text_to_video requires a prompt (string)');

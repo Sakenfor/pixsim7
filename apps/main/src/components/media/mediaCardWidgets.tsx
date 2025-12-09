@@ -20,6 +20,7 @@ import type { MediaCardProps } from './MediaCard';
 import { getStatusConfig, getStatusBadgeClasses } from '@/lib/generation/generationStatusConfig';
 import { useControlCenterStore } from '@/stores/controlCenterStore';
 import { Icon } from '@/lib/icons';
+import type { OperationType } from '@/types/operations';
 
 export interface MediaCardOverlayData {
   id: number;
@@ -417,8 +418,6 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
     priority: 35,
   });
 }
-
-type OperationType = 'text_to_image' | 'image_to_image' | 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
 
 /**
  * Get the smart action based on asset type and current Control Center mode

@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { createBackendStorage } from '../lib/backendStorage';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 import { debugFlags } from '../lib/debugFlags';
+import type { OperationType } from '../types/operations';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type ControlCenterMode = 'dock' | 'cubes';
@@ -39,7 +40,7 @@ export interface ControlCenterState {
   floatingSize: { width: number; height: number }; // size when floating
   activeModule: ControlModule;
   enabledModules: Record<string, boolean>; // module preferences
-  operationType: 'text_to_image' | 'image_to_image' | 'text_to_video' | 'image_to_video' | 'video_extend' | 'video_transition' | 'fusion';
+  operationType: OperationType;
   prompt: string;
   providerId?: string;      // selected provider
   presetId?: string;        // selected preset

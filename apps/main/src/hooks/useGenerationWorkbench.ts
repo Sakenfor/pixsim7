@@ -1,11 +1,13 @@
 import { useMemo, useEffect } from 'react';
-import { useControlCenterStore, type ControlCenterState } from '../stores/controlCenterStore';
+import { useControlCenterStore } from '../stores/controlCenterStore';
 import { useGenerationSettingsStore } from '../stores/generationSettingsStore';
 import { useProviders } from './useProviders';
 import { useProviderSpecs } from './useProviderSpecs';
 import type { ParamSpec } from '../components/control/DynamicParamForm';
+import type { OperationType } from '@/types/operations';
 
-export type OperationType = ControlCenterState['operationType'];
+// Re-export for backwards compatibility
+export type { OperationType };
 
 /**
  * Options for configuring the generation workbench hook.

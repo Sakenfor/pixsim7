@@ -1,12 +1,13 @@
 import { apiClient } from './client';
 import { devValidateParams, devLogParams } from '../validation/devValidation';
 import { createGeneration, type CreateGenerationRequest } from './generations';
+import type { OperationType } from '../../types/operations';
 
 export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
   presetId?: string;
-  operationType?: 'text_to_image' | 'text_to_video' | 'image_to_video' | 'image_to_image' | 'video_extend' | 'video_transition' | 'fusion';
+  operationType?: OperationType;
   extraParams?: Record<string, any>;
   presetParams?: Record<string, any>;
 }
