@@ -27,6 +27,7 @@ import { SurfaceWorkbenchPanel } from '@/components/panels/tools/SurfaceWorkbenc
 import { GameViewPanel } from '@/components/game/panels/GameViewPanel';
 import { WorldContextPanel } from '@/components/game/panels/WorldContextPanel';
 import { EdgeEffectsPanel } from '@/components/panels/tools/EdgeEffectsPanel';
+import { ConsolePanel } from '@/components/panels/console/ConsolePanel';
 
 export const corePanelsPlugin: PanelPlugin = {
   id: 'core-panels',
@@ -277,6 +278,17 @@ export const corePanelsPlugin: PanelPlugin = {
       icon: '✨',
       description: 'Inspect and edit edge effects for the active scene graph.',
       contextLabel: 'scene',
+      supportsCompactMode: false,
+      supportsMultipleInstances: false,
+    },
+    {
+      id: 'console',
+      title: 'Console',
+      component: ConsolePanel,
+      category: 'dev',
+      tags: ['console', 'command', 'scripting', 'debug', 'developer'],
+      icon: '💻',
+      description: 'Interactive command console for the pixsim namespace (Blender-style)',
       supportsCompactMode: false,
       supportsMultipleInstances: false,
     },

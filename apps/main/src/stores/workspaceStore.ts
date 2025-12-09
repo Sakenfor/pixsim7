@@ -23,7 +23,8 @@ export type PanelId =
   | 'game-tools'
   | 'surface-workbench'
   | 'world-context'
-  | 'edge-effects';
+  | 'edge-effects'
+  | 'console';
 
 // Tree-based layout structure (replaces MosaicNode)
 export type LayoutNode<T> = T | LayoutBranch<T>;

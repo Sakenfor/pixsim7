@@ -13,6 +13,7 @@ import { registerGizmoSurfaces } from './lib/gizmos'
 import { DevToolProvider } from './lib/devtools/devToolContext'
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/debugFlags' // Debug flags system for toggleable logging
+import { initializeConsole } from './lib/console'
 
 // Initialize web logging for frontend
 initWebLogger('frontend')
@@ -31,6 +32,9 @@ registerGalleryTools()
 
 // Register gizmo surfaces
 registerGizmoSurfaces()
+
+// Initialize console namespace (pixsim.*)
+initializeConsole()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
