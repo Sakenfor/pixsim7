@@ -114,3 +114,4 @@ tests/scenarios/
 /storage/automation_screenshots
 launcher/gui/launcher.json
 launcher/gui/launcher.json
+/data/orphaned
