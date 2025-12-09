@@ -836,8 +836,66 @@ Add runtime validation for API responses to catch backend schema changes early.
 
 - [ ] Remove remaining hardcoded operation type strings from components
 - [ ] Replace `as any` casts with proper types
-- [ ] Add ESLint rule to warn on `any` in new code
-- [ ] Document type conventions in contributing guide
+- [x] Add ESLint rule to warn on `any` in new code
+- [x] Document type conventions (see below)
+
+---
+
+## Type Conventions
+
+Guidelines for maintaining type safety in the codebase.
+
+### Avoid `any`
+
+ESLint rule `@typescript-eslint/no-explicit-any` is set to **warn**. Prefer these alternatives:
+
+| Instead of | Use |
+|------------|-----|
+| `any` | `unknown` (then narrow with type guards) |
+| `Record<string, any>` | `Record<string, unknown>` or specific interface |
+| `(data: any) => void` | Generic: `<T>(data: T) => void` |
+| `as any` | Proper type assertion or type guard |
+
+### Canonical Type Locations
+
+Always import from canonical sources, never redefine:
+
+| Type | Canonical Location |
+|------|-------------------|
+| `OperationType` | `types/operations.ts` |
+| `PanelCategory` | `lib/panels/panelConstants.ts` |
+| `PromptSegment`, `PromptSegmentRole` | `types/prompts.ts` |
+| `PromptAnalyzerId` | `lib/analyzers/constants.ts` |
+| `GenerationStatus` | `stores/generationsStore.ts` |
+
+### Const Arrays Pattern
+
+For union types with runtime values, use `as const` arrays:
+
+```typescript
+// ✅ Good: Single source of truth
+export const OPERATION_TYPES = ['txt2img', 'img2vid', ...] as const;
+export type OperationType = typeof OPERATION_TYPES[number];
+
+// ❌ Bad: Separate enum and array that can drift
+enum OperationType { Txt2Img = 'txt2img', ... }
+const OPERATION_TYPES = ['txt2img', ...]; // can get out of sync
+```
+
+### Type Guards
+
+When narrowing `unknown`, use type guards:
+
+```typescript
+function isPromptSegment(value: unknown): value is PromptSegment {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'role' in value &&
+    'text' in value
+  );
+}
+```
 
 ---
 

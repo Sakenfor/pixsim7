@@ -19,5 +19,10 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Type safety: warn on explicit `any` to encourage proper typing
+      // Set to "warn" (not "error") to allow gradual migration
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
   },
 ])
