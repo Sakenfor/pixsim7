@@ -95,7 +95,7 @@ class PixverseCostEstimateRequest(BaseModel):
 
 class PixverseCostEstimateResponse(BaseModel):
     """Response body for Pixverse cost estimation."""
-    estimated_credits: float
+    estimated_credits: Optional[float] = None
     estimated_cost_usd: Optional[float] = None
 
 
@@ -361,23 +361,17 @@ async def estimate_pixverse_cost(
     # Image pricing: use static credit table based on model + quality.
     if body.kind == "image":
         credits = get_image_credit_change(body.model, body.quality)
-        if credits is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"No image pricing configured for model '{body.model}' "
-                    f"at quality '{body.quality}'."
-                ),
-            )
+        # Return null if no pricing configured (graceful degradation)
         return PixverseCostEstimateResponse(
-            estimated_credits=float(credits),
+            estimated_credits=float(credits) if credits is not None else None,
             estimated_cost_usd=None,
         )
 
-    if body.duration is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="duration is required for video cost estimation",
+    # Video requires duration
+    if body.duration is None or body.duration <= 0:
+        return PixverseCostEstimateResponse(
+            estimated_credits=None,
+            estimated_cost_usd=None,
         )
 
     # Clamp duration to a reasonable positive integer
@@ -391,10 +385,11 @@ async def estimate_pixverse_cost(
         multi_shot=body.multi_shot,
         audio=body.audio,
     )
+    # Return null if pricing helper unavailable (graceful degradation)
     if credits is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Pixverse pricing helper is not available on the server for video.",
+        return PixverseCostEstimateResponse(
+            estimated_credits=None,
+            estimated_cost_usd=None,
         )
 
     # Optional USD approximation based on per-second pricing
